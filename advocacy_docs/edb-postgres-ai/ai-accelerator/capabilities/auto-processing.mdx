@@ -1,0 +1,138 @@
+---
+title: "Pipeline Auto-Processing"
+navTitle: "Auto-Processing"
+description: "Pipeline Auto-Processing"
+---
+
+## Overview
+Pipeline Auto-Processing is designed to keep source data and pipeline output in sync. Without this capability, users would have to
+manually trigger processing or provide external scripts, schedulers or triggers:
+- **Full sync:** Insert/delete/update are all handled automatically. No lost updates, missing data or stale records.
+- **Change detection:** Only new or changed records are processed. No unnecessary re-processing of known records.
+- **Batch processing:** Records are grouped into batches to be processed concurrently. Reducing overhead and achieving optimal performance e.g. with GPU-based AI model inference tasks.
+- **Background processing:** When enabled, the pipeline runs in a background worker process so that it doesn't block or delay other DB operations. Ideal for processing huge datasets.
+- **Live processing for Postgres tables:** When the data source is a Postgres table, live trigger-based auto processing can be enabled so that pipeline results are always guaranteed up to date.
+- **Quick turnaround:** Once a batch has finished processing, the results are immediately available. No full listing of the source data is needed to start processing. This is important for large external volumes where a full listing can take a long time.
+
+### Example for Knowledge Base Pipeline
+A knowledge base is created for a Postgres table containing products with product descriptions.
+The user configures background auto-processing to always keep embeddings in sync without blocking or delaying any operations on the products table.
+
+The pipeline will process any pre-existing product records in the background, the user can query the statistics table to see the progress.
+
+The background process will run when new data is inserted, existing data modified or deleted.
+
+Queries on the Knowledge Base (i.e. retrieval operations) will always return accurate results within a small background processing delay.
+
+
+### Supported pipelines
+The Knowledge Base pipeline supports all capabilities listed here.
+
+The Preparer pipeline does not yet support batch processing and background auto-processing
+
+## Auto-Processing modes
+We offer the following Auto-Processing modes to suit different requirements and use-cases.
+
+!!! Note
+Live auto-processing is only available for table sources. Not for volume sources.
+!!!
+
+### Live
+We set up Postgres Triggers on the source table to immediately process any changes. Processing happens within the trigger function.
+This means it happens within the same transaction that modifies the data, guaranteeing up to date results.
+
+#### Considerations
+- Transactional guarantee / immediate results. Pipeline results are always up to date with the source data.
+- Blocks / delays operations on the source data. Modifying transactions on the source data are delayed until processing is complete.
+
+### Background
+We start a Postgres background worker for each pipeline TODO
+
+
+!!! Note
+Make sure Postgres allows running enough background workers for the number of pipelines where you wish to use this processing mode.
+!!!
+#### Considerations
+TODO
+
+### Disabled
+TODO
+
+
+
+## Observability
+We provide detailed status and progress output for all auto-processing modes.
+
+A good place to get an overview is the statistics table.
+Look up the view `aidb.knowledge_base_stats` or use its short alias `aidb.kbstat`. The table shows all configured knowledge base pipelines,
+which processing mode is set, and statistics about the processed records:
+```sql
+SELECT * from aidb.kbstat;
+__OUTPUT__
+     knowledge base     | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(embeddings)
+------------------------+-----------------+-------------------------+-------------------------+-----------------------+-------------------
+ kb_table_text_bg       | Background      |                       0 |                         |                    15 |                15
+ kb_table_text_manual   | Disabled        |                       0 |                         |                    15 |                15
+ kb_table_image_manual  | Disabled        |                       0 |                         |                     3 |                 3
+ kb_table_text_live     | Live            |                       0 |                         |                    15 |                15
+ kb_table_image_bg      | Background      |                       0 |                         |                     3 |                 3
+ kb_volume_text_bg      | Background      |                         |                       6 |                     7 |                 7
+ kb_volume_text_manual  | Disabled        |                         |                       0 |                     0 |                 0
+ kb_volume_image_bg     | Background      |                         |                       4 |                   177 |                 6
+ kb_volume_image_manual | Disabled        |                         |                       1 |                   177 |                 6
+(9 rows)
+```
+
+The [change detection](#changedetection) mechanism is central to how auto-processing works. It is different for volume and table sources.
+For this reason, the stats table has different columns for these two source types.
+
+* `table: unprocessed rows`: How many unique rows are listed in the backlog of change events.
+  * If auto-processing is disabled, no (new) change events are captured.
+* `volume: scans completed`: How many full listings of the source have been completed so far.
+* `count(source records)`: How many records exist in the source for this pipeline.
+  * for table sources, this number is always accurate.
+  * for volume sources, we can only update this number after a full scan has completed.
+* `count(embeddings)`: How many embeddings exist in the vector destination table for this pipeline.
+
+
+
+## Configuration
+Auto-processing can be configured at creation time:
+- With [`aidb.create_table_knowledge_base`](../reference/knowledge_bases#aidbcreate_table_knowledge_base)
+- With [`aidb.create_volume_knowledge_base`](../reference/knowledge_bases#aidbcreate_volume_knowledge_base)
+
+As well as for existing pipelines:
+- With [`aidb.set_auto_knowledge_base`](../reference/knowledge_bases#aidbset_auto_knowledge_base)
+
+## Batch processing
+In Background and Disabled modes, (auto) processing happens in batches of configurable size. Within each batch,
+
+## Change detection
+We designed AIDB auto-processing around change detection mechanisms for table and volume data sources. This allows us to only
+process data when necessary.
+
+### Table sources
+When background auto-processing is configured, we set up Postgres Triggers on the source table. These triggers are very lightweight.
+They only record change events and insert them into a "change events" table. No actual processing happens in the trigger function.
+
+The background worker will then process these events asynchronously.
+
+!!! Notice
+When auto-processing is disabled, no change detection on tables is possible. This means the manual `bulk_embedding()` operation has to process
+all source records.
+!!!
+
+
+### Volume sources
+This source type provides a `last_modified` timestamp for each source record. We keep track of those timestammps in a "state" table.
+In each pipeline execution, we list the contents of the volume and compare the timestamps to see whether any records have changed or were added.
+
+This mechanism works in disabled and in background auto-processing.
+
+We detect deleted objects after a full listing is complete. Only then can we be certain that a perviously processed record is no longer present in the source.
+
+Unfortunately, object stores (and other external storage locations supported by our volumes) have limited query capabilities. This means:
+!!! Note
+Change detection for volumes is based on polling i.e., repeated listing. This might be an expensive operation when using cloud object stores like AWS S3.
+You can use a long `background_sync_interval` (like one per day) on pipelines with volume sources to control this cost.
+!!!
