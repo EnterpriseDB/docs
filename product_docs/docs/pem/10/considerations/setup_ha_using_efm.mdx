@@ -6,24 +6,20 @@ redirects:
 - /pem/latest/pem_ha_setup/setup_ha_using_efm/
 ---
 
-!!! Important
-This page is under review and has not been updated for PEM 10.
-We plan to publish new documentation on HA patterns in PEM alongside some software changes to facilitate these patterns in PEM 10.1.
-!!!
+This page provides detailed instructions to install and configure a High Availability (HA) PEM deployment according to reference architecture C1.
+This example uses EDB Failover Manager (EFM) for cluster management, EDB Postgres Advanced Server (EPAS) as the PEM backend database and Virtual IP (VIP) as the mechanism for routing traffic to the primary.
+Please refer to [High Availability Patterns for PEM Deployment] for discussion of other options.
 
 !!! Note
-    This procedure is for setting up Failover Manager for a PEM server with a new installation, not with an existing one. The provided commands apply to the configuration on RHEL-based systems where HTTPD is used for the web server services.
-
-Postgres Enterprise Manager (PEM) helps database administrators, system architects, and performance analysts to administer, monitor, and tune Postgres database servers.
-
-Failover Manager is a high-availability tool from EDB that enables a Postgres primary node to failover to a standby node during a software or hardware failure on the primary.
+    This procedure is for setting up Failover Manager for a PEM server with a new installation, not with an existing one. 
+    The provided commands apply to the configuration of RHEL-like systems with EPAS 17 and EFM 5.0.
     
 The examples that follow use these IP addresses:
 
 -   172.16.161.200 - PEM Primary
 -   172.16.161.201 - PEM Standby 1
 -   172.16.161.202 - PEM Standby 2
--   172.16.161.203 - EFM Witness Node
+-   172.16.161.203 - EFM Witness Node  ??? why a witness when we already have three ???
 -   172.16.161.245 - PEM VIP (used by agents and users to connect)
 
 The following must use the VIP address:
@@ -32,47 +28,74 @@ The following must use the VIP address:
 -   Accessing the PEM web client
 -   Accessing the webserver services
 
-## Initial product installation and configuration
+## Initial installation and configuration
 
-1.  Install the following on the primary and one or more standbys:
+1.  Install the following on the primary and all standbys:
 
     -   [EDB Postgres Advanced Server](/epas/latest/installing/) (backend database for PEM Server)
     -   [PEM server](/pem/latest/installing/)
-    -   [EDB Failover Manager 4.1](/efm/latest/installing/)
+    -   [EDB Failover Manager](/efm/latest/installing/)
 
-    Refer to the installation instructions in the product documentation using these links or see the instructions on the [EDB repos website](https://repos.enterprisedb.com). Replace `USERNAME:PASSWORD` with your username and password in the instructions to access the EDB repositories.
+    A minimal set of commands to complete this step is provided below. Refer to the installation instructions in the product documentation for more detail.
 
-    Make sure that the database server is configured to use the scram-sha-256 authentication method, as the PEM server configuration script doesn't work with trust authentication.
+    ```shell
+    sudo dnf -qy module disable postgresql
+    sudo dnf -y install epel-release
+    sudo dnf config-manager --set-enabled crb
+    sudo dnf -y install edb-as17-server edb-pem edb-as17-server-sslutils
 
-    You must install the `java-1.8.0-openjdk` package to install EFM.
+    # Initialize the database
+    sudo PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as17/bin/edb-as-17-setup initdb
+
+    # Start and enable the EPAS service
+    sudo systemctl start edb-as-17
+    sudo systemctl enable edb-as-17
+
+    # Create a superuser role for PEM
+    sudo su - enterprisedb -c "psql edb -c \"create role pemserver login superuser password 'your-password-here';\""
+
+    # Edit the pg_hba.conf file
+    HBA_FILE="/var/lib/edb/as17/data/pg_hba.conf"
+    sudo sed -i "1i host    all             pemserver       172.16.161.1/24            scram-sha-256" "$HBA_FILE"
+
+    sudo systemctl restart edb-as-17
+    ```
 
 2.  Configure the PEM server on the primary server as well as on all the standby servers with an initial configuration of type 1 (web services and database): 
 
+    a. On each host, starting with the replicas, manually assign the VIP to the host. For example:
+
     ```shell
-    /usr/edb/pem/bin/configure-pem-server.sh -t 1
+    sudo /usr/edb/efm-5.0/bin/efm_address add4 eth0 172.16.161.245/32
     ```
+    b. Then, configure the PEM server, specifying the VIP as the host
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 -ho 172.16.161.245
+    ```
+    c. Before proceeding to the next server, release the VIP. Omit this step on the primary.
+
+    ```shell
+    sudo /usr/edb/efm-5.0/bin/efm_address del eth0 172.16.161.245/32
+    ```
+
     For more detail on configuration types see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
 
 3.  Add the following ports in the firewall on the primary and all the standby servers to allow the access:
 
-    -   `8443` for PEM Server (https)
-    -   `5444` for EPAS 13 
+    -   `8443` for PEM Server (HTTPS)
+    -   `5444` for EPAS 
     -   `7800` for EFM
     -   `7908` for EFM Admin
 
     For example:
 
     ```shell
-        $ sudo firewall-cmd --zone=public --add-port=5444/tcp --permanent 
-        success
-        $ sudo firewall-cmd --zone=public --add-port=8443/tcp --permanent
-        success
-        $ sudo firewall-cmd --zone=public --add-port=7800/tcp --permanent
-        success
-        $ sudo firewall-cmd --zone=public --add-port=7809/tcp --permanent
-        success
-        $ sudo firewall-cmd --reload
-        success
+    sudo firewall-cmd --zone=public --add-port=5444/tcp --permanent 
+    sudo firewall-cmd --zone=public --add-port=8443/tcp --permanent
+    sudo firewall-cmd --zone=public --add-port=7800/tcp --permanent
+    sudo firewall-cmd --zone=public --add-port=7809/tcp --permanent
+    sudo firewall-cmd --reload      
     ```
 
 ## Set up the primary node for streaming replication
@@ -80,8 +103,7 @@ The following must use the VIP address:
 1.  Create the replication role:
 
     ```shell
-        $ /usr/edb/as13/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
-        CREATE ROLE
+    psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
     ```
 
     Give the password of your choice.
@@ -89,10 +111,10 @@ The following must use the VIP address:
 2.  Configure the following in the `postgresql.conf` file:
 
     ```ini
-        wal_level = replica
-        max_wal_senders = 10
-        wal_keep_size = 500
-        max_replication_slots = 10
+    wal_level = replica
+    max_wal_senders = 10
+    wal_keep_size = 500
+    max_replication_slots = 10
     ```
 
     For more information on configuring parameters for streaming replication, see the [PostgreSQL documentation](https://www.postgresql.org/docs/13/warm-standby.html#STREAMING-REPLICATION).
@@ -103,36 +125,36 @@ The following must use the VIP address:
 3.  Add the following entry in the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file to allow the replication user to connect from all the standbys:
 
     ```shell
-        hostssl  replication  repl  172.16.161.201/24  scram-sha-256
+    hostssl  replication  repl  172.16.161.201/24  scram-sha-256
     ```
 
     !!! Note
         You can change the cidr range of the IP address, if needed. 
 
-4.  Modify the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file for the pem_user role to connect to all databases using the scram-sha-256 authentication method:
+4.  Modify the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file for the pem_user role to connect to all databases using the scram-sha-256 authentication method:  ??? Isn't this already done by the configure script ???
 
     ```shell
-        # Allow local PEM agents and admins to connect to PEM server
-        hostssl all    +pem_user   172.16.161.201/24  scram-sha-256
-        hostssl pem    +pem_user   127.0.0.1/32       scram-sha-256
-        hostssl pem    +pem_agent  127.0.0.1/32         cert
-        # Allow remote PEM agents and users to connect to PEM server
-        hostssl pem   +pem_user    0.0.0.0/0          scram-sha-256
-        hostssl pem   +pem_agent   0.0.0.0/0          cert
+    # Allow local PEM agents and admins to connect to PEM server
+    hostssl all    +pem_user   172.16.161.201/24  scram-sha-256
+    hostssl pem    +pem_user   127.0.0.1/32       scram-sha-256
+    hostssl pem    +pem_agent  127.0.0.1/32         cert
+    # Allow remote PEM agents and users to connect to PEM server
+    hostssl pem   +pem_user    0.0.0.0/0          scram-sha-256
+    hostssl pem   +pem_agent   0.0.0.0/0          cert
     ```
 
 5.  Restart the EPAS 13 server.
 
     ```shell
-        systemctl restart edb-as-13.service
+    systemctl restart edb-as-13.service
     ```
 
 ## Set up the standby nodes for streaming replication
 
-1.  Stop the service for EPAS 13 on all the standby nodes:
+1.  Stop the service for EPAS on all the standby nodes:
 
     ```shell
-        $ systemctl stop edb-as-13.service
+    systemctl stop edb-as-17.service
     ```
 
     !!! Note
@@ -141,58 +163,58 @@ The following must use the VIP address:
 2.  Remove the data directory of the database server on all the standby nodes:
 
     ```shell
-        $ sudo su - enterprisedb
+    sudo su - enterprisedb
         
-        $ rm -rf /var/lib/edb/as13/data/*
+    rm -rf /var/lib/edb/as17/data/*
     ```
 
 3.  Create the `.pgpass` file in the home directory of the enterprisedb user on all the standby nodes:
 
     ```shell
-        $ sudo su - enterprisedb
+    sudo su - enterprisedb
         
-        $ cat > ~/.pgpass << _EOF_
-        172.16.161.200:5444:replication:repl:CHANGE_ME
-        172.16.161.201:5444:replication:repl:CHANGE_ME
-        172.16.161.202:5444:replication:repl:CHANGE_ME
-        _EOF_
+    cat > ~/.pgpass << _EOF_
+    172.16.161.200:5444:replication:repl:CHANGE_ME
+    172.16.161.201:5444:replication:repl:CHANGE_ME
+    172.16.161.202:5444:replication:repl:CHANGE_ME
+    _EOF_
         
-        $ chmod 600 ~/.pgpass
+    chmod 600 ~/.pgpass
     ```
 
 4.  Take the backup of the primary node on each of the standby nodes using pg_basebackup:
 
     ```shell
-        $ sudo su - enterprisedb /usr/edb/as13/bin/pg_basebackup -h 172.16.161.200 \
-        -D /var/lib/edb/as13/data -U repl -v -P -Fp -R -p 5444
+    sudo su - enterprisedb /usr/edb/as13/bin/pg_basebackup -h 172.16.161.200 \
+    -D /var/lib/edb/as17/data -U repl -v -P -Fp -R -p 5444
     ```
 
     The `backup` command creates the `postgresql.auto.conf` and `standby.signal` files on the standby nodes. The `postgresql.auto.conf` file has the following content:
 
     ```shell
-        sudo su - enterprisedb cat /var/lib/edb/as13/data/postgresql.auto.conf
-        # Do not edit this file manually
-        # It will be overwritten by the ALTER SYSTEM command.
-        primary_conninfo = ‘user=repl passfile=’’/var/lib/edb/.pgpass’’ channel_binding=prefer host=172.16.161.200 port=5444 sslmode=prefer sslcompression=0 ssl_min_protocol_version=TLSv1.2 gssencmode=prefer krbsvrname=postgres target_session_attrs=any’
+    sudo su - enterprisedb cat /var/lib/edb/as13/data/postgresql.auto.conf
+    # Do not edit this file manually
+    # It will be overwritten by the ALTER SYSTEM command.
+    primary_conninfo = ‘user=repl passfile=’’/var/lib/edb/.pgpass’’ channel_binding=prefer host=172.16.161.200 port=5444 sslmode=prefer sslcompression=0 ssl_min_protocol_version=TLSv1.2 gssencmode=prefer krbsvrname=postgres target_session_attrs=any’
     ```
 
 5.  In the `postgresql.conf` file on each of the standby nodes, edit the following parameter:
 
     ```ini
-        hot_standby = on
+    hot_standby = on
     ```
 
-6.  Start the EPAS 13 database server on each of the standby nodes:
+6.  Start the EPAS database server on each of the standby nodes:
 
     ```shell
-        $ systemctl enable edb-as-13
+        $ systemctl enable edb-as-17
         
-        $ systemctl start edb-as-13
+        $ systemctl start edb-as-17
     ```
 
 7.  Copy the following files from the primary node to the standby nodes at the same location, overwriting any existing files. Set the permissions on the files:
 
-    -   `/etc/httpd/conf.d/edb-pem.conf`
+    -   `/etc/httpd/conf.d/edb-pem.conf`  ??? change for HTTPD ???
     -   `/etc/httpd/conf.d/edb-ssl-pem.conf`
     -   `/root/.pem/agent1.crt`
     -   `/root/.pem/agent1.key`
@@ -247,7 +269,7 @@ This code ensures that the webserver is configured on the standby and is disable
     $ sudo chmod 640 /root/.pem/agent1.crt
 ```
 
-9. Disable and stop HTTPD and PEM agent services if they're running on all replica nodes:
+9. Disable and stop HTTPD and PEM agent services if they're running on all replica nodes:  ??? no longer needed ???
 
 ```shell
 systemctl stop pemagent
@@ -312,7 +334,7 @@ systemctl disable httpd
         $ /usr/edb/as13/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “SELECT pg_reload_conf();”
     ```
 
-2.  Create the scripts on each node to start/stop the PEM agent:
+2.  Create the scripts on each node to start/stop the PEM agent:  ??? Not needed anymore ???
 
     ```shell
         $ sudo cat > /usr/local/bin/start-httpd-pemagent.sh << _EOF_
@@ -334,7 +356,7 @@ systemctl disable httpd
         $ sudo chmod 770 /usr/local/bin/stop-pemagent.sh
     ```
 
-3.  Create a `sudoers` file (`/etc/sudoers.d/efm-pem`) on each node to allow the efm user to start/stop the pemagent:
+3.  Create a `sudoers` file (`/etc/sudoers.d/efm-pem`) on each node to allow the efm user to start/stop the pemagent: ??? Not needed anymore ???
 
     ```shell
         $ sudo cat > /etc/sudoers.d/efm-pem << _EOF_
