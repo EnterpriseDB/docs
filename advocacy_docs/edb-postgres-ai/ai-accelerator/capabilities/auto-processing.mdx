@@ -31,32 +31,38 @@ The Knowledge Base pipeline supports all capabilities listed here.
 The Preparer pipeline does not yet support batch processing and background auto-processing
 
 ## Auto-Processing modes
-We offer the following Auto-Processing modes to suit different requirements and use-cases.
+The following Auto-Processing modes are available to suit different requirements and use-cases.
 
 !!! Note
 Live auto-processing is only available for table sources. Not for volume sources.
 !!!
 
 ### Live
-We set up Postgres Triggers on the source table to immediately process any changes. Processing happens within the trigger function.
-This means it happens within the same transaction that modifies the data, guaranteeing up to date results.
+AIDB sets up Postgres Triggers on the source table to immediately process any changes. Processing happens within the trigger function.
+This means it happens within the same transaction that modifies the data, guaranteeing up-to-date results.
 
-#### Considerations
+#### Pros & Cons
 - Transactional guarantee / immediate results. Pipeline results are always up to date with the source data.
 - Blocks / delays operations on the source data. Modifying transactions on the source data are delayed until processing is complete.
 
 ### Background
-We start a Postgres background worker for each pipeline TODO
-
+AIDB starts a Postgres background worker for each pipeline that has background auto-processing configured.
+Processing happens asynchronously based on a configurable `background_sync_interval`. See [change detection below](#change_detection) for details on how the pipelines are processed.
 
 !!! Note
-Make sure Postgres allows running enough background workers for the number of pipelines where you wish to use this processing mode.
+Make sure Postgres allows running enough background workers for the number of pipelines where you wish to use this processing mode. This is controlled by the Postgres setting `max_worker_processes`.
 !!!
-#### Considerations
-TODO
+
+#### Pros & Cons
+- Asynchronous execution means queries on the source don't have to be delayed while the changes are processed.
+- Results are delayed and might become backlogged.
+- Ideal for huge datasets; processing occurs continuously in the background and is not tied to any user session / SQL function call.
 
 ### Disabled
-TODO
+Auto-processing is disabled. Users can manually call [`aidb.bulk_embedding()`](../reference/knowledge_bases#aidbbulk_embedding) to process the pipelines.
+
+_Note: On table knowledge bases, change detection is also disabled (since it requires active triggers on the source table). This means manual processing (via `aidb.bulk_embedding()`) has to process all the records in the source._
+
 
 
 
@@ -64,7 +70,7 @@ TODO
 We provide detailed status and progress output for all auto-processing modes.
 
 A good place to get an overview is the statistics table.
-Look up the view `aidb.knowledge_base_stats` or use its short alias `aidb.kbstat`. The table shows all configured knowledge base pipelines,
+Look up the view [`aidb.knowledge_base_stats`](../reference/knowledge_bases#aidbknowledge_base_stats) or use its short alias `aidb.kbstat`. The view shows all configured knowledge base pipelines,
 which processing mode is set, and statistics about the processed records:
 ```sql
 SELECT * from aidb.kbstat;
