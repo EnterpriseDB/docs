@@ -11,36 +11,18 @@ There are two types of knowledge bases: table and volume. Given the different na
 
 ## Knowledge base for a table data source
 
-The [aidb.create_table_knowledge_base](../reference/knowledge_bases#aidbcreate_table_knowledge_base) function is used to create a knowledge base for a table data source. This is the function signature. You can see many of the functions parameters are optional and have defaults.
+The `aidb.create_table_knowledge_base()` function is used to create a knowledge base for a table data source. Below you can find a minimal example. See [`aidb.create_table_knowledge_base` reference](../reference/knowledge_bases#aidbcreate_table_knowledge_base) for a full list of options.
 
-```
-create_table_knowledge_base(
--------------------------------------------------------------------------------
-    name                                TEXT,
-    model_name,                         TEXT,
-    source_table                        regclass,
-    source_data_column            TEXT,
-    source_data_type                    aidb.PipelineDataFormat,
-    source_key_column                   TEXT DEFAULT 'id',
-    vector_table                        TEXT DEFAULT NULL,
-    vector_data_column                  TEXT DEFAULT 'embeddings',
-    vector_key_column                   TEXT DEFAULT 'id',
-    topk                                INTEGER DEFAULT 1,
-    distance_operator                   aidb.distanceoperator DEFAULT 'L2',
-    options                             JSONB DEFAULT '{}'::JSONB,
-    auto_processing                     aidb.pipelineautoprocessingmode DEFAULT 'Disabled'
-)
-```
 
 ### Example: Creating a knowledge base
 
 ``` sql
 SELECT aidb.create_table_knowledge_base(
                name => 'test_knowledge_base',
-               model_name => 'simple_model',
+               model_name => 'bert',
                source_table => 'test_source_table',
                source_data_column => 'content',
-               source_data_type => 'Text'
+               source_data_format => 'Text'
        );
 ```
 
@@ -49,74 +31,67 @@ If you're using only Postgres tables, skip to [Creating the embeddings](#creatin
 
 If you're using external data sources, you need to create a volume and create a knowledge base for it, which is explained next.
 
+
+
+
+
+
+
+
+
+
+
+
 ## Knowledge base for a volume data source
 
 ### Creating a new volume
 
-Before you can create a knowledge base for a volume, you need to create a volume. The [aidb.create_volume](../reference/knowledge_bases#aidbcreate_volume) function is used to create a volume. This is the function signature. You can see many of the function parameters are optional and have defaults.
+Before you can create a knowledge base for a volume, you need to create a volume and a PGFS storage location.
+See [volumes](../volumes) for more detail.
 
-```text
-aidb.create_volume(
--------------------------------------------------------------------------------
-    name                              TEXT,
-    server_name                       TEXT,
-    path                              TEXT,
-    mime_type                         TEXT
-)
+Here, we create a [PGFS storage location](../pgfs) for a public S3 bucket:
+```sql
+SELECT pgfs.create_storage_location('aidb_text_bucket', 's3://aidb-rag-app',
+               options => '{"region": "eu-central-1", "skip_signature": "true"}'
+       );
 ```
 
-`mime_type` actually takes only `Text` or `Image` as values.
+The [aidb.create_volume](../reference/knowledge_bases#aidbcreate_volume) function is used to create a volume.
 
 ### Example: Creating a volume
 
 ``` sql
-SELECT aidb.create_volume(
-               name => 'test_volume',
-               server_name => 'test_server',
-               path => 'test_path',
-               mime_type => 'Text'
-       );
+SELECT aidb.create_volume('aidb_text', 'aidb_text_bucket', '/', 'Text');
 ```
 
-The `server_name` comes from calling PGFS functions to create a storage location [pgfs.create_storage_location](../reference/pgfs#pgfscreate_storage_location). The `path` is the path to the data in the storage location.
+The `server_name` comes from calling PGFS functions to create a storage location [pgfs.create_storage_location](../reference/pgfs#pgfscreate_storage_location). The `path` is the path to the data in the storage location. The last argument indicates the data format; `Text` or `Image`.
 
 ### Creating a knowledge base for a volume
+The `aidb.create_volume_knowledge_base()` function is used to create a knowledge base for a volume data source. Below you can find a minimal example. See [`aidb.create_volume_knowledge_base` reference](../reference/knowledge_bases#aidbcreate_volume_knowledge_base) for a full list of options.
 
-The [aidb.create_volume_knowledge_base](../reference/knowledge_bases#aidbcreate_volume_knowledge_base) function is used to create a knowledge base for a volume data source. This is the function signature. You can see many of the function parameters are optional and have defaults.
-
-```
-aidb.create_volume_knowledge_base(
--------------------------------------------------------------------------------
-    name                              TEXT,
-    model_name,                       TEXT,
-    source_volume_name                TEXT,
-    vector_table                      TEXT DEFAULT NULL,
-    vector_data_column                TEXT DEFAULT 'embeddings',
-    vector_key_column                 TEXT DEFAULT 'id',
-    topk                              INTEGER DEFAULT 1,
-    distance_operator                 aidb.distanceoperator DEFAULT 'L2',
-    options                           JSONB DEFAULT '{}'::JSONB
-    auto_processing                   aidb.pipelineautoprocessingmode DEFAULT 'Disabled'
-)
-```
 
 ### Example: Creating a knowledge base for a volume
 
 ``` sql
 SELECT aidb.create_volume_knowledge_base(
                name => 'test_knowledge_base_volume',
-               model_name => 'simple_model',
-               source_volume_name => 'test_volume'
+               model_name => 'bert',
+               source_volume_name => 'aidb_text'
        );
 ```
 
 
 ## Creating the embeddings
 
-You can use bulk embedding if there's existing data in the source table:
+You can use bulk embedding to manually run embedding computation:
 
 ```sql
 SELECT aidb.bulk_embedding('test_knowledge_base');
+```
+
+and for the volume example:
+```sql
+SELECT aidb.bulk_embedding('test_knowledge_base_volume');
 ```
 
 Enable live auto-processing (automated embeddings) for any future changes:
