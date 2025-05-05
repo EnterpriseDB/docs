@@ -430,7 +430,7 @@ const Page = () => {
             <BannerWideLink to="/supported-open-source/warehousepg/warehousepg">
               WarehousePG
             </BannerWideLink>
-            <BannerWideLink to="/supported-open-source/warehousepg/edb-postgres-ai">
+            <BannerWideLink to="/supported-open-source/warehousepg/edbpggpsupp/">
               EDB Postgres AI support for Greenplum workloads
             </BannerWideLink>
 
