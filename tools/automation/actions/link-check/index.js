@@ -1,5 +1,7 @@
 import core, { summary } from "@actions/core";
 import github from "@actions/github";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 import yaml from "js-yaml";
 import path from "path";
 import remarkParse from "remark-parse";
@@ -25,9 +27,18 @@ const noWarnPaths = [
   "/playground/1/01_examples/link-test",
 ];
 
-const args = process.argv.slice(2);
+const args = yargs()
+  .usage("Usage: $0 [basepath] [options]")
+  .option("fix", {
+    type: "boolean",
+    default: false,
+    description: "Set to update links that would redirect if not updated",
+  })
+  .help()
+  .parse(hideBin(process.argv));
+
 const basePath =
-  args[0] ||
+  args._[0] ||
   core?.getInput("content-path") ||
   path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../..");
 
@@ -106,7 +117,7 @@ main().catch((err) => ghCore.setFailed(err));
 async function main() {
   const updateLinks = process.env.GITHUB_REF
     ? !!ghCore.getInput("update-links")
-    : true;
+    : args.fix;
   const sourceFiles = await glob([
     path.resolve(basePath, "product_docs/**/*.mdx"),
     path.resolve(basePath, "advocacy_docs/**/*.mdx"),
@@ -158,6 +169,18 @@ async function main() {
     input.data = { allValidUrlPaths, metadata };
     const ast = scanner.parse(input);
     await scanner.run(ast, input);
+    for (let message of input.messages) {
+      const props = {
+        title: message.ruleId,
+        file: path.relative(basePath, message.file),
+        startLine: message.line,
+        startColumn: message.column,
+      };
+      if (message.fatal) ghCore.error(message.reason, props);
+      else ghCore.warning(message.reason, props);
+      if (props.file)
+        ghCore.context(props.file, props.startLine, props.startColumn);
+    }
   }
 
   //
@@ -301,7 +324,7 @@ Files updated: **${filesUpdated}**`);
     ghCore.summary.addRaw(`
 
 **${linksUpdated}** links could be updated to avoid redirects; 
-run \`npm run links:check\` locally.`);
+run \`npm run links:fix\` locally.`);
 
   ghCore.summary.write();
 
@@ -323,10 +346,18 @@ function index() {
       else if (node.type === "heading") {
         metadata.slugs.push(slugger.slug(mdast2string(node)));
       } else if (node.type === "yaml") {
-        const frontmatter = yaml.load(node.value);
-        for (let redirect of normalizeRedirects(frontmatter, metadata)) {
-          metadata.redirects.push(redirect);
-          allValidUrlPaths.set(redirect, metadata);
+        try {
+          const frontmatter = yaml.load(node.value);
+          for (let redirect of normalizeRedirects(frontmatter, metadata)) {
+            metadata.redirects.push(redirect);
+            allValidUrlPaths.set(redirect, metadata);
+          }
+        } catch (e) {
+          file.message(
+            `Error parsing frontmatter: ${e.message}`,
+            node.position,
+            "link-check:frontmatterParse",
+          );
         }
       }
     });
