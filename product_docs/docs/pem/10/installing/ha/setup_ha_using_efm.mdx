@@ -218,18 +218,19 @@ Uses the pg_basebackup utility to create replicas of the PEM backend database se
     rm -rf /var/lib/edb/as17/data/*
     ```
 
-3.  Create the `.pgpass` file in the home directory of the enterprisedb user on all the standby nodes.
+3.  Create the `.pgpass` file in the home directory of the enterprisedb user on all the standby nodes and add the following content.
     Replace `<password>` with the password of the replication user created previously.
 
-    ```shell
-    sudo su - enterprisedb
-        
-    cat > ~/.pgpass << _EOF_
+    ```
     172.16.161.200:5444:replication:repl:<password>
     172.16.161.201:5444:replication:repl:<password>
     172.16.161.202:5444:replication:repl:<password>
     _EOF_
+    ```
+
+3.  Set the permissions on the file to restrict access
         
+    ```shell
     chmod 600 ~/.pgpass
     ```
 
@@ -279,142 +280,131 @@ On each replica, perform the following steps.
 
 ## Set up EFM to manage failover on all hosts
 
-1.  Prepare the primary node to support EFM:
+Prepare the primary node to support EFM:
 
-    -   Create a database user efm to connect to the database servers.
-    -   Grant the execute privileges on the functions related to WAL logs and the monitoring privileges to the user.
-    -   Add entries in `pg_hba.conf` to allow the efm database user to connect to the database server from all nodes on all the hosts.
-    -   Reload the configurations on all the database servers.
+1.  Create a database user `efm` to connect to the database servers.
+    Grant the execute privileges on the functions related to WAL logs and the monitoring privileges to the user.
+    As a superuser:
     
-    For example:
-
     ```sql
-        cat > /tmp/efm-role.sql << _EOF_
-        -- Create a role for EFM
-        CREATE ROLE efm LOGIN PASSWORD 'password';
+    CREATE ROLE efm LOGIN PASSWORD 'password';
 
-        -- Give privilege to 'efm' user to connect to a database
-        GRANT CONNECT ON DATABASE edb TO efm;
+    -- Give privilege to 'efm' user to connect to a database
+    GRANT CONNECT ON DATABASE edb TO efm;
 
-        -- Give privilege to 'efm' user to do backup operations
-        GRANT EXECUTE ON FUNCTION pg_current_wal_lsn() TO efm;
-        GRANT EXECUTE ON FUNCTION pg_last_wal_replay_lsn() TO efm;
-        GRANT EXECUTE ON FUNCTION pg_wal_replay_resume() TO efm;
-        GRANT EXECUTE ON FUNCTION pg_wal_replay_pause() TO efm;
-        GRANT EXECUTE ON FUNCTION pg_reload_conf() TO efm;
+    -- Give privilege to 'efm' user to do backup operations
+    GRANT EXECUTE ON FUNCTION pg_current_wal_lsn() TO efm;
+    GRANT EXECUTE ON FUNCTION pg_last_wal_replay_lsn() TO efm;
+    GRANT EXECUTE ON FUNCTION pg_wal_replay_resume() TO efm;
+    GRANT EXECUTE ON FUNCTION pg_wal_replay_pause() TO efm;
+    GRANT EXECUTE ON FUNCTION pg_reload_conf() TO efm;
 
-        -- Grant monitoring privilege to the 'efm' user
-        GRANT pg_monitor TO efm;
-        _EOF_
+    -- Grant monitoring privilege to the 'efm' user
+    GRANT pg_monitor TO efm;
+    ```
 
-        /usr/edb/as17/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -f /tmp/efm-role.sql
-        
-        rm -f /tmp/efm-role.sql
-        
-        cat > /var/lib/edb/as17/data/pg_hba.conf <<< _EOF_
-        hostssl      edb     efm     172.16.161.200/32     scram-sha-256
-        hostssl      edb     efm     172.16.161.201/32     scram-sha-256
-        hostssl      edb     efm     172.16.161.202/32     scram-sha-256
-        hostssl      edb     efm     172.16.161.203/32     scram-sha-256
-        _EOF_
-        
-        /usr/edb/as17/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “SELECT pg_reload_conf();”
+1.  Add entries in `pg_hba.conf` to allow the efm database user to connect to the database server from all nodes on all the hosts.
+    
+    ```
+    hostssl      edb     efm     172.16.161.200/32     scram-sha-256
+    hostssl      edb     efm     172.16.161.201/32     scram-sha-256
+    hostssl      edb     efm     172.16.161.202/32     scram-sha-256
+    hostssl      edb     efm     172.16.161.203/32     scram-sha-256
+    ```
+
+1.  Reload the configurations on all the database servers.
+    
+    ```sql
+    SELECT pg_reload_conf();
     ```
 
 4.  Create an `efm.nodes` file on all nodes using the sample file (`/etc/edb/efm-5.0/efm.nodes.in`), and give read-write access to the efm OS user:
 
     ```shell
-        $ sudo cp /etc/edb/efm-5.0/efm.nodes.in /etc/edb/efm-5.0/efm.nodes
-        $ sudo chown efm:efm /etc/edb/efm-5.0/efm.nodes
-        $ sudo chmod 600 /etc/edb/efm-5.0/efm.nodes
+    cp /etc/edb/efm-5.0/efm.nodes.in /etc/edb/efm-5.0/efm.nodes
+    chown efm:efm /etc/edb/efm-5.0/efm.nodes
+    chmod 600 /etc/edb/efm-5.0/efm.nodes
     ```
 
 5.  Add the IP address and efm port of the primary node in the `/etc/edb/efm-5.0/efm.nodes` file on the standby nodes:
 
-    ```shell
-        $ sudo cat > /etc/edb/efm-5.0/efm.nodes <<< _EOF_
-        172.16.161.200:7800
-        _EOF_
-    ```
-
 6.  Create the `efm.properties` file on all the nodes using the sample file (`/etc/edb/efm-5.0/efm.properties.in`). Grant read access to all the users:
 
     ```shell
-        $ sudo cp /etc/edb/efm-5.0/efm.properties.in /etc/edb/efm-5.0/efm.properties
-        $ sudo chown efm:efm /etc/edb/efm-5.0/efm.properties
-        $ sudo chmod a+r /etc/edb/efm-5.0/efm.properties
+    cp /etc/edb/efm-5.0/efm.properties.in /etc/edb/efm-5.0/efm.properties
+    chown efm:efm /etc/edb/efm-5.0/efm.properties
+    chmod a+r /etc/edb/efm-5.0/efm.properties
     ```
 
-7.  Encrypt the efm user's password using the efm utility:
+7.  Encrypt the efm user's password using the efm utility, make a note of the output for the next step.
 
     ```shell
-        $ export EFMPASS=password
-        $ /usr/edb/efm-5.0/bin/efm encrypt efm --from-env
-        096666746b05b081d1a98e43d94c9dad
+    export EFMPASS=password
+    /usr/edb/efm-5.0/bin/efm encrypt efm --from-env
     ```
 
-8.  Edit the following parameters in the properties file:
+8.  Edit the following parameters in the properties file. Replace `<encrypted-password>` with the output of the previous step.
 
     ```ini
-        db.user=efm
-        db.password.encrypted=096666746b05b081d1a98e43d94c9dad
-        db.port=5444
-        db.database=edb
-        db.service.owner=enterprisedb
-        db.service.name=edb-as-17
-        db.bin=/usr/edb/as17/bin
-        db.data.dir=/var/lib/edb/as17/data
-        jdbc.sslmode=require
-        user.email=username@example.com
-        from.email=node1@efm-pem
-        notification.level=INFO
-        notification.text.prefix=[PEM/EFM] 
-        bind.address=172.16.161.200:7800
-        admin.port=7809
-        is.witness=false
-        local.period=10
-        local.timeout=60
-        local.timeout.final=10
-        remote.timeout=10
-        node.timeout=50
-        encrypt.agent.messages=true
-        stop.isolated.primary=true
-        stop.failed.primary=true
-        primary.shutdown.as.failure=false
-        update.physical.slots.period=0
-        ping.server.ip=8.8.8.8
-        ping.server.command=/bin/ping -q -c3 -w5
-        auto.allow.hosts=false
-        stable.nodes.file=false
-        db.reuse.connection.count=0
-        auto.failover=true
-        auto.reconfigure=true
-        promotable=true
-        use.replay.tiebreaker=true
-        standby.restart.delay=0
-        reconfigure.num.sync=false
-        reconfigure.sync.primary=false
-        minimum.standbys=0
-        recovery.check.period=1
-        restart.connection.timeout=60
-        auto.resume.period=0
-        virtual.ip=172.16.161.245
-        virtual.ip.interface=ens33
-        virtual.ip.prefix=24
-        virtual.ip.single=true
-        check.vip.before.promotion=true
-        pgpool.enable=false
-        sudo.command=sudo
-        sudo.user.command=sudo -u %u   ??? not sure we need this anymore ???
-        syslog.host=localhost
-        syslog.port=514
-        syslog.protocol=UDP
-        syslog.facility=LOCAL1
-        file.log.enabled=true
-        syslog.enabled=false
-        jgroups.loglevel=INFO
-        efm.loglevel=INFO
-        jvm.options=-Xmx128m
+    db.user=efm
+    db.password.encrypted=<encrypted-password>
+    db.port=5444
+    db.database=edb
+    db.service.owner=enterprisedb
+    db.service.name=edb-as-17
+    db.bin=/usr/edb/as17/bin
+    db.data.dir=/var/lib/edb/as17/data
+    jdbc.sslmode=require
+    user.email=username@example.com
+    from.email=node1@efm-pem
+    notification.level=INFO
+    notification.text.prefix=[PEM/EFM] 
+    bind.address=172.16.161.200:7800
+    admin.port=7809
+    is.witness=false
+    local.period=10
+    local.timeout=60
+    local.timeout.final=10
+    remote.timeout=10
+    node.timeout=50
+    encrypt.agent.messages=true
+    stop.isolated.primary=true
+    stop.failed.primary=true
+    primary.shutdown.as.failure=false
+    update.physical.slots.period=0
+    ping.server.ip=8.8.8.8
+    ping.server.command=/bin/ping -q -c3 -w5
+    auto.allow.hosts=false
+    stable.nodes.file=false
+    db.reuse.connection.count=0
+    auto.failover=true
+    auto.reconfigure=true
+    promotable=true
+    use.replay.tiebreaker=true
+    standby.restart.delay=0
+    reconfigure.num.sync=false
+    reconfigure.sync.primary=false
+    minimum.standbys=0
+    recovery.check.period=1
+    restart.connection.timeout=60
+    auto.resume.period=0
+    virtual.ip=172.16.161.245
+    virtual.ip.interface=ens33
+    virtual.ip.prefix=24
+    virtual.ip.single=true
+    check.vip.before.promotion=true
+    pgpool.enable=false
+    sudo.command=sudo
+    sudo.user.command=sudo -u %u   ??? not sure we need this anymore ???
+    syslog.host=localhost
+    syslog.port=514
+    syslog.protocol=UDP
+    syslog.facility=LOCAL1
+    file.log.enabled=true
+    syslog.enabled=false
+    jgroups.loglevel=INFO
+    efm.loglevel=INFO
+    jvm.options=-Xmx128m
     ```
 
 9.  Set the value of the `is.witness` configuration parameter on the witness node to `true`:
@@ -426,56 +416,61 @@ On each replica, perform the following steps.
 10. Enable and start the EFM service on the primary node:
 
     ```shell
-        $ systemctl enable edb-efm-5.0
-        $ systemctl start edb-efm-5.0
+    systemctl enable edb-efm-5.0
+    systemctl start edb-efm-5.0
     ```
 
 11. Allow the standbys to join the cluster started on the primary node:
 
     ```shell
-        /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.201
-        /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.202
-        /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.203
+    /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.201
+    /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.202
+    /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.203
     ```
 
 12. Enable and start the EFM service on the standby nodes and the EFM witness node:
 
     ```shell
-        $ systemctl enable edb-efm-5.0
-        $ systemctl start edb-efm-5.0
+    systemctl enable edb-efm-5.0
+    systemctl start edb-efm-5.0
     ```
 
-13. Check the EFM cluster status from any node:
+13. Check the EFM cluster status by running the following command on any node.
 
     ```shell
-        $ sudo /usr/edb/efm-5.0/bin/efm cluster-status efm
-        Cluster Status: efm
-            Agent Type  Address              DB       VIP
-            ----------------------------------------------------------------
-            Primary     172.16.161.200      UP       172.16.161.245*
-            Standby     172.16.161.201      UP       172.16.161.245
-            Standby     172.16.161.202      UP       172.16.161.245
-            Witness     172.16.161.203      N/A      172.16.161.245
+    /usr/edb/efm-5.0/bin/efm cluster-status efm
+    ```
 
-        Allowed node host list:
-            172.16.161.200 172.16.161.201 172.16.161.202 172.16.161.203
+    The output should look like this:
 
-        Membership coordinator: 172.16.161.200
+    ```
+    Cluster Status: efm
+        Agent Type  Address              DB       VIP
+        ----------------------------------------------------------------
+        Primary     172.16.161.200      UP       172.16.161.245*
+        Standby     172.16.161.201      UP       172.16.161.245
+        Standby     172.16.161.202      UP       172.16.161.245
+        Witness     172.16.161.203      N/A      172.16.161.245
 
-        Standby priority host list:
-            172.16.161.201 172.16.161.202
+    Allowed node host list:
+        172.16.161.200 172.16.161.201 172.16.161.202 172.16.161.203
 
-        Promote Status:
+    Membership coordinator: 172.16.161.200
 
-            DB Type     Address              WAL Received LSN   WAL Replayed LSN   Info
-            ---------------------------------------------------------------------------
-            Primary     172.16.161.200                         0/F7A3808          
-            Standby     172.16.161.201      0/F7A3808          0/F7A3808          
-            Standby     172.16.161.202      0/F7A3808          0/F7A3808          
+    Standby priority host list:
+        172.16.161.201 172.16.161.202
 
-            Standby database(s) in sync with primary. It is safe to promote.
+    Promote Status:
+
+        DB Type     Address              WAL Received LSN   WAL Replayed LSN   Info
+        ---------------------------------------------------------------------------
+        Primary     172.16.161.200                         0/F7A3808          
+        Standby     172.16.161.201      0/F7A3808          0/F7A3808          
+        Standby     172.16.161.202      0/F7A3808          0/F7A3808          
+
+        Standby database(s) in sync with primary. It is safe to promote.
     ```
 
 This status confirms that EFM is set up successfully and managing the failover for the PEM server.
 
-In case of failover, any of the standbys are promoted as the primary node, and PEM agents connect to the new primary node. You can replace the failed primary node with a new standby using this procedure.
+In case of failover, any of the standbys are promoted as the primary node, and PEM agents connect to the new primary node. You can replace the failed primary node with a new standby using the procedure above.
