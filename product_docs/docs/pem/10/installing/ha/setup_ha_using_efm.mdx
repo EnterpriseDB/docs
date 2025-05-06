@@ -1,6 +1,6 @@
 ---
-title: "Using EDB Failover Manager for high availability "
-navTitle: "Example: C1 architecture with EFM"
+title: "HA PEM using the C1 architecture with EFM and a Virtual IP"
+navTitle: "C1 architecture with EFM"
 redirects:
 - /pem/latest/pem_ha_setup/
 - /pem/latest/pem_ha_setup/setup_ha_using_efm/
@@ -9,18 +9,22 @@ redirects:
 
 This page provides detailed instructions to install and configure a High Availability (HA) PEM deployment according to reference architecture C1.
 This example uses EDB Failover Manager (EFM) for cluster management, EDB Postgres Advanced Server (EPAS) as the PEM backend database and Virtual IP (VIP) as the mechanism for routing traffic to the primary.
-Please refer to [High Availability Patterns for PEM Deployment] for discussion of other options.
+Please refer to [High Availability Patterns for PEM Deployment](pem/latest/considerations/ha_pem.mdx) for discussion of other options.
+The provided commands apply to the configuration of RHEL-like systems with EPAS 17 and EFM 5.0.
 
-!!! Note
-    This procedure is for setting up Failover Manager for a PEM server with a new installation, not with an existing one. 
-    The provided commands apply to the configuration of RHEL-like systems with EPAS 17 and EFM 5.0.
+!!! Note Witness nodes vs standby nodes
+    In this example we configure a primary, two standbys, and a witness.
+    In reality, you only need a witness if you have an even number of data nodes.
+    If you are configuring three data nodes (primary and two standbys), you may omit the steps pertaining to the witness.
+    If you are configuring two data nodes, include the steps pertaining to the witness.
+    
     
 The examples that follow use these IP addresses:
 
 -   172.16.161.200 - PEM Primary
 -   172.16.161.201 - PEM Standby 1
 -   172.16.161.202 - PEM Standby 2
--   172.16.161.203 - EFM Witness Node  ??? why a witness when we already have three ???
+-   172.16.161.203 - EFM Witness Node
 -   172.16.161.245 - PEM VIP (used by agents and users to connect)
 
 The following must use the VIP address:
@@ -90,17 +94,17 @@ The following must use the VIP address:
     sudo firewall-cmd --reload      
     ```
 
-1.  **On the standbys only**, install NGINX and EDB uWSGI.
+1.  **On the standbys only**, install the NGINX web server and add the `pem` user to the `nginx` group.
     This is not required on the primary because it occurs automatically during the next step.
 
     ```shell
     dnf install nginx
-    dnf install edb-uwsgi
+    usermod -a -G pem nginx
     ```
 
 ## Configure PEM on the primary
 
-Configure the PEM installation *on the primary server only*:
+Configure the PEM installation **on the primary server only**:
 
 1. Manually assign the VIP to the primary. For example:
 
@@ -117,38 +121,50 @@ Configure the PEM installation *on the primary server only*:
 
 3. Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](user_settings.md).
 
-## Copy files from the primary to the standbys
+## Copy PEM configuration to the standbys 
 
-During the previous step, various configuration files were created on the primary.
-We now copy those files to the standbys.
+During the previous step, various configuration files and directories were created on the primary.
+In this step, we will create the same files and directories on the standbys.
 
-Copy the following files from the primary node to the standby nodes at the same location, overwriting any existing files. Set the permissions on the files: ??? do this earlier ???
+1. Create the uWSGI directory structure:
 
--   ??? NGINX and uWSGI ???
--   `/usr/edb/pem/share/.install-config`
--   `/usr/edb/pem/web/config_setup.py`
+    ```shell
+    mkdir -p /etc/edb-uwsgi/apps-available
+    mkdir -p /etc/edb-uwsgi/apps-enabled
+    chmod 755 /etc/edb-uwsgi
+    chmod 755 /etc/edb-uwsgi/apps-available
+    chmod 755 /etc/edb-uwsgi/apps-enabled
+    mkdir -p /var/log/edb-uwsgi
+    mkdir -p /var/run/edb-uwsgi
+    chmod 755 /var/log/edb-uwsgi
+    chmod 755 /var/run/edb-uwsgi
+    chown pem:pem /var/run/edb-uwsgi
+    chown pem:pem /var/log/edb-uwsgi
+    ```
 
-For example: ??? this isn't really an example???
+1.  Copy the following files from the primary node to the standby nodes at the same location, overwriting any existing files.
 
-```shell
+    | File Path                                    | Description                                                                                                                                   |
+    | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `/usr/edb/pem/resources/server-pem.crt`      | Self-signed server certificate for the web application. You may replace this with another certificate either now or after deployment is complete. |
+    | `/usr/edb/pem/resources/server-pem.key`      | Private key of the web server certificate. This must match the certificate.                                                               |
+    | `/usr/edb/pem/share/.install-config`         | Used by PEM during upgrades. Copying this to the standbys means you can initiate a PEM database upgrade from whichever node is the primary at the time. |
+    | `/usr/edb/pem/web/config_setup.py`           | Configuration file for the web application.                                                                                                   |
+    | `/usr/edb/pem/web/config_local.py`           | Local overrides for web application configuration. If not present on the primary, no action is needed.                                        |
+    | `/etc/edb-uwsgi/uwsgi.ini`                   | uWSGI global configuration file.                                                                                                              |
+    | `/usr/lib/tmpfiles.d/edb-uwsgi.conf`         | uWSGI configuration file for the PEM web application.                                                                                         |
+    | `/etc/systemd/system/edb-uwsgi.service`      | uWSGI service file for the PEM web application                                                                                                |
+    | `/etc/edb-uwsgi/apps-available/pem.ini`      | uWSGI configuration file for the PEM web application                                                                                          |
+    | `/etc/nginx/conf.d/edb-pem.conf`             | NGINX configuration for the PEM web application.                                                                                              |
 
-mkdir -p        /var/lib/pemhome/.pem  ??? do we need this ???
-chown pem:pem   /var/lib/pemhome/.pem
-chmod 0700      /var/lib/pemhome/.pem
-mkdir -p        /usr/edb/pem/logs
-chown root:root /usr/edb/pem/logs
-chmod 0755      /usr/edb/pem/logs
-for file in /etc/httpd/conf.d/edb-pem.conf     \
-                /etc/httpd/conf.d/edb-ssl-pem.conf \
-                /root/.pem/agent1.crt \
-                /usr/edb/pem/agent/etc/agent.cfg \
-                /usr/edb/pem/share/.install-config \
-                /usr/edb/pem/web/pem.wsgi \
-                /usr/edb/pem/web/config_setup.py; do \
-        chown root:root ${file}; \
-        chmod 0644      ${file}; \
-    done;
-```
+1.  On the standbys, reload the NGINX and uWSGI services with the new configuration:
+
+    ```shell
+    systemctl daemon-reload
+    systemctl enable edb-uwsgi
+    systemctl start edb-uwsgi
+    systemctl restart nginx
+    ```
 
 ## Set up the primary node for streaming replication
 
@@ -186,7 +202,7 @@ for file in /etc/httpd/conf.d/edb-pem.conf     \
 
 ## Set up the standby nodes for streaming replication
 
-Uses the pg_basebackup utility to create the replicas of the PEM backend database server on the standby servers. 
+Uses the pg_basebackup utility to create replicas of the PEM backend database server on the standby servers. 
 
 1.  Stop the service for EPAS on all the standby nodes:
 
@@ -202,28 +218,29 @@ Uses the pg_basebackup utility to create the replicas of the PEM backend databas
     rm -rf /var/lib/edb/as17/data/*
     ```
 
-3.  Create the `.pgpass` file in the home directory of the enterprisedb user on all the standby nodes: ??? explain that CHANGE_ME is the password from earlier ???
+3.  Create the `.pgpass` file in the home directory of the enterprisedb user on all the standby nodes.
+    Replace `<password>` with the password of the replication user created previously.
 
     ```shell
     sudo su - enterprisedb
         
     cat > ~/.pgpass << _EOF_
-    172.16.161.200:5444:replication:repl:CHANGE_ME
-    172.16.161.201:5444:replication:repl:CHANGE_ME
-    172.16.161.202:5444:replication:repl:CHANGE_ME
+    172.16.161.200:5444:replication:repl:<password>
+    172.16.161.201:5444:replication:repl:<password>
+    172.16.161.202:5444:replication:repl:<password>
     _EOF_
         
     chmod 600 ~/.pgpass
     ```
 
-4.  Take the backup of the primary node on each of the standby nodes using pg_basebackup:
+4.  Take a backup of the primary node on each of the standby nodes using pg_basebackup:
 
     ```shell
     sudo su - enterprisedb /usr/edb/as17/bin/pg_basebackup -h 172.16.161.200 \
     -D /var/lib/edb/as17/data -U repl -v -P -Fp -R -p 5444
     ```
 
-    The `backup` command creates the `postgresql.auto.conf` and `standby.signal` files on the standby nodes. The `postgresql.auto.conf` file has the following content:
+    The `backup` command creates the `postgresql.auto.conf` and `standby.signal` files on the standby nodes. The `postgresql.auto.conf` file has the following content: ??? does this matter ???
 
     ```shell
     # Do not edit this file manually
@@ -243,19 +260,12 @@ Uses the pg_basebackup utility to create the replicas of the PEM backend databas
     systemctl start edb-as-17
     ```
 
-8.  Run the `configure-selinux.sh` script to configure the SELinux policy for PEM: ??? on all servers ???
+## Configure SELinux
+
+On all nodes, run the `configure-selinux.sh` script to configure the SELinux policy for PEM.
 
 ```shell
-    $ /usr/edb/pem/bin/configure-selinux.sh
-    getenforce found, now executing 'getenforce' command
-    Configure the httpd to work with the SELinux
-    Allow the httpd to connect the database (httpd_can_network_connect_db = on)
-    Allow the httpd to connect the network (httpd_can_network_connect = on)
-    Allow the httpd to work with cgi (httpd_enable_cgi = on)
-    Allow to read & write permission on the 'pem' user home directory
-    SELinux policy is configured for PEM
-
-    $ sudo chmod 640 /root/.pem/agent1.crt  ??? won't be agent1 ???
+/usr/edb/pem/bin/configure-selinux.sh
 ```
 
 ## Register agents and servers on the standbys
@@ -279,7 +289,7 @@ On each replica, perform the following steps.
     For example:
 
     ```sql
-        $ cat > /tmp/efm-role.sql << _EOF_
+        cat > /tmp/efm-role.sql << _EOF_
         -- Create a role for EFM
         CREATE ROLE efm LOGIN PASSWORD 'password';
 
@@ -297,26 +307,18 @@ On each replica, perform the following steps.
         GRANT pg_monitor TO efm;
         _EOF_
 
-        $ /usr/edb/as17/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -f /tmp/efm-role.sql
-        CREATE ROLE
-        GRANT
-        GRANT
-        GRANT
-        GRANT
-        GRANT
-        GRANT
-        GRANT ROLE
+        /usr/edb/as17/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -f /tmp/efm-role.sql
         
-        $ rm -f /tmp/efm-role.sql
+        rm -f /tmp/efm-role.sql
         
-        $ cat > /var/lib/edb/as17/data/pg_hba.conf <<< _EOF_
+        cat > /var/lib/edb/as17/data/pg_hba.conf <<< _EOF_
         hostssl      edb     efm     172.16.161.200/32     scram-sha-256
         hostssl      edb     efm     172.16.161.201/32     scram-sha-256
         hostssl      edb     efm     172.16.161.202/32     scram-sha-256
         hostssl      edb     efm     172.16.161.203/32     scram-sha-256
         _EOF_
         
-        $ /usr/edb/as17/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “SELECT pg_reload_conf();”
+        /usr/edb/as17/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “SELECT pg_reload_conf();”
     ```
 
 4.  Create an `efm.nodes` file on all nodes using the sample file (`/etc/edb/efm-5.0/efm.nodes.in`), and give read-write access to the efm OS user:
@@ -477,9 +479,3 @@ On each replica, perform the following steps.
 This status confirms that EFM is set up successfully and managing the failover for the PEM server.
 
 In case of failover, any of the standbys are promoted as the primary node, and PEM agents connect to the new primary node. You can replace the failed primary node with a new standby using this procedure.
-
-## Current limitations
-
-The current limitations include:
--   Web console sessions for the users are lost during the switchover.
--   Background processes, started by the Backup, Restore, and Maintenance dialogs boxes, and their logs aren't shared between the systems. They are lost during switchover. 
