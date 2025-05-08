@@ -138,23 +138,32 @@ const BannerCardLink = ({ to, className, children }) => (
   </Link>
 );
 
-const BannerIconDivider = ({ iconName, headingText }) => (
-  <div>
-    <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
-      <Icon iconName={iconName} width={20} height={20} />
-      &nbsp;
+const BannerDivider = ({ headingText, iconName = "", toUrl = "" }) => {
+  const content = (
+    <>
+      {iconName && (
+        <>
+          <Icon iconName={iconName} width={20} height={20} /> &nbsp;
+        </>
+      )}
       {headingText}
-    </span>
-  </div>
-);
+    </>
+  );
+  const styles =
+    "fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1";
 
-const BannerDivider = ({ headingText }) => (
-  <div>
-    <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
-      {headingText}
-    </span>
-  </div>
-);
+  return (
+    <div>
+      {toUrl ? (
+        <Link to={toUrl} className={styles}>
+          {content}
+        </Link>
+      ) : (
+        <span className={styles}>{content}</span>
+      )}
+    </div>
+  );
+};
 
 const Page = () => {
   return (
@@ -233,9 +242,52 @@ const Page = () => {
                 to="/edb-postgres-ai/overview/latest-release-news"
                 iconName={iconNames.SMALL_DASHBOARD}
               >
-                Release News - 24Q4
+                Release News - 25Q1
               </BannerWideCardLink>
             </BannerWideCard>
+            <BannerSubCard
+              iconName={iconNames.DATABASE}
+              headingText="Databases"
+              to="/edb-postgres-ai/databases"
+            >
+              <BannerCardLink to="/edb-postgres-ai/databases/postgres_distributions">
+                Choosing your Postgres
+              </BannerCardLink>
+              <BannerCardLink to="/epas/latest">
+                EDB Postgres Advanced Server
+              </BannerCardLink>
+              <BannerCardLink to="/pge/latest">
+                EDB Postgres Extended Server
+              </BannerCardLink>
+              <BannerCardLink to="/pgd/latest">
+                EDB Postgres Distributed (PGD)
+              </BannerCardLink>
+              <BannerCardLink to="/supported-open-source/postgresql/">
+                PostgreSQL
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.BRAIN_CIRCUIT}
+              headingText="AI Accelerator"
+              to="/edb-postgres-ai/ai-accelerator"
+            >
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/overview/">
+                AI Accelerator Overview
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
+                About Pipelines
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
+                Get Started with Pipelines
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/preparers/">
+                New: AI Accelerator Preparers
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pgvector/">
+                PGvector
+              </BannerCardLink>
+            </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.CONTROL}
               headingText="Console"
@@ -253,6 +305,9 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/console/estate/integrating/">
                 Integrating into Estate
               </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate/reference/">
+                Console Reference
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
@@ -261,67 +316,16 @@ const Page = () => {
               to="/edb-postgres-ai/cloud-service"
             >
               <BannerCardLink to="/edb-postgres-ai/cloud-service/getting_started">
-                Getting started
+                Getting Started
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/cloud-service/using_cluster">
-                Using your cluster
+                Using your Cluster
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/cloud-service/references">
-                Supported configurations
+                Supported Configurations
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/cloud-service/managing_your_cluster/">
-                Managing your cluster
-              </BannerCardLink>
-            </BannerSubCard>
-
-            <BannerSubCard
-              iconName={iconNames.DATABASE}
-              headingText="Databases"
-              to="/edb-postgres-ai/databases"
-            >
-              <BannerCardLink to="/epas/latest">
-                EDB Postgres Advanced Server
-              </BannerCardLink>
-              <BannerCardLink to="/pge/latest">
-                EDB Postgres Extended Server
-              </BannerCardLink>
-              <BannerCardLink to="/pgd/latest">
-                EDB Postgres Distributed (PGD)
-              </BannerCardLink>
-              <BannerCardLink to="/supported-open-source/postgresql/">
-                PostgreSQL
-              </BannerCardLink>
-            </BannerSubCard>
-
-            <BannerSubCard
-              iconName={iconNames.IMPROVE}
-              headingText="Lakehouse Analytics"
-              to="/edb-postgres-ai/analytics"
-            >
-              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
-                Concepts
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
-                Quick Start
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
-                Reference
-              </BannerCardLink>
-            </BannerSubCard>
-            <BannerSubCard
-              iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="AI Accelerator"
-              to="/edb-postgres-ai/ai-accelerator"
-            >
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/overview/">
-                AI Accelerator Overview
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
-                About Pipelines
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
-                Get Started with Pipelines
+                Managing your Cluster
               </BannerCardLink>
             </BannerSubCard>
 
@@ -338,6 +342,31 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/migration_toolkit/latest">
                 Migration Toolkit
+              </BannerCardLink>
+              <BannerCardLink to="/migrating/oracle/">
+                Migration Handbook
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.IMPROVE}
+              headingText="Lakehouse Analytics"
+              to="/edb-postgres-ai/analytics"
+            >
+              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+                Concepts
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
+                Quick Start
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
+                External Tables
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
+                Reference
               </BannerCardLink>
             </BannerSubCard>
 
@@ -363,12 +392,13 @@ const Page = () => {
           <BannerWideSubCard
             iconName={iconNames.TOOLBOX}
             headingText="Platforms and Tools"
-            to="/edb-postgres-ai/platforms-and-tools"
+            to="/edb-postgres-ai/platforms-and-tools/"
             className="primary"
           >
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.KUBERNETES}
               headingText="Kubernetes"
+              toUrl="/edb-postgres-ai/platforms-and-tools/kubernetes/"
             />
 
             <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
@@ -391,9 +421,10 @@ const Page = () => {
               CloudNativePG
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.CONTROL}
               headingText="Management and Monitoring"
+              toUrl="/edb-postgres-ai/platforms-and-tools/management/"
             />
 
             <BannerWideLink to="/pem/latest">
@@ -411,9 +442,10 @@ const Page = () => {
               Postgres Workload Report
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.SECURITY}
               headingText="Security"
+              toUrl="/edb-postgres-ai/platforms-and-tools/security/"
             />
 
             <BannerWideLink to="/tde/latest">
@@ -423,7 +455,7 @@ const Page = () => {
               EDB LDAP Sync
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.INSTANCES}
               headingText="Automation"
             />
@@ -432,9 +464,10 @@ const Page = () => {
               Trusted Postgres Architect
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.HIGH_AVAILABILITY}
               headingText="High Availability"
+              toUrl="/edb-postgres-ai/platforms-and-tools/high-availability/"
             />
 
             <BannerWideLink to="/pgd/latest">
@@ -456,9 +489,10 @@ const Page = () => {
 
             <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.BACKUP}
               headingText="Backup and Recovery"
+              toUrl="/edb-postgres-ai/platforms-and-tools/backup/"
             />
 
             <BannerWideLink to="/supported-open-source/barman/">
@@ -468,9 +502,10 @@ const Page = () => {
               pgBackRest
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.MIGRATION}
               headingText="Migration"
+              toUrl="/migrating/"
             />
 
             <BannerWideLink to="/migrating/oracle">
@@ -483,9 +518,10 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.CONNECT}
               headingText="Connection Poolers"
+              toUrl="/edb-postgres-ai/integration/#connection-poolers"
             />
 
             <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
@@ -506,7 +542,7 @@ const Page = () => {
               </BannerWideLink> */}
             </BannerWideQuickLinks>
 
-            <BannerDivider headingText="Extensions" />
+            <BannerDivider headingText="Extensions" toUrl="/pg_extensions/" />
 
             <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
 
@@ -554,7 +590,7 @@ const Page = () => {
               EDB SPL Check
             </BannerWideLink>
 
-            <BannerDivider headingText="Tools" />
+            <BannerDivider headingText="Tools" toUrl="/tools" />
 
             <BannerWideLink to="/tools/edb_sqlpatch">
               EDB SQL Patch
@@ -574,14 +610,20 @@ const Page = () => {
             headingText="Integration"
             to="/edb-postgres-ai/integration"
           >
-            <BannerDivider headingText="Connectors" />
+            <BannerDivider
+              headingText="Connectors"
+              toUrl="/edb-postgres-ai/integration#connectors"
+            />
 
             <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
             <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
             <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
             <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
 
-            <BannerDivider headingText="Foreign Data Wrappers" />
+            <BannerDivider
+              headingText="Foreign Data Wrappers"
+              toUrl="/edb-postgres-ai/integration#foreign-data-wrappers"
+            />
             <BannerWideLink to="/hadoop_data_adapter/latest">
               Hadoop
             </BannerWideLink>

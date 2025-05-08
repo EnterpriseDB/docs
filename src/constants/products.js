@@ -1,6 +1,13 @@
-import IconNames from "../components/icon/iconNames";
+const IconNames = require("../components/icon/iconNames.js");
 
-export const products = {
+const products = {
+  "Expression Replacement": {
+    name: "Name and Version Expression Replacement Syntax",
+    shortName: "Expression Replacement",
+    abbreviation: "ExpRel",
+    commonCommandName: "{{name(prod).type}}",
+    noSearch: true,
+  },
   bart: {
     name: "Backup and Recovery Tool",
     iconName: IconNames.EDB_BART,
@@ -11,9 +18,16 @@ export const products = {
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
   "EDB LDAP Sync": { name: "EDB LDAP Sync" },
-  epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
+  epas: {
+    name: "EDB Postgres Advanced Server",
+    shortName: "Advanced Server",
+    abbreviation: "EPAS",
+    iconName: IconNames.EDB_EPAS,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
+    shortName: "EDB Postgres Distributed",
+    abbreviation: "PGD",
     iconName: IconNames.HIGH_AVAILABILITY,
   },
   pge: { name: "EDB Postgres Extended Server", iconName: IconNames.POSTGRESQL },
@@ -106,3 +120,5 @@ export const products = {
     iconName: IconNames.EDB_TRANSPORTER,
   },
 };
+
+module.exports = { products };

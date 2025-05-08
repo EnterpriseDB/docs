@@ -81,7 +81,9 @@ const SectionHeadingWithVersions = ({
             />
           </div>
         ) : !navTree.hideVersion ? (
-          <div className="text-muted">Version {versionArray[0].version}</div>
+          <div className="text-muted">
+            Version {preciseVersion || versionArray[0].version}
+          </div>
         ) : null}
       </div>
     </li>
@@ -90,8 +92,8 @@ const SectionHeadingWithVersions = ({
 
 const LeftNav = ({
   navTree,
-  path,
   pagePath,
+  versionedPath = pagePath,
   versionArray,
   iconName,
   product,
@@ -105,7 +107,7 @@ const LeftNav = ({
       {versionArray ? (
         <SectionHeadingWithVersions
           navTree={navTree}
-          path={path}
+          path={versionedPath}
           versionArray={versionArray}
           iconName={iconName}
           product={product}
@@ -115,7 +117,7 @@ const LeftNav = ({
       ) : (
         <SectionHeading
           navTree={navTree}
-          path={path}
+          path={pagePath}
           product={product}
           iconName={iconName}
         />
@@ -130,7 +132,7 @@ const LeftNav = ({
       ))}
       <li>
         <PdfDownload
-          pagePath={path}
+          pagePath={versionedPath}
           hidePDF={hidePDF}
           product={product}
           version={version}

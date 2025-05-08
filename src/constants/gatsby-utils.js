@@ -1,6 +1,9 @@
 const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
+const {
+  default: expressionReplacement,
+} = require("./expression-replacement.js");
 
 const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
@@ -37,7 +40,7 @@ const removeTrailingSlash = (url) => {
 const removeNullEntries = (obj) => {
   if (!obj) return obj;
   for (const [key, value] of Object.entries(obj)) {
-    if (value == null) delete obj[key];
+    if ((value ?? null) === null) delete obj[key];
   }
   return obj;
 };
@@ -46,6 +49,8 @@ const pathToDepth = (path) => {
   return path.split("/").filter((s) => s.length > 0).length;
 };
 
+const normalizePath = (path) => path && path.replace(/^(?!\/)|(?<!\/)$/g, "/");
+
 // create a tree from a (assumed unordered) list of mdxNodes
 // this is primarily used to assist in constructing various navigation patterns
 // any node can be iterated on, which provides a depth-first traversal and allows fun things like
@@ -53,7 +58,7 @@ const pathToDepth = (path) => {
 //
 // Do not confuse this with treeToNavigation(), which transforms (a subset of) this tree
 // into a somewhat more svelt structure for use in page context
-const mdxNodesToTree = (nodes) => {
+const mdxNodesToTree = (nodes, productVersions) => {
   class Node {
     constructor(path, parent) {
       Object.assign(this, {
@@ -67,10 +72,32 @@ const mdxNodesToTree = (nodes) => {
     *[Symbol.iterator]() {
       yield this;
       for (let child of this.children) {
+        // ignore fake "children"
+        if (child.parent !== this) continue;
         yield* child;
       }
     }
   }
+
+  Node.prototype.indexes = { rootedToPathToNodes: new Map() };
+  Node.prototype.index = function () {
+    if (
+      this.mdxNode?.frontmatter?.navRootedTo ||
+      this.mdxNode?.frontmatter?.categories
+    ) {
+      const add = (targetPath) => {
+        if (!targetPath) return;
+        targetPath = normalizePath(targetPath);
+        let list = this.indexes.rootedToPathToNodes.get(targetPath);
+        if (!list)
+          this.indexes.rootedToPathToNodes.set(targetPath, (list = []));
+        list.push(this);
+      };
+
+      add(this.mdxNode?.frontmatter?.navRootedTo);
+      for (let cat of this.mdxNode?.frontmatter?.categories || []) add(cat);
+    }
+  };
 
   const rootNode = new Node("/", null);
 
@@ -91,6 +118,7 @@ const mdxNodesToTree = (nodes) => {
       currentNode = findOrInsertNode(currentNode, path);
       if (path === node.fields.path) {
         currentNode.mdxNode = node;
+        currentNode.index();
       }
     }
   };
@@ -101,11 +129,46 @@ const mdxNodesToTree = (nodes) => {
   // - compute inherited frontmatter
   // - re-order according to frontmatter-specified navigation
   for (let node of rootNode) {
-    if (node.mdxNode)
+    if (node.mdxNode) {
       node.mdxNode.frontmatter = computeFrontmatterForTreeNode(node);
 
+      // do expression replacements in frontmatter
+      const replacementArgs = {
+        currentProduct:
+          node.mdxNode.fields.product || node.mdxNode.frontmatter.product,
+        currentVersion:
+          node.mdxNode.fields.version || node.mdxNode.frontmatter.version,
+        currentFullVersion: node.mdxNode.frontmatter.version,
+        productVersions,
+        filename: node.mdxNode.fileAbsolutePath,
+      };
+      for (let fmk of ["title", "navTitle", "description", "displayBanner"]) {
+        if (!node.mdxNode.frontmatter[fmk]) continue;
+        node.mdxNode.frontmatter[fmk] = expressionReplacement({
+          text: node.mdxNode.frontmatter[fmk],
+          ...replacementArgs,
+        });
+      }
+      // special case for special reasons
+      if (node._origFrontmatter.description)
+        node._origFrontmatter.description = expressionReplacement({
+          text: node._origFrontmatter.description,
+          ...replacementArgs,
+        });
+    }
+    // special-case: if this node is the "rooted-to" page for any other pages, integrate those
+    const nodesRootedToThis =
+      node.indexes.rootedToPathToNodes.get(node.path) || [];
+    for (let child of nodesRootedToThis) {
+      if (normalizePath(child.mdxNode.frontmatter?.navRootedTo) === node.path)
+        child.rootedTo = node;
+
+      child.categories = child.categories || [];
+      child.categories.push(node);
+    }
+
     // re-order according to navigation order, inserting nodes for headers when present
-    const addedChildPaths = {};
+    const addedChildPaths = new Set();
     const orderedNodes = [];
     for (const navEntry of node.mdxNode?.frontmatter?.navigation || []) {
       if (navEntry.startsWith("#")) {
@@ -115,14 +178,20 @@ const mdxNodesToTree = (nodes) => {
         continue;
       }
 
-      const navChild = node.children.find((child) => {
-        if (addedChildPaths[child.path]) return false;
-        const navName = child.path.split("/").slice(-2)[0];
-        return navName.toLowerCase() === navEntry.toLowerCase();
-      });
-      if (!navChild?.mdxNode) continue;
+      const navChild =
+        node.children.find((child) => {
+          const navName = child.path.split("/").slice(-2)[0];
+          return navName.toLowerCase() === navEntry.toLowerCase();
+        }) ||
+        nodesRootedToThis.find(
+          (cat) =>
+            cat.path.toLowerCase() === normalizePath(navEntry.toLowerCase()),
+        );
 
-      addedChildPaths[navChild.path] = true;
+      if (!navChild?.mdxNode) continue;
+      if (addedChildPaths.has(navChild.path)) continue;
+
+      addedChildPaths.add(navChild.path);
       orderedNodes.push(navChild);
     }
 
@@ -130,11 +199,13 @@ const mdxNodesToTree = (nodes) => {
     node.children = [
       ...orderedNodes,
       ...node.children
-        .filter((child) => !addedChildPaths[child.path])
+        .filter((child) => !addedChildPaths.has(child.path))
+        .sort((a, b) => a.path.localeCompare(b.path)),
+      ...nodesRootedToThis
+        .filter((child) => !addedChildPaths.has(child.path))
         .sort((a, b) => a.path.localeCompare(b.path)),
     ];
   }
-
   return rootNode;
 };
 
@@ -200,21 +271,18 @@ const treeNodeToNavNode = (treeNode) => {
   const interactive =
     frontmatter?.showInteractiveBadge ?? !!frontmatter?.katacodaPanel;
 
-  const navNode = Object.assign(
-    {},
-    {
-      path: treeNode.path,
-      navTitle: frontmatter?.navTitle,
-      title: frontmatter?.title ?? treeNode.title,
-      hideVersion: frontmatter?.hideVersion,
-      displayBanner: frontmatter?.displayBanner,
-      depth: treeNode.mdxNode?.fields?.depth,
-      iconName: frontmatter?.iconName,
-      description: treeNode._origFrontmatter?.description,
-      interactive: interactive || undefined,
-      childCount: treeNode.children.length,
-    },
-  );
+  const navNode = removeNullEntries({
+    path: treeNode.path,
+    navTitle: frontmatter?.navTitle,
+    title: frontmatter?.title ?? treeNode.title,
+    hideVersion: frontmatter?.hideVersion,
+    displayBanner: frontmatter?.displayBanner,
+    depth: treeNode.mdxNode?.fields?.depth,
+    iconName: frontmatter?.iconName,
+    description: treeNode._origFrontmatter?.description,
+    interactive: interactive || undefined,
+    childCount: treeNode.children?.length,
+  });
   return navNode;
 };
 
@@ -226,6 +294,21 @@ const treeToNavigation = (treeNode, pageNode) => {
   const rootNode = treeNodeToNavNode(treeNode, true);
   const { depth, path } = pageNode.fields;
 
+  // if this page is "rooted" to another page, then we want to collect the chain
+  // of ancestors (but not their other children) for use as the breadcrumb trail
+  if (treeNode.rootedTo) {
+    const ancestors = [];
+    let current = treeNode.rootedTo;
+    while (current && current.mdxNode) {
+      ancestors.unshift(treeNodeToNavNode(current));
+      ancestors[0].items = [ancestors[1]];
+      current = current.parent;
+    }
+    rootNode.ancestors = ancestors;
+  }
+  if (treeNode.categories)
+    rootNode.categories = treeNode.categories.map(treeNodeToNavNode);
+
   // only process children if,
   // - this is an ancestor of the page, or
   // - this is the page, or
@@ -235,9 +318,13 @@ const treeToNavigation = (treeNode, pageNode) => {
     (path.includes(rootNode.path) ||
       (rootNode.path.includes(path) && rootNode.depth === depth + 1))
   ) {
-    rootNode.items = treeNode.children.map((n) =>
-      treeToNavigation(n, pageNode),
-    );
+    rootNode.items = treeNode.children.map((n) => {
+      const navNode = treeToNavigation(n, pageNode);
+      // mark "fake" children so that they can be made visually distinct, ignored, etc.
+      if (n.parent !== treeNode || n.rootedTo === treeNode)
+        navNode.rootedTo = true;
+      return navNode;
+    });
   } else {
     rootNode.items = [];
   }

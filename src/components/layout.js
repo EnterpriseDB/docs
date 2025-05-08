@@ -12,8 +12,12 @@ import {
   Link,
   StubCards,
   IconList,
-  PurlAnchor,
 } from "../components";
+import PurlAnchor from "../components/purl-anchor";
+import Details from "../components/details";
+import TabContainer, { Tab } from "../components/tab-container";
+import ProductName from "../components/product-name";
+import ProductVersion from "../components/product-version";
 import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
 
@@ -129,6 +133,8 @@ const Layout = ({
           }
         ></blockquote>
       ),
+      name: ProductName,
+      version: ProductVersion,
       KatacodaPanel: () => (
         <KatacodaPanel katacodaPanelData={katacodaPanelData} />
       ),
@@ -139,6 +145,9 @@ const Layout = ({
       Archive,
       AuthenticatedContentPlaceholder,
       PurlAnchor,
+      Details,
+      TabContainer,
+      Tab,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );
@@ -148,6 +157,7 @@ const Layout = ({
       value={{
         dark: dark,
         toggleDark: toggleDark,
+        baseUrl: baseUrl,
       }}
     >
       <Helmet>

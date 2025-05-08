@@ -380,6 +380,7 @@ module.exports = {
         ],
         remarkPlugins: [
           [require("./src/plugins/code-in-tables")],
+          [require("./src/plugins/replacement-expression")],
           [
             require("remark-admonitions"),
             {

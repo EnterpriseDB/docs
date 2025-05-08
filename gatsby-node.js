@@ -11,11 +11,8 @@ const execAsync = util.promisify(exec);
 const {
   replacePathVersion,
   filePathToDocType,
-  removeTrailingSlash,
-  isPathAnIndexPage,
   pathToDepth,
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
@@ -156,12 +153,12 @@ exports.onCreateNode = async ({
     Object.assign(nodeFields, {
       product: relativeFilePath.split("/")[1],
       version: relativeFilePath.split("/")[2],
-      topic: "null",
+      topic: "",
     });
   } else if (nodeFields.docType === "advocacy") {
     Object.assign(nodeFields, {
-      product: "null",
-      version: "0",
+      product: "",
+      version: "",
       topic: relativeFilePath.split("/")[2],
     });
   }
@@ -178,25 +175,34 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         nodes {
           id
           frontmatter {
-            title
-            navTitle
-            description
-            redirects
-            iconName
-            originalFilePath
-            productStub
-            indexCards
-            originalFilePath
-            editTarget
-            navigation
-            legacyRedirects
-            legacyRedirectsGenerated
-            navigation
-            showInteractiveBadge
-            hideToC
+            categories
             deepToC
+            description
+            directoryDefaults {
+              description
+              displayBanner
+              editTarget
+              iconName
+              indexCards
+              platform
+              prevNext
+              product
+              hideKBLink
+              hideVersion
+              hidePDF
+              version
+              pdfExclude
+              noindex
+              showInteractiveBadge
+            }
+            displayBanner
+            editTarget
             hideKBLink
-            version
+            hidePDF
+            hideToC
+            hideVersion
+            iconName
+            indexCards
             katacodaPages {
               scenario
               account
@@ -207,29 +213,21 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               initializeCommand
               codelanguages
             }
-            hideVersion
-            hidePDF
-            pdfExclude
-            pdf
-            displayBanner
+            legacyRedirects
+            legacyRedirectsGenerated
+            navTitle
+            navigation
+            navRootedTo
             noindex
-            directoryDefaults {
-              description
-              prevNext
-              iconName
-              editTarget
-              product
-              platform
-              indexCards
-              showInteractiveBadge
-              hideKBLink
-              hideVersion
-              hidePDF
-              version
-              pdfExclude
-              displayBanner
-              noindex
-            }
+            originalFilePath
+            pdf
+            pdfExclude
+            product
+            productStub
+            redirects
+            showInteractiveBadge
+            title
+            version
           }
           fields {
             docType
@@ -242,6 +240,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fileAbsolutePath
         }
       }
+
       allPublicFile {
         nodes {
           urlPath
@@ -281,7 +280,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   await processReferenceIndexes(result.data.allReferenceIndex.nodes, reporter);
 
   // perform depth first preorder traversal
-  const treeRoot = mdxNodesToTree(nodes);
+  const treeRoot = mdxNodesToTree(nodes, productVersions);
   for (let curr of treeRoot) {
     // exit here if we're not dealing with an actual page
     if (!curr.mdxNode && !curr.path) continue;
@@ -295,7 +294,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // build navigation tree
     const navigationDepth = 1;
     let navRoot = curr;
-    while (navRoot.depth > navigationDepth && navRoot?.parent?.mdxNode)
+    while (
+      navRoot.depth > navigationDepth &&
+      navRoot?.parent?.mdxNode &&
+      !navRoot.mdxNode.frontmatter.navRootedTo
+    )
       navRoot = navRoot.parent;
     const navTree = treeToNavigation(navRoot, node);
 
@@ -407,7 +410,6 @@ const createAdvocacy = (navTree, prevNext, doc, productVersions, actions) => {
     context: {
       nodeId: doc.id,
       frontmatter: doc.frontmatter,
-      pagePath: doc.fields.path,
       prevNext,
       productVersions,
       navTree,
@@ -546,41 +548,43 @@ exports.createSchemaCustomization = ({ actions }) => {
     }
 
     type Frontmatter {
+      categories: [String]
       description: String
-      prevNext: Boolean
-      iconName: String
-      product: String
-      platform: String
-      originalFilePath: String
-      indexCards: TileModes
-      editTarget: EditTargets
-      legacyRedirects: [String]
-      legacyRedirectsGenerated: [String]
-      showInteractiveBadge: Boolean
-      hideToC: Boolean
+      displayBanner: String
       deepToC: Boolean
-      version: String
+      directoryDefaults: DirectoryDefaults
+      editTarget: EditTargets
+      hideKBLink: Boolean
+      hidePDF: Boolean
+      hideToC: Boolean
+      hideVersion: Boolean
+      iconName: String
+      indexCards: TileModes
       katacodaPages: DemoPage
       katacodaPanel: DemoPanel
-      hideVersion: Boolean
-      hidePDF: Boolean
-      pdfExclude: String
-      pdf: Boolean
-      hideKBLink: Boolean
-      displayBanner: String
+      legacyRedirects: [String]
+      legacyRedirectsGenerated: [String]
+      navRootedTo: String
       noindex: Boolean
-      directoryDefaults: DirectoryDefaults
+      originalFilePath: String
+      pdf: Boolean
+      pdfExclude: String
+      platform: String
+      prevNext: Boolean
+      product: String
+      showInteractiveBadge: Boolean
+      version: String
     }
     
     type DemoPage {
-      scenario: String
       account: String
+      scenario: String
     }
     type DemoPanel {
-      scenario: String
       account: String
-      initializeCommand: String
       codelanguages: String
+      initializeCommand: String
+      scenario: String
     }
 
     enum TileModes {
@@ -598,31 +602,30 @@ exports.createSchemaCustomization = ({ actions }) => {
 
     type DirectoryDefaults {
       description: String
-      prevNext: Boolean
-      iconName: String
-      product: String
-      platform: String
-      indexCards: TileModes
-      editTarget: EditTargets
-      showInteractiveBadge: Boolean
-      hideVersion: Boolean
-      hidePDF: Boolean
-      preciseVersion: String
-      pdfExclude: Boolean
-      hideKBLink: Boolean
       displayBanner: String
-      version: String
+      editTarget: EditTargets
+      hideKBLink: Boolean
+      hidePDF: Boolean
+      hideVersion: Boolean
+      iconName: String
+      indexCards: TileModes
       noindex: Boolean
+      pdfExclude: Boolean
+      platform: String
+      prevNext: Boolean
+      product: String
+      showInteractiveBadge: Boolean
+      version: String
     }
 
     type PublicFile implements Node {
       absolutePath: String
-      urlPath: String
-      product: String
-      version: String
-      mimeType: String
       ext: String
       extension: String
+      mimeType: String
+      product: String
+      urlPath: String
+      version: String
     }
 
     type ReferenceIndex implements Node {
@@ -842,10 +845,14 @@ async function removeCompilationHashes(reporter) {
   const generatedHTML = await globby([
     path.join(__dirname, "/public/**/*.html"),
   ]);
+  const pageNames = (await globby([path.join(__dirname, "/src/pages/*")])).map(
+    (p) => "/" + path.basename(p).replace(/\..+$/, "") + "/",
+  );
   const hashPattern = /window\.___webpackCompilationHash="[^"]+"/;
   const hashReplace = 'window.___webpackCompilationHash=""';
-  const pagePathPattern = /window\.pagePath="[^"]+\/"/;
-  const pagePathReplace = 'window.pagePath=""';
+  const pagePathPattern = /(?<=window\.pagePath=")([^"]+\/)/;
+  const pagePathReplace = (match, pagePath) =>
+    pageNames.includes(pagePath) ? pagePath : "";
   hashTimer.total = generatedHTML.length;
   const chunkSize = 100;
   for (let i = 0; i < generatedHTML.length; i += chunkSize) {

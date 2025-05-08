@@ -11,13 +11,39 @@ This reference documentation for EDB Postgres AI - AI Accelerator Pipelines mode
 
 ### `aidb.model_providers`
 
-The `aidb.model_providers` table stores information about the model providers that were created in the database.
+The `aidb.model_providers` table stores information about the model providers that are available.
 
-| Column             | Type     | Description                      |
-|--------------------|----------|----------------------------------|
-| server_name        | name     | Name for the model server       |
-| server_description | text     | Description of the model server |
-| server_options     | text\[\] | Options for the model server    |
+| Column               | Type     | Description                      |
+|----------------------|----------|----------------------------------|
+| `server_name`        | name     | Name for the model server       |
+| `server_description` | text     | Description of the model server |
+| `server_options`     | text\[\] | Options for the model server    |
+
+
+### `aidb.models`
+
+Returns a list of all models in the registry and their configured options, including predefined models and user-created models.
+
+
+| Column     | Type  | Description                                    |
+|------------|-------|------------------------------------------------|
+| `name`     | text  | User-defined name for the model               |
+| `provider` | text  | Name of the model provider                    |
+| `options`  | jsonb | Optional configuration for the model provider |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.models;
+__OUTPUT__
+ name  |  provider  |    options
+-------+------------+---------------
+ bert  | bert_local | {"config={}"}
+ clip  | clip_local | {"config={}"}
+ t5    | t5_local   | {"config={}"}
+```
+
+
 
 
 ## Functions
@@ -32,7 +58,7 @@ Creates a new model in the system by saving its name, provider, and optional con
 |-----------------------|---------|-------------|-------------------------------------------------------------------------------------------------------------|
 | `name`                | text    |             | User-defined name for the model.                                                                            |
 | `provider`            | text    |             | Name of the model provider (as found in [aidb.model_providers](#aidbmodel_providers)).                      |
-| `config`              | jsonb   | '{}'::jsonb | Optional configuration for the model provider.                                                              |
+| `config`              | jsonb   | '{}'::jsonb | Optional configuration for the model provider. May include model-specific parameters such as `model`, `url`, and TLS options (e.g., `tls_config`).|
 | `credentials`         | jsonb   | '{}'::jsonb | Optional credentials for the model provider.                                                                |
 | `replace_credentials` | boolean | false       | If true, replaces the credentials for the model provider. If false, the credentials aren't overwritten. |
 
@@ -66,34 +92,17 @@ SELECT aidb.create_model(
            );
 ```
 
+#### TLS Configuration (optional)
 
-### `aidb.list_models`
+To securely connect to HTTPS-based model endpoints, the `config` object can include a `tls_config` field:
 
-Returns a list of all models in the registry and their configured options.
-
-#### Parameters
-
-None
-
-#### Returns
-
-| Column     | Type  | Description                                    |
-|------------|-------|------------------------------------------------|
-| `name`     | text  | User-defined name for the model               |
-| `provider` | text  | Name of the model provider                    |
-| `options`  | jsonb | Optional configuration for the model provider |
-
-#### Example
-
-```sql
-SELECT * FROM aidb.list_models();
-__OUTPUT__
- name  |  provider  |    options
--------+------------+---------------
- bert  | bert_local | {"config={}"}
- clip  | clip_local | {"config={}"}
- t5    | t5_local   | {"config={}"}
+```json
+"tls_config": {
+  "insecure_skip_verify": true,  // (optional) disables certificate validation
+  "ca_path": "/etc/aidb/myCA.pem"  // (optional) path to a trusted CA certificate
+}
 ```
+
 
 ### `aidb.get_model`
 
@@ -187,8 +196,8 @@ Decodes text using a model, generating a vector representation of a given text i
 
 #### Returns
 
-| Column       | Type | Description       |
-|--------------|------|-------------------|
+| Column        | Type | Description      |
+|---------------|------|------------------|
 | `decode_text` | text | The decoded text |
 
 ### `aidb.decode_text_batch`
@@ -197,15 +206,15 @@ Decodes a batch of text using a model, generating a representation of a given te
 
 #### Parameters
 
-| Parameter    | Type | Default | Description                       |
-|--------------|------|---------|-----------------------------------|
-| `model_name` | text |         | Name of the model to decode with |
-| `text`       | text\[\] |         | Array of text to decode                   |
+| Parameter    | Type     | Default | Description                      |
+|--------------|----------|---------|----------------------------------|
+| `model_name` | text     |         | Name of the model to decode with |
+| `text`       | text\[\] |         | Array of text to decode          |
 
 #### Returns
 
-| Column       | Type | Description       |
-|--------------|------|-------------------|
+| Column        | Type | Description      |
+|---------------|------|------------------|
 | `decode_text` | text | The decoded text |
 
 ### `aidb.encode_image`
@@ -214,15 +223,15 @@ Encodes an image using a model, generating a vector representation of a given im
 
 #### Parameters
 
-| Parameter    | Type | Default | Description                       |
-|--------------|------|---------|-----------------------------------|
-| `model_name` | text |         | Name of the model to encode with |
+| Parameter    | Type  | Default | Description                      |
+|--------------|-------|---------|----------------------------------|
+| `model_name` | text  |         | Name of the model to encode with |
 | `image`      | bytea |         | Image to encode                  |
 
 #### Returns
 
-| Column       | Type | Description       |
-|--------------|------|-------------------|
+| Column         | Type  | Description       |
+|----------------|-------|-------------------|
 | `encode_image` | bytea | The encoded image |
 
 ### `aidb.rerank_text`
@@ -231,15 +240,18 @@ Reranks text using a model, generating a vector representation of a given text i
 
 #### Parameters
 
-| Parameter    | Type             | Default | Description                       |
-|--------------|------------------|---------|-----------------------------------|
-| `model_name` | text             |         | Name of the model to rerank with | 
-| `text`       | text             |         | Text to rerank                   |
-| `inputs`     | strings\[\]      | \[\]    | Inputs for the model provider    |
+| Parameter    | Type     | Default | Description                                   |
+|--------------|----------|---------|-----------------------------------------------|
+| `model_name` | text     |         | Name of the model to rerank with              |
+| `query`      | text     |         | Query based on which the input will be ranked |
+| `input`      | text\[\] | \[\]    | Inputs to be ranked                           |
 
 #### Returns
 
-| Column        | Type                 | Description                |
-|---------------|----------------------|----------------------------|
-| `rerank_text` | double precision\[\] | Array of reranking logits |
+| Column        | Type             | Description                                |
+|---------------|------------------|--------------------------------------------|
+| `text`        | text             | The text from "input"                      |
+| `logit_score` | double precision | Score/rank of this text                    |
+| `id`          | int              | index that the text had in the input array |
+
 
