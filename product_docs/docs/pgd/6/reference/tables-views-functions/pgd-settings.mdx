@@ -180,12 +180,6 @@ withing reasonable lag limit for getting the quorum needed by the global lock.
 Sets the interval for sending replication position info to the rest of the
 cluster (default is 1 minute).
 
-### `bdr.standby_slot_names`
-
-Sets the slots required to receive and confirm replication changes before any
-other ones. This setting is useful primarily when using physical standbys for
-failover or when using subscribe-only nodes.
-
 ## Generic replication
 
 ### `bdr.writers_per_subscription`
@@ -274,53 +268,6 @@ There are two possible values for this setting:
 Enables or disables connections to PGD (default is `on`).
 
 Requires bdr_superuser or PostgreSQL superuser.
-
-### `bdr.standby_slot_names`
-
-This setting is typically used in failover configurations to ensure that the
-failover-candidates streaming physical replicas for this PGD node have received
-and flushed all changes before they ever become visible to subscribers. That
-guarantees that a commit can't vanish on failover to a standby for the provider.
-
-Replication slots whose names are listed in the comma-separated
-`bdr.standby_slot_names` list are treated specially by the WAL sender on a PGD
-node.
-
-PGD's logical replication WAL senders ensure that all local changes are sent and
-flushed to the replication slots in `bdr.standby_slot_names` before the node
-sends those changes to any other PGD replication clients. Effectively, it
-provides a synchronous replication barrier between the named list of slots and
-all other replication clients.
-
-Any replication slot can be listed in `bdr.standby_slot_names`. Both logical and
-physical slots work, but it's generally used for physical slots.
-
-Without this safeguard, two anomalies are possible where a commit can be
-received by a subscriber and then vanish from the provider on failover because
-the failover candidate hadn't received it yet:
-
--   For 1+ subscribers, the subscriber might have applied the change but the new
-    provider might execute new transactions that conflict with the received change,
-    as it never happened as far as the provider is concerned.
-
--   For 2+ subscribers, at the time of failover, not all subscribers have applied
-    the change. The subscribers now have inconsistent and irreconcilable states
-    because the subscribers that didn't receive the commit have no way to get it.
-
-Setting `bdr.standby_slot_names` by design causes other subscribers not listed
-in there to lag behind the provider if the required number of listed nodes are
-not keeping up. Monitoring is thus essential.
-
-Another use case where `bdr.standby_slot_names` is useful is when using a
-subscriber-only node, to ensure that it doesn't move ahead of any of the
-regular PGD nodes. This can best be achieved by listing the logical slots of all
-regular PGD peer nodes in combination with setting
-`bdr.standby_slots_min_confirmed` to at least 1.
-
-### `bdr.standby_slots_min_confirmed`
-
-Controls how many of the `bdr.standby_slot_names` have to confirm before
-sending data to PGD subscribers.
 
 ### `bdr.writer_input_queue_size`
 
