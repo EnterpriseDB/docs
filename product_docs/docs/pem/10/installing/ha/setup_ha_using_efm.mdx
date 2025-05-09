@@ -35,7 +35,9 @@ The following must use the VIP address:
 
 ## Initial package installation and Postgres configuration
 
-1.  Install the following packages on the primary and all standbys.
+Perform the following steps on all nodes unless stated otherwise.
+
+1.  Install the following packages:
 
     -   [EDB Postgres Advanced Server](/epas/latest/installing/) (backend database for PEM Server)
     -   [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites) (see Prerequisites in PEM server installation)
@@ -46,7 +48,7 @@ The following must use the VIP address:
     dnf -qy module disable postgresql
     dnf -y install epel-release
     dnf config-manager --set-enabled crb
-    dnf -y install edb-as17-server edb-pem edb-as17-server-sslutils, edb-efm50
+    dnf -y install edb-as17-server edb-pem edb-as17-server-sslutils edb-efm50
     ```
 
 1.  Initialize a Postgres database and start the service.
@@ -57,10 +59,39 @@ The following must use the VIP address:
     systemctl enable edb-as-17
     ```
 
+1.  Open the following ports on the firewall:
+
+    -   `8443` for PEM Server (HTTPS)
+    -   `5444` for EPAS 
+    -   `7800` for EFM
+    -   `7908` for EFM Admin
+
+    For example:
+
+    ```shell
+    firewall-cmd --zone=public --add-port=5444/tcp --permanent 
+    firewall-cmd --zone=public --add-port=8443/tcp --permanent
+    firewall-cmd --zone=public --add-port=7800/tcp --permanent
+    firewall-cmd --zone=public --add-port=7809/tcp --permanent
+    firewall-cmd --reload      
+    ```
+
+1.  **On the standbys only**, install the NGINX web server and add the `pem` user to the `nginx` group.
+    This is not required on the primary because it occurs automatically during PEM configuration.
+
+    ```shell
+    dnf install nginx
+    usermod -a -G pem nginx
+    ```
+
+## User and access configuration on the primary
+
+Perform the following steps on the primary.
+
 1.  Create a superuser that can login using a password.
     
     ```shell
-    su - enterprisedb -c psql edb -c 'create role pemserver login superuser password your-password-here;'
+    su - enterprisedb -c "psql edb -c \"create role pemserver login superuser password 'your-password-here';\""
     ```
 
 1.  Add the following line to the the `pg_hba.conf` file to permit the new user to connect from any of the server IPs.
@@ -83,31 +114,6 @@ The following must use the VIP address:
     systemctl restart edb-as-17
     ```
 
-1.  Open the following ports on the firewall of all servers:
-
-    -   `8443` for PEM Server (HTTPS)
-    -   `5444` for EPAS 
-    -   `7800` for EFM
-    -   `7908` for EFM Admin
-
-    For example:
-
-    ```shell
-    firewall-cmd --zone=public --add-port=5444/tcp --permanent 
-    firewall-cmd --zone=public --add-port=8443/tcp --permanent
-    firewall-cmd --zone=public --add-port=7800/tcp --permanent
-    firewall-cmd --zone=public --add-port=7809/tcp --permanent
-    firewall-cmd --reload      
-    ```
-
-1.  **On the standbys only**, install the NGINX web server and add the `pem` user to the `nginx` group.
-    This is not required on the primary because it occurs automatically during the next step.
-
-    ```shell
-    dnf install nginx
-    usermod -a -G pem nginx
-    ```
-
 ## Configure PEM on the primary
 
 Configure the PEM installation **on the primary server only**:
@@ -127,6 +133,7 @@ Configure the PEM installation **on the primary server only**:
     For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
 
 3. Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](user_settings.md).
+   This will be replicated to the standbys in the next step.
 
 ## Copy PEM configuration to the standbys 
 
@@ -276,14 +283,15 @@ On each standby, perform the following steps.
 
     ```shell
     export PEM_SERVER_PASSWORD=password
-    pemworker --register-agent \
-              --pem-server '172.16.161.245' \
-              --pem-port 5444 \
-              --alert-threads 1
-              --enable-snmp
-              --enable-webhooks
-              --enable-smtp
-              --max-webhook-retries 3
+    /usr/edb/pem/agent/bin/pemworker --register-agent \
+                                     --pem-server 172.17.0.12 \
+                                     --pem-user pemserver \
+                                     --pem-port 5444 \
+                                     -o alert_threads=1 \
+                                     --enable-snmp true \
+                                     --enable-webhook true \
+                                     --enable-smtp true \
+                                     --max-webhook-retries 3
     ```
      See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
 
@@ -292,16 +300,17 @@ On each standby, perform the following steps.
     but the PEM Agent will use the loopback interface to connect locally.
 
     ```shell
-    export PEM_SERVER_PASSWORD=edb
-    pemworker --register-server \
-              --pem-user pemserver \
-              --server-addr 172.16.161.201 \
-              --server-port 5444 \
-              --server-database edb \
-              --server-user pemserver \
-              --server-service-name edb-as-17 \
-              --asb-host-name localhost \ 
+    export PEM_SERVER_PASSWORD=password
+    /usr/edb/pem/agent/bin/pemworker --register-server \
+                                     --pem-user pemserver \
+                                     --server-addr 172.16.161.201 \
+                                     --server-port 5444 \
+                                     --server-database edb \
+                                     --server-user pemserver \
+                                     --server-service-name edb-as-17 \
+                                     --asb-host-name localhost  
     ```
+    
     See [Registering a Postgres Server](/pem/latest/registering_database_server/) for more information
 
     1.  Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each.
@@ -434,7 +443,7 @@ Prepare the primary node to support EFM:
     check.vip.before.promotion=true
     pgpool.enable=false
     sudo.command=sudo
-    sudo.user.command=sudo -u %u   ??? not sure we need this anymore ???
+    sudo.user.command=sudo -u %u
     syslog.host=localhost
     syslog.port=514
     syslog.protocol=UDP
