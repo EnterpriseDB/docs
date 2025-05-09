@@ -4,178 +4,180 @@ navTitle: "High Availability Patterns"
 redirects: []
 ---
 
-If you require your PEM deployment to be highly available, you can deploy multiple instances of the PEM backend database and frontend web application in a High Availbility (HA) topology.
+If you require your PEM deployment to be highly available, you can deploy multiple instances of the PEM backend database and frontend web application in a High Availability (HA) topology.
+
 This page details the fundamental requirements of such a topology.
 
 ## Running multiple instances of the PEM backend database
 
-An HA backend for PEM is much like any other HA Postgres cluster. The key requirements for the backend are as follows:
+An highly available PEM backend database functions like any other standard HA Postgres cluster. The key requirements for the backend are as follows:
 
-### There must be exactly one primary
+### A primary
 
-There must be exactly one instance of the PEM backend database accepting write connections at a given time.
-We will call this instance “the primary PEM backend database” or just “the primary”.
-Other instances of the backend database must be replicas of the primary and you must have some method of promoting a replica to replace a failed primary.
-This can be achieved by using a supported failover manager to manage promotion in the cluster.
-We support EDB Failover Manager (EFM) or Patroni for this purpose.
+At any given time, only one instance of the PEM backend database should accept write connections. This instance is referred to as the `primary PEM backend database`, or simply the `primary`.
+
+All other instances must function as replicas of the primary. You must implement a reliable method for promoting a replica in the event of a primary failure. This typically involves using a supported failover manager.
+
+PEM supports the following failover solutions:
+
+- EDB Failover Manager (EFM)
+- Patroni
+
+!!! Note
 EDB Postgres Distributed is not supported as a PEM backend.
+!!!
 
 ### Connections must go to the primary
 
-Connections from the active PEM web application instance(s) and all running PEM agents must be made to the primary PEM backend database.
-There are two broad approaches to routing traffic to the primary:
+All connections from active PEM web application instances and running PEM agents must connect to the primary PEM backend database.
 
-1. Provide a [single endpoint](#load-balancers-proxies-and-vips) for clients which always routes to the primary
-This can be achieved in many ways including a VIP, but also including a network load balancer or proxy.
+There are two general approaches to ensure this:
 
-2. Teach clients to switch the endpoint they use when the primary changes
-This is typically achieved using [multi-host connection strings].
+1. Use a [single endpoint](#load-balancers-proxies-and-vips) that always routes to the primary. This can be implemented using various methods, such as a Virtual IP (VIP), a network load balancer, or a proxy that automatically routes traffic to the current primary.
 
-More information on these approaches is provided in [Load balancers, proxies and VIPS](#load-balancers-proxies-and-vips) and [Reference architectures](#reference-architectures).
+1. Configure clients to switch endpoints when the primary changes. This is commonly done using the [multi-host connection strings], allowing clients to retry against alternate hosts when the primary is unreachable.
+
+For more details, see [Load balancers, proxies and VIPS](#load-balancers-proxies-and-vips) and [Reference architectures](#reference-architectures).
 
 
-## Running multiple instances of the PEM web application
+## Running multiple PEM web application instances
 
-Web application HA is achieved by running multiple instances of the web application, all connected to the primary as noted above.
-Unlike the backend, it is fine to have multiple instances of the PEM web application running simultaneously.
+High availability for the PEM web application is achieved by running multiple instances of the web application—all connected to the primary PEM backend, as described earlier. Unlike the backend, multiple frontend instances can run concurrently without issue.
 
-!!! Note PEM is not stateless
-PEM web application instances are not stateless; you cannot route subsequent requests within the same user session to different instances. 
-One user session should take place entirely on a single instance. 
-This is only likely to be an issue if you place a load balancer configured for stateless services in front of the web application.
+!!! Note "PEM is not stateless"
+PEM web application instances maintain session state. Routing requests from a single user session to different instances may lead to inconsistent behavior.This is particularly relevant if you're using a stateless load balancer. Ensure session stickiness ("sticky sessions") is enabled to route all requests from a given session to the same instance.
 !!!
 
-To ensure a consistent experience regardless of which instance a user connects to, you need to...
+To ensure a consistent across all instances:
 
-- Configure all instances to store user preferences in the PEM backend database, rather than locally.
-- If using features that save files to the web application server, for example dump/restore, provide a shared space in which to save them.
+- Configure all instances to store user preferences in the PEM backend database, not locally.
+- For features that generate or store files e.g. dump/restore, use a shared file system accessible to all web instances. 
 
 ## Upgrading an HA PEM deployment
 
-It is important to have a robust procedure to upgrade your PEM deployment.
+When running PEM in a high availability (HA) configuration, it's critical to have a well-defined and tested upgrade procedure. This ensures minimal downtime and maintains the integrity of both the backend database and the web application during the upgrade process.
 
 ## Load balancers, proxies and VIPs
 
-In our reference architectures below, we use the label ‘Proxy/VIP’ for any component that presents a single endpoint for inbound connections and routes that traffic to the primary. 
-However, it can be any component that provides this facility. A few techniques that we recommend are detailed below.
+In the reference architectures below, we use the term "Proxy/VIP" to refer to any component that presents a single endpoint for inbound connections and routes traffic to the current primary. This can be implemented using a variety of tools and techniques, some of which are outlined below.
 
-### Using a Virtual IP (VIP) set by the failover manager
+### Using a Virtual IP (VIP) managed by the failover manager
 
-A virtual IP or VIP is an IP address that is not bound to a physical network interface on a single server, but can instead be freely moved around within the subnet. 
-Because VIP is implemented by the networking stack of the server OS it doesn’t require any additional hardware or software. 
-To use a VIP to route traffic to the primary, you need to configure your failover manager to assign the VIP to the primary during failover. 
-EFM has built-in functionality for working with VIP so we recommend EFM if VIP is your choice for routing.
+A Virtual IP (VIP) is an IP address not tied to a specific physical network interface and can move between nodes in a subnet. Because VIPs are managed by the OS networking stack, they require no additional hardware or third-party software.
 
-VIPs cannot be used if your cluster spans multiple subnets as is typically the case in multi-region cloud deployments.
+To route traffic to the primary using a VIP, configure your failover manager to assign the VIP to the new primary during a failover.
+
+- EDB Failover Manager (EFM) supports VIPs natively and is recommended if you choose this method.
+
+- Limitation: VIPs are not suitable for multi-region or multi-subnet cloud environments.
 
 ### Using a load balancer
 
-If your environment provides a load balancer (Elastic Load Balancer in AWS or F5 on-prem for example), you can leverage this to route traffic to the primary. There are generally two ways to do this:
+If your environment supports load balancers (e.g. AWS Elastic Load Balancer, on-prem F5,..), they can be used to route the traffic to the current primary. There are two common patterns:
 
-1. Have your failover manager connect to the load balancer and reconfigure it to route inbound connections to the new primary on failover
+1. Use a failover manager that reconfigures the load balancer during the failover to route inbound connections to the new primary.
 
-1. Use a failover manager that provides an HTTP endpoint on each node that can be polled by the load balancer to determine whether the node is accepting traffic. 
-Only the primary should return a positive result (for example HTTP code 200) meaning the load balancer will switch all traffic to the primary within one poll interval.
-This can be achieved with EFM and the additional lightweight efm-api-node-state service.
-Patroni supports this pattern natively via the /primary or /read-write endpoints.
+2. Use a failover manager where the load balancer polls each node via an HTTP endpoint to determine which is the current primary.
+   
+    - Only the primary responds positively (e.g. HTTP code 200), meaning the load balancer switches all traffic to the primary within one poll interval.
 
-Pattern 2 is generally preferable because it fits with how load balancers are generally designed to work and does not require you to provide any additional administrative access to the load balancer.
+    - This can be achieved via 
+      - `efm-api-node-state` with EFM.
+      - `/primary` or `/read-write` endpoints in Patroni.
+
+Pattern 2 is generally preferred, as it aligns with how load balancers are designed to operated and does not require administrative access to modify load balancer configurations during the failover.
 
 !!! Note
 The reason we say “if your environment provides a load balancer” is that this solution needs to be properly implemented to avoid being a single point of failure. 
-The load balancer itself needs to be highly available, meaning it will need to leverage environment-level things like DNS or elastic IPs to ensure traffic is routed to an available load balancer.
+Load balancer themselves must be highly available. This typically involves using DNS failover,elastic IPs, or other infrastructure-level solutions to avoid them becoming a single point of failure.
 
-Simply adding an instance of HAProxy or pgBouncer in front of your database is not sufficient and EDB support cannot help you build a load balancer. 
-It needs to be a production-strength solution approved and supported by your organisation.
+Simply adding a standalone instance of HAProxy or pgBouncer in front of your database is not sufficient. EDB support cannot assist in designing or managing custom load balancer setups. The solution must be vetted, supported, and maintained by your organization's infrastructure or operations team.
 !!!
 
 ## Multi-host connection strings
 
-Both the PEM agent and the PEM web application support multi-host connection strings for connection (requires PEM 10.1 or later) to the PEM backend Postgres instance.
-When multi-host connection strings are used, the client (i.e. PEM agent or web application) will try each specified host until it finds one that accepts write connections. 
-If any connection is lost (for example because a failover has occurred) all open connections will be terminated and the process of searching for the primary will begin again. 
-If the first host in the string is not the primary, this will result in a failed connection attempt increasing the time taken to establish a connection to the primary and increasing resourtce usage on the monitored server and the PEM backend servers.
-For this reason, multi-host connection strings are less efficient than using a single endpoint.
+Starting with PEM 10.1, both the PEM agent and the PEM web application support multi-host connection strings to connect to the backend database.
+With multi-host connection strings:
+ - Clients (i.e. PEM agent or web application) try each listed host until one accepts write connections. 
+ - On failover, connections are dropped and the client begins the search again. 
+ - If the first host in the string is not the primary, it results in a failed connection attempt increasing the time taken to establish a connection to the primary and increasing resource usage on the monitored server and the PEM backend servers.
+
+!!! Note "Drawback"
+The multi-host connection strings are less efficient than using a single routing endpoint like a load balancer or VIP.
+!!!
 
 
 ## Reference Architectures
 
-Note, all architectures are illustrated with three instances of the PEM backend database. 
-However, they could all work fine with only two instances providing the failover manager is happy with even node numbers (if not, a witness node could be used in place of a full third node). 
-Likewise more than three nodes should also work fine but is unlikely to give a worthwhile cost-benefit in most cases.
+All architectures shown below, illustrates three nodes with PEM backend databases. However, this also work with only two nodes providing the failover manager is happy with even node numbers (if not, a witness node could be used in place of a full third node). 
+Likewise more than three nodes also work fine but it may not yield significant benefit for most deployments.
 
 
 ### C1: Colocated with single endpoint
 
-This is the simplest HA PEM architecture, requiring the smallest number of servers.
+A minimal setup where the PEM web application and backend database both run on the same host.
 
 **Pros:**
 
-- Connection for both web application users and monitored agents is completely transparent, they always connect to the same endpoint
-- Web application configuration is simple because all instances connect to the loopback interface.
-- Upgrading the web application and database is also fairly straightforward because each server looks like a standalone PEM installation
+- Transparent connections for both web application users and monitoring agents, to the same endpoint.
+- Simplified Web application configuration and upgrades, as all instances connect to the loopback interface.
+- Suitable for smaller deployments.
 
 **Cons:**
 
-- Less-well suited to larger installations as compute is shared by the web application and database
-- No resilience to failure of the web application. Failover will only occur if the database fails unless you customise the failover conditions.
+- Shared resources may become a bottleneck.
+- No resilience to failure of the web application. Failover occurs if the database fails unless you customise the failover conditions.
 
 ![reference arch](../images/colocated-proxy.svg)
 
 ### S1: Separated with single endpoint for database
 
-This architecture develops the previous one by separating the web application and database.
+A setup where the PEM web application and backend database both run on separate hosts.
 
 **Pros:**
 
-- Connection for agents is completely transparent, they always connect to the same endpoint
-- Better suited to larger deployments as it can leverage separate compute for web application and database
-- Database and web application are both redundant and not coupled as in the C1 architecture
+- Transparent connections for monitoring agents, as they always connect to the same endpoint.
+- Web application and database components are independently scalable and redundant.
+- Suitable for larger deployments.
 
 **Cons:**
 
-- It can be confusing to have multiple instances of the web application running. 
-The user needs to pick which one to connect to, and to try another one if the first one is not available. 
-This can be mitigated by adding an appropriately configured load balancer between the user and the web application.
+- Users must manually choose a web application instance unless a frontend load balancer is used.
 
 ![reference arch](../images/separated-proxy.svg)
 
 ### CM: Colocated with multi-host connection strings
 
-This architecture removes the single endpoint and instead relies upon multi-host connection strings to ensure traffic is routed to the primary.
+A single-endpoint setup is replaced by clients using multi-host connection strings to ensure traffic is routed to the primary. Web application and backend database are colocated.
 
 **Pros:**
 
-- No need to provision or manage a load balancer or VIP for the database server
-- Unlike the similar C1 architecture, it does provide web application redundancy
-- Smaller footprint than S1 and SM
+- No need to manage a load balancer or VIP for the database server.
+- Redundant web applications.
+- Smaller footprint than S1 and SM.
 
 **Cons:**
 
-- Every agent and web application must be configured with the connection details of all PEM backends. This makes it harder to reconfigure the cluster.
-- It can be confusing to have multiple instances of the web application running. 
-The user needs to pick which one to connect to, and to try another one if the first one is not available. 
-This can be mitigated by adding an appropriately configured load balancer between the user and the web application.
-- Multi-host connections are less efficient that routing through a single endpoint
+- Hard to reconfigure as every monitoring agent and web application must be configured with the connection details of all backends databases.
+- It can be confusing to have multiple instances of the web application running. Users must manually choose a web application instance unless a frontend load balancer is used.
+- Multi-host connections are less efficient than routing through a single endpoint.
 
 ![reference arch](../images/colocated-multi.svg)
 
-### CM: Separated with multi-host connection strings
+### SM: Separated with multi-host connection strings
 
-This architecture removes the single endpoint but maintains the separation of frontend and backend from the S1 architecture.
+This setup removes the single endpoint but separates the web application and backend database for improved scalability.
 
 **Pros:**
 
-- No need to provision or manage a load balancer or VIP for the database server
-- Provides web application redundancy
-- Better suited to larger deployments as it can leverage separate compute for web application and database
+- No need to manage a load balancer or VIP for the database server.
+- Redundant web application and backend database components.
+- Suitable for larger deployments for improved scalability.
 
 **Cons:**
 
-- Every agent and web application must be configured with the connection details of all PEM backends. This makes it harder to reconfigure the cluster.
-- It can be confusing to have multiple instances of the web application running. 
-The user needs to pick which one to connect to, and to try another one if the first one is not available. 
-This can be mitigated by adding an appropriately configured load balancer between the user and the web application.
-- Multi-host connections are less efficient that routing through a single endpoint
+- Hard to reconfigure as every monitoring agent and web application must be configured with the connection details of all backend databases. 
+- It can be confusing to have multiple instances of the web application running. Users must manually choose a web application instance unless a frontend load balancer is used.
+- Multi-host connections are less efficient than routing through a single endpoint
 
 ![reference arch](../images/separated-multi.svg)
