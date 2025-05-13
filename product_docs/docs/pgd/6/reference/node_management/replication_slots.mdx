@@ -2,58 +2,59 @@
 title: Replication slots created by PGD
 ---
 
-On a PGD master node, the following replication slots are
-created by PGD:
+In previous versions of PGD, replication slots had human-readable names. With PGD 6, that has switched over to using UUIDs for nodes and groups
+to ensure better identification.
 
--   One *group slot*, named `bdr_<database name>_<group name>`
--   N-1 *node slots*, named `bdr_<database name>_<group name>_<node
-    name>`, where N is the total number of PGD nodes in the cluster,
-    including direct logical standbys, if any
+Replication slots are used by PostgreSQL to track the progress of replication. They are used to ensure that the data being replicated
+is not lost and that the replication process is consistent. In PGD, replication slots are used to track the progress of replication
+between nodes in a cluster. Each node in a PGD cluster has its own replication slots, which are used to track the progress of replication
+to and from that node. Replication slots are also used to track the progress of replication between groups in a PGD cluster. Each group
+in a PGD cluster has its own replication slots, which are used to track the progress of replication to and from that group.
+
+- One group slot, named `bdr_<topgroupuuid>_<dbhash>`
+- N-1 node slots named `bdr_node_<targetnodeuuid>_<dbhash>`, where N is the total number of nodes in the cluster, including direct logical standbys, if any.
+
+Where `topgroupuuid` is the UUID of the top-level group and `dbhash` is a hash of the database name. You can obtain the UUID of the top-level group using
+
+```sql
+select node_group_uuid from bdr.node_group where node_group_parent_id=0;
+```
+
+And `dbhash` is a hash of the database name. You can obtain the hash using:
+
+```sql
+select to_hex(hashtext('pgddb'));
+```
+
+And the `targetnodeuuid` is the UUID of the target node. You can obtain the UUID of the target node using:
+
+```sql
+select node_uuid from bdr.node where node_name='<target_node_name>';
+```
+
+The complete group slot name is returned by the function [`bdr.local_group_slot_name()`](/pgd/latest/reference/tables-views-functions/functions#bdrlocal_group_slot_name).
 
 !!! Warning
     Don't drop those slots. PGD creates and manages them and drops them when or if necessary.
+    * Avoid touching slots prefixed with `bdr_` slots directly.
+    * And do not start slot names with the prefix `bdr_`.
 
-On the other hand, you can create or drop replication slots required by software like Barman
-or logical replication using the appropriate commands
-for the software without any effect on PGD.
-Don't start slot names used by other software with the
-prefix `bdr_`.
+## Group slot
 
-For example, in a cluster composed of the three nodes `alpha`, `beta`, and
-`gamma`, where PGD is used to replicate the `mydb` database and the
-PGD group is called `mygroup`:
+The group slot is used to track the progress of
+replication between groups in a PGD cluster. Each group in a PGD
+cluster has its own group slot, which is used to track the progress of
 
--   Node `alpha` has three slots:
-    -   One group slot named `bdr_mydb_mygroup`
-    -   Two node slots named `bdr_mydb_mygroup_beta` and
-          `bdr_mydb_mygroup_gamma`
--   Node `beta` has three slots:
-    -   One group slot named `bdr_mydb_mygroup`
-    -   Two node slots named `bdr_mydb_mygroup_alpha` and
-          `bdr_mydb_mygroup_gamma`
--   Node `gamma` has three slots:
-    -   One group slot named `bdr_mydb_mygroup`
-    -   Two node slots named `bdr_mydb_mygroup_alpha` and
-          `bdr_mydb_mygroup_beta`
+The group slot is used to:
 
-## Group replication slot
-
-The group slot is an internal slot used by PGD primarily to track the
-oldest safe position that any node in the PGD group (including all logical
-standbys) has caught up to, for any outbound replication from this node.
-
-The group slot name is given by the function [`bdr.local_group_slot_name()`](/pgd/latest/reference/tables-views-functions/functions#bdrlocal_group_slot_name).
-
-The group slot can:
-
--   Join new nodes to the PGD group without having all existing nodes
+- Join new nodes to the PGD group without having all existing nodes
     up and running (although the majority of nodes should be up). This process doesn't
     incur data loss in case the node that was down during join starts
     replicating again.
--   Part nodes from the cluster consistently, even if some nodes haven't
+- Part nodes from the cluster consistently, even if some nodes haven't
     caught up fully with the parted node.
--   Hold back the freeze point to avoid missing some conflicts.
--   Keep the historical snapshot for timestamp-based snapshots.
+- Hold back the freeze point to avoid missing some conflicts.
+- Keep the historical snapshot for timestamp-based snapshots.
 
 The group slot is usually inactive and is fast forwarded only periodically
 in response to Raft progress messages from other nodes.
@@ -61,26 +62,22 @@ in response to Raft progress messages from other nodes.
 !!! Warning
     Don't drop the group slot. Although usually inactive, it's
     still vital to the proper operation of the EDB Postgres Distributed cluster. If you drop it,
-    then some or all of the features can stop working or have
-    incorrect outcomes.
+    then some or all of PGD's features can stop working or have incorrect outcomes.
 
-## Hashing long identifiers
+## Other slot names
 
-The name of a replication slot, like any other PostgreSQL
-identifier, can't be longer than 63 bytes. PGD handles this by
-shortening the database name, the PGD group name, and the name of the
-node in case the resulting slot name is too long for that limit.
-Shortening an identifier is carried out by replacing the final section
-of the string with a hash of the string itself.
+Other functionality within PGD makes use of replication slots.
 
-For example, consider a cluster that replicates a database
-named `db20xxxxxxxxxxxxxxxx` (20 bytes long) using a PGD group named
-`group20xxxxxxxxxxxxx` (20 bytes long). The logical replication slot
-associated to node `a30xxxxxxxxxxxxxxxxxxxxxxxxxxx` (30 bytes long)
-is called since `3597186`, `be9cbd0`, and `7f304a2` are respectively the hashes
-of `db20xxxxxxxxxxxxxxxx`, `group20xxxxxxxxxxxxx`, and
-`a30xxxxxxxxxxxxxxxxxxxxxxxxxx`.
+For example, when a node is added to a group, a slot is created for that node to track its progress in the replication process.
 
-```
-bdr_db20xxxx3597186_group20xbe9cbd0_a30xxxxxxxxxxxxx7f304a2
-```
+This slot is named `bdr_node_<targetnodeuuid>_<dbhash>_tmp`.
+
+There are also slots created for the analytics and decoding features of PGD.
+These slots are named:
+
+| Slot type                              | Slot name                                          |
+|----------------------------------------|----------------------------------------------------|
+| Forwarding slot, leader-to-leader slot | `bdr_node_<targetnodeuuid>_<originidhex>_<dbhash>` |
+| Analytics slot                         | `bdr_analytics_<groupuuid>_<dbhash>`               |
+| Decoding slot                          | `bdr_decoder_<topgroupuuid>_<dbhash>`              |
+
