@@ -1,20 +1,14 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
 product: EDB Postgres Distributed
 version: 6.0.0
-date: 15 May 2025
+date: 22 May 2025
 intro: |
  EDB Postgres Distributed 6.0.0 is a major update to PGD and sees the introduction on Essential and Extended editions.
 highlights: |
-  - Connection Manager replaces PGD Proxy.
+  - New built-in Connection Manager.
+  - New CLI command for cluster setup.
 relnotes:
-- relnote: Connection Manager replaces PGD Proxy
-  details: |
-    The connection manager is a new component that replaces the PGD Proxy. It is responsible for managing connections to the database and routing them to the appropriate nodes in the cluster. The connection manager provides improved performance, scalability, and reliability compared to the previous PGD Proxy.
-  jira: BDR-5123
-  addresses: ""
-  type: Feature
-  impact: High
-- relnote: Table rewriting `ALTER TABLE... ALTER COLUMN` calls are now supported. 
+- relnote: Table rewriting `ALTER TABLE... ALTER COLUMN` calls are now supported.
   details: |
     Changing a column's type command which causes the whole table to be rewritten and the change isn't binary coercible is now supported:
     ```sql
@@ -26,11 +20,12 @@ relnotes:
     CREATE TABLE foo (id serial primary key,data text);
     ALTER TABLE foo ALTER data TYPE BYTEA USING data::bytea;
     ```
-    Table rewrites can hold an AccessExclusiveLock for extended periods on larger tables.  
+    Table rewrites can hold an AccessExclusiveLock for extended periods on larger tables.
   jira: BDR-5724
   addresses: ""
   type: Enhancement
   impact: Medium
+
 - relnote: Restrictions on non-immutable `ALTER TABLE... ADD COLUMN` calls have been removed.
   details: |
     The restrictions on non-immutable `ALTER TABLE... ADD COLUMN` calls have been removed.
@@ -38,3 +33,329 @@ relnotes:
   addresses: ""
   type: Enhancement
   impact: Medium
+
+- relnote: Set sequence kind on group create/join
+  details: |
+    Transform the sequences in distributed based on the `bdr.default_sequence_kind` GUC when creating/joining a bdr group instead of when creating the node as done in older versions.
+  jira: BDR-5972
+  type: Feature
+  impact: High
+- relnote: Set startvalue for distributed sequences automatically
+  details: |
+    Set the startvalue for galloc sequences to the following valid number after the last used by the local sequence. With this change, when creating distributed sequences and specifically galloc, there is no need to adjust the startvalue based on what might be already used.
+  jira: BDR-5972
+  type: Feature
+  impact: High
+
+- relnote: Limit on the number of node groups allowed in the system for PGD Essential.
+  details: |
+    Ensure that no more than three node groups (one top group and two subgroups) can exist at any given time. If the limit is exceeded, an error is raised.
+  jira: BDR-6215
+  type: Feature
+  impact: Medium
+
+- relnote: Enforced PGD Essential limits - data node count
+  details: |
+    Don't allow PGD Essential clusters to join more than 4 data nodes.
+  jira: BDR-6213
+  type: Feature
+  impact: Medium
+
+- relnote: Routing is now enabled by default on subgroups
+  details: |
+    Routing (and by extension raft) is now enabled by default on data-groups (subgroups with data nodes).
+  jira: BDR-4956
+  type: Change
+  impact: Medium
+
+- relnote: Fixed issue where parting node may belong to a non-existing group
+  details: |
+    When parting a given node, that same node may have subscriptions whose
+    origin was already parted and the group dropped. Previously this would break PGD, and has since been fixed.
+  jira: BDR-5461
+  type: Bug fix
+  impact: Medium
+
+- relnote: Multiple conflicting rows resolution
+  details: |
+    Both `pk_exists` and `multiple_unique_conflicts` conflict types can now resolve more than one conflicting row by removing any old rows that are part of the conflict. The `multiple_unique_conflicts` now defaults to `update_if_newer` resolver, so it does not throw error by default anymore.
+  jira: BDR-6336
+  type: Enhancement
+  impact: Highest
+
+- relnote: num_writers should be positive or -1
+  details: |
+    The num_writers option, used in bdr.alter_node_group_option() and bdr.alter_node_group_config() should be positive or -1.
+  jira: BDR-6294
+  type: Bug fix
+  impact: Medium
+
+- relnote: Introduce `bdr.node_group_config_summary` view
+  details: |
+    The new `bdr.node_group_config_summary` view contains detailed information about group options, including effective value, source of the effective value, default value, whether the value can be inherited, etc. This is in similar spirit to `pg_settings`
+  jira: BDR-4696
+  type: Enhancement
+  impact: Medium
+
+- relnote: Added `bdr.wait_node_confirm_lsn()` function which waits until a given reaches a given LSN
+  details: |
+    `bdr.wait_node_confirm_lsn(`) will look at the confirmed_flush_lsn of the given node when available, otherwise it will query `pg_replication_origin_progress()` of that node, and wait for the specified LSN to be reached by said node.
+  jira: BDR-5200
+  type: Feature
+  impact: Medium
+
+- relnote: Improved `bdr.stat_activity` view
+  details: |
+    The `backend_type` now shows consistent worker type for PGD workers without the extra process identification. The `wait_event_type` and `wait_event` include more wait events now, instead of showing "extension" for some events. Also, connection management related columns are added to show real client address/port and whether the session is read-only.
+  jira: BDR-4833, BDR-743
+  type: Enhancement
+  impact: Highest
+
+- relnote: Leader DML lock
+  details: |
+    New lock type leader DML lock is used by default for locking DDL statements that need to block DML. This lock locks on write-leaders only, no requiring all nodes to participate in the locking operation. Old behavior can be restored by adjusting `bdr.ddl_locking` configuration parameter.
+  jira: BDR-6216
+  type: Enhancement
+  impact: Medium
+
+- relnote: Built-in connection manager
+  details: |
+    New built-in connection manager which handles routing of connections automatically and allows enforcing of read-only connections to non-leader.
+  jira: BDR-6260
+  type: Feature
+  impact: Highest
+
+- relnote: CLI cluster setup
+  details: |
+    The PGD CLI now allows initial cluster setup as well as adding nodes from command-line using `pgd node setup` command.
+  jira: BDR-5727
+  type: Feature
+  impact: Highest
+
+- relnote:  Disabling bdr.xact_replication in run_on_* functions
+  details: |
+    Functions `run_on_nodes`, `run_on_all_nodes` and `run_on_group` now sets `bdr.xact_replication` to `off` by default.
+  jira: BDR-1331
+  type: Enhancement
+  impact: Medium
+
+- relnote: Replica Identity full by default
+  details: |
+    The `auto` value for `bdr.default_replica_identity` changed to
+    REPLICA IDENTITY FULL. This setting prevents some edge cases in
+    conflict detection between inserts, updates and deletes across node
+    crashes and recovery.
+
+    When the PGD group is created and the database of the initial PGD node is not empty (i.e. has some tables with data) the REPLICA IDENTITY of all tables will be set according to `bdr.default_replica_identity`.
+  jira: BDR-5977
+  type: Enhancement
+  impact: Medium
+
+- relnote: The PARTED node is removed  automatically from all nodes in the cluster.
+  details: |
+    From PGD 6.0.0, bdr.part_node functionality is enhanced to remove the parted node’s  metadata automatically from all nodes in the cluster.
+    - For local node, it will remove all the node metadata, including information about remote nodes.
+    - For remote node, it removes only metadata for that specific node.
+    Hence with this release
+     - A node will remain in PART_CLEANUP state till group slots of all nodes are caught up to all the transactions originating from the PARTED node
+     - A node will not remain in PARTED state as the node is removed as soon as it moves to PARTED state.
+
+  jira: BDR-5975
+  type: Enhancement
+  impact: High
+
+- relnote: Enabling of automatic sync and reconciliation
+  details: |
+    Link to a detailed google doc is provided below
+  jira: BDR-4798
+  type: Feature
+  impact: High
+
+- relnote: Subscriber-only nodes can now be added to data node groups
+  details: |
+    So far subscriber-only nodes could only be added to node groups of type "subscriber-only". But now a subscriber-only node can be added to a data node group too. Only node_kind='subscriber_only' needs to be specified while doing a create_node as before. the join_node_group can be done on a data node group.
+  jira: BDR-6106
+  type: Feature
+  impact: Medium
+
+- relnote: Add node_uuid column to bdr.node and bdr.local_node
+  details: |
+    The node_uuid uniquely identifies instance of a node of a given name. Random node_uuid is generated when node is created and remains constant for the lifetime of the node. The node_id column is now derived from node_uuid instead of node name.
+
+    For the time being a node needs to be fully parted before before node of the same name can be rejoined, this may be relaxed in future releases to permit rejoin as soon as part_node process for the old instance has commenced and before it completed.
+
+    For the time being upgrades from older PGD versions and mixed-version operation in clusters with older PGD nodes are not supported. This limitation will be addressed in future releases.
+  jira:  BDR-6222
+  type: Feature
+  impact: High
+
+- relnote: Change replication origin and slot naming scheme
+  details: |
+    Replication origin and slot names now use node uuid and thus correspond to particular incarnation of a node of a given name. Similarly node group uuid is used instead of group name. Hash of database name is used in lieu of database name.
+
+    Please note that origin and node names should be treated as opaque identifiers from user's perspective, one shouldn't rely on the structure of these names nor expect these to be particularly meaningful to a human operator.
+
+    The new naming scheme is as follows:
+
+    #### Slots Naming Convention
+
+    * normal slot to a node => `bdr_node_<targetuuid>_<dbhash>`
+    * join slot for node => `bdr_node_<targetuuid>_<dbhash>_tmp`
+    * group slot for a topgroup => `bdr_group_<topgroupuuid>_<dbhash>`
+    * slot for any forwarding + lead to lead => `bdr_node_<targetuuid>_<originidhex>_<dbhash>`
+    * analytics slot => `bdr_analytics_<groupuuid>_<dbhash>`
+    * decoding slot => `bdr_decoder_<topgroupuuid>_<dbhash>`
+
+    #### Origins Naming Convention:
+
+    * normal origin to a node => `bdr_<originuuid>_<dbhash>`
+    * fwd origin to a source node => `bdr_<originuuid>_<sourceoidhex>_<dbhash>`
+  jira: BDR-6157
+  type: Feature
+  impact: High
+
+- relnote: Add `bdr.local_analytics_slot_name()` SQL function.
+  details: |
+    Returns name of analytics slot. This merely produces the correct name irrespective of whether analytics feature is in use.
+  jira: BDR-6469
+  type: Feature
+  impact: Low
+
+- relnote: Add node_uuid column to `bdr.node_summary` view.
+  details: |
+    Added to complement the addition of the node_uuid column to bdr.node and bdr.local_node
+  jira:  BDR-6478
+  type: Feature
+  impact: Low
+
+- relnote: Tablespace replication as a DDL operation is supported.
+  details: |
+    Tablespace operations `CREATE/ALTER/DROP TABLESPACE` are now replicated as a DDL operation. Where users are
+    running a configuration with multiple nodes on the same machine, you will need to enable the developer option [`allow_in_place_tablespace`](https://www.postgresql.org/docs/current/runtime-config-developer.html#GUC-ALLOW-IN-PLACE-TABLESPACES).
+  jira: BDR-5401
+  type: Enhancement
+  impact: Medium
+
+- relnote: Remove the deprecated legacy CLI commands.
+  details: |
+    Remove the old (PGD 5 and below) CLI commands, which were deprecated but supported for backward compatibility.
+  jira:  BDR-6333
+  type: Enhancement
+  impact: Low
+
+- relnote: Improve the CLI debug messages.
+  details: |
+    Improve the formating of the log messages to be more readable and symmetrical with Postgres log messages.
+  jira:  BDR-6101
+  type: Enhancement
+  impact: Medium
+
+- relnote: The `--summary` and `--options` flags for `pgd node show` CLI command.
+  details: |
+    Add the `--summary` and `--options` flags to `pgd node show` command to filter the output of the `pgd node show` command.
+    This also maintains symmetry with other `show` commands.
+  jira:  BDR-6145
+  type: Enhancement
+  impact: High
+
+- relnote: More GUCs verfied in `pgd cluster verify` CLI command.
+  details: |
+    Add the `bdr.lock_table_locking` and `bdr.truncate_locking` GUCs to list of GUCs verfied in `pgd cluster verify` command.
+  jira:  BDR-5308
+  type: Enhancement
+  impact: High
+
+- relnote: New column for `pgd cluster verify --settings` CLI command output.
+  details: |
+    Add the `recommended_value` column to the result of the `pgd cluster verify --settings` command.
+    The column will not be displayed in tabular output but will be displayed in JSON output.
+  jira:  BDR-5308
+  type: Enhancement
+  impact: Medium
+
+- relnote: Display sorted output for CLI.
+  details: |
+    The output for the commands with tabular output will be sorted by the resource name.
+    The commands that display more than one resource, the output will be sorted by each resource column in order.
+  jira:  BDR-6094
+  type: Enhancement
+  impact: Medium
+
+- relnote: Fix the CLI `pgd cluster show` command issues on a degraded cluster.
+  details: |
+    The `pgd cluster show` command failed with error for clock drift if only one node is up and running in a N node cluster.
+    The command is fixed to return valid output for other components viz., `health` and `summary` while reporting a valid error for `clock-drift`.
+  jira:  BDR-6135
+  type: Bug Fix
+  impact: High
+
+- relnote: Fix the CLI `pgd node show` command issue if a non-existent node is specified.
+  details: |
+    The `pgd node show` command crashed if a non-existent node is specified to the command.
+    The command is fixed to fail gracefully with appropriate error message.
+  jira:  BDR-6292
+  type: Bug Fix
+  impact: High
+
+- relnote: Commit scope logic is now only run on data nodes.
+  details: |
+    Previously, non-data nodes would attempt to handle, but not process commit scope logic, which could lead to confusing, albeit harmless log messages.
+  jira:  BDR-6325
+  type: Enhancement
+  impact: Low
+
+- relnote: Explicitly log the start and stop of dump and restore operations.
+  details: |
+    This provides greater visibility into the node cloning process and assists with debugging possible issues.
+  jira:  BDR-4501
+  type: Enhancement
+  impact: Low
+
+- relnote: Function `bdr.join_node_group` may no longer be executed in a transaction.
+  details: |
+    As it is not possible to roll back a group join, it can not form part of an idempotent transaction.
+  jira:  BDR-6337
+  type: Change
+  impact: Low
+
+- relnote: Deprecated `pause_in_standby` parameter removed from function `bdr.join_node_group()`.
+  details: |
+    `pause_in_standby` has been deprecated since PGD 5.0.0. Logical standby nodes should be specified as such when executing `bdr.create_node()`
+  jira:  BDR-6385
+  type: Change
+  impact: Low
+
+- relnote: BDR global sequences can no longer created as or set to `UNLOGGED`
+  details: |
+    Unlogged BDR sequences may display unexpected behaviour following a server crash. Existing unlogged BDR sequences may be converted to logged ones.
+  jira:  BDR-6103
+  type: Change
+  impact: Low
+
+- relnote: Subscriber-only nodes replication.
+  component: BDR
+  details: |
+    Subscriber-only nodes now receive data only after it has been replicated to majority of data nodes. This does not require any special configuration. Subsequently bdr.standby_slot_names and bdr.standby_slots_min_confirmed options are removed as similar physical standby functionality is provided in pg_failover_slots extension and in PG17+.
+  jira: BDR-5961
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+
+- relnote: Fixed deadlock issue in bdr_init_physical.
+  component: BDR
+  details: |
+    Fixed deadlock between bdr_init_physical cleaning unwanted node data and concurrent monitoring queries.
+  jira: BDR-6313
+  addresses: 46952
+  type: Bug Fix
+  impact: Low
+
+- relnote: Fixed new cluster node consistency issue.
+  component: BDR
+  details: |
+    Fixed an issue when new node joining the cluster finishes CATCHUP phase before getting its replication progress against all data nodes. This may cause new node being out of sync with the cluster.
+  jira: BDR-5961
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+
