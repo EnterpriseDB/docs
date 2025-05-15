@@ -27,7 +27,7 @@ const FullCard = ({ card }) => {
         <p className="card-text">{card.description}</p>
 
         <div className="d-grid gap-2">
-          {card.items.map((child) => (
+          {card.items.slice(0, 4).map((child) => (
             <Link
               key={child.path}
               to={child.path}
@@ -37,6 +37,11 @@ const FullCard = ({ card }) => {
               {child.interactive && <KatacodaBadge />}
             </Link>
           ))}
+          {card.items.length > 4 && (
+            <Link to={card.path} className="btn btn-link text-start p-0">
+              {`+ ${card.items.length - 4} more`}
+            </Link>
+          )}
         </div>
       </div>
     </div>
@@ -54,7 +59,7 @@ const ExtraCard = ({ card }) => {
         <p className="card-text">{card.description}</p>
 
         <div className="d-grid gap-2">
-          {card.items.map((child) => (
+          {card.items.slice(0, 4).map((child) => (
             <Link
               key={child.path}
               to={child.path}
@@ -64,6 +69,11 @@ const ExtraCard = ({ card }) => {
               {child.interactive && <KatacodaBadge />}
             </Link>
           ))}
+          {card.items.length > 4 && (
+            <Link to={card.path} className="btn btn-link text-start p-0">
+              {`+ ${card.items.length - 4} more`}
+            </Link>
+          )}
         </div>
       </div>
     </div>
