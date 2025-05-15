@@ -3,7 +3,11 @@ title: Preparers chunk text operation examples
 navTitle: Chunk text
 description: Examples of using preparers with the ChunkText operation in AI Accelerator.
 ---
-These dxamples use preparers with the [ChunkText operation](../primitives#chunk-text) in AI Accelerator.
+These examples use preparers with the [ChunkText operation](../primitives#chunk-text) in AI Accelerator.
+
+!!! Tip
+This operation transforms the shape of the data, automatically unnesting collections by introducing a `part_id` column. See the [unnesting concept](../concepts#unnesting) for more detail.
+!!!
 
 ## Primitive
 
@@ -11,20 +15,61 @@ These dxamples use preparers with the [ChunkText operation](../primitives#chunk-
 -- Only specify a desired length
 SELECT * FROM aidb.chunk_text('This is a simple test sentence.', '{"desired_length": 10}');
 
+__OUTPUT__
+ part_id |   chunk
+---------+-----------
+       0 | This is a
+       1 | simple
+       2 | test
+       3 | sentence.
+(4 rows)
+```
+
+```sql
 -- Specify a desired length and a maximum length
 SELECT * FROM aidb.chunk_text('This is a simple test sentence.', '{"desired_length": 10, "max_length": 15}');
 
+__OUTPUT__
+ part_id |    chunk
+---------+-------------
+       0 | This is a
+       1 | simple test
+       2 | sentence.
+(3 rows)
+```
+
+```sql
 -- Named parameters
-SELECT
-    chunk_id,
-    chunk
-FROM aidb.chunk_text(
+SELECT * FROM aidb.chunk_text(
     input => 'This is a significantly longer text example that might require splitting into smaller chunks. The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters. This enables processing or storage of data in manageable parts.',
-    options => '{"desired_length": 10}'
+    options => '{"desired_length": 40}'
 );
 
+__OUTPUT__
+ part_id |                 chunk
+---------+----------------------------------------
+       0 | This is a significantly longer text
+       1 | example that might require splitting
+       2 | into smaller chunks.
+       3 | The purpose of this function is to
+       4 | partition text data into segments of a
+       5 | specified maximum length, for example,
+       6 | this sentence 145 is characters.
+       7 | This enables processing or storage of
+       8 | data in manageable parts.
+(9 rows)
+```
+
+```sql
 -- Semantic chunking to split into the largest continuous semantic chunk that fits in the max_length
 SELECT * FROM aidb.chunk_text('This sentence should be its own chunk. This too.', '{"desired_length": 1, "max_length": 1000}');
+
+__OUTPUT__
+ part_id |                 chunk
+---------+----------------------------------------
+       0 | This sentence should be its own chunk.
+       1 | This too.
+(2 rows)
 ```
 
 ## Preparer with table data source
@@ -56,12 +101,13 @@ SELECT aidb.bulk_data_preparation('preparer__1628');
 
 SELECT * FROM chunked_data__1628;
 
--- Unnest chunk text arrays
-SELECT
-    id,
-    chunk_number,
-    chunk
-FROM
-    chunked_data__1628,
-    unnest(chunks) WITH ORDINALITY AS chunk_list(chunk, chunk_number);
+__OUTPUT__
+ id | part_id | unique_id |                                                                      chunks
+----+---------+-----------+---------------------------------------------------------------------------------------------------------------------------------------------------
+ 1  |       0 | 1.part.0  | This is a significantly longer text example that might require splitting into smaller chunks.
+ 1  |       1 | 1.part.1  | The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters.
+ 1  |       2 | 1.part.2  | This enables processing or storage of data in manageable parts.
+ 2  |       0 | 2.part.0  | This sentence should be its own chunk.
+ 2  |       1 | 2.part.1  | This too.
+(5 rows)
 ```

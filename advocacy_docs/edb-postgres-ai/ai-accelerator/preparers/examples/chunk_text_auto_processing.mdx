@@ -4,7 +4,11 @@ navTitle: Auto Processing
 description: Examples of using the preparer auto processing in AI Accelerator.
 ---
 
-Examples of using preparer auto processing with the [ChunkText operation](../primitives#chunk-text) in AI Accelerator.
+Example of using preparer auto processing with the [ChunkText operation](../primitives#chunk-text) in AI Accelerator.
+
+!!! Tip
+This operation transforms the shape of the data, automatically unnesting collections by introducing a `part_id` column. See the [unnesting concept](../concepts#unnesting) for more detail.
+!!!
 
 ## Preparer with table data source
 
@@ -22,7 +26,7 @@ SELECT aidb.create_table_preparer(
     source_table => 'source_table__1628',
     source_data_column => 'content',
     destination_table => 'chunked_data__1628',
-    destination_data_column => 'chunks',
+    destination_data_column => 'chunk',
     source_key_column => 'id',
     destination_key_column => 'id',
     options => '{"desired_length": 1, "max_length": 1000}'::JSONB  -- Configuration for the ChunkText operation
@@ -32,14 +36,54 @@ SELECT aidb.set_auto_preparer('preparer__1628', 'Live');
 
 INSERT INTO source_table__1628
 VALUES (1, 'This is a significantly longer text example that might require splitting into smaller chunks. The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters. This enables processing or storage of data in manageable parts.');
+```
+
+```sql
 SELECT * FROM chunked_data__1628;
 
+__OUTPUT__
+ id | part_id | unique_id |                                                                       chunk
+----+---------+-----------+---------------------------------------------------------------------------------------------------------------------------------------------------
+ 1  |       0 | 1.part.0  | This is a significantly longer text example that might require splitting into smaller chunks.
+ 1  |       1 | 1.part.1  | The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters.
+ 1  |       2 | 1.part.2  | This enables processing or storage of data in manageable parts.
+(3 rows)
+```
+
+```sql
 INSERT INTO source_table__1628
 VALUES (2, 'This sentence should be its own chunk. This too.');
+```
+
+```sql
 SELECT * FROM chunked_data__1628;
 
+__OUTPUT__
+ id | part_id | unique_id |                                                                       chunk
+----+---------+-----------+---------------------------------------------------------------------------------------------------------------------------------------------------
+ 1  |       0 | 1.part.0  | This is a significantly longer text example that might require splitting into smaller chunks.
+ 1  |       1 | 1.part.1  | The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters.
+ 1  |       2 | 1.part.2  | This enables processing or storage of data in manageable parts.
+ 2  |       0 | 2.part.0  | This sentence should be its own chunk.
+ 2  |       1 | 2.part.1  | This too.
+(5 rows)
+```
+
+```sql
 DELETE FROM source_table__1628 WHERE id = 1;
+```
+
+```sql
 SELECT * FROM chunked_data__1628;
 
+__OUTPUT__
+ id | part_id | unique_id |                 chunk
+----+---------+-----------+----------------------------------------
+ 2  |       0 | 2.part.0  | This sentence should be its own chunk.
+ 2  |       1 | 2.part.1  | This too.
+(2 rows)
+```
+
+```sql
 SELECT aidb.set_auto_preparer('preparer__1628', 'Disabled');
 ```
