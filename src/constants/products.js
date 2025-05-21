@@ -1,4 +1,5 @@
-const IconNames = require("../components/icon/iconNames.js");
+let IconNames = require("../components/icon/iconNames.js");
+if (IconNames.default) IconNames = IconNames.default; // little dance to let this work in ES6 and CommonJS modes
 
 const products = {
   "Expression Replacement": {
