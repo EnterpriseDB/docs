@@ -36,7 +36,7 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 <details><summary><h3 style="display:inline">{{ thiscve.vulnerability_details.cve_id }} </h3>
 <span>
 &nbsp;&nbsp;<a href="advisories/{{ thiscve.filename }}">Read Advisory</a>
-&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open.last_updated }}</span>
+{% if thiscve.open.last_updated %}&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open.last_updated }}</span>{% else %}&nbsp;&nbsp;Published: </span><span>{{ thiscve.open.first_published }}</span>{% endif %}
 <h4>{{ thiscve.frontmatter.title }}</h4>
 <h5> {{ thiscve.frontmatter.affectedProducts }}</h5>
 </summary>
@@ -58,7 +58,8 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 <details><summary><h3 style="display:inline"> {{ thisass.vulnerability_details.cve_id }} </h3>
 <span>
 &nbsp;&nbsp;<a href="assessments/{{ thisass.filename }}">Read Assessment</a>
-&nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>
+{% if thisass.open.last_updated %}&nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>{% else %}&nbsp;&nbsp;Published: </span><span>{{ thisass.open.first_published }}</span>
+{% endif %}
 <h4>{{ thisass.frontmatter.title }}</h4>
 <h5> {{ thisass.frontmatter.affectedProducts }}</h5>
 </summary>

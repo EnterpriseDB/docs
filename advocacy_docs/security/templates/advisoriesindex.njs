@@ -25,7 +25,7 @@ navigation:{% for cve in cvesorted %}
 <details><summary><h3 style="display:inline"> {{ thiscve.vulnerability_details.cve_id }} </h3>
 <span>
 &nbsp;&nbsp;<a href="{{ thiscve.filename }}">Read Advisory</a>
-&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open.last_updated }}</span>
+{% if thiscve.open.last_updated %}&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open.last_updated }}</span>{% else %}&nbsp;&nbsp;Published: </span><span>{{ thiscve.open.first_published }}</span>{% endif %}
 <h4>{{ thiscve.frontmatter.title }}</h4>
 <h5> {{ thiscve.frontmatter.affectedProducts }}</h5>
 </summary>
