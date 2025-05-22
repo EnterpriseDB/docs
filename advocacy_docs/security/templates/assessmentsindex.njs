@@ -28,7 +28,7 @@ The CVEs listed in this section are from PostgreSQL and other parties who have r
 <details><summary><h3 style="display:inline"> {{ thisass.vulnerability_details.cve_id }} </h3>
 <span>
 &nbsp;&nbsp;<a href="{{ thisass.filename }}">Read Assessment</a>
-&nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>
+{% if thisass.open.last_updated %}&nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>{% else %}&nbsp;&nbsp;Published: </span><span>{{ thisass.open.first_published }}</span>{% endif %}
 <h4>{{ thisass.frontmatter.title }}</h4>
 <h5> {{ thisass.frontmatter.affectedProducts }}</h5>
 </summary>
