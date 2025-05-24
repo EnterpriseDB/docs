@@ -90,7 +90,7 @@ git fetch --tags
 
 LATEST_TAG=`git tag | sort -V -r | head -n 1`
 CURRENT_TAG=`git describe --exact-match --tags || echo "$LATEST_TAG-next"`
-CURRENT_TAG_INDEX=`git tag | sort -V -r | grep -n $CURRENT_TAG | cut -d : -f 1 || echo 0`
+CURRENT_TAG_INDEX=`git tag | sort -V -r | grep -nx $CURRENT_TAG | cut -d : -f 1 || echo 0`
 PREVIOUS_TAGS=`git tag | sort -V -r | head -n $(($CURRENT_TAG_INDEX+30)) | tail -n 30`
 
 cd $DESTINATION_CHECKOUT
