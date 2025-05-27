@@ -255,13 +255,13 @@ function compareDates(dateStr1, dateStr2) {
 
 // Iterate over the relnotes and precursors in descending version, date order
 relnotes[Symbol.iterator] = function* () {
-  yield* [
-    ...relnotes.entries().map(([file, note]) => {
-      note._sourceFile = file;
-      return note;
-    }),
-    ...(meta.precursor || []),
-  ].sort(
+  const combinedSorted = [];
+  for (let [file, note] of relnotes.entries()) {
+    note._sourceFile = file;
+    combinedSorted.push(note);
+  }
+  if (meta.precursor) combinedSorted.push(...meta.precursor);
+  yield* combinedSorted.sort(
     (a, b) =>
       // sort by version, then by date
       semver.compare(semver.coerce(b.version), semver.coerce(a.version)) ||
