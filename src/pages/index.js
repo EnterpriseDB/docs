@@ -282,7 +282,7 @@ const Page = () => {
                 Get Started with Pipelines
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/preparers/">
-                New: AI Accelerator Preparers
+                AI Accelerator Preparers
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pgvector/">
                 PGvector
@@ -419,6 +419,19 @@ const Page = () => {
 
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">
               CloudNativePG
+            </BannerWideLink>
+
+            <BannerDivider
+              iconName={iconNames.BIG_DATA}
+              headingText="WarehousePG and EDB Postgres AI support for Greenplum workloads"
+              toUrl="/supported-open-source/warehousepg/"
+            />
+
+            <BannerWideLink to="/supported-open-source/warehousepg/warehousepg">
+              WarehousePG
+            </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/warehousepg/edbpggpsupp/">
+              EDB Postgres AI support for Greenplum workloads
             </BannerWideLink>
 
             <BannerDivider

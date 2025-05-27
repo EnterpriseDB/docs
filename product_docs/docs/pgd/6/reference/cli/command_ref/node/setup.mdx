@@ -10,7 +10,7 @@ The `pgd node setup` command is used to configure PGD data nodes in a cluster. I
 
 The behavior of the command depends on the state of the local node and the remote node specified in the command.
 
-If this is the first node in the cluster, `pgd node setup` will perform initdb and setup PGD node.
+If this is the first node in the cluster, `pgd node setup` will perform `initdb` and setup PGD node.
 
 If this is not the first node, but the local node is not up and running, `pgd node setup` will perform a physical join of the node to the cluster. This will copy the data from the remote node to the local node as part of the initialization process, then join the local node to the cluster. This is the fastest way to load data into a new node.
 
@@ -18,33 +18,37 @@ If the local node is up and running and remote node also is reachable, `pgd node
 
 If the local node is up and running and remote node dsn is not provided, `pgd node setup` will do a node group switch if node not part of the given group.
 
+### Users and roles
+
+The `pgd node setup` command requires a superuser role to run. The superuser role is used to create the data directory and initialize the database. The superuser role must have the `CREATEDB` privilege to create the database.
+
+The user specified in the `--dsn` option will be created if it does not exist. It will only be granted the `bdr_superuser` role which will allow it to administer PGD functionality. It will not, though have any other privileges on the database.
+
 ## Syntax
 
 ```plaintext
-pgd node <NODE_NAME> setup [OPTIONS] -D <PG_DATA>
+pgd node <NODE_NAME> setup [OPTIONS]
 ```
 
 ## Arguments
 
 - <NODE_NAME\> The name of the node to be created. This is the name that will be used to identify the node in the cluster. It must be unique within the cluster.
 
-- <PG_DATA\> The data directory for the node. This is where the Postgres data files will be stored. It must be a valid directory and must be writable by the user running the command.
-
 ## Options
 
 | Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description                                                                                                                                                                                                                                                      |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--listen-addr <LISTEN_ADDR>`                                                                                                                                                                                                                                                         | The address that the configured node will listen on for incoming connections, and the address that other nodes will use to connect to this node. This is typically set to at least `localhost`, but can be set to any valid address. The default is `localhost`. |
+| `--listen-addr <LISTEN_ADDR>`                                                                                                                                                                                                                                                         | The address that the configured node will listen on for incoming connections, and the address that other nodes will use to connect to this node. This is typically set to at least `localhost`, but can be set to any valid address. The default is `localhost`. The `host` value from the `--dsn` will also be appended to this list. |
 | `--initial-node-count <INITIAL_NODE_COUNT>`                                                                                                                                                                                                                                           | Number of nodes in the cluster (or planned to be in the cluster). Used to calculate various resource settings for the node. Default is 3.                                                                                                                        |
 | `--bindir <BINDIR>`                                                                                                                                                                                                                                                                   | <BINDIR\> Specifies the directory where the binaries are located. Defaults to the directory where the running pgd binary is located.                                                                                                                             |
-| `--log-file <LOG_FILE>`                                                                                                                                                                                                                                                               | Log file to write the log messages to. Records log messages for any external commands executed. Default is to write a file in the current directory named `postgres-<port>.log` where the port value                                                             |
-| `-D`, `--pgdata <PG_DATA>`                                                                                                                                                                                                                                                              | Uses <PG_DATA\> as the data directory of the node. (Also set with environment variable `PGDATA`)                                                                                                                                                                 |
-| `--superuser <SUPERUSER>`                                                                                                                                                                                                                                                             | The superuser to use for the connection.                                                                                                                                                                                                                         |
-| `--node-kind <NODE_KIND>`                                                                                                                                                                                                                                                             | Specifies the kind of node to be created. Applies to first node only. Default is `data`.Possible values are `data`, `witness`, `subscriber-only`.                                                                                                                |
+| `--log-file <LOG_FILE>`                                                                                                                                                                                                                                                               | Path to log file, used for postgres startup logs. Default is to write to a file in the current directory named `postgres-<port>.log` where the port value is fetched from the `port` attribute of `--dsn` option.                                                            |
+| `-D`, `--pgdata <PG_DATA>`                                                                                                                                                                                                                                                              | Uses <PG_DATA\> as the data directory of the node. (Also set with environment variable `PGDATA`). It must be a valid directory and must be writable by the user running the command.                                                                                                                                                                 |
+| `--superuser <SUPERUSER>`                                                                                                                                                                                                                                                             | Superuser name for `initdb`. Default is `postgres`.                                                                                                                                                                                                              |
+| `--node-kind <NODE_KIND>`                                                                                                                                                                                                                                                             | Specifies the kind of node to be created. Default is `data`. Possible values are `data`, `witness`, `subscriber-only`.                                                                                                                |
 | `--group-name <GROUP_NAME>`                                                                                                                                                                                                                                                           | Node group name. If not provided, the node will be added to the group of the active node. It is a mandatory argument for the first node of a group.                                                                                                              |
 | `--create-group`                                                                                                                                                                                                                                                                       | Set this flag to create the given group, if it is not already present. This will be true by default for the first node.                                                                                                                                          |
-| `--cluster-name <CLUSTER_NAME>`                                                                                                                                                                                                                                                       | Name of the cluster to join the node to. Defaults to `pgd`                                                                                                                                                                                                       |
-| `--cluster-dsn  <CLUSTER_DSN>`                                                                                                                                                                                                                                                        | A DSN which belongs to the active PGD cluster. When configuring the first node of a cluster, should point to the DSN for the first node.                                                                                                                         |
+| `--cluster-name <CLUSTER_NAME>`                                                                                                                                                                                                                                                       | Name of the cluster to join the node to. When setting up cluster for the first time this will be used to create the `parent node group`. Defaults to `pgd` if not specified.                                                                                                                                                                                                       |
+| `--cluster-dsn  <CLUSTER_DSN>`                                                                                                                                                                                                                                                        | A DSN which belongs to the active PGD cluster. This is not required when configuring the first node of a cluster, however is mandatory for subsequent nodes. Should point to the DSN of an existing active node.                                                                                                                         |
 | `--postgresql-conf <POSTGRESQL_CONF>`                                                                                                                                                                                                                                                 | Optional path of the `postgresql.conf` file to be used for the node.                                                                                                                                                                                               |
 | `--postgresql-auto-conf <POSTGRESQL_AUTO_CONF>`                                                                                                                                                                                                                     | Optional path of the `postgresql.auto.conf` file to be used for the node.                                                                                                                                                                                          |
 | `--hba-conf <HBA_CONF>`                                                                                                                                                                                                                                                               | Optional path of the `pg_hba.conf` file to be used for the node.                                                                                                                                                                                                   |
@@ -54,8 +58,8 @@ See also [Global Options](/pgd/latest/cli/command_ref/#global-options).
 
 ## Examples
 
-In these examples, we will set up a cluster with on three hosts, `host-1`, `host-2` and `host-3`, to create three nodes: `node-one`, `node-two`, and `node-three`.
-The three nodes will be data nodes, and part of a cluster named `dc1-cluster` with the group name `dc1`.
+In these examples, we will set up a cluster with on three hosts, `host-1`, `host-2` and `host-3`, to create three nodes: `node-1`, `node-2`, and `node-3`.
+The three nodes will be data nodes, and part of a cluster named `pgd` with the group name `group-1`.
 
 We recommend that you export the PGPASSWORD environment variable to avoid having to enter the password for the `pgdadmin` user each time you run a command. You can do this with the following command:
 
@@ -66,15 +70,15 @@ export PGPASSWORD=pgdsecret
 ### Configuring the first node
 
 ```shell
-pgd node node-one setup --dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb" \
+pgd node node-1 setup --dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb" \
 --listen-addr "localhost,host-1" \
 --group-name group-1 --cluster-name pgd \
 -D /var/lib/edb-pge/17/main
 ```
 
-Stepping through the command, we are setting up "node-one". The first option is the `--dsn` option, which is the connection string for the node. This is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`, which is a typical connection string for a local Postgres instance.
+Stepping through the command, we are setting up `node-1`. The first option is the `--dsn` option, which is the connection string for the node. This is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`, which is a typical connection string for a local Postgres instance.
 
-The `--listen-address` option is used to specify the address that the node will listen on for incoming connections. In this case, we are setting it to `localhost,host-1`, which means that the node will listen on both the localhost and the host-1 address.
+The `--listen-address` option is used to specify the address that the node will listen on for incoming connections. In this case, we are setting it to `localhost,host-1`, which means that the node will listen on both the localhost and the `host-1` address.
 
 This is the first node in the cluster, so we set the group name to `group-1` and the cluster name to `pgd` (which is actually the default). As this is the first node in the cluster, the `--create-group` option is automatically set.
 
@@ -86,21 +90,35 @@ The command will create the data directory and initialize the database correctly
 ### Configuring a second node
 
 ```shell
-pgd node node-two setup --dsn "host=host-2 port=5432 user=pgdadmin dbname=pgddb" \
+pgd node node-2 setup --dsn "host=host-2 port=5432 user=pgdadmin dbname=pgddb" \
 --listen-addr "localhost,host-2" \
 -D /var/lib/edb-pge/17/main
---cluster-dsn "host=host-1 port=5432 user=pgdadmin dbname=pgd"
+--cluster-dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb"
 ```
 
-This command is similar to the first node, but we are setting up "node-two". The `--dsn` option is the connection string for the node, which is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`. The `--cluster-dsn` option is the connection string for the first node in the cluster, which is used to join the cluster. In this case, we are setting it to `host=host-1 port=5432 user=pgdadmin dbname=pgd`, which is the connection string for the first node in the cluster.
+This command is similar to the first node, but we are setting up `node-2`. The `--dsn` option is the connection string for the node, which is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`. The `cluster-dsn` must point to an active node, it can point to connection manager, or proxy endpoint etc., CLI will get the real DSN of the node behind it. In this case, we are setting it to `host=host-1 port=5432 user=pgdadmin dbname=pgd`, which is the connection string for the first node in the cluster.
 
 ### Configuring a third node
 
 ```shell
-pgd node node-three setup --dsn "host=host-3 port=5432 user=pgdadmin dbname=pgddb" \
+pgd node node-3 setup --dsn "host=host-3 port=5432 user=pgdadmin dbname=pgddb" \
 --listen-addr "localhost,host-3" \
---cluster-dsn "host=host-1 port=5432 user=pgdadmin dbname=pgd" \
+--cluster-dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb" \
 -D /var/lib/edb-pge/17/main
 ```
 
-This command is similar to the second node, but we are setting up "node-three". The `--dsn` option is the connection string for the node, which is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`. The `--cluster-dsn` option is the connection string for the first node in the cluster, which is used to join the cluster. In this case, we are setting it to `host=host-1 port=5432 user=pgdadmin dbname=pgd`, which is the connection string for the first node in the cluster.
+This command is similar to the second node, but we are setting up `node-3`. The `--dsn` option is the connection string for the node, which is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`. The `cluster-dsn` must point to an active node, it can point to connection manager, or proxy endpoint etc., CLI will get the real DSN of the node behind it. In this case, we are setting it to `host=host-1 port=5432 user=pgdadmin dbname=pgd`, which is the connection string for the first node in the cluster.
+
+### Joining a parted and dropped node to the cluster
+
+```shell
+pgd node node-2 setup --dsn "host=host-2 port=5432 user=pgdadmin dbname=pgddb" \
+--listen-addr "localhost,host-2" \
+--cluster-dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb" \
+-D /var/lib/edb-pge/17/main
+```
+
+This command is similar to the setting up the subsequent nodes, but we are setting up `node-2` again. The `--dsn` option is the connection string for the node, which is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`. The `cluster-dsn` must point to an active node, it can point to connection manager, or proxy endpoint etc., CLI will get the real DSN of the node behind it. In this case, we are setting it to `host=host-1 port=5432 user=pgdadmin dbname=pgd`, which is the connection string for the first node in the cluster.
+
+This is useful when a node has been `parted` and `dropped` from the cluster for some activity like maintenance and needs to be rejoined to the cluster. The command will perform a logical join of the node to the cluster, which will create a new node in the cluster and start streaming replication from the remote node.
+
