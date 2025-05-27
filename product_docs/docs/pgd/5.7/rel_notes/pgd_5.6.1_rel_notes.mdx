@@ -1,0 +1,92 @@
+---
+title: EDB Postgres Distributed 5.6.1 release notes
+navTitle: Version 5.6.1
+originalFilePath: product_docs/docs/pgd/5.7/rel_notes/src/relnote_5.6.1.yml
+editTarget: originalFilePath
+---
+
+Released: 25 November 2024
+
+EDB Postgres Distributed 5.6.1 includes a number of enhancements and bug fixes.
+
+## Highlights
+
+- Postgres 17 support
+- ARM64 processor support
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Component</th><th>Version</th><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Added Postgres 17 support</summary><hr/><p>Support for Postgres 17 has been added for all flavors (PostgreSQL, EDB Postgres Extended,
+and EDB Postgres Advanced Server) starting with version 17.2.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Added ARM64 processor Support</summary><hr/><p>Support ARM architecture for EDB Postgres Distributed on Debian 12 and RHEL 9.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Component</th><th>Version</th><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Added <code>bdr.wait_node_confirm_lsn()</code>.</summary><hr/><p>The function <code>bdr.wait_node_confirm_lsn()</code> has been introduced to wait until a specific node
+reaches a designated Log Sequence Number (LSN). It first checks the <code>confirmed_flush_lsn</code> of
+the replication slot for the specified node. If that information is not available, the function
+connects to the node and queries <code>pg_replication_origin_progress()</code>, using the invoking node as
+the origin.
+If the <code>nodename</code> parameter is NULL, the function will wait for all nodes to reach the specified
+LSN. If the <code>target</code> LSN is NULL, it will wait for the current <code>wal_flush_lsn</code>.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Improvements made in SO Node Management and Progress Tracking.</summary><hr/><p>An update addresses the movement of group slots in SO nodes, ensuring they don't appear as peers in
+progress updates. Improvements include enhanced watermark management for SO leaders in the Optimized Topology
+configuration, where write leaders now include watermarks in their updates. Watermarks are broadcasted
+to simplify progress tracking on idle clusters. The peer progress mapping for SO nodes has been corrected,
+and the tap test for group slot movement has been revised.
+Additionally, the <code>bdr_get_all_origins</code> function now considers SO node origins.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>LSN Progress in Optimized Topology Configurations is now communicated.</summary><hr/><p>While there are no connections from non-leader data nodes to subscriber-only nodes in an optimized
+topology configuration, the LSN progress of all data nodes is periodically communicated to these
+subscriber-only nodes through logical replication.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Some DDL commands are now allowed by <code>bdr.permit_unsafe_commands</code> when set.</summary><hr/><p>The <code>bdr.permit_unsafe_commands</code> parameter now allows some DDL commands that were previously disallowed. Specifically <code>ALTER COLUMN...TYPE...USING</code> can now be permitted if the user knows the operation is safe.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Component</th><th>Version</th><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Addressed walsender crash that happend during configuration reload.</summary><hr/><p>Ensure that pglogical GUCs are overridden only when operating within the pglogical worker.
+If this is not the case, MyPGLogicalWorker will be NULL, resulting in a segmentation fault
+when the walsender attempts a configuration reload from the
+pgl_wait_for_standby_confirmation() function.</p>
+</details></td><td>42100</td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Fixed unintended eager connection related to consensus connections among Subscriber Only group members</summary><hr/><p>The msgbroker module used to establish consensus connections lazily, meaning that connections
+were created only when the first message was sent to a specific destination. This method
+negatively affected the latency of Raft leader elections. The behavior was modified to create
+connections to consensus peers eagerly. However, this change resulted in an unintended
+consequence: a fully meshed consensus network among subscriber-only nodes, which may conflict
+with customer network designs. This patch keeps the eager connection setup but limits it to
+voting nodes only, reverting to a lazy connection setup for non-voting nodes.</p>
+</details></td><td>42041</td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Fixed autopatition task scheduling.</summary><hr/><p>To improve reliability, shuffle the scheduling of autopartition tasks. This way, tasks
+that are prone to failure won't consistently impact the success of other tasks.</p>
+</details></td><td>41998</td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Fixed parting subscription with standbys.</summary><hr/><p>The parting subscription used to hang, failing to wait for standbys when the
+bdr.standby_slot_names parameter was defined.</p>
+</details></td><td>41821</td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Fixed parting SO node with multiple origins.</summary><hr/><p>All relevant origins must be removed when parting SO node.
+With Optimized Topology, parting an SO node should result in removing all origins it
+has, not just the one related to its SO group leader.
+When parting a data node, even though there is no subscription to it
+from SO node, the origin should be removed.
+DO not make SO node target of a part catchup subscription when Optimized Topology is enabled.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Stopped creation of slots for subscriber only nodes on witness nodes.</summary><hr/><p>Subscriber only nodes should not have slots on witness nodes.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.1</td><td><details><summary>Ensure no waiting for DEGRADE timeout when in an already degraded state.</summary><hr/><p>When using commit scope with DEGRADE clause, if system detects that it's in degraded state, transactions should start in the DEGRADE mode. This ensures that the timeout is not applied on every commit.</p>
+</details></td><td></td></tr>
+<tr><td>PGD Proxy</td><td>5.6.1</td><td><details><summary>Fixed routing strategy for read nodes.</summary><hr/><p>Corrected routing strategy for read nodes after a network partition.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+

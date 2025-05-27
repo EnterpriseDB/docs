@@ -1,0 +1,68 @@
+---
+title: Creating PGD nodes
+navTitle: Creating PGD nodes
+---
+
+Depending on your [selected deployment method](../deploy-config), you may or may not have to create PGD nodes manually. For example, if you are using [TPA](../deploy-config/deploy-tpa/deploying/) or the [EDB Postgres Distributed for Kubernetes](../deploy-config/deploy-kubernetes/), the nodes are created automatically. But if you are [manually deploying PGD](../deploy-config/deploy-manual/deploying/) or creating your own deployment method, you need to know how to create and configure a PGD node.
+
+## It's just Postgres
+
+A PGD node is just a Postgres instance with the BDR extension installed. The BDR extension enables bidirectional replication between nodes and is the foundation of PGD. 
+
+That means, in the most general terms, you can create a PGD node by installing Postgres and the BDR extension, and then configuring the node to connect to the other nodes in the PGD group. But there are some specifics to consider.
+
+## Which Postgres version?
+
+PGD is built on top of Postgres, so the distribution and version of Postgres you use for your PGD nodes is important. The version of Postgres you use must be compatible with the version of PGD you are using. You can find the compatibility matrix in the [release notes](/pgd/latest/rel_notes). Features and functionality in PGD may depend on the distribution of Postgres you are using. The [EDB Postgres Advanced Server](/epas/latest/) is the recommended distribution for PGD. PGD also supports [EDB Postgres Extended Server](/pge/latest/) and [Community Postgres](https://www.postgresql.org/). You can find out what features are available in each distribution in the Planning section's [Choosing a server](../planning/choosing_server) page.
+
+## Installing Postgres
+
+You must install your selected Postgres distribution on each node you are configuring. You can find installation instructions for each distribution in the [EDB Postgres Advanced Server documentation](/epas/latest/installing/), [EDB Postgres Extended Server documentation](/pge/latest/installing/), and the [Postgres installation documentation](/supported-open-source/postgresql/installing/). You can also refer to the [PGD manual installation guide](../deploy-config/deploy-manual/deploying/02-install-postgres) which covers the installation of Postgres.
+
+## Installing the BDR extension
+
+The BDR extension is the key to PGD's distributed architecture. You need to install the BDR extension on each node in your PGD cluster. The BDR extension is available from the EDB Postgres Distributed repository. You need to add the `postgres_distributed` repository to your package management system on Linux and then install the `edb-bdr` package. You can find the repository configuration instructions in the [PGD manual installation guide](../deploy-config/deploy-manual/deploying/03-configuring-repositories).
+
+Once the repository is configured, you can install the BDR package with your package manager. The package name is `edb-bdr5-<postgresversion>` where `<postgresversion>` is the version of Postgres you are using. For example, if you are using Postgres 13, the package name is `edb-bdr5-13`.
+
+### Configuring the database for PGD
+
+This process is specific to PGD and involves configuring the Postgres instance to work with the BDR extension and adjusting various settings to work with the PGD cluster. This process is also detailed in the [PGD manual installation guide](../deploy-config/deploy-manual/deploying/04-installing-software) The steps are as follows:
+
+  * Add the BDR extension `$libdir/bdr` at the start of the `shared_preload_libraries` setting in `postgresql.conf`.
+  * Set the `wal_level` GUC variable to `logical` in `postgresql.conf`.
+  * Turn on commit timestamp tracking by setting `track_commit_timestamp` to `'on'` in `postgresql.conf`.
+  * Increase the maximum worker processes to 16 or higher by setting `max_worker_processes` to `'16'` in `postgresql.conf`.<br/><br/>
+  !!! Note The `max_worker_processes` value
+  The `max_worker_processes` value is derived from the topology of the cluster, the number of peers, number of databases, and other factors. 
+  To calculate the needed value, see [Postgres configuration/settings](/pgd/latest/postgres-configuration/#postgres-settings).
+  The value of 16 was calculated for the size of cluster being deployed in this example. It must be increased for larger clusters.
+  !!!
+  * Set a password on the EnterprisedDB/Postgres user.
+  * Add rules to `pg_hba.conf` to allow nodes to connect to each other.
+    * Ensure that these lines are present in `pg_hba.conf`:
+    ```
+    host all all all md5
+    host replication all all md5
+    ```
+  * Add a `.pgpass` file to allow nodes to authenticate each other.
+    * Configure a user with sufficient privileges to log in to the other nodes.
+    * See [The Password File](https://www.postgresql.org/docs/current/libpq-pgpass.html) in the Postgres documentation for more on the `.pgpass` file. 
+
+Once these steps are complete, restart the Postgres instance to apply the changes.
+
+## Initializing a PGD node
+
+Log into the database instance you have configured and set up the BDR extension. 
+You can do this by running the `CREATE EXTENSION bdr;` command as super user in the database. 
+This command creates the BDR extension. 
+
+You also need to create a database within Postgres to use as PGD's replicated database. 
+You can do this with the `CREATE DATABASE` command. 
+The created database should be the name of the database that other nodes in the PGD cluster replicate. The convention is to name the database `bdrdb`.
+
+## Next steps
+
+The node is now configured and ready to be join a group, or start a group, in the PGD cluster.
+
+
