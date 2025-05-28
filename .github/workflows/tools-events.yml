@@ -1,0 +1,46 @@
+name: Forward key events to the docs-tools repository
+on:
+  pull_request:
+  push:
+  create:
+  delete:
+  release:
+jobs:
+  dispatch-events:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create event name
+        run: |
+          EVENT_PREFIX="docs-${GITHUB_REPOSITORY//\//-}"
+          echo EVENT_PREFIX="${EVENT_PREFIX@L}" >> $GITHUB_ENV
+      - name: Repository Dispatch
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.TOOLS_EVENT_SYNC_PAT }}
+          repository: enterprisedb/docs-tools
+          event-type: ${{ env.EVENT_PREFIX }}-${{ github.event_name }}
+          client-payload: |
+            {
+              "ref": "${{ github.head_ref || github.ref }}",
+              "ref_type": "${{ github.ref_type }}",
+              "ref_name": "${{ github.ref_name }}",
+              "repo": "${{ github.repository }}",
+              "sha": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+              "type": "${{ github.event_name }}",
+              "push": {
+                "before": "${{ github.event.before || '' }}",
+                "after": "${{ github.event.after || '' }}",
+                "created": "${{ github.event.created || false }}",
+                "deleted": "${{ github.event.deleted || false }}"
+              },
+              "action": "${{ github.event.action }}",
+              "number": "${{ github.event.number }}",
+              "release": {
+                "tag_name": "${{ github.event.release && github.event.release.tag_name || '' }}",
+                "id": "${{ github.event.release && github.event.release.id || '' }}",
+                "tag": "${{ github.event.release && github.event.release.tag_name || '' }}",
+                "name": "${{ github.event.release && github.event.release.name || '' }}",
+                "body": "${{ github.event.release && github.event.release.body || '' }}",
+                "draft": "${{ github.event.release && github.event.release.draft || false }}"
+              }
+            }

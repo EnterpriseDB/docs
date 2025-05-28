@@ -27,16 +27,24 @@ const FullCard = ({ card }) => {
         <p className="card-text">{card.description}</p>
 
         <div className="d-grid gap-2">
-          {card.items.map((child) => (
-            <Link
-              key={child.path}
-              to={child.path}
-              className="btn btn-link text-start p-0"
-            >
-              {child.navTitle || child.title}
-              {child.interactive && <KatacodaBadge />}
-            </Link>
-          ))}
+          {card.items.slice(0, 5).map(
+            (child, i) =>
+              (i === 4 && card.items.length > 5 && (
+                <Link to={card.path} className="btn btn-link text-start p-0">
+                  {`+ ${card.items.length - 4} more`}
+                </Link>
+              )) ||
+              ((i < 5 || (i === 4 && card.items.length <= 4)) && (
+                <Link
+                  key={child.path}
+                  to={child.path}
+                  className="btn btn-link text-start p-0"
+                >
+                  {child.navTitle || child.title}
+                  {child.interactive && <KatacodaBadge />}
+                </Link>
+              )),
+          )}
         </div>
       </div>
     </div>
@@ -54,16 +62,24 @@ const ExtraCard = ({ card }) => {
         <p className="card-text">{card.description}</p>
 
         <div className="d-grid gap-2">
-          {card.items.map((child) => (
-            <Link
-              key={child.path}
-              to={child.path}
-              className="btn btn-link text-start p-0"
-            >
-              {child.navTitle || child.title}
-              {child.interactive && <KatacodaBadge />}
-            </Link>
-          ))}
+          {card.items.slice(0, 5).map(
+            (child, i) =>
+              (i === 4 && card.items.length > 5 && (
+                <Link to={card.path} className="btn btn-link text-start p-0">
+                  {`+ ${card.items.length - 4} more`}
+                </Link>
+              )) ||
+              ((i < 5 || (i === 4 && card.items.length <= 4)) && (
+                <Link
+                  key={child.path}
+                  to={child.path}
+                  className="btn btn-link text-start p-0"
+                >
+                  {child.navTitle || child.title}
+                  {child.interactive && <KatacodaBadge />}
+                </Link>
+              )),
+          )}
         </div>
       </div>
     </div>
