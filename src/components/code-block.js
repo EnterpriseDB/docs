@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Button } from "react-bootstrap";
 import { Tooltip } from "react-bootstrap";
 import { OverlayTrigger } from "react-bootstrap";
+import { useLocation } from "@gatsbyjs/reach-router";
 
 const childToString = (child) => {
   if (typeof child === "string") {
@@ -22,12 +23,13 @@ const popExtraNewLines = (code) => {
   }
 };
 
-const splitChildrenIntoCodeAndOutput = (rawChildren) => {
+const splitChildrenIntoCodeAndOutput = (rawChildren, urlpath) => {
   if (!rawChildren) {
     return [[], []];
   }
 
-  const splitRegex = /(?:\s+|^)__OUTPUT__\s*(?:\n+|$)/;
+  // Simplified regex to split on the __OUTPUT__ marker
+  const splitRegex = /(?:\n|^)[ \t\f\v]*__OUTPUT__[ \t\f\v]*(?:\n|$)/;
   const code = [];
   const output = [];
 
@@ -40,6 +42,12 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
     if (splitFound) {
       // we've already split, toss it into output and move on
       output.push(childToString(child));
+      // warn if we do find another __OUTPUT__ marker - this is likely a mistake
+      if (splitRegex.test(output.at(-1)))
+        console.warn(
+          urlpath +
+            ": Found another __OUTPUT__ marker after the first one, this is likely a mistake.",
+        );
       continue;
     }
 
@@ -151,10 +159,11 @@ const OutputPre = ({ content }) => (
 );
 
 const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
+  const location = useLocation();
   const childIsComponent = !!children.props; // true in normal usage, false if raw <pre> tags are used
 
   const [codeContent, outputContent] = childIsComponent
-    ? splitChildrenIntoCodeAndOutput(children.props.children)
+    ? splitChildrenIntoCodeAndOutput(children.props.children, location.pathname)
     : [children, ""];
 
   const startWrapped = false;
