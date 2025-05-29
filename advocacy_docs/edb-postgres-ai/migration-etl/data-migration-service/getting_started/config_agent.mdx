@@ -1,0 +1,202 @@
+---
+title: "Configuring and running the EDB DMS Agent"
+deepToC: true
+---
+
+## Getting credentials
+
+1.  On the HCP Portal, select the project you are using for your migration activities.
+
+1.  Within your project, select **Migrate** > **Credentials**.
+
+1.  Select **Create Migration Credential**, enter a name for your credentials, and select **Create Migration Credential**.
+
+1.  After the credentials are generated, select **Download Credential**.
+    !!!note
+        This is the only opportunity you have to download the credentials. If you don't download them at this time, you will have to revoke them and create new credentials.
+
+1.  Unzip the downloaded zip file and copy the generated folder to the host where the agent is installed.
+
+## Configuring the agent
+
+1.  Ensure your machine has Java/OpenJDK 17 or later installed.
+
+1.  Open the EDB DMS Agent located in `/opt/cdcagent/run-cdcagent.sh` and ensure you have write permissions.
+
+1.  Set the variables according to your environment. Uncomment the lines as you edit or review them, the DMS can only perform migrations when all necessary values are provided. See [parameters](#parameters) for further guidance. The script is reproduced below.
+
+```shell
+#!/bin/bash -e
+# run_cdcagent.sh
+#
+# This script provides a convenient place to specify
+# environment variables used to configure the
+# EDB Data Migration Service Agent.
+#
+
+##########################################
+# DMS Agent General Configuration       #
+##########################################
+
+# This ID is used to identify DMS Agent
+# and is specified by the user.
+#export DBCONFIG_ID=
+
+# Determine the run mode of the DMS Agent
+# The run mode can be set to either 'reader' or 'writer'
+# 'reader' mode is used to read changes from a source database
+# 'writer' mode is used to write changes to a target database
+#export RUN_MODE=reader
+
+# This is the DMS backend service used by the Agent
+# Consult your system administrators
+#export RW_SERVICE_HOST=https://${RW_SERVICE_HOST}/transporter
+
+##########################################
+# DMS Agent TLS Configuration           #
+##########################################
+
+# You need to create migration credentials in EDB Postgres AI platform
+# and set set the path of the credentials directory
+#export CREDENTIAL_DIRECTORY_PATH=$HOME/credentials
+
+##########################################
+# DMS Agent DB Configuration     #
+##########################################
+
+# A sample configuration to create a single postgres database connection:
+#export DBCONFIG_DATABASES_0__TYPE=POSTGRES
+#export DBCONFIG_DATABASES_0__HOSTNAME=localhost
+#export DBCONFIG_DATABASES_0__PORT=5432
+# The CATALOG is the database name
+#export DBCONFIG_DATABASES_0__CATALOG=source
+#export DBCONFIG_DATABASES_0__USERNAME=postgres
+# The password env can be set without specifying it here
+# but the env structure looks like this
+#export DBCONFIG_DATABASES_0__PASSWORD=password
+
+# You can increase the index to configure more than
+# one database for the DMS Agent
+#export DBCONFIG_DATABASES_1__TYPE=ORACLE
+#export DBCONFIG_DATABASES_1__HOSTNAME=localhost
+#export DBCONFIG_DATABASES_1__PORT=1521
+# The CATALOG is the database name
+#export DBCONFIG_DATABASES_1__CATALOG=ORCLCDB/ORCLPDB1
+#export DBCONFIG_DATABASES_1__USERNAME=oracle
+# The password env can be set without specifying it here
+# but the env structure looks like this
+#export DBCONFIG_DATABASES_1__PASSWORD=password
+
+##########################################
+# Optional Parameters Below              #
+##########################################
+
+# FIPS mode can be enabled by setting the FIPS_MODE env variable to true
+#export FIPS_MODE=true
+
+# Configure logging
+# Generic loglevel
+#export QUARKUS_LOG_LEVEL=DEBUG
+# Loglevel for a single package
+#export QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL=DEBUG
+
+cd "$(dirname "$0")"
+
+echo "Starting in mode: $RUN_MODE"
+
+case "$RUN_MODE" in
+  reader)
+    java -jar ./reader/quarkus-run.jar
+    ;;
+  writer)
+    java -jar ./writer/quarkus-run.jar
+    ;;
+  *)
+    echo "Unknown RUN_MODE: $RUN_MODE"
+    exit 1
+    ;;
+esac
+
+```
+
+## Parameters
+
+### DMS Agent general configuration
+
+These parameters define the information the EDB DMS Agent requires to access the HCP instance and project that you are using for the migration.
+
+#### `DBCONFIG_ID`
+
+This is the name you assign to identify a source/destination. This name will later appear as a _destination_ in the **Migrate** > **Sources** or **Migrate** > **Destinations** section of the HCP Portal.
+
+Consider the following ID guidelines:
+
+- The maximum character length for the ID is 255 characters.
+- You can use lowercase and uppercase characters, numbers, underscores(_) and hyphens(-) for the ID. Other special characters are not supported.
+- The ID must be unique within a project. Do not use the same ID for two or more source/destinations in the same project.
+
+#### `RUN_MODE`
+This is the run mode of the EDB DMS Agent. Set it to `reader` if you are configuring the EDB DMS Reader, or to `writer` if you are configuring the EDB DMS Writer.
+*Configure and run the EDB DMS Writer only if the destination for your migration is a self-managed Postgres database.
+
+#### `RW_SERVICE_HOST`
+
+Specifies the URL of the service that will host the migration. Set `RW_SERVICE_HOST` to the domain name or host associated with the HCP ingress.
+
+Derive `RW_SERVICE_HOST` from the `TRANSPORTER_RW_SERVICE_DOMAIN_NAME` that was assigned by the administrators or installers of your HCP instance via the `values.yaml` file. Alternatively, derive `RW_SERVICE_HOST` from the URL you use to access the HCP portal.
+
+For example, if the URL for an HCP Portal is:
+
+`https://portal.foo-bar.enterprise.network`
+
+The `RW_SERVICE_HOST` will be:
+
+`https://transporter-rw-service.foo-bar.enterprise.network/transporter`
+
+where you replace `portal` with `transporter-rw-service` and add `/transporter` at the end of the endpoint.
+
+#### `CREDENTIAL_DIRECTORY_PATH`
+
+Directory path to the credential you downloaded from the HCP Portal.
+
+### DMS Agent database configuration
+
+These parameters (`DBCONFIG_DATABASES` section) define a list of source/destination database information you require for the EDB DMS Agent to be able to connect to the correct database for the migration.
+
+You can configure the EDB DMS Agent to migrate multiple databases. The `DBCONFIG_DATABASES_0__TYPE` section delimits the information for the first database. You can use `DBCONFIG_DATABASES_1__TYPE` to provide data for a second database. Add more sections to the EDB DMS Agent (`DBCONFIG_DATABASES_2__TYPE`, `DBCONFIG_DATABASES_3__TYPE`) by increasing the index manually.
+
+#### `DBCONFIG_DATABASES_0__TYPE`
+
+This is the source/target database type. EDB DMS reader supports `ORACLE` and `POSTGRES`. EDB DMS Writer supports `POSTGRES`.
+
+#### `DBCONFIG_DATABASES_0__HOSTNAME`
+
+The hostname of the source/target database.
+
+#### `DBCONFIG_DATABASES_0__PORT`
+
+The port of the source/target database.
+
+#### `DBCONFIG_DATABASES_0__CATALOG`
+
+The database name in the source/target database server.
+
+#### `DBCONFIG_DATABASES_0__USERNAME`
+
+The database username of the source/target database.
+
+#### `DBCONFIG_DATABASES_0__PASSWORD`
+
+The password for the database username of the source/target database.
+
+## Running the EDB DMS Agent
+
+1.  Start the agent:
+
+```shell
+cdcagent
+```
+
+1.  Go to the HCP Portal, and verify that a source/destination with the `DBCONFIG_ID` name is displayed in **Migrate** > **Sources** or **Migrate** > **Destinations**.
+
+You can select this source/destination for your [migration](create_migration).
