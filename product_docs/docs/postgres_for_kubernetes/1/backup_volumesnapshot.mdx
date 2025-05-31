@@ -1,14 +1,14 @@
 ---
-title: 'Backup on volume snapshots'
-originalFilePath: 'src/backup_volumesnapshot.md'
+title: 'Appendix A - Backup on volume snapshots'
+originalFilePath: 'src/appendixes/backup_volumesnapshot.md'
 ---
 
-!!! Warning
-    As noted in the [backup document](backup.md), a cold snapshot explicitly
-    set to target the primary will result in the primary being fenced for
-    the duration of the backup, rendering the cluster read-only during that
-    For safety, in a cluster already containing fenced instances, a cold
-    snapshot is rejected.
+
+
+!!! Important
+    Please refer to the official Kubernetes documentation for a list of all
+    the supported [Container Storage Interface (CSI) drivers](https://kubernetes-csi.github.io/docs/drivers.html)
+    that provide snapshotting capabilities.
 
 EDB Postgres for Kubernetes is one of the first known cases of database operators that
 directly leverages the Kubernetes native Volume Snapshot API for both
@@ -55,7 +55,7 @@ volumes of a given storage class, and managed as `VolumeSnapshot` and
 !!! Important
     It is your responsibility to verify with the third party vendor
     that volume snapshots are supported. EDB Postgres for Kubernetes only interacts
-    with the Kubernetes API on this matter and we cannot support issues
+    with the Kubernetes API on this matter, and we cannot support issues
     at the storage level for each specific CSI driver.
 
 ## How to configure Volume Snapshot backups
@@ -89,18 +89,21 @@ spec:
     # Volume snapshot backups
     volumeSnapshot:
        className: @VOLUME_SNAPSHOT_CLASS_NAME@
-    # WAL archive
-    barmanObjectStore:
-       # ...
+       
+  plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    isWALArchiver: true
+    parameters:
+      barmanObjectName: @OBJECTSTORE_NAME@
 ```
 
 As you can see, the `backup` section contains both the `volumeSnapshot` stanza
 (controlling physical base backups on volume snapshots) and the
-`barmanObjectStore` one (controlling the [WAL archive](wal_archiving.md)).
+`plugins` one (controlling the [WAL archive](wal_archiving.md)).
 
 !!! Info
-    Once you have defined the `barmanObjectStore`, you can decide to use
-    both volume snapshot and object store backup strategies simultaneously
+    Once you have defined the `plugin`, you can decide to use
+    both volume snapshot and plugin backup strategies simultaneously
     to take physical backups.
 
 The `volumeSnapshot.className` option allows you to reference the default
@@ -117,6 +120,13 @@ Once a cluster is defined for volume snapshot backups, you need to define
 a `ScheduledBackup` resource that requests such backups on a periodic basis.
 
 ## Hot and cold backups
+
+!!! Warning
+    As noted in the [backup document](backup.md), a cold snapshot explicitly
+    set to target the primary will result in the primary being fenced for
+    the duration of the backup, making the cluster read-only during this
+    period. For safety, in a cluster already containing fenced instances, a cold
+    snapshot is rejected.
 
 By default, EDB Postgres for Kubernetes requests an online/hot backup on volume snapshots, using the
 [PostgreSQL defaults of the low-level API for base backups](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-LOWLEVEL-BASE-BACKUP):
@@ -245,7 +255,95 @@ referenced in the `.spec.backup.volumeSnapshot.className` option.
 Please refer to the [Kubernetes documentation on Volume Snapshot Classes](https://kubernetes.io/docs/concepts/storage/volume-snapshot-classes/)
 for details on this standard behavior.
 
-## Example
+## Backup Volume Snapshot Deadlines
+
+EDB Postgres for Kubernetes supports backups using the volume snapshot method. In some
+environments, volume snapshots may encounter temporary issues that can be
+retried.
+
+The `backup.k8s.enterprisedb.io/volumeSnapshotDeadline` annotation defines how long
+EDB Postgres for Kubernetes should continue retrying recoverable errors before marking the
+backup as failed.
+
+You can add the `backup.k8s.enterprisedb.io/volumeSnapshotDeadline` annotation to both
+`Backup` and `ScheduledBackup` resources. For `ScheduledBackup` resources, this
+annotation is automatically inherited by any `Backup` resources created from
+the schedule.
+
+If not specified, the default retry deadline is **10 minutes**.
+
+### Error Handling
+
+When a retryable error occurs during a volume snapshot operation:
+
+1.  EDB Postgres for Kubernetes records the time of the first error.
+2.  The system retries the operation every **10 seconds**.
+3.  If the error persists beyond the specified deadline (or the default 10
+    minutes), the backup is marked as **failed**.
+
+### Retryable Errors
+
+EDB Postgres for Kubernetes treats the following types of errors as retryable:
+
+-   **Server timeout errors** (HTTP 408, 429, 500, 502, 503, 504)
+-   **Conflicts** (optimistic locking errors)
+-   **Internal errors**
+-   **Context deadline exceeded errors**
+-   **Timeout errors from the CSI snapshot controller**
+
+### Examples
+
+You can add the annotation to a `ScheduledBackup` resource as follows:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: ScheduledBackup
+metadata:
+  name: daily-backup-schedule
+  annotations:
+    backup.k8s.enterprisedb.io/volumeSnapshotDeadline: "20"
+spec:
+  schedule: "0 0 * * *"
+  backupOwnerReference: self
+  method: volumeSnapshot
+  # other configuration...
+```
+
+When you define a `ScheduledBackup` with the annotation, any `Backup` resources
+created from this schedule automatically inherit the specified timeout value.
+
+In the following example, all backups created from the schedule will have a
+30-minute timeout for retrying recoverable snapshot errors.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: ScheduledBackup
+metadata:
+  name: weekly-backup
+  annotations:
+    backup.k8s.enterprisedb.io/volumeSnapshotDeadline: "30"
+spec:
+  schedule: "0 0 * * 0"  # Weekly backup on Sunday
+  method: volumeSnapshot
+  cluster:
+    name: my-postgresql-cluster
+```
+
+Alternatively, you can add the annotation directly to a `Backup` Resource:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Backup
+metadata:
+  name: my-backup
+  annotations:
+    backup.k8s.enterprisedb.io/volumeSnapshotDeadline: "15"
+spec:
+  method: volumeSnapshot
+  # other backup configuration...
+```
+
+## Example of Volume Snapshot Backup
 
 The following example shows how to configure volume snapshot base backups on an
 EKS cluster on AWS using the `ebs-sc` storage class and the `csi-aws-vsc`
@@ -278,13 +376,12 @@ spec:
   backup:
     volumeSnapshot:
        className: csi-aws-vsc
-    barmanObjectStore:
-      destinationPath: s3://@BUCKET_NAME@/
-      s3Credentials:
-        inheritFromIAMRole: true
-      wal:
-        compression: gzip
-        maxParallel: 2
+
+  plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    isWALArchiver: true
+    parameters:
+      barmanObjectName: @OBJECTSTORE_NAME@
 
   serviceAccountTemplate:
     metadata:
