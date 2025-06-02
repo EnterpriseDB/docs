@@ -3,6 +3,8 @@ title: 'PostgreSQL Configuration'
 originalFilePath: 'src/postgresql_conf.md'
 ---
 
+
+
 Users that are familiar with PostgreSQL are aware of the existence of the
 following three files to configure an instance:
 
@@ -71,7 +73,7 @@ operator by applying the following sections in this order:
 The **global default parameters** are:
 
 ```text
-archive_mode = 'on'
+archive_timeout = '5min'
 dynamic_shared_memory_type = 'posix'
 full_page_writes = 'on'
 logging_collector = 'on'
@@ -84,9 +86,11 @@ log_truncate_on_rotation = 'false'
 max_parallel_workers = '32'
 max_replication_slots = '32'
 max_worker_processes = '32'
-shared_memory_type = 'mmap' # for PostgreSQL >= 12 only
-wal_keep_size = '512MB' # for PostgreSQL >= 13 only
-wal_keep_segments = '32' # for PostgreSQL <= 12 only
+shared_memory_type = 'mmap'
+shared_preload_libraries = ''
+ssl_max_protocol_version = 'TLSv1.3'
+ssl_min_protocol_version = 'TLSv1.3'
+wal_keep_size = '512MB'
 wal_level = 'logical'
 wal_log_hints = 'on'
 wal_sender_timeout = '5s'
@@ -134,16 +138,27 @@ Since the fixed parameters are added at the end, they can't be overridden by the
 user via the YAML configuration. Those parameters are required for correct WAL
 archiving and replication.
 
-### Replication settings
+### Replication Settings
 
-The `primary_conninfo`, `restore_command`,  and `recovery_target_timeline`
-parameters are managed automatically by the operator according to the state of
-the instance in the cluster.
+The `primary_conninfo`, `restore_command`, and `recovery_target_timeline`
+parameters are automatically managed by the operator based on the instance's
+role within the cluster. These parameters are effectively applied only when the
+instance is operating as a replica.
 
 ```text
-primary_conninfo = 'host=cluster-example-rw user=postgres dbname=postgres'
+primary_conninfo = 'host=<PRIMARY> user=postgres dbname=postgres'
 recovery_target_timeline = 'latest'
 ```
+
+The [`STANDBY_TCP_USER_TIMEOUT` operator configuration setting](operator_conf.md#available-options),
+if specified, sets the `tcp_user_timeout` parameter on all standby instances
+managed by the operator.
+
+The `tcp_user_timeout` parameter determines how long transmitted data can
+remain unacknowledged before the TCP connection is forcibly closed. Adjusting
+this value allows you to fine-tune the responsiveness of standby instances to
+network disruptions. For more details, refer to the
+[PostgreSQL documentation](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-TCP-USER-TIMEOUT).
 
 ### Log control settings
 
@@ -218,6 +233,12 @@ SELECT datname FROM pg_database WHERE datallowconn
 
 !!! Note
     The above query also includes template databases like `template1`.
+
+!!! Important
+    With the introduction of [declarative extensions](declarative_database_management.md#managing-extensions-in-a-database)
+    in the `Database` CRD, you can now manage extensions directly. As a result,
+    the managed extensions feature may undergo significant changes in future
+    versions of EDB Postgres for Kubernetes, and some functionalities might be deprecated.
 
 #### Enabling `auto_explain`
 
