@@ -402,7 +402,7 @@ const Page = () => {
             />
 
             <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
-              EDB Postgres® AI for CloudNativePG Global Cluster™
+              EDB Postgres® AI for CloudNativePG™ Global Cluster
               <br />
               <small>
                 <small>Formerly EDB Postgres Distributed for Kubernetes</small>
@@ -410,7 +410,7 @@ const Page = () => {
             </BannerWideLink>
 
             <BannerWideLink to="/postgres_for_kubernetes/latest/">
-              EDB Postgres® AI for CloudNativePG Cluster™
+              EDB Postgres® AI for CloudNativePG™ Cluster
               <br />
               <small>
                 <small>Formerly EDB Postgres for Kubernetes</small>
