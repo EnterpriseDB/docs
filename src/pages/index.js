@@ -418,7 +418,7 @@ const Page = () => {
             </BannerWideLink>
 
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">
-              CloudNativePG
+              CloudNativePG™
             </BannerWideLink>
 
             <BannerDivider
