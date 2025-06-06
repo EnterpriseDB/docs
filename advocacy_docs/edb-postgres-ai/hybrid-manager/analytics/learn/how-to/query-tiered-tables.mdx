@@ -4,89 +4,135 @@ navTitle: Query Tiered Tables
 description: Learn how to query Tiered Tables from PGD and Lakehouse clusters in Hybrid Manager.
 ---
 
-# Query Tiered Tables from PGD and Lakehouse
-
-Once Tiered Tables are implemented, you can query both the "hot" data (local PGD partitions) and "cold" data (offloaded Iceberg partitions) transparently.
+Once Tiered Tables are implemented, you can query both **hot data** (local PGD partitions) and **cold data** (offloaded Iceberg partitions) transparently.
 
 This guide explains:
 
 - How to query Tiered Tables from PGD
 - How to query Tiered Tables from a Lakehouse cluster
-- How the planner routes queries
+- How the query planner routes queries
 - How to query offloaded-only data
+
+For background, see [Tiered Tables in Hybrid Manager](../tiered_tables).
+
+---
+
+## Goals
+
+After completing this guide, you will:
+
+* Be able to query Tiered Tables transparently from PGD and Lakehouse
+* Understand how the query planner accesses hot and cold data
+* Know how to query **offloaded-only** partitions directly
+* Know when to use the offloaded view for reports and analysis
+
+---
+
+## When to use this
+
+You should follow this guide when:
+
+- You have implemented Tiered Tables in Hybrid Manager
+- You want to validate that hot + cold data is accessible in PGD queries
+- You want to query only offloaded data from PGD or Lakehouse
+- You want to optimize reports against historical (cold) data
+
+---
 
 ## Prerequisites
 
-- BDR AutoPartition with `analytics_offload_period` configured on your PGD table
+- BDR AutoPartition with `analytics_offload_period` configured
 See [Configure BDR AutoPartition with analytics offload](./configure-tiered-autopartition)
+
 - PGD node group offload configured
 See [Configure PGD node group for analytics offload](./configure-tiered-offload)
-- Optional: Lakehouse cluster connected to your Iceberg catalog
-See [Query Iceberg tables from a Lakehouse cluster](../how-to/query-lakehouse-tables)
 
-## Querying the parent partitioned table in PGD
+- (Optional) Lakehouse cluster connected to your Iceberg catalog
+See [Query existing Apache Iceberg tables](./query-iceberg-existing-tables)
 
-The parent partitioned table (e.g. `public.application_logs`) is the unified interface for all data.
+---
 
-Example:
+## Querying the parent table in PGD
 
-SELECT log_level, COUNT(*)
+The **parent partitioned table** (e.g. `public.application_logs`) is the unified interface for hot + cold data.
+
+Example query:
+
+```SELECT log_level, COUNT(*)
 FROM public.application_logs
 WHERE event_timestamp >= '2023-06-01' AND event_timestamp < '2024-06-01'
 GROUP BY log_level;
+```
 
 **What happens under the hood:**
 
-- The planner will access local PGD partitions for "hot" data.
-- The planner will access Iceberg offloaded partitions via PGAA for "cold" data.
-- This is transparent to the query — no special syntax required.
+- Planner accesses **local PGD partitions** for hot data
+- Planner accesses **Iceberg offloaded partitions** via PGAA for cold data
+- Transparent to your query — no special syntax required
 
-You can confirm planner activity via EXPLAIN ANALYZE.
+Tip: Run EXPLAIN ANALYZE to observe planner behavior.
+
+---
 
 ## Querying offloaded data only (PGD)
 
-PGAA creates a **view** to access offloaded partitions directly:
+PGAA creates an **offloaded view** automatically:
 
-```SELECT * FROM public.application_logs_offloaded;
-```
-This view queries all offloaded partitions and excludes hot partitions.
+SELECT * FROM public.application_logs_offloaded;
+
+This view queries **only offloaded partitions**.
 
 Example:
 
-```SELECT log_level, COUNT(*) FROM public.application_logs_offloaded;
+```SELECT log_level, COUNT(*)
+FROM public.application_logs_offloaded;
 ```
-Use this if you want to query only the cold tier for reports or storage analysis.
+
+When to use the offloaded view:
+
+- Reports targeting **cold / historical** data only
+- Queries where you want to avoid scanning hot partitions
+- Testing that offload is working as expected
+
+---
 
 ## Querying offloaded data from Lakehouse
 
-If your PGD offload uses a catalog (recommended), attach the same catalog in your Lakehouse cluster:
+If PGD offload uses a catalog (recommended), attach the same catalog in your Lakehouse cluster:
 
 ```SELECT pgaa.add_catalog(...);
-```
 
-```
 SELECT pgaa.attach_catalog(...);
 ```
 
 Then query Iceberg tables directly:
 
+```SELECT * FROM iot_data.application_logs_part_2023_jan;
 ```
-SELECT * FROM iot_data.application_logs_part_2023_jan;
--- or use PGAA reader tables if needed
-```
+Alternatively, you can replicate the `application_logs_offloaded` view logic from PGD into Lakehouse:
 
-You can also replicate the `application_logs_offloaded` view logic from PGD to your Lakehouse cluster to match the same view experience.
+- Create a view that selects all catalog-managed offloaded partitions
+- Useful for BI tools to match the PGD experience
+
+---
 
 ## Notes on planner behavior
 
-- The parent table is always the recommended interface for most queries.
-- The planner will push down WHERE clauses to optimize access to PGD vs Iceberg.
-- For very large time windows, using the offloaded view can reduce planner overhead.
-- The offloaded view only works if AutoPartition was configured with `analytics_offload_period`.
+- The **parent table** is always the default recommended interface
+- Planner automatically optimizes access to PGD vs Iceberg partitions
+- Queries with **wide time windows** may benefit from targeting `application_logs_offloaded`
+- The offloaded view is only created if AutoPartition was configured with `analytics_offload_period`
 
-## Related How-Tos
+---
 
-- [Configure PGFS storage for Tiered Tables](./configure-tiered-pgfs)
-- [Configure PGD node group for analytics offload](./configure-tiered-offload)
-- [Configure BDR AutoPartition with analytics offload](./configure-tiered-autopartition)
-- [Monitor Tiered Tables status and storage savings](./monitor-tiered-tables)
+## Next steps
+
+Now that you have queried Tiered Tables:
+
+- You can [Monitor Tiered Tables status and storage savings](./monitor-tiered-tables) to track partition movement and space savings
+- You can [Offload additional PGD data to Apache Iceberg](./offload-pgd-to-iceberg) for broader historical coverage
+- You can [Query existing Apache Iceberg tables](./query-iceberg-existing-tables) to integrate with external tools and BI platforms
+
+---
+
+For a broader architecture view, see [Analytics in Hybrid Manager](../index).
