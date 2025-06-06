@@ -1,0 +1,92 @@
+---
+title: Query Tiered Tables from PGD and Lakehouse
+navTitle: Query Tiered Tables
+description: Learn how to query Tiered Tables from PGD and Lakehouse clusters in Hybrid Manager.
+---
+
+# Query Tiered Tables from PGD and Lakehouse
+
+Once Tiered Tables are implemented, you can query both the "hot" data (local PGD partitions) and "cold" data (offloaded Iceberg partitions) transparently.
+
+This guide explains:
+
+- How to query Tiered Tables from PGD
+- How to query Tiered Tables from a Lakehouse cluster
+- How the planner routes queries
+- How to query offloaded-only data
+
+## Prerequisites
+
+- BDR AutoPartition with `analytics_offload_period` configured on your PGD table
+See [Configure BDR AutoPartition with analytics offload](./configure-tiered-autopartition)
+- PGD node group offload configured
+See [Configure PGD node group for analytics offload](./configure-tiered-offload)
+- Optional: Lakehouse cluster connected to your Iceberg catalog
+See [Query Iceberg tables from a Lakehouse cluster](../how-to/query-lakehouse-tables)
+
+## Querying the parent partitioned table in PGD
+
+The parent partitioned table (e.g. `public.application_logs`) is the unified interface for all data.
+
+Example:
+
+SELECT log_level, COUNT(*)
+FROM public.application_logs
+WHERE event_timestamp >= '2023-06-01' AND event_timestamp < '2024-06-01'
+GROUP BY log_level;
+
+**What happens under the hood:**
+
+- The planner will access local PGD partitions for "hot" data.
+- The planner will access Iceberg offloaded partitions via PGAA for "cold" data.
+- This is transparent to the query — no special syntax required.
+
+You can confirm planner activity via EXPLAIN ANALYZE.
+
+## Querying offloaded data only (PGD)
+
+PGAA creates a **view** to access offloaded partitions directly:
+
+```SELECT * FROM public.application_logs_offloaded;
+```
+This view queries all offloaded partitions and excludes hot partitions.
+
+Example:
+
+```SELECT log_level, COUNT(*) FROM public.application_logs_offloaded;
+```
+Use this if you want to query only the cold tier for reports or storage analysis.
+
+## Querying offloaded data from Lakehouse
+
+If your PGD offload uses a catalog (recommended), attach the same catalog in your Lakehouse cluster:
+
+```SELECT pgaa.add_catalog(...);
+```
+
+```
+SELECT pgaa.attach_catalog(...);
+```
+
+Then query Iceberg tables directly:
+
+```
+SELECT * FROM iot_data.application_logs_part_2023_jan;
+-- or use PGAA reader tables if needed
+```
+
+You can also replicate the `application_logs_offloaded` view logic from PGD to your Lakehouse cluster to match the same view experience.
+
+## Notes on planner behavior
+
+- The parent table is always the recommended interface for most queries.
+- The planner will push down WHERE clauses to optimize access to PGD vs Iceberg.
+- For very large time windows, using the offloaded view can reduce planner overhead.
+- The offloaded view only works if AutoPartition was configured with `analytics_offload_period`.
+
+## Related How-Tos
+
+- [Configure PGFS storage for Tiered Tables](./configure-tiered-pgfs)
+- [Configure PGD node group for analytics offload](./configure-tiered-offload)
+- [Configure BDR AutoPartition with analytics offload](./configure-tiered-autopartition)
+- [Monitor Tiered Tables status and storage savings](./monitor-tiered-tables)

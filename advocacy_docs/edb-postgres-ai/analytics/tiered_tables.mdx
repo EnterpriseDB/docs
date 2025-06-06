@@ -1,63 +1,120 @@
 ---
-title: PGAIHM tiered tables
-navTitle: Tiered tables
-
+title: Tiered Tables
+navTitle: Tiered Tables
+description: Understand how Tiered Tables combine PGD and Postgres Lakehouse to manage cost-effective, scalable time-series data analytics.
 ---
 
-## Overview
+# Tiered Tables
 
-Tiered tables in PGAIHM are used for archiving cold data. Tiered tables leverage the EDB Postgres Distributed (PGD) autopartition feature to manage the movement of data between transactional (hot) storage and analytical (cold) storage. The goal is to provide flexibility in managing data aging, allowing both automated and manual control over the offloading process.
+Tiered Tables combine EDB Postgres Distributed (PGD) and EDB Postgres Lakehouse to provide a scalable and cost-efficient strategy for managing large datasets, especially time-series data.
 
-## Topologies
+Tiered Tables automatically partition data and offload older partitions to object storage, optimizing storage costs and supporting both operational and analytical access.
 
-Tiered tables operate in a PGD environment. The underlying topology involves:
+For configuration through Hybrid Manager (HM), see [Implementing Tiered Tables in EDB HM](../../hm_analytics_spoke_root_v2).
 
--   **Partitioned tables:** Data is stored in partitioned tables, which are a collection of regular PostgreSQL tables.
--   **Transactional and analytical storage:** Some partitions reside in transactional storage (heap), while others are offloaded to analytical storage (PGA).
--   **Object storage:** Object storage is used to store offloaded data.
+## What are Tiered Tables
 
-## Use cases
+Tiered Tables use time-based partitioning to manage large tables efficiently. Older, less frequently accessed partitions ("cold" data) are automatically moved from transactional storage to object storage, while recent ("hot") data remains in transactional Postgres nodes.
 
-You can use tiered tables for the following use cases:
+This approach helps balance performance, cost, and long-term data retention requirements.
 
--   **Data archiving:** Move cold data to less expensive storage to optimize performance and cost.
--   **Time-based data management:** Roll off older data based on timeframes (for example, monthly, yearly).
--   **Compliance:** Retain data for long-term storage while keeping transactional tables small.
--   **Query optimization:** Improve the performance of analytical queries by using data in analytical storage.
+### Key components
 
-## Requirements
+- **PGD AutoPartition:** Automates time-based partitioning and lifecycle policies
+- **Lakehouse nodes:** Provide scalable compute for querying offloaded partitions
+- **Iceberg format:** Stores cold partitions in object storage in a queryable format
+- **PGAA:** Provides unified SQL access across storage layers
 
-The following requirements apply to tiered tables:
+Related concepts:
+- [Generic concepts - data tiering](../../explained/generic-concepts#data-tiering)
+- [Analytics Accelerator concepts - PGD and tiered tables](../../analytics-concepts#edb-postgres-distributed-pgd-and-tiered-tables)
 
--   Tiered tables rely on PGD's autopartition feature.
--   Object storage is necessary for storing offloaded data.
+## How Tiered Tables work
 
-## Recommendations
+### Partitioning
 
-The following recommendations apply when using tiered tables:
+PGD AutoPartition manages partitions automatically based on a defined time interval (for example, monthly partitions for a sensor readings table).
 
--   Optimize queries to avoid performance bottlenecks when querying across transactional and analytical tables.
--   Carefully plan the offloading strategy based on query patterns and data access frequency.
--   Use automatic offloading for routine tasks and manual control for specific use cases.
--   Coordinate the lifecycle of the object storage with the PGD database lifecycle.
--   Evaluate using external systems to query offloaded data directly.
--   Be aware of potential data conflicts during restore operations and plan accordingly.
--   Implement processes to identify and manage orphaned tables in object storage.  Restoring to a point in time can lead to orphaned tables in object storage. Point-in-time recovery restores the metadata, but inconsistencies between the object store and the restored database can occur.
+### Data ingestion
 
-## Using
+New data is written to hot partitions on transactional storage, ensuring optimal performance for operational queries and updates.
 
--   **Automatic offloading:** Configure the `offload_period` parameter to enable automatic offloading of partitions.
--   **Manual offloading:** Use commands to manually offload tables to analytical storage.
--   **Table inspection:** Use `\\d+` in psql to view table details and identify the partitions in heap or PGA storage.
--   **Data retrieval:** Query analytical data directly using another system, as it's stored in Iceberg tables.
--   **Data Modification:** To update offloaded data, restore the partition, perform the updates, and offload it again.
+### Offload policy
 
-## Glossary
+A configured `analytics_offload_period` defines when a partition becomes cold and eligible for offloading.
 
--   **Tiered tables:** A feature for managing data aging and offloading cold data.
--   **PGD:** EDB Postgres Distributed.
--   **Autopartition:** A PGD feature that automatically manages table partitions.
--   **Heap:** Storage for transactional data.
--   **PGA:** Storage for analytical (cold) data.
--   **Iceberg tables:** The format in which offloaded data is stored.
--   **Offload period:** A parameter that defines how often data is automatically offloaded.
+### Automatic offloading
+
+When a partition exceeds the offload threshold:
+
+- The partition is copied to object storage (typically as an Iceberg table).
+- The local transactional copy can be truncated or switched to PGAA access mode, depending on the configuration.
+
+### Transparent querying
+
+Queries on the parent partitioned table can transparently access both hot and cold partitions:
+
+- Hot partitions remain on transactional storage.
+- Cold partitions are accessed via Lakehouse nodes and PGAA.
+
+Optionally, views (such as `yourtable_offloaded`) can provide queries targeted only at cold data.
+
+## Benefits
+
+- **Storage cost reduction:** Older data is moved to cost-effective object storage.
+- **Improved transactional performance:** Smaller hot partitions improve DML, backup, and maintenance performance.
+- **Historical data access:** Cold data remains queryable through Lakehouse nodes.
+- **Automated data lifecycle management:** AutoPartition automates partition creation and offloading.
+- **Scalable analytics:** Lakehouse nodes support large-scale querying of cold data.
+- **Simplified architecture:** One Postgres platform manages both operational and historical analytics.
+
+## Common use cases
+
+- **Time-series data:** Logs, telemetry, IoT sensor data, application events
+- **Archiving:** Long-term retention with reduced primary storage costs
+- **Historical trend analysis:** Efficient access to multiple years of cold data
+- **Large, append-mostly tables:** Data naturally ages and can be offloaded over time
+
+## How EDB solutions implement Tiered Tables
+
+EDB enables tiering through:
+
+- **PGD AutoPartition:** Automates partition creation and manages the offload lifecycle
+- **Lakehouse nodes:** Provide scalable query compute for cold data
+- **Iceberg format:** Cold partitions are written as Iceberg tables for durability and interoperability
+- **PGAA:** Bridges object storage with Postgres SQL access
+
+### Example configuration
+
+Offloading a partitioned table:
+
+```sql
+ALTER TABLE sensor_readings SET (pgd.replicate_to_analytics = TRUE);
+```
+
+### Switching a partition to PGAA access:
+
+```sql
+ALTER TABLE sensor_readings SET ACCESS METHOD PGAA
+  SET (
+    pgaa.auto_truncate = 'true',
+    pgaa.format = 'iceberg',
+    pgaa.catalog_table = 'sensor_readings_2022'
+  );
+```
+
+### Related topics
+Generic concepts - separation of storage and compute
+
+EDB Postgres Lakehouse overview
+
+Understanding Apache Iceberg with EDB
+
+How-To: Enable analytics offload
+
+### Next steps
+For configuration through Hybrid Manager, see Implementing Tiered Tables in EDB HM.
+
+For Lakehouse node capabilities, see Lakehouse detailed concepts.
+
+For PGD AutoPartition details, refer to PGD product documentation (link pending).

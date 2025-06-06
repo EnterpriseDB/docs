@@ -1,0 +1,92 @@
+---
+title: Configure BDR AutoPartition with analytics offload
+navTitle: Configure AutoPartition
+description: Learn how to configure BDR AutoPartition on a PGD table for Tiered Tables with analytics offload.
+---
+
+# Configure BDR AutoPartition with analytics offload
+
+To implement Tiered Tables, you must configure BDR AutoPartition on your PGD table. This automatically creates time-based partitions and triggers offloading of old partitions to object storage.
+
+You can control:
+
+- Partitioning strategy (increment, lowerbound)
+- Analytics offload period (how old partitions must be to be offloaded)
+
+## Prerequisites
+
+- PGD node group configured for analytics offload (see [Configure PGD node group for analytics offload](./configure-tiered-offload))
+- PGFS storage location and/or Iceberg catalog prepared
+- Target table created and partitioned by a time-based column (e.g. `event_timestamp`)
+
+## Steps
+
+1. Create your partitioned table (if not already created).
+
+Example:
+
+```
+CREATE TABLE public.application_logs (
+log_id BIGSERIAL,
+event_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+application_name TEXT,
+log_level VARCHAR(10),
+message TEXT,
+PRIMARY KEY (log_id, event_timestamp)
+) PARTITION BY RANGE (event_timestamp);
+```
+
+2. Configure AutoPartition for the table.
+
+Example:
+
+```
+SELECT bdr.autopartition (
+relation := 'public.application_logs',
+partition_increment := '1 month',
+partition_initial_lowerbound := '2023-01-01 00:00:00',
+managed_locally := TRUE,
+analytics_offload_period := '6 months'
+);
+```
+
+- `partition_increment` — How often to create new partitions.
+- `partition_initial_lowerbound` — Start date for partition creation.
+- `analytics_offload_period` — Age threshold for offloading partitions (e.g. 6 months old).
+
+3. Verify AutoPartition configuration.
+
+```
+SELECT * FROM bdr.partition_config WHERE relid = 'public.application_logs'::regclass;
+```
+You should see the partitioning policy and the `analytics_offload_period`.
+
+4. Verify partitions are being created.
+
+```
+SELECT relname, relkind FROM pg_class WHERE relname LIKE 'application_logs_part_%';
+```
+5. Monitor AutoPartition tasks.
+
+```SELECT
+wqs.workid, wis.ap_wi_started_at, wis.ap_wi_finished_at,
+wis.ap_wi_status, "partition", sql
+FROM bdr.taskmgr_local_workitem_status wis
+RIGHT JOIN bdr.taskmgr_local_work_queue_status wqs
+ON wis.ap_wi_workid = wqs.workid
+WHERE relname = 'public.application_logs' AND sql NOT LIKE '%bdr.autopartition_create_partition%'
+ORDER BY ap_wi_finished_at DESC;
+```
+
+## Notes
+
+- AutoPartition will automatically manage new partitions and trigger offload as partitions become eligible.
+- You can adjust the `analytics_offload_period` at any time by running bdr.autopartition() again with a new value.
+- You can pause/resume AutoPartition on a table if needed.
+
+## Related How-Tos
+
+- [Configure PGFS storage for Tiered Tables](./configure-tiered-pgfs)
+- [Configure PGD node group for analytics offload](./configure-tiered-offload)
+- [Query Tiered Tables from PGD and Lakehouse](./query-tiered-tables)
+- [Monitor Tiered Tables status and storage savings](./monitor-tiered-tables)

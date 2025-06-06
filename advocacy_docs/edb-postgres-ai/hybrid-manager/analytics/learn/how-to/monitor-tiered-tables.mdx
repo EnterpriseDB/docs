@@ -1,0 +1,70 @@
+---
+title: Monitor Tiered Tables status and storage savings
+navTitle: Monitor Tiered Tables
+description: Learn how to monitor the status of Tiered Tables, track offload progress, and observe storage savings in Hybrid Manager.
+---
+
+# Monitor Tiered Tables status and storage savings
+
+After configuring Tiered Tables, it's important to monitor:
+
+- Which partitions have been offloaded
+- Whether offloading is progressing as expected
+- Storage savings on PGD vs. object storage
+- Offload-related activity on your PGD cluster
+
+This guide explains how to monitor Tiered Tables from both:
+
+- PGD (via SQL)
+- Hybrid Manager (via monitoring dashboards, if available)
+
+## Prerequisites
+
+- Tiered Tables configured
+See [Implementing Tiered Tables in EDB Hybrid Manager](../../tiered-tables)
+
+## Monitor analytics table status
+
+You can view which PGD tables are marked for analytics offload:
+
+```SELECT * FROM bdr.analytics_table;
+```
+Useful columns:
+
+- `relation`: the table name
+- `state`: current offload state
+- `enabled`
+- `disabled`
+- `in_progress`
+
+## Monitor AutoPartition offload activity
+
+Check the AutoPartition work queue for offload-related tasks:
+
+```SELECT
+wqs.workid, wis.ap_wi_started_at, wis.ap_wi_finished_at,
+wis.ap_wi_status, "partition", sql
+FROM bdr.taskmgr_local_workitem_status wis
+RIGHT JOIN bdr.taskmgr_local_work_queue_status wqs
+ON wis.ap_wi_workid = wqs.workid
+WHERE sql NOT LIKE '%bdr.autopartition_create_partition%'
+ORDER BY ap_wi_finished_at DESC;
+```
+This helps you track:
+
+- When offload jobs ran
+- Their status (success/failure)
+- Which partition was affected
+
+## Monitor storage savings on PGD
+
+To observe the reduction in transactional storage used by the parent table:
+
+```
+SELECT pg_size_pretty(pg_total_relation_size('public.application_logs'));
+```
+As partitions are offloaded and truncated, this size should decrease.
+
+To compare local heap vs. offloaded sizes (advanced query):
+
+-- Run the observability query fro

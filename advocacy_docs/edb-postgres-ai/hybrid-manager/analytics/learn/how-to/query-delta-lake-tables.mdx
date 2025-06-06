@@ -1,0 +1,81 @@
+---
+title: Query Delta Lake tables
+navTitle: Query Delta Lake tables
+description: How to query Delta Lake tables in object storage from an HM-managed EDB Postgres Lakehouse cluster.
+---
+
+# Query Delta Lake tables
+
+This guide explains how to query existing Delta Lake tables from a Hybrid Manager (HM) Lakehouse cluster.
+
+You can connect Lakehouse clusters to Delta Lake data stored in object storage and run SQL queries using PGAA.
+
+## Prerequisites
+
+- An active Lakehouse cluster provisioned via HM.
+- Delta Lake tables in an S3-compatible object storage location.
+- _delta_log directory and Parquet files must be present.
+- Credentials to access storage (if needed).
+
+## Steps
+
+### 1. Define a PGFS storage location
+
+Connect to your Lakehouse cluster and define a PGFS location:
+
+Example for public bucket:
+
+```SELECT pgfs.create_storage_location(
+name => 'my_public_delta_lake_store',
+url => 's3://my-public-delta-data/',
+options => '{"aws_skip_signature": "true"}',
+credentials => '{}'
+);
+```
+
+Example for private bucket:
+
+```SELECT pgfs.create_storage_location(
+name => 'my_private_delta_lake_assets',
+url => 's3://my-private-delta-data/',
+options => '{}',
+credentials => '{"access_key_id": "...", "secret_access_key": "..."}'
+);
+```
+
+### 2. Enable PGAA extension
+
+CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+
+### 3. Create PGAA external table for Delta Lake
+```
+CREATE TABLE public.sales_delta_table ()
+USING PGAA
+WITH (
+pgaa.storage_location = 'my_private_delta_lake_assets',
+pgaa.path = 'path/to/delta_table_root/',
+pgaa.format = 'delta'
+);
+```
+### 4. Query Delta Lake data
+```
+SELECT COUNT(*) FROM public.sales_delta_table;
+```
+
+```SELECT order_id, customer_name, sale_amount
+FROM public.sales_delta_table
+WHERE sale_date >= '2023-01-01'
+AND product_category = 'Electronics'
+LIMIT 100;
+```
+
+## Notes
+
+- Delta Lake schema is inferred from _delta_log.
+- Lakehouse cluster uses vectorized query engine for fast queries.
+- No catalog integration required (Delta Lake is filesystem-based).
+
+## Related How-Tos
+
+- [Configure PGFS for Delta Lake](./configure-delta-pgfs)
+- [Performance tuning for Delta Lake queries](./performance-delta-lake-queries)
