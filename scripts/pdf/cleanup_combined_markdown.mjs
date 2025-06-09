@@ -403,7 +403,7 @@ async function convertSvgNode(node) {
   const image = await fs.readFile(url.pathname, 'utf-8');
   const result = optimize(image, { path: url.pathname, multipass: true, plugins: svgoPlugins });
 
-  if (node.properties.src) {
+  if (node.properties?.src) {
     let hast = unified()
       .use(rehypeParse, {
         emitParseErrors: true,
