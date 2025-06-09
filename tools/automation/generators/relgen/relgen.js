@@ -10,7 +10,7 @@ import {
   existsSync,
 } from "fs";
 import core from "@actions/core";
-import { load } from "js-yaml";
+import { load, dump } from "js-yaml";
 import SourceMap from "js-yaml-source-map";
 import Ajv from "ajv";
 import yargs from "yargs";
@@ -18,6 +18,7 @@ import { hideBin } from "yargs/helpers";
 import path from "path";
 import { micromark } from "micromark";
 import { exit } from "process";
+import semver from "semver";
 
 let ghCore = core;
 
@@ -252,15 +253,26 @@ function compareDates(dateStr1, dateStr2) {
   }
 }
 
-// Iterate over the relnotes in descending date order
+// Iterate over the relnotes and precursors in descending version, date order
 relnotes[Symbol.iterator] = function* () {
-  yield* [...relnotes.entries()].sort((a, b) =>
-    compareDates(b[1].date, a[1].date),
+  const combinedSorted = [];
+  for (let [file, note] of relnotes.entries()) {
+    note._sourceFile = file;
+    combinedSorted.push(note);
+  }
+  if (meta.precursor) combinedSorted.push(...meta.precursor);
+  yield* combinedSorted.sort(
+    (a, b) =>
+      // sort by version, then by date
+      semver.compare(semver.coerce(b.version), semver.coerce(a.version)) ||
+      compareDates(b.date, a.date),
   );
 };
 
 function makeRelnotefilename(shortname, version) {
-  return `${shortname}_${version}_rel_notes`;
+  return shortname
+    ? `${shortname}_${version}_rel_notes`
+    : `${version.replace(/\./g, "_")}_rel_notes`;
 }
 
 function makeShortDate(date) {
@@ -318,21 +330,14 @@ appendFileSync(relindexfilename, `title: ${meta.title}\n`);
 appendFileSync(relindexfilename, `navTitle: Release notes\n`);
 appendFileSync(relindexfilename, `description: ${meta.description}\n`);
 appendFileSync(relindexfilename, `indexCards: none\n`);
+if (meta.frontmatter) appendFileSync(relindexfilename, dump(meta.frontmatter));
 appendFileSync(relindexfilename, `navigation:\n`);
 
-for (let [file, relnote] of relnotes) {
+for (let relnote of relnotes) {
   appendFileSync(
     relindexfilename,
     `  - ${makeRelnotefilename(meta.shortname, relnote.version)}\n`,
   );
-}
-if (meta.precursor !== undefined) {
-  for (let prec of meta.precursor) {
-    appendFileSync(
-      relindexfilename,
-      `  - ${makeRelnotefilename(meta.shortname, prec.version)}\n`,
-    );
-  }
 }
 
 appendFileSync(
@@ -364,55 +369,48 @@ for (let i = 0; i < meta.columns.length; i++) {
 appendFileSync(relindexfilename, headers + "\n");
 appendFileSync(relindexfilename, headers2 + "\n");
 
-for (let [file, relnote] of relnotes) {
+for (let relnote of relnotes) {
   let line = "|";
   for (let i = 0; i < meta.columns.length; i++) {
     let col = meta.columns[i];
-    switch (col.key) {
-      case "version-link":
-        line += ` [${relnote.version}](./${makeRelnotefilename(meta.shortname, relnote.version)}) |`;
-        break;
-      case "shortdate":
-        try {
-          let shortdate = makeShortDate(relnote.date);
-          line += ` ${shortdate} |`;
-        } catch (e) {
-          error_and_exit(`${file}: ${e}`);
-        }
-        break;
-      default:
-        if (col.key.startsWith("$")) {
-          let key = col.key.replace("$", "");
-          line += ` ${relnote.components[key]} |`;
-        } else {
-          ghCore.error(`Unknown column key: ${col.key}`, {
-            file: path.relative(docsBase, metaFilename),
-          });
-          error_and_exit(`Invalid release notes definition.`);
-        }
-        break;
-    }
-  }
-  appendFileSync(relindexfilename, line + "\n");
-}
-
-// We aren't done yet, check for a precursor
-if (meta.precursor !== undefined) {
-  for (let prec of meta.precursor) {
-    let line = "|";
-    for (let i = 0; i < meta.columns.length; i++) {
-      let col = meta.columns[i];
+    if (relnote._sourceFile) {
       switch (col.key) {
         case "version-link":
-          line += ` [${prec.version}](./${makeRelnotefilename(meta.shortname, prec.version)}) |`;
+          line += ` [${relnote.version}](./${makeRelnotefilename(meta.shortname, relnote.version)}) |`;
           break;
-        case "shortdate": // This is a precursor, so we need to get the date from the precursor
-          line += ` ${prec.date} |`;
+        case "shortdate":
+          try {
+            let shortdate = makeShortDate(relnote.date);
+            line += ` ${shortdate} |`;
+          } catch (e) {
+            error_and_exit(`${relnote._sourceFile}: ${e}`);
+          }
           break;
         default:
           if (col.key.startsWith("$")) {
             let key = col.key.replace("$", "");
-            line += ` ${prec[key]} |`;
+            line += ` ${relnote.components[key]} |`;
+          } else {
+            ghCore.error(`Unknown column key: ${col.key}`, {
+              file: path.relative(docsBase, metaFilename),
+            });
+            error_and_exit(`Invalid release notes definition.`);
+          }
+          break;
+      }
+    } // precursor
+    else {
+      switch (col.key) {
+        case "version-link":
+          line += ` [${relnote.version}](./${makeRelnotefilename(meta.shortname, relnote.version)}) |`;
+          break;
+        case "shortdate": // This is a precursor, so we need to get the date from the precursor
+          line += ` ${relnote.date} |`;
+          break;
+        default:
+          if (col.key.startsWith("$")) {
+            let key = col.key.replace("$", "");
+            line += ` ${relnote[key]} |`;
           } else {
             ghCore.error(`Unknown column key: ${col.key}`, {
               file: path.relative(docsBase, metaFilename),
@@ -422,13 +420,20 @@ if (meta.precursor !== undefined) {
           break;
       }
     }
-    appendFileSync(relindexfilename, line + `\n`);
   }
+  appendFileSync(relindexfilename, line + "\n");
 }
 
+if (meta.outro) appendFileSync(relindexfilename, `${meta.outro}`);
+
 // Now let's make some release notes...
-for (let [file, relnote] of relnotes) {
-  prepareRelnote(meta, path.join(argv.path, "src", file), relnote);
+for (let relnote of relnotes) {
+  if (!relnote._sourceFile) continue; // Skip precursors
+  prepareRelnote(
+    meta,
+    path.join(argv.path, "src", relnote._sourceFile),
+    relnote,
+  );
 }
 
 function prepareRelnote(meta, file, note) {
@@ -492,6 +497,8 @@ function prepareRelnote(meta, file, note) {
   appendFileSync(rlout, `navTitle: Version ${note.version}\n`);
   appendFileSync(rlout, `originalFilePath: ${path.relative(docsBase, file)}\n`);
   appendFileSync(rlout, `editTarget: originalFilePath\n`);
+  if (note.frontmatter)
+    appendFileSync(relindexfilename, dump(note.frontmatter));
   appendFileSync(rlout, `---\n`);
 
   appendFileSync(rlout, "\n");
