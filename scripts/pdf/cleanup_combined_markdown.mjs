@@ -64,6 +64,8 @@ example:
 
   console.log("rewriting links and headings");
   const input = await read(process.argv[2]);
+  // strip tabs / tab containers - they aren't supported in the PDF build and make my crappy parser hang
+  input.contents = input.contents.toString().replace(/<\/?Tab(?:Container)*[^>]*>/g, "");
   let result = await processor.process(input);
   if (process.argv[3]) result.path = process.argv[3];
 
@@ -403,7 +405,7 @@ async function convertSvgNode(node) {
   const image = await fs.readFile(url.pathname, 'utf-8');
   const result = optimize(image, { path: url.pathname, multipass: true, plugins: svgoPlugins });
 
-  if (node.properties.src) {
+  if (node.properties?.src) {
     let hast = unified()
       .use(rehypeParse, {
         emitParseErrors: true,

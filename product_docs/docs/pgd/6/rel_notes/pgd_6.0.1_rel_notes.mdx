@@ -1,0 +1,196 @@
+---
+title: EDB Postgres Distributed 6.0.1 release notes
+navTitle: Version 6.0.1
+originalFilePath: product_docs/docs/pgd/6/rel_notes/src/relnote_6.0.1.yml
+editTarget: originalFilePath
+---
+
+Released: 9 June 2025
+
+PGD 6 delivers simpler, more resilient high availability for Postgres. Traditional streaming replication often requires downtime for upgrades and routine maintenance—and depends on complex tooling. PGD solves these challenges with a built-in, logical replication-based architecture that enables online upgrades and maintenance without disrupting applications, helping teams keep services running smoothly even during operational changes. It also provides seamless failover and eliminates the need for external proxies, load balancers, or consensus systems.
+
+## Highlights
+
+- **New built-in Connection Manager**: Automatically routes client connections to the correct node, simplifies application architecture, supports dynamic topology changes, and includes a built-in session pooler and dedicated read/write and read-only ports, all without external software or complex configuration. This new component replaces PGD Proxy, which is no longer available starting with PGD 6.
+- **Predefined Commit Scopes**: Simplify consistency choices with built-in transaction durability profiles—no complicated setup needed. Choose the right balance of performance and protection, with scopes defined in system catalogs and ready to use out of the box.
+- **New CLI command for Cluster Setup**: The [pgd node setup](/pgd/latest/reference/cli/command_ref/node/setup/) command now enables initial cluster creation and node addition directly from the command line. This gives users more flexibility in how they deploy PGD and allows deployment tools to standardize on a consistent method. 
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Built-in connection manager</summary><hr/><p>New built-in connection manager which handles routing of connections automatically and allows enforcing of read-only connections to non-leader.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>CLI cluster setup</summary><hr/><p>The PGD CLI now allows initial cluster setup as well as adding nodes from command-line using <code>pgd node setup</code> command.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Set sequence kind on group create/join</summary><hr/><p>Transform the sequences in distributed based on the <code>bdr.default_sequence_kind</code> GUC when creating/joining a bdr group instead of when creating the node as done in older versions.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Set startvalue for distributed sequences automatically</summary><hr/><p>Set the startvalue for galloc sequences to the following valid number after the last used by the local sequence. With this change, when creating distributed sequences and specifically galloc, there is no need to adjust the startvalue based on what might be already used.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Enabling of automatic sync and reconciliation</summary><hr/><p>Link to a detailed google doc is provided below</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Add node_uuid column to bdr.node and bdr.local_node</summary><hr/><p>The node_uuid uniquely identifies instance of a node of a given name. Random node_uuid is generated when node is created and remains constant for the lifetime of the node. The node_id column is now derived from node_uuid instead of node name.</p>
+<p>For the time being a node needs to be fully parted before before node of the same name can be rejoined, this may be relaxed in future releases to permit rejoin as soon as part_node process for the old instance has commenced and before it completed.</p>
+<p>For the time being upgrades from older PGD versions and mixed-version operation in clusters with older PGD nodes are not supported. This limitation will be addressed in future releases.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Change replication origin and slot naming scheme</summary><hr/><p>Replication origin and slot names now use node uuid and thus correspond to particular incarnation of a node of a given name. Similarly node group uuid is used instead of group name. Hash of database name is used in lieu of database name.</p>
+<p>Please note that origin and node names should be treated as opaque identifiers from user's perspective, one shouldn't rely on the structure of these names nor expect these to be particularly meaningful to a human operator.</p>
+<p>The new naming scheme is as follows:</p>
+<h4>Slots Naming Convention</h4>
+<ul>
+<li>normal slot to a node =&gt; <code>bdr_node_&lt;targetuuid&gt;_&lt;dbhash&gt;</code></li>
+<li>join slot for node =&gt; <code>bdr_node_&lt;targetuuid&gt;_&lt;dbhash&gt;_tmp</code></li>
+<li>group slot for a topgroup =&gt; <code>bdr_group_&lt;topgroupuuid&gt;_&lt;dbhash&gt;</code></li>
+<li>slot for any forwarding + lead to lead =&gt; <code>bdr_node_&lt;targetuuid&gt;_&lt;originidhex&gt;_&lt;dbhash&gt;</code></li>
+<li>analytics slot =&gt; <code>bdr_analytics_&lt;groupuuid&gt;_&lt;dbhash&gt;</code></li>
+<li>decoding slot =&gt; <code>bdr_decoder_&lt;topgroupuuid&gt;_&lt;dbhash&gt;</code></li>
+</ul>
+<h4>Origins Naming Convention:</h4>
+<ul>
+<li>normal origin to a node =&gt; <code>bdr_&lt;originuuid&gt;_&lt;dbhash&gt;</code></li>
+<li>fwd origin to a source node =&gt; <code>bdr_&lt;originuuid&gt;_&lt;sourceoidhex&gt;_&lt;dbhash&gt;</code></li>
+</ul>
+</details></td><td></td></tr>
+<tr><td><details><summary>Limit on the number of node groups allowed in the system for PGD Essential.</summary><hr/><p>Ensure that no more than three node groups (one top group and two subgroups) can exist at any given time. If the limit is exceeded, an error is raised.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Enforced PGD Essential limits - data node count</summary><hr/><p>Don't allow PGD Essential clusters to join more than 4 data nodes.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Added <code>bdr.wait_node_confirm_lsn()</code> function which waits until a given reaches a given LSN</summary><hr/><p><code>bdr.wait_node_confirm_lsn(</code>) will look at the confirmed_flush_lsn of the given node when available, otherwise it will query <code>pg_replication_origin_progress()</code> of that node, and wait for the specified LSN to be reached by said node.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Subscriber-only nodes can now be added to data node groups</summary><hr/><p>In previous versions, subscriber-only nodes could only be added to node groups of type &quot;subscriber-only&quot;. In PGD 6, a subscriber-only node can be also be added to a data node group by specifying node_kind='subscriber_only' when using create_node. The join_node_group can then be done using a data node group.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Add <code>bdr.local_analytics_slot_name()</code> SQL function.</summary><hr/><p>Returns name of analytics slot. This merely produces the correct name irrespective of whether analytics feature is in use.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Add node_uuid column to <code>bdr.node_summary</code> view.</summary><hr/><p>Added to complement the addition of the node_uuid column to bdr.node and bdr.local_node</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Multiple conflicting rows resolution</summary><hr/><p>Both <code>pk_exists</code> and <code>multiple_unique_conflicts</code> conflict types can now resolve more than one conflicting row by removing any old rows that are part of the conflict. The <code>multiple_unique_conflicts</code> now defaults to <code>update_if_newer</code> resolver, so it does not throw error by default anymore.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Improved <code>bdr.stat_activity</code> view</summary><hr/><p>The <code>backend_type</code> now shows consistent worker type for PGD workers without the extra process identification. The <code>wait_event_type</code> and <code>wait_event</code> include more wait events now, instead of showing &quot;extension&quot; for some events. Also, connection management related columns are added to show real client address/port and whether the session is read-only.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>The PARTED node is removed  automatically from all nodes in the cluster.</summary><hr/><p>From PGD 6.0.0, bdr.part_node functionality is enhanced to remove the parted node’s  metadata automatically from all nodes in the cluster.</p>
+<ul>
+<li>For local node, it will remove all the node metadata, including information about remote nodes.</li>
+<li>For remote node, it removes only metadata for that specific node.
+Hence with this release</li>
+<li>A node will remain in PART_CLEANUP state till group slots of all nodes are caught up to all the transactions originating from the PARTED node</li>
+<li>A node will not remain in PARTED state as the node is removed as soon as it moves to PARTED state.</li>
+</ul>
+</details></td><td></td></tr>
+<tr><td><details><summary>The <code>--summary</code> and <code>--options</code> flags for <code>pgd node show</code> CLI command.</summary><hr/><p>Add the <code>--summary</code> and <code>--options</code> flags to <code>pgd node show</code> command to filter the output of the <code>pgd node show</code> command.
+This also maintains symmetry with other <code>show</code> commands.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>More GUCs verfied in <code>pgd cluster verify</code> CLI command.</summary><hr/><p>Add the <code>bdr.lock_table_locking</code> and <code>bdr.truncate_locking</code> GUCs to list of GUCs verfied in <code>pgd cluster verify</code> command.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Table rewriting <code>ALTER TABLE... ALTER COLUMN</code> calls are now supported.</summary><hr/><p>Changing a column's type command which causes the whole table to be rewritten and the change isn't binary coercible is now supported:</p>
+<pre><code class="language-sql">CREATE TABLE foo (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
+ALTER TABLE foo ALTER c1 TYPE bigint; – results into table rewrite
+</code></pre>
+<p>This also includes support for <code>ALTER TYPE</code> when using the <code>USING</code> clause:</p>
+<pre><code class="language-sql">CREATE TABLE foo (id serial primary key,data text);
+ALTER TABLE foo ALTER data TYPE BYTEA USING data::bytea;
+</code></pre>
+<p>Table rewrites can hold an AccessExclusiveLock for extended periods on larger tables.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Restrictions on non-immutable <code>ALTER TABLE... ADD COLUMN</code> calls have been removed.</summary><hr/><p>The restrictions on non-immutable <code>ALTER TABLE... ADD COLUMN</code> calls have been removed.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Synchronize roles and tablespaces during logical join</summary><hr/><p>Roles and tablespaces are now synchronized before the schema is restored from
+the join source node. If there are already existing roles or tablespaces (or EPAS
+profiles, they will be updated to have the same settings, passwords etc. as the
+ones from the join source node.
+System roles (i.e. the ones created by initdb) are not synchronized.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Introduce <code>bdr.node_group_config_summary</code> view</summary><hr/><p>The new <code>bdr.node_group_config_summary</code> view contains detailed information about group options, including effective value, source of the effective value, default value, whether the value can be inherited, etc. This is in similar spirit to <code>pg_settings</code></p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Leader DML lock</summary><hr/><p>New lock type leader DML lock is used by default for locking DDL statements that need to block DML. This lock locks on write-leaders only, no requiring all nodes to participate in the locking operation. Old behavior can be restored by adjusting <code>bdr.ddl_locking</code> configuration parameter.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Disabling bdr.xact_replication in run_on_* functions</summary><hr/><p>Functions <code>run_on_nodes</code>, <code>run_on_all_nodes</code> and <code>run_on_group</code> now sets <code>bdr.xact_replication</code> to <code>off</code> by default.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Replica Identity full by default</summary><hr/><p>The <code>auto</code> value for <code>bdr.default_replica_identity</code> changed to
+REPLICA IDENTITY FULL. This setting prevents some edge cases in
+conflict detection between inserts, updates and deletes across node
+crashes and recovery.</p>
+<p>When the PGD group is created and the database of the initial PGD node is not empty (i.e. has some tables with data) the REPLICA IDENTITY of all tables will be set according to <code>bdr.default_replica_identity</code>.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Tablespace replication as a DDL operation is supported.</summary><hr/><p>Tablespace operations <code>CREATE/ALTER/DROP TABLESPACE</code> are now replicated as a DDL operation. Where users are
+running a configuration with multiple nodes on the same machine, you will need to enable the developer option <a href="https://www.postgresql.org/docs/current/runtime-config-developer.html#GUC-ALLOW-IN-PLACE-TABLESPACES"><code>allow_in_place_tablespace</code></a>.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Improve the CLI debug messages.</summary><hr/><p>Improve the formating of the log messages to be more readable and symmetrical with Postgres log messages.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>New column for <code>pgd cluster verify --settings</code> CLI command output.</summary><hr/><p>Add the <code>recommended_value</code> column to the result of the <code>pgd cluster verify --settings</code> command.
+The column will not be displayed in tabular output but will be displayed in JSON output.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Display sorted output for CLI.</summary><hr/><p>The output for the commands with tabular output are now sorted by the resource name.
+Commands that display more than one resource will sort output by each resource column in order.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Subscriber-only nodes replication.</summary><hr/><p>Subscriber-only nodes now receive data only after it has been replicated to majority of data nodes. This does not require any special configuration. Subsequently bdr.standby_slot_names and bdr.standby_slots_min_confirmed options are removed as similar physical standby functionality is provided in pg_failover_slots extension and in PG17+.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>automatic node sync and reconciliation is enabled by default.</summary><hr/><p>The GUC <a href="/pgd/latest/reference/tables-views-functions/pgd-settings#bdrenable_auto_sync_reconcile"><code>bdr.enable_auto_sync_reconcile</code></a> was off by default, but is made on by default in 6.0. This GUC setting ensures that when a node is down for some time, all other nodes get caught up equally with respect to this node automatically. It also ensures that if there are any prepared transactions that are orphaned by the node going down, they are resolved, either aborted or committed as per the rules of the commit scope that created them.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Remove the deprecated legacy CLI commands.</summary><hr/><p>Remove the old (PGD 5 and below) CLI commands, which were deprecated but supported for backward compatibility.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Commit scope logic is now only run on data nodes.</summary><hr/><p>Previously, non-data nodes would attempt to handle, but not process commit scope logic, which could lead to confusing, albeit harmless log messages.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Explicitly log the start and stop of dump and restore operations.</summary><hr/><p>This provides greater visibility into the node cloning process and assists with debugging possible issues.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
+## Changes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Routing is now enabled by default on subgroups</summary><hr/><p>Routing (and by extension raft) is now enabled by default on data-groups (subgroups with data nodes).</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Function <code>bdr.join_node_group</code> may no longer be executed in a transaction.</summary><hr/><p>As it is not possible to roll back a group join, it can not form part of an idempotent transaction.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Deprecated <code>pause_in_standby</code> parameter removed from function <code>bdr.join_node_group()</code>.</summary><hr/><p><code>pause_in_standby</code> has been deprecated since PGD 5.0.0. Logical standby nodes should be specified as such when executing <code>bdr.create_node()</code></p>
+</details></td><td></td></tr>
+<tr><td><details><summary>BDR global sequences can no longer created as or set to <code>UNLOGGED</code></summary><hr/><p>Unlogged BDR sequences may display unexpected behaviour following a server crash. Existing unlogged BDR sequences may be converted to logged ones.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Fix the CLI <code>pgd cluster show</code> command issues on a degraded cluster.</summary><hr/><p>The <code>pgd cluster show</code> command failed with an error for clock drift if only one node was up and running in a N node cluster.
+The command now returns valid output for the other components, <code>health</code> and <code>summary</code>, while reporting an appropriate error for <code>clock-drift</code>.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fix the CLI <code>pgd node show</code> command issue if a non-existent node is specified.</summary><hr/><p>The <code>pgd node show</code> command crashed if a non-existent node is specified to the command.
+The command is fixed to fail gracefully with appropriate error message.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fixed the timestamp parsing issue for <code>pgd replication show</code> CLI command.</summary><hr/><p>The <code>pgd replication show</code> command previously crashed when formatting EPAS timestamps.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fixed issue where parting node may belong to a non-existing group</summary><hr/><p>When parting a given node, that same node may have subscriptions whose
+origin was already parted and the group dropped. Previously this would break PGD, and has since been fixed.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>num_writers should be positive or -1</summary><hr/><p>The num_writers option, used in bdr.alter_node_group_option() and bdr.alter_node_group_config() should be positive or -1.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fix replication breakage with updates to non-unique indexes</summary><hr/><p>Fixes the case where an update to a table with non-unique indexes results in the ERROR
+<code>concurrent INSERT when looking for delete rows</code>, which breaks replication.</p>
+</details></td><td>43523,43802,45244,47815</td></tr>
+<tr><td><details><summary>Fix Raft leader election timeout/failure after upgrade</summary><hr/><p>Ensure that any custom value set in the deprecated GUC <code>bdr.raft_election_timeout</code>
+is applied to the replacement <code>bdr.raft_global_election_timeout</code></p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Ensure that disables subscriptions on subscriber-only nodes are not re-enabled</summary><hr/><p>During subscription reconfiguration, if there is no change required to a subscription,
+do not enable it since it could have been disabled explicitly by the user.
+Skip reconfiguring subscriptions if there are no leadership changes.</p>
+</details></td><td>46519</td></tr>
+<tr><td><details><summary>Subscriber-only nodes will not take a lock when running DDL</summary><hr/><p>Subscriber-only nodes will no longer attempt to take a lock on the cluster when running DDL. The DDL will be executed locally and not replicated to other nodes.</p>
+</details></td><td>47233</td></tr>
+<tr><td><details><summary>Fixed hang in database system shutdown.</summary><hr/><p>Fixed non-transactional WAL message acknowledgment by downstream that could cause a WAL sender to never exit during fast database system shutdown.</p>
+</details></td><td>49022</td></tr>
+<tr><td><details><summary>Fixed deadlock issue in bdr_init_physical.</summary><hr/><p>Fixed deadlock between bdr_init_physical cleaning unwanted node data and concurrent monitoring queries.</p>
+</details></td><td>46952</td></tr>
+<tr><td><details><summary>Fixed new cluster node consistency issue.</summary><hr/><p>Fixed an issue when new node joining the cluster finishes CATCHUP phase before getting its replication progress against all data nodes. This may cause new node being out of sync with the cluster.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Ensure correct sequence type is displayed in CREATE SEQUENCE warnings</summary><hr/><p>In some cases, warning messages referred to <code>timeshard</code> when the sequence
+was actually <code>snowflakeid</code>.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+

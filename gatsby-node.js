@@ -108,6 +108,12 @@ exports.onCreateNode = async ({
       });
     }
 
+    if (node.extension === "sh") {
+      await makeFileNodePublic(node, createNodeId, actions, {
+        mimeType: "text/plain",
+      });
+    }
+
     // these are a template of sorts, used to generate a function index for a reference section
     // see tools/automation/generators/refbuilder/refbuilder.js for details
     if (node.absolutePath.endsWith("index.mdx.src")) {
