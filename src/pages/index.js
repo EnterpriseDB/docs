@@ -603,6 +603,10 @@ const Page = () => {
               EDB SPL Check
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/edb_stat_monitor">
+              EDB Stat Monitor
+            </BannerWideLink>
+
             <BannerDivider headingText="Tools" toUrl="/tools" />
 
             <BannerWideLink to="/tools/edb_sqlpatch">

@@ -1,0 +1,172 @@
+---
+title: EDB Stat Monitor Features
+navTitle: Features
+description: Features specific to EDB Stat Monitor
+---
+
+## Enhanced Statistics with T-Digest
+
+### Enhanced Statistics with T-Digest
+
+The `edb_stat_monitor` extension offers a more precise way to track the execution time of queries within a bucket using the T-Digest algorithm. This allows for more accurate percentile calculations.
+
+Here are the related features: `edb_stat_monitor.edbsm_td_compression`: Controls the compression level of the T-Digest. The value ranges from `1` to `100`, with a default of `100`. Higher values provide more accuracy but may consume slightly more memory. Note: currently we are using static memory allocation and so there is no memory benefit.
+
+`edb_stat_monitor_td_quantile`: This function (available in three variants, depending on parameter selection) returns quantile information for the specified data range.
+
+`edb_stat_monitor_td_histogram`: This function (available in three variants, depending on parameter selection) generates a histogram representation of the T-Digest data.
+
+| proname                       | Argument data types                                                 |
+|-------------------------------|---------------------------------------------------------------------|
+| edb_stat_monitor_td_histogram | _bucket bigint                                                      |
+| edb_stat_monitor_td_histogram | _bucket bigint, _qid text                                           |
+| edb_stat_monitor_td_histogram | _bucket_start bigint, bucket_end bigint, queryid text               |
+| edb_stat_monitor_td_quantile  | _quantile double, _bucket bigint                                    |
+| edb_stat_monitor_td_quantile  | _quantile double, _bucket bigint, _qid text                         |
+| edb_stat_monitor_td_quantile  | _quantile double, _bucket_from bigint, _bucket_to bigint, _qid text |
+
+### Example Usage
+
+#### 50 percentile for a bucket 92
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_quantile (0.50,92);
+ edb_stat_monitor_td_quantile
+------------------------------
+         0.004830253637740545
+(1 row)
+```
+
+#### 99 percentile for a query in bucket 92
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_quantile (0.99,92, '6584856920617530174');
+ edb_stat_monitor_td_quantile
+------------------------------
+                   0.05314776
+(1 row)
+```
+
+#### 90 percentile for a query in bucket 71 to 73
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_quantile (0.90,71,73, '6584856920617530174');
+ edb_stat_monitor_td_quantile
+------------------------------
+         0.036865426119980754
+(1 row)
+```
+
+#### Get histogram for one bucket 61
+
+```sql
+SELECT * FROM edb_stat_monitor_td_histogram(61);
+      exec_time      | freq |                                     bar
+---------------------+------+------------------------------------------------------------------
+-----------
+            0.116834 |    1 | #########
+ 0.12825099999999998 |    1 | #########
+            0.145689 |    2 | ########################
+           0.1967432 |    5 | #################################################################
+           0.3654195 |    4 | #####################################################
+              0.4331 |    3 | ######################################
+            0.548338 |    1 | #########
+  0.6519199999999999 |    1 | #########
+(8 rows)
+```
+
+#### Get histogram for one query id in bucket 51
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_histogram(51, '6584856920617530174');
+      exec_time       | freq |              bar
+----------------------+------+--------------------------------
+ 0.012374999999999999 |    1 |
+             0.014167 |    1 |
+ 0.015365666666666665 |    9 |
+ 0.020881586956521734 |   46 | #
+  0.02446471140939597 |  149 | ####
+  0.02696138578680203 |  591 | ##################
+  0.03259709365244537 |  961 | ##############################
+  0.04432158793969849 |  199 | ######
+   0.0585399142857143 |   35 | #
+  0.08280583333333334 |    6 |
+  0.12212599999999998 |    1 |
+  0.12845900000000002 |    1 |
+(12 rows)
+```
+
+#### Get histogram for one query id in bucket 45 to 100
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_histogram(45,100, '-799266892278171905');
+      td_means       | td_calls |                  bar
+---------------------+----------+---------------------------------------
+            0.116001 |        1 | #######
+             0.18021 |        1 | #######
+            0.190147 |        2 | ###############
+ 0.20317849999999998 |        4 | ##############################
+ 0.20942639999999998 |        5 | #####################################
+          0.22366825 |        4 | ##############################
+           0.2310225 |        2 | ###############
+            0.235543 |        1 | #######
+            0.283835 |        1 | #######
+(9 rows)
+```
+
+```sql
+-- Get histogram for one bucket 61.
+postgres=# SELECT * FROM edb_stat_monitor_td_histogram(61);
+      exec_time      | freq |                                     bar
+---------------------+------+---------------------------------------------------------------------------
+            0.116834 |    1 | #########
+ 0.12825099999999998 |    1 | #########
+            0.145689 |    2 | ########################
+           0.1967432 |    5 | #################################################################
+           0.3654195 |    4 | #####################################################
+              0.4331 |    3 | ######################################
+            0.548338 |    1 | #########
+  0.6519199999999999 |    1 | #########
+(8 rows)
+```
+
+#### Get histogram for one query id in bucket 51
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_histogram(51, '6584856920617530174');
+      exec_time       | freq |              bar
+----------------------+------+--------------------------------
+ 0.012374999999999999 |    1 |
+             0.014167 |    1 |
+ 0.015365666666666665 |    9 |
+ 0.020881586956521734 |   46 | #
+  0.02446471140939597 |  149 | ####
+  0.02696138578680203 |  591 | ##################
+  0.03259709365244537 |  961 | ##############################
+  0.04432158793969849 |  199 | ######
+   0.0585399142857143 |   35 | #
+  0.08280583333333334 |    6 |
+  0.12212599999999998 |    1 |
+  0.12845900000000002 |    1 |
+(12 rows)
+```
+
+####  Get histogram for one query id in bucket 45 to 100
+
+```sql
+postgres=# SELECT * FROM edb_stat_monitor_td_histogram(45,100, '-799266892278171905');
+      td_means       | td_calls |                  bar
+---------------------+----------+---------------------------------------
+            0.116001 |        1 | #######
+             0.18021 |        1 | #######
+            0.190147 |        2 | ###############
+ 0.20317849999999998 |        4 | ##############################
+ 0.20942639999999998 |        5 | #####################################
+          0.22366825 |        4 | ##############################
+           0.2310225 |        2 | ###############
+            0.235543 |        1 | #######
+            0.283835 |        1 | #######
+(9 rows)
+```
+
+
