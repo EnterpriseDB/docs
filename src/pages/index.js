@@ -133,7 +133,10 @@ const BannerWideLink = ({ to, className, children }) => (
 );
 
 const BannerCardLink = ({ to, className, children }) => (
-  <Link to={to} className={`bg-light col-sm-12 m-1 py-1 px-1 justify-content-center ${className}`}>
+  <Link
+    to={to}
+    className={`bg-light col-sm-12 m-1 py-1 px-1 justify-content-center ${className}`}
+  >
     {children}
   </Link>
 );
@@ -177,7 +180,6 @@ const Page = () => {
     >
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
-
           <BannerCard
             iconName={iconNames.EDB_POSTGRES_AI_LOOP}
             headingText="EDB Postgres® AI"
@@ -191,7 +193,9 @@ const Page = () => {
                 Enterprise Postgres
               </BannerCardLink>
               <BannerCardLink to="/pge/latest">
-                Enterprise Postgres<br/>(Oracle Compatible)
+                Enterprise Postgres
+                <br />
+                (Oracle Compatible)
               </BannerCardLink>
               <BannerCardLink to="/pgd/latest">
                 High Availability (PGD)
@@ -207,19 +211,20 @@ const Page = () => {
               to="/edb-postgres-ai/analytics"
             >
               <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
-                Analytics Engine<br/><span style={{fontSize: "0.8em"}}>Columnar Query Engine</span>
+                Analytics Engine
+                <br />
+                <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
               </BannerCardLink>
 
               <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
                 Managed Lakehouse
                 <br />
-                <span style={{fontSize: "0.8em"}}>Delta Tables, Iceberg</span>
+                <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>
               </BannerCardLink>
 
               <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
                 Support for Greenplum Workloads
               </BannerCardLink>
-
             </BannerSubCard>
 
             <BannerSubCard
@@ -243,32 +248,34 @@ const Page = () => {
                 Model Serving
               </BannerCardLink>
             </BannerSubCard>
-            
+
             <BannerSubCard
               iconName={iconNames.CROWN}
               headingText="Hybrid Management"
               to="/edb-postgres-ai/hybrid-manager"
-            ><BannerCardLink to="/edb-postgres-ai/hybrid-manager/using-hybrid-manager">
+            >
+              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/overview/">
+                Overview
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager">
                 Using Hybrid Manager
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/">
-                Hybrid Observability
+              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/analytics/">
+                Analytics
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/">
-                Hybrid DBaaS
+              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/ai_factory/">
+                Sovereign AI
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/">
-                Distributed HA (99.999%)
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/using-hybrid-manager/migration">
+              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager/migration">
                 Migrations
               </BannerCardLink>
-              </BannerSubCard>
-            
+            </BannerSubCard>
+
             <BannerWideSubCard
               iconName={iconNames.BRIEFCASE}
               headingText="Foundation"
-              to="/edb-postgres-ai/foundation/">
+              to="/edb-postgres-ai/foundation/"
+            >
               <BannerCardLink to="/edb-postgres-ai/foundation/">
                 Multi-Model Extensions
               </BannerCardLink>
@@ -287,7 +294,7 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/foundation/">
                 High Availability
               </BannerCardLink>
-              </BannerWideSubCard>
+            </BannerWideSubCard>
           </BannerCard>
 
           {/* Sign Post */}
@@ -333,7 +340,6 @@ const Page = () => {
               ))}
             </div>
           </div>
-
 
           <BannerWideSubCard
             iconName={iconNames.TOOLBOX}
