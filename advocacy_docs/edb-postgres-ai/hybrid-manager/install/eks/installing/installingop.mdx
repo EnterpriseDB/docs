@@ -44,8 +44,8 @@ Copy all files to a directory on your local machine and `cd` into that directory
 
 ### Install the Hybrid Manager Operator
 
-To install the Hybrid Manager Operator, run the `eks-install-operator.sh` script. 
-(As you already set the token as an environment variable, you can pipe it into the script). 
+To install the Hybrid Manager Operator, run the `eks-install-operator.sh` script.
+(As you already set the token as an environment variable, you can pipe it into the script).
 You will also need to set the environment variable `OPERATOR_VERSION` to the version of the operator you wish to install, for example `v1.2.0`.
 This will typically be the same version as the EDB Hybrid Manager platform you are installing, so you can set it as follows:
 
@@ -81,6 +81,10 @@ secret/fernet-secret created
 namespace/upm-lakekeeper created
 secret/pg-confounding-key created
 ```
+
+!!! note
+    This script creates secrets for Lakekeeper and Griptape, which are required for the Hybrid Manager platform to function correctly. If you are using
+    these features consult the Customization Guide for more information on these secrets and what you need to do with them.
 
 ## Prepare the values file
 
@@ -118,8 +122,7 @@ export AUTHENTICATION_PASSWORD_HASH='$2y$10$vKOAXfLHbeV1OQxMpxlLdOIwnX.JAN.ZrD9Z
 Here is a brief guide to the variables in the `default-env.sh` file.
 
 | Variable                           | Description                                                                                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| EDB_TARGET_PLATFORM                | The target platform for the installation. Set to eks as we are installing on Amazon EKS.                                                   |
+|------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
 | CONTAINER_REGISTRY_URI             | The URI of the container registry to use. This is set to the EDB Download Repository.                                                      |
 | IMAGESET_REGISTRY_URI              | The URI of the image set registry. This is set to the EDB Download Repository.                                                             |
 | IMAGESET_AUTHTYPE                  | The authentication type for the image set registry. Set to token as we are using a token to authenticate with the EDB Download Repository. |
@@ -132,7 +135,7 @@ Here is a brief guide to the variables in the `default-env.sh` file.
 | AUTHENTICATION_PASSWORD_HASH       | The hash of the password to create.                                                                                                        |
 | LOCATION_NAME                      | The location name for the beacon agent.                                                                                                    |
 | STORAGE_CLASS                      | The storage class to use for the installation. This is set to gp2 for EBS volumes on AWS.                                                  |
-| TRANSPORTER_FIPS_ENABLED          | Whether to enable FIPS mode for the Transporter service.                                                                                   |
+| TRANSPORTER_FIPS_ENABLED           | Whether to enable FIPS mode for the Transporter service.                                                                                   |
 
 
 <TabContainer>
@@ -165,44 +168,39 @@ export AUTHENTICATION_PASSWORD_HASH=$(echo -n $AUTHENTICATION_PASSWORD | htpassw
 
 You now need to edit `values.yaml` file and set the values required for your installation. Find the appropriate key in the `values.yaml` file and set the values as follows. Replace `$<name>` entries with the value you have set the environment variables of the same name to.
 
-1.  Sets `bootstrapImageName` to $CONTAINER_REGISTRY_URI followed by "/edbpgai-bootstrap/bootstrap-" and then $EDB_TARGET_PLATFORM. eg, given the values above, this would be `docker.enterprisedb.com/staging_pgai-platform/edbpgai-bootstrap/bootstrap-eks`.
-2.  Set `bootstrapImageTag` to $EDB_PLATFORM_VERSION.
-3.  Set `parameters.upm-istio.cookie_aeskey` to $AES_256_KEY.
-4.  Set `containerRegistryURL` to $CONTAINER_REGISTRY_URI.
-5.  Set `system` to $EDB_TARGET_PLATFORM.
-6.  Set `parameters.global.portal_domain_name` to $PORTAL_DOMAIN_NAME.
-7.  Set `parameters.transporter-rw-service.domain_name` to $TRANSPORTER_RW_SERVICE_DOMAIN_NAME.
-8.  Set `parameters.transporter-dp-agent.rw_service_url` to `https://` followed by $TRANSPORTER_RW_SERVICE_DOMAIN_NAME followed by `/transporter`. eg, given the values above, this would be `https://transporter.foo.network/transporter`.
-9.  Set `parameters.upm-beacon.server_host` to $BEACON_SERVICE_DOMAIN_NAME.
-10. Set `pgai.portal.authentication.staticPasswords[0].email` to $AUTHENTICATION_EMAIL.
-11. Set `pgai.portal.authentication.staticPasswords[0].hash` to $AUTHENTICATION_PASSWORD_HASH.
-12. Set `pgai.portal.authentication.staticPasswords[0].username` to $AUTHENTICATION_USER.
-13. Set `pgai.portal.authentication.staticPasswords[0].userID` "c5998173-a605-449a-a9a5-4a9c33e26df".
-14. Set `beaconAgent.location` to $LOCATION_NAME
+1.  Set `spec.componentsParameters.upm-istio-gateway.cookie_aeskey` to $AES_256_KEY.
+1.  Set `spec.imageRegistry` to $CONTAINER_REGISTRY_URI.
+1.  Set `spec.globalParameters.portal_domain_name` to $PORTAL_DOMAIN_NAME.
+1.  Set `spec.componentsParameters.transporter-rw-service.domain_name` to $TRANSPORTER_RW_SERVICE_DOMAIN_NAME.
+1.  Set `spec.componentsParameters.transporter-dp-agent.rw_service_url` to `https://` followed by $TRANSPORTER_RW_SERVICE_DOMAIN_NAME followed by `/transporter`. eg, given the values above, this would be `https://transporter.foo.network/transporter`.
+1.  Set `spec.componentsParameters.upm-beacon.server_host` to $BEACON_SERVICE_DOMAIN_NAME.
+1. Set `spec.pgai.portal.authentication.staticPasswords[0].email` to $AUTHENTICATION_EMAIL.
+1. Set `spec.pgai.portal.authentication.staticPasswords[0].hash` to $AUTHENTICATION_PASSWORD_HASH.
+1. Set `spec.pgai.portal.authentication.staticPasswords[0].username` to $AUTHENTICATION_USER.
+1. Set `spec.pgai.portal.authentication.staticPasswords[0].userID` "c5998173-a605-449a-a9a5-4a9c33e26df".
+1. Set `spec.beaconAgent.location` to $LOCATION_NAME
+1. Set `spec.globalParameters.storage_class` to $STORAGE_CLASS.
+1. Set `spec.componentsParameters.transporter-data-operator.fips_enabled` to $TRANSPORTER_FIPS_ENABLED. (Ensure the boolean value is quoted as it is handled as a string.)
 
 </Tab>
 </TabContainer>
 
-## Apply the Helm chart
+The `hm-values.yaml` file should now contain the values required for the installation process.
 
-With the `values.yaml` file prepared, you can apply the Helm chart to start the bootstrap process. This create the necessary resources in the Kubernetes cluster to start the bootstrap process.
+## Install the Hybrid Manager platform
 
-```shell
-helm upgrade -n edbpgai-bootstrap \
-   --install -f ./values.yaml \
-   --version "${EDB_PLATFORM_VERSION/-appl/+appl}" \
-   edbpgai-bootstrap edbpgai/edbpgai-bootstrap
-```
-
-This command installs the bootstrap container in the Kubernetes cluster. The bootstrap container then installs the rest of the EDB Software Deployment platform.
-
-## Follow the bootstrap process
-
-The bootstrap process takes time to complete. You can follow the progress by looking at the logs of the bootstrap container:
+The next step is to apply the values file which you created in the previous step to the Hybrid Manager Operator. This will trigger the installation of the Hybrid Manager platform on your EKS cluster.
 
 ```shell
-kubectl logs -f -l app=edbpgai-bootstrap -n edbpgai-bootstrap
+kubectl apply -f ./hm-values.yaml
 ```
+
+You can check the status of the installation by running:
+
+```shell
+kubectl -n edbpgai-bootstrap get pods
+```
+
 
 ## Configure the IP address in /etc/hosts
 
