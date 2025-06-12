@@ -1,0 +1,124 @@
+---
+title: Postgres major upgrades on PGD with HCP
+navTitle: PGD with HCP
+description: How to perform PG major upgrades on PGD clusters with HCP
+deepToC: true
+
+---
+
+Upgrading Postgres major versions on Postgres Distributed (PGD) with Hybrid Control Plane (HCP) with zero downtime is much simpler than previous methods of doing this with PGD at scale.
+
+The method consists of using a [blue/green deployment](https://en.wikipedia.org/wiki/Blue%E2%80%93green_deployment) approach based on different PGD data groups:
+
+-   A new data group is created in the cluster with your desired major version.
+-   The new version syncs with the older version.
+-   You perform comprehensive tests in your application and clients on the new version data group.
+-   You redirect workloads to the new version data group—a new connection string is available.
+-   Finally, delete the older version data group once the upgrade is fully validated.
+
+## Prerequisites
+
+The prerequisites to get started are to have a PGD cluster with the old version data group on HCP—up and running in a healthy state.
+
+To ensure the cluster is in a healthy state, from the cluster main page, select the **Health Status** tab. Now check the cluster's:
+
+-   **RAFT Status**: to make sure it is reading "OK"
+-   **Replication Slot Status**: to make sure it is reading "OK"
+-   **Clock Skew**: to make sure it is reading "OK"
+-   **Proxy Status**: to make sure all the proxies are up
+-   **Node Status**: to make sure all the nodes are up
+-   **Transaction Rate**: to make sure it is within acceptable/expected parameters
+
+You can further explore details about each data group and node in the data group including:
+
+-   The data group's **Proxy Status**
+-   The data group's **Node Status**
+-   The following details of each node in the group:
+    -   number of **Connections**
+    -   **Wal Size**
+    -   **Memory** percentage used
+    -   **Storage** percentage used
+
+Lastly, you can look at the latest **Replication Status** details to see the replication lag between nodes.
+
+If any of these metrics are not within acceptable/expected parameters, you should address these issues before moving on with the upgrade process.
+
+## Edit the cluster
+
+First, using the **Quick Actions** drop-down menu in the upper-right corner of the page, select **Edit Cluster** to begin the upgrade process.
+
+Next, select the **Cluster Settings** tab and set your password again.
+
+Then, select the **Data Groups** tab, find your old version data group, and select the **Duplicate** button.
+This brings up a new data group below the ones(s) you already have. 
+You can change the name of the group from the default, change the **Nodes** architecture (two to three nodes or three to two nodes), as well as the **Deployment Location**, **Database Type**, **Instance Size**, **Storage**, **Networking**, **Backups**, and **Security** settings.
+In most cases using this upgrade process, you want to leave everything but possibly the **Group Name** the same, since you are trying to replace your old version data group with another new version data group that can handle the same load.
+However, if you do need to change something for a particular circumstance, you can do that at this point in the upgrade process.
+
+If you only had an odd number of data groups up until this point, as soon as you select the **Create Data Group** button, a witness group with the default name **Witness Group** is added to your set of data groups.
+The witness group serves to keep raft consensus possible.
+The reason this is necessary with two data groups is that there could be what is known as a "split brain" scenario with an even number of data groups, where half of the groups want to go make one decision and the other half want to do something else.
+The witness group prevents such a scenario by being the tie breaker whenever this happens.
+You may want to change the Postgres Version under **Database Type** to match the new version of Postgres you are upgrading to in case it isn't by default.
+You also may want to increase the **Instance Size** some to ensure enough cores and memory to handle PGD.
+Select the **Save** button to save the witness group's configuration.
+
+Now you can see both your old data group(s), new data group, and witness group (if necessary) in the **Data Groups** tab.
+Now select the **Save** button on this screen and you will be presented with a **Confirm Changes** pop-up that lists what changes to the cluster are to be made.
+In this pop-up is also a warning stating that enacting the changes could trigger database restarts across the cluster. 
+While this is the case, it does not mean that you incur downtime from enacting the changes. At least one node in your old version data group stays active during this time.
+Select the **Confirm Changes** button in the pop-up for the system to actually begin enacting the cluster changes you have requested.
+This may take quite some time depending on you underlying hardware and database size.
+
+## Verify the data in the new version data group
+
+From the **Overview** tab, select, copy the connection string from your new version data group—each data group will have a different connection string exposed so that any application connected to the old version data group won't be impacted until the process is complete.
+Paste that into your terminal and you're connected to `psql` on one of the new version nodes, which is confirmed by the terminal output upon initializing `psql`.
+You can also use the following SQL command to view additional version information:
+
+```sql
+SELECT version();
+```
+
+Furthermore, you can [view data group state](/pgd/latest/cli/command_ref/group/show/) or perform [deeper monitoring](/pgd/latest/monitoring/sql/#monitoring-replication-peers) on the replication peers to ensure all data is being synchronized as expected.
+
+## Plan your tests
+
+It is strongly recommended that you test applications and clients using the new upgraded version rigorously, before ever switching them from your old version data group.
+If you require write operations or schema changes to perform the tests, those are then automatically replicated to the old version data group.
+To manage this, you can modify the replication configuration of your cluster by [enabling or disabling the replication subscriptions](https://enterprisedb.com/docs/pgd/latest/reference/nodes-management-interfaces/#bdralter_subscription_disable). 
+For example, the following SQL command can be used to disable changes in your new upgraded version data group to your old version data group(s). The SQL command must be executed when connected to a node in the old version data group—it disables the subscription(s) replicating changes from the new data group.
+
+````sql
+SELECT bdr.alter_subscription_disable(sub_name, true, true)
+    FROM bdr.subscription s, bdr.node n, bdr.node_group ng
+  WHERE n.node_group_id = ng.node_group_id
+    AND s.source_node_id = n.node_id
+    AND ng.node_group_name = '<new version data group name>';
+
+## Plan the switchover
+
+Once all tests are performed, you are ready to switch workloads to the new version data group using the new connection string.
+This might require changes in your applications, clients, or infrastructure services.
+It is strongly recommended to ensure a recent backup has been performed and validated before completing the upgrade.
+If you previously disabled the two-way synchronization between the new and old version data group(s), you'll need to re-enable it with the following command:
+
+```sql
+SELECT bdr.alter_subscription_enable(sub_name, true)
+    FROM bdr.subscription s, bdr.node n, bdr.node_group ng
+  WHERE n.node_group_id = ng.node_group_id
+    AND s.source_node_id = n.node_id
+    AND ng.node_group_name = '<old version data group name>';
+````
+
+## Remove the old version data group(s)
+
+The last step in the upgrade procedure is to remove the old version data group(s).
+In the **Overview** tab from the cluster page, select the triple dot drop-down menu for the old version data group you wish to remove and select the **Delete Data Group** action.
+You are then presented with a pop-up to confirm the deletion.
+Confirm the deletion, repeat the removal process for any other old version data groups you have, and the upgrade is complete.
+
+## Rollback considerations
+
+There's no automated rollback available with this approach.
+To undo the major upgrade, consider restoring the latest backup in a new data group running the desire major version and switching application and client workloads to that new data group.

@@ -1,0 +1,232 @@
+---
+title: Configuring the Agent
+navTitle: Configure the Beacon Agent
+
+---
+
+Configure the agent (deployed as `beacon-agent`) to allow it to connect to your Hybrid Manager and fetch monitoring data from the source database.
+
+You can also use the agent to [get your Oracle database ready for migration](../../../migration/migration_guides/agent_for_oracle_readiness.mdx) for migration and extract schemas for conversion.
+
+Change to the [OS user you previously created](agent_os_user.mdx) to perform the agent configuration.
+
+## Set environment variables
+
+Ensure that following environment variables are available in your environment.
+These environment variables must be permanently available as they are required each time the agent starts.
+
+!!! Info
+
+    It is possible to set these values directly in the config files, but as they contain secrets it is generally advisable to handle them as environment variables managed through a secrets manager.
+
+1.  Set `BEACON_AGENT_ACCESS_KEY` to the access key you obtained from the console when you [created a machine user](create_machine_user.mdx).
+
+2.  Set `$DSN` to the Data Source Name (DSN) to which you wish to connect.
+    For example, to connect as user `postgres` authenticated with password `password` to a database `hr` on port 5432 you would specify:
+
+    ```
+    postgresql://postgres:password@localhost:5432/hr
+    ```
+
+    If you plan to connect to more than one database with this agent, you can specify multiple such variables, for example $DSN1, $DSN2. 
+    You can use any name you wish for these variables because they will be referenced by name in the configuration file.
+
+## Prepare a configuration file
+
+1.  Create a Beacon configuration directory in your home directory:
+
+    ```shell
+    mkdir ${HOME}/.beacon
+    ```
+
+2.  Inside this directory, create a new file `beacon_agent.yaml`
+
+    ```shell
+    touch .beacon/beacon_agent.yaml
+    ```
+
+3.  Copy and paste the following template into the new file. This template is designed to enable all monitoring options.
+
+    ```yaml
+    ---
+    agent:
+      access_key: $BEACON_AGENT_ACCESS_KEY
+      beacon_server: <beacon-server>:9443
+      project_id: <project-id>
+      providers:
+        - onprem
+      root_ca_path: ""
+    general:
+      logging:
+        level: "info"
+      metrics:
+        push:
+          enabled: true
+          include_logs: true
+          push_endpoint: <beacon-server>:9443
+          root_ca_path: ""
+        usage:
+          company_code: <company-code>
+          output:
+            file:
+              enabled: true
+              path: beacon_usage.json
+            http:
+              enabled: false
+              url: https://pg-usage.enterprisedb.com
+    provider:
+      onprem:
+        databases:
+          - resource_id: <resource_id>
+            disable_host_association: false
+            dsn: $DSN
+            logs:
+              disabled: false
+            metrics:
+              disabled: false
+              stats:
+                enabled: true
+                wait_states:
+                  enabled: true
+                recommendations:
+                  enabled: true
+                query_texts:
+                  enabled: true
+                query_stats:
+                  enabled: true
+        host:
+          metrics:
+            disabled: false
+          resource_id: <host-id>
+    dispatcher:
+      enabled: true
+      mode: standalone
+      location_id: <location-id>
+    ```
+
+    The placeholders denoted by `<>` should be replaced with appropriate values.
+    Refer to [Parameter reference](configure_agent.mdx#parameter-reference) for explanations of each parameter and how to obtain the appropriate value.
+
+## Validate the configuration file
+
+Run the following command. 
+This will validate the credentials provided in the previous steps by making a test connection to the Hybrid Manager server and print a summary of your configuration.
+
+```shell
+beacon-agent config 
+```
+
+If the connection succeeds a summary of the connection details will be printed. 
+If any error are shown in the output, it must be resolved before proceeding.
+
+!!! note
+
+    If the **Connectivity** check fails with a message like `failed to verify certificate x509...` this likely means that the system on which you are running the agent does not trust the certificate used to sign the server certificate.
+    This is likely symptomatic of an issue with root certificate distribution and should be raised with the team that manages your infrastructure.
+    If you have a copy of the root certificate, you can provide the path to the root certificate by setting `agent.root_ca_path` and `general.metrics.push.root_ca_path`.
+    Re-run `beacon-agent config` after setting these parameters to check the the issue is resolved.
+
+    If the the **Connectivity** check fails with a message like `connection reset by peer` this generally means the agent cannot reach the specified `<beacon-server>` because the URL is incorrect or there is a firewall preventing connection.
+
+**The agent is now configured, you may proceed to [run the agent](run_agent.mdx) or [configure the agent to run as a service](run_as_service.mdx).** Once your agent is running, consider [configuring usage reporting](configure_agent.mdx#usage-reporting).
+
+## Usage reporting
+
+The agent collects basic usage data to enable EDB to better understand our customers. It doesn't send any data to EDB until you enable it.
+
+Once the agent is running, the `general.metrics.usage.output.file.enabled` setting (set to `true` in the template above) allows the agent to save a local copy of the usage data in a file, `beacon_usage.json`.
+
+Review this file to verify that the information is accurate and does not contain any data you are not happy to share with EDB. Then, enable reporting to EDB by setting `general.metrics.usage.output.http.enabled` to `true`.
+
+## Parameter reference
+
+This section contains additional information to help you understand and edit the agent's configuration file.
+
+| YAML agent settings                  | Placeholder            | Guidelines                                                                                                                                                                                                   |
+| ------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent.access_key`                   | N/A                    | Access key you obtained from the console when you [created a machine user](create_machine_user.mdx).                                                                                                         |
+| `agent.root_ca_path`                 | N/A                    | If required, obtain the root certificate from an administrator and store it locally. Then, set this value to the path where you stored it. See [Administrative tasks](admin_tasks.mdx) for more information. |
+| `general.metrics.push.root_ca_path`  | N/A                    | Set to the same value as `agent.root_ca_path`.                                                                                                                                                               |
+| `agent.beacon_server`                | `<beacon-server>:9443` | Obtain the host URL of your beacon server from an administrator, the port is fixed as 9443. See [Administrative tasks](admin_tasks.mdx) for more information.                                                |
+| `agent.beacon_dispatcher_server`     | `<beacon-server>:9443` | The same as `agent.beacon_server`.                                                                                                                                                                           |
+| `general.metrics.push.push_endpoint` | `<beacon-server>:9443` | The same as `agent.beacon_server`.                                                                                                                                                                           |
+| `agent.project_id`                   | `<project-id>`         | To obtain your project’s ID, go to the console, select **Projects**, and select your project. The ID is the identifier starting with “prj\_” in the URL of that page.                                        |
+| `general.metrics.usage.company_code` | `<company-code>`       | Your company code can be found on the [EDB Support Portal](https://techsupport.enterprisedb.com/company).                                                                                                    |
+| `dispatcher.location_id`             | `<location_id>`        | A unique identifier used by the Hybrid Manager for this agent/location. Consider setting this to the same value as `provider.onprem.host.resource_id` for convenience.                                       |
+
+Settings relevant to the database configuration:
+
+| YAML database settings               | Placeholder     | Guidelines                                                                                                                                                                                                                                              |
+| ------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `databases.resource_id`              | `<resource-id>` | Assign an identifier to your database. This will link your database to an identifier. Encase in double quotes. Must be unique within the project.                                                                                                       |
+| `databases.dsn`                      | N/A             | Connection string or DSN that provides access to your remote database. <br/> * The DSN must follow the format: `<database_type>://<user>:<password>@<host>:<port>/<database_name>`. <br/> * The `database_type` can be postgresql or oracle.            |
+| `databases.poll_interval`            | N/A             | Specifies how often the Hybrid Manager checks polls the database for basic metadata. Provide the value in minutes (m) or seconds (s).                                                                                                                   |
+| `databases.tags`                     | N/A             | Assign tags to label the migration of that specific database. Encase in double quotes and introduce each tag with a dash.                                                                                                                               |
+| `databases.disable_host_association` | N/A             | Set to `true` to prevent this database being associated with the host on which the agent is running. For example, if the agent is running on a different server.                                                                                        |
+| `host.resource_id`                   | `<host-id>`     | Assign an identifier to the host on which the agent is running, by default this will be populated by the hostname detected during setup. This will link your host machine to an identifier. Encase in double quotes. Must be unique within the project. |
+| `host.metrics.disabled`              | N/A             | Set to `true` to disable the collection of host metrics from the host on which the agent is located.                                                                                                                                                    |
+
+## Monitoring multiple databases
+
+You can specify more than one instance by adding additional items to the list.
+
+```yaml
+databases:
+      - resource_id: selfmanaged_postgres_1
+        disable_host_association: false
+        dsn: "$DSN1"
+        ...
+      - resource_id: selfmanaged_postgres_2
+        disable_host_association: true
+        dsn: "$DSN2"
+        ...
+```
+
+!!! Note
+
+    Currently monitoring data is only collected from the database specified in the DSN. For example if you specify the `postgres` database then the database size will only reflect the size of this database.
+    To monitor other databases within the same Postgres instance you must specify them individually in the same way as specifying multiple instances.
+
+## Fine-tuning monitoring data collection
+
+The template provided here enables all monitoring features. You can fine-tune which features are enabled.
+
+### Time-series metrics (the "Monitoring" tab)
+
+The `general.metrics.push` section of the configuration file controls the pushing of time series metrics back to the Prometheus instance in the Hybrid Manager.
+These metrics populate the **Monitoring** tab. You can disable this by setting `general.metrics.push.enabled` to `false`.
+
+### Postgres logs (the "Logs" tab)
+
+The collection of logs is enabled by setting `general.metrics.push.include_logs` to `true` and can be disabled at the agent level by setting this value to `false`.
+In addition, `logs.disabled` must be set to `false` for each entry in `provider.onprem.databases` for which you wish to collect Postgres logs.
+
+By default, the agent attempts to discover the location of the log files by calling the Postgres function `pg_current_logfile()`.
+If you wish to explicitely specify the location of the log files because, for example, you configured your Postgres instance to store logs at a different location, substitute `<logs_directory>` with the path to the directory where you are storing log files.
+
+For example, to collect logs with the extension `.log` from filepath `/var/log/postgres-lc` you can use the pattern `/var/log/postgres-lc/*.log`
+
+```yaml
+databases:
+  - resource_id: selfmanaged_postgres_1
+  ...
+  logs:
+    disabled: false
+    mode: file
+    file:
+      paths: <logs_directory>/*log
+```
+
+### Diagnostics ("Query Diagnostics" and "Recommendations" tabs)
+
+The `metrics.stats` section under each entry in `provider.onprem.databases` controls the collection of more detailed diagnostic data for query analysis and optimization.
+
+You can disable all such data collection by setting `metrics.stats.enabled` to `false`. Alternatively you can enable or disable each individual element by setting the appropriate `enabled` parameter.
+
+-   `metrics.stats.wait_states` controls the collect of query data based on sampling the session state from EDB Wait States.
+-   `metrics.stats.query_text` controls the collection of query statistics from EDB Stat Monitor. 
+
+If both options above are disabled, the **Query Diagnostics** tab will be disabled.
+
+-   `metrics.stats.recommendations` controls the collection of index and statistics recommendations from EDB Query Advisor. If disabled the **Recommendations** tab will be blank.
+-   `metrics.stats.query_text` controls the collection of query texts from both EDB Wait States and EDB Stat Monitor. If disabled, no query texts will be collected and you will only see query ID in **Query Diagnostics**.

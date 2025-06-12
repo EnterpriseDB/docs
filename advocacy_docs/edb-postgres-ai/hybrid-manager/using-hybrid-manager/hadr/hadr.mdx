@@ -1,0 +1,124 @@
+---
+title: HA/DR planning and best practices
+
+---
+
+## Overview
+
+You can configure a multi-data center topology using Hybrid Manager (PGAIHM) using PostgreSQL Distributed (PGD) deployments to meet your high availability and disaster recovery (HA/DR) requirements. This topology includes a primary PGAIHM and one or more data-only PGAIHMs across multiple Kubernetes clusters.
+
+In this HA environment, the primary PGAIHM is a standard PGAIHM deployment. The data-only PGAIHM is essentially the same PGAIHM deployment, with backend adjustments to connect it to the primary PGAIHM, and to prevent accidental local provisioning. A key component facilitating this connection is the beacon agent and beacon server, which handle communication and certificate passing between the PGAIHMs.
+
+In the event that one cluster goes down, your applications can be pointed to another cluster with synchronized data, ensuring continuous operation.  A multi-data center setup provides redundancy in case of a data center outage.  A central PGAIHM can manage databases across multiple remote Kubernetes clusters, simplifying database administration.
+
+## Topologies
+
+The multi-PGAIHM setup can be deployed with the following topologies:
+
+-   **Primary and Data-Only PGAIHM:** This is the basic setup with one primary PGAIHM and at least one data-only PGAIHM. It allows for PGD deployments across two or more Kubernetes clusters.
+-   **Multiple Data-Only PGAIHMs:** The system can support multiple data-only PGAIHMs, allowing a single primary PGAIHM to manage databases across many Kubernetes clusters. This is useful for organizations with numerous application teams, each with their own cluster.
+-   **Three PGAIHMs for PGD:** For optimal PGD deployments, especially with two data groups and a witness group, a three-PGAIHM topology is recommended. This ensures an odd quorum for proper distributed consensus.
+
+Multi-data center deployments include a primary data center containing the main PGAIHM instance and a secondary data center potentially with a data-only PGAIHM or other Kubernetes clusters, along with a global object store accessible from multiple data centers.
+
+!!! Note
+
+    PGAIHM version 1.2 supports only a single PGAIHM.  Advanced topologies with multiple PGAIHMs are planned for future versions.   
+
+!!! Note
+
+    Cross data center HA: High availability across data centers or regions is not currently supported; disaster recovery via backup and restore is the only option.
+
+## Requirements
+
+The following requirements apply when configuring an HA topology:
+
+-   Two or more existing Kubernetes clusters, for example, using Amazon EKS or RedHat OpenShift.  
+-   A fully deployed primary PGAIHM on one of the Kubernetes clusters.  
+-   A data-only PGAIHM installed on the other Kubernetes cluster(s), using a provided script for configuration.
+-   When spanning databases across the multiple clusters, PGD must be used.
+-   Witness nodes in PGD require a minimum of 10GB of disk space.
+-   A high-performance networking layer in cloud and multi-region deployments. EKS simplifies this due to its integration with the AWS ecosystem.  OpenShift may require more complex networking configurations. Complex networking configurations, especially in OpenShift, can lead to connectivity problems between clusters. Ensure a proper network setup to allow communication between PGD nodes. High network latency can cause PGD clusters to become unstable if raft settings are not properly tuned. Symptoms may include slow failure detection and recovery. Adjust raft-related settings to accommodate higher network latency.
+
+!!! Note
+
+    For single standalone or replica clusters (non-PGD), clusters can only be deployed entirely within one location. Spanning of replicas across locations isn't supported.
+
+## Network Latency
+
+There is an inherent trade-off between how quickly PGD can react to consensus issues and the amount of network latency present. Higher latency requires more relaxed consensus settings, potentially increasing the time to detect and respond to failures. Some raft settings may not be directly configurable through the PGAIHM user interface (UI).
+
+Latency is less of a concern in on-premise, tightly coupled environments compared to cloud environments that span regions.  You can configure more relaxed raft settings to accommodate high-latency scenarios.
+
+You can use the `pg` CLI to interact with the cluster and adjust configuration settings, particularly raft settings, that are not exposed in the UI. Use the `bdr run on nodes` function to execute commands on other nodes.
+
+## Kubernetes and failovers
+
+Kubernetes handles failovers and redundancy within PGAIHM. The following configurations are supported:
+
+-   **Single Cluster, Single Zone:** A basic Kubernetes setup with one cluster and one zone, containing multiple nodes and pods.
+-   **Single Cluster, Multiple Zones:** A Kubernetes cluster divided into multiple zones, where a zone could represent a separate rack or data center. This is referred to as a "stretch cluster".
+-   **Multi-Cluster, Multi-Location:** Multiple Kubernetes clusters located in different data centers, potentially geographically distant.
+
+These configuration achieve an HA posture by ensuring continuous service availability within a cluster or across zones through redundancy and failover mechanisms.  DR is achieved by recovering services and data in the event of a larger failure, such as a data center outage, using backups and data replication across different locations.
+
+### Recommendations
+
+The following recommendation apply when using Kubernetes:
+
+-   While PGAIHM aims to simplify HA/DR, a basic understanding of Kubernetes concepts is beneficial.  Understanding Kubernetes concepts like nodes, pods, zones, and clusters is essential for HA/DR planning.
+-   Adequate resources within the Kubernetes cluster are necessary for pods to be rescheduled in case of node failures.
+-   Separate PGAIHM and PostgreSQL workloads onto different worker nodes.
+-   Careful planning for storage is crucial, including the type of storage (local, shared, object), its location, redundancy, and backup/restore procedures. Object storage is highly recommended for disaster recovery scenarios, especially for data center failures.
+-   For stretch clusters, network latency should be within acceptable limits and account for witness node placement.  For example, OpenShift recommends less than 5 milliseconds.
+
+### Considerations
+
+Keep in mind the following considerations when using Kubernetes:
+
+-   If worker nodes use local storage, data is not automatically failed over when a node fails. Recovery requires restoring from backup.
+-   Utilizing appropriate storage solutions like shared storage (e.g., Ceph, SAN) or object storage is critical for data persistence and recovery.
+-   PGAIHM services themselves may not automatically fail over in a multi-zone scenario if their data is tied to a specific zone.  
+-   Data availability in failover scenarios depends on the location and replication of the storage.
+-   Kubernetes can handle pod rescheduling in the event of node failures, but data recovery depends on the storage configuration.  
+-   Failover to another zone or data center requires careful planning for data replication and application redirection.  
+-   Lack of shared or replicated storage can hinder recovery.  
+-   PGAIHM leverages Kubernetes capabilities for HA, but it's important to consider PGAIHM-specific configurations.  
+
+## PGAIHM Backups and DR
+
+PGAIHM multi-data center environments use the following to achieve a robust data protection strategy:
+
+-   **Volume Snapshots:** Disk-based backups, typically local to the data center.
+-   **Barman:** Object storage-based backups, which can be stored in a global object store.  
+
+### Recommendations
+
+Keep in mind the following recommendations regarding PGAIHM backups:
+
+-   A global object storage solution is recommended for storing Barman backups.  This can ensure availability of backups across data centers.
+-   Follow the 3-2-1 backup strategy (three copies of data, two different media, one offsite copy) by using both volume snapshots and Barman backups.
+-   Consider replicating backup metadata across Kubernetes clusters to simplify restores in disaster recovery scenarios.
+-   Implement a feature to automate both Barman and volume snapshot backups.
+-   Develop a disaster recovery plan for PGAIHM itself, in addition to your PostgreSQL databases.
+-   When working with on-premises deployments, consider network configurations for connecting multiple Red Hat OpenShift instances.
+
+### Considerations
+
+Keep in mind the following considerations regarding PGAIHM backups:
+
+-   Restoring backups when PGAIHM is unavailable in a secondary data center isn't trivial.
+-   Backup metadata is stored within the Kubernetes cluster where the backup is initiated. If that cluster is lost, access to the metadata is also lost, complicating restores.  
+-   Restoring backups in a secondary data center without the primary PGAIHM may require manual steps.
+-   A primary PGAIHM instance is required for managing backups and restores.
+-   Automated backups can only be sent to one location. The system does not automatically replicate backup definitions across locations.
+-   You can set up Barman or volume snapshots for automatic backups, but not both concurrently through the UI.
+-   If the primary PGAIHM is unavailable, restoring backups may require CLI interaction and manual configuration.
+-   Recovering data in a secondary data center requires access to the backup data and the ability to initiate a restore, even without the primary PGAIHM.
+-   Backup metadata is local to each Kubernetes cluster, so backups taken in one cluster are not automatically visible in another.
+
+### Using
+
+The PGAIHM user interface provides tools for configuring and managing backups and restores.  You can also use the API to initiate backups to specific locations.  You can use `kubectl` to view backups within a Kubernetes cluster.
+
+For information on how to configure backups and restores of your PGAIHM cluster, see [PGAIHM Backup and Recovery](hadr_recovery.mdx).

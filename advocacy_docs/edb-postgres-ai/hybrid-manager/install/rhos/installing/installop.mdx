@@ -1,0 +1,367 @@
+---
+title: Install Hybrid Manager on Red Hat OpenShift using EDB Postgres AI Operator
+navTitle: Installing using Operator
+
+---
+
+## Install Operator dependencies
+
+EDB Postgres AI Operator has an explicit dependency cert-manager operator for Red Hat OpenShift (RHOS), which manages all namespaces.
+It's installed automatically before EDB Postgres AI Platform Operator.
+
+The operator for Red Hat also has implicit dependencies including:
+
+-   RHOS Service Mesh 2, which manages all namespaces
+-   Node Feature Disovery Operator, which manages the namespace `openshift-nfd`
+-   NVIDIA GPU Operator, which manages the namespace `nvidia-gpu-operator`
+
+If you've already installed these operators, you don't need to reinstall them.
+
+## Install the operator for RHOS
+
+1.  Install the operator using the instructions for your use case:
+
+-   [Install the operator on RHOS in a network-connected environment](installop.mdx#__tabbed_1_1)
+-   [Install the operator on RHOS in an air-gapped environment](/install/rhos/installing/#install-the-operator-on-an-air-gapped-envirnoment)
+
+<TabContainer>
+<Tab title="Install on a network-connected environment">
+
+**Step 1**: To install EDB Postgres AI Operator on RHOS, first ensure you've prepared the image pull secret for accessing the EDB Cloudsmith repository.
+Also verify that you have the necessary permissions to pull images from the repository `docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager`.
+
+````
+```bash
+export DOCKER_SERVER="docker.enterprisedb.com"
+export DOCKER_USERNAME="<your-docker-user-name>"
+export DOCKER_PASSWORD="<your-docker-password>"
+```
+````
+
+**Step 2**: Create a new OC project for EDB Postgres AI Operator:
+
+```bash
+oc new-project edb-hcp-operator-system
+```
+
+**Step 3**: Set up the image pull secret to access the EDB Cloudsmith repository:
+
+```bash
+oc create secret docker-registry edb-hcp-operator-pull-secret \
+  --docker-server="$DOCKER_SERVER" \
+  --docker-username="$DOCKER_USERNAME" \
+  --docker-password="$DOCKER_PASSWORD" \
+  --namespace-edb-hcp-operator-system
+```
+
+**Step 4**: Use OpenShift Container Platform (OCP) to install EDB Postgres AI Operator for Red Hat OpenShift:
+
+1.  Log in to the OCP web console.
+2.  Select **Operators > OperatorHub**.
+3.  In the filter box, enter `EDB Postgres AI`.
+4.  Select **EDB Postgres AI Operator** and select **Install**.
+5.  On the Install Operator page:
+    a. For the operator, select **Installed Namespace** using the `edb-hcp-operator-system` name you created earlier.
+    b. Select **Install**.
+
+!!! Tip
+
+    On RHOS, cert-manager is a required dependency for Hybrid Manager.
+    When installing cert-manager, so that it works correctly, ensure that **Installation Mode** is configured as **All namespaces on the cluster**.
+
+</Tab>
+
+<Tab title="Install on an air-gapped environment">
+
+**Step 1**: Install the `oc-mirror/v2` plugin:
+
+```bash
+git clone https://github.com/openshift/oc-mirror.git
+cd oc-mirror/v2
+make build
+sudo mv build/oc-mirror /usr/local/bin 
+```
+
+**Step 2**: [Install Podman](https://podman.io/docs/installation).
+
+**Step 3**: Get the image pull secret from [Red Hat Console](https://console.redhat.com/openshift/downloads#tool-ocm-api-token), and then log in to Red Hat Registry using your customer portal credentials:
+
+```bash
+podman login registry.redhat.io
+podman login registry.connect.redhat.com
+```
+
+**Step 4**: Configure your private registry
+
+1.  Log in to your own private registry (accessible by the air-gapped OpenShift cluster):
+
+    ```bash
+    export CONTAINER_REGISTRY_URI=<container-registry-uri>
+    export CONTAINER_REGISTRY_USERNAME=<container-registry-username>
+    export CONTAINER_REGISTRY_PASSWORD=<container-registry-password>
+    podman login $CONTAINER_REGISTRY_URI
+    ```
+
+2.  Create an image set configuration. Create a file called `imageset-config.yaml` with the following contents:
+
+    ```yaml
+    kind: ImageSetConfiguration
+    apiVersion: mirror.openshift.io/v2alpha1
+    mirror:
+    operators:
+    # change the openshift version here
+    - catalog: registry.redhat.io/redhat/certified-operator-index:v4.17
+        packages:
+    - name: edb-hcp-operator
+        channels:
+        # change the channel here
+        - name: alpha
+        # change the minVersion here
+        minVersion: 1.1.0
+        # change the maxVersion here
+        maxVersion: 1.1.0
+    ```
+
+3.  Run the `oc-mirror` command. Upon completion, the process generates a tarball package located in the `mirror-output` directory.
+
+    ```bash
+    oc-mirror --config=./imageset-config.yaml --remove-signatures file://mirror-output
+    ```
+
+4.  Push images to your own private registry accessible by the air-gapped OpenShift cluster:
+
+    ```bash
+    oc-mirror --config=./imageset-config.yaml --remove-signatures --from=file://mirror-output/ docker://$CONTAINER_REGISTRY_URI
+    ```
+
+    This command also generates `ImageDigestMirrorSet`, `CatalogSource`, and `ClusterCatalog` YAML files under the folder \`mirror-output/working-dir/cluster-resources.
+    For example:
+
+    `idms-oc-mirror.yaml`:
+
+    ```yaml
+    apiVersion: config.openshift.io/v1
+    kind: ImageDigestMirrorSet
+    metadata:
+      annotations:
+        createdAt: Tuesday, 20-May-25 09:22:36 UTC
+        createdBy: oc-mirror v2
+        oc-mirror_version: v0.0.0-unknown
+    name: idms-operator-0
+    spec:
+      imageDigestMirrors:
+      - mirrors:
+        - tqhuang.azurecr.io/enterprisedb
+      source: registry.connect.redhat.com/enterprisedb
+      - mirrors:
+        - tqhuang.azurecr.io/pgai-platform/edb-hcp-operator
+      source: docker.enterprisedb.com/pgai-platform/edb-hcp-operator
+    status: {}
+    ```
+
+    `cs-certified-operator-index-v4-17.yaml`:
+
+    ```yaml
+    apiVersion: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    metadata:
+      annotations:
+        createdAt: Tuesday, 20-May-25 09:22:36 UTC
+        createdBy: oc-mirror v2
+        oc-mirror_version: v0.0.0-unknown
+      name: cs-certified-operator-index-v4-17
+      namespace: openshift-marketplace
+    spec:
+      image: tqhuang.azurecr.io/redhat/certified-operator-index:v4.17
+      sourceType: grpc
+    status: {}
+    ```
+
+    `cc-certified-operator-index-v4-17.yaml`:
+
+    ```yaml
+    apiVersion: olm.operatorframework.io/v1
+    kind: ClusterCatalog
+    metadata:
+      annotations:
+        createdAt: Tuesday, 20-May-25 09:22:36 UTC
+        createdBy: oc-mirror v2
+        oc-mirror_version: v0.0.0-unknown
+      name: cc-certified-operator-index-v4-17
+    spec:
+      priority: 0
+      source:
+        image:
+          ref: tqhuang.azurecr.io/redhat/certified-operator-index:v4.17
+        type: Image
+    status: {}
+    ```
+
+5.  Create a namespace:
+
+    ```bash
+    oc new-project edb-hcp-operator-system
+    ```
+
+6.  Make sure your OpenShift cluster can download images from your private registry:
+
+    ```bash
+    kubectl create secret docker-registry edb-hcp-operator-pull-secret \
+        --docker-server="${CONTAINER_REGISTRY_URI}" \
+        --docker-username="${CONTAINER_REGISTRY_USERNAME}" \
+        --docker-password="${CONTAINER_REGISTRY_PASSWORD}" \
+        --namespace edb-hcp-operator-system
+    ```
+
+7.  Copy the YAML files to a location where you can apply them to your air-gapped OpenShift cluster:
+
+    ```bash
+    oc apply -f mirror-output/working-dir/cluster-resources/idms-oc-mirror.yaml
+    oc apply -f mirror-output/working-dir/cluster-resources/cs-certified-operator-index-v4-17.yaml
+    ```
+
+**Step 5**: Install the operator via OperatorHub:
+
+1.  Log in to the OCP web console.
+2.  Select **Operators > OperatorHub**
+3.  In the filter box, enter `EDB Postgres AI`.
+4.  Filter operators by the CatalogSource that was created.
+5.  Select **EDB Postgres AI Operator** and select **Install**.
+6.  On the Install Operator page:
+    1.  Select the **Installed Namespace** for the Operator, using the  `edb-hcp-operator-system` namespace you created earlier.
+    2.  Select **Install**.
+
+</Tab>
+</TabContainer>
+
+## Install Hybrid Manager on RHOS
+
+After EDB Postgres AI Operator is installed on your RHOS cluster, you need to use the Operator to install Hybrid Manager.
+The following YAML file initiates the Hybrid Manager installation:
+
+```yaml
+
+
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  source:
+    useLocalKustomizations: true
+  flavour: rhos
+  version: v1.2.0+appl
+  imageRegistry: ${CONTAINER_REGISTRY_URI}
+  imagePullSecrets:
+    - name: edb-cred
+      namespace: edbpgai-bootstrap
+  globalParameters:
+    internal_backup_folder: 4befab698c8d
+    portal_domain_name: ${PORTAL_DOMAIN_NAME}
+    default_ingress_domain: ${DEFAULT_INGRESS_DOMAIN}
+    storage_class: ${STORAGE_CLASS}
+  componentsParameters:
+    edb-migration-portal:
+      enable_pdb: "false"
+    transporter-data-operator:
+      fips_enabled: "${TRANSPORTER_FIPS_ENABLED}"
+    transporter-dp-agent:
+      rw_service_url: https://${TRANSPORTER_RW_SERVICE_DOMAIN_NAME}/transporter
+    transporter-rw-service:
+      domain_name: ${TRANSPORTER_RW_SERVICE_DOMAIN_NAME}
+    upm-api-pnxt-metric:
+      log_level: info
+      tsdb_host: thanos-query.monitoring.svc.cluster.local
+      tsdb_port: "9090"
+    upm-api-pnxt-pd:
+      log_level: info
+    upm-beaco-ff-base:
+      usage_generator_interval: 24h
+    upm-beaco-usages:
+      usage_generator_interval: 24h
+    upm-beacon:
+      server_host: ${BEACON_SERVICE_DOMAIN_NAME}
+      beacon_server_replicas: "1"
+      external_metrics_replicas: "1"
+      beacon_db_hibernation: "\"off\""
+    upm-istio-gateway:
+      openshift_console_domain_name: ${OPENSHIFT_CONSOLE_DOMAIN_NAME}
+      cookie_aeskey: ${AES_256_KEY}
+      ingress_http_node_port: "32542"
+      ingress_https_node_port: "30288"
+      ingress_grpc_tls_node_port: "30290"
+    upm-prometheus:
+      memory: 4Gi
+    upm-trust-manager:
+      cert_manager_namespace: ${CERT_MANAGER_NAMESPACE}
+  pgai:
+    portal:
+      authentication:
+        clientSecret: edb-postgres-ai-secret
+        idpConnectors: []
+        staticPasswords:
+          - email: ${AUTHENTICATION_EMAIL}
+            hash: ${AUTHENTICATION_HASH}
+            username: ${AUTHENTICATION_USERNAME}
+            userID: ${AUTHENTICATION_USER_ID}
+  beaconAgent:
+    applianceProviderEnabled: true
+    plaintext: true
+    beaconServerAddress: "upm-beacon-server-ingestion.upm-beacon.svc.cluster.local:8080"
+    tlsInsecure: false
+    location: "devspatcher"
+    logLevel: "debug"
+    beaconDBConnected: true
+    inCluster: true
+    provisioning:
+      loadBalancersEnabled: true
+      nodePortDomain: "nodeportdomain.com"
+      imageDiscovery: true
+      imagesetDiscoveryAuthenticationType: "basic"
+      imagesetDiscoveryContainerRegistryURL: "us-east1-docker.pkg.dev"
+    providers:
+      - appliance
+```
+
+After the YAML has been applied, you can use the following command to monitor the installation status:
+
+```bash
+oc get hybridcontrolplane edbpgai -o yaml
+```
+
+Three different statuses can be returned, depending on the phase the installation is currently in:
+
+```
+- deployed # the installation was successful
+- deploying # the installation is still in progress
+- failed: # the install was unsuccessful
+```
+
+After the install is successful, [updating DNS zone records and verify the install](dns_and_verify.mdx)\*\*.
+
+### Uninstalling Hybrid Manager installed via Operator
+
+If you installed Hybrid Manager using EDB Postgres AI Operator (versus [Helm](installop.mdx)), you can uninstall it.
+
+!!! Warning
+
+    The following procedure uninstalls Hybrid Manager. Use this procedure only if you're sure you want to uninstall Hybrid Manager.
+
+There may be cases where you want to delete Hybrid Manager.
+Because Hybrid Manager is protected from deletion by default, you must first disable that protection:
+
+```bash
+kubectl annotate hybridcontrolplane edbpgai biganimal.enterprisedb.io/deletion-protect=disabled --overwrite
+```
+
+You can then uninstall:
+
+```bash
+kubectl delete hybridcontrolplane edbpgai --wait=false
+```
+
+To monitor the process, run:
+
+```bash
+kubectl get hybridcontrolplane edbpgai -o yaml
+```
