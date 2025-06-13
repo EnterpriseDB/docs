@@ -39,7 +39,7 @@ const EDBPGAIBannerCard = ({ children }) => (
           <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
             <span>EDB Postgres</span>
             <span
-              style={{ position: "relative", top: "-0.5em", fontSize: "50%" }}
+              style={{ position: "relative", top: "-0.75em", fontSize: "50%" }}
             >
               ®
             </span>
