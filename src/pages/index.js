@@ -25,6 +25,29 @@ const BannerCard = ({ iconName, headingText, children }) => (
   </div>
 );
 
+const EDBPGAIBannerCard = ({ children }) => (
+  <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
+    <div className="card rounded border-secondary shadow-sm mb-4 link-underline">
+      <div className="card-body center">
+        <div className="d-flex align-items-center align-text-center justify-content-center mb-3">
+          <Icon
+            iconName={iconNames.EDB_POSTGRES_AI_LOOP}
+            className="fill-aquamarine"
+            width="64"
+            height="64"
+          />
+          <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
+            <span>EDB Postgres</span>
+            <span className="fw-small">®</span>
+            <span> AI</span>
+          </h4>
+        </div>
+        <div className="row">{children}</div>
+      </div>
+    </div>
+  </div>
+);
+
 const BannerSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-3 col-lg-3 col-md-3 col-sm-6 col-xs-12">
     <div className="card rounded border-secondary shadow-sm mb-4">
@@ -180,10 +203,7 @@ const Page = () => {
     >
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
-          <BannerCard
-            iconName={iconNames.EDB_POSTGRES_AI_LOOP}
-            headingText="EDB Postgres® AI"
-          >
+          <EDBPGAIBannerCard>
             <BannerSubCard
               iconName={iconNames.DATABASE}
               headingText="Databases"
@@ -295,7 +315,7 @@ const Page = () => {
                 High Availability
               </BannerCardLink>
             </BannerWideSubCard>
-          </BannerCard>
+          </EDBPGAIBannerCard>
 
           {/* Sign Post */}
 
