@@ -90,10 +90,8 @@ export default function remarkMdxEmbeddedHast() {
       let endIndex = index + 1;
       while (
         endIndex < parent.children.length &&
-        parent.children[endIndex].value !== valueToMatch
+        !(parent.children[endIndex].type === "jsx" && parent.children[endIndex].value.startsWith(valueToMatch))
       ) {
-        if (parent.children[endIndex].type === "jsx")
-          visitor(parent.children[endIndex], endIndex, parent);
         ++endIndex;
       }
 
@@ -111,6 +109,8 @@ export default function remarkMdxEmbeddedHast() {
         index + 1,
         endIndex - index - 1,
       );
+
+      visit(replacement.children[0], "jsx", visitor);
 
       return replacement;
     }

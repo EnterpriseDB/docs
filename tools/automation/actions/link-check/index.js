@@ -108,7 +108,7 @@ if (!process.env.GITHUB_REF) {
 
   ghCore.context = (filePath, line, column) => {
     console.log(
-      `in https://github.com/EnterpriseDB/docs/blob/${branch}/${filePath}?plain=1#L${line}`,
+      `in https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${branch}/${filePath}?plain=1#L${line}`,
     );
   };
 }
@@ -120,7 +120,7 @@ async function main() {
     ? !!ghCore.getInput("update-links")
     : args.fix;
   const sourceFiles = await glob([
-    path.resolve(basePath, "product_docs/**/*.mdx"),
+    path.resolve(basePath, "product_docs/docs/**/*.mdx"),
     path.resolve(basePath, "advocacy_docs/**/*.mdx"),
   ]);
 
@@ -190,15 +190,15 @@ async function main() {
   //
   const resourceFiles = await glob([
     ...resourceExts.flatMap((ext) => [
-      path.resolve(basePath, "product_docs/**/*" + ext),
+      path.resolve(basePath, "product_docs/docs/**/*" + ext),
       path.resolve(basePath, "advocacy_docs/**/*" + ext),
     ]),
     ...imageExts.flatMap((ext) => [
-      path.resolve(basePath, "product_docs/**/*" + ext),
+      path.resolve(basePath, "product_docs/docs/**/*" + ext),
       path.resolve(basePath, "advocacy_docs/**/*" + ext),
     ]),
     ...rawExts.flatMap((ext) => [
-      path.resolve(basePath, "product_docs/**/*" + ext),
+      path.resolve(basePath, "product_docs/docs/**/*" + ext),
       path.resolve(basePath, "advocacy_docs/**/*" + ext),
     ]),
   ]);
