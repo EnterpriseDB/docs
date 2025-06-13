@@ -95,6 +95,9 @@ exports.onCreateNode = async ({
       });
     }
 
+    // if you're adding a new file type here, you probably also want to add it to
+    // the list of resourceTypes in src/components/layout.js
+
     if (node.extension === "yaml" || node.extension === "yml") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "text/plain; charset=utf-8",

@@ -19,6 +19,7 @@ import toVfile from "to-vfile";
 const { read, write } = toVfile;
 
 const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];
+const resourceExts = [".sh"];
 const rawExts = [".yaml", ".yml"];
 const docsUrl = "https://www.enterprisedb.com/docs";
 // add path here to ignore link warnings
@@ -188,6 +189,10 @@ async function main() {
   // link resolution for raw resources are treated specially for historical reasons - see normalizeUrl()
   //
   const resourceFiles = await glob([
+    ...resourceExts.flatMap((ext) => [
+      path.resolve(basePath, "product_docs/**/*" + ext),
+      path.resolve(basePath, "advocacy_docs/**/*" + ext),
+    ]),
     ...imageExts.flatMap((ext) => [
       path.resolve(basePath, "product_docs/**/*" + ext),
       path.resolve(basePath, "advocacy_docs/**/*" + ext),
