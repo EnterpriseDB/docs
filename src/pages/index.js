@@ -254,21 +254,21 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
               headingText="AI Factory"
-              to="/edb-postgres-ai/ai-accelerator"
+              to="/edb-postgres-ai/ai-factory"
             >
-              <BannerCardLink to="edb-postgres-ai/ai-accelerator/pgvector/">
+              <BannerCardLink to="edb-postgres-ai/ai-factory/pgvector/">
                 Vector Engine
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipelines-overview/">
                 AI Pipeline
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/gettingstarted/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/preparers/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/preparers/">
                 Agent Studio
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pgvector/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/pgvector/">
                 Model Serving
               </BannerCardLink>
             </BannerSubCard>
