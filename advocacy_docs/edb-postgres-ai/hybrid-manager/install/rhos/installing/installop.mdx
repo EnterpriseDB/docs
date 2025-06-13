@@ -19,17 +19,7 @@ If you've already installed these operators, you don't need to reinstall them.
 
 ## Install the operator for RHOS
 
-1.  Install the operator using the instructions for your use case:
-
--   [Install the operator on RHOS in a network-connected environment](#install-connected)
--   [Install the operator on RHOS in an air-gapped environment](#install-airgapped)
-
-<TabContainer>
-<Tab title="Install the operator on RHOS in a network-connected environment">
-
-<span id="install-connected"></span>
-
-**Step 1**: To install EDB Postgres AI Operator on RHOS, first ensure you've prepared the image pull secret for accessing the EDB Cloudsmith repository.
+1. To install EDB Postgres AI Operator on RHOS, first ensure you've prepared the image pull secret for accessing the EDB Cloudsmith repository.
 Also verify that you have the necessary permissions to pull images from the repository `docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager`.
 
   ```bash
@@ -38,13 +28,13 @@ Also verify that you have the necessary permissions to pull images from the repo
   export DOCKER_PASSWORD="<your-docker-password>"
   ```
 
-**Step 2**: Create a new OC project for EDB Postgres AI Operator:
+1. Create a new OC project for EDB Postgres AI Operator:
 
 ```bash
 oc new-project edb-hcp-operator-system
 ```
 
-**Step 3**: Set up the image pull secret to access the EDB Cloudsmith repository:
+1. Set up the image pull secret to access the EDB Cloudsmith repository:
 
 ```bash
 oc create secret docker-registry edb-hcp-operator-pull-secret \
@@ -54,7 +44,7 @@ oc create secret docker-registry edb-hcp-operator-pull-secret \
   --namespace-edb-hcp-operator-system
 ```
 
-**Step 4**: Use OpenShift Container Platform (OCP) to install EDB Postgres AI Operator for Red Hat OpenShift:
+1. Use OpenShift Container Platform (OCP) to install EDB Postgres AI Operator for Red Hat OpenShift:
 
 1. Log in to the OCP web console.
 2. Select **Operators > OperatorHub**.
@@ -67,174 +57,6 @@ oc create secret docker-registry edb-hcp-operator-pull-secret \
 !!! Tip
     On RHOS, cert-manager is a required dependency for Hybrid Manager.
     When installing cert-manager, so that it works correctly, ensure that **Installation Mode** is configured as **All namespaces on the cluster**.
-
-</Tab>
- 
-<Tab title="Install the operator on RHOS in an air-gapped environment">
-
-<span id="install-airgapped"></span>
-
-**Step 1**: Install the `oc-mirror/v2` plugin:
-
-  ```bash
-  git clone https://github.com/openshift/oc-mirror.git
-  cd oc-mirror/v2
-  make build
-  sudo mv build/oc-mirror /usr/local/bin 
-  ```
-
-**Step 2**: [Install Podman](https://podman.io/docs/installation).
-
-**Step 3**: Get the image pull secret from [Red Hat Console](https://console.redhat.com/openshift/downloads#tool-ocm-api-token), and then log in to Red Hat Registry using your customer portal credentials:
-
-```bash
-podman login registry.redhat.io
-podman login registry.connect.redhat.com
-```
-
-**Step 4**: Configure your private registry
-
-1.  Log in to your own private registry (accessible by the air-gapped OpenShift cluster):
-
-    ```bash
-    export CONTAINER_REGISTRY_URI=<container-registry-uri>
-    export CONTAINER_REGISTRY_USERNAME=<container-registry-username>
-    export CONTAINER_REGISTRY_PASSWORD=<container-registry-password>
-    podman login $CONTAINER_REGISTRY_URI
-    ```
-
-2.  Create an image set configuration. Create a file called `imageset-config.yaml` with the following contents:
-
-    ```yaml
-    kind: ImageSetConfiguration
-    apiVersion: mirror.openshift.io/v2alpha1
-    mirror:
-    operators:
-    # change the openshift version here
-    - catalog: registry.redhat.io/redhat/certified-operator-index:v4.17
-        packages:
-    - name: edb-hcp-operator
-        channels:
-        # change the channel here
-        - name: alpha
-        # change the minVersion here
-        minVersion: 1.1.0
-        # change the maxVersion here
-        maxVersion: 1.1.0
-    ```
-
-3.  Run the `oc-mirror` command. Upon completion, the process generates a tarball package located in the `mirror-output` directory.
-
-    ```bash
-    oc-mirror --config=./imageset-config.yaml --remove-signatures file://mirror-output
-    ```
-
-4.  Push images to your own private registry accessible by the air-gapped OpenShift cluster:
-
-    ```bash
-    oc-mirror --config=./imageset-config.yaml --remove-signatures --from=file://mirror-output/ docker://$CONTAINER_REGISTRY_URI
-    ```
-
-    This command also generates `ImageDigestMirrorSet`, `CatalogSource`, and `ClusterCatalog` YAML files under the folder \`mirror-output/working-dir/cluster-resources.
-    For example:
-
-    `idms-oc-mirror.yaml`:
-
-    ```yaml
-    apiVersion: config.openshift.io/v1
-    kind: ImageDigestMirrorSet
-    metadata:
-      annotations:
-        createdAt: Tuesday, 20-May-25 09:22:36 UTC
-        createdBy: oc-mirror v2
-        oc-mirror_version: v0.0.0-unknown
-    name: idms-operator-0
-    spec:
-      imageDigestMirrors:
-      - mirrors:
-        - tqhuang.azurecr.io/enterprisedb
-      source: registry.connect.redhat.com/enterprisedb
-      - mirrors:
-        - tqhuang.azurecr.io/pgai-platform/edb-hcp-operator
-      source: docker.enterprisedb.com/pgai-platform/edb-hcp-operator
-    status: {}
-    ```
-
-    `cs-certified-operator-index-v4-17.yaml`:
-
-    ```yaml
-    apiVersion: operators.coreos.com/v1alpha1
-    kind: CatalogSource
-    metadata:
-      annotations:
-        createdAt: Tuesday, 20-May-25 09:22:36 UTC
-        createdBy: oc-mirror v2
-        oc-mirror_version: v0.0.0-unknown
-      name: cs-certified-operator-index-v4-17
-      namespace: openshift-marketplace
-    spec:
-      image: tqhuang.azurecr.io/redhat/certified-operator-index:v4.17
-      sourceType: grpc
-    status: {}
-    ```
-
-    `cc-certified-operator-index-v4-17.yaml`:
-
-    ```yaml
-    apiVersion: olm.operatorframework.io/v1
-    kind: ClusterCatalog
-    metadata:
-      annotations:
-        createdAt: Tuesday, 20-May-25 09:22:36 UTC
-        createdBy: oc-mirror v2
-        oc-mirror_version: v0.0.0-unknown
-      name: cc-certified-operator-index-v4-17
-    spec:
-      priority: 0
-      source:
-        image:
-          ref: tqhuang.azurecr.io/redhat/certified-operator-index:v4.17
-        type: Image
-    status: {}
-    ```
-
-5.  Create a namespace:
-
-    ```bash
-    oc new-project edb-hcp-operator-system
-    ```
-
-6.  Make sure your OpenShift cluster can download images from your private registry:
-
-    ```bash
-    kubectl create secret docker-registry edb-hcp-operator-pull-secret \
-        --docker-server="${CONTAINER_REGISTRY_URI}" \
-        --docker-username="${CONTAINER_REGISTRY_USERNAME}" \
-        --docker-password="${CONTAINER_REGISTRY_PASSWORD}" \
-        --namespace edb-hcp-operator-system
-    ```
-
-7.  Copy the YAML files to a location where you can apply them to your air-gapped OpenShift cluster:
-
-    ```bash
-    oc apply -f mirror-output/working-dir/cluster-resources/idms-oc-mirror.yaml
-    oc apply -f mirror-output/working-dir/cluster-resources/cs-certified-operator-index-v4-17.yaml
-    ```
-
-**Step 5**: Install the operator via OperatorHub:
-
-1. Log in to the OCP web console.
-1. Select **Operators > OperatorHub**
-1. In the filter box, enter `EDB Postgres AI`.
-1. Filter operators by the CatalogSource that was created.
-1. Select **EDB Postgres AI Operator** and select **Install**.
-1. On the Install Operator page:
-    1. Select the **Installed Namespace** for the Operator, using the  `edb-hcp-operator-system` namespace you created earlier.
-    1. Select **Install**.
-
- 
-</Tab>
-</TabContainer>
 
 ## Install Hybrid Manager on RHOS
 
