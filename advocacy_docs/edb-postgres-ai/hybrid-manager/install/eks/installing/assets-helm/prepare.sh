@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "HCP Helm values.yaml preparation\n"
+echo "HM Helm values.yaml preparation\n"
 
 
 # If EDB_PLATFORM_VERSION is not set, error and exit
