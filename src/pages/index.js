@@ -259,7 +259,7 @@ const Page = () => {
               <BannerCardLink to="edb-postgres-ai/ai-factory/pgvector/">
                 Vector Engine
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipelines-overview/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipelines">
                 AI Pipeline
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-factory/gettingstarted/">
