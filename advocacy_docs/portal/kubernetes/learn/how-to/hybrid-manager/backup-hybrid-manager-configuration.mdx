@@ -1,0 +1,112 @@
+---
+title: Backup Hybrid Manager configuration
+navTitle: Backup Hybrid Manager configuration
+description: How to back up critical Hybrid Manager configuration components on Kubernetes.
+---
+
+# Backup Hybrid Manager configuration
+
+This how-to guide explains how to back up **critical configuration components** for Hybrid Manager (HM) running on Kubernetes.
+
+Backing up configuration is important for:
+
+- Disaster recovery (DR)
+- Re-creating environments in new clusters
+- Migrating Hybrid Manager to new clusters or cloud environments
+- Ensuring that platform settings and credentials can be restored if needed
+
+**Important:** This guide focuses on backing up **Hybrid Manager platform configuration** — not EDB-managed Postgres database backups.
+For Postgres backup guidance, see [Backup Kubernetes PersistentVolumes](../../backup-kubernetes-pv) and your database operator documentation.
+
+## What to back up
+
+The following Kubernetes resources should be included in your configuration backup:
+
+- **Secrets** containing:
+- Object storage credentials (example: `edb-object-storage` Secret)
+- Image pull secrets (example: `edb-cred`)
+- TLS certificates used by Ingress / LoadBalancers (if applicable)
+- Any additional platform-specific Secrets (check `upm-*` namespaces)
+
+- **ConfigMaps** containing:
+- Platform settings (if stored in ConfigMaps)
+- Transporter or Beacon configuration (if present)
+- Monitoring configuration overrides (if used)
+- Any other configuration stored in ConfigMaps in `upm-*` namespaces or operator namespaces
+
+- **Custom Resource Definitions (CRDs)** → typically not needed for regular config backup, but document operator versions and applied CRDs for full environment backup.
+
+## How to back up Secrets
+
+For each relevant namespace (example: `upm-ui`, `upm-api-*`, `postgresql-operator-system`, `transporter-*`, `storage-location-operator`):
+
+1. List Secrets:
+
+`kubectl get secrets -n <namespace>`
+
+2. Export Secrets:
+
+`kubectl get secret <secret-name> -n <namespace> -o yaml > <secret-name>.yaml`
+
+3. Store exported YAML files securely — treat Secrets as sensitive data.
+
+**Important:** Do not commit Secrets to source control without encryption.
+
+## How to back up ConfigMaps
+
+For each relevant namespace:
+
+1. List ConfigMaps:
+
+`kubectl get configmaps -n <namespace>`
+
+2. Export ConfigMaps:
+
+`kubectl get configmap <configmap-name> -n <namespace> -o yaml > <configmap-name>.yaml`
+
+3. Store exported ConfigMap YAML files with other configuration backups.
+
+## Backup automation
+
+You may automate backup of Secrets and ConfigMaps using:
+
+- Scheduled backup Jobs or CronJobs in Kubernetes
+- Tools like Velero (supports backup of ConfigMaps, Secrets, CRDs)
+- GitOps workflows (where safe and appropriate)
+
+Always validate that your backup automation captures:
+
+- Namespaces and resources relevant to Hybrid Manager
+- Sensitive data handling (Secrets must be encrypted)
+
+## Recommended backup cadence
+
+- After initial Hybrid Manager deployment → full configuration backup
+- After significant platform changes (new object storage credentials, new TLS certificates)
+- Periodically (aligned with DR testing cadence)
+- Before performing major cluster changes or migrations
+
+## Restoring configuration
+
+To restore:
+
+- Apply backed up Secrets and ConfigMaps to the target cluster:
+
+`kubectl apply -f <secret-or-configmap>.yaml`
+
+- Validate that components start cleanly with restored configuration.
+- Review documentation for component-specific behaviors on config restore (some may require Pod restart).
+
+## Summary checklist
+
+- Identify key Secrets and ConfigMaps for Hybrid Manager platform.
+- Export and securely store configuration backups.
+- Automate configuration backup where possible.
+- Maintain backup cadence aligned with environment changes.
+- Validate restore procedures regularly.
+
+## Related topics
+
+- [Restart Hybrid Manager components](./restart-hybrid-manager-components)
+- [Troubleshoot Hybrid Manager components](./troubleshoot-hybrid-manager-components)
+- [Backup Kubernetes PersistentVolumes](../../ba)
