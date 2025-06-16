@@ -205,9 +205,11 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           </div>
 
           {frontmatter.displayBanner ? (
-            <div className="alert alert-warning mt-3" role="alert">
-              {frontmatter.displayBanner}
-            </div>
+            <div
+              className="alert alert-warning mt-3"
+              role="alert"
+              dangerouslySetInnerHTML={{ __html: navTree.displayBanner }}
+            />
           ) : null}
 
           <ContentRow>
