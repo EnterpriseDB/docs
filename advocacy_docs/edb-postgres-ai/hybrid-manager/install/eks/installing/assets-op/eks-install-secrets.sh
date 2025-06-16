@@ -56,3 +56,6 @@ kubectl apply -f - <<EOF
   stringData:
     PG_CONFOUNDING_KEY: ${PG_CONFOUNDING_KEY}
 EOF
+
+echo "PG_CONFOUNDING_KEY is ${PG_CONFOUNDING_KEY} - store safely"
+
