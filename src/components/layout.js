@@ -30,7 +30,7 @@ const mapRelativeResourcePath = (
 ) => {
   // add file extensions here to enable "filesystem-like" references from .mdx pages
   // Note: you'll probably also need to enable importing them via a call to makeFileNodePublic() in gatsby-node.js
-  const resourceTypes = [".svg"];
+  const resourceTypes = [".svg", ".sh"];
 
   // test for absolute URLs; when we pass Node 19.9, switch to use canParse
   try {
