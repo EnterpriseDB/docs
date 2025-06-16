@@ -248,8 +248,147 @@ HM and its underlying components require secure authentication mechanisms to ens
 
 ### Step 7: Configure object storage
 
--   Object storage backend: To support HM backups, connect the cluster to an object storage solution (for example, MinIO, Ceph Object Gateway, or AWS S3-compatible storage).
-    See [Bring your own object storage](<>) for more information regarding the configuration of your object store.
+Object storage backend: To support HM backups, connect the cluster to a dedicated object storage solution (for example, MinIO, Ceph Object Gateway, or AWS S3-compatible storage).
+
+Among others, Hybrid Manager uses this bucket to store: 
+
+- Managed storage locations
+- Postgres WALs + backups
+- Logs (both Postgres and internal services)
+- Metrics (both Postgres and internal services)
+
+#### Create a bucket
+
+Create a [MinIO](https://min.io/docs/minio/linux/reference/minio-mc/mc-mb.html) or [Ceph bucket](https://docs.ceph.com/en/reef/radosgw/s3/bucketops/).
+
+#### Create a bucket user
+
+After creating a dedicated bucket for Hybrid Manager with your provider, create an identity user with full access to the bucket, as well as AWS static credentials for the identity user to grant the Hybrid Manager access to the bucket.
+
+<TabContainer>
+<Tab title="MinIO bucket user">
+
+Download the [MinIO Client](https://min.io/docs/minio/linux/reference/minio-mc.html).
+
+1.  Retrieve the MinIO deployment name and create a username and password: 
+
+    ```shell
+    export MINIO_DEPLOYMENT_NAME=<minio_deployment_name> # deployment name to minio
+    export BUCKET_NAME=<minio_bucket_name> # bucket name
+    export AWS_ACCESS_KEY_ID=<minio_user_name> # user name
+    export AWS_SECRET_ACCESS_KEY=<minio_user_password> # password to the user
+    export MINIO_POLICY_NAME=<minio_policy_name> # policy to minio
+    ```
+
+1.  Create a new user: 
+
+    ```shell
+    mc admin user add ${MINIO_DEPLOYMENT_NAME} ${AWS_ACCESS_KEY_ID} ${AWS_SECRET_ACCESS_KEY}
+    ```
+
+1.  Create one MinIO policy: 
+
+    ```shell 
+    cat << EOF > policy.json
+    {
+        "Version" : "2012-10-17",
+        "Statement": [
+            {
+                "Effect" : "Allow",
+                "Action" : [
+                    "s3:*"
+                ],
+                "Resource" : [
+                    "arn:aws:s3:::${BUCKET_NAME}",
+                    "arn:aws:s3:::${BUCKET_NAME}/*"
+                ]
+            }
+        ]
+    }
+    EOF
+    ```
+
+1.  Apply the policy:
+
+    ```
+    mc admin policy create ${MINIO_DEPLOYMENT_NAME} ${MINIO_POLICY_NAME} ./policy.json
+    ```
+
+1.  Attach the policy to the user: 
+
+    ```shell 
+    mc admin policy attach ${MINIO_DEPLOYMENT_NAME} ${MINIO_POLICY_NAME} --user ${AWS_ACCESS_KEY_ID}
+    ```
+
+</Tab>
+
+<Tab title="Ceph Object Storage bucket user">
+
+Download Ceph's command line interface [Radosgw-admin utility](https://docs.ceph.com/en/reef/man/8/radosgw-admin/).
+
+1.  Retrieve the bucket and some environment variables: 
+
+    ```shell
+    export BUCKET_NAME=<bucket_name> # bucket name
+    export USER_NAME=<user_name> # user name
+    ```
+
+1.  Create the user: 
+
+    ```shell
+    radosgw-admin user create --uid ${USER_NAME} --display-name= ${USER_NAME} > user.json
+
+    export AWS_ACCESS_KEY_ID=$(cat user.json | jq -r '.keys[0].access_key')
+    export AWS_SECRET_ACCESS_KEY=$(cat user.json | jq -r '.keys[0].secret_key')
+    ```
+
+1.  Grant the user access to the bucket: 
+
+    ```shell
+    radosgw-admin bucket link --bucket ${BUCKET_NAME} --uid ${USER_NAME}
+    ```
+
+</Tab>
+</TabContainer>
+
+#### Create a secret for bucket access
+
+After preparing the dedicated user for HM access to the bucket, create a secret that associates the created user with the Hybrid Manager to provide access for object storage.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # name cannot be changed
+  namespace: default # namespace cannot be changed
+stringData:
+    auth_type: credentials
+
+    # Optional: Used only when the object storage server's certificate is not issued by a well-known CA
+    #
+    # Base64 string of the CA bundle for the certificate used by the object storage server
+    aws_ca_bundle_base64: xxx
+
+    # Required: Endpoint URL to the object storage
+    aws_endpoint_url_s3: xxx
+
+    # Required: AWS Static Credentials - AWS_ACCESS_KEY_ID
+    aws_access_key_id: xxx
+
+    # Required: AWS Static Credentials - AWS_SECRET_ACCESS_KEY
+    aws_secret_access_key: xxx
+
+    # Required: Bucket name
+    bucket_name: xxx
+
+    # Required: Region of the bucket
+    aws_region: xxx
+
+    # Optional: true or false
+    #
+    # When server-side encryption is disabled, set this to true. By default, its value is false, indicating that server-side encryption is enabled.
+    server_side_encryption_disabled: bool
+```
 
 ### Step 8: Validate network security
 
