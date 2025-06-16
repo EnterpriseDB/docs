@@ -1,0 +1,147 @@
+---
+title: Configure an Iceberg REST catalog connection
+navTitle: Configure Iceberg catalog
+description: Step-by-step guide to configure an Iceberg REST catalog connection in Hybrid Manager for querying Iceberg tables from Lakehouse clusters or PGD nodes.
+---
+
+This guide explains how to configure an Iceberg REST catalog connection in Hybrid Manager (HM).
+
+You can connect Lakehouse clusters and PGD nodes to an Iceberg catalog to manage and query Iceberg tables.
+
+## Goals
+
+After completing this guide, you will be able to:
+
+- Connect a Lakehouse cluster or PGD node to an Iceberg REST catalog
+- Use catalog-managed Iceberg tables for querying or PGD offloading
+- Create new Iceberg tables in a catalog
+- Refresh catalog metadata into Postgres
+
+## Before you start
+
+Review these topics first:
+
+- [Apache Iceberg in Hybrid Manager](../../iceberg)
+- [Lakehouse Clusters in Hybrid Manager](../../lakehouse)
+- [Enable analytics offload from PGD to Iceberg](./offload-pgd-to-iceberg)
+
+## Prerequisites
+
+- A Lakehouse cluster or PGD node provisioned in Hybrid Manager
+- An Iceberg REST catalog available:
+- HM-managed Lakekeeper catalog, or
+- External catalog (AWS Glue, Project Nessie, Snowflake Polaris, etc.)
+- Credentials for the catalog (REST endpoint URL, token if required, warehouse ID)
+- PGAA extension enabled on the target node (Lakehouse cluster or PGD node)
+
+## Steps
+
+### 1. Add catalog connection
+
+Run pgaa.add_catalog() to register the catalog.
+
+Example (general external catalog):
+
+```sql
+SELECT pgaa.add_catalog(
+'your_catalog_alias',
+'iceberg-rest',
+'{
+"url": "https://your_catalog_rest_endpoint",
+"token": "your_catalog_access_token",
+"warehouse": "your_catalog_warehouse_id",
+"danger_accept_invalid_certs": "true"
+}'
+);
+```
+
+Example (HM-managed Lakekeeper catalog):
+
+```sql
+SELECT pgaa.add_catalog(
+'hm_lakekeeper_main',
+'iceberg-rest',
+'{
+"url": "https://hm.example.com/catalog/v1",
+"token": "your_hm_api_key",
+"warehouse": "lakehouse_warehouse_1"
+}'
+);
+```
+
+### 2. Attach catalog
+
+After adding the catalog, run pgaa.attach_catalog():
+
+```sql
+SELECT pgaa.attach_catalog('your_catalog_alias');
+```
+This makes catalog tables visible and queryable in Postgres.
+
+### 3. Import catalog (optional)
+
+To refresh table definitions:
+
+```sql
+SELECT pgaa.import_catalog('your_catalog_alias');
+```
+Run this after new tables are created externally or if catalog content changes.
+
+### 4. Creating catalog-managed Iceberg tables
+
+Once a catalog is added and attached, you can create new Iceberg tables managed by the catalog.
+
+Example:
+
+```sql
+CREATE TABLE public.catalog_managed_sensor_data (
+    device_id TEXT,
+    event_time TIMESTAMP WITH TIME ZONE,
+    temperature FLOAT,
+    humidity FLOAT
+)
+USING PGAA
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'your_catalog_alias',
+    pgaa.catalog_namespace = 'iot_data',
+    pgaa.catalog_table = 'hourly_sensor_readings'
+);
+pgaa.catalog_namespace = 'iot_data',
+pgaa.catalog_table = 'hourly_sensor_readings'
+);
+```
+
+- pgaa.managed_by: Catalog alias used in pgaa.add_catalog().
+- pgaa.catalog_namespace: Target namespace in the catalog.
+- pgaa.catalog_table: Target table name in the catalog.
+
+## Notes
+
+- You can run SELECT * FROM information_schema.tables to list catalog-managed tables once attached.
+- If you are using PGD offloading to Iceberg, the catalog must be attached first — see [Enable analytics offload from PGD to Iceberg](./offload-pgd-to-iceberg).
+- Catalogs added via pgaa.add_catalog() can be shared between Lakehouse clusters and PGD nodes for consistent metadata access.
+
+## What this enables
+
+After configuring an Iceberg catalog connection:
+
+- You can query Iceberg tables managed by the catalog from Lakehouse clusters or PGD nodes
+- You can offload PGD data into catalog-managed Iceberg tables
+- You can create new catalog-managed Iceberg tables from Postgres
+- You can refresh and synchronize catalog metadata into your Postgres environment
+
+## Next steps
+Now that you have configured an Iceberg catalog connection:
+
+- You can **query existing Iceberg tables** to make external data accessible in Postgres.
+[Query existing Iceberg tables](./query-iceberg-existing-tables)
+
+- You can **offload PGD data into this catalog** to enable cost-efficient storage and fast analytics on operational data.
+[Enable analytics offload from PGD to Iceberg](./offload-pgd-to-iceberg)
+
+- You can **create new catalog-managed Iceberg tables** to structure analytical data for both Postgres and external engines.
+See [Creating catalog-managed Iceberg tables](#4-creating-catalog-managed-iceberg-tables)
+
+- You can **review core concepts** about how Iceberg and catalogs fit into Hybrid Manager architecture.
+[Apache Iceberg in Hybrid Manager](../../iceberg.mdx)

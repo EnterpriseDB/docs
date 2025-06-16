@@ -1,0 +1,226 @@
+---
+title: Backups
+
+---
+
+The EDB PG AI Hybrid Manager (PGAIHM) features backup and recovery capabilities for various components, using various technologies.
+
+PGAIHM offers two distinct backup strategies:
+
+-   **Postgres backups**: Backs up your data.
+-   **PGAIHM backups**:  Backs up the PGAIHM system's core functionality.
+
+## Postgres Backups (Data Plane)
+
+Postgres backups focus on protecting your user data stored within the Postgres database.  The following options are available:  
+
+-   **Base Backups**: Base backups are available in all PGAIHM deployments.  
+
+-   **Snapshot Backups**: Snapshot backups are available in cloud service provider (CSP) environments and on-premises deployments where appropriate storage and drivers are configured.
+
+Postgres backups leverage robust database features, including Write-Ahead Logging (WAL) archiving, to provide granular point-in-time recovery (PITR). This allows for a very fine-grained recovery point objective (RPO).
+
+## PGAIHM Backups (Control Plane)
+
+PGAIHM backups protect the PGAIHM system itself, including its metadata and system databases.  They operate on a separate schedule and produce different backup files than Postgres backups.  PGAIHM backups are file-system based, with hourly backups of metadata and backups of the PGAIHM's system Postgres databases by default.  
+
+Unlike Postgres backups, PGAIHM backups don't offer continuous backup through WAL archiving. This means recovery is limited to the hourly (or user-defined) backup intervals.
+
+### Key Differences and Recovery Implications
+
+Because of these differences, the Recovery Point Objective (RPO) and Recovery Time Objective (RTO) will vary between your user data (Postgres) and the PGAIHM system.
+
+-   **Postgres (Data):**Offers strong RPO capabilities due to PITR and WAL archiving, potentially allowing for recovery to a very recent point in time.  
+-   **PGAIHM (System):**RPO is limited to the user-modifiable (hourly by default) backup schedule.
+
+| Component               | RPO               | RTO                                              | Method                  | Location       |
+| :---------------------- | :---------------- | :----------------------------------------------- | :---------------------- | :------------- |
+| **PGAIHM**              | 1 hour (default)  | 30 mins or less                                  | Velero                  | Object Storage |
+| **Postgres Data Plane** | 5 minutes or less | Based on data size, backup method, and hardware. | Snapshot or Base Backup | Object Storage |
+
+## Data Size
+
+For Postgres clusters using **base backup**, a data size of less than 500 GB, possibly up 1 TB depending on hardware performance, is expected to be the effective size limit. A Postgres cluster with more than 1 TB of data may encounter backup durations and performance loads that negatively impact quality of service.
+
+For Postgres clusters using **snapshot**backups, data sizes larger than 1 TB are expected to be supported without the backup and restore processes negatively impacting service quality. 
+
+## Backup Transportability and Disaster Recovery
+
+In the simplest configurations, for example using **TopoLVM**(not available at GA in version 1.1), snapshot backup and recovery is expected to be local only, meaning that snapshot backups cannot be moved to another appliance, data center, or location.  This effectively rules out DR with the most basic implementation of snapshots.
+
+When the PGAIHM is configured with **enterprise storage and CSI drivers**that support snapshots, the PGAIHM can take advantage of that functionality to provide cross-location DR.
+
+**Snapshot Availability:**
+
+Volume snapshots are supported across all environments that provide Kubernetes-compatible volume snapshot functionality.
+
+**Snapshot Transportability:**
+
+-   Transportability of snapshots is dependent on the specific CSI driver implementation.
+
+**AWS Specifics:**
+
+-   By default, AWS volume snapshots are **not transportable**.  
+-   While restoration to a *new host* within the same AWS region is possible, cross-region restoration requires additional manual steps.
+
+**TopoLVM Specifics:**
+
+-   TopoLVM snapshots are **not transportable**and cannot be restored to a different host.
+
+## Configuration
+
+Use the following section to configure storage, object storage, and backups for the following:
+
+-   Single-Node Cluster
+-   Primary/Standby Cluster
+-   Postgres Distributed (PGD) Cluster
+
+**Single-Node Cluster** 
+Backups of a single-node cluster can have the following characteristics:
+
+-   A single-node cluster deployed using the PGAIHM.  
+-   The Retention Period and Backup Time can be modified (or use the default values).  
+-   Automated backups occur after cluster deployment and daily thereafter.  
+-   Manual backups can be initiated.
+
+**Backup Primary/Standby Cluster** 
+Backups of a Primary/Standby cluster can have the following characteristics::
+
+-   A Primary/Standby cluster deployed using the PGAIHM.  
+-   The Retention Period and Backup Time can be modified (or use the default values).
+-   Automated backups occur after cluster deployment and daily thereafter.
+-   Manual backups can be initiated.
+-   Backups are taken from a replica (primary / secondary).
+
+**Backup PGD Cluster** 
+Backups of a PGD cluster can have the following characteristics::
+
+-   A PGD cluster deployed using the PGAIHM.  
+-   The Retention Period and Backup Time can be modified (or use the default values). 
+-   Automated backups occur after cluster deployment and daily thereafter. 
+-   Manual backups can be initiated.
+-   Backups are taken from a replica (primary / secondary).
+
+## PGAIHM Backups
+
+PGAIHM backups include metadata needed to restore the PGAIHM.  They do not include backups of user databases. PGAIHM backups use a tool called Velero to backup to object storage.  The default backup schedule is hourly and can be adjusted.
+
+When using the default schedule, the RPO is one hour.  This means you can expect to lose up to one hour of PGAIHM data in the event of a crash. This doesn't refer to data loss at the user database level since user databases are protected with continuous backups of Postgres.  
+
+## Taking a backup
+
+Use the following steps to take a Postgres or PGAIHM backup:
+
+### Taking a Postgres backup
+
+You can use the PGAIHM web console, API, or CLI to take a Postgres backup. To take a Postgres backup with the API or CLI, refer to the API documentation link within the PGAIHM web console.
+
+Use the following steps to take a Postgres backup in the PGAIHM web console:
+
+Select the **Backups**tab to view existing backups:
+
+![Viewing Backups](../../images/PGAIHM-backups-img1.png)
+
+The following fields are available:
+
+| Name       | Description                                        |
+| ---------- | -------------------------------------------------- |
+| Status     | The current status of the backup.                  |
+| Name       | The name of the backup.                            |
+| Start Time | The time the backup started.                       |
+| Stop Time  | The time the backup stopped.                       |
+| Duration   | The amount of time it took to complete the backup. |
+| Location   | The location of the backup.                        |
+| Method     | The method by which the backup was taken.          |
+
+Select the **Create Backup**tab to create a new backup:
+
+The following fields are available:
+
+-   Location
+-   Backup Name
+-   Backup Method
+
+After entering data into those fields, select **OK**.
+
+![Create Backup](../../images/PGAIHM-backups-img2.png)
+
+### Taking an PGAIHM backup
+
+Refer to the HA/DR section of the site to learn how to configure backups of the PGAIHM.
+
+## Terminology
+
+The following terminology is used for backup and recovery with Postgres and PGAIHM:
+
+**Backup**
+
+A backup is a copy of one or more files from the original location to a secondary location, like object storage. Backups vary by component type (e.g., control plane vs. data plane) and deployment type (e.g., CSP, engineered system, or RHOS).
+
+**Backup Retention Period**
+
+The backup retention period is the length of time that backup copies of data are stored before being deleted or overwritten. It defines how long an organization keeps its backups available for recovery purposes. It's how long you keep your backups.
+
+**Barman**
+
+[Barman](https://pgbarman.org/) is an open-source Postgres backup tool that is primarily maintained and supported by EDB. When used alone, the term Barman refers to the “Barman server” or core backup tool, as opposed to the Barman Cloud Utility Scripts described below. Barman automates many of the Postgres backup and recovery primitives that are required for enterprise-class B\\&R. Barman provides many innovative features like incremental backups (before Postgres offered block-level incremental backups), WAL streaming to achieve RPO=0 (or near zero), backup reporting, automated backup file retention management, and other useful capabilities.
+
+**Barman Cloud Utility Scripts**
+
+The [Barman Cloud Utility Scripts](https://docs.pgbarman.org/release/3.13.0/user_guide/barman_cloud.html), or “Barman Cloud” for short, are a collection of scripts that can be used separately from the Barman server and their purpose is to copy Postgres backups to S3-compatible object storage. Barman Cloud is used by the CNP operator and EDB Cloud Service to copy Postgres backups to object storage.
+
+**Base Backup**
+
+The term “base backup” refers to the Postgres backup utility [pg_basebackup](https://www.postgresql.org/docs/17/app-pgbasebackup.html). This utility automates the backup, or file copy, of the required files needed to restore a Postgres instance.
+
+**Cloud**
+
+Cloud refers to a public cloud provider, namely AWS, Microsoft Azure, and Google Compute Platform (GCP).
+
+**Cluster**
+
+The term cluster is used to refer to a collection of databases in a single Postgres instance (aka, the Postgres cluster). In PGAIHM, it is also used to refer to a deployment type (i.e., single-node, PSR, PGD cluster).
+
+**Cloud Native Postgres**
+
+[Cloud Native Postgres](https://www.enterprisedb.com/docs/supported-open-source/cloud_native_pg/) (CNP) refers to the open-source Postgres operator developed and maintained by EDB. It provides the foundation for Postgres on Kubernetes in the PGAIHM.
+
+**Dump**
+
+The term “dump” refers to the Postgres utility [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html). Please see pg_dump below.
+
+**Postgres Cluster**
+
+A Postgres instance manages a Postgres cluster. A database cluster is a collection of databases that are stored in a common file system location (the “data directory”).
+
+**pg_dump**
+
+This is a data export and import utility. Although it offers many capabilities to export databases in part or in whole, it is not an enterprise-class, scalable backup tool. Having said that, pg_dump is widely used to export data for a variety of purposes, including the creation of test databases, data archiving, migrating from one database to another (or one DBaaS provider to another). PGAIHM users will expect to be able to use pg_dump to access their Postgres data. The pg_dump utility is installed with the Postgres client and can be used from a user’s client machine.
+
+**Recovery**
+
+Recovery is the process of making the restore data consistent and up-to-date by applying backup data files and changes recorded in the WAL files.
+
+**Recovery Point Objective**
+
+The recovery point objective (RPO) refers to the point, or time (e.g., 5 minutes), in a database timeline that can be used for recovery. It is commonly described as answering the question, “How much data can I afford to lose?”. RPO is the maximum tolerable amount of data loss, measured in time, that an organization can withstand after a disruption. It defines the point in time to which systems and data must be recovered.
+
+**Recovery Time Objective**
+
+The recovery time objective (RTO) is the maximum tolerable amount of downtime that an organization can withstand after a disruption. It defines the target time within which systems and data must be restored. For example, a production database may have an RTO of 30 minutes, which means that the amount of downtime to perform restore and recovery should not exceed 30 minutes.
+
+**Restore**
+
+Restore refers to the process of copying files from a backup location to the original or an alternate location to prepare for recovery. An example is copying backup files from object storage to the database server.
+
+**Snapshot**
+
+The term “snapshot” is used here to refer to a volume level snapshot, or file system level backup, of data. Snapshot is the fastest and most scalable backup and recovery method available. Snapshot capabilities vary by PGAIHM deployment type and the availability of storage features like transportability.
+
+**Transportable Volume Snapshot**
+
+A transportable volume snapshot is a point-in-time copy of data that can be moved or copied to a different storage system, location, or cloud region. This allows for disaster recovery, data migration, and offsite backups.
+
+**Non-Transportable Volume Snapshot**
+
+A non-transportable volume snapshot is a point-in-time copy of data that is confined to the specific storage system or location where it was created. It is primarily used for local data recovery within that system.
