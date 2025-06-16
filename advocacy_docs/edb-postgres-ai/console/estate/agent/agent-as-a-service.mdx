@@ -1,0 +1,94 @@
+---
+title: Running Beacon Agent as a service
+description: How to configure Beacon Agent to run as a service on Ubuntu 22.04
+---
+
+## Running Beacon Agent as a service
+
+To have Beacon Agent run automatically on startup and restart after error, you need to make it a service.
+
+!!! Note
+Future versions of the agent package may set this up automatically.
+!!!
+
+What follows is an example of how to run Beacon Agent as a service, specifically on an Ubuntu 22.04 machine. Follow the instructions for [setting up a machine user](create-machine-user) and then [installing, configuring, testing, and running Beacon Agent](install-agent) before moving on to set up Beacon as a service. These instructions assume you have completed the previous two sections and you have Beacon Agent installed on a Ubuntu 22.04 machine.
+
+1. In this example, we're running the agent on the same server as the Postgres instance we're monitoring. So it's faster and more secure to have Beacon agent use Postgres local auth rather than set up password auth over TCP/IP.
+
+    !!! Note
+    In this example, we use the 'ubuntu' user created by default on an AWS EC2 instance with a default Ubuntu 22.04 machine image. In production, you'd want to use a minimally privileged user explicitly created for the purposes of running Beacon Agent on the server.
+    !!!
+
+    To configure for local authentication, add the user, `ubuntu`, to Postgres using `psql` and then exit:
+    
+    ```
+    sudo su postgres
+    psql -c 'CREATE USER ubuntu'
+    exit
+    ```
+
+    To complete the setup for local authentication with Postgres, you need to configure your `pg_hba.conf` file to allow Unix-domain socket connections. Ensure the following line in your `pg_hba.conf` file:
+
+    ```
+    local   all   all   peer
+    ```
+
+    This configuration allows any local system user to connect to any database without a password, provided that a corresponding PostgreSQL role with the same name as the system user exists (in this case, user `ubuntu`).
+
+    Now Postgres allows local authentication so that Beacon Agent can access it as a service. without a password.
+
+1. Create a new file using your text editor of choice (superuser level permissions are necessary here). This example command uses the vi editor:
+
+   ```
+   sudo vi /etc/systemd/beacon-agent.service
+   ```
+
+1. Populate the new file as follows, specifying the BEACON_AGENT_ACCESS_KEY, then save and exit the editor:
+
+   ```
+   [Unit]
+   Description=Beacon Agent
+
+   # After networking because we need that
+   After=network.target
+
+   [Service]
+   # Simple services don't do any forking / background
+   Type=simple
+
+   # User with which to run the service
+   User=ubuntu
+   
+   # Set the working directory for the application
+   WorkingDirectory=/home/ubuntu/
+
+   Environment='BEACON_AGENT_ACCESS_KEY=<your-api-key-here>'
+   Environment='DSN=<your-dsn-here>'
+
+   # Command to run the application
+   ExecStart=/usr/local/bin/beacon-agent
+   
+   # Restart policy, only on failure
+   Restart=on-failure
+   RestartSec=60
+   
+   [Install]
+   # Start the service before we get to multi-user mode
+   WantedBy=multi-user.target
+   ```
+
+1. Run the following commands to reload, enable, and start your new service:
+
+   ```
+   sudo systemctl daemon-reload
+   sudo systemctl enable beacon-agent.service
+   sudo systemctl start beacon-agent.service
+   ```
+   
+1. Your agent should now be running as a service. Check on the logs by running the following command:
+
+   ```
+   journalctl -u beacon-agent.service
+   ```
+
+
