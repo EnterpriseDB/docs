@@ -266,6 +266,31 @@ const Page = () => {
                 PostgreSQL
               </BannerCardLink>
             </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.IMPROVE}
+              headingText="Analytics Accelerator"
+              to="/edb-postgres-ai/analytics"
+            >
+              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+                Concepts
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/quickstart/">
+                Quick Start
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/use_cases/">
+                Use Cases
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/catalogs/">
+                Catalogs
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
+                Reference
+              </BannerCardLink>
+            </BannerSubCard>
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
@@ -288,6 +313,7 @@ const Page = () => {
                 PGvector
               </BannerCardLink>
             </BannerSubCard>
+
             <BannerSubCard
               iconName={iconNames.CONTROL}
               headingText="Console"
@@ -345,28 +371,6 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/migrating/oracle/">
                 Migration Handbook
-              </BannerCardLink>
-            </BannerSubCard>
-
-            <BannerSubCard
-              iconName={iconNames.IMPROVE}
-              headingText="Lakehouse Analytics"
-              to="/edb-postgres-ai/analytics"
-            >
-              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
-                Concepts
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
-                Quick Start
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
-                External Tables
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
-                Reference
               </BannerCardLink>
             </BannerSubCard>
 
