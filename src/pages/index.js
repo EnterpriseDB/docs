@@ -256,19 +256,19 @@ const Page = () => {
               headingText="AI Factory"
               to="/edb-postgres-ai/ai-factory"
             >
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/vector-engine/">
+              <BannerCardLink to="edb-postgres-ai/ai-factory/vector-enginey/">
                 Vector Engine
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipeline/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipeline">
                 AI Pipeline
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/agent-studio/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai-builder/">
                 Agent Studio
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/model/serving/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/model/">
                 Model Serving
               </BannerCardLink>
             </BannerSubCard>
