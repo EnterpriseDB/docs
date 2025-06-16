@@ -234,7 +234,7 @@ const Page = () => {
               headingText="Analytics Accelerator"
               to="/edb-postgres-ai/analytics"
             >
-              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+              <BannerCardLink to="/edb-postgres-ai/analytics/lakehouse/">
                 Analytics Engine
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
@@ -246,7 +246,7 @@ const Page = () => {
                 <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>
               </BannerCardLink>
 
-              <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
+              <BannerCardLink to="/supported-open-source/warehousepg/">
                 Support for Greenplum Workloads
               </BannerCardLink>
             </BannerSubCard>
@@ -256,19 +256,19 @@ const Page = () => {
               headingText="AI Factory"
               to="/edb-postgres-ai/ai-factory"
             >
-              <BannerCardLink to="edb-postgres-ai/ai-factory/vector-enginey/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/vector-engine/">
                 Vector Engine
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipeline">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipeline/">
                 AI Pipeline
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai-builder/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/agent-studio/">
                 Agent Studio
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/model/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/model/serving/">
                 Model Serving
               </BannerCardLink>
             </BannerSubCard>
@@ -294,31 +294,6 @@ const Page = () => {
                 Migrations
               </BannerCardLink>
             </BannerSubCard>
-
-            <BannerWideSubCard
-              iconName={iconNames.BRIEFCASE}
-              headingText="Foundation"
-              to="/edb-postgres-ai/foundation/"
-            >
-              <BannerCardLink to="/edb-postgres-ai/foundation/">
-                Multi-Model Extensions
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/foundation/">
-                Management and Observability
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/foundation/">
-                Kubernetes Operators
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/foundation/">
-                Supply Chain Security
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/foundation/">
-                Migration Tools
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/foundation/">
-                High Availability
-              </BannerCardLink>
-            </BannerWideSubCard>
           </EDBPGAIBannerCard>
 
           {/* Sign Post */}
