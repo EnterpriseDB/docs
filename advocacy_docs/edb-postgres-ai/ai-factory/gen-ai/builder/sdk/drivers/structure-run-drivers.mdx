@@ -1,0 +1,162 @@
+---
+title: Structure Run
+originalFilePath: >-
+  https://github.com/EnterpriseDB/pgai-ai-builder/blob/main/docs/griptape-framework/drivers/structure-run-drivers.md
+editTarget: originalFilePath
+
+---
+
+## Overview
+
+Structure Run Drivers can be used to run Gen AI Builder Structures in a variety of runtime environments.
+When combined with the [Structure Run Task](../structures/tasks.mdx#structure-run-task) or [Structure Run Tool](../tools/official-tools#structure-run) you can create complex, multi-agent pipelines that span multiple runtime environments.
+
+## Structure Run Drivers
+
+### Local
+
+The [LocalStructureRunDriver](../reference/drivers/structure_run/local_structure_run_driver.mdx) is used to run Gen AI Builder Structures in the same runtime environment as the code that is running the Structure.
+
+<TabContainer>
+<Tab title="Code">
+
+```python
+from griptape.drivers.structure_run.local import LocalStructureRunDriver
+from griptape.rules import Rule
+from griptape.structures import Agent, Pipeline
+from griptape.tasks import StructureRunTask
+
+
+def build_joke_teller() -> Agent:
+    return Agent(
+        rules=[
+            Rule(
+                value="You are very funny.",
+            )
+        ],
+    )
+
+
+def build_joke_rewriter() -> Agent:
+    return Agent(
+        rules=[
+            Rule(
+                value="You are the editor of a joke book. But you only speak in riddles",
+            )
+        ],
+    )
+
+
+joke_coordinator = Pipeline(
+    tasks=[
+        StructureRunTask(
+            structure_run_driver=LocalStructureRunDriver(
+                create_structure=build_joke_teller,
+            ),
+        ),
+        StructureRunTask(
+            ("Rewrite this joke: {{ parent_output }}",),
+            structure_run_driver=LocalStructureRunDriver(
+                create_structure=build_joke_rewriter,
+            ),
+        ),
+    ]
+)
+
+joke_coordinator.run("Tell me a joke")
+
+```
+
+</Tab>
+
+<Tab title="Logs">
+
+```text
+[02/27/25 20:23:56] INFO     PromptTask 0f66d78dda1f4577b4dac63d474b8ddd        
+                             Input: Tell me a joke                              
+                    INFO     PromptTask 0f66d78dda1f4577b4dac63d474b8ddd        
+                             Output: Why don't skeletons fight each other? They 
+                             don't have the guts!                               
+                    INFO     PromptTask 17e17bf28c3e453e936e733826863dca        
+                             Input: Rewrite this joke: Why don't skeletons fight
+                             each other? They don't have the guts!              
+[02/27/25 20:23:57] INFO     PromptTask 17e17bf28c3e453e936e733826863dca        
+                             Output: What keeps the bony figures from clashing  
+                             in the night? They lack the courage within to      
+                             ignite the fight!                                  
+
+```
+
+</Tab>
+</TabContainer>
+
+### Gen AI Builder
+
+The [GriptapeCloudStructureRunDriver](../reference/drivers/structure_run/griptape_cloud_structure_run_driver.mdx) is used to run Gen AI Builder Structures in the Gen AI Builder.
+
+<TabContainer>
+<Tab title="Code">
+
+```python
+import os
+
+from griptape.drivers.structure_run.griptape_cloud import GriptapeCloudStructureRunDriver
+from griptape.drivers.structure_run.local import LocalStructureRunDriver
+from griptape.rules import Rule
+from griptape.structures import Agent, Pipeline
+from griptape.tasks import StructureRunTask
+
+base_url = os.environ["GT_CLOUD_BASE_URL"]
+api_key = os.environ["GT_CLOUD_API_KEY"]
+structure_id = os.environ["GT_CLOUD_STRUCTURE_ID"]
+
+
+pipeline = Pipeline(
+    tasks=[
+        StructureRunTask(
+            ("Think of a question related to Retrieval Augmented Generation.",),
+            structure_run_driver=LocalStructureRunDriver(
+                create_structure=lambda: Agent(
+                    rules=[
+                        Rule(
+                            value="You are an expert in Retrieval Augmented Generation.",
+                        ),
+                        Rule(
+                            value="Only output your answer, no other information.",
+                        ),
+                    ]
+                )
+            ),
+        ),
+        StructureRunTask(
+            ("{{ parent_output }}",),
+            structure_run_driver=GriptapeCloudStructureRunDriver(
+                base_url=base_url,
+                api_key=api_key,
+                structure_id=structure_id,
+            ),
+        ),
+    ]
+)
+
+pipeline.run()
+
+```
+
+</Tab>
+
+<Tab title="Logs">
+
+```text
+[02/27/25 20:23:59] INFO     PromptTask 65257b7cb6704847980065db0411eb49        
+                             Input: Think of a question related to Retrieval    
+                             Augmented Generation.                              
+[02/27/25 20:24:00] INFO     PromptTask 65257b7cb6704847980065db0411eb49        
+                             Output: How does Retrieval Augmented Generation    
+                             improve the accuracy of language models in         
+                             generating contextually relevant responses?        
+
+```
+
+</Tab>
+</TabContainer>
