@@ -1,0 +1,124 @@
+---
+title: Hybrid Manager known issues for 1.2
+navTitle: Known issues 1.2
+description: All known issues for Hybrid Manager 1.2
+
+---
+
+These are the currently known issues in Hybrid Manager (HM) 1.2.
+These known issues are tracked in HM's ticketing system and are expected to be resolved in a future release.
+
+* When creating AHA cluster from cluster template, there’s a Cluster Architecture Diagram section in the bottom of the screen. The diagram correctly shows the 2-node and 3-node scenario, but shows empty for 1-node. Moreover, there’s no such section in the screen if you create a cluster from project quick action.
+
+* Provisioning into RHOS with insufficient provisioned compute, but with additional compute provisioning possible, may fail due to a failure of RHOS machines to scale out.
+
+* Node level charts can show duplicate metrics in `kube_pod_metrics` when a primary node is force deleted.
+
+* Cluster creation UI for numeric fields allows clicking the down arrow resulting in values below zero. Please don't use these negative values.
+
+* Istio is part of the HM deployment and the Istio version can be upgraded. In this case, existing pods with the `istio-proxy` sidecar keeps using the old `istio-proxy` version. The incompatible version issue will not cause functional problems, however Istio does not recommend doing this.
+
+* Asset Library may be unable to serve a list of images resulting in errors like, "No images are available in this location. Please select another location." There are two reasons for this:
+    1. HM is under maintenance, meaning an upgrade is being applied which temporarily affects the service, as Asset Library may be synchronizing new Postgres images.
+    2. The upstream container registry may be responding slowly.
+
+    Please wait a few minutes after the upgrade completes and revisit the Asset Library. If there are issues connecting to the registry, then resolve and retry connecting.
+
+* Use of `ALTER TABLE SET (pgd.replicate_to_analytics = TRUE)` can trigger memory corruption on a PGD follower node and cause a crash/restart. Please use `SELECT bdr.replication_set_add_table(table_name, 'pgd_analytics');` instead. Please try again if the follower node restarts.
+
+* HM allows millicores in alignment with Kubernetes. Millicores should be read as fractions against a CPU core.
+
+* User can't set `wal_segment_size` during provision of the PGD cluster. Currently, the operator sets to 128MB, so that even if a user set it differently from the Portal, it has no effect. Also, user can see a discrepancy of `wal_segment_size` GUC, such that you see `wal_segment_size=64MB in the Portal, but the PGD operator is still internally set to 128MB. This default change of `wal_segment_size=128MB` is required to avoid poor data-load performance with a PGD cluster. Please do not configure `wal_segment_size`.
+
+* In a Advanced High Availability or Distributed High Availability cluster, the first backup on a data group may fail due to backup occurring during final provisioning.
+
+* To check if resources are being over-requested in a Advanced High Availability or Distributed High Availability cluster, connect to the Kubernetes environment and run `kubectl get pgdgroup -n <namespace-of-pgd-group>`. At this point, you should see a message indicating that the group is then syncing with the node. However, **a new bootstrap job fails to start automatically**. To resolve this, users with kubectl access must manually delete the pods in the affected namespace, as this forces Kubernetes to restart the bootstrap job and resume normal processing. 
+
+* While using cluster templates with the autovacuum parameter set to `off` to provision a database cluster, the autovacuum parameter incorrectly shows as being set to `on`. However, the cluster is still provisioned with the value set to the template specification of `off`.
+
+* When deleting a Advanced High Availability or Distributed High Availability cluster group, the Portal shows "green" shortly after, but the meta-data cleanup may actually take more time. You should always verify with PGD CLI to ensure partition of all targeted nodes is complete. To workaround, when deleting a PGD Group, be sure to use the PGD CLI to validate cluster state before, during, and after deletion to positively confirm deletion is complete.
+
+* When you try to upgrade major versions for a Advanced High Availability cluster, it may fail to upgrade the last node. To workaround, major upgrades on Advanced High Availability clusters succedd when you wait 30 min after the data group in question is healthy.
+
+* If you set `provider.onprem.host.resource_id` to be the same as `provider.onprem.databases.resource_id`, then the EDB Postgres AI agent seemingly starts correctly, but the control plane confuses the two resources beacuse they have the same id. This results in the database cluster resource showing on and off over time in the Portal. A 500 error is encountered on the resource detail page, as if it was viewed first then disappeared later.
+
+* `cadvisor` can emit empty strings for devices in certain error scenarios. This causes the container_fs_* metrics in Prometheus/Thanos to not work correctly. Those metrics are counters, so they are only supposed to increase monotonically and never decrease. However, they can decrease and PromQL interprets that as a counter reset, causing wrong values returned by the rate() function. This then leads to excessively high values in the in Disk Throughput chart and Disk IOPS chart of the Monitoring page of the cluster in the Portal.
+
+* Editing one of the restart parameters while a backup is running can trigger the cluster to restart in the middle of a backup.
+
+* In RHOS environments, OpenShift security constraints prevent restoring from one namespace to the other.
+
+* When creating a single node cluster, errors can be observed in the logs despite the cluster being created successfully. These logs are superflous and do not affect functionality.
+
+* Sometimes after HM upgrade, GUC services may not get restarted properly and can result in empty 'PG Settings page' during provisioning. To workaround use the following command: `kubectl --namespace upm-api-gucs rollout restart deploy upm-api-gucs`.
+
+* When doing a migration to a Advanced High Availability or Distributed High Availability cluster, transporter-writer can throw an error indicating that users are not found in the cluster. 
+  To workaround, start a migration to your cluster and wait for Kafka and Kafka topics to be provisioned. You can verify this in the migration details page when both resources are in complete status. The migration stalls indefinitely if no action is taken. Log into the bdrdb datbase of the cluster (the data group you chose as the target for the migration) using edb_admin_user, then run this SQL:
+  
+  ```SQL
+  select bdr.run_on_all_nodes('select bdr.connection_manager_refresh_pools()')
+  ```
+
+  Then just wait for a while in the details page and you see the migration proceed to "Start" and then "Running" stage as expected.
+
+  You can also prepare a superuser/password pair available for the cluster. This could be the edb_admin, or another superuser you create. Then, launch a writer agent in your environment, with the above cluster info configured as the destination. Finally, start a migration with destination type as external and the migration should run normally.
+
+* `wal_compression` can be specificed as `on` but actually configured as `pglz. In addition, it's not active as Barman is providing archival support. If compression needs to be changed, a custimation to the clusterwrapper is necessary.
+
+* HM 1.2 does not automatically initiate a checkpoint when you invoke a backup from the Portal. This can cause an unexpected delay if `checkpoint_timeout` is set to a very large value. It's recommended to set `checkpoint_timeout` to a meaningful smaller value based on your workload so that the backup can complete in a reasonable time.
+
+* The `max_wal_size` parameter in PostgreSQL instances do not match the configuration displayed in UI. This is a side effect of the `archive_timeout` parameter which is set to 5 minutes. The system checks for both "archive_timeout" AND "max_wal_size" limits and takes an action based on which limit is exceeded first. The first one to be exceeded overwrites the other value.
+
+* When provisioning an Advanced High Availability or Distributed High Availability cluster, in a case where one data group is delayed by an hour or more due to lack of resources, the next data group may cease to retry joining the cluster. To workaround delete the job:
+
+    ```bash
+    kubectl get jobs --namespace <namespace-of-the-data-group>
+    kubectl delete job <name-of-job> --namespace <namespace-of-the-data-group>
+    kubectl get jobs --namespace <namespace-of-the-data-group>
+    ```
+
+* Some pg_upgrade logs that are helpful in diagnosing major upgrade failures are written to pgdata pv whihc prevents users from viewing them unless they have privileges to log onto the PostgreSQL pod. To workaround, for users with kubectl access to the HM Kubernetes cluster, log onto the pods and view these temporary logs directly.
+
+* The log level for the beacon-agent sidecar is currently set at DEBUG which causes some superflous information that can be distracting. To workaround, you can manually filter out the relevant information.
+
+* When moving the Advanced High Availability or Distributed High Availability cluster configuration from two data nodes to one data node, backups may faill because the backup process attempts to run against a deleted node. To workaround, edit the backup job to change the backupt to target an active data node.
+
+* If you set memory related GUCs (e.g. shared_buffer, effective_cache_size) to maximum value as shown in the Portal UI, the cluster creates but fails to deploy due to requested memroy being higher than total system available memory. To workaround, all the memory-related database configurations should not be set greater than the total available RAM of the node.
+
+* AHA/DHA clusters need to be configured to use the same TDE encryption configuration acrros all data groups. If they are different, provisioning fails.
+
+* AWS RDS/Aurora cluster detail pages have an empty log tab.
+
+* To calculate recommendations for a AHA/DHA cluster, the query_advisor extension is used. The extension samples all the elements of the database where it is installed, and there is no way to deliver logic to ignore discrete items. To workaround, ignore the BDR Schema suggestion via the "Ignore" action in the Portal UI. This stops these recommendations from being suggested and the score will be healthy again.
+
+* After a pg_update failure, all pg_upgrade_output.d logs and dumps are not available in Loki.
+
+* HM 1.2's backup objects are not compatible across PG major versions. To workaround, before triggering a major version upgrade, make a backup and restoring a cluster from that backup.
+
+* User-created Grafana dashboards disappear after a re-deployment of Grafana.
+
+* By disabling the pg_cron background workers, pg cron uses libpq to open a new connection to the local database to perform the job's tasks. This connection needs to be allowed by the PG configuration (pg_hba/pg_ident). The current configuration doesn't allow the OS user `postgres` to connect to the database with the user `edb_admin`through the local pg socket, which is what would be requered for pg_cron to run smoothly. To workaround, do not disable pg cron bg workers by keeping the config: `cron.use_background_workers: on`.
+
+* There are areas of the storage configuration in restore clusters that can be incompatible with the cluster they are restoring from and the beacon provisioning API allows them trhough. To workaround, ensure that when creating a restore cluster, your storage configuation settings are compatible with the cluster you are restoring from.
+
+* There is no API level validation that prevents allowed IP ranges from being specified during cluster creation for locations that are not configured with ip allowlisting.
+
+* Tags on the Estate page are not searchable or filterable.
+
+* Changing the name or description of a knowledge base in GenAI Builder may result in an internal error.
+
+* Transporter Reader pre 2.19.18 is not compatible with HM 1.2.
+
+* Non-timestamped Postgres container tages (like 17.4-full) may be attributed to different container images. To ensure this is not an issue, always choose the image tag with the latest datestamp. You can even use Asset Library to fully inspect images to ensure the extension versions are as expected.
+
+* Oracle databse "tags" do not get information from the backend, and are thus empty in the Portal UI for Estate migrations.
+
+* A common event warning about retreiving image pull secrets for a pod may be encountered. This can safely ignored.
+
+* Data-only HM backups do not work in a multi-HM configuration.
+
+* Renaming an AHA/DHA cluster in the Portal UI triggers a rolling restart of the cluster. This behavior is being evaluated for future versions.
+
+* InitDB GUCs (data_checksums) are shown in the Portal UI during an Edit Cluster action. This behavior is being evaluated for furture versions.
+
+* The Health tab has a delay when refreshing the actual status of a cluster. This behavior is being evaluated for future versions.
