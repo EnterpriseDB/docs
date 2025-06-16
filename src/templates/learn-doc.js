@@ -208,7 +208,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <div
               className="alert alert-warning mt-3"
               role="alert"
-              dangerouslySetInnerHTML={{ __html: navTree.displayBanner }}
+              dangerouslySetInnerHTML={{ __html: frontmatter.displayBanner }}
             />
           ) : null}
 
