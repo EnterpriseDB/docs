@@ -256,19 +256,19 @@ const Page = () => {
               headingText="AI Factory"
               to="/edb-postgres-ai/ai-factory"
             >
-              <BannerCardLink to="edb-postgres-ai/ai-factory/pgvector/">
+              <BannerCardLink to="edb-postgres-ai/ai-factory/vector-enginey/">
                 Vector Engine
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipelines">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipeline">
                 AI Pipeline
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/gettingstarted/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/preparers/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai-builder/">
                 Agent Studio
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/pgvector/">
+              <BannerCardLink to="/edb-postgres-ai/ai-factory/model/">
                 Model Serving
               </BannerCardLink>
             </BannerSubCard>
@@ -287,7 +287,7 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/hybrid-manager/analytics/">
                 Analytics
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/ai_factory/">
+              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/ai-factory/">
                 Sovereign AI
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager/migration">
