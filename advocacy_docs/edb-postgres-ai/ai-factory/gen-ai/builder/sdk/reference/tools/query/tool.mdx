@@ -1,0 +1,135 @@
+---
+title: tool
+navTitle: QueryTool
+
+---
+
+<span id="griptape.tools.query.tool.QueryTool"></span>
+
+Bases:
+ [`BaseTool`](../base_tool.mdx#griptape.tools.base_tool.BaseTool "BaseTool (griptape.tools.base_tool.BaseTool)")
+,  [`RuleMixin`](../../mixins/rule_mixin.mdx#griptape.mixins.rule_mixin.RuleMixin "RuleMixin (griptape.mixins.rule_mixin.RuleMixin)")
+
+<details><summary>Source Code in <code>griptape&#47;tools&#47;query&#47;tool.py</code></summary>
+
+```python
+@define(kw_only=True)
+class QueryTool(BaseTool, RuleMixin):
+    """Tool for performing a query against data."""
+
+    prompt_driver: BasePromptDriver = field(default=Factory(lambda: Defaults.drivers_config.prompt_driver))
+
+    _rag_engine: RagEngine = field(
+        default=Factory(
+            lambda self: RagEngine(
+                response_stage=ResponseRagStage(
+                    response_modules=[
+                        PromptResponseRagModule(prompt_driver=self.prompt_driver, rulesets=self.rulesets)
+                    ],
+                ),
+            ),
+            takes_self=True,
+        ),
+        alias="_rag_engine",
+    )
+
+    @activity(
+        config={
+            "description": "Can be used to search through textual content.",
+            "schema": Schema(
+                {
+                    Literal("query", description="A natural language search query"): str,
+                    Literal("content"): Or(
+                        str,
+                        Schema(
+                            {
+                                "memory_name": str,
+                                "artifact_namespace": str,
+                            }
+                        ),
+                    ),
+                }
+            ),
+        },
+    )
+    def query(self, params: dict) -> ListArtifact | ErrorArtifact:
+        query = params["values"]["query"]
+        content = params["values"]["content"]
+
+        if isinstance(content, str):
+            text_artifacts = [TextArtifact(content)]
+        else:
+            memory = self.find_input_memory(content["memory_name"])
+            artifact_namespace = content["artifact_namespace"]
+
+            if memory is not None:
+                artifacts = memory.load_artifacts(artifact_namespace)
+            else:
+                return ErrorArtifact("memory not found")
+
+            text_artifacts = [artifact for artifact in artifacts if isinstance(artifact, TextArtifact)]
+
+        outputs = self._rag_engine.process(RagContext(query=query, text_chunks=text_artifacts)).outputs
+
+        if len(outputs) > 0:
+            return ListArtifact(outputs)
+        return ErrorArtifact("query output is empty")
+```
+
+</details>
+
+-   `_rag_engine = field(default=Factory(lambda self: RagEngine(response_stage=ResponseRagStage(response_modules=[PromptResponseRagModule(prompt_driver=self.prompt_driver, rulesets=self.rulesets)])), takes_self=True), alias='_rag_engine')` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tools.query.tool.QueryTool._rag_engine"></span> 
+
+-   `prompt_driver = field(default=Factory(lambda: Defaults.drivers_config.prompt_driver))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tools.query.tool.QueryTool.prompt_driver"></span> 
+
+<span id="griptape.tools.query.tool.QueryTool.query"></span>
+
+### query(params)
+
+<details><summary>Source Code in <code>griptape&#47;tools&#47;query&#47;tool.py</code></summary>
+
+```python
+@activity(
+    config={
+        "description": "Can be used to search through textual content.",
+        "schema": Schema(
+            {
+                Literal("query", description="A natural language search query"): str,
+                Literal("content"): Or(
+                    str,
+                    Schema(
+                        {
+                            "memory_name": str,
+                            "artifact_namespace": str,
+                        }
+                    ),
+                ),
+            }
+        ),
+    },
+)
+def query(self, params: dict) -> ListArtifact | ErrorArtifact:
+    query = params["values"]["query"]
+    content = params["values"]["content"]
+
+    if isinstance(content, str):
+        text_artifacts = [TextArtifact(content)]
+    else:
+        memory = self.find_input_memory(content["memory_name"])
+        artifact_namespace = content["artifact_namespace"]
+
+        if memory is not None:
+            artifacts = memory.load_artifacts(artifact_namespace)
+        else:
+            return ErrorArtifact("memory not found")
+
+        text_artifacts = [artifact for artifact in artifacts if isinstance(artifact, TextArtifact)]
+
+    outputs = self._rag_engine.process(RagContext(query=query, text_chunks=text_artifacts)).outputs
+
+    if len(outputs) > 0:
+        return ListArtifact(outputs)
+    return ErrorArtifact("query output is empty")
+```
+
+</details>
