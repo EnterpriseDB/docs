@@ -213,10 +213,10 @@ const Page = () => {
               headingText="Databases"
               to="/edb-postgres-ai/databases"
             >
-              <BannerCardLink to="/epas/latest">
+              <BannerCardLink to="/pge/latest">
                 Enterprise Postgres
               </BannerCardLink>
-              <BannerCardLink to="/pge/latest">
+              <BannerCardLink to="/epas/latest">
                 Enterprise Postgres
                 <br />
                 (Oracle Compatible)
