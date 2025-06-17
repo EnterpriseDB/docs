@@ -766,17 +766,17 @@ async function rewriteRedirects(pathPrefix, reporter) {
   // rewrite legacy redirects to exclude the /docs prefix
   // rewrite perma-URL redirects to include hash
   const prefixRE = new RegExp(`^${pathPrefix}/edb-docs/`);
-  const purlRE = new RegExp(
-    `^/docs/purl/(?<product>[^/]+)/(?<component>[^/]+)/?\\s+(?<destination>\\S+)\\s+\\d+`,
-  );
+  const purlRE =
+    /^\/docs\/purl\/(?<product>[^/ ]+)(?:\/(?<component>[^ ]+))?\/?\s+(?<destination>\S+)\s+\d+/;
   let rewrittenRedirects = originalRedirects
     .split("\n")
     .map((line) => line.replace(prefixRE, "/edb-docs/"))
     .map((line) =>
       line.replace(
         purlRE,
-        pathPrefix +
-          "/purl/$<product>/$<component>/ $<destination>#$<product>_$<component> 302",
+        (match, product, component, destination) =>
+          pathPrefix +
+          `/purl/${product}/${component ? component + "/" : ""} ${destination}#${product}${component ? "_" + component : ""} 302`,
       ),
     )
     .join("\n");
