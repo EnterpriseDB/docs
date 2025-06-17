@@ -1,0 +1,310 @@
+---
+title: Creating or configuring a GKE cluster for Hybrid Manager
+navTitle: Create GKE cluster
+deepToC: true
+---
+
+## GKE cluster
+
+You need a GKE cluster to install Hybrid Manager (HM) onto.
+Follow the documentation on [Creating a regional cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-a-regional-cluster) in the GKE docs to set up a new one, if needed.
+
+### Permissions
+
+Ensure you have the permission `Kubernetes Engine Admin` in `roles/container.admin`.
+
+### Different node types
+
+HM supports running management services (HM control plane) and PostgreSQL workloads on different sets of nodes on GKE, requiring additional node pools.
+
+To implement the different node sets, follow these steps:
+
+#### HM control plane nodes
+
+To make the HM control plane nodes a logical grouping that can be implemented with their own node type:
+
+1. In your labels, set the following:
+
+    ```bash
+    edbaiplatform.io/control-plane: "true"
+    ```
+
+1. In your taints, set the following:
+
+    ```bash
+    key: edbaiplatform.io/control-plane
+    value: "true"
+    effect: NoSchedule
+    ```
+
+#### PostgreSQL workload nodes
+
+To make the Postgres workload nodes a logical grouping that can be implemented with their own node type:
+
+1. In your labels, set the following:
+
+    ```bash
+    edbaiplatform.io/postgres: "true"
+    ```
+
+1. In your taints, set the following:
+
+    ```bash
+    key: edbaiplatform.io/postgres
+    value: "true"
+    effect: NoSchedule
+    ```
+
+For more information on how to append labels and taints for GKE managed node groups, see the documentation [here](https://cloud.google.com/kubernetes-engine/docs/how-to/isolate-workloads-dedicated-nodes#taint-label-node-pool).
+
+### Configure object storage
+
+Object storage backend: To support HM backups, connect the cluster to a dedicated object storage solution (`STORAGE_CLASS`), for example, to a GCP bucket.
+
+Among others, Hybrid Manager uses this bucket to store: 
+
+- Managed storage locations
+- Postgres WALs + backups
+- Logs (both Postgres and internal services)
+- Metrics (both Postgres and internal services)
+
+#### Create a GCP bucket
+
+Download and install the [gcloud CLI](https://cloud.google.com/sdk/docs/install). 
+
+1.  Set environment variables for the creation of your GCP bucket:
+
+    ```shell 
+    export GCP_PROJECT_ID="appliance-dev-444915" # change me to your own gcp project id
+    export GCP_BUCKET_NAME="tq-upm45906" # change me to your preferred bucket name
+    export GCP_BUCKET_REGION="us" # change me to your preferred location id
+    ```
+
+1.  Set the project that will host the GCP bucket you'll use for HM: 
+
+    ```shell
+    gcloud config set project $GCP_PROJECT_ID
+    ```
+
+1.  Create the bucket: 
+
+    ```shell
+    gcloud storage buckets create gs://$GCP_BUCKET_NAME --location=$GCP_BUCKET_REGION
+    ```
+
+    Ensure the bucket has hierarchical namespaces disabled.
+
+#### Create a bucket user 
+
+After creating a dedicated bucket, create a service account for the Hybrid Manager with the necessary permissions (`roles/storage.admin`) to access the bucket.
+
+1.  Set the necessary environment variables:
+
+    ```shell
+    export SERVICE_ACCOUNT_NAME="tq-upm45906" # change this to your preferred service account name
+    export SERVICE_ACCOUNT_EMAIL=$SERVICE_ACCOUNT_NAME@$GCP_PROJECT_ID.iam.gserviceaccount.com
+    ```
+
+1.  Create the service account:
+
+    ```shell
+    gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME
+    ```
+
+1.  Assign the storage admin role to the service account for the bucket:
+
+    ```shell
+    gcloud storage buckets add-iam-policy-binding gs://$GCP_BUCKET_NAME \
+      --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
+      --role="roles/storage.admin"
+    ```
+
+1.  Create a json key with the user permissions: 
+
+    ```shell
+    gcloud iam service-accounts keys create key-file.json \
+      --key-file-type=json \
+      --iam-account=$SERVICE_ACCOUNT_EMAIL
+    ```
+
+1.  Get the base64 encoded credentials:
+
+    <TabContainer>
+    <Tab title="Ubuntu">
+
+    ```shell
+    export GCP_CREDENTIAL_BASE64=$(base64 -w0 < key-file.json)
+    ```
+
+    </Tab>
+
+    <Tab title="MacOS">
+
+    ```shell
+    export GCP_CREDENTIAL_BASE64=$(base64 < key-file.json)
+    ```
+
+    </Tab>
+    </TabContainer>
+
+#### Create a secret for bucket access
+
+After preparing the dedicated user for HM access to the bucket, create a secret that associates the created user with the Hybrid Manager to provide access for object storage.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  # The name must be edb-object-storage
+  name: edb-object-storage
+  # The namespace must be default
+  namespace: default
+stringData:
+  # Specifies the cloud provider. In this case, it is set to gcp.
+  provider: gcp
+  # The region where the GCP bucket is located.
+  location_id: ${GCP_BUCKET_REGION}
+  # The ID of the GCP project.
+  project_id: ${GCP_PROJECT_ID}
+  # The name of the GCP bucket.
+  bucket_name: ${GCP_BUCKET_NAME}
+  # The base64 encoded JSON credentials for accessing the GCP bucket.
+  credentials_json_base64: ${GCP_CREDENTIAL_BASE64}
+```
+
+### Create a AES-256 Key
+
+Generate an AES-256 key for authentication.
+
+```bash
+export AES_256_KEY=$(openssl rand -base64 32)
+```
+
+### Sync HM container images to your private registry
+
+A requirement to use HM is that you must host your own secure and approved internal registry.
+You also need to know what version of HM you want to install.
+The sync process is basically to take all the artifacts from Cloudsmith and sync them internally to the internal registry before installing or upgrading HM with the relevant Helm chart.
+
+The sync process preserves the container images SHA256 to ensure the images security and immutability across different environments.
+
+To perform the process:
+
+1. Install [skopeo](https://github.com/containers/skopeo), as you use this tool to do the sync.
+
+1. Configure the HM release to be synced:
+
+    ```bash
+    export EDBPGAI_RELEASE=<your-release-version>
+    ```
+
+1. Configure the EDB Cloudsmith access token:
+
+    ```bash
+    export CS_EDB_TOKEN=<your-cloudsmith_edb_token>
+    ```
+
+1. Download the image list artifact:
+
+    ```bash
+    curl -sLO "https://downloads.enterprisedb.com/${CS_EDB_TOKEN}/pgai-platform/raw/names/${EDBPGAI_RELEASE}-images.txt/versions/${EDBPGAI_RELEASE}/images.txt"
+    ```
+
+1. Configure the EDB Cloudsmith registry source:
+
+    ```bash
+    export LOCAL_REGISTRY_URI=<your-local-registry-address>
+    ```
+
+1. Use skopeo to log in to the source registry and provide any necessary credentials as requested:
+
+    ```bash
+    skopeo login docker.enterprisedb.com
+    ```
+
+1. Use skopeo to log in to the desitination registry and provide any necessary credentials as requested:
+
+    ```bash
+    skopeo login <your-local-registry-address>
+    ```
+
+1. Parse the image list and sync each image:
+
+    ```bash
+    while read -r image; do skopeo --override-os linux copy --multi-arch all docker://$EDB_SOURCE_REGISTRY/${image/:*@/@} docker://$LOCAL_REGISTRY_URI/${image/:*@/@} --retry-times 3; done < images.txt
+    ```
+
+### Create the namespaces required for HM and necessary secrets
+
+In this phase of the preinstall, you create the namespaces necessary for HM and then its required secrets.
+Both namespaces and secrets are used in the install process.
+
+1. Set the necessary container registry environmental variables:
+
+    ```bash
+    export CONTAINER_REGISTRY_URI=<local-registry-uri>
+    export CONTAINER_REGISTRY_USERNAME=<container-registry-username>
+    export CONTAINER_REGISTRY_PASSWORD=<container-registry-password>
+    ```
+
+1. Generate and set the Postgres confounding key for LakeKeeper and fernet key for Griptape:
+
+    ```bash
+    PG_CONFOUNDING_KEY=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64)
+    FERNET_KEY=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64)
+    ```
+
+1. Create the required namespaces:
+
+    ```bash
+    kubectl create ns edbpgai-bootstrap
+    kubectl create ns upm-replicator
+    kubectl create ns upm-lakekeeper
+    kubectl create namespace upm-griptape
+    ```
+
+1. Create the secrets for HM, UPM-replicator, LakeKeepr, and Griptape:
+
+    ```bash
+    kubectl create secret docker-registry edb-cred \
+        -n edbpgai-bootstrap \
+        --docker-server="${CONTAINER_REGISTRY_URI}" \
+        --docker-username="${CONTAINER_REGISTRY_USERNAME}" \
+        --docker-password="${CONTAINER_REGISTRY_PASSWORD}"
+    ```
+
+    ```bash
+    kubectl create secret docker-registry edb-cred \
+        -n upm-replicator \
+        --docker-server="${CONTAINER_REGISTRY_URI}" \
+        --docker-username="${CONTAINER_REGISTRY_USERNAME}" \
+        --docker-password="${CONTAINER_REGISTRY_PASSWORD}"
+    ```
+
+    ```bash
+    kubectl create secret generic pg-confounding-key \
+    --from-literal=PG_CONFOUNDING_KEY=${PG_CONFOUNDING_KEY} \
+    --namespace=upm-lakekeeper
+    ```
+
+    ```bash
+    kubectl create secret generic fernet-secret \
+    --from-literal=FERNET_KEY=${FERNET_KEY} \
+    --namespace=upm-griptape
+    ```
+
+1. Annotate the secrets:
+
+    ```bash
+    kubectl annotate secret -n upm-replicator edb-cred replicator.v1.mittwald.de/replicate-to="*" --overwrite
+    ```
+
+#### Griptape secret 
+
+See the [following documentation]() for setting up the Griptape secret.
+
+#### Catalog secret
+
+See the [following documentation]() for setting up the Catalog secret.
+
+With the secrets all set, you can now move on to [setting up the environmental variables](setvariables.mdx) needed for installation.

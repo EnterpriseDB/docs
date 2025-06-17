@@ -1,0 +1,518 @@
+---
+title: astradb
+navTitle: AstraDbVectorStoreDriver
+
+---
+
+-   `__all__ = ['AstraDbVectorStoreDriver']` <small>module-attribute</small>  <span id="griptape.drivers.vector.astradb.__all__"></span> 
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver"></span>
+
+Bases:
+ [`BaseVectorStoreDriver`](./#griptape.drivers.vector.BaseVectorStoreDriver "BaseVectorStoreDriver (griptape.drivers.vector.BaseVectorStoreDriver)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                       | Type                                                                                                                                                                                                            | Description                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a href="base_vector_store_driver.mdx#griptape.drivers.vector.base_vector_store_driver.BaseVectorStoreDriver.embedding_driver" title="embedding_driver = field(kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.embedding_driver)"><code class="language-python">embedding_driver</code></a> | <a href="../embedding#griptape.drivers.embedding.BaseEmbeddingDriver" title="BaseEmbeddingDriver (griptape.drivers.embedding.BaseEmbeddingDriver)"><code class="language-python">BaseEmbeddingDriver</code></a> | a `griptape.drivers.BaseEmbeddingDriver` for embedding computations within the store<br/>                                                                                                             |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.api_endpoint" title="api_endpoint = field(kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.api_endpoint)"><code class="language-python">api_endpoint</code></a>                                                | `str`                                                                                                                                                                                                           | the "API Endpoint" for the Astra DB instance.<br/>                                                                                                                                                    |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.token" title="token = field(kw_only=True, default=None, metadata={'serializable': False})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.token)"><code class="language-python">token</code></a>                                                             | `Optional[str \| TokenProvider]`                                                                                                                                                                                | a Database Token ("AstraCS:...") secret to access Astra DB. An instance of `astrapy.authentication.TokenProvider` is also accepted.<br/>                                                              |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.collection_name" title="collection_name = field(kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.collection_name)"><code class="language-python">collection_name</code></a>                                    | `str`                                                                                                                                                                                                           | the name of the collection on Astra DB. The collection must have been created beforehand, and support vectors with a vector dimension matching the embeddings being used by this driver.<br/>         |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.environment" title="environment = field(kw_only=True, default=None, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.environment)"><code class="language-python">environment</code></a>                                      | `Optional[str]`                                                                                                                                                                                                 | the environment ("prod", "hcd", ...) hosting the target Data API. It can be omitted for production Astra DB targets. See `astrapy.constants.Environment` for allowed values.<br/>                     |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.astra_db_namespace" title="astra_db_namespace = field(default=None, kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.astra_db_namespace)"><code class="language-python">astra_db_namespace</code></a>          | `Optional[str]`                                                                                                                                                                                                 | optional specification of the namespace (in the Astra database) for the data. *Note*: not to be confused with the "namespace" mentioned elsewhere, which is a grouping within this vector store.<br/> |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.caller_name" title="caller_name = field(default='griptape', kw_only=True, metadata={'serializable': False})           class-attribute       instance-attribute    (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.caller_name)"><code class="language-python">caller_name</code></a>                               | `str`                                                                                                                                                                                                           | the name of the caller for the Astra DB client. Defaults to "griptape".<br/>                                                                                                                          |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.client" title="client() (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.client)"><code class="language-python">client</code></a>                                                                                                                                                                                   | `DataAPIClient`                                                                                                                                                                                                 | an instance of `astrapy.DataAPIClient` for the Astra DB.<br/>                                                                                                                                         |
+| <a href="astradb.mdx#griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.collection" title="collection() (griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.collection)"><code class="language-python">collection</code></a>                                                                                                                                                                   | `Collection`                                                                                                                                                                                                    | an instance of `astrapy.Collection` for the Astra DB.<br/>                                                                                                                                            |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+@define
+class AstraDbVectorStoreDriver(BaseVectorStoreDriver):
+    """A Vector Store Driver for Astra DB.
+
+    Attributes:
+        embedding_driver: a `griptape.drivers.BaseEmbeddingDriver` for embedding computations within the store
+        api_endpoint: the "API Endpoint" for the Astra DB instance.
+        token: a Database Token ("AstraCS:...") secret to access Astra DB. An instance of `astrapy.authentication.TokenProvider` is also accepted.
+        collection_name: the name of the collection on Astra DB. The collection must have been created beforehand,
+            and support vectors with a vector dimension matching the embeddings being used by this driver.
+        environment: the environment ("prod", "hcd", ...) hosting the target Data API.
+            It can be omitted for production Astra DB targets. See `astrapy.constants.Environment` for allowed values.
+        astra_db_namespace: optional specification of the namespace (in the Astra database) for the data.
+            *Note*: not to be confused with the "namespace" mentioned elsewhere, which is a grouping within this vector store.
+        caller_name: the name of the caller for the Astra DB client. Defaults to "griptape".
+        client: an instance of `astrapy.DataAPIClient` for the Astra DB.
+        collection: an instance of `astrapy.Collection` for the Astra DB.
+    """
+
+    api_endpoint: str = field(kw_only=True, metadata={"serializable": True})
+    token: Optional[str | astrapy.authentication.TokenProvider] = field(
+        kw_only=True, default=None, metadata={"serializable": False}
+    )
+    collection_name: str = field(kw_only=True, metadata={"serializable": True})
+    environment: Optional[str] = field(kw_only=True, default=None, metadata={"serializable": True})
+    astra_db_namespace: Optional[str] = field(default=None, kw_only=True, metadata={"serializable": True})
+    caller_name: str = field(default="griptape", kw_only=True, metadata={"serializable": False})
+    _client: Optional[astrapy.DataAPIClient] = field(
+        default=None, kw_only=True, alias="client", metadata={"serializable": False}
+    )
+    _collection: Optional[astrapy.Collection] = field(
+        default=None, kw_only=True, alias="collection", metadata={"serializable": False}
+    )
+
+    @lazy_property()
+    def client(self) -> astrapy.DataAPIClient:
+        astrapy = import_optional_dependency("astrapy")
+
+        return astrapy.DataAPIClient(
+            callers=[(self.caller_name, None)],
+            environment=self.environment or astrapy.utils.unset.UnsetType(),
+        )
+
+    @lazy_property()
+    def collection(self) -> astrapy.Collection:
+        if self.token is None:
+            raise ValueError("Astra DB token must be provided.")
+        return self.client.get_database(
+            self.api_endpoint, token=self.token, keyspace=self.astra_db_namespace
+        ).get_collection(self.collection_name)
+
+    def delete_vector(self, vector_id: str) -> None:
+        """Delete a vector from Astra DB store.
+
+        The method succeeds regardless of whether a vector with the provided ID
+        was actually stored or not in the first place.
+
+        Args:
+            vector_id: ID of the vector to delete.
+        """
+        self.collection.delete_one({"_id": vector_id})
+
+    def upsert_vector(
+        self,
+        vector: list[float],
+        *,
+        vector_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        meta: Optional[dict] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Write a vector to the Astra DB store.
+
+        In case the provided ID exists already, an overwrite will take place.
+
+        Args:
+            vector: the vector to be upserted.
+            vector_id: the ID for the vector to store. If omitted, a server-provided new ID will be employed.
+            namespace: a namespace (a grouping within the vector store) to assign the vector to.
+            meta: a metadata dictionary associated to the vector.
+            kwargs: additional keyword arguments. Currently none is used: if they are passed, they will be ignored with a warning.
+
+        Returns:
+            the ID of the written vector (str).
+        """
+        document = {
+            k: v
+            for k, v in {"$vector": vector, "_id": vector_id, "keyspace": namespace, "meta": meta}.items()
+            if v is not None
+        }
+        if vector_id is not None:
+            self.collection.find_one_and_replace({"_id": vector_id}, document, upsert=True)
+            return vector_id
+        insert_result = self.collection.insert_one(document)
+        return insert_result.inserted_id
+
+    def load_entry(self, vector_id: str, *, namespace: Optional[str] = None) -> Optional[BaseVectorStoreDriver.Entry]:
+        """Load a single vector entry from the Astra DB store given its ID.
+
+        Args:
+            vector_id: the ID of the required vector.
+            namespace: a namespace, within the vector store, to constrain the search.
+
+        Returns:
+            The vector entry (a `BaseVectorStoreDriver.Entry`) if found, otherwise None.
+        """
+        find_filter = {k: v for k, v in {"_id": vector_id, "keyspace": namespace}.items() if v is not None}
+        match = self.collection.find_one(filter=find_filter, projection={"*": 1})
+        if match is not None:
+            return BaseVectorStoreDriver.Entry(
+                id=match["_id"], vector=match.get("$vector"), meta=match.get("meta"), namespace=match.get("keyspace")
+            )
+        return None
+
+    def load_entries(self, *, namespace: Optional[str] = None) -> list[BaseVectorStoreDriver.Entry]:
+        """Load entries from the Astra DB store.
+
+        Args:
+            namespace: a namespace, within the vector store, to constrain the search.
+
+        Returns:
+            A list of vector (`BaseVectorStoreDriver.Entry`) entries.
+        """
+        find_filter: dict[str, str] = {} if namespace is None else {"keyspace": namespace}
+        return [
+            BaseVectorStoreDriver.Entry(
+                id=match["_id"], vector=match.get("$vector"), meta=match.get("meta"), namespace=match.get("keyspace")
+            )
+            for match in self.collection.find(filter=find_filter, projection={"*": 1})
+        ]
+
+    def query_vector(
+        self,
+        vector: list[float],
+        *,
+        count: Optional[int] = None,
+        namespace: Optional[str] = None,
+        include_vectors: bool = False,
+        **kwargs: Any,
+    ) -> list[BaseVectorStoreDriver.Entry]:
+        """Run a similarity search on the Astra DB store, based on a vector list.
+
+        Args:
+            vector: the vector to be queried.
+            count: the maximum number of results to return. If omitted, defaults will apply.
+            namespace: the namespace to filter results by.
+            include_vectors: whether to include vector data in the results.
+            kwargs: additional keyword arguments. Currently only the free-form dict `filter`
+                is recognized (and goes straight to the Data API query);
+                others will generate a warning and be ignored.
+
+        Returns:
+            A list of vector (`BaseVectorStoreDriver.Entry`) entries,
+            with their `score` attribute set to the vector similarity to the query.
+        """
+        query_filter: Optional[dict[str, Any]] = kwargs.get("filter")
+        find_filter_ns: dict[str, Any] = {} if namespace is None else {"keyspace": namespace}
+        find_filter = {**(query_filter or {}), **find_filter_ns}
+        find_projection: Optional[dict[str, int]] = {"*": 1} if include_vectors else None
+        ann_limit = count or BaseVectorStoreDriver.DEFAULT_QUERY_COUNT
+        matches = self.collection.find(
+            filter=find_filter,
+            sort={"$vector": vector},
+            limit=ann_limit,
+            projection=find_projection,
+            include_similarity=True,
+        )
+        return [
+            BaseVectorStoreDriver.Entry(
+                id=match["_id"],
+                vector=match.get("$vector"),
+                score=match["$similarity"],
+                meta=match.get("meta"),
+                namespace=match.get("keyspace"),
+            )
+            for match in matches
+        ]
+```
+
+</details>
+
+-   `_client = field(default=None, kw_only=True, alias='client', metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver._client"></span> 
+
+-   `_collection = field(default=None, kw_only=True, alias='collection', metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver._collection"></span> 
+
+-   `api_endpoint = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.api_endpoint"></span> 
+
+-   `astra_db_namespace = field(default=None, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.astra_db_namespace"></span> 
+
+-   `caller_name = field(default='griptape', kw_only=True, metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.caller_name"></span> 
+
+-   `collection_name = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.collection_name"></span> 
+
+-   `environment = field(kw_only=True, default=None, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.environment"></span> 
+
+-   `token = field(kw_only=True, default=None, metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.token"></span> 
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.client"></span>
+
+### client()
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+@lazy_property()
+def client(self) -> astrapy.DataAPIClient:
+    astrapy = import_optional_dependency("astrapy")
+
+    return astrapy.DataAPIClient(
+        callers=[(self.caller_name, None)],
+        environment=self.environment or astrapy.utils.unset.UnsetType(),
+    )
+```
+
+</details>
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.collection"></span>
+
+### collection()
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+@lazy_property()
+def collection(self) -> astrapy.Collection:
+    if self.token is None:
+        raise ValueError("Astra DB token must be provided.")
+    return self.client.get_database(
+        self.api_endpoint, token=self.token, keyspace=self.astra_db_namespace
+    ).get_collection(self.collection_name)
+```
+
+</details>
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.delete_vector"></span>
+
+### delete_vector(vector_id)
+
+Delete a vector from Astra DB store.
+
+The method succeeds regardless of whether a vector with the provided ID was actually stored or not in the first place.
+
+#### Parameters
+
+| Name        | Type  | Description                      | Default    |
+| ----------- | ----- | -------------------------------- | ---------- |
+| `vector_id` | `str` | ID of the vector to delete.<br/> | `required` |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+def delete_vector(self, vector_id: str) -> None:
+    """Delete a vector from Astra DB store.
+
+    The method succeeds regardless of whether a vector with the provided ID
+    was actually stored or not in the first place.
+
+    Args:
+        vector_id: ID of the vector to delete.
+    """
+    self.collection.delete_one({"_id": vector_id})
+```
+
+</details>
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.load_entries"></span>
+
+### load_entries(\*, namespace=None)
+
+Load entries from the Astra DB store.
+
+#### Parameters
+
+| Name        | Type            | Description                                                         | Default |
+| ----------- | --------------- | ------------------------------------------------------------------- | ------- |
+| `namespace` | `Optional[str]` | a namespace, within the vector store, to constrain the search.<br/> | `None`  |
+
+#### Returns
+
+| Type                                                                                                                | Description                                                    |
+| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| <a href="../../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[Entry]</code></a> | A list of vector (`BaseVectorStoreDriver.Entry`) entries.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+def load_entries(self, *, namespace: Optional[str] = None) -> list[BaseVectorStoreDriver.Entry]:
+    """Load entries from the Astra DB store.
+
+    Args:
+        namespace: a namespace, within the vector store, to constrain the search.
+
+    Returns:
+        A list of vector (`BaseVectorStoreDriver.Entry`) entries.
+    """
+    find_filter: dict[str, str] = {} if namespace is None else {"keyspace": namespace}
+    return [
+        BaseVectorStoreDriver.Entry(
+            id=match["_id"], vector=match.get("$vector"), meta=match.get("meta"), namespace=match.get("keyspace")
+        )
+        for match in self.collection.find(filter=find_filter, projection={"*": 1})
+    ]
+```
+
+</details>
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.load_entry"></span>
+
+### load_entry(vector_id, \*, namespace=None)
+
+Load a single vector entry from the Astra DB store given its ID.
+
+#### Parameters
+
+| Name        | Type            | Description                                                         | Default    |
+| ----------- | --------------- | ------------------------------------------------------------------- | ---------- |
+| `vector_id` | `str`           | the ID of the required vector.<br/>                                 | `required` |
+| `namespace` | `Optional[str]` | a namespace, within the vector store, to constrain the search.<br/> | `None`     |
+
+#### Returns
+
+| Type                                                                                                                                                                                          | Description                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| <a href="./#griptape.drivers.vector.BaseVectorStoreDriver.Entry" title="Entry (griptape.drivers.vector.BaseVectorStoreDriver.Entry)"><code class="language-python">Optional[Entry]</code></a> | The vector entry (a `BaseVectorStoreDriver.Entry`) if found, otherwise None.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+def load_entry(self, vector_id: str, *, namespace: Optional[str] = None) -> Optional[BaseVectorStoreDriver.Entry]:
+    """Load a single vector entry from the Astra DB store given its ID.
+
+    Args:
+        vector_id: the ID of the required vector.
+        namespace: a namespace, within the vector store, to constrain the search.
+
+    Returns:
+        The vector entry (a `BaseVectorStoreDriver.Entry`) if found, otherwise None.
+    """
+    find_filter = {k: v for k, v in {"_id": vector_id, "keyspace": namespace}.items() if v is not None}
+    match = self.collection.find_one(filter=find_filter, projection={"*": 1})
+    if match is not None:
+        return BaseVectorStoreDriver.Entry(
+            id=match["_id"], vector=match.get("$vector"), meta=match.get("meta"), namespace=match.get("keyspace")
+        )
+    return None
+```
+
+</details>
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.query_vector"></span>
+
+### query_vector(vector, \*, count=None, namespace=None, include_vectors=False, \*\*kwargs)
+
+Run a similarity search on the Astra DB store, based on a vector list.
+
+#### Parameters
+
+| Name              | Type                                                                                                                | Description                                                                                                                                                                           | Default    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `vector`          | <a href="../../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[float]</code></a> | the vector to be queried.<br/>                                                                                                                                                        | `required` |
+| `count`           | `Optional[int]`                                                                                                     | the maximum number of results to return. If omitted, defaults will apply.<br/>                                                                                                        | `None`     |
+| `namespace`       | `Optional[str]`                                                                                                     | the namespace to filter results by.<br/>                                                                                                                                              | `None`     |
+| `include_vectors` | `bool`                                                                                                              | whether to include vector data in the results.<br/>                                                                                                                                   | `False`    |
+| `kwargs`          | `Any`                                                                                                               | additional keyword arguments. Currently only the free-form dict `filter` is recognized (and goes straight to the Data API query); others will generate a warning and be ignored.<br/> | `{}`       |
+
+#### Returns
+
+| Type                                                                                                                | Description                                                                  |
+| ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| <a href="../../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[Entry]</code></a> | A list of vector (`BaseVectorStoreDriver.Entry`) entries,<br/>               |
+| <a href="../../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[Entry]</code></a> | with their `score` attribute set to the vector similarity to the query.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+def query_vector(
+    self,
+    vector: list[float],
+    *,
+    count: Optional[int] = None,
+    namespace: Optional[str] = None,
+    include_vectors: bool = False,
+    **kwargs: Any,
+) -> list[BaseVectorStoreDriver.Entry]:
+    """Run a similarity search on the Astra DB store, based on a vector list.
+
+    Args:
+        vector: the vector to be queried.
+        count: the maximum number of results to return. If omitted, defaults will apply.
+        namespace: the namespace to filter results by.
+        include_vectors: whether to include vector data in the results.
+        kwargs: additional keyword arguments. Currently only the free-form dict `filter`
+            is recognized (and goes straight to the Data API query);
+            others will generate a warning and be ignored.
+
+    Returns:
+        A list of vector (`BaseVectorStoreDriver.Entry`) entries,
+        with their `score` attribute set to the vector similarity to the query.
+    """
+    query_filter: Optional[dict[str, Any]] = kwargs.get("filter")
+    find_filter_ns: dict[str, Any] = {} if namespace is None else {"keyspace": namespace}
+    find_filter = {**(query_filter or {}), **find_filter_ns}
+    find_projection: Optional[dict[str, int]] = {"*": 1} if include_vectors else None
+    ann_limit = count or BaseVectorStoreDriver.DEFAULT_QUERY_COUNT
+    matches = self.collection.find(
+        filter=find_filter,
+        sort={"$vector": vector},
+        limit=ann_limit,
+        projection=find_projection,
+        include_similarity=True,
+    )
+    return [
+        BaseVectorStoreDriver.Entry(
+            id=match["_id"],
+            vector=match.get("$vector"),
+            score=match["$similarity"],
+            meta=match.get("meta"),
+            namespace=match.get("keyspace"),
+        )
+        for match in matches
+    ]
+```
+
+</details>
+
+<span id="griptape.drivers.vector.astradb.AstraDbVectorStoreDriver.upsert_vector"></span>
+
+### upsert_vector(vector, \*, vector_id=None, namespace=None, meta=None, \*\*kwargs)
+
+Write a vector to the Astra DB store.
+
+In case the provided ID exists already, an overwrite will take place.
+
+#### Parameters
+
+| Name        | Type                                                                                                                | Description                                                                                                         | Default    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `vector`    | <a href="../../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[float]</code></a> | the vector to be upserted.<br/>                                                                                     | `required` |
+| `vector_id` | `Optional[str]`                                                                                                     | the ID for the vector to store. If omitted, a server-provided new ID will be employed.<br/>                         | `None`     |
+| `namespace` | `Optional[str]`                                                                                                     | a namespace (a grouping within the vector store) to assign the vector to.<br/>                                      | `None`     |
+| `meta`      | `Optional[dict]`                                                                                                    | a metadata dictionary associated to the vector.<br/>                                                                | `None`     |
+| `kwargs`    | `Any`                                                                                                               | additional keyword arguments. Currently none is used: if they are passed, they will be ignored with a warning.<br/> | `{}`       |
+
+#### Returns
+
+| Type  | Description                              |
+| ----- | ---------------------------------------- |
+| `str` | the ID of the written vector (str).<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;astradb_vector_store_driver.py</code></summary>
+
+```python
+def upsert_vector(
+    self,
+    vector: list[float],
+    *,
+    vector_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+    meta: Optional[dict] = None,
+    **kwargs: Any,
+) -> str:
+    """Write a vector to the Astra DB store.
+
+    In case the provided ID exists already, an overwrite will take place.
+
+    Args:
+        vector: the vector to be upserted.
+        vector_id: the ID for the vector to store. If omitted, a server-provided new ID will be employed.
+        namespace: a namespace (a grouping within the vector store) to assign the vector to.
+        meta: a metadata dictionary associated to the vector.
+        kwargs: additional keyword arguments. Currently none is used: if they are passed, they will be ignored with a warning.
+
+    Returns:
+        the ID of the written vector (str).
+    """
+    document = {
+        k: v
+        for k, v in {"$vector": vector, "_id": vector_id, "keyspace": namespace, "meta": meta}.items()
+        if v is not None
+    }
+    if vector_id is not None:
+        self.collection.find_one_and_replace({"_id": vector_id}, document, upsert=True)
+        return vector_id
+    insert_result = self.collection.insert_one(document)
+    return insert_result.inserted_id
+```
+
+</details>

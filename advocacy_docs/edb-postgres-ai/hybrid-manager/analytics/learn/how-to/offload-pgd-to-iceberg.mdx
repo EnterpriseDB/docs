@@ -1,0 +1,123 @@
+---
+title: Offload PGD data to Apache Iceberg
+navTitle: Offload PGD to Iceberg
+description: Guide to offloading PGD data to Apache Iceberg with Hybrid Manager, including when and why to use this capability.
+---
+
+
+This guide explains **how and when to offload PGD data to Apache Iceberg** in Hybrid Manager (HM), and what this unlocks for your analytics architecture.
+
+**Why offload PGD data to Iceberg?**
+
+✅ **Cost-efficient tiered storage:** Move older PGD data ("cold data") to object storage to lower primary database storage costs.
+✅ **Faster PGD performance:** Keep PGD operational tables smaller and faster for transactional workloads.
+✅ **Enable Lakehouse analytics:** Query offloaded data in Iceberg format using scalable Lakehouse clusters (vectorized queries).
+✅ **Broader data integration:** Make PGD data available to other tools (Spark, Trino, Flink) via open Iceberg format.
+
+**When to use this:**
+- When implementing **Tiered Tables** (primary use case)
+- When building an enterprise **lakehouse architecture** with unified PGD + external analytics
+- When archiving historical PGD data with ongoing query access needs
+
+For foundational concepts, see [Tiered Tables in Hybrid Manager](../../tiered_tables.mdx).
+
+---
+
+## How PGD offload works in Hybrid Manager
+
+Offloading PGD data to Iceberg involves 3 layers:
+
+| Layer | Action |
+|-------|--------|
+| **Storage** | Define a PGFS storage location and/or Iceberg catalog (where offloaded data goes). |
+| **Node group** | Configure your PGD node group to use this storage target. |
+| **Table level** | Enable analytics replication for each PGD table you want to offload. |
+
+---
+
+## Prerequisites
+
+- An HM-managed PGD cluster.
+- [PGFS storage location](./configure-tiered-pgfs) defined in PGD (S3-compatible object store).
+- (Optional, recommended) [Iceberg REST catalog connection](./configure-iceberg-catalog) configured and attached.
+- PGD node group configured for analytics offload:
+- [Configure PGD node group for analytics offload](./configure-tiered-offload)
+
+---
+
+## Steps to offload PGD data
+
+### Step 1: Ensure node group is configured for offload (required)
+
+- If using PGFS only: set `analytics_storage_location`.
+- If using catalog: set `analytics_write_catalog`.
+
+**Reference:** [Configure PGD node group for analytics offload](./configure-tiered-offload)
+
+---
+
+### Step 2: Enable analytics replication on your table
+
+To start offloading a specific PGD table:
+
+```sql
+ALTER TABLE public.operational_logs SET (pgd.replicate_to_analytics = TRUE);
+```
+
+**Result:**
+- PGD will automatically replicate this table’s data to Iceberg:
+- **Immediately** if full table offload is used.
+- **Partitioned** if combined with Tiered Tables and BDR AutoPartition.
+
+---
+
+## Accessing offloaded data
+
+### If using Iceberg catalog
+
+- Attach catalog on Lakehouse cluster:
+
+  ```sql
+  SELECT pgaa.attach_catalog('your_catalog_alias');
+  ```
+
+- Query offloaded table directly by catalog name.
+
+### If using PGFS only (filesystem offload)
+
+- Define PGAA reader table pointing to Iceberg path in object storage:
+
+  ```sql
+  CREATE TABLE public.operational_logs_offloaded (...) USING PGAA WITH (pgaa.path = 's3://your/path', pgaa.format = 'iceberg');
+  ```
+
+---
+
+## Notes
+
+- This mechanism powers **Tiered Tables**: older partitions offload automatically when using [BDR AutoPartition with analytics_offload_period](./configure-tiered-autopartition).
+- You can enable/disable offload per table dynamically.
+- Offloaded data remains queryable indefinitely in Iceberg.
+
+---
+
+## What this unlocks
+
+✅ **Seamless tiered storage for large PGD tables**
+✅ **Fast lakehouse analytics on historical PGD data**
+✅ **Open format (Iceberg) interoperability**
+✅ **Reduced PGD operational cost and footprint**
+
+---
+
+## Next steps
+
+Now that your PGD data is offloading to Iceberg, you can:
+
+- [Monitor Tiered Tables status and storage savings](./monitor-tiered-tables)
+- [Query Tiered Tables from PGD and Lakehouse](./query-tiered-tables)
+- [Query existing Iceberg tables from Lakehouse](./query-iceberg-existing-tables)
+
+---
+
+For broader architecture view, see [Analytics in Hybrid Manager](../index.mdx).

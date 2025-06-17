@@ -1,0 +1,100 @@
+---
+title: Kubernetes HA and DR best practices
+navTitle: HA/DR best practices
+description: Best practices for designing high availability (HA) and disaster recovery (DR) in Kubernetes clusters supporting Hybrid Manager and managed Postgres services.
+---
+
+# Kubernetes HA and DR best practices
+
+Hybrid Manager runs on Kubernetes and depends on a well-architected Kubernetes environment to meet availability and resiliency goals.
+The Kubernetes cluster architecture, networking, storage, and deployment patterns all influence the ability to achieve high availability (HA) and disaster recovery (DR) objectives for Hybrid Manager and the Postgres services it manages.
+
+This page provides **HA and DR best practices** for Kubernetes clusters that support Hybrid Manager and EDB Platform services.
+It complements the general [Minimum and recommended Kubernetes specs](./minimum-recommended-k8s-specs), [Kubernetes storage best practices](./k8s-storage-best-practices), and [Kubernetes networking best practices](./manage-kubernetes-networking).
+
+For background on how Kubernetes is used in Hybrid Manager, see [Kubernetes in Hybrid Manager](../k8-in-hybrid-manager).
+
+## Design for multi-AZ resilience
+
+The first line of HA for Hybrid Manager is the underlying Kubernetes cluster design:
+
+- Deploy worker nodes across **multiple Availability Zones (AZs)** where supported.
+- Ensure control plane components (if self-managed) are deployed across AZs.
+- Validate that Kubernetes network plugins (CNI), Ingress, and LoadBalancer configurations support multi-AZ traffic paths.
+- Use **StorageClasses with WaitForFirstConsumer** to ensure Postgres PVCs are zone-aware.
+
+Multi-AZ node pools improve resilience to single-AZ outages.
+
+## Use anti-affinity and topology spread
+
+Ensure that critical Hybrid Manager components and Postgres database Pods are distributed appropriately:
+
+- Use **PodAntiAffinity** to avoid scheduling multiple replicas of the same component on the same node.
+- Use **topologySpreadConstraints** to distribute Pods evenly across zones or node groups.
+- Configure **PodDisruptionBudgets (PDBs)** to limit voluntary disruptions during upgrades or maintenance.
+
+These patterns improve resilience and reduce the blast radius of node or zone failures.
+
+## Tune StatefulSet design for Postgres HA
+
+Hybrid Manager-managed Postgres clusters rely on Kubernetes StatefulSets:
+
+- Use **multi-replica configurations** where supported (primary + replicas).
+- Validate that replicas are spread across AZs when possible.
+- Validate that network latency between primary and replicas is acceptable.
+- Monitor **replication lag** and failover readiness continuously.
+
+Well-configured StatefulSets provide database-level HA, complementing Kubernetes-level HA.
+
+## Monitor and test failover scenarios
+
+Do not assume HA is working—test and monitor:
+
+- Regularly simulate **node or AZ failures** and validate Hybrid Manager and Postgres behavior.
+- Monitor Postgres failover events and validate application behavior during failover.
+- Validate that Ingress or LoadBalancer services continue operating during zone or node disruptions.
+
+Testing is essential for ensuring DR readiness.
+
+## Implement backup and restore for DR
+
+HA patterns protect against transient failures, but full DR requires backup and restore:
+
+- Ensure Hybrid Manager-managed Postgres clusters have **regular backups to external object storage**.
+- Validate that Kubernetes-level resources (PersistentVolumeClaim data, ConfigMaps, Secrets) can be restored when needed.
+- Consider tools like Velero for cluster resource backup and restore.
+- Document DR runbooks and test **full recovery scenarios** periodically.
+
+A well-tested backup and restore process is critical for disaster recovery.
+
+## Plan for region-level DR if needed
+
+If business requirements demand region-level DR:
+
+- Deploy Hybrid Manager and supporting components in multiple regions.
+- Use separate Kubernetes clusters per region.
+- Design cross-region replication for Postgres where supported.
+- Automate failover and DNS updates across regions.
+- Validate inter-region latency and replication performance.
+
+Region-level DR introduces additional complexity—validate requirements carefully.
+
+## Summary checklist
+
+- Design Kubernetes clusters for multi-AZ resilience.
+- Apply anti-affinity, topology spread, and PodDisruptionBudgets.
+- Configure StatefulSets for Postgres HA and monitor replication.
+- Simulate failure scenarios and validate behavior.
+- Implement and test backup and restore processes.
+- Consider multi-region DR where required by business needs.
+
+## Related topics
+
+- [Kubernetes in Hybrid Manager](../k8-in-hybrid-manager)
+- [Minimum and recommended Kubernetes specs](./minimum-recommended-k8s-specs)
+- [Kubernetes storage best practices](./k8s-storage-best-practices)
+- [Kubernetes networking best practices](./manage-kubernetes-networking)
+- [Monitoring Kubernetes best practices](./monitoring-kubernetes-best-practices)
+- [Troubleshooting Kubernetes best practices](./troubleshooting-kubernetes-best-practices)
+- [Monitoring Kubernetes clusters](../../how-to/monitor-kubernetes-cluster)
+- [How to troubleshoot Kubernetes](../../how-to/troubleshooting-on-kubernetes)

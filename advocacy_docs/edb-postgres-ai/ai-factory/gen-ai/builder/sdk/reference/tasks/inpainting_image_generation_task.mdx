@@ -1,0 +1,130 @@
+---
+title: inpainting_image_generation_task
+navTitle: InpaintingImageGenerationTask
+
+---
+
+<span id="griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask"></span>
+
+Bases:
+ [`BaseImageGenerationTask`](./#griptape.tasks.BaseImageGenerationTask "BaseImageGenerationTask (griptape.tasks.BaseImageGenerationTask)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                       | Type                                                                                                                                                                                                                                                                 | Description                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| <a href="./#griptape.tasks.BaseImageGenerationTask.image_generation_driver" title="image_generation_driver = field(default=Factory(lambda: Defaults.drivers_config.image_generation_driver), kw_only=True)           class-attribute       instance-attribute    (griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.image_generation_driver)"><code class="language-python">image_generation_driver</code></a> | <a href="../drivers/image_generation#griptape.drivers.image_generation.BaseImageGenerationDriver" title="BaseImageGenerationDriver (griptape.drivers.image_generation.BaseImageGenerationDriver)"><code class="language-python">BaseImageGenerationDriver</code></a> | The driver used to generate the image.<br/>                                                       |
+| <a href="./#griptape.tasks.BaseImageGenerationTask.negative_rulesets" title="negative_rulesets           property    (griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.negative_rulesets)"><code class="language-python">negative_rulesets</code></a>                                                                                                                                                         | <a href="../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[Ruleset]</code></a>                                                                                                                                                   | List of negatively-weighted rulesets applied to the text prompt, if supported by the driver.<br/> |
+| <a href="./#griptape.tasks.BaseImageGenerationTask.negative_rules" title="negative_rules = field(factory=list, kw_only=True)           class-attribute       instance-attribute    (griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.negative_rules)"><code class="language-python">negative_rules</code></a>                                                                                                 | <a href="../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[Rule]</code></a>                                                                                                                                                      | List of negatively-weighted rules applied to the text prompt, if supported by the driver.<br/>    |
+| <a href="../mixins/artifact_file_output_mixin.mdx#griptape.mixins.artifact_file_output_mixin.ArtifactFileOutputMixin.output_dir" title="output_dir = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.output_dir)"><code class="language-python">output_dir</code></a>                                               | `Optional[str]`                                                                                                                                                                                                                                                      | If provided, the generated image will be written to disk in output_dir.<br/>                      |
+| <a href="../mixins/artifact_file_output_mixin.mdx#griptape.mixins.artifact_file_output_mixin.ArtifactFileOutputMixin.output_file" title="output_file = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.output_file)"><code class="language-python">output_file</code></a>                                           | `Optional[str]`                                                                                                                                                                                                                                                      | If provided, the generated image will be written to disk as output_file.<br/>                     |
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;inpainting_image_generation_task.py</code></summary>
+
+```python
+@define
+class InpaintingImageGenerationTask(BaseImageGenerationTask):
+    """A task that modifies a select region within an image using a mask.
+
+    Accepts a text prompt, image, and mask as
+    input in one of the following formats:
+    - tuple of (template string, ImageArtifact, ImageArtifact)
+    - tuple of (TextArtifact, ImageArtifact, ImageArtifact)
+    - Callable that returns a tuple of (TextArtifact, ImageArtifact, ImageArtifact).
+
+    Attributes:
+        image_generation_driver: The driver used to generate the image.
+        negative_rulesets: List of negatively-weighted rulesets applied to the text prompt, if supported by the driver.
+        negative_rules: List of negatively-weighted rules applied to the text prompt, if supported by the driver.
+        output_dir: If provided, the generated image will be written to disk in output_dir.
+        output_file: If provided, the generated image will be written to disk as output_file.
+    """
+
+    _input: Union[
+        tuple[Union[str, TextArtifact], ImageArtifact, ImageArtifact], Callable[[BaseTask], ListArtifact], ListArtifact
+    ] = field(default=None, alias="input")
+
+    @property
+    def input(self) -> ListArtifact:
+        if isinstance(self._input, ListArtifact):
+            return self._input
+        if isinstance(self._input, tuple):
+            if isinstance(self._input[0], TextArtifact):
+                input_text = self._input[0]
+            else:
+                input_text = TextArtifact(J2().render_from_string(self._input[0], **self.full_context))
+
+            return ListArtifact([input_text, self._input[1], self._input[2]])
+        if isinstance(self._input, Callable):
+            return self._input(self)
+        raise ValueError("Input must be a tuple of (text, image, mask) or a callable that returns such a tuple.")
+
+    @input.setter
+    def input(
+        self,
+        value: tuple[str | TextArtifact, ImageArtifact, ImageArtifact] | Callable[[BaseTask], ListArtifact],
+    ) -> None:
+        self._input = value
+
+    def try_run(self) -> ImageArtifact:
+        prompt_artifact = self.input[0]
+
+        image_artifact = self.input[1]
+        if not isinstance(image_artifact, ImageArtifact):
+            raise ValueError("Image must be an ImageArtifact.")
+
+        mask_artifact = self.input[2]
+        if not isinstance(mask_artifact, ImageArtifact):
+            raise ValueError("Mask must be an ImageArtifact.")
+
+        output_image_artifact = self.image_generation_driver.run_image_inpainting(
+            prompts=self._get_prompts(prompt_artifact.to_text()),
+            negative_prompts=self._get_negative_prompts(),
+            image=image_artifact,
+            mask=mask_artifact,
+        )
+
+        if self.output_dir or self.output_file:
+            self._write_to_file(output_image_artifact)
+
+        return output_image_artifact
+```
+
+</details>
+
+-   `_input = field(default=None, alias='input')` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask._input"></span> 
+
+-   `input` <small>property</small> <small>writable</small>  <span id="griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.input"></span> 
+
+<span id="griptape.tasks.inpainting_image_generation_task.InpaintingImageGenerationTask.try_run"></span>
+
+### try_run()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;inpainting_image_generation_task.py</code></summary>
+
+```python
+def try_run(self) -> ImageArtifact:
+    prompt_artifact = self.input[0]
+
+    image_artifact = self.input[1]
+    if not isinstance(image_artifact, ImageArtifact):
+        raise ValueError("Image must be an ImageArtifact.")
+
+    mask_artifact = self.input[2]
+    if not isinstance(mask_artifact, ImageArtifact):
+        raise ValueError("Mask must be an ImageArtifact.")
+
+    output_image_artifact = self.image_generation_driver.run_image_inpainting(
+        prompts=self._get_prompts(prompt_artifact.to_text()),
+        negative_prompts=self._get_negative_prompts(),
+        image=image_artifact,
+        mask=mask_artifact,
+    )
+
+    if self.output_dir or self.output_file:
+        self._write_to_file(output_image_artifact)
+
+    return output_image_artifact
+```
+
+</details>

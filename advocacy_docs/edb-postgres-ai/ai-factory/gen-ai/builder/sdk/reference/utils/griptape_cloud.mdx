@@ -1,0 +1,248 @@
+---
+title: griptape_cloud
+navTitle: GriptapeCloudStructure
+
+---
+
+-   `P = ParamSpec('P')` <small>module-attribute</small>  <span id="griptape.utils.griptape_cloud.P"></span> 
+
+-   `T = TypeVar('T')` <small>module-attribute</small>  <span id="griptape.utils.griptape_cloud.T"></span> 
+
+<span id="griptape.utils.griptape_cloud.GriptapeCloudStructure"></span>
+
+Utility for working with Gen AI Builder Structures.
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                         | Type                                                                                                                                                                                                                                        | Description                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| <a href="griptape_cloud.mdx#griptape.utils.griptape_cloud.GriptapeCloudStructure._event_listener" title="_event_listener = field(default=None, kw_only=True, alias='event_listener')           class-attribute       instance-attribute    (griptape.utils.griptape_cloud.GriptapeCloudStructure._event_listener)"><code class="language-python">\_event_listener</code></a> | <a href="../events#griptape.events.EventListener" title="EventListener (griptape.events.EventListener)"><code class="language-python">Optional[EventListener]</code></a>                                                                    | Event Listener to use. Defaults to an EventListener with a GriptapeCloudEventListenerDriver.<br/>         |
+| <a href="griptape_cloud.mdx#griptape.utils.griptape_cloud.GriptapeCloudStructure._observability" title="_observability = field(default=None, kw_only=True, alias='observability')           class-attribute       instance-attribute    (griptape.utils.griptape_cloud.GriptapeCloudStructure._observability)"><code class="language-python">\_observability</code></a>      | <a href="../observability/observability.mdx#griptape.observability.observability.Observability" title="Observability (griptape.observability.observability.Observability)"><code class="language-python">Optional[Observability]</code></a> | Observability to use. Defaults to an Observability with a GriptapeCloudObservabilityDriver.<br/>          |
+| <a href="griptape_cloud.mdx#griptape.utils.griptape_cloud.GriptapeCloudStructure.observe" title="observe = field(default=False, kw_only=True)           class-attribute       instance-attribute    (griptape.utils.griptape_cloud.GriptapeCloudStructure.observe)"><code class="language-python">observe</code></a>                                                         | `bool`                                                                                                                                                                                                                                      | Whether to enable observability. Enabling requires the `drivers-observability-griptape-cloud` extra.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+@define()
+class GriptapeCloudStructure:
+    """Utility for working with Gen AI Builder Structures.
+
+    Attributes:
+        _event_listener: Event Listener to use. Defaults to an EventListener with a GriptapeCloudEventListenerDriver.
+        _observability: Observability to use. Defaults to an Observability with a GriptapeCloudObservabilityDriver.
+        observe: Whether to enable observability. Enabling requires the `drivers-observability-griptape-cloud` extra.
+    """
+
+    _event_listener: Optional[EventListener] = field(default=None, kw_only=True, alias="event_listener")
+    _observability: Optional[Observability] = field(default=None, kw_only=True, alias="observability")
+    observe: bool = field(default=False, kw_only=True)
+    _output: Optional[BaseArtifact] = field(default=None, init=False)
+
+    @lazy_property()
+    def event_listener(self) -> EventListener:
+        from griptape.drivers.event_listener.griptape_cloud import GriptapeCloudEventListenerDriver
+
+        return EventListener(event_listener_driver=GriptapeCloudEventListenerDriver())
+
+    @lazy_property()
+    def observability(self) -> Observability:
+        from griptape.drivers.observability.griptape_cloud import GriptapeCloudObservabilityDriver
+        from griptape.observability.observability import Observability
+
+        return Observability(observability_driver=GriptapeCloudObservabilityDriver())
+
+    @property
+    def output(self) -> Optional[BaseArtifact]:
+        return self._output
+
+    @output.setter
+    def output(self, value: BaseArtifact | Any) -> None:
+        if isinstance(value, BaseArtifact):
+            self._output = value
+        elif isinstance(value, list):
+            self._output = ListArtifact([self._to_artifact(item) for item in value])
+        else:
+            self._output = self._to_artifact(value)
+
+    @property
+    def structure_run_id(self) -> str:
+        return os.environ["GT_CLOUD_STRUCTURE_RUN_ID"]
+
+    @property
+    def in_managed_environment(self) -> bool:
+        return "GT_CLOUD_STRUCTURE_RUN_ID" in os.environ
+
+    def __enter__(self) -> Self:
+        from griptape.observability.observability import Observability
+
+        if self.in_managed_environment:
+            EventBus.add_event_listener(self.event_listener)
+
+            if self.observe:
+                Observability.set_global_driver(self.observability.observability_driver)
+                self.observability.observability_driver.__enter__()
+
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ) -> None:
+        from griptape.observability.observability import Observability
+
+        if self.in_managed_environment:
+            if self.output is not None:
+                EventBus.publish_event(FinishStructureRunEvent(output_task_output=self.output), flush=True)
+            EventBus.remove_event_listener(self.event_listener)
+
+            if self.observe:
+                Observability.set_global_driver(None)
+                self.observability.observability_driver.__exit__(exc_type, exc_value, exc_traceback)
+
+    def _to_artifact(self, value: Any) -> BaseArtifact:
+        if isinstance(value, str):
+            return TextArtifact(value)
+        if isinstance(value, bool):
+            return BooleanArtifact(value)
+        if isinstance(value, dict):
+            return JsonArtifact(value)
+        if isinstance(value, bytes):
+            return BlobArtifact(value)
+        return GenericArtifact(value)
+```
+
+</details>
+
+-   `_event_listener = field(default=None, kw_only=True, alias='event_listener')` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure._event_listener"></span> 
+
+-   `_observability = field(default=None, kw_only=True, alias='observability')` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure._observability"></span> 
+
+-   `_output = field(default=None, init=False)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure._output"></span> 
+
+-   `in_managed_environment` <small>property</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.in_managed_environment"></span> 
+
+-   `observe = field(default=False, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.observe"></span> 
+
+-   `output` <small>property</small> <small>writable</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.output"></span> 
+
+-   `structure_run_id` <small>property</small>  <span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.structure_run_id"></span> 
+
+<span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.__enter__"></span>
+
+### **enter**()
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+def __enter__(self) -> Self:
+    from griptape.observability.observability import Observability
+
+    if self.in_managed_environment:
+        EventBus.add_event_listener(self.event_listener)
+
+        if self.observe:
+            Observability.set_global_driver(self.observability.observability_driver)
+            self.observability.observability_driver.__enter__()
+
+    return self
+```
+
+</details>
+
+<span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.__exit__"></span>
+
+### **exit**(exc_type, exc_value, exc_traceback)
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+def __exit__(
+    self,
+    exc_type: Optional[type[BaseException]],
+    exc_value: Optional[BaseException],
+    exc_traceback: Optional[TracebackType],
+) -> None:
+    from griptape.observability.observability import Observability
+
+    if self.in_managed_environment:
+        if self.output is not None:
+            EventBus.publish_event(FinishStructureRunEvent(output_task_output=self.output), flush=True)
+        EventBus.remove_event_listener(self.event_listener)
+
+        if self.observe:
+            Observability.set_global_driver(None)
+            self.observability.observability_driver.__exit__(exc_type, exc_value, exc_traceback)
+```
+
+</details>
+
+<span id="griptape.utils.griptape_cloud.GriptapeCloudStructure._to_artifact"></span>
+
+### \_to_artifact(value)
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+def _to_artifact(self, value: Any) -> BaseArtifact:
+    if isinstance(value, str):
+        return TextArtifact(value)
+    if isinstance(value, bool):
+        return BooleanArtifact(value)
+    if isinstance(value, dict):
+        return JsonArtifact(value)
+    if isinstance(value, bytes):
+        return BlobArtifact(value)
+    return GenericArtifact(value)
+```
+
+</details>
+
+<span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.event_listener"></span>
+
+### event_listener()
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+@lazy_property()
+def event_listener(self) -> EventListener:
+    from griptape.drivers.event_listener.griptape_cloud import GriptapeCloudEventListenerDriver
+
+    return EventListener(event_listener_driver=GriptapeCloudEventListenerDriver())
+```
+
+</details>
+
+<span id="griptape.utils.griptape_cloud.GriptapeCloudStructure.observability"></span>
+
+### observability()
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+@lazy_property()
+def observability(self) -> Observability:
+    from griptape.drivers.observability.griptape_cloud import GriptapeCloudObservabilityDriver
+    from griptape.observability.observability import Observability
+
+    return Observability(observability_driver=GriptapeCloudObservabilityDriver())
+```
+
+</details>
+
+<span id="griptape.utils.griptape_cloud.griptape_cloud_url"></span>
+
+## griptape_cloud_url(base_url, route)
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;griptape_cloud.py</code></summary>
+
+```python
+def griptape_cloud_url(base_url: str, route: str) -> str:
+    if not base_url.endswith("/"):
+        base_url += "/"
+    return urljoin(base_url, route.lstrip("/"))
+```
+
+</details>

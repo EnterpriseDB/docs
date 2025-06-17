@@ -1,0 +1,130 @@
+---
+title: prompt_response_rag_module
+navTitle: PromptResponseRagModule
+
+---
+
+<span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule"></span>
+
+Bases:
+ [`BaseResponseRagModule`](..#griptape.engines.rag.modules.BaseResponseRagModule "BaseResponseRagModule (griptape.engines.rag.modules.BaseResponseRagModule)")
+,  [`RuleMixin`](../../../../mixins/rule_mixin.mdx#griptape.mixins.rule_mixin.RuleMixin "RuleMixin (griptape.mixins.rule_mixin.RuleMixin)")
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;modules&#47;response&#47;prompt_response_rag_module.py</code></summary>
+
+```python
+@define(kw_only=True)
+class PromptResponseRagModule(BaseResponseRagModule, RuleMixin):
+    prompt_driver: BasePromptDriver = field(default=Factory(lambda: Defaults.drivers_config.prompt_driver))
+    answer_token_offset: int = field(default=400)
+    metadata: Optional[str] = field(default=None)
+    generate_system_template: Callable[[RagContext, list[TextArtifact]], str] = field(
+        default=Factory(lambda self: self.default_generate_system_template, takes_self=True),
+    )
+
+    def run(self, context: RagContext) -> BaseArtifact:
+        query = context.query
+        tokenizer = self.prompt_driver.tokenizer
+        included_chunks = []
+        system_prompt = self.generate_system_template(context, included_chunks)
+
+        for artifact in context.text_chunks:
+            included_chunks.append(artifact)
+
+            system_prompt = self.generate_system_template(context, included_chunks)
+            message_token_count = self.prompt_driver.tokenizer.count_tokens(
+                self.prompt_driver.prompt_stack_to_string(self.generate_prompt_stack(system_prompt, query)),
+            )
+
+            if message_token_count + self.answer_token_offset >= tokenizer.max_input_tokens:
+                included_chunks.pop()
+
+                system_prompt = self.generate_system_template(context, included_chunks)
+
+                break
+
+        output = self.prompt_driver.run(self.generate_prompt_stack(system_prompt, query)).to_artifact()
+
+        if isinstance(output, TextArtifact):
+            return output
+        raise ValueError("Prompt driver did not return a TextArtifact")
+
+    def default_generate_system_template(self, context: RagContext, artifacts: list[TextArtifact]) -> str:
+        params: dict[str, Any] = {"text_chunks": [c.to_text() for c in artifacts]}
+
+        if len(self.rulesets) > 0:
+            params["rulesets"] = J2("rulesets/rulesets.j2").render(rulesets=self.rulesets)
+
+        if self.metadata is not None:
+            params["metadata"] = J2("engines/rag/modules/response/metadata/system.j2").render(metadata=self.metadata)
+
+        return J2("engines/rag/modules/response/prompt/system.j2").render(**params)
+```
+
+</details>
+
+-   `answer_token_offset = field(default=400)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule.answer_token_offset"></span> 
+
+-   `generate_system_template = field(default=Factory(lambda self: self.default_generate_system_template, takes_self=True))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule.generate_system_template"></span> 
+
+-   `metadata = field(default=None)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule.metadata"></span> 
+
+-   `prompt_driver = field(default=Factory(lambda: Defaults.drivers_config.prompt_driver))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule.prompt_driver"></span> 
+
+<span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule.default_generate_system_template"></span>
+
+### default_generate_system_template(context, artifacts)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;modules&#47;response&#47;prompt_response_rag_module.py</code></summary>
+
+```python
+def default_generate_system_template(self, context: RagContext, artifacts: list[TextArtifact]) -> str:
+    params: dict[str, Any] = {"text_chunks": [c.to_text() for c in artifacts]}
+
+    if len(self.rulesets) > 0:
+        params["rulesets"] = J2("rulesets/rulesets.j2").render(rulesets=self.rulesets)
+
+    if self.metadata is not None:
+        params["metadata"] = J2("engines/rag/modules/response/metadata/system.j2").render(metadata=self.metadata)
+
+    return J2("engines/rag/modules/response/prompt/system.j2").render(**params)
+```
+
+</details>
+
+<span id="griptape.engines.rag.modules.response.prompt_response_rag_module.PromptResponseRagModule.run"></span>
+
+### run(context)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;modules&#47;response&#47;prompt_response_rag_module.py</code></summary>
+
+```python
+def run(self, context: RagContext) -> BaseArtifact:
+    query = context.query
+    tokenizer = self.prompt_driver.tokenizer
+    included_chunks = []
+    system_prompt = self.generate_system_template(context, included_chunks)
+
+    for artifact in context.text_chunks:
+        included_chunks.append(artifact)
+
+        system_prompt = self.generate_system_template(context, included_chunks)
+        message_token_count = self.prompt_driver.tokenizer.count_tokens(
+            self.prompt_driver.prompt_stack_to_string(self.generate_prompt_stack(system_prompt, query)),
+        )
+
+        if message_token_count + self.answer_token_offset >= tokenizer.max_input_tokens:
+            included_chunks.pop()
+
+            system_prompt = self.generate_system_template(context, included_chunks)
+
+            break
+
+    output = self.prompt_driver.run(self.generate_prompt_stack(system_prompt, query)).to_artifact()
+
+    if isinstance(output, TextArtifact):
+        return output
+    raise ValueError("Prompt driver did not return a TextArtifact")
+```
+
+</details>

@@ -1,0 +1,212 @@
+---
+title: Troubleshoot common scenarios
+navTitle: Troubleshoot common scenarios
+description: Common troubleshooting scenarios for Hybrid Manager clusters and managed Postgres services on Kubernetes.
+---
+
+# Troubleshoot common scenarios
+
+This how-to guide provides **common troubleshooting scenarios** you may encounter when operating Hybrid Manager and EDB-managed Postgres clusters on Kubernetes.
+
+For each scenario, we show:
+
+- **Problem / Symptoms**
+- **Why tracing Kubernetes resources helps**
+- **Key Kubernetes checks**
+- **Related How-to pages**
+
+Use this guide with:
+
+- [Troubleshoot Hybrid Manager components](./troubleshoot-hybrid-manager-components)
+- [Monitor Hybrid Manager cluster state](./monitor-hybrid-manager-cluster-state)
+- [Use the EDB observability stack](./use-edb-observability-stack)
+
+---
+
+## Scenario: Cannot connect to the Postgres database externally
+
+**Why trace:** Connection depends on Kubernetes Services, LoadBalancer, and external network configuration.
+
+**Kubernetes checks:**
+
+- `kubectl get service -n <project-namespace>` → Look for TYPE=LoadBalancer, check EXTERNAL-IP.
+- `kubectl get ingress -n <project-namespace>` (if used).
+- `kubectl describe service <db-external-svc-name> -n <project-namespace>` → Check Endpoints and annotations.
+- `kubectl get pods -n <project-namespace>` → Ensure DB Pods are Running.
+- Cloud Console → Check Load Balancer health, firewall/SecurityGroup rules.
+
+---
+
+## Scenario: Application cannot connect to the database from within the cluster
+
+**Why trace:** Internal Service and DNS resolution must be correct.
+
+**Kubernetes checks:**
+
+- `kubectl get service -n <project-namespace>` → Check ClusterIP services.
+- `kubectl get endpoints <db-service-name> -n <project-namespace>` → Verify correct Pod IPs.
+- `kubectl describe pod <db-pod-name> -n <project-namespace>` → Pod IP, status, events.
+- From another Pod: `nslookup <db-service-name>.<project-namespace>.svc.cluster.local`
+
+---
+
+## Scenario: HCP Postgres Pod is not starting
+
+**Why trace:** Pod Events and PVC/Storage issues are common causes.
+
+**Kubernetes checks:**
+
+- `kubectl describe pod <pod-name> -n <project-namespace>` → Look at Events section.
+- `kubectl logs <pod-name> -n <project-namespace>`
+- `kubectl logs --previous <pod-name> -n <project-namespace>` (if restarting).
+- `kubectl get pvc -n <project-namespace>` → PVCs Bound?
+- `kubectl describe pvc <pvc-name> -n <project-namespace>`
+- `kubectl describe node <node-name>` → Resource availability.
+- Check image pull secret if ImagePullBackOff.
+
+---
+
+## Scenario: HCP Operator Pod is not running or is erroring
+
+**Why trace:** Operator health affects cluster reconciliation.
+
+**Kubernetes checks:**
+
+- `kubectl get pods -n <operator-namespace>`
+- `kubectl describe pod <operator-pod-name> -n <operator-namespace>`
+- `kubectl logs <operator-pod-name> -n <operator-namespace>`
+
+---
+
+## Scenario: Creating/Updating an HCP Cluster CR doesn't result in changes
+
+**Why trace:** Need to verify operator reconciliation and CR Events.
+
+**Kubernetes checks:**
+
+- `kubectl logs <operator-pod-name> -n <operator-namespace>` → Look for CR-related errors.
+- `kubectl get <crd-plural-name> <hcp-cluster-name> -n <project-namespace> -o yaml` → Check Status section.
+- `kubectl describe <crd-plural-name> <hcp-cluster-name> -n <project-namespace>` → Check Events.
+
+---
+
+## Scenario: Backups are failing
+
+**Why trace:** Backup agents depend on Secrets, cloud IAM configuration, and storage access.
+
+**Kubernetes checks:**
+
+- `kubectl get pods,jobs,cronjobs -n <namespace-where-backups-run>`
+- `kubectl logs <backup-pod/job-pod-name> -n <namespace-where-backups-run>`
+- `kubectl get secret edb-object-storage -n <project-namespace> -o yaml` → Verify keys.
+- `kubectl describe sa <db-pod-service-account> -n <project-namespace>` → Check IRSA/Workload Identity annotations.
+- Cloud Console → Check bucket permissions and IAM roles.
+
+---
+
+## Scenario: Storage Issues (PVC Pending, Slow Performance)
+
+**Why trace:** PVC provisioning and cloud storage health need to be validated.
+
+**Kubernetes checks:**
+
+- `kubectl describe pvc <pvc-name> -n <project-namespace>` → Events for provisioning errors.
+- `kubectl get storageclass`
+- `kubectl describe storageclass <sc-name>`
+- `kubectl get pods -n kube-system | grep csi` → Check CSI driver pods.
+- `kubectl logs <csi-driver-pod-name> -n kube-system`
+- Cloud Console → Check volume metrics (IOPS, latency, throughput).
+
+---
+
+## Scenario: My HCP cluster or Postgres instance seems slow or unresponsive
+
+**Why trace:** Resource limits and underlying node/storage pressure are common causes.
+
+**Kubernetes checks:**
+
+- `kubectl top pods -n <project-namespace>`
+- `kubectl describe pod <db-pod-name> -n <project-namespace>` → Check Requests and Limits.
+- `kubectl top nodes`
+- Cloud Console → Check storage volume metrics.
+
+---
+
+## Scenario: I need to increase resources (CPU, Memory, Storage) for my HCP cluster
+
+**Why trace:** Must validate Kubernetes capacity before scaling Postgres settings.
+
+**Kubernetes checks:**
+
+- `kubectl describe node <node-name>` → Allocatable resources.
+- `kubectl get nodes` → Node availability.
+- `kubectl describe storageclass <sc-name>` → allowVolumeExpansion: true?
+- Cloud Console → Instance limits and quotas.
+
+---
+
+## Scenario: The HCP UI shows my cluster is "Pending", "Provisioning", "Stalled", or "Error"
+
+**Why trace:** UI reflects operator state → check underlying Kubernetes resources.
+
+**Kubernetes checks:**
+
+- `kubectl get pods -n <project-namespace>` → Pod readiness.
+- `kubectl describe pod <pod-name> -n <project-namespace>` → Events for scheduling/mounting issues.
+- `kubectl get pvc -n <project-namespace>`
+- `kubectl describe pvc <pvc-name> -n <project-namespace>`
+- `kubectl describe cluster <hcp-cluster-name> -n <project-namespace>` → Status and Events.
+- `kubectl logs <operator-pod-name> -n <operator-namespace>`
+
+---
+
+## Scenario: Debugging a specific Postgres instance (connection refused, error message)
+
+**Why trace:** Postgres server logs are inside Kubernetes Pod.
+
+**Kubernetes checks:**
+
+- `kubectl get pods -n <project-namespace>` → Identify DB Pod.
+- `kubectl logs <db-pod-name> -n <project-namespace>`
+- `kubectl logs -f <db-pod-name> -n <project-namespace>` → Live logs.
+- `kubectl logs --previous <db-pod-name> -n <project-namespace>`
+
+---
+
+## Scenario: Building custom monitoring dashboards
+
+**Why trace:** Identify the right metrics endpoints and labels.
+
+**Kubernetes checks:**
+
+- `kubectl describe pod <db-pod-name> -n <project-namespace>` → Prometheus scrape annotations.
+- `kubectl get service -n <project-namespace>` → Metrics Service.
+- `kubectl get servicemonitor,podmonitor -n <project-namespace>` → Prometheus Operator monitoring resources.
+
+---
+
+## Scenario: How to troubleshoot HCP-specific issues
+
+**Why trace:** Hybrid Manager integrates with Kubernetes and relies on operator health, CRD reconciliation, and observability tooling.
+
+**Kubernetes checks:**
+
+- Check the health of HCP components via:
+- `kubectl get pods -n postgresql-operator-system`
+- `kubectl describe pod <operator-pod> -n postgresql-operator-system`
+- `kubectl logs <operator-pod> -n postgresql-operator-system`
+- Confirm your cluster Custom Resource (CR) status:
+- `kubectl describe cluster <hcp-cluster-name> -n <namespace>`
+- `kubectl get cluster <hcp-cluster-name> -n <namespace> -o yaml`
+
+---
+
+**Related How-to pages**
+
+- [Troubleshoot Hybrid Manager components](./troubleshoot-hybrid-manager-components)
+- [Monitor Hybrid Manager cluster state](./monitor-hybrid-manager-cluster-state)
+- [Use the EDB observability stack](./use-edb-observability-stack)
+- [Monitoring Kubernetes clusters](../../monitor-kubernetes-cluster)
+- [Troubleshooting Kubernetes](../../troubleshooting-on-kubernetes)
+- [Manage Kubernetes storage](../../manage-kubernetes-storage)
+- [Manage Kubernetes networking](../../manage-kubernetes-networking)
