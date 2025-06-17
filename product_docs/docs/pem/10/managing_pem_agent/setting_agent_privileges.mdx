@@ -56,19 +56,26 @@ This is always true of the root user, and of the `batch_script_user` itself.
 
 ## Functionality affected by limiting database privileges
 
-If you restrict the database privileges of the PEM agent, the following PEM functionality might be affected:
+If the PEM agent connects to the monitored database as a non-superuser, the level of functionality will depend on what exactly permissions the agent user has.
+The following sections explain what operations are impacted by Postgres user permissions and what permissions are required for normal operation.
 
-|           Probe            | Operating system |                             PEM functionality affected                             |
-| -------------------------- | ---------------- | ---------------------------------------------------------------------------------- |
-| Audit Log Collection       | Linux/Windows    | PEM receives empty data from the PEM database.                                     |
-| Server Log Collection      | Linux/Windows    | PEM can't collect server log information.                                          |
-| Database Statistics        | Linux/Windows    | The Database/Server Analysis dashboards contain incomplete information.            |
-| Session Waits/System Waits | Linux/Windows    | The Session/System Waits dashboards contain incomplete information.                |
-| Locks Information          | Linux/Windows    | The Database/Server Analysis dashboards contain incomplete information.            |
-| Streaming Replication      | Linux/Windows    | The Streaming Replication dashboard doesn't display information.                   |
-| Slony Replication          | Linux/Windows    | Slony-related charts on the Database Analysis dashboard don't display information. |
-| Tablespace Size            | Linux/Windows    | The Server Analysis dashboard doesn't display complete information.                |
-| xDB Replication            | Linux/Windows    | PEM can't send xDB alerts and traps.                                               |
+The PEM agent needs to read data from the `pg_catalog` schema for the majority of SQL-based probes. 
+In most cases, the `pg_monitor` role is sufficient, however some catalog functions require additional privileges
+
+In addition, the agent user must be able to connect to all databases on which it needs to run probes.
+If the agent cannot connect to a database, no probes will be executed on that database, meaning only data which can be collected at a server level (for example from `pg_stat_database` will be collected).
+
+The following table lists probes which require permissions in addition to `pg_monitor`.
+
+| Probe                          | Operating system | Additional permissions required                                                                                                                                                                         |
+|--------------------------------|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| All PGD probes                 | Linux/Windows    | Require `SELECT` permission on tables and views, and `EXECUTE` permission on functions, in the `bdr` schema of the replicated database.                                                                                  |
+| System Waits & Session Waits   | Linux/Windows    | Require `SELECT` permission on the `system_waits` and `session_waits` views respectively.                                                                                                   |
+| Streaming Replication Lag Time | Linux/Windows    | Requires the ability to execute `pg_last_xlog_receive_location()`, `pg_last_xlog_replay_location()`, and `pg_last_xact_replay_timestamp()`. This can be provided by granting the `pg_wal_monitor` role. |
+| Streaming Replication          | Linux/Windows    | Requires the ability to execute `pg_xlogfile_name_offset()` and `pg_xlog_location_diff()`. This can be provided by granting the `pg_wal_monitor` role.                                                  |
+| SQL Protect                    | Linux/Windows    | Requires `SELECT` on `sqlprotect.edb_sql_protect_stats`.                                                                                                                                                |
+| User Information               | Linux/Windows    | Requires `SELECT` on `pg_user`.                                                                                                                                                                         |
+| xDB Replication                | Linux/Windows    | Requires `SELECT` on EDB Replicator views                                                                                                                                                               |
 
 ## Error handling
 
