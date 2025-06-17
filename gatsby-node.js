@@ -767,7 +767,7 @@ async function rewriteRedirects(pathPrefix, reporter) {
   // rewrite perma-URL redirects to include hash
   const prefixRE = new RegExp(`^${pathPrefix}/edb-docs/`);
   const purlRE =
-    /^\/docs\/purl\/(?<product>[^/ ]+)(?:\/(?<component>[^/ ]+))?\/?\s+(?<destination>\S+)\s+\d+/;
+    /^\/docs\/purl\/(?<product>[^/ ]+)(?:\/(?<component>[^ ]+))?\/?\s+(?<destination>\S+)\s+\d+/;
   let rewrittenRedirects = originalRedirects
     .split("\n")
     .map((line) => line.replace(prefixRE, "/edb-docs/"))
