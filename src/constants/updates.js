@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EDB Postgres Distributed 6",
+    icon: IconNames.HIGH_AVAILABILITY,
+    description:
+      "PGD 6 includes an embedded connection manager, an enhanced CLI which now handles node setup and predefined commit scopes for easier configuration.",
+    url: "/pgd/latest/",
+    moreUrl: "/pgd/latest/rel_notes/pgd_6.0.1_rel_notes/",
+  },
+  {
     title: "EDB Postgres Enterprise Manager 10",
     icon: IconNames.EDB_PEM,
     description:
