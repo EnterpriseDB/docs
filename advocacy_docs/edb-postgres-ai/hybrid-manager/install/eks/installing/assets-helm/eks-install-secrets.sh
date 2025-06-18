@@ -1,5 +1,5 @@
 registry="docker.enterprisedb.com"
-username="staging_pgai-platform"
+username="pgai-platform"
 password=""
 
 echo "Enter the password for ${username}@${registry}"
