@@ -170,12 +170,18 @@ const mdxNodesToTree = (nodes, productVersions) => {
     // re-order according to navigation order, inserting nodes for headers when present
     const addedChildPaths = new Set();
     const orderedNodes = [];
-    for (const navEntry of node.mdxNode?.frontmatter?.navigation || []) {
+    for (let navEntry of node.mdxNode?.frontmatter?.navigation || []) {
       if (navEntry.startsWith("#")) {
         let sectionNode = new Node();
         sectionNode.title = navEntry.replace("#", "").trim();
         orderedNodes.push(sectionNode);
         continue;
+      }
+
+      let ignoreEntry = false;
+      if (navEntry.startsWith("!")) {
+        ignoreEntry = true;
+        navEntry = navEntry.replace(/^!/, "");
       }
 
       const navChild =
@@ -192,7 +198,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
       if (addedChildPaths.has(navChild.path)) continue;
 
       addedChildPaths.add(navChild.path);
-      orderedNodes.push(navChild);
+      if (!ignoreEntry) orderedNodes.push(navChild);
     }
 
     // any remaining pages get added at the end, sorted alphabetically
