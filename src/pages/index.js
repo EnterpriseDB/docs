@@ -36,15 +36,21 @@ const EDBPGAIBannerCard = ({ children }) => (
             width="64"
             height="64"
           />
-          <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
-            <span>EDB Postgres</span>
-            <span
-              style={{ position: "relative", top: "-0.75em", fontSize: "50%" }}
-            >
-              ®
-            </span>
-            <span> AI</span>
-          </h4>
+          <a href="/edb-postgres-ai/">
+            <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
+              <span>EDB Postgres</span>
+              <span
+                style={{
+                  position: "relative",
+                  top: "-0.75em",
+                  fontSize: "50%",
+                }}
+              >
+                ®
+              </span>
+              <span> AI</span>
+            </h4>
+          </a>
         </div>
         <div className="row">{children}</div>
       </div>
@@ -274,7 +280,7 @@ const Page = () => {
             </BannerSubCard>
 
             <BannerSubCard
-              iconName={iconNames.CROWN}
+              iconName={iconNames.MODULE}
               headingText="Hybrid Management"
               to="/edb-postgres-ai/hybrid-manager"
             >
@@ -459,12 +465,18 @@ const Page = () => {
               toUrl="/migrating/"
             />
 
+            <BannerWideLink to="/migration_portal/latest/">
+              Migration Portal
+            </BannerWideLink>
+
+            <BannerWideLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </BannerWideLink>
+
             <BannerWideLink to="/migrating/oracle">
               Oracle Migration Handbook
             </BannerWideLink>
-            {/* <BannerWideLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </BannerWideLink> */}
+
             <BannerWideLink to="/eprs/latest">
               Replication Server
             </BannerWideLink>
