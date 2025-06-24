@@ -776,7 +776,7 @@ async function rewriteRedirects(pathPrefix, reporter) {
         purlRE,
         (match, product, component, destination) =>
           pathPrefix +
-          `/purl/${product}/${component ? component + "/" : ""} ${destination}#${product}${component ? "_" + component : ""} 302`,
+          `/purl/${product}/${component ? component.replace(/\/?(?<!\*)$/, "/") : ""} ${destination}#${product}${component ? "_" + component.replace(/\/\*$/, "") : ""} 302`,
       ),
     )
     .join("\n");
