@@ -465,12 +465,14 @@ const Page = () => {
               toUrl="/migrating/"
             />
 
+            <BannerWideLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </BannerWideLink>
+
             <BannerWideLink to="/migrating/oracle">
               Oracle Migration Handbook
             </BannerWideLink>
-            {/* <BannerWideLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </BannerWideLink> */}
+
             <BannerWideLink to="/eprs/latest">
               Replication Server
             </BannerWideLink>
