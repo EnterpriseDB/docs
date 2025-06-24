@@ -536,13 +536,18 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
 
   for (let fromPath of redirects) {
     if (!fromPath) continue;
+    let effectiveTo = toPath;
+    if (fromPath.endsWith(":splat/")) {
+      fromPath = fromPath.replace(/\/?:splat\/$/, "/*");
+      effectiveTo = effectiveTo.replace(/\/?$/, "/*");
+    }
     if (fromPath !== toPath) {
       const splitFromPath = fromPath.split(path.posix.sep);
       const isPermanent =
         splitFromPath[2] !== "latest" && splitToPath[2] !== "latest";
       actions.createRedirect({
         fromPath,
-        toPath,
+        toPath: effectiveTo,
         redirectInBrowser: false,
         isPermanent,
       });
@@ -593,7 +598,7 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
         });
         actions.createRedirect({
           fromPath: fromPathLatest,
-          toPath,
+          toPath: effectiveTo,
           redirectInBrowser: false,
           isPermanent: false,
         });
