@@ -9,13 +9,13 @@ Depending on your load balancer, you have a number of options for how to configu
 
 ## Connection Manager routing
 
-If you want the Connection Manager to route traffice to the write leader, simply connect to the Connection Manager's read-write port. The Connection Manager will route the traffic to the write leader.
+If you want the Connection Manager to route traffic to the write leader, simply connect to the Connection Manager's read-write port. The Connection Manager will route the traffic to the write leader of the node group the node is a member of.
 
 ### HAProxy example: Connection Manager routing
 
 With [HAProxy](https://www.haproxy.org/), you could use a configuration similar to the following example to load balance between three Connection Manager instances, each running on different hosts and ports. Read write traffic to haproxy port 5010 is directed to the connection manager's read-write port (default 6432) on any one of the nodes, and read-only traffic to haproxy port 5011 is directed to the connection manager's read-only port (default 6433). The latter is used for read-only traffic, which is distributed across the nodes in a round-robin fashion.
 
-```haproxy
+```text
 global
     maxconn 100
 
@@ -36,7 +36,7 @@ listen stats
 
 listen read-write
     bind *:5010
-    option pgsql-check user checkuser
+    option pgsql-check user checkuser postgres
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
     server node1 host1:6432 maxconn 100 check port 6432
     server node2 host2:6432 maxconn 100 check port 6432
@@ -45,7 +45,7 @@ listen read-write
 listen read-only
     balance roundrobin
     bind *:5011
-    option pgsql-check user checkuser
+    option pgsql-check user checkuser postgres
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
     server node1 host1:6433 maxconn 100 check port 6433
     server node2 host2:6433 maxconn 100 check port 6433
@@ -58,7 +58,7 @@ You may wish to connect directly to the nodes in your cluster, bypassing the Con
 
 The main reason you may want to configure the load balancer like this is if you want a layer 4 tcp proxy that looks more like a traditional Postgres connection, where TLS termination and authentication happen on the server. Connection Manager provides a layer 7 proxy which handles TLS termination and authentication at the proxy level, that is within the Connection Manager itself.
 
-The drawback to this approach is that you will not benefit from the Connection Manager's features, especially its ability to enforce read-only connections to the read-only pool. Connections will just be directed to the shadow nodes rather than the write leader.
+The drawback to this approach is that you will not benefit from the Connection Manager's features, especially its ability to enforce read-only connections to the read-only pool. Connections will just be directed to the non-write-leader nodes rather than the write leader.
 
 See [Monitoring the Connection Manager](monitoring#available-httphttps-endpoints) for more information on the available endpoints.
 
@@ -66,7 +66,7 @@ See [Monitoring the Connection Manager](monitoring#available-httphttps-endpoints
 
 Here is an example configuration where we use [HAProxy](https://www.haproxy.org/) to route traffic directly to the nodes based on their health status. The configuration checks the health of the nodes by querying the `/node/is-read-write` and `/node/is-read-only` endpoints, and routes traffic accordingly. As in the previous example, we are routing read-write traffic on port 5010 to the node that is the write leader and read-only traffic on port 5011 to the nodes that are read-only.
 
-```haproxy
+```text
 global
     maxconn 100
 
