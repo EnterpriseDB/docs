@@ -280,7 +280,7 @@ const Page = () => {
             </BannerSubCard>
 
             <BannerSubCard
-              iconName={iconNames.CROWN}
+              iconName={iconNames.MODULE}
               headingText="Hybrid Management"
               to="/edb-postgres-ai/hybrid-manager"
             >
