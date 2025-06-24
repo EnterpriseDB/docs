@@ -465,6 +465,10 @@ const Page = () => {
               toUrl="/migrating/"
             />
 
+            <BannerWideLink to="/migration_portal/latest/">
+              Migration Portal
+            </BannerWideLink>
+
             <BannerWideLink to="/migration_toolkit/latest">
               Migration Toolkit
             </BannerWideLink>
