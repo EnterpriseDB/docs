@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Hybrid Manager 1.2",
+    icon: IconNames.CROWN,
+    description:
+      "Hybrid Manager has arrived, uniting Postgres databases, powerful sovereign AI capabilites and extensive analytics into a single environment ready for the future of data management. Hybrid Manager 1.2 is now available  with new features including support for EDB Postgres AI, EDB Postgres Distributed, and EDB Postgres Advanced Server.",
+    url: "/edb-postgres-ai/hybrid-manager/latest/",
+    moreUrl: "/edb-postgres-ai/hybrid-manager/release_notes/hm_1.2_rel_notes/",
+  },
+  {
     title: "EDB Postgres Distributed 6",
     icon: IconNames.HIGH_AVAILABILITY,
     description:
