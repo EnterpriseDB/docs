@@ -557,6 +557,20 @@ const Page = () => {
               EDB Stat Monitor
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/pgaudit">pgaudit</BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/pgtt">pgtt</BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/pgrouting">
+              pgRouting
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/sqlprofiler">
+              SQL Profiler
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
+
             <BannerDivider headingText="Tools" toUrl="/tools" />
 
             <BannerWideLink to="/tools/edb_sqlpatch">
