@@ -1,5 +1,5 @@
 #!/bin/bash
-# Reprovision nodepools for HCP workloads
+# Reprovision nodepools for HM workloads
 cat <<'EOF' | kubectl apply -f -
 apiVersion: karpenter.sh/v1
 kind: NodePool
