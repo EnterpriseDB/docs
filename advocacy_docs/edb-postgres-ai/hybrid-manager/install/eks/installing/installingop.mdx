@@ -2,6 +2,7 @@
 title: Installing Hybrid Manager on AWS EKS using the Hybrid Manager Operator
 navTitle: with Operator
 description: Install the EDB Hybrid Manager on AWS EKS using the Hybrid Manager Operator.
+deepToC: true
 ---
 
 You can install the Hybrid Manager on [Amazon EKS](https://aws.amazon.com/eks/) using the Hybrid Manager Operator. This is a Helm chart that deploys the Hybrid Manager platform on your EKS cluster. The operator is responsible for managing the lifecycle of the Hybrid Manager platform, including installing, upgrading, and uninstalling the platform.
@@ -157,7 +158,6 @@ This create a `values.yaml` file with the values set in the `default-env.sh` fil
 
 <Tab title="Manually">
 
-You must start with the `hcp-
 You need to create two values for the bootstrap process. These are the AES_256_KEY and the AUTHENTICATION_PASSWORD_HASH. You can create these values with the following commands:
 
 ```shell
@@ -220,11 +220,9 @@ kubectl get hybridcontrolplanes.edbpgai.edb.com -o yaml
 
 For more information on the status of the installation, you can check the logs of the Hybrid Manager Operator:
 
+## Configure host name resolution
 
-
-## Configure the IP address in /etc/hosts
-
-Obtain the IP address of your ingress gateway to configure in your `/etc/hosts` file. Run:
+Obtain the IP address of your ingress gateway. Run:
 
 ```shell
 kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' | strings | nslookup
@@ -241,17 +239,32 @@ Name:   k8s-istiosys-istioing-b3dc9b4f3c-81dc5c45b1d5f6d2.elb.us-east-1.amazonaw
 Address: 52.70.180.102
 ```
 
-At this point your have the IP address of the portal. You can add this IP address to your DNS service and map it to the domain name you set in the `default-env.sh` file, which is `portal.foo.network` in this example.
+You now need to configure your DNS service or your `/etc/hosts` file to point the domains specified in `default-env.sh` to the IP address you obtained from the command above. Those domains are in `PORTAL_DOMAIN_NAME`, `TRANSPORTER_RW_SERVICE_DOMAIN_NAME`, and `BEACON_SERVICE_DOMAIN_NAME`. In the example above, they are set to `portal.foo.network`, `transporter.foo.network`, and `beacon.foo.network` respectively. 
+
+### Configure DNS
+
+In your DNS configuration, create a CNAME record for each of these domains that points to the IP address you obtained. So for our example, you would create the following records in your DNS zone file for `foo.network`:
+
+```text
+cluster IN A 52.70.180.102
+portal      IN CNAME cluster.foo.network
+transporter IN CNAME cluster.foo.network
+beacon      IN CNAME cluster.foo.network
+```
+
+This is a simplified example. The actual configuration will depend on your DNS provider and how you manage your DNS records.
+
+### Configure `/etc/hosts` (if no DNS service)
 
 If you do not have a DNS service configured, consider adding the IP address to your local `/etc/hosts` file. This will allow you to access the Hybrid Manager portal using the domain name you set in the `default-env.sh` file.
 
 You can then add IP address to your `/etc/hosts` file like this:
 
 ```shell
-echo "52.70.180.102 portal.foo.network" | sudo tee -a /etc/hosts
+echo "52.70.180.102 portal.foo.network transporter.foo.network beacon.foo.network" | sudo tee -a /etc/hosts
 ```
 
-Substitute the IP address with the value you obtained earlier.
+Substitute the IP address with the value you obtained earlier. Note that this is a temporary solution and should not be used in production environments. It is recommended to use a proper DNS service for production deployments. The settings in the `/etc/hosts` file will only work on the machine where you set them.
 
 ## Next steps
 
