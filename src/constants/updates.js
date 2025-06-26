@@ -42,7 +42,7 @@ export const updates = [
     moreUrl: "/tpa/latest/rel_notes/tpa_23.37.0_rel_notes/",
   },
   {
-    title: "EBD Postgres Advanced Server updates",
+    title: "EDB Postgres Advanced Server updates",
     icon: IconNames.EDB_EPAS,
     description:
       "EDB Postgres Advanced Server 17.4 is now available, tracking the Postgres open source community's recent security fixes. EDB Postgres Extended 17.4 is also available",
