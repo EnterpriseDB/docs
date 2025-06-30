@@ -169,6 +169,20 @@ In this step, we will create the same files and directories on the standbys.
     | `/etc/edb-uwsgi/apps-available/pem.ini`      | uWSGI configuration file for the PEM web application                                                                                          |
     | `/etc/nginx/conf.d/edb-pem.conf`             | NGINX configuration for the PEM web application.                                                                                              |
 
+1.  Run the following commands to create links to the copied files:
+
+    ```shell
+    cp /usr/edb/pem/web/pem.wsgi.in /usr/edb/pem/web/pem.wsgi
+    
+    ln -sf /usr/edb/pem/web/pem.wsgi /usr/edb/pem/web/wsgi.py
+    if [ ! -f "/usr/edb/pem/web/venv/lib64" ]; then
+        ln -fs /usr/edb/pem/web/venv/lib /usr/edb/pem/web/venv/lib64
+    fi
+    
+    ln -sf $(which python3) /usr/edb/pem/web/venv/bin/python3
+    ```
+
+
 1.  On the standbys, reload the NGINX and uWSGI services with the new configuration:
 
     ```shell
@@ -248,14 +262,13 @@ Use the pg_basebackup utility to create replicas of the PEM backend database ser
 4.  Take a backup of the primary node on each of the standby nodes using pg_basebackup:
 
     ```shell
-    su - enterprisedb /usr/edb/as17/bin/pg_basebackup -h 172.16.161.200 \
-    -D /var/lib/edb/as17/data -U repl -v -P -Fp -R -p 5444
-    ```
-
-5.  In the `postgresql.conf` file on each of the standby nodes, edit the following parameter:
-
-    ```ini
-    hot_standby = on
+    su - enterprisedb -c "\
+        /usr/edb/as17/bin/pg_basebackup \
+        -h 172.31.6.186 \
+        -D /var/lib/edb/as17/data \
+        -U repl \
+        -v -P -Fp -R -p 5444\
+        "
     ```
 
 6.  Start the EPAS database server on each of the standby nodes:
@@ -291,6 +304,12 @@ On each standby, perform the following steps.
                                      --enable-smtp true \
                                      --max-webhook-retries 3
     ```
+     Enable and start the PEM agent service:
+
+     ```shell
+     systemctl enable --now pem-agent
+     ```
+     
      See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
 
 1.  Register the Postgres instance with PEM. 
