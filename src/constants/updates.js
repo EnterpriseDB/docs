@@ -5,7 +5,7 @@ export const updates = [
     title: "Hybrid Manager 1.2",
     icon: IconNames.MODULE,
     description:
-      "Core to EDB Postgres® AI is Hybrid Manager which orchestrates the Postgres databases, powerful Sovereign AI capabilites and extensive analytics that make up EDB Postgres AI's future of data management, adding model deployment, monitoring, and observability. Hybrid Manager 1.2 is now available.",
+      "Core to EDB Postgres® AI is Hybrid Manager, which orchestrates the Postgres databases, powerful Sovereign AI capabilities, and extensive analytics that make up EDB Postgres AI's future of data management, adding model deployment, monitoring, and observability. Hybrid Manager 1.2 is now available.",
     url: "/edb-postgres-ai/hybrid-manager/",
     moreUrl: "/edb-postgres-ai/hybrid-manager/release_notes/hm_1.2_rel_notes/",
   },
@@ -13,7 +13,7 @@ export const updates = [
     title: "EDB Postgres Distributed 6",
     icon: IconNames.HIGH_AVAILABILITY,
     description:
-      "PGD 6 includes an embedded connection manager, an enhanced CLI which now handles node setup and predefined commit scopes for easier configuration.",
+      "PGD 6 includes an embedded connection manager, an enhanced CLI that now handles node setup, and predefined commit scopes for easier configuration.",
     url: "/pgd/latest/",
     moreUrl: "/pgd/latest/rel_notes/pgd_6.0.1_rel_notes/",
   },
