@@ -2,6 +2,7 @@
 title: Optimizing Migration Performance
 navTitle: Optimization
 description: Learn about recommendended specifications to improve the performance and speed of database migrations using EDB Hybrid Manager.
+deepToC: true
 
 ---
 
@@ -13,11 +14,11 @@ The EDB Data Migration Service runs within the same Kubernetes environment where
 
 Generally, you don't need to extensively fine-tune resources, as your Kubernetes environment meeting the general requirements for running the Hybrid Manager should ensure a smooth migration. However, for large datasets, optimizing specific components can significantly accelerate the process. The key components to consider for resource allocation are:
 
-- EDB DMS Reader: This component runs on your source database's host machine.
+- **EDB DMS Reader:** This component runs on your source database's host machine.
 
-- Destination database cluster: This can be the database managed by HM or a different external self-managed database. This is where your data will reside.
+- **Destination database cluster:** This can be the database managed by HM or a different external self-managed database. This is where your data will reside.
 
-- EDB DMS Writer: This component is only required if your migration target is an external (self-managed) database cluster, and it runs on that database's host machine.
+- **EDB DMS Writer:** This component is only required if your migration target is an external (self-managed) database cluster, and it runs on that database's host machine.
 
 ## Optimizing migration performance for large datasets
 
@@ -26,6 +27,8 @@ The HM and DMS are designed to handle resource usage automatically. For datasets
 ### Tunning destination database performance
 
 Optimizing the destination database cluster (whether an HM-managed database or a self-managed database) provides the most significant performance benefits from resource tuning.
+
+<br/>
 
 #### Storage recommendations
 
@@ -39,6 +42,8 @@ During a migration, storage IOPS can peak at 2000, with an average throughput of
 
 ► To place WAL files on a separate volume, configure the `wal_directory` parameter in `postgresql.conf` with the desired path. **A full server restart is required after making this modification.**
 
+<br/>
+
 #### Memory recommendations
 
 While 5 GB of memory is sufficient, a larger amount will facilitate optimal performance during a migration. Use at least 10 GB of memory for the destination database.
@@ -46,6 +51,8 @@ While 5 GB of memory is sufficient, a larger amount will facilitate optimal perf
 ► For HM-managed clusters, adjust memory allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Instance size**.
 
 ► For self-managed databases, adjust the `shared_buffers`, `effective_cache_size` and `wal_buffers` parameters of the `postgresql.conf` and restart your server.
+
+<br/>
 
 #### CPU recommendations
 
@@ -55,22 +62,24 @@ The destination database cluster should have at least 4 CPU cores. A lower core 
 
 ► For self-managed databases, ensure the CPU recommendation is met by the underlying operating system.
 
+<br/>
+
 !!!note 
    Apply these optimizations for the duration of the migration process. After the migration is complete, you can adjust these values as needed based on your ongoing workload requirements.
    
 Extensive testing has shown that the biggest factor affecting migration performance is volume speed (IOPS and throughput). While decreasing CPU below recommendations can reduce performance, it's not nearly to the degree that low IOPS and throughput for storage will. Halving the storage throughput can increase migration time by over 40%, whereas halving the CPU count to 2 cores might increase it by 10-15%. These recommendations are designed to yield the best migration performance; using lower values may still result in successful migrations but at a slower speed.
 
-## Tunning EBD DMS Reader and Writer performance
+### Tunning EBD DMS Reader and Writer performance
 
 Optimal performance for the EDB DMS Reader and Writer is achieved when the host machines where these components are installed follow these specifications.
 
-### EDB DMS Reader 
+#### EDB DMS Reader 
 
 **CPU:** 3 CPU cores
 
 **Memory:** 4 GB 
 
-### EDB DMS Writer
+#### EDB DMS Writer
 
 **CPU:** 2 CPU cores
 
@@ -79,15 +88,72 @@ Optimal performance for the EDB DMS Reader and Writer is achieved when the host 
 !!!note
    If both the EDB DMS Reader and EDB DMS Writer are installed on the same physical or virtual machine, ensure that the host machine has sufficient combined resources. For example, a machine hosting both would ideally have at least 5 CPU cores and 6.5 GB of memory to provide optimal performance for both components.
 
-## Performance test example
+## Performance benchmarking for migrations
 
-To benchmark migration performance, EDB performed tests involving migrating varying amounts and sizes of tables.
+To provide a clear understanding of expected migration performance, EDB conducted a series of tests to benchmark migration speeds under various conditions. These tests involved migrating different numbers and sizes of tables.
 
-### Environment specifications used in testing
+### Approach
 
-**For the EDB DMS Reader host:** 4 CPU, 16GB of memory
+All migration performance tests were conducted using an automated test suite. The testing infrastructure was hosted on an EC2 `t4i.4xlarge` instance. Resources on this instance were shared across three primary Docker containers:
 
-**For the underlying Kubernetes environment (for HM and DMS components):** 4 CPU, 16 GB of memory
+EDB DMS Reader container: 4 CPU, 16 GB memory
 
-**For the Oracle source database:** 8 CPU, 32 GB of memory
+Test container: 4 CPU, 16 GB memory (used to execute the test itself)
 
+Oracle database: 8 CPU, 32 GB memory
+
+Each migration originated from an Oracle database and targeted an HM-managed EDB Postgres Advanced Server (EPAS) cluster. The HM-managed was hosted on a Hybrid Manager deployment running on an `m6a.2xlarge` instance.
+
+### EPAS database cluster configuration
+
+**Volumes:** Minimum 3,000 IOPS and 500 MB/s throughput.
+
+**Storage:** Separate storage and WAL volumes were used for each test on the EPAS cluster, with volumes being approximately the same size.
+
+**GUC Settings:** Default GUC settings were used on the PostgreSQL cluster. Further testing with increased memory allocations and fine-tuned GUC values did not show a significant impact on migration speed.
+
+### EDB DMS Reader host configuration
+
+`kafkaProducerThreads`: Default value of 4
+
+`CDCWriter DB writer thread count`: 10
+
+`DataConsumer count`: 3
+
+### Migration data
+
+The actual migrations utilized multiple tables. Each table contained two columns: one serving as the primary key and the other populated with random integers. A combination of snapshot-only and snapshot + streaming migrations were performed, with varying amounts of streaming data inserted at different rates.
+
+### Migration procedure
+
+1. Populated the Oracle database with the specified amount of tables.
+
+1. Initiated the migration process.
+
+1. Inserted streaming data continuously into the Oracle database.
+
+### Results 
+
+The following table summarizes the performance test results:
+
+| Nr. of tables | Snapshot size (GB) | Total data size (GB) | Streaming enabled | Streaming TPS | Total streaming data size (GB) | EPAS resources (CPU/memory in GB) | Time to finish (minutes) | Average transfer speed (GB/min) | Max. target CPU/memory/IOPs usage |
+|:--------------|:-------------------|:---------------------|:------------------|:--------------|:-------------------------------|:----------------------------------|:-------------------------|:--------------------------------|:----------------------------------|
+| 1             | 100                | 100                  | False             | N/A           | N/A                            | 4/10                              | 52.78                    | 1.89                            | 80%/91%/1.2k                      |
+| 10            | 10                 | 100                  | False             | N/A           | N/A                            | 4/10                              | 51.8                     | 1.93                            | 80%/80%/1.2k                      |
+| 70            | 10                 | 700                  | False             | N/A           | N/A                            | 4/10                              | 378                      | 1.85                            | 80%/80%/2k                        |
+| 1             | 100                | 100                  | True              | 500           | 1                              | 4/10                              | 53.09                    | 1.90                            | 92%/91%/1.82k IOPs                |
+| 1             | 100                | 100                  | True              | 1000          | 2                              | 4/10                              | 57.87                    | 1.76                            | 80%/91%/1.5k                      |
+| 1             | 100                | 100                  | True              | 2000          | 4                              | 4/10                              | 62                       | 1.68                            | 90%/80%/2k                        |
+| 1             | 100                | 100                  | True              | 5000          | 10                             | 6/10                              | 76.4                     | 1.37                            | 65%/90%/1.76k                     |
+
+<br/>
+
+#### Conclusions 
+
+- Migration time for snapshot-only migrations generally scales linearly with both table count and total data size. The overall size of the source database is the primary determinant for migration duration in these scenarios.
+
+- Average transfer speeds for snapshot-only migrations ranged from approximately 1.85 to 1.93 GB/min.
+
+- For **snapshot + streaming** migrations, average transfer speeds ranged from 1.37 to 1.9 GB/min.
+
+- Migration speed decreases as the streaming data insertion size and Transactions Per Second (TPS) increase. The highest throughput (1.9 GB/min) was observed with the lowest insertion TPS and data size, while the lowest throughput (1.37 GB/min) corresponded to the largest insertion TPS and data size.
