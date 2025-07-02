@@ -1,71 +1,93 @@
 ---
-title: Performance optimization
+title: Optimizing Migration Performance
 navTitle: Optimization
-description: Learn about recommendended specifications improve the performance of migrations and speed up migration times.
+description: Learn about recommendended specifications to improve the performance and speed of database migrations using EDB Hybrid Manager.
 
 ---
 
-You can leverage the EDB Data Migration service to migrate your data from your existing database(s) to a database created and managed with the Hybrid Manager (HM). Currently, EDB supports two migration methods: snapshot and snapshot + streaming, allowing you to migrate your data with little to no downtime.
+You can leverage the EDB Data Migration Service (DMS), a service included with the Hybrid Manager (HM), to migrate your data from existing database(s) (e.g., Oracle, self-managed Postgre) to a HM-managed database cluster. EDB DMS supports two migration methods: snapshot and snapshot + streaming, allowing you to migrate your data with minimal to no downtime.
 
-## Migration workloads in the HM
+## Understanding migration workloads in HM
 
-The migration service runs in the same Kubernetes environment as where they HM was deployed, (on premises, AWS, RHOS, and GCS), which means that most of the workloads required for migration operations are managed by the Kubernetes cluster. Because of this, you don't need to worry about fine tuning resources except for: the EDB DMS Reader, the destination Postgres database cluster, and the EDB DMS Writer (required only if the destination for the target is an external database cluster). As long as your Kubernetes environment meets the requirements to run Migration Portal, your migration will go smoothly. 
+The EDB Data Migration Service runs within the same Kubernetes environment where your EDB Hybrid Manager is deployed (on-premises, AWS, Red Hat OpenShift, and Google Cloud). This means that most of the workloads required for migration operations are managed and optimized by your Kubernetes cluster.
 
-## Optimizing migration performance
+Generally, you don't need to extensively fine-tune resources, as your Kubernetes environment meeting the general requirements for running the Hybrid Manager should ensure a smooth migration. However, for large datasets, optimizing specific components can significantly accelerate the process. The key components to consider for resource allocation are:
 
-The HM and DMS handle resource usage automatically, and for datasets smaller than 100 GB, they are configured to perform fast migrations without further tuning. For datasets larger than 100 GB, you can make a few small alterations to achieve better performance and quicker migrations.
+- EDB DMS Reader: This component runs on your source database's host machine.
+
+- Destination database cluster: This can be the database managed by HM or a different external self-managed database. This is where your data will reside.
+
+- EDB DMS Writer: This component is only required if your migration target is an external (self-managed) database cluster, and it runs on that database's host machine.
+
+## Optimizing migration performance for large datasets
+
+The HM and DMS are designed to handle resource usage automatically. For datasets smaller than 100 GB, they are configured to perform fast migrations without further tuning. However, for datasets larger than 100 GB, a few targeted alterations can lead to significantly better performance and quicker migrations.
 
 ### Tunning destination database performance
 
-By tunning the destination database cluster (HM-managed database cluster or self-managed database), you can obtain the most benefit from resource tunning.
+Optimizing the destination database cluster (whether an HM-managed database or a self-managed database) provides the most significant performance benefits from resource tuning.
 
-**Storage** 
+#### Storage recommendations
 
-Storage IOPs can peak at 2000 and throughput will be roughly 300 MB/s on average during a migration, with peaks up to 350MB/s.
+During a migration, storage IOPS can peak at 2000, with an average throughput of roughly 300 MB/s and peaks up to 350 MB/s. To accommodate these demands:
 
-- Aim for using storage volumes that can handle a minimum of 2500-3000 IOPs and at least 200-250MB/s of throughput with separate WAL and storage volumes.
+- Separate WAL and data volumes: Aim for storage volumes that can handle a minimum of 2500-3000 IOPS and at least 200-250 MB/s of throughput for both your data and Write-Ahead Log (WAL) volumes. Using separate volumes for WAL and data is highly recommended for optimal performance.
 
-- A unified storage and WAL volume can adversely affect performance; for example, when using a volume with 3000 IOPs and 125MB/s throughput the migration will take 40% longer than usual. If you need to use a unified storage and WAL volume, we recommend that the throughput is set to 300-400MB/s. 
+- Unified storage and WAL volume: A unified storage and WAL volume can adversely affect performance. For example, using a single volume with 3000 IOPS and 125 MB/s throughput can increase migration time by over 40%. If you must use a unified storage and WAL volume, we recommend a throughput of 300-400 MB/s. Keep in mind that if the WAL becomes full, the migration will fail.
 
-- If using a unified storage and WAL volume, aim for a throughput of 300-400MB/s for better performance. Keep in mind that if the WAL becomes full, the migration will fail.
+► For HM-managed database clusters, adjust WAL and data volume allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Storage**. By default, HM-managed clusters use separate volumens for data and WAL volumes.
 
-**Memory** 
+► To place WAL files on a separate volume, configure the `wal_directory` parameter in `postgresql.conf` with the desired path. **A full server restart is required after making this modification.**
 
-5 GB of memory are sufficient, but a larger amount will facilitate optimal performance during a migration. Use at least 10GB of memory.
+#### Memory recommendations
 
-**CPU**
+While 5 GB of memory is sufficient, a larger amount will facilitate optimal performance during a migration. Use at least 10 GB of memory for the destination database.
 
-The destination database cluster should at least have 4 CPU cores. A lower amount will negatively impact migration performance.
+► For HM-managed clusters, adjust memory allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Instance size**.
+
+► For self-managed databases, adjust the `shared_buffers`, `effective_cache_size` and `wal_buffers` parameters of the `postgresql.conf` and restart your server.
+
+#### CPU recommendations
+
+The destination database cluster should have at least 4 CPU cores. A lower core count will negatively impact migration performance.
+
+► For HM-managed clusters, adjust CPU allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Instance size**.
+
+► For self-managed databases, ensure the CPU recommendation is met by the underlying operating system.
 
 !!!note 
-   Apply these optimizations for the migration process. After the migration is complete, you can increase or decrease these values as needed.
+   Apply these optimizations for the duration of the migration process. After the migration is complete, you can adjust these values as needed based on your ongoing workload requirements.
    
-Migration tests on database clusters with higher CPU and memory limits did not have a substantial effect on the migration speeds. The biggest factor affecting migration performance is the volume speed. Decreasing the CPU count below our recommendations can reduce performance, but not nearly to the degree that low IOPs and throughput for storage will. Halving the storage throughput will increase migration time by over 40%, while halving the CPU count to 2CPU will increase it by 10-15%. These recommendations will result in best performance for migrations, using lower values will still most likely result in successful migrations at a slower speed.
+Extensive testing has shown that the biggest factor affecting migration performance is volume speed (IOPS and throughput). While decreasing CPU below recommendations can reduce performance, it's not nearly to the degree that low IOPS and throughput for storage will. Halving the storage throughput can increase migration time by over 40%, whereas halving the CPU count to 2 cores might increase it by 10-15%. These recommendations are designed to yield the best migration performance; using lower values may still result in successful migrations but at a slower speed.
 
 ## Tunning EBD DMS Reader and Writer performance
 
-Optimal performance is provided for the EDB DMS Reader and Writer when the host machine where you installed the scripts follows these specifications.
+Optimal performance for the EDB DMS Reader and Writer is achieved when the host machines where these components are installed follow these specifications.
 
-### EDB DMS Reader
+### EDB DMS Reader 
 
-**CPU**
+**CPU:** 3 CPU cores
 
-Three CPU cores.
+**Memory:** 4 GB 
 
-**Memory** 
+### EDB DMS Writer
 
-4 GB. 
+**CPU:** 2 CPU cores
 
-### EDB DMS Reader
+**Memory:** 2.5 GB 
 
-**CPU**
-
-Two CPU cores.
-
-**Memory** 
-
-2.5 GB. 
-
-[summ up for both being on the same machine?]
+!!!note
+   If both the EDB DMS Reader and EDB DMS Writer are installed on the same physical or virtual machine, ensure that the host machine has sufficient combined resources. For example, a machine hosting both would ideally have at least 5 CPU cores and 6.5 GB of memory to provide optimal performance for both components.
 
 ## Performance test example
+
+To benchmark migration performance, EDB performed tests involving migrating varying amounts and sizes of tables.
+
+### Environment specifications used in testing
+
+**For the EDB DMS Reader host:** 4 CPU, 16GB of memory
+
+**For the underlying Kubernetes environment (for HM and DMS components):** 4 CPU, 16 GB of memory
+
+**For the Oracle source database:** 8 CPU, 32 GB of memory
+
