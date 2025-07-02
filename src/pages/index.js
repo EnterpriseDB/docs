@@ -581,6 +581,8 @@ const Page = () => {
               alteruser
             </BannerWideLink>
 
+            <BannerWideLink to="/tools/agent">EDB Agent</BannerWideLink>
+
             <BannerWideLink to="/language_pack/latest/">
               Language Pack
             </BannerWideLink>
