@@ -382,7 +382,7 @@ const Page = () => {
           <BannerWideSubCard
             iconName={iconNames.TOOLBOX}
             headingText="Tools"
-            to="/edb-postgres-ai/tools"
+            to="/edb-postgres-ai/platforms-and-tools/"
           >
             <BannerDivider
               iconName={iconNames.CONTROL}
@@ -485,6 +485,10 @@ const Page = () => {
 
             <BannerWideLink to="/eprs/latest">
               Replication Server
+            </BannerWideLink>
+
+            <BannerWideLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
+              Data Migration Service
             </BannerWideLink>
 
             <BannerDivider
