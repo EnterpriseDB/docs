@@ -419,6 +419,7 @@ async function processExtensions(auth) {
     spreadsheetId: "1UjwikOZhid9PgFd6JPF72XpA-QCmy3uuWnvHRak563U",
     range: "Extensions by Offering",
   });
+
   const rows = res.data.values;
   if (!rows || rows.length === 0) {
     console.log("No data found.");
