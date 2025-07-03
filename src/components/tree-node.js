@@ -31,7 +31,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
   }
 
   return (
-    <li className="ms-0 align-items-center" key={node.path}>
+    <li className="ms-0 align-items-center list-parent" key={node.path}>
       <div className="d-flex align-items-center">
         <Link
           to={node.path}
