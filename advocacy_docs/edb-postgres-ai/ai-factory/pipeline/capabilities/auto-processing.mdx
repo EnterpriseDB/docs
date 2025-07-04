@@ -1,89 +1,99 @@
 ---
-title: "Pipeline Auto-Processing"
-navTitle: "Auto-Processing"
-description: "Pipeline Auto-Processing"
+title: "Pipeline auto-processing"
+navTitle: "Auto-processing"
+description: "Pipeline auto-processing"
 ---
 
 ## Overview
-Pipeline Auto-Processing is designed to keep source data and pipeline output in sync. Without this capability, users would have to
-manually trigger processing or provide external scripts, schedulers or triggers:
-- **Full sync:** Insert/delete/update are all handled automatically. No lost updates, missing data or stale records.
-- **Change detection:** Only new or changed records are processed. No unnecessary re-processing of known records.
-- **Batch processing:** Records are grouped into batches to be processed concurrently. Reducing overhead and achieving optimal performance e.g. with GPU-based AI model inference tasks.
-- **Background processing:** When enabled, the pipeline runs in a background worker process so that it doesn't block or delay other DB operations. Ideal for processing huge datasets.
-- **Live processing for Postgres tables:** When the data source is a Postgres table, live trigger-based auto processing can be enabled so that pipeline results are always guaranteed up to date.
-- **Quick turnaround:** Once a batch has finished processing, the results are immediately available. No full listing of the source data is needed to start processing. This is important for large external volumes where a full listing can take a long time.
+
+Pipeline auto-processing is designed to keep source data and pipeline output in sync. Without this capability, you would have to
+manually trigger processing or provide external scripts, schedulers, or triggers. Auto-processing includes these features:
+
+- **Full sync:** Insert/delete/update are all handled automatically. No lost updates, missing data, or stale records.
+- **Change detection:** Only new or changed records are processed. No unnecessary reprocessing of known records.
+- **Batch processing:** Records are grouped into batches to be processed concurrently. Reduces overhead and achieves optimal performance, for example, with GPU-based AI model inference tasks.
+- **Background processing:** When background processing is enabled, the pipeline runs in a background worker process so that it doesn't block or delay other DB operations. Ideal for processing huge datasets.
+- **Live processing for Postgres tables:** When the data source is a Postgres table, live trigger-based auto-processing can be enabled so that pipeline results are always up to date.
+- **Quick turnaround:** Once a batch has finished processing, the results are immediately available. No full listing of the source data is needed to start processing, which is important for large external volumes where a full listing can take a long time.
 
 ### Example for knowledge base pipeline
-A knowledge base is created for a Postgres table containing products with product descriptions.
+
+Suppose a knowledge base is created for a Postgres table containing products with product descriptions.
 The user configures background auto-processing to always keep embeddings in sync without blocking or delaying any operations on the products table.
 
-The pipeline will process any pre-existing product records in the background, the user can query the statistics table to see the progress.
+The pipeline processes any preexisting product records in the background. The user can query the statistics table to see the progress.
 
-The background process will run when new data is inserted, existing data modified or deleted.
+The background process runs when new data is inserted or existing data is modified or deleted.
 
-Queries on the knowledge base (i.e. retrieval operations) will always return accurate results within a small background processing delay.
-
+Queries on the knowledge base (that is, retrieval operations) always return accurate results after a small background processing delay.
 
 ### Supported pipelines and modes
 #### Knowledge base pipeline
 
-| Source Type | Destination Type | Live | Background | Disabled (Manual) |
+| Source type | Destination type | Live | Background | Disabled (manual) |
 |-------------|------------------|------|------------|-------------------|
 | Table       | Table            | ✅    | ✅          | ✅                 |
 | Volume      | Table            | ❌    | ✅          | ✅                 |
-_Outputting to volumes is not supported on knowledge base pipelines. A database with vector capabilities is necessary._
+
+_Outputting to volumes isn't supported on knowledge base pipelines. A database with vector capabilities is needed._
 
 
 #### Preparer pipeline
-| Source Type | Destination Type | Live | Background | Disabled (Manual) |
+
+| Source type | Destination type | Live | Background | Disabled (manual) |
 |-------------|------------------|------|------------|-------------------|
 | Table       | Table            | ✅    | ❌          | ✅                 |
 | Table       | Volume           | ❌    | ❌          | ✅                 |
 | Volume      | Table            | ❌    | ❌          | ✅                 |
 | Volume      | Volume           | ❌    | ❌          | ✅                 |
 
-_The preparer pipeline does not yet support batch processing and background auto-processing._
+_The preparer pipeline doesn't yet support batch processing and background auto-processing._
 
-## Auto-Processing modes
-The following Auto-Processing modes are available to suit different requirements and use-cases.
+## Auto-processing modes
 
+The following auto-processing modes are available to suit different requirements and use cases.
 
 ### Live
-AIDB sets up Postgres Triggers on the source table to immediately process any changes. Processing happens within the trigger function.
-This means it happens within the same transaction that modifies the data, guaranteeing up-to-date results.
 
-#### Pros & Cons
-- Transactional guarantee / immediate results. Pipeline results are always up to date with the source data.
-- Blocks / delays operations on the source data. Modifying transactions on the source data are delayed until processing is complete.
+AIDB sets up Postgres triggers on the source table to immediately process any changes. Processing happens in the trigger function.
+This means it happens in the same transaction that modifies the data so that results are up to date.
+
+#### Pros & cons
+
+- Transactional guarantee/immediate results. Pipeline results are always up to date with the source data.
+- Blocks/delays operations on the source data. Modifying transactions on the source data are delayed until processing is complete.
 
 ### Background
+
 AIDB starts a Postgres background worker for each pipeline that has background auto-processing configured.
-Processing happens asynchronously based on a configurable `background_sync_interval`. See [change detection below](#change-detection) for details on how the pipelines are processed.
+Processing happens asynchronously based on a configurable `background_sync_interval`. See [Change detection](#change-detection) for details on how the pipelines are processed.
 
 !!! Note
-Make sure Postgres allows running enough background workers for the number of pipelines where you wish to use this processing mode. This is controlled by the Postgres setting `max_worker_processes`.
+Make sure Postgres allows running enough background workers for the number of pipelines where you want to use this processing mode. Use the Postgres setting `max_worker_processes` to control this value.
 !!!
 
-#### Pros & Cons
+#### Pros & cons
+
 - Asynchronous execution means queries on the source don't have to be delayed while the changes are processed.
 - Results are delayed and might become backlogged.
-- Ideal for huge datasets; processing occurs continuously in the background and is not tied to any user session / SQL function call.
+- Ideal for huge datasets. Processing occurs continuously in the background and isn't tied to any user session or SQL function call.
 
 ### Disabled
-Auto-processing is disabled. Users can manually call [`aidb.bulk_embedding()`](../reference/knowledge_bases#aidbbulk_embedding) to process the pipelines.
 
-_Note: On table knowledge bases, change detection is also disabled (since it requires active triggers on the source table). This means manual processing (via `aidb.bulk_embedding()`) has to process all the records in the source._
+Auto-processing is disabled. You can manually call [`aidb.bulk_embedding()`](../reference/knowledge_bases#aidbbulk_embedding) to process the pipelines.
 
-
-
+!!! Note
+On table knowledge bases, change detection is also disabled, since it requires active triggers on the source table. This means manual processing (via `aidb.bulk_embedding()`) has to process all the records in the source.
+!!!
 
 ## Observability
-We provide detailed status and progress output for all auto-processing modes.
+
+You can see detailed status and progress output for all auto-processing modes.
 
 A good place to get an overview is the statistics table.
-Look up the view [`aidb.knowledge_base_stats`](../reference/knowledge_bases#aidbknowledge_base_stats) or use its short alias `aidb.kbstat`. The view shows all configured knowledge base pipelines,
+Look up the view [`aidb.knowledge_base_stats`](../reference/knowledge_bases#aidbknowledge_base_stats), or use its short alias `aidb.kbstat`. The view shows all configured knowledge base pipelines,
 which processing mode is set, and statistics about the processed records:
+
 ```sql
 SELECT * from aidb.kbstat;
 __OUTPUT__
@@ -101,54 +111,57 @@ __OUTPUT__
 (9 rows)
 ```
 
-The [change detection](#change-detection) mechanism is central to how auto-processing works. It is different for volume and table sources.
+The [change detection](#change-detection) mechanism is central to how auto-processing works. It's different for volume and table sources.
 For this reason, the stats table has different columns for these two source types.
 
 * `table: unprocessed rows`: How many unique rows are listed in the backlog of change events.
   * If auto-processing is disabled, no (new) change events are captured.
 * `volume: scans completed`: How many full listings of the source have been completed so far.
 * `count(source records)`: How many records exist in the source for this pipeline.
-  * for table sources, this number is always accurate.
-  * for volume sources, we can only update this number after a full scan has completed.
+  * For table sources, this number is always accurate.
+  * For volume sources, this number is updated only after a full scan has completed.
 * `count(embeddings)`: How many embeddings exist in the vector destination table for this pipeline.
 
-
-
 ## Configuration
-Auto-processing can be configured at creation time:
+
+You can configure auto-processing at creation time:
+
 - With [`aidb.create_table_knowledge_base`](../reference/knowledge_bases#aidbcreate_table_knowledge_base)
 - With [`aidb.create_volume_knowledge_base`](../reference/knowledge_bases#aidbcreate_volume_knowledge_base)
 
-As well as for existing pipelines:
+Tou can also configure it for existing pipelines:
+
 - With [`aidb.set_auto_knowledge_base`](../reference/knowledge_bases#aidbset_auto_knowledge_base)
 
 ## Batch processing
-In Background and Disabled modes, (auto) processing happens in batches of configurable size. The pipeline will process all source records in batches.
-All records within each batch are processed in parallel wherever possible. This means pipeline steps like data retrieval, embeddings computation, and storing embeddings will run as parallel operations.
-E.g., when using a table as a data source, a batch of input records will be retrieved with a single query. With a volume source, concurrent requests will be used to retrieve a batch of records.
 
-Our [knowledge base pipeline performance tuning guide](../knowledge_base/performance_tuning) explains how the batch size can be tuned for optimal throughput.
+In background and disabled modes, (auto) processing happens in batches of configurable size. The pipeline processes all source records in batches.
+All records in each batch are processed in parallel wherever possible. This means pipeline steps like data retrieval, embeddings computation, and storing embeddings run as parallel operations.
+For example, when using a table as a data source, a batch of input records is retrieved with a single query. With a volume source, concurrent requests are used to retrieve a batch of records.
+
+[Pipelines knowledge base performance tuning](../knowledge_base/performance_tuning.mdx) explains how you can tune the batch size for optimal throughput.
 
 ## Change detection
-AIDB auto-processing is designed around change detection mechanisms for table and volume data sources. This allows it to only
-process data when necessary.
+
+AIDB auto-processing is designed around change detection mechanisms for table and volume data sources. Change detection allows it to
+process data only when necessary.
 
 ### Table sources
+
 When background auto-processing is enabled, Postgres triggers are set up on the source table to detect changes. These triggers are very lightweight.
 They only record change events and insert them into a "change events" table. No actual processing happens in the trigger function.
 
-The background worker will then process these events asynchronously.
+The background worker then processes these events asynchronously.
 
 ### Volume sources
+
 This source type provides a `last_modified` timestamp for each source record. The system keeps track of those timestamps in a "state" table.
 In each pipeline execution, the system lists the contents of the volume and compares it to the timestamps to see whether any records have changed or were added.
 
-This mechanism works in disabled and in background auto-processing.
-
 The system detects deleted objects after a full listing is complete. Only then can it be certain that a previously processed record is no longer present in the source.
 
-Unfortunately, object stores (and other external storage locations supported by our volumes) have limited query capabilities. This means:
 !!! Note
-Change detection for volumes is based on polling i.e., repeated listing. This might be an expensive operation when using cloud object stores like AWS S3.
+Unfortunately, object stores (and other external storage locations supported by our volumes) have limited query capabilities. This means:
+Change detection for volumes is based on polling, that is, repeated listing. This might be an expensive operation when using cloud object stores like AWS S3.
 You can use a long `background_sync_interval` (like one per day) on pipelines with volume sources to control this cost.
 !!!
