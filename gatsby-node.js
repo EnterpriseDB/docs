@@ -51,7 +51,8 @@ const gitData = (() => {
     .replace(/^refs\/tags\//, "");
   sha = sha.trim();
 
-  return { branch, sha, docsRepoUrl: "https://github.com/EnterpriseDB/docs" };
+  const repo = process.env.DOCS_REPOSITORY || "EnterpriseDB/docs";
+  return { branch, sha, docsRepoUrl: "https://github.com/" + repo };
 })();
 
 const referenceIndexerToolPath = path.join(
@@ -335,7 +336,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, productVersions, actions);
     }
   }
-  reportRedirectCollisions(validPaths, reporter);
+  reportRedirectCollisions(validPaths, reporter, gitData.docsRepoUrl);
 };
 
 const createDoc = (
