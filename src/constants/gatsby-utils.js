@@ -5,7 +5,10 @@ const {
   default: expressionReplacement,
 } = require("./expression-replacement.js");
 
-const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+const ghBranch =
+  process.env.CI_BUILD_REF ||
+  process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
