@@ -18,7 +18,7 @@ The key components to consider for resource allocation are:
 
 - **EDB DMS Reader:** This component runs on your source database's host machine.
 
-- **Destination database cluster:** This can be the database managed by HM or a different external self-managed database. This is where your data will reside.
+- **Destination database cluster:** This can be the database managed by HM or a different external self-managed database, however here we'll focus on an HM-managed database. This is where your data will reside.
 
 - **EDB DMS Writer:** This component is only required if your migration target is an external (self-managed) database cluster, and it runs on that database's host machine.
 
@@ -49,9 +49,17 @@ During a migration, storage IOPS can peak at 2000, with an average throughput of
 
 - Unified storage and WAL volume: A unified storage and WAL volume can adversely affect performance. For example, using a single volume with 3000 IOPS and 125 MB/s throughput can increase migration time by over 40%. If you must use a unified storage and WAL volume, we recommend a throughput of 300-400 MB/s. Keep in mind that if the WAL becomes full, the migration will fail.
 
-► For HM-managed database clusters, adjust WAL and data volume allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Storage**. By default, HM-managed clusters use separate volumes for data and WAL volumes, but if you unselected the **Use a separate storage volume for Write-Ahead Logs** option during cluster creation, you won't be able to enable this setting post creation.
+<details><summary>How to adjust this?</summary> 
 
-► To place WAL files on a separate volume, configure the `wal_directory` parameter in `postgresql.conf` with the desired path. **A full server restart is required after making this modification.**
+For HM-managed database clusters: 
+
+- Adjust WAL and data volume allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Storage**. 
+
+- By default, HM-managed clusters use separate volumes for data and WAL volumes, but if you unselected the **Use a separate storage volume for Write-Ahead Logs** option during cluster creation, you won't be able to enable this setting post creation. 
+
+- Volume speeds (IOPS or throughput) however, are controlled by the infrastructure provider, see [Request Amazon EBS volume notifications](https://docs.aws.amazon.com/ebs/latest/userguide/requesting-ebs-volume-modifications.html) or [Google Cloud - About Persistent Disk performance](https://cloud.google.com/compute/docs/disks/performance) for more information. 
+
+</details> 
 
 <br/>
 
@@ -59,9 +67,15 @@ During a migration, storage IOPS can peak at 2000, with an average throughput of
 
 While 5 GB of memory is sufficient, a larger amount will facilitate optimal performance during a migration. Use at least 10 GB of memory for the destination database.
 
-► For HM-managed clusters, adjust memory allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Cluster Settings** > **Instance size**. Additionally, you can also adjust the `shared_buffers`, `effective_cache_size` and `wal_buffers` parameters in the **DB Configuration**.
+<details><summary>How to adjust this?</summary>  
 
-► For self-managed databases, adjust the `shared_buffers`, `effective_cache_size` and `wal_buffers` parameters of the `postgresql.conf` and restart your server.
+For HM-managed database clusters: 
+
+- Adjust memory allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Cluster Settings** > **Instance size**.
+
+- Additionally, you can also adjust the `shared_buffers`, `effective_cache_size` and `wal_buffers` parameters in the **DB Configuration**.
+
+</details> 
 
 <br/>
 
@@ -69,9 +83,11 @@ While 5 GB of memory is sufficient, a larger amount will facilitate optimal perf
 
 The destination database cluster should have at least 4 CPU cores. A lower core count will negatively impact migration performance.
 
-► For HM-managed clusters, adjust CPU allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Instance size**.
+<details><summary>How to adjust this?</summary> 
 
-► For self-managed databases, ensure the CPU recommendation is met by the underlying operating system.
+For HM-managed database clusters, adjust CPU allocation by [editing](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Instance size**.
+
+</details> 
 
 <br/>
 
@@ -101,13 +117,15 @@ Optimal performance for the EDB DMS Reader and Writer is achieved when the host 
 
 ## Performance benchmarking for migrations
 
-To provide a clear understanding of expected migration performance, EDB conducted a series of tests to benchmark migration speeds under various conditions. These tests involved migrating different numbers and sizes of tables.
+To provide a clear understanding of expected migration performance, EDB conducted a series of tests to benchmark migration speeds under various conditions. These tests involved migrating different numbers and sizes of tables. 
 
 ### Approach
 
 All migration performance tests were conducted using an automated test suite. The testing infrastructure was hosted on an EC2 `t4i.4xlarge` instance. Resources on this instance were shared across three primary Docker containers:
 
 **EDB DMS Reader container:** 4 CPU, 16 GB memory
+
+**Test container:** 4 CPU, 16 GB memory
 
 **Oracle database:** 8 CPU, 32 GB memory
 
@@ -120,14 +138,6 @@ Each migration originated from an Oracle database and targeted an HM-managed EDB
 **Storage:** Separate storage and WAL volumes were used for each test on the EPAS cluster, with volumes being approximately the same size.
 
 **GUC Settings:** Default GUC settings were used on the PostgreSQL cluster. Further testing with increased memory allocations and fine-tuned GUC values did not show a significant impact on migration speed.
-
-### EDB DMS Reader host configuration
-
-`kafkaProducerThreads`: Default value of 4
-
-`CDCWriter DB writer thread count`: 10
-
-`DataConsumer count`: 3
 
 ### Migration data
 
@@ -143,17 +153,15 @@ The actual migrations utilized multiple tables. Each table contained two columns
 
 ### Results 
 
-The following table summarizes the performance test results:
+For the current release, only the results of 1 x 100 GB + snapshot migration testing are published (a single 100 GB table migrated without streaming enabled). However, the conclusions gathered in this topic are based on comprehensive testing across various configurations (multiple tables, different table sizes, streaming enabled and disabled etc.). Future releases will include published results for these additional migration examples. 
 
 | Nr. of tables | Snapshot size (GB) | Total data size (GB) | Streaming enabled | Streaming TPS | Total streaming data size (GB) | EPAS resources (CPU/memory in GB) | Time to finish (mins) | Average transfer speed (GB/min) | Max. target CPU/ memory/ IOPs usage |
 |:--------------|:-------------------|:---------------------|:------------------|:--------------|:-------------------------------|:----------------------------------|:----------------------|:--------------------------------|:------------------------------------|
-| 1             | 100                | 100                  | False             | N/A           | N/A                            | 4/10                              | 52.78                 | 1.89                            | 80%/ 91%/ 1.2k                      |
-| 1             | 100                | 100                  | True              | 500           | 1                              | 4/10                              | 53.09                 | 1.90                            | 92%/ 91%/ 1.82k                     |
-| 1             | 100                | 100                  | True              | 5000          | 10                             | 6/10                              | 76.4                  | 1.37                            | 65%/ 90%/ 1.76k                     |
+| 1             | 100                | 100                  | False             | N/A           | N/A                            | 4/10                              | 56.84±0.455           | 1.89                            | 80%/ 91%/ 1.2k                      |
 
 <br/>
 
-#### Conclusions 
+#### Conclusions
 
 - Migration time for snapshot-only migrations generally scales linearly with both table count and total data size. The overall size of the source database is the primary determinant for migration duration in these scenarios.
 
