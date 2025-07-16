@@ -347,8 +347,8 @@ const Page = () => {
           </div>
 
           <BannerWideSubCard
-            iconName={iconNames.TOOLBOX}
-            headingText="Platforms and Tools"
+            iconName={iconNames.IDEA_SHARING}
+            headingText="Platforms"
             to="/edb-postgres-ai/platforms-and-tools/"
             className="primary"
           >
@@ -377,7 +377,13 @@ const Page = () => {
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">
               CloudNativePG™
             </BannerWideLink>
+          </BannerWideSubCard>
 
+          <BannerWideSubCard
+            iconName={iconNames.TOOLBOX}
+            headingText="Tools"
+            to="/edb-postgres-ai/platforms-and-tools/"
+          >
             <BannerDivider
               iconName={iconNames.CONTROL}
               headingText="Management and Monitoring"
@@ -481,6 +487,10 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
+            <BannerWideLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
+              Data Migration Service
+            </BannerWideLink>
+
             <BannerDivider
               iconName={iconNames.CONNECT}
               headingText="Connection Poolers"
@@ -489,24 +499,33 @@ const Page = () => {
 
             <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
             <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
+
+            <BannerDivider
+              iconName={iconNames.TOOLS}
+              headingText="EDB Postgres Tools"
+              toUrl="/tools"
+            />
+
+            <BannerWideLink to="/tools/edb_sqlpatch">
+              EDB SQL Patch
+            </BannerWideLink>
+
+            <BannerWideLink to="/tools/alteruser_utility">
+              alteruser
+            </BannerWideLink>
+
+            <BannerWideLink to="/tools/agent">EDB Agent</BannerWideLink>
+
+            <BannerWideLink to="/language_pack/latest/">
+              Language Pack
+            </BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
             iconName={iconNames.EXTENSION}
-            headingText="Extensions and Tools"
-            to="/edb-postgres-ai/extensions-and-tools"
+            headingText="Extensions"
+            to="/pg_extensions"
           >
-            <BannerWideQuickLinks>
-              <BannerWideLink to="/pg_extensions/" className="col-md-12">
-                Supported Postgres extensions
-              </BannerWideLink>
-              {/* <BannerWideLink to="/pg_tools/" classname="col-md-6">
-                Supported tools
-              </BannerWideLink> */}
-            </BannerWideQuickLinks>
-
-            <BannerDivider headingText="Extensions" toUrl="/pg_extensions/" />
-
             <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
@@ -570,22 +589,6 @@ const Page = () => {
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
-
-            <BannerDivider headingText="Tools" toUrl="/tools" />
-
-            <BannerWideLink to="/tools/edb_sqlpatch">
-              EDB SQL Patch
-            </BannerWideLink>
-
-            <BannerWideLink to="/tools/alteruser_utility">
-              alteruser
-            </BannerWideLink>
-
-            <BannerWideLink to="/tools/agent">EDB Agent</BannerWideLink>
-
-            <BannerWideLink to="/language_pack/latest/">
-              Language Pack
-            </BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
