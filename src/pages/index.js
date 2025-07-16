@@ -624,7 +624,7 @@ const Page = () => {
               headingText="Developer Tools"
               toUrl="/edb-postgres-ai/integration#developer-tools"
             />
-            <BannerWideLink to="/advocacy_docs/supported-open-source/postgrest">
+            <BannerWideLink to="/supported-open-source/postgrest">
               postgREST
             </BannerWideLink>
           </BannerWideSubCard>
