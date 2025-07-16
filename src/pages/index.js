@@ -619,6 +619,14 @@ const Page = () => {
             <BannerWideLink to="/mysql_data_adapter/latest">
               MySQL
             </BannerWideLink>
+
+            <BannerDivider
+              headingText="Developer Tools"
+              toUrl="/edb-postgres-ai/integration#developer-tools"
+            />
+            <BannerWideLink to="/postgrest/latest">
+              postgREST
+            </BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
