@@ -6,7 +6,7 @@ deepToC: true
 
 ---
 
-You can leverage the EDB Data Migration Service (DMS), a service included with the Hybrid Manager (HM), to migrate your data from existing database(s) (Oracle, self-managed Postgres, etc.) to a HM-managed database cluster. EDB DMS supports two migration methods: snapshot and snapshot + streaming, allowing you to migrate your data with minimal to no downtime.
+You can leverage the EDB Data Migration Service (DMS), a service included with the Hybrid Manager (HM), to migrate your data from existing databases (Oracle, self-managed Postgres, etc.) to a HM-managed database cluster. EDB DMS supports two migration methods: snapshot and snapshot + streaming, allowing you to migrate your data with minimal to no downtime.
 
 ## Understanding migration workloads in HM
 
@@ -16,15 +16,15 @@ Generally, you don't need to extensively fine-tune resources, as your Kubernetes
 
 The key components to consider for resource allocation are:
 
-- **EDB DMS Reader:** This component runs on your source database's host machine.
+- **EDB DMS Reader:** This component can run on the same machine as the source database, or on an auxiliary machine that can connect to the source database and to the Hybrid Manager.
 
 - **Destination database cluster:** This can be the database managed by HM or a different external self-managed database, however here we'll focus on an HM-managed database. This is where your data will reside.
 
-- **EDB DMS Writer:** This component is only required if your migration target is an external (self-managed) database cluster, and it runs on that database's host machine.
+- **EDB DMS Writer:** This component is only required if your migration destination is an external (self-managed) database cluster, and it runs on that database's host machine.
 
 Whether you perform a snapshot or snapshot + streaming migration also affects performance differently: 
 
-- **Snapshot migrations:** They primarily focus on efficiently transferring a large volume of existing data from a source database to the target. Performance for these is heavily influenced by total data size and sustained disk I/O.
+- **Snapshot migrations:** They primarily focus on efficiently transferring a large volume of existing data from a source database to the destination. Performance for these is heavily influenced by total data size and sustained disk I/O.
 
 - **Snapshot + streaming migrations:** They first transfer a snapshot of existing data and then continuously stream ongoing changes (transactions) from the source to the destination. Performance here is driven by the sustained transaction rate (TPS) and the ability to keep up with the source's write activity.
 
@@ -57,7 +57,7 @@ For HM-managed database clusters:
 
 - By default, HM-managed clusters use separate volumes for data and WAL volumes, but if you unselected the **Use a separate storage volume for Write-Ahead Logs** option during cluster creation, you won't be able to enable this setting post creation. 
 
-- Volume speeds (IOPS or throughput) however, are controlled by the infrastructure provider, see [Request Amazon EBS volume notifications](https://docs.aws.amazon.com/ebs/latest/userguide/requesting-ebs-volume-modifications.html) or [Google Cloud - About Persistent Disk performance](https://cloud.google.com/compute/docs/disks/performance) for more information. 
+- Volume speeds (IOPS or throughput) are controlled by your infrastructure provider. When migrating to an HM-managed database cluster, the specific storage classes available for your cluster, and their associated IOPS and throughput characteristics, are determined by your HM administrator and the underlying cloud environment. Therefore, review the storage options available for your clusters and work with your HM administrators to ensure the selected storage meets the recommended performance criteria. For more general information, see [Request Amazon EBS volume notifications](https://docs.aws.amazon.com/ebs/latest/userguide/requesting-ebs-volume-modifications.html) or [Google Cloud - About Persistent Disk performance](https://cloud.google.com/compute/docs/disks/performance). 
 
 </details> 
 
@@ -112,45 +112,10 @@ Optimal performance for the EDB DMS Reader and Writer is achieved when the host 
 
 **Memory:** 2.5 GB 
 
-!!!note
-   If both the EDB DMS Reader and EDB DMS Writer are installed on the same physical or virtual machine, ensure that the host machine has sufficient combined resources. For example, a machine hosting both would ideally have at least 5 CPU cores and 6.5 GB of memory to provide optimal performance for both components.
+#### Shared host
 
-## Performance benchmarking for migrations
+For optimal migration performance, carefully consider resource allocation when EDB DMS components and source database run on the same machine/host.
 
-To provide a clear understanding of expected migration performance, EDB conducted a series of tests to benchmark migration speeds under various conditions. 
+-  **DMS Reader/Writer share a host:** If both DMS Reader and Writer are on the same machine, provision combined resources (at least 5 CPU cores and 6.5 GB memory).
 
-While the previous recommendations are derived from comprehensive testing across various migration configurations (including different table sizes, multiple tables, and streaming scenarios), this section presents results from a single 100 GB snapshot migration. Additional detailed performance benchmarks will be incorporated into future releases to further assist in planning your data migrations.
-
-### Approach
-
-All migration performance tests were conducted using an automated test suite. The testing infrastructure was hosted on an EC2 `t4i.4xlarge` instance. Resources on this instance were shared across these Docker containers:
-
-**EDB DMS Reader container:** 4 CPU, 16 GB memory
-
-**Oracle database:** 8 CPU, 32 GB memory
-
-All tests originated from an Oracle database and targeted an HM-managed EDB Postgres Advanced Server (EPAS) cluster. The HM-managed database was hosted on a Hybrid Manager deployment running on an `m6a.2xlarge` instance.
-
-### EPAS database cluster configuration
-
-**Volumes:** Minimum 3,000 IOPS and 500 MB/s throughput.
-
-**Storage:** Separate storage and WAL volumes were used for each test on the EPAS cluster, with volumes being approximately the same size.
-
-**GUC Settings:** Default GUC settings were used on the PostgreSQL cluster. Further testing with increased memory allocations and fine-tuned GUC values did not show a significant impact on migration speed.
-
-### Migration data
-
-The table contained two columns: one serving as the primary key and the other populated with random integers. A snapshot-only migration was performed several times to account for variability and specify tolerance ranges.
-
-### Migration procedure
-
-1. Populated the Oracle database with the specified amount of tables.
-
-1. Initiated and completed the migration process.
-
-### Results 
-
-| Nr. of tables | Snapshot size (GB) | Total data size (GB) | Streaming enabled | Streaming TPS | Total streaming data size (GB) | EPAS resources (CPU/memory in GB) | Time to finish (mins) | Average transfer speed (GB/min) | Max. target CPU/ memory/ IOPs usage |
-|:--------------|:-------------------|:---------------------|:------------------|:--------------|:-------------------------------|:----------------------------------|:----------------------|:--------------------------------|:------------------------------------|
-| 1             | 100                | 100                  | False             | N/A           | N/A                            | 4/10                              | 56.84±0.455           | 1.76                            | 80%/ 91%/ 1.2k                      |
+-  **DMS Component and source database share a host:** If a DMS Reader or Writer is on the same host as the source database, ensure the host's resources are significantly increased to accommodate both the database's operational workload and the migration's demands.
