@@ -31,11 +31,11 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
   }
 
   return (
-    <li className="ms-0 align-items-center" key={node.path}>
+    <li className="ms-0 align-items-center list-parent" key={node.path}>
       <div className="d-flex align-items-center">
         <Link
           to={node.path}
-          className={`d-inline-block py-1 align-middle lh-12 ${node.childCount ? "section-title" : ""} ${node.rootedTo ? "transplanted-child" : ""} ${
+          className={`d-inline-block py-1 align-middle lh-12 ${node.childCount && !node.rootedTo ? "section-title" : ""} ${node.rootedTo ? "transplanted-child" : ""} ${
             path === node.path ? "active fw-bold text-dark" : ""
           }`}
         >
