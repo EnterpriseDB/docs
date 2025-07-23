@@ -1,0 +1,303 @@
+---
+title: PGAIHM HA/DR Recovery
+navTitle: HA/DR Recovery
+description: Learn about High Availability and Disaster Recovery (HA/DR) with PG AI Hybrid Manager.
+---
+
+In the event of a disaster that impacts the Hybrid Manager and makes it unusable, such as unavailability of the CSP region for an EKS-based appliance, or an outage in a datacenter that makes a hardware appliance unusable, a disaster recovery (DR) option allows you to have your databases restored at the point-in-time from your available backups.  
+
+PGAIHM backups are handled with [Velero](https://velero.io/).
+
+There are two possible scenarios for recovering your PGAIHM:
+
+-   **Restore PGAIHM to Original Location**: You have two data centers (DC1, DC2), and the PGAIHM runs in DC1. You need to restore PGAIHM from object storage to DC1.  
+
+-   **Restore PGAIHM to Alternate Location**:  You have two data centers (DC1, DC2), and the PGAIHM runs in DC1.  You need to restore PGAIHM from object storage to DC2.  
+
+## DR scope
+
+The DR procedures address the following:
+
+-   The Postgres clusters that you've created in the appliance
+-   The custom managed storage locations as defined internally in the appliance in the associated s3-compatible storage area.  
+
+!!! note
+
+    The DR procedures do not cover the migration components, although you can use them to restore the original appliance `transporter-db` and `migration-db` databases.
+
+## RTO and RPO
+
+The ability to do any restore, and the associated recovery time objective (RTO), and recovery point objective (RPO), depends on the frequency and size of the backups.
+
+As those factors have significant variation depending on the criticality assigned to the environment and the nature of your data, RTO and RPO values are not known in advance.  It's recommended that you properly prepare the environment and perform periodic disaster recovery exercises to ensure your RTO and RPO requirements can be met.
+
+## Backup readiness
+
+Each appliance has a linked s3-compatible storage that stores:
+
+-   *Internal backups* (PGAIHM appliance data)
+-   *Postgres backups* (Postgres database backups)
+
+You can also define custom *storage locations* in the same bucket to be used in the platform.
+
+All of this data needs to be available after a disaster. Depending on the criticality of the data and the level of disaster that you want to be able to recover from, you’ll need to replicate this data outside of the CSP region or physical datacenter where the appliance resides.
+
+!!! tip
+
+    When using an AWS S3 bucket, replication can be achieved by using [Cross-Region Replication](https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html#crr-scenario)
+
+Postgres databases use continuous backup by default, so they can be restored at any point-in-time, and are only limited by back-up lifecycle policies.
+
+Critical appliance data, such as the definition of the Postgres clusters, is stored as Kubernetes objects and included in the Velero backup.  By default, this backup happens daily at 23:00, as defined by the default schedule `velero-backup-kube-state`.
+
+If your RPO requires more frequent backups, you can define a new backup schedule.
+
+!!! Danger
+
+    **Do not modify the default schedule, as it may be overwritten by an appliance software update**.
+
+The following example shows a custom schedule to backup the needed resources each hour:
+
+```yaml
+apiVersion: velero.io/v1  
+kind: Schedule  
+metadata:  
+  name: custom-velero-backup-kube-state  
+  namespace: velero  
+spec:  
+  schedule: 0 \* \* \* \*  
+  skipImmediately: false  
+  template:  
+    includedNamespaces:  
+    \- '\*'  
+    includedResources:  
+    \- storagelocations.biganimal.enterprisedb.com  
+    \- clusterwrappers.beacon.enterprisedb.com  
+    \- backupwrappers.beacon.enterprisedb.com  
+    snapshotVolumes: false  
+    ttl: 168h
+```
+
+## DR Procedure
+
+The DR procedure is defined as the series of manual steps that need to be taken from the deployment of a new appliance, to the moment that it’s possible to restore your Postgres clusters using the normal restore procedure.
+
+!!! Warning
+
+    The procedure is based on the 1.0 release of the appliance, and is subject to constant change as feature set changes. It must be constantly tested and updated to remain valid.
+
+### 1. Confirm availability of backups
+
+The first step ensures the backups of the unavailable appliance (aka “old backups”) are reachable from the new appliance.
+
+This can be achieved in multiple ways:
+
+-   Using a replicated bucket as the s3-compatible linked bucket for the new appliance, so the old backups are directly available to the new appliance  
+-   Copying the backups of the damaged appliance to the linked storage of the new appliance. You must copy the following items:  
+    -   Internal EDB backups folder, with the format `edb-internal-backups/\<random-string\>`  
+    -   The Postgres clusters backups folder, called `customer-pg-backups`  
+    -   Any folder corresponding to a defined *custom storage location*  
+
+!!! Note
+
+    Internal backups folder defined for the new appliance will be different from the older one as it will have a different` \<random-string\>`
+
+### 2.   Preparation steps
+
+#### Define a recovery backup storage location for Velero
+
+Once you have backups available, you can define a new storage location for Velero so you can restore resources from the damaged appliance backups. This will be a read-only location to prevent an overwrite or removal of those backups.
+
+To define a new storage location, use the following Kubernetes manifest:
+
+```yaml
+apiVersion: velero.io/v1  
+kind: BackupStorageLocation  
+metadata:  
+  annotations:  
+    appliance.enterprisedb.com/s3-prefixes: edb-internal-backups/\<old-backups-ramdom-string\>/velero  
+  labels:  
+    appliance.enterprisedb.com/s3-credentials: bound  
+  name: recovery  
+  namespace: velero  
+spec:  
+  accessMode: ReadOnly  
+  config:  
+    insecureSkipTLSVerify: "false"  
+    region: \<region-of-attached-bucket\>  
+    s3ForcePathStyle: "true"  
+  default: false  
+  objectStorage:  
+    bucket: \<linked-bucket-name\>  
+    prefix: edb-internal-backups/\<old-backups-random-string\>/velero  
+  provider: aws
+```
+
+Confirm it using the `velero get backup-locations` command. It must show as `Available`.  If the status is not `Available`,  check the Velero pod logs for permission errors on the s3 bucket.
+
+#### Choosing a Velero backup for recovery
+
+Once the old internal Velero backups are available in the recovery storage location, you can list them with the following command:
+
+```bash
+velero get backups \--selector velero.io/storage-location=recovery
+```
+
+Typically, the latest available completed backup would be chosen to recover from. Note the Velero backup name, as well as the date and time (UTC), as both are required for a restore.
+
+Example:
+
+```bash
+NAME                                      STATUS      ERRORS   WARNINGS   CREATED                         EXPIRES   STORAGE LOCATION   SELECTOR  
+velero-backup-kube-state-**20241216154403**   Completed   0        0          2024-12-16 16:44:03 \+0100 CET   5d        recovery           \<none\>
+```
+
+!!! Note
+
+    The timestamp value will be referred as the **recovery date** in the rest of the document
+
+#### Additional requirements
+
+The following requirements apply to the recovery procedure:
+
+-   The new appliance will be running the same version of the Postgres AI software deployment as the old one.
+-   The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old appliance are available in the new one.  `Locations` is currently an internal resource created during install and not available in the console, with `managed-devspatcher` being the default value.
+-   Container images used to build the clusters in the old appliance are available to the new one.
+
+### 3. Recovery steps
+
+#### Restore EDB internal databases (`app-db` and `beacon-db`)
+
+Once the old backups are available, you can restore the EDB internal databases. For each internal database, use the following procedure:
+
+1.  Save the cluster manifest to a yaml file: `kubectl get \<cluster-name\> \-o yaml \>\<cluster-name\>.yaml`.  
+2.  Edit the cluster spec in the yaml file so the cluster is created from the backups:  
+
+-   Replace the **init** section in bootstrap with a **recovery** section:  
+    ```yaml
+    recovery:  
+      database: \<database name as in the init section\>  
+      owner: \<owner name as in the init section\>  
+      source: \<pg-cluster-name\>  
+      secret:  
+        name: \<secret name as in the init section\>  
+      recoveryTarget:  
+        targetTime: "\<recovery date in YYYY-MM-DD HH:MM:SS+00 format\>"  
+    ```
+-   Add the following section:  
+    ```yaml
+    externalClusters:  
+    \- barmanObjectStore:  
+        destinationPath:  S3://\<linked-bucket-name\>/edb-internal-backups/\<old-backups-random-string\>/databases  
+        s3Credentials:  
+          inheritFromIAMRole: true  
+        wal:  
+          maxParallel: 8  
+      name: \<pg-cluster-name\>  
+    ```
+-   Add the following prefix to the `appliance.enterprisedb.com/s3-prefixes` annotation of the `inheritedMetdata` section (the list is comma separated): 
+    ```yaml
+     edb-internal-backups/\<old-backups-random-string\>/databases/\<db-name\>  
+    ```
+-   Delete the cluster:
+
+```bash
+kubectl delete cluster \<cluster-name\>)  
+```
+
+-   Clean the backup-area for the cluster:
+
+```bash
+aws s3 rm s3://\<linked-bucket-name\>/edb-internal-backups/\<new-backups-random-string\>/databases/\<pg-cluster-name\>  \--recursive
+```
+
+-   Apply the yaml file for the cluster to be recreated: `kubectl apply \-f \<cluster-name\>.yaml` 
+-   After the cluster is successfully restored and in a healthy state, restart the `accm-server`  in the namespace `upm-beaco-ff-base`. 
+
+**At this point, the portal on the new cluster should be available again.**
+
+#### Configure the Velero plugin
+
+The plugin helps restore the Kubernetes resources in a correct state, so only the custom managed storage locations are restored and the Postgres clusters resources are restored as deleted, so data can be later restored as desired.
+
+The plugin configuration is made through a `ConfigMap`, so this manifest must be applied:
+
+```yaml
+apiVersion: v1  
+kind: ConfigMap  
+metadata:  
+  name: velero-plugin-for-edbpgai  
+  namespace: velero  
+  labels:  
+    velero.io/plugin-config: ""  
+    enterprisedb.io/edbpgai-plugin: RestoreItemAction  
+data:  
+  \# configure disaster recovery mode, so restored items are transformed as needed  
+  drMode: "true"  
+  \# configure a date corresponding to the velero backup date. Note the format\!  
+  drDate: "\<recovery date in YYYY–MM-DDTHH:MM:SSZ format\>”  
+  \# old and new buckets for internal custom storage locations  
+  oldBucket: \<old-appliance-bucket-name\>  
+  newBucket: \<new-appliance-bucket-name\>
+```
+
+#### Restore the custom managed storage locations
+
+Configure and apply the following Velero restore resource manifest:
+
+```yaml
+apiVersion: velero.io/v1  
+kind: Restore  
+metadata:  
+  name: restore-1-storagelocations  
+  namespace: velero  
+spec:  
+  \# Change the backup name to a custom backup name as required  
+  backupName: \<velero-backup-name\>  
+  includedResources:  
+  \- storagelocations.biganimal.enterprisedb.com  
+  includeClusterResources: true  
+  labelSelector:  
+    matchLabels:  
+      biganimal.enterprisedb.io/reserved-by-biganimal: "false"
+```
+
+#### Restore the cluster wrappers
+
+Configure and apply the following Velero restore resource manifest:
+
+```yaml
+apiVersion: velero.io/v1  
+kind: Restore  
+metadata:  
+  name: restore-2-clusterwrappers  
+  namespace: velero  
+spec:  
+  \# Change the backup name to a custom backup name as required  
+  backupName: \<velero-backup-name\>  
+  includedResources:  
+  \- clusterwrappers.beacon.enterprisedb.com  
+  restoreStatus:  
+    includedResources:  
+    \- clusterwrappers.beacon.enterprisedb.com
+```
+
+#### Restore the backup wrappers
+
+Configure and apply the following Velero restore resource manifest:
+
+```yaml
+apiVersion: velero.io/v1  
+kind: Restore  
+metadata:  
+  name: restore-3-backupwrappers  
+  namespace: velero  
+spec:  
+  \# Change the backup name to a custom backup name as required  
+  backupName: \<velero-backup-name\>  
+  includedResources:  
+  \- backupwrappers.beacon.enterprisedb.com  
+  restoreStatus:  
+    includedResources:  
+    \- backupwrappers.beacon.enterprisedb.com
+```

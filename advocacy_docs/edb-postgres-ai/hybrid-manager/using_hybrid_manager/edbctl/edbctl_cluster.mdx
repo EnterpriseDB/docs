@@ -1,0 +1,781 @@
+---
+title: edbctl cluster
+navTitle: edbctl cluster
+description: Use the edbctl utility to manage database cluster resources for a PG AI Hybrid Manager cluster.
+---
+
+Manages database cluster resources. Use this command to create, edit, view, delete, and restore all types of clusters.
+
+## Commands
+
+`edbctl cluster` command has following options available:
+
+-   [edbctl cluster list](edbctl_cluster.mdx#edbctl-cluster-list)	— Display active or deleted clusters.
+-   [edbctl cluster list-connection-info](edbctl_cluster.mdx#edbctl-cluster-list-connection-info) — List the connection string for a specified cluster.
+-   [edbctl cluster create](edbctl_cluster.mdx#edbctl-cluster-create) — Create a new cluster.
+-   [edbctl cluster edit](edbctl_cluster.mdx#edbctl-cluster-edit) — Edit an existing cluster.
+-   [edbctl cluster delete](edbctl_cluster.mdx#edbctl-cluster-delete) — Delete a specified cluster.
+-   [edbctl cluster restore](edbctl_cluster.mdx#edbctl-cluster-delete) — Restore a specified cluster
+
+## edbctl cluster list
+
+Lists all active or deleted clusters. Use the --deleted flag to display deleted clusters. You can also filter results by cluster ID or architecture. When you provide the [--id] flag, detailed information about the cluster is displayed, including instance size, storage, and node count.
+
+```shell
+edbctl cluster list [--id] [--deleted] [options]
+```
+
+Where `options` are,
+
+```shell
+-i, --id string                     Cluster ID. Filter the list by a specific cluster ID.
+-n, --name string                   Cluster Name. Filter the list by a specific cluster name.
+-d, --deleted                       The cluster is a deleted cluster.
+-A, --cluster-architecture string   Cluster Architecture ID. Filter the list by architecture (e.g., single/ha).
+-o, --output string                 [table json yaml xml] (default "table")
+-c, --credential string             The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+-P, --project string                The project that groups your clusters and other resources, the default is taken from 'context_project'
+-h, --help                          help for list
+```
+
+### Examples
+
+```shell
+edbctl cluster list
+edbctl cluster list --id p-c5fh47nfjcg4ci71uv32
+edbctl cluster list --deleted
+```
+
+## edbctl cluster list-connection-info
+
+Retrieves and displays the connection string for a specified Postgres cluster using its cluster ID. The output includes the read/write URI, database name, host, port, and user.
+
+```shell
+edbctl cluster list-connection-info {--id} [options]
+```
+
+Where `options` are
+
+```
+  -i, --id string           Cluster ID (required). The unique identifier for the cluster to list connection string.
+  -o, --output string       [table json yaml xml] (default "table")
+  -c, --credential string   The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+  -P, --project string      The project that groups your clusters and other resources, the default is taken from 'context_project'
+  -h, --help                help for list-connection-info
+```
+
+These examples shows how to retrieve and display the connection strings for specific clusters:
+
+```shell
+edbctl cluster list-connection-info --id <pg_id>
+edbctl cluster list-connection-info -i <pg_id>
+```
+
+## edbctl cluster create
+
+Creates a new cluster using a specified configuration file.
+
+This command provisions a new cluster based on the settings defined in a YAML configuration file. The file should specify key details such as:
+
+-   **Cluster Type**: single, ha, pgd,aha, or analytics
+-   **PostgreSQL Configuration**: pgConfig
+-   **Resource Allocation**: storage, memory
+-   **Backup Settings**
+-   **Image**
+
+```shell
+edbctl cluster create [options]
+```
+
+Where `options` are
+
+```
+-F, --config-file string   Path to the cluster config YAML file.
+-c, --credential string    The credential which you created via 'credential  create' command, the default is fetchedfrom'context_credential'
+-h, --help                 help for create
+-P, --project string       The project that groups your clusters and other  resources, the default is taken from 'context_project'
+-y, --yes                  auto-confirm all confirmations
+```
+
+This example shows how to create a PSR - single node cluster using sample YAML files:
+
+```shell
+edbctl cluster create -F <Sample YAML Configuration file for single node>
+```
+
+<details><summary>Sample YAML configuration file for single node:</summary>
+
+```yaml
+clusterType: single # required, type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+networking: public # Network access type for the cluster. Valid values: private, public
+clusterName: create-single-name # required
+deploymentLocation: managed-devspatcher # required
+password: password@1234 # Password must be 12 characters or more
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Scheduled Backup Cron
+image: # required, user can fetch list of supported images with command `edbctl image list-image-tags`
+  url: docker.enterprisedb.com/staging_pgai-platform/enterprisedb/starlight/postgres:15.10-deb-full
+  digest: sha256:0053c3dfe9011f9b441967105ed980e21ba96ccf896f95e0c83305a89e176d34
+postgresqlConfiguration: # Optional
+  max_connections: 100
+instanceSize:
+    cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+storage:
+  databaseStorage:
+    sizeGi: 1 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: standard-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+  walStorage:   # Optionalfield. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+    sizeGi: 1 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: ssd-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+#transparentDataEncryption:
+#  passphrase: mypassphrase
+```
+
+</details>
+
+This example shows how to create a PSR - High Availability cluster using a YAML configuration file:
+
+```shell
+edbctl cluster create -F <Sample YAML configuration file for High Availability>
+```
+
+<details><summary>Sample YAML Configuration file for High Availability:</summary>
+
+```yaml
+clusterType: ha # Type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-ha-name # required
+deploymentLocation: managed-devspatcher # required
+password: password@1234 #Password must be 12 characters or more
+networking: public # Network access type for the cluster. Valid values: private, public
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Scheduled Backup Cron
+image: # required, user can fetch list of supported images with command `edbctl image list-image-tags`
+  url: docker.enterprisedb.com/staging_pgai-platform/enterprisedb/starlight/postgres:15.10-deb-full
+  digest: sha256:0053c3dfe9011f9b441967105ed980e21ba96ccf896f95e0c83305a89e176d34
+postgresqlConfiguration: # Optional
+  max_connections: 100
+instanceSize:
+    cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+storage:
+  databaseStorage:
+    sizeGi: 1 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: standard-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+  walStorage:   # Optionalfield. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+    sizeGi: 1 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: standard-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+#transparentDataEncryption:
+#  passphrase: mypassphrase
+standbyReplicas: 2 # for HA cluster
+```
+
+</details>
+
+This example shows how to create an analytics cluster using sample YAML configuration file:
+
+```shell
+edbctl cluster create -F <Sample YAML configuration file for Analytics>
+```
+
+<details><summary>Sample YAML configuration file for Analytics:</summary>
+
+```yaml
+clusterType: analytics # required, type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-analytics-name # required
+deploymentLocation: managed-devspatcher # required
+password: password@1234 #Password must be 12 characters or more
+networking: public # Network access type for the cluster. Valid values: private, public
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Scheduled Backup Cron
+image: # required,  user can fetch list of supported images with command `edbctl image list-image-tags`
+  digest: sha256:1af29d275b024bc2bb93d7f7acacfbbec2b5f91854815accd7b68396b611ad32
+  url: upmdev.azurecr.io/enterprisedb/starlight:16.4.1-34-debian-pgextended-full-ba
+postgresqlConfiguration: # Optional
+  max_connections: 100
+instanceSize:
+    cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+```
+
+</details>
+
+This example shows how to create a PGD cluster using sample YAML configuration file:
+
+```shell
+edbctl cluster create -F <Sample YAML configuration file for PGD>
+```
+
+<details><summary>Sample YAML configuration file for PGD:</summary>
+
+```yaml
+clusterType: pgd # Type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-pgd-name # required
+password: Password@1234 #Password must be 12 characters or more
+dataGroups:
+  - deploymentLocation: managed-devspatcher # required
+    groupName: Data Group A # required
+    networking: public # Network access type for the cluster. Valid values: private, public
+#    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#      - cidrBlock: 9.9.9.9/28
+#        description: Allow traffic from App A
+#      - cidrBlock: 10.10.10.10/27
+#        description: Allow traffic from App B
+    backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    nodes: 3 # only can be set to 2 or 3
+    image: # required, user can fetch list of supported images with command `edbctl image list-image-tags`
+      url: upmdev.azurecr.io/enterprisedb/starlight:15.8.1-5.5.1-3-debian-bdr-pgextended-ba
+      digest: sha256:392d793f5db1c42e20a7b34864e60f6fafbe71540543b3a86baf39dbb099f053
+    postgresqlConfiguration:
+      max_connections: 100
+      max_locks_per_transaction: 64
+    backupSchedule: 27 26 0 * * * # Scheduled Backup Cron
+    instanceSize:
+        cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+    storage:
+      databaseStorage:
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For PGD clusters, the recommended size is 10 Gi or more.
+        storageClass: ssd-csi # valid storage class (standard-csi, ssd-csi, etc.)
+      walStorage:   # Optional, WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs.
+        sizeGi: 1 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: ssd-csi #Valid storage class (standard-csi, ssd-csi, etc.)
+  - deploymentLocation: managed-devspatcher # required
+    groupName: Data Group B
+    networking: public # Network access type for the cluster. Valid values: private, public
+#    allowedIpRanges:
+#      - cidrBlock: 9.9.9.9/28
+#        description: Allow traffic from App A
+#      - cidrBlock: 10.10.10.10/27
+#        description: Allow traffic from App B
+    backupRetentionPeriod: 30d  # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    nodes: 3 # only can be set to 2 or 3
+    image: # required, user can fetch list of supported images with command `edbctl image list-image-tags`
+      url: upmdev.azurecr.io/enterprisedb/starlight:15.8.1-5.5.1-3-debian-bdr-pgextended-ba # required
+      digest: sha256:392d793f5db1c42e20a7b34864e60f6fafbe71540543b3a86baf39dbb099f053 # required
+    postgresqlConfiguration:
+      max_connections: 100
+      max_locks_per_transaction: 64
+    backupSchedule: 6 27 0 * * * # Scheduled Backup Cron
+    instanceSize:
+        cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+    storage:
+      databaseStorage:
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For PGD clusters, the recommended size is 10 Gi or more.
+        storageClass: standard-csi #valid storage class (standard-csi, ssd-csi, etc.)
+      walStorage: # Optional field, but default value is 1 Gi
+        sizeGi: 1 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: standard-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+witnessGroups:
+  - deploymentLocation: managed-devspatcher # required
+    groupName: Witness Group  # required
+    image: # required, user can fetch list of supported images with command `edbctl image list-image-tags`
+      url: upmdev.azurecr.io/enterprisedb/starlight:15.8.1-5.5.1-3-debian-bdr-pgextended-ba # required
+      digest: sha256:392d793f5db1c42e20a7b34864e60f6fafbe71540543b3a86baf39dbb099f053 # required
+    instanceSize:
+        cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+```
+
+</details>
+
+This example shows how to create an Advanced High Availability (AHA) cluster using sample YAML configuration file:
+
+```shell
+edbctl cluster create -F <Sample YAML configuration file for AHA>
+```
+
+<details><summary>Sample YAML configuration file for AHA cluster:</summary>
+
+```yaml
+clusterType: aha # required, type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-aha-name # required
+password: Password@1234 # Password must be 12 characters or more
+dataGroup:
+  deploymentLocation: managed-devspatcher # required
+  groupName: Data Group A # required
+  networking: public # Network access type for the cluster. Valid values: private, public
+#  allowedIpRanges: # Optional, must contain at least one IP range with subnet mask when specified
+#    - cidrBlock: 9.9.9.9/28
+#      description: Allow traffic from App A
+#    - cidrBlock: 10.10.10.10/27
+#      description: Allow traffic from App B
+  backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+  nodes: 3 # only can be set to 1, 2 or 3
+  image: # required, user can fetch list of supported images with command `edbctl image list-image-tags`
+    url: 339713079902.dkr.ecr.us-east-1.amazonaws.com/uat-hcp/postgresql-testing:17.4-2505140720-pgds-full
+    digest: sha256:581f5f126093163825a7ea0f2cd32883100ff2a01b032da59c3231c5748b94a4
+  postgresqlConfiguration:
+    max_connections: 100
+    max_locks_per_transaction: 64
+  backupSchedule: 27 26 0 * * * # Scheduled Backup Cron
+  instanceSize:
+      cpuCores: 2 # CPU must be between 0.1 and 47.51 Cores
+      memoryGi: 2 # Memory must be between 0.1 and 178.51 Gi. For Aha clusters, the recommended memory is 2 Gi or more.
+  storage:
+    databaseStorage:
+      sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For Aha clusters, the recommended size is 10 Gi or more.
+      storageClass: ssd-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+    walStorage:
+      sizeGi: 20 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+      storageClass: standard-csi # Storage class must be valid (standard-csi, ssd-csi, etc.)
+```
+
+</details>
+<br/>
+
+## edbctl cluster edit
+
+Edit an existing cluster using a YAML configuration file. This command allows you to modify cluster settings, database configurations, backup policies, extensions, and resource allocations.
+
+```shell
+edbctl cluster edit [options]
+```
+
+Where `options` are,
+
+```
+-F, --config-file string   Path to the cluster config YAML file.
+-c, --credential string    The credential which you created via 'credential  create' command, the default is fetched fro'context_credential'
+-h, --help                 help for edit
+-P, --project string       The project that groups your clusters and other  resources, the default is taken from 'context_project'
+-y, --yes                  auto-confirm all confirmations
+```
+
+This example shows how to edit a cluster using a YAML configuration file:
+
+```shell
+edbctl cluster edit -F <Example YAML configuration file>
+```
+
+<details><summary>Example YAML configuration file:</summary>
+
+```yaml
+clusterType: single
+clusterId: p-6c7f49ftso
+tags:
+  - color: "blue"
+    tagName: "production"
+  - color: "green"
+    tagName: "staging"
+  - color: "red"
+    tagName: "development"
+name: updated-cluster-name
+password: password@1234
+backupRetentionPeriod: "40d"
+image:
+  url: "docker.enterprisedb.com/staging_beaconator/enterprisedb/starlight:15.8.0-3-debian-ba"
+  digest: "sha256:b2418a68aac63d7e2761ba0bf88581fb6d808322899100dd923d65f2d08c5015"
+postgresqlConfiguration:
+  - name: "max_connections"
+    value: "500"
+  - name: "shared_buffers"
+    value: "256"
+  - name: "application_name"
+    value: "beaconator"
+backupSchedule: "0 6 * * *"  # Scheduled Backup Time in Cron format (UTC)
+resourceRequest:
+  requests:
+    cpu: "4"
+    memory: "16Gi"
+storageConfiguration:
+  primaryStorage:
+    size: "3Gi"
+  walStorage:
+    size: "4Gi"
+```
+</details>
+
+## edbctl cluster delete
+
+Deletes a specified cluster using its cluster ID. This action permanently removes the cluster from your project and cannot be undone, so ensure you have the correct cluster ID before proceeding.
+
+```shell
+edbctl cluster delete [options]
+```
+
+Where `options` are,
+
+```
+-i, --id string           Cluster ID (required). The unique identifier for the cluster to delete.
+-c, --credential string   The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+-y, --yes                 auto-confirm all confirmations
+-P, --project string      The project that groups your clusters and other resources, the default is taken from 'context_project'
+-h, --help                help for delete
+```
+
+These examples shows how to delete the cluster:
+
+```shell
+edbctl cluster delete
+edbctl cluster delete --id p-8nllnskncq
+edbctl cluster delete -i p-8nllnskncq
+```
+
+## edbctl cluster restore
+
+You can restore a cluster by providing a YAML configuration file with the required specifications. Use the `cluster restore` command and pass the file using the `--file` or `-f` option. While restoring you must specify one of the following restore modes:
+
+- `full`
+- `pointInTime`
+
+Make sure you uncomment only one mode at a time.
+
+!!!note
+The `restoreRequest` and `password` fields are mandatory for all clusters except PGD and AHA. All other fields are optional and will default to the values from the source cluster if not specified.
+!!!
+
+```shell
+edbctl cluster restore [options]
+```
+
+Where `options` are,
+
+```
+-F, --config-file string   Path to the cluster config YAML file (required).
+-c, --credential string    The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+-y, --yes                  auto-confirm all confirmations
+-P, --project string       The project that groups your clusters and other resources, the default is taken from 'context_project'
+-h, --help                 help for restore
+```
+
+This example shows how to restore a single cluster using YAML configuration file.
+
+```shell
+edbctl cluster restore -F restore-single.yaml
+```
+
+<details><summary><code>restore-single.yaml</code></summary>
+
+```yaml
+# Cluster type must be "single" or "ha" (default: same as source cluster)
+clusterType: single
+# Optional: Tags to apply to the restored cluster
+# To remove all tags, use: tags: []
+# To inherit tags from the source cluster, omit this field
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored cluster
+clusterName: restore-single-name
+# Location where the cluster will be deployed
+deploymentLocation: managed-devspatcher
+# Cluster admin password (minimum 12 characters)
+password: password@1234
+# Restore configuration - either full or point-in-time restore must be specified
+restoreRequest:
+  full:
+    postgresBackupId: 20241112T211900
+    sourceClusterId: p-12345abcde
+  # pointInTime:
+  #   pointInTime: '2025-01-01T13:40:04.000Z'
+  #   sourceClusterId: p-12345abcde
+# Optional: Networking configuration
+networking: public # Valid values: public, private
+# Optional: IP ranges allowed to access the cluster
+# allowedIpRanges:
+#   - cidrBlock: 127.0.0.1/24
+#     description: test
+# Optional: Backup retention policy
+backupRetentionPeriod: 30d # Valid units: d (days), w (weeks), m (months)
+# Optional: Backup schedule in cron format
+backupSchedule: 39 13 23 * * *
+# Optional: Base image for the cluster
+image:
+  digest: sha256:c37c5d0ff1a9318919b9581c61286fcfce87f0c5b13000ff036da8bcf253173c
+  url: upmdev.azurecr.io/enterprisedb/starlight:15.8-3-debian
+# Optional: PostgreSQL configuration parameters
+postgresqlConfiguration:
+  max_connections: 100
+# Required: Instance size (CPU and memory)
+instanceSize:
+  cpuCores: 1       # Must be between 0.1 and 15 cores
+  memoryGi: 1       # Must be between 0.1 and 10 Gi
+# Required: Storage configuration
+storage:
+  databaseStorage:
+    sizeGi: 1          # Any value >= 0
+    storageClass: standard-csi
+  walStorage:          # Optional but recommended for high-write workloads
+    sizeGi: 1
+    storageClass: standard-csi
+# Optional: Transparent data encryption
+# transparentDataEncryption:
+#   passphrase: mypassphrase
+```
+
+</details>
+
+This example shows how to restore a High Availability cluster using YAML configuration file:
+
+```shell
+edbctl cluster restore -F restore-ha.yaml
+```
+
+<details> <summary><code>restore-ha.yaml</code></summary>
+
+```yaml
+# Cluster type must be "ha" or "single" (default: same as source cluster)
+clusterType: ha
+# Optional: Tags to apply to the restored cluster
+# To remove all tags, use: tags: []
+# To inherit tags from the source cluster, omit this field
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored cluster
+clusterName: restore-ha-name
+# Location where the cluster will be deployed
+deploymentLocation: managed-devspatcher
+# Cluster admin password (minimum 12 characters)
+password: password@1234
+# Restore configuration - either full or point-in-time restore must be specified
+restoreRequest:
+  full:
+    postgresBackupId: 20241112T211900
+    sourceClusterId: p-12345abcde
+  # pointInTime:
+  #   pointInTime: '2025-01-01T13:40:04.000Z'
+  #   sourceClusterId: p-12345abcde
+# Optional: Networking configuration
+networking: public # Valid values: public, private
+# Optional: IP ranges allowed to access the cluster
+# allowedIpRanges:
+#   - cidrBlock: 127.0.0.1/24
+#     description: test
+# Optional: Backup retention policy
+backupRetentionPeriod: 30d # Valid units: d (days), w (weeks), m (months)
+# Optional: Backup schedule in cron format
+backupSchedule: 39 13 23 * * *
+# Optional: Base image for the cluster
+image:
+  digest: sha256:c37c5d0ff1a9318919b9581c61286fcfce87f0c5b13000ff036da8bcf253173c
+  url: upmdev.azurecr.io/enterprisedb/starlight:15.8-3-debian
+# Optional: PostgreSQL configuration parameters
+postgresqlConfiguration:
+  max_connections: 100
+# Required: Instance size (CPU and memory)
+instanceSize:
+  cpuCores: 1       # Must be between 0.1 and 15 cores
+  memoryGi: 1       # Must be between 0.1 and 10 Gi
+# Required: Storage configuration
+storage:
+  databaseStorage:
+    sizeGi: 1
+    storageClass: standard-csi
+  walStorage:              # Optional but recommended for high-write workloads
+    sizeGi: 1
+    storageClass: standard-csi
+# Optional: Transparent data encryption
+# transparentDataEncryption:
+#   passphrase: mypassphrase
+# Required for HA clusters: number of standby replicas
+standbyReplicas: 2
+```
+
+</details>
+
+This example shows how to restore an Analytics cluster using YAML configuration file:
+
+```shell
+edbctl cluster restore -F restore-analytics.yaml
+```
+
+<details> <summary><code>restore-analytics.yaml</code></summary>
+
+```yaml
+clusterType: analytics # checks that cluster type is a pgd cluster, cannot change this field
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to use source cluster tags. 'tags' values will use exactly these tags only. set 'tags: []' to use no tags.
+  - color: blue
+    tagName: tag-1
+clusterName: restore-analytics-name
+deploymentLocation: managed-devspatcher
+password: password@1234 #Password must be 12 characters or more
+restoreRequest:
+# only one of the fields 'full' or 'pointInTime' can be set
+  full:
+    postgresBackupId: 20241112T211900
+    sourceClusterId: p-12345abcde
+  #  pointInTime:
+  #    pointInTime: '2025-01-01T13:40:04.000Z'
+  #    sourceClusterId: p-12345abcde
+networking: public # Network access type for the cluster. Valid values: private, public
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Scheduled Backup Cron
+image: # user can fetch list of supported images with command `edbctl image list-image-tags`
+  digest: sha256:c37c5d0ff1a9318919b9581c61286fcfce87f0c5b13000ff036da8bcf253173c
+  url: upmdev.azurecr.io/enterprisedb/starlight:15.8-3-debian
+postgresqlConfiguration: # Optional
+  max_connections: 100
+instanceSize:
+    cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+```
+
+</details>
+
+This example shows how to define the configuration for a PGD cluster in restore operation using YAML configuration file:
+
+!!!note:
+The following fields are mandatory:
+- `sourceClusterID`
+- `clusterType`
+- `password`
+- `dataGroups`
+- `restorePgdGroupRequest`
+All the other fields are optional. If omitted, the values from the source cluster are used.
+!!!
+
+```shell
+edbctl cluster restore -F restore-pgd.yaml
+```
+
+<details> <summary><code>restore-pgd.yaml</code></summary>
+
+```yaml
+# PGD restore configuration
+clusterType: pgd # Must remain 'pgd' for PGD clusters
+# ID of the source cluster to restore from
+sourceClusterId: p-12345abcde
+# Optional: Tags for the restored cluster
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored PGD cluster
+name: restore-pgd-name
+# Password for the restored cluster (min 12 characters)
+password: Password@1234
+# Only one data group can be restored at a time
+dataGroups:
+  - groupName: Data Group A
+    deploymentLocation: managed-devspatcher
+    networking: public  # Valid values: private, public
+    backupRetentionPeriod: 31d  # Valid units: d (days), w (weeks), m (months)
+    nodes: 2  # Must be either 2 or 3 nodes
+    image:
+      url: upmdev.azurecr.io/enterprisedb/starlight:16.6.0-5.6.1-11-debian-bdr-epas-full
+      digest: sha256:3db7c449c69f04753a3fb791623b0d6add58c0254e09b7bfe743d24f78f4ca57
+    # Optional PostgreSQL configuration overrides
+    postgresqlConfiguration:
+      max_connections: 100
+      max_locks_per_transaction: 64
+    # Optional backup schedule in cron format
+    backupSchedule: 0 4 8 * * *
+    # Specify one restore method only: 'full' or 'pointInTime'
+    restorePgdGroupRequest:
+      full:
+        postgresBackupId: 20241228T055553
+        sourceGroupId: p-12345abcde-b
+      # pointInTime:
+      #   pointInTime: '2025-01-01T13:40:04.000Z'
+      #   sourceGroupId: p-12345abcde-b
+    # Instance size settings
+    instanceSize:
+      cpuCores: 1         # Between 0.1 and 15 cores
+      memoryGi: 2         # Minimum recommended: 2 Gi
+    # Storage settings
+    storage:
+      databaseStorage:
+        sizeGi: 10        # Minimum recommended: 10 Gi
+        storageClass: standard-csi
+      walStorage:         # Optional: separate WAL storage
+        sizeGi: 1
+        storageClass: ssd-csi
+# Optional: Transparent data encryption
+# transparentDataEncryption:
+#   passphrase: yourpassphrase
+```
+
+</details>
+
+This example shows how to define the configuration for AHA cluster in restore operation using YAML configuration file:
+
+```shell
+edbctl cluster restore -F restore-aha.yaml
+```
+
+<details> <summary><code>restore-aha.yaml</code></summary>
+
+```yaml
+# Restore configuration for an AHA (Active-Active HA) cluster
+clusterType: aha  # Must remain 'aha' for AHA clusters
+sourceClusterId: p-12345abcde  # Required
+# Optional tags
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored AHA cluster
+name: restore-aha-name
+# Admin password (minimum 12 characters)
+password: Password@1234
+dataGroup:
+  groupName: Data Group A
+  deploymentLocation: managed-devspatcher
+  networking: public  # Valid values: private, public
+  # Allow list for IP ranges
+  allowedIpRanges:
+    - cidrBlock: 9.9.9.9/28
+      description: Allow traffic from App A
+    - cidrBlock: 10.10.10.10/27
+      description: Allow traffic from App B
+  backupRetentionPeriod: 31d  # Valid: 1-180d, 1-25w, 1-6m
+  nodes: 2  # Must be 2 or 3
+  # Image to use for the restore
+  image:
+    url: 339713079902.dkr.ecr.us-east-1.amazonaws.com/uat-hcp/postgresql-testing:17.5-2505151734-pgds-full
+    digest: sha256:b1464368351b16f2f2b990c296dad695d06f948580138512e6da3dbf5c5f475b
+  # Optional PostgreSQL settings
+  postgresqlConfiguration:
+    max_connections: 100
+    max_locks_per_transaction: 64
+  # Scheduled backup in cron format
+  backupSchedule: 0 4 8 * * *
+  # Restore mode: choose either full or pointInTime
+  restoreAhaGroupRequest:
+    # full:
+    #   postgresBackupId: 20241228T055553
+    pointInTime:
+      pointInTime: '2025-01-01T13:40:04.000Z'
+  # Compute resources
+  instanceSize:
+    cpuCores: 2         # Between 0.1 and 47.51 cores
+    memoryGi: 2         # Recommended: 2 Gi or more
+  # Storage settings
+  storage:
+    databaseStorage:
+      sizeGi: 20         # Recommended: 10 Gi or more
+      storageClass: ssd-csi
+    walStorage:
+      sizeGi: 20
+      storageClass: standard-csi
+```
+
+</details>

@@ -1,0 +1,161 @@
+---
+title: Configure a ClusterServingRuntime
+navTitle: Configure ServingRuntime
+description: Learn how to configure a ClusterServingRuntime in KServe to define an AI model serving environment on Kubernetes.
+---
+
+This guide explains how to configure a **ClusterServingRuntime** in KServe.
+A ClusterServingRuntime defines the environment used to serve your AI models — specifying container image, resource settings, environment variables, and supported model formats.
+
+For Hybrid Manager users, configuring runtimes is a core step toward enabling Model Serving — see [Model Serving in Hybrid Manager](/edb-postgres-ai/ai-factory/model/serving/).
+
+## Goal
+
+Configure a ClusterServingRuntime so it can be used by InferenceServices to deploy models.
+
+## Estimated time
+
+5–10 minutes.
+
+## What you will accomplish
+
+-   Define a ClusterServingRuntime YAML manifest.
+-   Apply it to your Kubernetes cluster.
+-   Enable reusable serving configuration for one or more models.
+
+## What this unlocks
+
+-   Supports consistent deployment of models using a standard runtime definition.
+-   Allows for centralized control over serving images and resource profiles.
+-   Required step for deploying NVIDIA NIM containers with KServe.
+
+## Prerequisites
+
+-   Kubernetes cluster with KServe installed.
+-   Access to container image registry with the desired model server image.
+-   NVIDIA GPU node pool configured (if using GPU-based models).
+-   (If required) Kubernetes secret configured for API keys (e.g., NVIDIA NGC).
+
+For background concepts, see:
+
+-   [Model Serving Explained](/edb-postgres-ai/ai-factory/learn/explained/ai-factory-concepts#model-serving-and-inference)
+-   [AI Factory Terminology](/edb-postgres-ai/ai-factory/learn/explained/ai-factory-concepts#model-serving-and-inference)
+
+## Steps
+
+### 1. Create ClusterServingRuntime YAML
+
+Create a file named `ClusterServingRuntime.yaml`.
+
+Example:
+
+```yaml
+apiVersion: serving.kserve.io/v1alpha1
+kind: ClusterServingRuntime
+metadata:
+  name: nvidia-nim-llama-3.1-8b-instruct-1.3.3
+  namespace: default
+spec:
+  containers:
+    - env:
+        - name: NIM_CACHE_PATH
+          value: /tmp
+        - name: NGC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nvidia-nim-secrets
+              key: NGC_API_KEY
+      image: upmdev.azurecr.io/nim/meta/llama-3.1-8b-instruct:1.3.3
+      name: kserve-container
+      ports:
+        - containerPort: 8000
+          protocol: TCP
+      resources:
+        limits:
+          cpu: "12"
+          memory: 64Gi
+        requests:
+          cpu: "12"
+          memory: 64Gi
+      volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+imagePullSecrets:
+  - name: edb-cred
+protocolVersions:
+  - v2
+  - grpc-v2
+supportedModelFormats:
+  - autoSelect: true
+    name: nvidia-nim-llama-3.1-8b-instruct
+    priority: 1
+    version: "1.3.3"
+volumes:
+  - emptyDir:
+      medium: Memory
+      sizeLimit: 16Gi
+      name: dshm
+```
+
+**Key fields explained:**
+
+-   `containers.image`: The model server container (e.g., NVIDIA NIM image).
+-   `resources`: CPU, memory, and GPU requirements.
+-   `NGC_API_KEY`: Secret reference for NVIDIA models.
+-   `supportedModelFormats`: Logical name used by InferenceService to reference this runtime.
+
+### 2. Apply the ClusterServingRuntime
+
+Run:
+
+```shell
+kubectl apply -f ClusterServingRuntime.yaml
+```
+
+### 3. Verify deployed ClusterServingRuntime
+
+Run:
+
+```shell
+kubectl get ClusterServingRuntime
+__OUTPUT__
+NAME                                     AGE
+nvidia-nim-llama-3.1-8b-instruct-1.3.3   1m
+```
+
+You can inspect full details with:
+
+```shell
+kubectl get ClusterServingRuntime <name> -o yaml
+```
+
+### 4. Reference runtime in InferenceService
+
+When you create your InferenceService, reference this runtime:
+
+```yaml
+runtime: nvidia-nim-llama-3.1-8b-instruct-1.3.3
+modelFormat:
+name: nvidia-nim-llama-3.1-8b-instruct
+```
+
+See [Deploy an NVIDIA NIM container with KServe](./deploy-nim-container).
+
+## Notes
+
+-   Runtimes are reusable — you can deploy multiple models referencing the same ClusterServingRuntime.
+-   Use meaningful names and version fields in `supportedModelFormats` for traceability.
+-   You can update a runtime by editing and re-applying the YAML.
+
+## Next steps
+
+-   [Deploy an NVIDIA NIM container with KServe](./deploy-nim-container)
+-   [Update GPU resources for a deployed model](./update-gpu-resources)
+-   [Monitor deployed models with KServe](monitor-inferenceservice/)
+
+## Related reading
+
+-   [Model Serving Explained](/edb-postgres-ai/ai-factory/learn/explained/ai-factory-concepts#model-serving-and-inference)
+-   [AI Factory Terminology](/edb-postgres-ai/ai-factory/learn/explained/model-serving-concepts/#servingruntime--clusterservingruntime)
+
+* * *

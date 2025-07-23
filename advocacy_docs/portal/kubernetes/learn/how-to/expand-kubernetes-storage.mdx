@@ -1,0 +1,109 @@
+---
+title: Expand Kubernetes storage
+navTitle: Expand storage
+description: How to expand PersistentVolumeClaims for Hybrid Manager and managed Postgres services on Kubernetes.
+---
+
+This how-to guide explains how to safely expand Kubernetes PersistentVolumeClaims (PVCs) used by Hybrid Manager and EDB-managed Postgres services.
+
+For general storage architecture recommendations, see [Kubernetes storage best practices](/portal/kubernetes/learn/explained/hybrid-manager/storage-best-practices).
+For overall management tasks, see [Manage Kubernetes storage](./manage-kubernetes-storage).
+
+**Important:** Storage behavior and expansion processes differ across cloud providers and Kubernetes platforms.
+
+## When to expand PVCs
+
+Common reasons to expand PVCs:
+
+- Postgres database volume is nearing capacity.
+- WAL volume (if used) is filling up.
+- Monitoring or alerting indicates PVC usage approaching threshold (e.g. 80% full).
+- Workload growth requires more storage.
+
+PVCs in Kubernetes do not shrink automatically — proactive expansion is required to avoid out-of-space conditions.
+
+## Preconditions for expansion
+
+Ensure that:
+
+- The StorageClass in use supports `allowVolumeExpansion: true`.
+- The cloud provider / CSI driver supports online volume expansion.
+- Postgres operator version supports safe expansion workflows (Hybrid Manager operators do in current releases).
+- You understand platform-specific behaviors
+
+## Expansion workflow
+
+### 1. Determine target PVC
+
+Identify the PVC to expand:
+
+- Postgres data volume (typically named like `<cluster-name>-<instance-id>`).
+- WAL volume (if used, named like `<cluster-name>-<instance-id>-wal`).
+
+Use `kubectl get pvc -n <namespace>` to list PVCs.
+
+### 2. Review current PVC status
+
+Check current capacity and usage:
+
+- Use monitoring dashboards or `kubectl describe pvc` to check `Capacity` and `Used`.
+
+Validate that PVC is `Bound` and not in an error state before proceeding.
+
+### 3. Edit PVC size
+
+Increase requested size:
+
+- Edit the PVC resource using `kubectl edit pvc <pvc-name> -n <namespace>`.
+- Modify the `spec.resources.requests.storage` field to desired size (must be larger than current).
+
+Example: increase from `100Gi` to `200Gi`.
+
+### 4. Validate expansion
+
+Kubernetes will initiate volume expansion:
+
+- For supported platforms, the underlying cloud volume will resize automatically.
+- The Postgres Pod may need to be restarted for the filesystem to recognize new space.
+
+Verify:
+
+- PVC `Capacity` now shows new size.
+- Postgres Pod restarts cleanly and mounts expanded volume.
+- Postgres logs show correct available space (check `df -h` inside container if needed).
+
+### 5. Monitor after expansion
+
+After expansion:
+
+- Monitor volume usage trends.
+- Validate Postgres workload resumes normal operation.
+- Adjust alerting thresholds as needed.
+
+Expansion is usually transparent to applications but always validate Postgres behavior post-expansion.
+
+## Troubleshooting
+
+Common issues:
+
+- Expansion blocked — check StorageClass settings and platform support.
+- Postgres Pod fails to mount expanded volume — check CSI driver logs and platform events.
+- Filesystem does not recognize new space — Pod restart may be required on some platforms.
+- Expansion takes longer than expected — check cloud provider volume resize status.
+
+See [Troubleshooting Kubernetes](/portal/kubernetes/learn/how-to/troubleshooting-on-kubernetes) for general patterns.
+
+## Summary checklist
+
+- Identify PVC to expand and validate preconditions.
+- Edit PVC and increase `spec.resources.requests.storage`.
+- Monitor expansion progress and validate new capacity.
+- Validate Postgres application behavior after expansion.
+- Monitor and adjust alerting post-expansion.
+
+## Related topics
+
+- [Manage Kubernetes storage](./manage-kubernetes-storage)
+- [Kubernetes storage best practices](/portal/kubernetes/learn/explained/hybrid-manager/storage-best-practices)
+- [Minimum and recommended Kubernetes specs](/portal/kubernetes/learn/explained/hybrid-manager/minimum-required-specs)
+- [Troubleshooting Kubernetes](/portal/kubernetes/learn/how-to/troubleshooting-on-kubernetes)

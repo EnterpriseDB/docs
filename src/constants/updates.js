@@ -2,6 +2,38 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Hybrid Manager 1.2",
+    icon: IconNames.MODULE,
+    description:
+      "Core to EDB Postgres® AI is Hybrid Manager, which orchestrates the Postgres databases, powerful Sovereign AI capabilities, and extensive analytics that make up EDB Postgres AI's future of data management, adding model deployment, monitoring, and observability. Hybrid Manager 1.2 is now available.",
+    url: "/edb-postgres-ai/hybrid-manager/",
+    moreUrl: "/edb-postgres-ai/hybrid-manager/release_notes/hm_1.2_rel_notes/",
+  },
+  {
+    title: "EDB Postgres Distributed 6",
+    icon: IconNames.HIGH_AVAILABILITY,
+    description:
+      "PGD 6 includes an embedded connection manager, an enhanced CLI that now handles node setup, and predefined commit scopes for easier configuration.",
+    url: "/pgd/latest/",
+    moreUrl: "/pgd/latest/rel_notes/pgd_6.0.1_rel_notes/",
+  },
+  {
+    title: "EDB Postgres Enterprise Manager 10",
+    icon: IconNames.EDB_PEM,
+    description:
+      "PEM 10 is a major release that includes a modernized user interface, support for HA cluster grouping and server tagging, redesigned dashboards for real-time metrics, the latest pgAdmin enhancements,  and advanced query analysis tools.",
+    url: "/pem/latest/",
+    moreUrl: "/pem/latest/pem_rel_notes/pem_10.0.0_rel_notes/",
+  },
+  {
+    title: "Trusted Postgres Architect 23.38",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.38 adds PGD 6 and PEM 10.1 support, along with improvements around PgBouncer implementation.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.38.0_rel_notes/",
+  },
+  {
     title: "Trusted Postgres Architect 23.37",
     icon: IconNames.INSTANCES,
     description:
@@ -10,15 +42,7 @@ export const updates = [
     moreUrl: "/tpa/latest/rel_notes/tpa_23.37.0_rel_notes/",
   },
   {
-    title: "EDB Postgres Enterprise Manager 10",
-    icon: IconNames.EDB_PEM,
-    description:
-        "PEM 10 is a major release that includes a modernized user interface, support for HA cluster grouping and server tagging, redesigned dashboards for real-time metrics, the latest pgAdmin enhancements,  and advanced query analysis tools.",   
-    url: "/pem/latest/",
-    moreUrl: "/pem/latest/pem_rel_notes/pem_10.0.0_rel_notes/",
-  },
-  {
-    title: "EBD Postgres Advanced Server updates",
+    title: "EDB Postgres Advanced Server updates",
     icon: IconNames.EDB_EPAS,
     description:
       "EDB Postgres Advanced Server 17.4 is now available, tracking the Postgres open source community's recent security fixes. EDB Postgres Extended 17.4 is also available",

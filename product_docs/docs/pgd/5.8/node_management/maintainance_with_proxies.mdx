@@ -4,20 +4,25 @@ title: Maintenance commands through proxies
 
 ## Maintenance and performance
 
-As a general rule, you should never perform maintenance operations on a cluster's write leader. 
-Maintenance operations such as `VACUUM` can be quite disruptive to the smooth running of a busy server and often detrimental to workload performance.
-Therefore, it's best to run maintenance commands on any node in a group that isn't the write leader.
-Generally, this requires you to connect directly and issue the maintenance commands on the non-write-leader nodes.
-But in some situations, this isn't possible.
+As a general rule, you should aim to avoid performing long running or CPU/IO intensive maintenance operations on a cluster's write leader.
+Maintenance operations such as `VACUUM` can potentially be disruptive to the smooth running of a busy server and detrimental to workload performance. 
+
+Ideally, it's best to execute long running maintenance commands on any node in a group that isn't the write leader.
+Where you are confident that the maintenance command won't cause problems, you can run it on the write leader.
+For example, standard `VACUUM` can run alongside normal operations without causing problems, so you can run it on the write leader.
+But `VACUUM FULL` is a more disruptive operation that requires an exclusive lock on the table, so you should avoid running it on the write leader. [Routine vacuuming](https://www.postgresql.org/docs/current/routine-vacuuming.html)that has been tuned to your workload is a good way to keep your database healthy and performing well.
+
+If you do wish to avoid the performance issue and only maintain non-write-leader nodes, you will need to connect directly and issue the maintenance commands on those non-write-leader nodes.
+But in some situations, for example where the server is managed behind proxies, this isn't possible.
 
 ## Maintenance and proxies
 
-Proxies, by design, always connect to and send commands to the current write leader.
+Proxies for PGD tend, by design, to always connect to and send commands to the current write leader.
 This usually means that you must not connect by way of a proxy to perform maintenance.
-PGD clusters nodes can present a direct connection for psql and PGD CLI clients that you can use to issue maintenance commands to the server on those nodes. 
+PGD clusters nodes can present a direct connection for psql and PGD CLI clients that you can use to issue maintenance commands to the server on those nodes.
 But there are environment in which the PGD cluster is deployed where a proxy is the only way to access the cluster.
 
-For example, in EDB Cloud Service, PGD clusters are locked down such that the only access to the database is through an instance of PGD Proxy. 
+For example, in a DBaaS environment, PGD clusters may be locked down such that the only access to the database is through an instance of PGD Proxy.
 This configuration reduces the footprint of the cluster and makes it more secure. However, it requires that you use a different way of sending maintenance requests to the cluster's nodes.
 
 The technique outlined here is generally useful for despatching commands to specific nodes without being directly connected to that node's server.
@@ -39,7 +44,7 @@ select node_name from bdr.node;
 ```
 
 !!! Tip
-For more details, see  the [`bdr.node`](/pgd/latest/reference/catalogs-visible#bdrnode) table.
+For more details, see  the [`bdr.node`](/pgd/5.8/reference/catalogs-visible#bdrnode) table.
 !!!
 
 This command lists just the node names. If you need to know the group they are a member of, use:
@@ -49,7 +54,7 @@ select node_name, node_group_name from bdr.node_summary;
 ```
 
 !!! Tip
-For more details, see the [`bdr.node_summary`](/pgd/latest/reference/catalogs-visible#bdrnode_summary) table.
+For more details, see the [`bdr.node_summary`](/pgd/5.8/reference/catalogs-visible#bdrnode_summary) table.
 !!!
 
 ## Finding the write leader

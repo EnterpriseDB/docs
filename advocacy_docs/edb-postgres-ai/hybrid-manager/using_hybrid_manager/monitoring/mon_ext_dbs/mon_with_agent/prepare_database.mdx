@@ -1,0 +1,146 @@
+---
+title: Preparing your database for monitoring
+navTitle: Prepare your database
+description: Learn how to prepare your database for monitoring with PG AI Hybrid Manager.
+---
+
+### Monitoring user
+
+When configuring the PG AI Agent, you must specify a user that the agent will use to connect to the database.
+
+This can be any Postgres user with the `pg_monitor` role assigned. 
+For this example, we will create a new user `agent_user`.
+
+```sql
+CREATE USER agent_user WITH PASSWORD <password>;
+GRANT pg_monitor TO agent_user;
+```
+
+If you are using Postgres 16 or earlier, you must also grant the following permission to allow the agent to automatically discover the Postgres log file location.
+
+```sql
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_current_logfile() TO agent_user;
+```
+
+You must ensure that the agent user can log in to the database to which you plan to connect.
+For example, if you plan to connect to a database called `hr`:
+
+```sql
+GRANT CONNECT ON DATABASE hr TO USER agent_user;
+```
+
+### The edb_internals schema and required extensions
+
+To enable the full monitoring and optimization features of the PG AI Hybrid Manager, you must create a schema called `edb_internals` and install the following extensions there.
+These extensions add instrumentation to Postgres without which the **Query Diagnostics** and **Recommendations** tabs, as well as some metrics, will not be available.
+
+-   [EDB Wait States](https://www.enterprisedb.com/docs/pg_extensions/wait_states/installing/)
+
+-   [EDB Query Advisor](https://www.enterprisedb.com/docs/pg_extensions/query_advisor/installing/)
+
+-   [EDB Stat Monitor](https://www.enterprisedb.com/docs/pg_extensions/edb_stat_monitor/installing/)
+
+In addition, [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html) must be enabled in the public schema.
+
+To install the extensions: 
+
+1.  Refer to the installation instructions linked above for the correct commands for your platform and Postgres distribution. 
+
+    Note that pg_stat_statements is installed with Postgres, so no additional installation is required.
+
+    For example, on RHEL 9, to monitor EDB Advanced Server 17:
+
+    ```shell
+    dnf install edb-as17-server-edb_wait_states \
+                edb-as17-query-advisor \
+                edb-as17-stat_monitor
+    ```
+
+2.  Add the required preload modules to the Postgres `shared_preload_libraries`. For example, if the current value of `shared_preload_libraries` is empty:
+
+    ```sql
+    ALTER SYSTEM SET 
+    shared_preload_libraries="$libdir/pg_stat_statements","$libdir/edb_wait_states", "$libdir/query_advisor","$libdir/edb_stat_monitor";
+    ```
+
+3.  As a superuser, create the schema in the database to which the agent will be connected and enable the `pg_stat_statements` extension as well as the extensions installed in the previous step.
+
+    ```sql
+    CREATE SCHEMA edb_internals;
+    CREATE EXTENSION edb_wait_states WITH SCHEMA edb_internals;
+    CREATE EXTENSION query_advisor WITH SCHEMA edb_internals;
+    CREATE EXTENSION edb_stat_monitor WITH SCHEMA edb_internals;
+    CREATE EXTENSION pg_stat_statements;
+    ```
+
+4.  Add the edb_internals schema to the search path. For example, as a superuser:
+
+    ```sql
+    ALTER SYSTEM SET 
+    search_path="$user", public, edb_internals;
+    ```
+
+5.  Grant the agent user access to this schema:
+    ```sql
+    GRANT USAGE ON SCHEMA edb_internals TO agent_user;
+    GRANT SELECT ON ALL TABLES IN SCHEMA edb_internals TO agent_user;
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA edb_internals TO agent_user;
+    ```
+
+### Postgres logging configuration
+
+To collect Postgres logs, the Postgres logging collector must be enabled and the agent must have permission to read the log files.
+The simplest way to do this is to run the agent as the Postgres user. 
+However, as a matter of security best practice, we advise you run the agent using a [dedicated OS user](agent_os_user.mdx).
+
+To allow the agent OS user to read the log files, logs must be located outside of the data directory and have appropriate permissions. 
+For example, setting the following parameters in `postgresql.conf` will cause logs to be written to `/var/log/postgres-lc` and be readable by any user who is a member of the owner's group.
+
+```ini
+logging_collector=on
+log_directory='/var/log/postgres-lc'
+log_file_mode=0640
+log_destination = 'jsonlog'
+```
+
+!!! Note Logs must be JSON
+
+    Logs ingested by the agent must be formatted as JSON.
+    This option is supported in Postgres 15 and above.
+
+The new logging location must be owned by the Postgres user and readable by that user's group. Since the agent OS user is a member of the same group, it then also gets access to the log directory. For example:
+
+```shell
+mkdir /var/log/postgres-lc
+chown postgres:postgres /var/log/postgres-lc
+chmod 0750 /var/log/postgres-lc
+```
+
+Restart Postgres after completing these changes.
+
+## Prepare your Oracle instance
+
+Instead of providing monitoring capabilities, registering an Oracle database with the PG AI Agent provides migration assessment and schema extraction capabilities.
+
+To assess an Oracle database, the PG AI Agent needs an Oracle user with access to the database and the necessary permissions to retrieve assessment data.
+
+These permissions are required for automated schema extraction and database migration assessment. The Agent will still function if these roles aren’t assigned, however, the agent will function in reduced feature capacity.
+
+1.  Ensure the Oracle user you'll use to perform the assessment has access to these resources
+
+    ```
+    V$VERSION
+    V$INSTANCE
+    V$LICENSE
+    sys.all_tables
+    sys.all_tab_privs
+    ```
+
+2.  It must also have at least one of the following permissions: 
+
+    ```
+    SELECT_CATALOG_ROLE
+    SELECT ANY DICTIONARY
+    ```
+
+You will later specify this user in the `provider.onprem.databases.dsn` section of the PG AI Agent configuration file.

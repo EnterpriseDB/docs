@@ -5,7 +5,10 @@ const {
   default: expressionReplacement,
 } = require("./expression-replacement.js");
 
-const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+const ghBranch =
+  process.env.CI_BUILD_REF ||
+  process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
@@ -170,12 +173,18 @@ const mdxNodesToTree = (nodes, productVersions) => {
     // re-order according to navigation order, inserting nodes for headers when present
     const addedChildPaths = new Set();
     const orderedNodes = [];
-    for (const navEntry of node.mdxNode?.frontmatter?.navigation || []) {
+    for (let navEntry of node.mdxNode?.frontmatter?.navigation || []) {
       if (navEntry.startsWith("#")) {
         let sectionNode = new Node();
         sectionNode.title = navEntry.replace("#", "").trim();
         orderedNodes.push(sectionNode);
         continue;
+      }
+
+      let ignoreEntry = false;
+      if (navEntry.startsWith("!")) {
+        ignoreEntry = true;
+        navEntry = navEntry.replace(/^!/, "");
       }
 
       const navChild =
@@ -192,7 +201,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
       if (addedChildPaths.has(navChild.path)) continue;
 
       addedChildPaths.add(navChild.path);
-      orderedNodes.push(navChild);
+      if (!ignoreEntry) orderedNodes.push(navChild);
     }
 
     // any remaining pages get added at the end, sorted alphabetically
@@ -530,13 +539,18 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
 
   for (let fromPath of redirects) {
     if (!fromPath) continue;
+    let effectiveTo = toPath;
+    if (fromPath.endsWith(":splat/")) {
+      fromPath = fromPath.replace(/\/?:splat\/$/, "/*");
+      effectiveTo = effectiveTo.replace(/\/?$/, "/*");
+    }
     if (fromPath !== toPath) {
       const splitFromPath = fromPath.split(path.posix.sep);
       const isPermanent =
         splitFromPath[2] !== "latest" && splitToPath[2] !== "latest";
       actions.createRedirect({
         fromPath,
-        toPath,
+        toPath: effectiveTo,
         redirectInBrowser: false,
         isPermanent,
       });
@@ -587,7 +601,7 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
         });
         actions.createRedirect({
           fromPath: fromPathLatest,
-          toPath,
+          toPath: effectiveTo,
           redirectInBrowser: false,
           isPermanent: false,
         });
@@ -598,7 +612,7 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
   return pathVersions;
 };
 
-const reportRedirectCollisions = (validPaths, reporter) => {
+const reportRedirectCollisions = (validPaths, reporter, repoUrl) => {
   let collisionCount = 0,
     sourceCount = 0;
   for (const [urlpath, sources] of validPaths) {
@@ -616,7 +630,7 @@ const reportRedirectCollisions = (validPaths, reporter) => {
             const existingIsRedirect = existing.urlpath !== urlpath;
             return ` - ${
               existingIsRedirect ? "redirect" : "page"
-            } at https://github.com/EnterpriseDB/docs/blob/${ghBranch}/${path.relative(
+            } at ${repoUrl}/blob/${ghBranch}/${path.relative(
               process.cwd(),
               existing.filepath,
             )}`;

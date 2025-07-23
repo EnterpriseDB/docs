@@ -1,0 +1,238 @@
+---
+title: prompt_stack
+navTitle: PromptStack
+
+---
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack"></span>
+
+Bases:
+ [`SerializableMixin`](../../mixins/serializable_mixin.mdx#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+@define
+class PromptStack(SerializableMixin):
+    messages: list[Message] = field(factory=list, kw_only=True, metadata={"serializable": True})
+    tools: list[BaseTool] = field(factory=list, kw_only=True)
+    output_schema: Optional[Union[Schema, type[BaseModel]]] = field(default=None, kw_only=True)
+
+    @property
+    def system_messages(self) -> list[Message]:
+        return [message for message in self.messages if message.is_system()]
+
+    @property
+    def user_messages(self) -> list[Message]:
+        return [message for message in self.messages if message.is_user()]
+
+    @property
+    def assistant_messages(self) -> list[Message]:
+        return [message for message in self.messages if message.is_assistant()]
+
+    def add_message(self, artifact: str | BaseArtifact, role: str) -> Message:
+        content = self.__to_message_content(artifact)
+
+        self.messages.append(Message(content=content, role=role))
+
+        return self.messages[-1]
+
+    def add_system_message(self, artifact: str | BaseArtifact) -> Message:
+        return self.add_message(artifact, Message.SYSTEM_ROLE)
+
+    def add_user_message(self, artifact: str | BaseArtifact) -> Message:
+        return self.add_message(artifact, Message.USER_ROLE)
+
+    def add_assistant_message(self, artifact: str | BaseArtifact) -> Message:
+        return self.add_message(artifact, Message.ASSISTANT_ROLE)
+
+    def to_output_json_schema(self, schema_id: str = "Output Format") -> dict:
+        if self.output_schema is None:
+            raise ValueError("Output schema is not set")
+
+        if isinstance(self.output_schema, Schema):
+            json_schema = self.output_schema.json_schema(schema_id)
+        elif isinstance(self.output_schema, type) and issubclass(self.output_schema, BaseModel):
+            json_schema = build_strict_schema(self.output_schema.model_json_schema(), schema_id)
+        else:
+            raise ValueError(f"Unsupported output schema type: {type(self.output_schema)}")
+
+        return json_schema
+
+    @classmethod
+    def from_artifact(cls, artifact: BaseArtifact) -> PromptStack:
+        prompt_stack = cls()
+        prompt_stack.add_user_message(artifact)
+
+        return prompt_stack
+
+    def __to_message_content(self, artifact: str | BaseArtifact) -> list[BaseMessageContent]:
+        if isinstance(artifact, str):
+            return [TextMessageContent(TextArtifact(artifact))]
+        if isinstance(artifact, TextArtifact):
+            return [TextMessageContent(artifact)]
+        if isinstance(artifact, ImageArtifact):
+            return [ImageMessageContent(artifact)]
+        if isinstance(artifact, ImageUrlArtifact):
+            return [ImageMessageContent(artifact)]
+        if isinstance(artifact, AudioArtifact):
+            return [AudioMessageContent(artifact)]
+        if isinstance(artifact, GenericArtifact):
+            return [GenericMessageContent(artifact)]
+        if isinstance(artifact, ActionArtifact):
+            action = artifact.value
+            output = action.output
+            if output is None:
+                return [ActionCallMessageContent(artifact)]
+            return [ActionResultMessageContent(output, action=action)]
+        if isinstance(artifact, ListArtifact):
+            processed_contents = [self.__to_message_content(artifact) for artifact in artifact.value]
+
+            return [sub_content for processed_content in processed_contents for sub_content in processed_content]
+        return [TextMessageContent(TextArtifact(artifact.to_text()))]
+```
+
+</details>
+
+-   `assistant_messages` <small>property</small>  <span id="griptape.common.prompt_stack.prompt_stack.PromptStack.assistant_messages"></span> 
+
+-   `messages = field(factory=list, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.prompt_stack.PromptStack.messages"></span> 
+
+-   `output_schema = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.prompt_stack.PromptStack.output_schema"></span> 
+
+-   `system_messages` <small>property</small>  <span id="griptape.common.prompt_stack.prompt_stack.PromptStack.system_messages"></span> 
+
+-   `tools = field(factory=list, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.prompt_stack.PromptStack.tools"></span> 
+
+-   `user_messages` <small>property</small>  <span id="griptape.common.prompt_stack.prompt_stack.PromptStack.user_messages"></span> 
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.__to_message_content"></span>
+
+### \_\_to_message_content(artifact)
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+def __to_message_content(self, artifact: str | BaseArtifact) -> list[BaseMessageContent]:
+    if isinstance(artifact, str):
+        return [TextMessageContent(TextArtifact(artifact))]
+    if isinstance(artifact, TextArtifact):
+        return [TextMessageContent(artifact)]
+    if isinstance(artifact, ImageArtifact):
+        return [ImageMessageContent(artifact)]
+    if isinstance(artifact, ImageUrlArtifact):
+        return [ImageMessageContent(artifact)]
+    if isinstance(artifact, AudioArtifact):
+        return [AudioMessageContent(artifact)]
+    if isinstance(artifact, GenericArtifact):
+        return [GenericMessageContent(artifact)]
+    if isinstance(artifact, ActionArtifact):
+        action = artifact.value
+        output = action.output
+        if output is None:
+            return [ActionCallMessageContent(artifact)]
+        return [ActionResultMessageContent(output, action=action)]
+    if isinstance(artifact, ListArtifact):
+        processed_contents = [self.__to_message_content(artifact) for artifact in artifact.value]
+
+        return [sub_content for processed_content in processed_contents for sub_content in processed_content]
+    return [TextMessageContent(TextArtifact(artifact.to_text()))]
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.add_assistant_message"></span>
+
+### add_assistant_message(artifact)
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+def add_assistant_message(self, artifact: str | BaseArtifact) -> Message:
+    return self.add_message(artifact, Message.ASSISTANT_ROLE)
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.add_message"></span>
+
+### add_message(artifact, role)
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+def add_message(self, artifact: str | BaseArtifact, role: str) -> Message:
+    content = self.__to_message_content(artifact)
+
+    self.messages.append(Message(content=content, role=role))
+
+    return self.messages[-1]
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.add_system_message"></span>
+
+### add_system_message(artifact)
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+def add_system_message(self, artifact: str | BaseArtifact) -> Message:
+    return self.add_message(artifact, Message.SYSTEM_ROLE)
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.add_user_message"></span>
+
+### add_user_message(artifact)
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+def add_user_message(self, artifact: str | BaseArtifact) -> Message:
+    return self.add_message(artifact, Message.USER_ROLE)
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.from_artifact"></span>
+
+### from_artifact(artifact)classmethod
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+@classmethod
+def from_artifact(cls, artifact: BaseArtifact) -> PromptStack:
+    prompt_stack = cls()
+    prompt_stack.add_user_message(artifact)
+
+    return prompt_stack
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.prompt_stack.PromptStack.to_output_json_schema"></span>
+
+### to_output_json_schema(schema_id='Output Format')
+
+<details><summary>Source Code in <code>griptape&#47;common&#47;prompt_stack&#47;prompt_stack.py</code></summary>
+
+```python
+def to_output_json_schema(self, schema_id: str = "Output Format") -> dict:
+    if self.output_schema is None:
+        raise ValueError("Output schema is not set")
+
+    if isinstance(self.output_schema, Schema):
+        json_schema = self.output_schema.json_schema(schema_id)
+    elif isinstance(self.output_schema, type) and issubclass(self.output_schema, BaseModel):
+        json_schema = build_strict_schema(self.output_schema.model_json_schema(), schema_id)
+    else:
+        raise ValueError(f"Unsupported output schema type: {type(self.output_schema)}")
+
+    return json_schema
+```
+
+</details>

@@ -1,0 +1,60 @@
+---
+title: Kubernetes storage best practices
+navTitle: Storage best practices
+description: Best practices for configuring Kubernetes storage to support Hybrid Manager and EDB-managed Postgres databases.
+---
+
+Hybrid Manager runs on Kubernetes and manages stateful services—including EDB Postgres database clusters—on top of Kubernetes PersistentVolumes (PVs). Choosing and configuring Kubernetes storage correctly is critical for ensuring performance, reliability, and recoverability of database workloads.
+
+This page provides storage best practices for Kubernetes clusters that support Hybrid Manager and EDB Platform services. It complements the general [Minimum and recommended Kubernetes specs](/edb-postgres-ai/hybrid-manager/install/kubernetes/recommended/) and focuses specifically on storage considerations.
+
+For background on how Kubernetes is used in Hybrid Manager, see [Kubernetes in Hybrid Manager](/portal/kubernetes/learn/explained/k8s-in-hybrid-manager).
+
+## Use SSD-backed block storage for database volumes
+
+Hybrid Manager-managed Postgres clusters rely on StatefulSets with PersistentVolumeClaims (PVCs). For database volumes, use SSD-backed block storage optimized for high IOPS and low latency. Avoid network file systems (NFS) for primary database volumes.
+
+Recommended volume types by cloud provider:
+
+-   AWS: gp3 (preferred), io2 for very high IOPS needs
+-   GCP: pd-ssd
+-   Azure: Premium SSD (Premium Disk)
+-   OpenShift: SSD-backed Ceph RBD (ODF), or cloud provider block storage via CSI
+
+## Configure StorageClasses with WaitForFirstConsumer
+
+For StatefulSets managing Postgres, it is critical that the PVC and the Pod are co-located in the same Availability Zone (AZ). This prevents Kubernetes from scheduling Pods across AZs while mounting cross-AZ volumes—which can lead to latency and instability.
+
+Set the StorageClass volume binding mode to WaitForFirstConsumer. This ensures that the PVC will not be bound until a Pod is scheduled in an AZ, guaranteeing AZ alignment.
+
+## Enable volume expansion
+
+Storage needs for databases often grow over time. Choose or define StorageClasses with volume expansion enabled. This allows Hybrid Manager (and Kubernetes administrators) to expand PVCs as needed.
+
+## Choose appropriate filesystem
+
+Use either ext4 or xfs. Both are widely supported and performant for Postgres workloads. ext4 is the default choice and suitable for most cases. xfs may be preferred for large volumes with heavy write activity. Validate filesystem compatibility with your cloud provider and CSI driver.
+
+## Separate database data and WAL volumes (where supported)
+
+If using operators that support WAL (Write-Ahead Log) volume separation (such as PGD or CNPG), consider using separate PVCs for WAL vs. database data. You may also apply different StorageClasses if performance tuning is required, for example using faster IOPS on WAL volumes. Hybrid Manager automates this pattern where supported—ensure that the underlying StorageClasses can meet these needs.
+
+## Monitor PersistentVolume health and usage
+
+Operational best practices include monitoring PVC usage percentage to avoid out-of-space conditions, setting up Prometheus alerts for PVC nearing capacity, PVC stuck in Pending state, and PersistentVolumeErrors on nodes. Validate StorageClass performance periodically (IOPS, latency). See [Troubleshooting Kubernetes](/portal/kubernetes/learn/how-to/troubleshooting-on-kubernetes) for guidance.
+
+## Summary checklist
+
+-   Use SSD-backed block storage (no NFS for DB volumes)
+-   Configure volume binding as WaitForFirstConsumer
+-   Enable volume expansion in StorageClasses
+-   Use ext4 or xfs filesystem
+-   Use separate WAL volumes where supported and validated
+-   Monitor PVC usage, Pending states, and volume errors
+
+## Related topics
+
+-   [Kubernetes in Hybrid Manager](/portal/kubernetes/learn/explained/k8s-in-hybrid-manager)
+-   [Minimum and recommended Kubernetes specs](/edb-postgres-ai/hybrid-manager/install/kubernetes/recommended/)
+-   [Managing Kubernetes networking](./manage-kubernetes-networking)
+-   [Troubleshooting Kubernetes](/portal/kubernetes/learn/how-to/troubleshooting-on-kubernetes)

@@ -1,0 +1,109 @@
+---
+title: Monitor and resolve resource exhaustion in Kubernetes
+navTitle: Resource exhaustion
+description: Detect and resolve resource exhaustion in Kubernetes clusters running Postgres in Hybrid Manager.
+---
+
+# Monitor and resolve resource exhaustion in Kubernetes
+
+When running Postgres in Kubernetes using Hybrid Manager, resource exhaustion at the Pod or Node level can cause degraded performance, failed scheduling, or crashes.
+
+This guide explains how to detect and resolve CPU, memory, and I/O saturation issues across your cluster.
+
+* * *
+
+## What to monitor
+
+### Pod-level metrics
+
+-   CPU and memory usage vs. limits
+-   OOMKilled container restarts
+-   Throttling events (CPU CFS quotas)
+
+### Node-level metrics
+
+-   Overall node resource pressure
+-   Pod evictions due to memory pressure
+-   Available vs. allocatable CPU/Memory
+
+### Volume-level metrics
+
+-   PVC IOPS and throughput
+-   Pod wait times on volume access
+-   Volume provisioning latency
+
+* * *
+
+## Commands
+
+### Check usage and pressure
+
+```shell
+kubectl top pods -n <project-namespace>
+kubectl top nodes
+kubectl describe pod <pod-name> -n <project-namespace>
+kubectl describe node <node-name>
+```
+
+### Investigate storage
+
+```shell
+kubectl get pvc -n <project-namespace>
+kubectl describe pvc <pvc-name> -n <project-namespace>
+```
+
+* * *
+
+## Common symptoms and resolutions
+
+| Symptom                       | Cause                                 | Resolution                                                          |
+| ----------------------------- | ------------------------------------- | ------------------------------------------------------------------- |
+| Pod stuck in `Pending`        | Not enough resources on nodes         | Increase node pool size or switch to a larger instance type         |
+| Frequent restarts (OOMKilled) | Memory limit too low                  | Increase memory requests/limits for affected Pods                   |
+| CPU throttling                | CPU limit too low                     | Increase CPU limits; set higher `requests` for scheduler preference |
+| Disk IO latency               | Volume throughput limits reached      | Use higher-performance StorageClass or resize disk                  |
+| Cluster scaling fails         | Node quota exceeded or autoscaler off | Check cloud quota; ensure autoscaler is enabled and working         |
+
+* * *
+
+## How to resolve
+
+### 1. Identify the bottleneck
+
+-   Use `kubectl top` and `kubectl describe` to find Pods or Nodes under pressure
+-   Use cloud console metrics (e.g., GCP Monitoring, AWS CloudWatch)
+
+### 2. Edit resource limits
+
+Update the Postgres cluster custom resource YAML (via GitOps or CLI):
+
+```yaml
+resources:
+requests:
+cpu: "2"
+memory: "4Gi"
+limits:
+cpu: "4"
+memory: "8Gi"
+```
+
+Apply using `kubectl apply -f <cluster-cr.yaml>`
+
+### 3. Adjust cluster infrastructure
+
+-   Add more nodes to your node pool
+-   Switch to larger VM instance types
+-   Enable Cluster Autoscaler to allow dynamic scaling
+
+### 4. Monitor continuously
+
+-   Use [EDB observability stack](./use-edb-observability-stack)
+-   Set alerts for memory/cpu pressure and PVC saturation
+
+* * *
+
+## Related links
+
+-   [Set CPU and memory limits for Postgres Pods](./set-cpu-memory-limits-db-nodes.mdx)
+-   [Monitor Hybrid Manager cluster state](monitor-hyrid-manager-cluster-state/)
+-   [Use the EDB observability stack](./use-edb-observability-stack)

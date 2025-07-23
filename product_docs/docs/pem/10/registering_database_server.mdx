@@ -41,23 +41,36 @@ There are three ways to register a server.
 
 ## Using the pemworker utility to register a server
 
-You can use the pemworker utility to register a Postgres server. During registration, the pemworker utility binds the new server to the agent that resides on the system from which you invoked the registration command. 
+You can use the pemworker utility to register a Postgres server. 
+During registration, the pemworker utility binds the new server to the agent that resides on the system from which you invoked the registration command. 
 
 To register a server on a Linux host, use the command:
 
- `pemworker --register-server`
+```shell
+export PEM_SERVER_PASSWORD=example
+export PEM_MONITORED_SERVER_PASSWORD=example
+pemworker --register-server
+```
 
 To register a server on a Windows host, use the command:
 
- `pemworker.exe REGISTER-SERVER`
+```shell
+set PEM_SERVER_PASSWORD=example
+set PEM_MONITORED_SERVER_PASSWORD=example
+pemworker.exe REGISTER-SERVER
+```
+
+The environment variable `PEM_SERVER_PASSWORD` must be set to the password of the specified `--pem-user`.
+If necessary, you can [specify additional connection parameters](#specifying-additional-parameters-for-the-pemworker-connection) for this user.
+Set the environment variable `PEM_MONITORED_SERVER_PASSWORD` to the password of the Agent-Server binding user (`--asb-host-user` or `--server-user` if the former is not specified).
 
 Append command line options to the command string when invoking the pemworker utility. Follow each option with a corresponding value.
 
 | Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--pem-user`                        | Specifies the name of the PEM administrative user (must have the pem_admin role) on the PEM server to use to write the server details to the PEM database. Required.                                                                                                                                                                                                                              |
+| `--pem-user`                        | Specifies the name of the PEM administrative user (must have the `pem_admin` role) on the PEM server to use to write the server details to the PEM database. Required.                                                                                                                                                                                                                              |
 | **Server parameters**               | These parameters are used to populate the connection properties in the PEM web application. They're used when a user connects from the PEM web application to the monitored server. They're also used for connections from the agent to the monitored server unless overridden by Agent Server Binding parameters (see the **Agent-server binding parameters** in this table).                                                              |
-| `--server-addr`                     | Specifies the IP address or fully qualified domain name of the monitored server. On Linux systems, you can leave the address field blank to use the default PostgreSQL Unix Domain Socket on the local machine. Or you can set it to an alternative path containing a PostgreSQL socket. If you enter a path, the path must begin with a forward slash (/). Required.                                     |
+| `--server-addr`                     | Specifies the IP address or fully qualified domain name of the monitored server. On Linux systems, you can leave the address field blank to use the default PostgreSQL Unix Domain Socket on the local machine. Or you can set it to an alternative path containing a PostgreSQL socket. If you enter a path, the path must begin with a forward slash (/). In this case you must still set `PEM_MONITORED_SERVER_PASSWORD` to a non-empty value, although it will not be used. Required.                                     |
 | `--server-port`                     | Specifies the port number of the monitored server. Required.                                                                                                                                                                                                                                                                                                                                            |
 | `--server-database`                 | Specifies the name of the database on the monitored server to which to connect. Required.                                                                                                                                                                                                                                                                                                               |
 | `--server-user`                     | Specifies the name of the user used to connect to the monitored server. Required.                                                                                                                                                                                                                                                                                                                       |
@@ -73,19 +86,41 @@ Append command line options to the command string when invoking the pemworker ut
 | `--team`                            | Specifies a Postgres role on the PEM server to be assigned as the team to which the monitored server belongs. Only users with this role can access the server. Optional, defaults to none, meaning all users can access.                                                                                                                                                                                                                                         |
 | `--owner`                           | Specifies a Postgres user on the PEM server to assign as the owner of the monitored server. Optional, defaults to `--pem-user`.                                                                                                                                                                                                                                                                                                                                             |
 | `--display-name <name>`             | Specifies the display name of the monitored database server. Optional, defaults to the system hostname.                                                                                                                                                                                                                                                                                                     |
+| `--cluster-name`                    | Specifies the cluster name in Object Explorer to which the agent object will be added. If the cluster does not exist, it will be created automatically. This parameter is optional. |
 | **Other parameters**                |                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `--remote-monitoring`               | Set to `yes` if the server isn't located on the same host as the agent. When remote monitoring is enabled (`yes`), agent-level statistics for the monitored server aren't available for custom charts and dashboards, and the remote server isn't accessible by some PEM utilities (such as Audit Manager, Capacity Manager, Log Manager). Optional, defaults to `no`. |
 | `--efm-cluster-name`                | Specifies the name of the EDB Failover Manager cluster that monitors the server (if applicable). Optional.                                                                                                                                                                                                                                                                                                  |
 | `--efm-install-path`                | Specifies the complete path to the installation directory of EDB Failover Manager (if applicable). Optional.                                                                                                                                                                                                                                                                                                |
 | `--config-dir`                      | Specifies the directory path of the agent configuration file. Optional, defaults to `<pemworker path>/../etc`.                                                                                                                                                                                                                                                                                              |
 
-Set the environment variable `PEM_SERVER_PASSWORD` to provide the password for the PEM server to allow the pemworker to connect as a PEM admin user.
+### Specifying additional parameters for the pemworker connection
+When registering or unregistering a database server, you must specify an administrative PEM user (`--pem-user`) to perform the registration. 
+You must also specify this user's password as `PEM_SERVER_PASSWORD`.
 
-Set the environment variable `PEM_MONITORED_SERVER_PASSWORD` to provide the password of the database server being registered and monitored by the PEM agent.
+If you need to specify additional connection parameters, or use a non-password authentication method, follow the instructions below.
 
-If you don't provide the password, a password authentication error occurs. The PEM server acknowledges that the server was registered properly.
+The pemworker utility uses [libpq](https://www.postgresql.org/docs/current/libpq.html) to connect to Postgres. 
+As such, you can set many connection properties using [libpq environment variables](https://www.postgresql.org/docs/current/libpq-envars.html).
 
-#### Examples
+For example, if you wish to specify the SSL mode of the connection used to register the agent
+
+```shell
+export PEM_SERVER_PASSWORD=edb
+export PGSSLMODE=require
+pemworker --register-agent ...
+```
+
+Similarly, if you wish to connect using a certificate-authenticated account, you can provide details of the certificate and key. 
+Note you must still provide `PEM_SERVER_PASSWORD` but it can be set to any value as it will not be used.
+
+```shell
+export PGSSLCERT=pem-server.crt
+export PGSSLKEY=pem-server.key
+export PEM_SERVER_PASSWORD=none
+pemworker --register-agent ...
+```
+
+### Examples
 
 This example registers a server using only the required parameters. 
 The user `admin01` will be used to connect to the PEM server. The credentials supplied for the `--server-*` parameters will be used to create a connection from the agent to the monitored server.
@@ -139,8 +174,6 @@ Append command line options to the command string when invoking the pemworker ut
 | `--config-dir`  | Specifies the directory path of the agent configuration file. Optional, defaults to `<pemworker path>/../etc`.                                                                                                                                                                                                                                       |
 
 Use the `PEM_SERVER_PASSWORD` environment variable to provide the password for the PEM server to allow the pemworker utility to connect to the PEM server as `--pem-user`.
-
-If you don't provide the password, a password authentication error occurs. The PEM server acknowledges that the server is unregistered.
 
 ## Registering a server with automatic server discovery
 

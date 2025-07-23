@@ -1,0 +1,892 @@
+---
+title: loaders
+navTitle: AudioLoader
+
+---
+
+-   `__all__ = ['AudioLoader', 'BaseFileLoader', 'BaseLoader', 'BlobLoader', 'CsvLoader', 'EmailLoader', 'ImageLoader', 'JsonLoader', 'PdfLoader', 'SqlLoader', 'TextLoader', 'WebLoader']` <small>module-attribute</small>  <span id="griptape.loaders.__all__"></span> 
+
+<span id="griptape.loaders.AudioLoader"></span>
+
+Bases:
+ [`BaseFileLoader[AudioArtifact]`](base_file_loader.mdx#griptape.loaders.base_file_loader.BaseFileLoader "BaseFileLoader (griptape.loaders.base_file_loader.BaseFileLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;audio_loader.py</code></summary>
+
+```python
+@define
+class AudioLoader(BaseFileLoader[AudioArtifact]):
+    """Loads audio content into audio artifacts."""
+
+    def try_parse(self, data: bytes) -> AudioArtifact:
+        filetype_guess = filetype.guess(data)
+        if filetype_guess is None:
+            raise ValueError("Could not determine the file type of the audio data")
+        return AudioArtifact(data, format=filetype_guess.extension)
+```
+
+</details>
+
+<span id="griptape.loaders.AudioLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;audio_loader.py</code></summary>
+
+```python
+def try_parse(self, data: bytes) -> AudioArtifact:
+    filetype_guess = filetype.guess(data)
+    if filetype_guess is None:
+        raise ValueError("Could not determine the file type of the audio data")
+    return AudioArtifact(data, format=filetype_guess.extension)
+```
+
+</details>
+
+<span id="griptape.loaders.BaseFileLoader"></span>
+
+## BaseFileLoader
+
+Bases:
+ [`BaseLoader[Union[str, PathLike], bytes, A]`](./#griptape.loaders.BaseLoader "BaseLoader (griptape.loaders.BaseLoader)")
+, <span title="abc.ABC">ABC</span>
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_file_loader.py</code></summary>
+
+```python
+@define
+class BaseFileLoader(BaseLoader[Union[str, PathLike], bytes, A], ABC):
+    file_manager_driver: BaseFileManagerDriver = field(
+        default=Factory(lambda: LocalFileManagerDriver()),
+        kw_only=True,
+    )
+    encoding: str = field(default="utf-8", kw_only=True)
+
+    def fetch(self, source: str | PathLike) -> bytes:
+        # TODO: This is silly. `load_file` decodes the bytes and then we immediately re-encode them.
+        data = self.file_manager_driver.load_file(str(source)).value
+        if isinstance(data, str):
+            return data.encode(self.encoding)
+        return data
+
+    def save(self, destination: str | PathLike, artifact: A) -> None:
+        """Saves the Artifact to a destination."""
+        artifact.encoding = self.encoding
+        self.file_manager_driver.save_file(str(destination), artifact.to_bytes())
+```
+
+</details>
+
+-   `encoding = field(default='utf-8', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.BaseFileLoader.encoding"></span> 
+
+-   `file_manager_driver = field(default=Factory(lambda: LocalFileManagerDriver()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.BaseFileLoader.file_manager_driver"></span> 
+
+<span id="griptape.loaders.BaseFileLoader.fetch"></span>
+
+### fetch(source)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_file_loader.py</code></summary>
+
+```python
+def fetch(self, source: str | PathLike) -> bytes:
+    # TODO: This is silly. `load_file` decodes the bytes and then we immediately re-encode them.
+    data = self.file_manager_driver.load_file(str(source)).value
+    if isinstance(data, str):
+        return data.encode(self.encoding)
+    return data
+```
+
+</details>
+
+<span id="griptape.loaders.BaseFileLoader.save"></span>
+
+### save(destination, artifact)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_file_loader.py</code></summary>
+
+```python
+def save(self, destination: str | PathLike, artifact: A) -> None:
+    """Saves the Artifact to a destination."""
+    artifact.encoding = self.encoding
+    self.file_manager_driver.save_file(str(destination), artifact.to_bytes())
+```
+
+</details>
+
+<span id="griptape.loaders.BaseLoader"></span>
+
+## BaseLoader
+
+Bases:
+ [`FuturesExecutorMixin`](../mixins/futures_executor_mixin.mdx#griptape.mixins.futures_executor_mixin.FuturesExecutorMixin "FuturesExecutorMixin (griptape.mixins.futures_executor_mixin.FuturesExecutorMixin)")
+, <span title="abc.ABC">ABC</span>,  [`Generic[S, F, A]`](base_loader.mdx#griptape.loaders.base_loader.S "typing.Generic")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                      | Type                                                                                                                                                     | Description                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| <a href="./#griptape.loaders.BaseLoader.reference" title="reference = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.loaders.BaseLoader.reference)"><code class="language-python">reference</code></a> | <a href="../common#griptape.common.Reference" title="Reference (griptape.common.Reference)"><code class="language-python">Optional[Reference]</code></a> | The optional `Reference` to set on the Artifact.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+@define
+class BaseLoader(FuturesExecutorMixin, ABC, Generic[S, F, A]):
+    """Fetches data from a source, parses it, and returns an Artifact.
+
+    Attributes:
+        reference: The optional `Reference` to set on the Artifact.
+    """
+
+    reference: Optional[Reference] = field(default=None, kw_only=True)
+
+    def load(self, source: S) -> A:
+        data = self.fetch(source)
+
+        return self.parse(data)
+
+    @abstractmethod
+    def fetch(self, source: S) -> F:
+        """Fetches data from the source."""
+
+    def parse(self, data: F) -> A:
+        """Parses the fetched data and returns an Artifact."""
+        artifact = self.try_parse(data)
+
+        artifact.reference = self.reference
+
+        return artifact
+
+    def try_parse(self, data: F) -> A:
+        """Parses the fetched data and returns an Artifact."""
+        # TODO: Mark as abstract method for griptape 2.0
+        raise NotImplementedError
+
+    def load_collection(
+        self,
+        sources: list[Any],
+    ) -> Mapping[str, A]:
+        """Loads a collection of sources and returns a dictionary of Artifacts."""
+        # Create a dictionary before actually submitting the jobs to the executor
+        # to avoid duplicate work.
+        sources_by_key = {self.to_key(source): source for source in sources}
+
+        with self.create_futures_executor() as futures_executor:
+            return execute_futures_dict(
+                {
+                    key: futures_executor.submit(with_contextvars(self.load), source)
+                    for key, source in sources_by_key.items()
+                },
+            )
+
+    def to_key(self, source: S) -> str:
+        """Converts the source to a key for the collection."""
+        if isinstance(source, bytes):
+            return bytes_to_hash(source)
+        return str_to_hash(str(source))
+```
+
+</details>
+
+-   `reference = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.BaseLoader.reference"></span> 
+
+<span id="griptape.loaders.BaseLoader.fetch"></span>
+
+### fetch(source)abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+@abstractmethod
+def fetch(self, source: S) -> F:
+    """Fetches data from the source."""
+```
+
+</details>
+
+<span id="griptape.loaders.BaseLoader.load"></span>
+
+### load(source)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+def load(self, source: S) -> A:
+    data = self.fetch(source)
+
+    return self.parse(data)
+```
+
+</details>
+
+<span id="griptape.loaders.BaseLoader.load_collection"></span>
+
+### load_collection(sources)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+def load_collection(
+    self,
+    sources: list[Any],
+) -> Mapping[str, A]:
+    """Loads a collection of sources and returns a dictionary of Artifacts."""
+    # Create a dictionary before actually submitting the jobs to the executor
+    # to avoid duplicate work.
+    sources_by_key = {self.to_key(source): source for source in sources}
+
+    with self.create_futures_executor() as futures_executor:
+        return execute_futures_dict(
+            {
+                key: futures_executor.submit(with_contextvars(self.load), source)
+                for key, source in sources_by_key.items()
+            },
+        )
+```
+
+</details>
+
+<span id="griptape.loaders.BaseLoader.parse"></span>
+
+### parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+def parse(self, data: F) -> A:
+    """Parses the fetched data and returns an Artifact."""
+    artifact = self.try_parse(data)
+
+    artifact.reference = self.reference
+
+    return artifact
+```
+
+</details>
+
+<span id="griptape.loaders.BaseLoader.to_key"></span>
+
+### to_key(source)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+def to_key(self, source: S) -> str:
+    """Converts the source to a key for the collection."""
+    if isinstance(source, bytes):
+        return bytes_to_hash(source)
+    return str_to_hash(str(source))
+```
+
+</details>
+
+<span id="griptape.loaders.BaseLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;base_loader.py</code></summary>
+
+```python
+def try_parse(self, data: F) -> A:
+    """Parses the fetched data and returns an Artifact."""
+    # TODO: Mark as abstract method for griptape 2.0
+    raise NotImplementedError
+```
+
+</details>
+
+<span id="griptape.loaders.BlobLoader"></span>
+
+## BlobLoader
+
+Bases:
+ [`BaseFileLoader[BlobArtifact]`](./#griptape.loaders.BaseFileLoader "BaseFileLoader (griptape.loaders.BaseFileLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;blob_loader.py</code></summary>
+
+```python
+@define
+class BlobLoader(BaseFileLoader[BlobArtifact]):
+    def try_parse(self, data: bytes) -> BlobArtifact:
+        if self.encoding is None:
+            return BlobArtifact(data)
+        return BlobArtifact(data, encoding=self.encoding)
+```
+
+</details>
+
+<span id="griptape.loaders.BlobLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;blob_loader.py</code></summary>
+
+```python
+def try_parse(self, data: bytes) -> BlobArtifact:
+    if self.encoding is None:
+        return BlobArtifact(data)
+    return BlobArtifact(data, encoding=self.encoding)
+```
+
+</details>
+
+<span id="griptape.loaders.CsvLoader"></span>
+
+## CsvLoader
+
+Bases:
+ [`BaseFileLoader[ListArtifact[TextArtifact]]`](./#griptape.loaders.BaseFileLoader "BaseFileLoader (griptape.loaders.BaseFileLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;csv_loader.py</code></summary>
+
+```python
+@define
+class CsvLoader(BaseFileLoader[ListArtifact[TextArtifact]]):
+    delimiter: str = field(default=",", kw_only=True)
+    encoding: str = field(default="utf-8", kw_only=True)
+    format_row: Callable[[dict], str] = field(
+        default=lambda value: "\n".join(f"{key}: {val}" for key, val in value.items()), kw_only=True
+    )
+
+    def try_parse(self, data: bytes) -> ListArtifact[TextArtifact]:
+        reader = csv.DictReader(StringIO(data.decode(self.encoding)), delimiter=self.delimiter)
+
+        return ListArtifact(
+            [TextArtifact(self.format_row(row), meta={"row_num": row_num}) for row_num, row in enumerate(reader)]
+        )
+```
+
+</details>
+
+-   `delimiter = field(default=',', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.CsvLoader.delimiter"></span> 
+
+-   `encoding = field(default='utf-8', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.CsvLoader.encoding"></span> 
+
+-   `format_row = field(default=lambda value: '\n'.join(f'{key}: {val}' for (key, val) in value.items()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.CsvLoader.format_row"></span> 
+
+<span id="griptape.loaders.CsvLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;csv_loader.py</code></summary>
+
+```python
+def try_parse(self, data: bytes) -> ListArtifact[TextArtifact]:
+    reader = csv.DictReader(StringIO(data.decode(self.encoding)), delimiter=self.delimiter)
+
+    return ListArtifact(
+        [TextArtifact(self.format_row(row), meta={"row_num": row_num}) for row_num, row in enumerate(reader)]
+    )
+```
+
+</details>
+
+<span id="griptape.loaders.EmailLoader"></span>
+
+## EmailLoader
+
+Bases:
+ [`BaseLoader[&#39;EmailLoader.EmailQuery&#39;, list[bytes], ListArtifact]`](./#griptape.loaders.BaseLoader "BaseLoader (griptape.loaders.BaseLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;email_loader.py</code></summary>
+
+```python
+@define
+class EmailLoader(BaseLoader["EmailLoader.EmailQuery", list[bytes], ListArtifact]):  # pyright: ignore[reportGeneralTypeIssues]
+    @define(frozen=True)
+    class EmailQuery:
+        """An email retrieval query.
+
+        Attributes:
+            label: Label to retrieve emails from such as 'INBOX' or 'SENT'.
+            key: Optional key for filtering such as 'FROM' or 'SUBJECT'.
+            search_criteria: Optional search criteria to filter emails by key.
+            max_count: Optional max email count.
+        """
+
+        label: str = field(kw_only=True)
+        key: Optional[str] = field(default=None, kw_only=True)
+        search_criteria: Optional[str] = field(default=None, kw_only=True)
+        max_count: Optional[int] = field(default=None, kw_only=True)
+
+    imap_url: str = field(kw_only=True)
+    username: str = field(kw_only=True)
+    password: str = field(kw_only=True)
+
+    def fetch(self, source: EmailLoader.EmailQuery) -> list[bytes]:
+        label, key, search_criteria, max_count = astuple(source)
+
+        mail_bytes = []
+        with imaplib.IMAP4_SSL(self.imap_url) as client:
+            client.login(self.username, self.password)
+
+            mailbox = client.select(f'"{label}"', readonly=True)
+            if mailbox[0] != "OK":
+                raise Exception(mailbox[1][0].decode())  # pyright: ignore[reportOptionalMemberAccess] Unsure what mailbox[1][0] is, so leaving as-is
+
+            if key and search_criteria:
+                _, [message_numbers] = client.search(None, key, f'"{search_criteria}"')
+                messages_count = self._count_messages(message_numbers)
+            elif len(mailbox) > 1 and mailbox[1] and mailbox[1][0] is not None:
+                messages_count = int(mailbox[1][0])
+            else:
+                raise Exception("unable to parse number of messages")
+
+            top_n = max(0, messages_count - max_count) if max_count else 0
+            for i in range(messages_count, top_n, -1):
+                _result, data = client.fetch(str(i), "(RFC822)")
+
+                if data is None or not data or data[0] is None:
+                    continue
+
+                mail_bytes.append(data[0][1])
+
+            client.close()
+
+        return mail_bytes
+
+    def try_parse(self, data: list[bytes]) -> ListArtifact[TextArtifact]:
+        mailparser = import_optional_dependency("mailparser")
+        artifacts = []
+        for byte in data:
+            message = mailparser.parse_from_bytes(byte)
+
+            # Note: mailparser only populates the text_plain field
+            # if the message content type is explicitly set to 'text/plain'.
+            if message.text_plain:
+                artifacts.append(TextArtifact("\n".join(message.text_plain)))
+
+        return ListArtifact(artifacts)
+
+    def _count_messages(self, message_numbers: bytes) -> int:
+        return len(list(filter(None, message_numbers.decode().split(" "))))
+```
+
+</details>
+
+-   `imap_url = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.imap_url"></span> 
+
+-   `password = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.password"></span> 
+
+-   `username = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.username"></span> 
+
+<span id="griptape.loaders.EmailLoader.EmailQuery"></span>
+
+### EmailQuery
+
+An email retrieval query.
+
+#### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                      | Type            | Description                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------- |
+| <a href="./#griptape.loaders.EmailLoader.EmailQuery.label" title="label = field(kw_only=True)           class-attribute       instance-attribute    (griptape.loaders.EmailLoader.EmailQuery.label)"><code class="language-python">label</code></a>                                                       | `str`           | Label to retrieve emails from such as 'INBOX' or 'SENT'.<br/> |
+| <a href="./#griptape.loaders.EmailLoader.EmailQuery.key" title="key = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.loaders.EmailLoader.EmailQuery.key)"><code class="language-python">key</code></a>                                                 | `Optional[str]` | Optional key for filtering such as 'FROM' or 'SUBJECT'.<br/>  |
+| <a href="./#griptape.loaders.EmailLoader.EmailQuery.search_criteria" title="search_criteria = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.loaders.EmailLoader.EmailQuery.search_criteria)"><code class="language-python">search_criteria</code></a> | `Optional[str]` | Optional search criteria to filter emails by key.<br/>        |
+| <a href="./#griptape.loaders.EmailLoader.EmailQuery.max_count" title="max_count = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.loaders.EmailLoader.EmailQuery.max_count)"><code class="language-python">max_count</code></a>                         | `Optional[int]` | Optional max email count.<br/>                                |
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;email_loader.py</code></summary>
+
+```python
+@define(frozen=True)
+class EmailQuery:
+    """An email retrieval query.
+
+    Attributes:
+        label: Label to retrieve emails from such as 'INBOX' or 'SENT'.
+        key: Optional key for filtering such as 'FROM' or 'SUBJECT'.
+        search_criteria: Optional search criteria to filter emails by key.
+        max_count: Optional max email count.
+    """
+
+    label: str = field(kw_only=True)
+    key: Optional[str] = field(default=None, kw_only=True)
+    search_criteria: Optional[str] = field(default=None, kw_only=True)
+    max_count: Optional[int] = field(default=None, kw_only=True)
+```
+
+</details>
+
+-   `key = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.EmailQuery.key"></span> 
+
+-   `label = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.EmailQuery.label"></span> 
+
+-   `max_count = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.EmailQuery.max_count"></span> 
+
+-   `search_criteria = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.EmailLoader.EmailQuery.search_criteria"></span> 
+
+<span id="griptape.loaders.EmailLoader._count_messages"></span>
+
+### \_count_messages(message_numbers)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;email_loader.py</code></summary>
+
+```python
+def _count_messages(self, message_numbers: bytes) -> int:
+    return len(list(filter(None, message_numbers.decode().split(" "))))
+```
+
+</details>
+
+<span id="griptape.loaders.EmailLoader.fetch"></span>
+
+### fetch(source)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;email_loader.py</code></summary>
+
+```python
+def fetch(self, source: EmailLoader.EmailQuery) -> list[bytes]:
+    label, key, search_criteria, max_count = astuple(source)
+
+    mail_bytes = []
+    with imaplib.IMAP4_SSL(self.imap_url) as client:
+        client.login(self.username, self.password)
+
+        mailbox = client.select(f'"{label}"', readonly=True)
+        if mailbox[0] != "OK":
+            raise Exception(mailbox[1][0].decode())  # pyright: ignore[reportOptionalMemberAccess] Unsure what mailbox[1][0] is, so leaving as-is
+
+        if key and search_criteria:
+            _, [message_numbers] = client.search(None, key, f'"{search_criteria}"')
+            messages_count = self._count_messages(message_numbers)
+        elif len(mailbox) > 1 and mailbox[1] and mailbox[1][0] is not None:
+            messages_count = int(mailbox[1][0])
+        else:
+            raise Exception("unable to parse number of messages")
+
+        top_n = max(0, messages_count - max_count) if max_count else 0
+        for i in range(messages_count, top_n, -1):
+            _result, data = client.fetch(str(i), "(RFC822)")
+
+            if data is None or not data or data[0] is None:
+                continue
+
+            mail_bytes.append(data[0][1])
+
+        client.close()
+
+    return mail_bytes
+```
+
+</details>
+
+<span id="griptape.loaders.EmailLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;email_loader.py</code></summary>
+
+```python
+def try_parse(self, data: list[bytes]) -> ListArtifact[TextArtifact]:
+    mailparser = import_optional_dependency("mailparser")
+    artifacts = []
+    for byte in data:
+        message = mailparser.parse_from_bytes(byte)
+
+        # Note: mailparser only populates the text_plain field
+        # if the message content type is explicitly set to 'text/plain'.
+        if message.text_plain:
+            artifacts.append(TextArtifact("\n".join(message.text_plain)))
+
+    return ListArtifact(artifacts)
+```
+
+</details>
+
+<span id="griptape.loaders.ImageLoader"></span>
+
+## ImageLoader
+
+Bases:
+ [`BaseFileLoader[ImageArtifact]`](./#griptape.loaders.BaseFileLoader "BaseFileLoader (griptape.loaders.BaseFileLoader)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                            | Type            | Description                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a href="./#griptape.loaders.ImageLoader.format" title="format = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.loaders.ImageLoader.format)"><code class="language-python">format</code></a> | `Optional[str]` | If provided, attempts to ensure image artifacts are in this format when loaded. For example, when set to 'PNG', loading image.jpg will return an ImageArtifact containing the image bytes in PNG format.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;image_loader.py</code></summary>
+
+```python
+@define
+class ImageLoader(BaseFileLoader[ImageArtifact]):
+    """Loads images into image artifacts.
+
+    Attributes:
+        format: If provided, attempts to ensure image artifacts are in this format when loaded.
+                For example, when set to 'PNG', loading image.jpg will return an ImageArtifact containing the image
+                    bytes in PNG format.
+    """
+
+    format: Optional[str] = field(default=None, kw_only=True)
+
+    def try_parse(self, data: bytes) -> ImageArtifact:
+        pil_image = import_optional_dependency("PIL.Image")
+        image = pil_image.open(BytesIO(data))
+
+        # Normalize format only if requested.
+        if self.format is not None:
+            byte_stream = BytesIO()
+            image.save(byte_stream, format=self.format)
+            image = pil_image.open(byte_stream)
+            data = byte_stream.getvalue()
+
+        return ImageArtifact(data, format=image.format.lower(), width=image.width, height=image.height)
+```
+
+</details>
+
+-   `format = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.ImageLoader.format"></span> 
+
+<span id="griptape.loaders.ImageLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;image_loader.py</code></summary>
+
+```python
+def try_parse(self, data: bytes) -> ImageArtifact:
+    pil_image = import_optional_dependency("PIL.Image")
+    image = pil_image.open(BytesIO(data))
+
+    # Normalize format only if requested.
+    if self.format is not None:
+        byte_stream = BytesIO()
+        image.save(byte_stream, format=self.format)
+        image = pil_image.open(byte_stream)
+        data = byte_stream.getvalue()
+
+    return ImageArtifact(data, format=image.format.lower(), width=image.width, height=image.height)
+```
+
+</details>
+
+<span id="griptape.loaders.JsonLoader"></span>
+
+## JsonLoader
+
+Bases:
+ [`BaseFileLoader[JsonArtifact]`](./#griptape.loaders.BaseFileLoader "BaseFileLoader (griptape.loaders.BaseFileLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;json_loader.py</code></summary>
+
+```python
+@define
+class JsonLoader(BaseFileLoader[JsonArtifact]):
+    def parse(self, data: bytes) -> JsonArtifact:
+        return JsonArtifact(json.loads(data), encoding=self.encoding)
+```
+
+</details>
+
+<span id="griptape.loaders.JsonLoader.parse"></span>
+
+### parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;json_loader.py</code></summary>
+
+```python
+def parse(self, data: bytes) -> JsonArtifact:
+    return JsonArtifact(json.loads(data), encoding=self.encoding)
+```
+
+</details>
+
+<span id="griptape.loaders.PdfLoader"></span>
+
+## PdfLoader
+
+Bases:
+ [`BaseFileLoader`](base_file_loader.mdx#griptape.loaders.base_file_loader.BaseFileLoader "BaseFileLoader (griptape.loaders.base_file_loader.BaseFileLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;pdf_loader.py</code></summary>
+
+```python
+@define
+class PdfLoader(BaseFileLoader):
+    def try_parse(
+        self,
+        data: bytes,
+        *,
+        password: Optional[str] = None,
+    ) -> ListArtifact:
+        pypdf = import_optional_dependency("pypdf")
+        reader = pypdf.PdfReader(BytesIO(data), strict=True, password=password)
+        pages = [TextArtifact(p.extract_text()) for p in reader.pages]
+
+        return ListArtifact(pages)
+```
+
+</details>
+
+<span id="griptape.loaders.PdfLoader.try_parse"></span>
+
+### try_parse(data, \*, password=None)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;pdf_loader.py</code></summary>
+
+```python
+def try_parse(
+    self,
+    data: bytes,
+    *,
+    password: Optional[str] = None,
+) -> ListArtifact:
+    pypdf = import_optional_dependency("pypdf")
+    reader = pypdf.PdfReader(BytesIO(data), strict=True, password=password)
+    pages = [TextArtifact(p.extract_text()) for p in reader.pages]
+
+    return ListArtifact(pages)
+```
+
+</details>
+
+<span id="griptape.loaders.SqlLoader"></span>
+
+## SqlLoader
+
+Bases:
+ [`BaseLoader[str, list[RowResult], ListArtifact[TextArtifact]]`](./#griptape.loaders.BaseLoader "BaseLoader (griptape.loaders.BaseLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;sql_loader.py</code></summary>
+
+```python
+@define
+class SqlLoader(BaseLoader[str, list[BaseSqlDriver.RowResult], ListArtifact[TextArtifact]]):
+    sql_driver: BaseSqlDriver = field(kw_only=True)
+    format_row: Callable[[dict], str] = field(
+        default=lambda value: "\n".join(f"{key}: {val}" for key, val in value.items()), kw_only=True
+    )
+
+    def fetch(self, source: str) -> list[BaseSqlDriver.RowResult]:
+        return self.sql_driver.execute_query(source) or []
+
+    def parse(self, data: list[BaseSqlDriver.RowResult]) -> ListArtifact[TextArtifact]:
+        return ListArtifact([TextArtifact(self.format_row(row.cells)) for row in data])
+```
+
+</details>
+
+-   `format_row = field(default=lambda value: '\n'.join(f'{key}: {val}' for (key, val) in value.items()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.SqlLoader.format_row"></span> 
+
+-   `sql_driver = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.SqlLoader.sql_driver"></span> 
+
+<span id="griptape.loaders.SqlLoader.fetch"></span>
+
+### fetch(source)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;sql_loader.py</code></summary>
+
+```python
+def fetch(self, source: str) -> list[BaseSqlDriver.RowResult]:
+    return self.sql_driver.execute_query(source) or []
+```
+
+</details>
+
+<span id="griptape.loaders.SqlLoader.parse"></span>
+
+### parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;sql_loader.py</code></summary>
+
+```python
+def parse(self, data: list[BaseSqlDriver.RowResult]) -> ListArtifact[TextArtifact]:
+    return ListArtifact([TextArtifact(self.format_row(row.cells)) for row in data])
+```
+
+</details>
+
+<span id="griptape.loaders.TextLoader"></span>
+
+## TextLoader
+
+Bases:
+ [`BaseFileLoader[TextArtifact]`](./#griptape.loaders.BaseFileLoader "BaseFileLoader (griptape.loaders.BaseFileLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;text_loader.py</code></summary>
+
+```python
+@define
+class TextLoader(BaseFileLoader[TextArtifact]):
+    encoding: str = field(default="utf-8", kw_only=True)
+
+    def try_parse(self, data: str | bytes) -> TextArtifact:
+        if isinstance(data, str):
+            return TextArtifact(data, encoding=self.encoding)
+        return TextArtifact(data.decode(self.encoding), encoding=self.encoding)
+```
+
+</details>
+
+-   `encoding = field(default='utf-8', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.TextLoader.encoding"></span> 
+
+<span id="griptape.loaders.TextLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;text_loader.py</code></summary>
+
+```python
+def try_parse(self, data: str | bytes) -> TextArtifact:
+    if isinstance(data, str):
+        return TextArtifact(data, encoding=self.encoding)
+    return TextArtifact(data.decode(self.encoding), encoding=self.encoding)
+```
+
+</details>
+
+<span id="griptape.loaders.WebLoader"></span>
+
+## WebLoader
+
+Bases:
+ [`BaseLoader[str, str, TextArtifact]`](./#griptape.loaders.BaseLoader "BaseLoader (griptape.loaders.BaseLoader)")
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;web_loader.py</code></summary>
+
+```python
+@define
+class WebLoader(BaseLoader[str, str, TextArtifact]):
+    web_scraper_driver: BaseWebScraperDriver = field(
+        default=Factory(lambda: TrafilaturaWebScraperDriver()),
+        kw_only=True,
+    )
+
+    def fetch(self, source: str) -> str:
+        return self.web_scraper_driver.fetch_url(source)
+
+    def try_parse(self, data: str) -> TextArtifact:
+        return self.web_scraper_driver.extract_page(data)
+```
+
+</details>
+
+-   `web_scraper_driver = field(default=Factory(lambda: TrafilaturaWebScraperDriver()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.loaders.WebLoader.web_scraper_driver"></span> 
+
+<span id="griptape.loaders.WebLoader.fetch"></span>
+
+### fetch(source)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;web_loader.py</code></summary>
+
+```python
+def fetch(self, source: str) -> str:
+    return self.web_scraper_driver.fetch_url(source)
+```
+
+</details>
+
+<span id="griptape.loaders.WebLoader.try_parse"></span>
+
+### try_parse(data)
+
+<details><summary>Source Code in <code>griptape&#47;loaders&#47;web_loader.py</code></summary>
+
+```python
+def try_parse(self, data: str) -> TextArtifact:
+    return self.web_scraper_driver.extract_page(data)
+```
+
+</details>

@@ -27,13 +27,15 @@ const {
 } = require("./src/constants/gatsby-utils.js");
 
 const gitData = (() => {
+  // if the build system specifies a ref, use that
+  let branch = process.env.CI_BUILD_REF;
   // if this build was triggered by a GH action in response to a PR,
   // use the head ref (the branch that someone is requesting be merged)
-  let branch = process.env.GITHUB_HEAD_REF;
+  if (!branch) branch = process.env.GITHUB_HEAD_REF;
   // if this process was otherwise triggered by a GH action, use the current branch name
   if (!branch) branch = process.env.GITHUB_REF;
   // assuming this is triggered by a GH action, this will be the commit that triggered the workflow
-  let sha = process.env.GITHUB_SHA;
+  let sha = process.env.CI_BUILD_SHA || process.env.GITHUB_SHA;
   // non-GH Action build? Try actually running Git for the name & sha...
   if (!branch) {
     try {
@@ -51,7 +53,8 @@ const gitData = (() => {
     .replace(/^refs\/tags\//, "");
   sha = sha.trim();
 
-  return { branch, sha, docsRepoUrl: "https://github.com/EnterpriseDB/docs" };
+  const repo = process.env.DOCS_REPOSITORY || "EnterpriseDB/docs";
+  return { branch, sha, docsRepoUrl: "https://github.com/" + repo };
 })();
 
 const referenceIndexerToolPath = path.join(
@@ -95,6 +98,9 @@ exports.onCreateNode = async ({
       });
     }
 
+    // if you're adding a new file type here, you probably also want to add it to
+    // the list of resourceTypes in src/components/layout.js
+
     if (node.extension === "yaml" || node.extension === "yml") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "text/plain; charset=utf-8",
@@ -105,6 +111,12 @@ exports.onCreateNode = async ({
     if (node.extension === "svg") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "image/svg+xml",
+      });
+    }
+
+    if (node.extension === "sh") {
+      await makeFileNodePublic(node, createNodeId, actions, {
+        mimeType: "text/plain",
       });
     }
 
@@ -326,7 +338,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, productVersions, actions);
     }
   }
-  reportRedirectCollisions(validPaths, reporter);
+  reportRedirectCollisions(validPaths, reporter, gitData.docsRepoUrl);
 };
 
 const createDoc = (
@@ -757,17 +769,17 @@ async function rewriteRedirects(pathPrefix, reporter) {
   // rewrite legacy redirects to exclude the /docs prefix
   // rewrite perma-URL redirects to include hash
   const prefixRE = new RegExp(`^${pathPrefix}/edb-docs/`);
-  const purlRE = new RegExp(
-    `^/docs/purl/(?<product>[^/]+)/(?<component>[^/]+)/?\\s+(?<destination>\\S+)\\s+\\d+`,
-  );
+  const purlRE =
+    /^\/docs\/purl\/(?<product>[^/ ]+)(?:\/(?<component>[^ ]+))?\/?\s+(?<destination>\S+)\s+\d+/;
   let rewrittenRedirects = originalRedirects
     .split("\n")
     .map((line) => line.replace(prefixRE, "/edb-docs/"))
     .map((line) =>
       line.replace(
         purlRE,
-        pathPrefix +
-          "/purl/$<product>/$<component>/ $<destination>#$<product>_$<component> 302",
+        (match, product, component, destination) =>
+          pathPrefix +
+          `/purl/${product}/${component ? component.replace(/\/?(?<!\*)$/, "/") : ""} ${destination}#${product}${component ? "_" + component.replace(/\/\*$/, "") : ""} 302`,
       ),
     )
     .join("\n");
