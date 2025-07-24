@@ -149,9 +149,11 @@ const indexQuery = `
         product
         platform
         tags
+        noindex
         directoryDefaults {
           product
           platform
+          noindex
         }
       }
       id
@@ -162,6 +164,7 @@ const indexQuery = `
         version
       }
       mdxAST
+      fileAbsolutePath
     }
   }
 }

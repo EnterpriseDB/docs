@@ -1,7 +1,6 @@
 const utf8Truncate = require("truncate-utf8-bytes");
 const {
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   replacePathVersion,
 } = require("./gatsby-utils.js");
@@ -11,11 +10,16 @@ const hast2string = require("hast-util-to-string");
 const visit = require("unist-util-visit-parents");
 const mdast2string = require("mdast-util-to-string");
 const slugger = require("github-slugger");
+const { read } = require("to-vfile");
+const path = require("path");
+const remark = require("remark");
+const mdx = require("remark-mdx");
+const remarkFrontmatter = require("remark-frontmatter");
 
 // this function is weird - note that it's modifying the node in place
 // NOT returning a copy of the node
 const mdxNodeToAlgoliaNode = (node, productVersions) => {
-  let newNode = node;
+  let newNode = { ...node };
 
   // base
   newNode["title"] = node.frontmatter.title;
@@ -53,6 +57,8 @@ const mdxNodeToAlgoliaNode = (node, productVersions) => {
   // clean up some keys we don't need anymore
   delete newNode["frontmatter"];
   delete newNode["fields"];
+  delete newNode["fileAbsolutePath"];
+  delete newNode["mdxAST"];
 
   return newNode;
 };
@@ -72,7 +78,7 @@ const EXCERPT_HARD_TRUNCATE_BYTES = 8000;
 const EXCERPT_SOFT_SPLIT_MIN_CHARS = 3000; // start looking for ideal places to break at this length (end of paragraph, list marker, etc.)
 const EXCERPT_SOFT_SPLIT_MAX_CHARS = 6000; // start looking for "good enough" places to break at this length (end of word, sentence, etc.)
 
-const mdxTreeToSearchNodes = (rootNode) => {
+const mdxTreeToSearchNodes = async (rootNode, filePath) => {
   const searchNodes = [];
   let headings = [];
   let currentText = "";
@@ -103,10 +109,32 @@ const mdxTreeToSearchNodes = (rootNode) => {
     const headingNode = headings[headings.length - 1]?.heading;
     const headingId = headingNode && slugger.slug(mdast2string(headingNode));
     const heading = headings.map((h) => mdast2string(h.heading)).join(" » ");
+
     searchNodes.push({ text: currentText, heading, headingId });
 
     currentText = "";
   };
+
+  // handle imports from other MDX files
+  const importConstants = {};
+  const importRegex = /import (?<const>\w+) +from +['"](?<path>[^'"]+\.mdx?)/;
+  const componentRegex = /<(?<name>\w+)(?:\s+[^>]*)?>/;
+  visit(rootNode, "import", (node) => {
+    const importMatch = node.value?.match(importRegex);
+    if (importMatch) {
+      importConstants[importMatch.groups.const] = importMatch.groups.path;
+    }
+  });
+
+  // load imported MDX files and parse them into ASTs
+  for (let [constName, importPath] of Object.entries(importConstants)) {
+    let importedFile = await read(
+      path.resolve(path.dirname(filePath), importPath),
+    );
+    let mdxAST = remark().use(remarkFrontmatter).use(mdx).parse(importedFile);
+    mdxAST.path = path.resolve(path.dirname(filePath), importPath);
+    importConstants[constName] = mdxAST;
+  }
 
   visit(rootNode, (node, ancestors) => {
     if (node.type === "heading") {
@@ -141,14 +169,26 @@ const mdxTreeToSearchNodes = (rootNode) => {
     // this ends up being especially important in really boring cases where HTML is used inline,
     // e.g. "Long paragraph with <var>blah</var> somewhere in it."
     if (nodeText && ["html", "jsx"].includes(node.type)) {
-      var hast = unified()
-        .use(rehypeParse, {
-          emitParseErrors: true,
-          verbose: true,
-          fragment: true,
-        })
-        .parse(nodeText);
-      nodeText = hast2string(hast);
+      // special-case: if this is a component created via import from an mdx file, replace this node with the contents of that file
+      const componentMatch = nodeText.match(componentRegex)?.groups?.name;
+      if (node.type === "jsx" && importConstants[componentMatch]) {
+        console.log(
+          `imported ${componentMatch} from ${importConstants[componentMatch].path} - ${importConstants[componentMatch].children.length} nodes`,
+        );
+        // replace the node
+        node.children = importConstants[componentMatch].children;
+        nodeText = "";
+      } else {
+        // otherwise, parse the HTML fragment and extract text from it
+        var hast = unified()
+          .use(rehypeParse, {
+            emitParseErrors: true,
+            verbose: true,
+            fragment: true,
+          })
+          .parse(nodeText);
+        nodeText = hast2string(hast);
+      }
     }
 
     if (!nodeText) return;
@@ -175,22 +215,23 @@ const trimSpaces = (str) => {
   return str.replace(/\s+/g, " ").trim();
 };
 
-const buildFinalAlgoliaNodes = (nodes, productVersions) => {
+const buildFinalAlgoliaNodes = async (nodes, productVersions) => {
   const result = [];
   for (const node of nodes) {
-    const algoliaNode = mdxNodeToAlgoliaNode(node, productVersions);
-
-    // skip indexing this content for now
-    if (node.path.includes("/playground/")) {
-      console.log(`skipped indexing ${node.path}`);
+    // skip indexing this content
+    if (node.frontmatter.noindex) {
+      console.log(`skipped indexing ${node.fields.path}`);
       continue;
     }
 
-    const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
+    const algoliaNode = mdxNodeToAlgoliaNode(node, productVersions);
+    const searchNodes = await mdxTreeToSearchNodes(
+      node.mdxAST,
+      node.fileAbsolutePath,
+    );
 
     searchNodes.forEach((searchNode, i) => {
-      let newNode = { ...node };
-      delete newNode["mdxAST"];
+      let newNode = { ...algoliaNode };
 
       // this particular naming scheme is important, as algolia defaults to sorting by objectId when
       // other rankings are equal. And it sorts in descending order... So for a given page, where multiple
@@ -219,57 +260,32 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
   return result;
 };
 
-const algoliaTransformer = ({ data }) => {
+const algoliaTransformer = async ({ data }) => {
   const mdxNodes = [];
-
-  // build tree to compute inherited frontmatter
-  const treeRoot = mdxNodesToTree(data.allMdx.nodes);
-  const navStack = [treeRoot];
-  let curr = null;
-
-  while (navStack.length > 0) {
-    curr = navStack.pop();
-    let parentId = curr.mdxNode?.algoliaId;
-    let parentDepth = curr.mdxNode?.navDepth || 0;
-    for (let child of curr.children)
-      if (child.mdxNode)
-        child.mdxNode.algoliaId = child.path
-          .split("/")
-          .slice(-2)[0]
-          .toLowerCase();
-    const navigation = (curr.mdxNode?.frontmatter?.navigation || [])
-      .map((n) => {
-        const navName = n.toString().toLowerCase();
-        return curr.children.find((c) => c.mdxNode?.algoliaId === navName);
-      })
-      .filter((n) => !!n);
-    navigation.push(
-      ...curr.children
-        .filter((child) => !navigation.includes(child))
-        .sort((a, b) =>
-          a.mdxNode?.algoliaId.localeCompare(b.mdxNode?.algoliaId),
-        ),
-    );
-    // used to set fallback sort in algolia to navigation order
-    for (let i = 0; i < navigation.length; ++i) {
-      if (navigation[i].mdxNode) {
-        navigation[i].mdxNode.algoliaId =
-          (parentId || navigation[i].path.split("/").slice(0, -2).join("")) +
-          (navigation.length - i).toString().padStart(3, "0") +
-          navigation[i].mdxNode.algoliaId;
-        navigation[i].mdxNode.navDepth = parentDepth + 1;
-      }
-    }
-    navStack.push(...navigation);
-    if (!curr.mdxNode) continue;
-
-    curr.mdxNode.frontmatter = computeFrontmatterForTreeNode(curr);
-    mdxNodes.push(curr.mdxNode);
-  }
 
   const productVersions = buildProductVersions(data.allMdx.nodes);
 
-  return buildFinalAlgoliaNodes(mdxNodes, productVersions);
+  // build tree to compute inherited frontmatter
+  const treeRoot = mdxNodesToTree(data.allMdx.nodes, productVersions);
+  for (let curr of treeRoot) {
+    let parentId = curr.mdxNode?.algoliaId;
+    let parentDepth = curr.mdxNode?.navDepth || 0;
+    // used to set fallback sort in algolia to navigation order
+    for (let i = 0; i < curr.children.length; ++i) {
+      if (curr.children[i].mdxNode) {
+        curr.children[i].mdxNode.algoliaId =
+          (parentId || curr.children[i].path.split("/").slice(0, -2).join("")) +
+          (curr.children.length - i).toString().padStart(3, "0") +
+          curr.children[i].path.split("/").slice(-2)[0].toLowerCase();
+        curr.children[i].mdxNode.navDepth = parentDepth + 1;
+      }
+    }
+    if (!curr.mdxNode) continue;
+
+    mdxNodes.push(curr.mdxNode);
+  }
+
+  return await buildFinalAlgoliaNodes(mdxNodes, productVersions);
 };
 
 module.exports = algoliaTransformer;
