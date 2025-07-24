@@ -16,8 +16,6 @@ const remark = require("remark");
 const mdx = require("remark-mdx");
 const remarkFrontmatter = require("remark-frontmatter");
 
-// this function is weird - note that it's modifying the node in place
-// NOT returning a copy of the node
 const mdxNodeToAlgoliaNode = (node, productVersions) => {
   let newNode = { ...node };
 
@@ -241,7 +239,7 @@ const buildFinalAlgoliaNodes = async (nodes, productVersions) => {
         searchNodes.length - i
       )
         .toString()
-        .padStart(4, "0")}`;
+        .padStart(5, "0")}`;
       delete newNode.algoliaId;
       if (searchNode.heading) newNode.heading = trimSpaces(searchNode.heading);
       if (newNode.heading)
