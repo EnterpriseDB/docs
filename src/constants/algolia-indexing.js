@@ -170,9 +170,6 @@ const mdxTreeToSearchNodes = async (rootNode, filePath) => {
       // special-case: if this is a component created via import from an mdx file, replace this node with the contents of that file
       const componentMatch = nodeText.match(componentRegex)?.groups?.name;
       if (node.type === "jsx" && importConstants[componentMatch]) {
-        console.log(
-          `imported ${componentMatch} from ${importConstants[componentMatch].path} - ${importConstants[componentMatch].children.length} nodes`,
-        );
         // replace the node
         node.children = importConstants[componentMatch].children;
         nodeText = "";
