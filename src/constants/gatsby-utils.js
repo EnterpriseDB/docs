@@ -5,7 +5,10 @@ const {
   default: expressionReplacement,
 } = require("./expression-replacement.js");
 
-const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+const ghBranch =
+  process.env.CI_BUILD_REF ||
+  process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
@@ -609,7 +612,7 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
   return pathVersions;
 };
 
-const reportRedirectCollisions = (validPaths, reporter) => {
+const reportRedirectCollisions = (validPaths, reporter, repoUrl) => {
   let collisionCount = 0,
     sourceCount = 0;
   for (const [urlpath, sources] of validPaths) {
@@ -627,7 +630,7 @@ const reportRedirectCollisions = (validPaths, reporter) => {
             const existingIsRedirect = existing.urlpath !== urlpath;
             return ` - ${
               existingIsRedirect ? "redirect" : "page"
-            } at https://github.com/EnterpriseDB/docs/blob/${ghBranch}/${path.relative(
+            } at ${repoUrl}/blob/${ghBranch}/${path.relative(
               process.cwd(),
               existing.filepath,
             )}`;

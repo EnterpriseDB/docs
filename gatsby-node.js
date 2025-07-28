@@ -27,13 +27,15 @@ const {
 } = require("./src/constants/gatsby-utils.js");
 
 const gitData = (() => {
+  // if the build system specifies a ref, use that
+  let branch = process.env.CI_BUILD_REF;
   // if this build was triggered by a GH action in response to a PR,
   // use the head ref (the branch that someone is requesting be merged)
-  let branch = process.env.GITHUB_HEAD_REF;
+  if (!branch) branch = process.env.GITHUB_HEAD_REF;
   // if this process was otherwise triggered by a GH action, use the current branch name
   if (!branch) branch = process.env.GITHUB_REF;
   // assuming this is triggered by a GH action, this will be the commit that triggered the workflow
-  let sha = process.env.GITHUB_SHA;
+  let sha = process.env.CI_BUILD_SHA || process.env.GITHUB_SHA;
   // non-GH Action build? Try actually running Git for the name & sha...
   if (!branch) {
     try {
@@ -51,7 +53,8 @@ const gitData = (() => {
     .replace(/^refs\/tags\//, "");
   sha = sha.trim();
 
-  return { branch, sha, docsRepoUrl: "https://github.com/EnterpriseDB/docs" };
+  const repo = process.env.DOCS_REPOSITORY || "EnterpriseDB/docs";
+  return { branch, sha, docsRepoUrl: "https://github.com/" + repo };
 })();
 
 const referenceIndexerToolPath = path.join(
@@ -335,7 +338,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, productVersions, actions);
     }
   }
-  reportRedirectCollisions(validPaths, reporter);
+  reportRedirectCollisions(validPaths, reporter, gitData.docsRepoUrl);
 };
 
 const createDoc = (
