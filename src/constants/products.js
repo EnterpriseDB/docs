@@ -86,7 +86,9 @@ const products = {
     iconName: IconNames.KUBERNETES,
   },
   postgres_for_kubernetes: {
-    name: "EDB Postgres for Kubernetes",
+    name: "EDB Postgres® AI for CloudNativePG™ Cluster",
+    shortName: "CloudNativePG Cluster",
+    abbreviation: "PG4K",
     iconName: IconNames.KUBERNETES,
   },
   pwr: {

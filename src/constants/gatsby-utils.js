@@ -12,8 +12,9 @@ const ghBranch =
 const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
+  // sort "preview" last, always
   return versions.sort((a, b) =>
-    b.localeCompare(a, undefined, { numeric: true }),
+    a === "preview" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
   );
 };
 
