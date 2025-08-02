@@ -70,7 +70,7 @@ function replaceExpressions() {
   }
 
   return (tree, file) => {
-    visit(tree, ["text", "code", "inlineCode"], visitor);
+    visit(tree, ["text", "code", "inlineCode", "jsx"], visitor);
 
     function visitor(node, ancestors) {
       if (!node.value?.includes("{{")) return;
@@ -117,6 +117,12 @@ function replaceExpressions() {
             value: jsx,
           });
         input = after;
+      }
+
+      // special-case JSX nodes - don't need to split the node, just insert the new JSX
+      if (node.type === "jsx") {
+        node.value = addNodes.map((n) => n.value).join("");
+        return;
       }
       const index = ancestors.at(-1).children.indexOf(node);
       ancestors.at(-1).children.splice(index, 1, ...addNodes); // replace the original node with the new nodes
