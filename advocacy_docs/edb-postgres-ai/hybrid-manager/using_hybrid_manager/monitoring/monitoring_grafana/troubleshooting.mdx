@@ -1,46 +1,44 @@
 ---
-title: Trobleshooting in Grafana
+title: Troubleshooting in Grafana
 navTitle: Troubleshooting
-description: Troubleshoot warnings in Grafana by understanding the common causes and performing diagnostic steps.
+description: Understand common causes of warnings in Grafana and learn diagnostic steps.
 deepToC: true
 ---
 
-## No healthy upstream
-
-The "no healthy upstream" warning in Grafana dashboards indicates that a service is unable to connect to its intended backend. This issue can be temporary or persist for a longer duration, impacting the usability of your monitoring and debugging tools. Understanding the common causes can help diagnose and resolve these issues.
+The `no healthy upstream` warning in Grafana dashboards indicates that a service can't connect to its intended backend. This issue can be temporary or persist for a longer duration, impacting the usability of your monitoring and debugging tools. Understanding the common causes can help you to diagnose and resolve these issues.
 
 ## Potential causes
 
 ### Pod eviction or movement
 
-Dynamic node provisioning and pod scheduling tools like Karpenter can cause pods to be moved between nodes. During this process, a pod might temporarily become unavailable, leading to "no healthy upstream" errors until it is rescheduled and becomes ready on a new node. 
+Dynamic node provisioning and pod scheduling tools like Karpenter can cause pods to be moved between nodes. During this process, a pod might temporarily become unavailable, leading to `no healthy upstream` errors until it's rescheduled and becomes ready on a new node. 
 
-### Resource overscheduling and Out-Of-Memory (OOM) errors
+### Resource overscheduling and out-of-memory (OOM) errors
 
-Services, especially those handling complex or large queries (like Loki), can consume significant memory. It's critical to understand that these tools generally don’t constrain queries in any way: they will attempt to execute a query that might return terabytes of logs or gigabytes of metrics and OOM (Out-Of-Memory) in the attempt, rather than identifying and flagging queries that may not be feasible with the memory allocations.
+Services, especially those handling complex or large queries (like Loki), can consume significant memory. These tools generally don’t constrain queries. They will attempt to execute a query that might return terabytes of logs or gigabytes of metrics and OOM rather than identifying and flagging queries that may not succeed with the memory allocations.
 
-If the cluster nodes are oversubscribed or if pods are not configured with appropriate resource limits, Kubernetes can kill them due to memory pressure on the host. Even if the pod recovers quickly, the brief unavailability during the OOM event can trigger "no healthy upstream" warnings. 
+If the cluster nodes are oversubscribed or if pods aren't configured with appropriate resource limits, Kubernetes can kill them due to memory pressure on the host. Even if the pod recovers quickly, the brief unavailability during the OOM event can trigger `no healthy upstream` warnings. 
 
 ### Transient network issues or connection termination
 
-Intermittent network problems, connection resets, or abrupt connection terminations before headers are received can also manifest as "no healthy upstream."
+Intermittent network problems, connection resets, or abrupt connection terminations before headers are received can also appear as `no healthy upstream`.
 
 ### Service unavailability or misconfiguration
 
-While less common for transient issues, a "no healthy upstream" message can also indicate that the backend service itself is unhealthy, not running, or misconfigured, preventing Istio from routing traffic to it successfully.
+While less common for transient issues, a `no healthy upstream` message can also indicate that the backend service is unhealthy, not running, or misconfigured, preventing Istio from routing traffic to it successfully.
 
-## How to troubleshoot 
+## Troubleshooting steps 
 
-1.  **Optimize queries:** Address the most common and direct cause of OOMs for these specific backends. Since Loki, Thanos, and Prometheus don’t guardrail queries, the first thing to look at when these backends start failing is whether overly broad or complex queries are causing them have OOM issues. 
+1.  **Optimize queries:** Address the most common and direct cause of OOMs for these specific backends. Since Loki, Thanos, and Prometheus don’t guardrail queries, the first thing to look at when these backends start failing is whether overly broad or complex queries are causing them to have OOM issues. 
 
-    Try narrowing down your queries by reducing their time window, selecting a smaller set of log metrics, or using more specific filtering (stream selectors, line matching, JSON queries, avoiding regex expressions). See [Query best practices](https://grafana.com/docs/loki/latest/query/bp-query/) for more information.
+    Try narrowing your queries by reducing their time window, selecting a smaller set of log metrics, or using more specific filtering (stream selectors, line matching, JSON queries, avoiding regex expressions). See [Query best practices](https://grafana.com/docs/loki/latest/query/bp-query/) for more information.
 
-1.  **Monitor resource utilization:** Check the resource usage of your monitoring workloads (Loki, Thanos, Prometheus). Review [resource utilization metrics for the affected pods](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/monitoring/monitoring_grafana/grafana_dashboards/kubernetes_dashboards/#kubernetes--compute-resources--) and their underlying nodes (CPU, memory). This helps identify whether resource overscheduling or insufficient capacity is the root cause.   
+1.  **Monitor resource utilization:** Check the resource usage of your monitoring workloads (Loki, Thanos, Prometheus). Review [resource utilization metrics for the affected pods](grafana_dashboards/kubernetes_dashboards/#kubernetes--compute-resources--) and their underlying nodes (CPU, memory). This helps to identify whether resource overscheduling or lack of capacity is the root cause.   
    
-    For example, check the [resource usage of Loki](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/monitoring/monitoring_grafana/grafana_dashboards/loki_dashboards/) workloads. Verify the configured [resource commitments](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/trace-clusters/#resource-commitments), such as resource [limits](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/trace-clusters/#limits) and [requests](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/trace-clusters/#requests) for the pods. 
+    For example, check the [resource usage of Loki workloads](grafana_dashboards/loki_dashboards/). Verify the configured [resource commitments](../../cluster_management/manage-clusters/trace-clusters/#resource-commitments), such as resource [limits](../../cluster_management/manage-clusters/trace-clusters/#limits) and [requests](../../cluster_management/manage-clusters/trace-clusters/#requests) for the pods. 
 
-    If resource utilization looks high and OOM errors persist, then consider adjusting the pod's resource requests/limits or the node's capacity. Consider increasing pod memory limits if the node has enough memory capacity but the pod is undersubscribed. Consider increasing the node memory if the pods are oversubscribed and the node needs more memory capacity to host the subscribed pods.
+    If resource utilization looks high and OOM errors persist, then consider adjusting the pod's resource requests/limits or the node's capacity. If the node has enough memory capacity but the pod is undersubscribed, consider increasing pod memory limits. If the pods are oversubscribed and the node needs more memory capacity to host the subscribed pods, consider increasing the node memory.
 
-1.  **Check Kubernetes events and logs:** Check Kubernetes events ([cluster’s logs](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/monitoring/monitoring_grafana/grafana_explore/)) for pod evictions, scheduling failures, or node changes. Logs are a good source for looking at a pod's health and specific OOM events. This helps you understand which pods are failing and which processes are failing.
+1.  **Check Kubernetes events and logs:** Check Kubernetes events ([cluster’s logs](grafana_explore/)) for pod evictions, scheduling failures, or node changes. Logs are a good source for looking at a pod's health and specific OOM events. They help you understand which pods and processes are failing.
 
-1.  **Verify network health:** This is a more general check and less likely to be the primary cause of OOM issues specifically. Verify the health of the underlying [network infrastructure](/edb-postgres-ai/hybrid-manager/using_hybrid_manager/monitoring/monitoring_grafana/grafana_dashboards/kubernetes_dashboards/#kubernetes--networking--).
+1.  **Verify network health:** This is a more general check and less likely to be the primary cause of OOM issues. Verify the health of the underlying [network infrastructure](grafana_dashboards/kubernetes_dashboards/#kubernetes--networking--).
