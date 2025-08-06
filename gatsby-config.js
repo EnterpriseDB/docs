@@ -28,6 +28,10 @@ const sourceToPluginConfig = {
     path: "product_docs/docs/postgres_distributed_for_kubernetes",
   },
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
+  "edb-postgres-ai": {
+    name: "edb-postgres-ai",
+    path: "product_docs/docs/edb-postgres-ai",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
