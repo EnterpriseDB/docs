@@ -653,10 +653,16 @@ Perform the following steps to reduce the retention rate:
 
   ```shell
   kubectl -n upm-api-stats-collector edit cmd
-  upm-api-stats-collector-configmap-xxxxxxx
+  upm-api-stats-collector-configmap-<your-config-map-string>
   ```
 
 1. In the `ConfigMap`, find the `retention-period` parameter and change its value from `168h` to `96h`.
+
+1. Restart `upm-api-stats-collector`.
+
+```bash
+kubectl rollout restart deploy/upm-api-stats-collector -n upm-api-stats-collector
+```
 
 ##### Solution B: Increase disk volume size
 
@@ -665,4 +671,61 @@ If you need to keep 7 days of data, you must increase the disk's storage capacit
 1. Edit the cluster configuration.
 
 1. Locate the `stats-collector-db` specification and increase the value of `.spec.storage.size` to the preferred size.
+
+1. Restart `upm-api-stats-collector`.
+
+```bash
+kubectl rollout restart deploy/upm-api-stats-collector -n upm-api-stats-collector
+```
+
+#### Scenario 2: Disk is full and cluster is crashing
+
+If the disk is full, it can cause the cluster to get stuck in a crash loop, for example:
+
+```bash
+upm-api-stats-collector      stats-collector-db-1 0/1     CrashLoopBackOff   197 (4m34s ago)   4d7h
+```
+
+Choose one of the following options to mitigate the issue:
+
+##### Solution A: Recreate the database
+
+If the historical stats data is not necessary to keep, follow these steps:
+
+1. Delete the `stats-collector-db` cluster.
+
+```bash
+kubectl delete cluster stats-collector-db -n upm-api-stats-collector
+```
+
+1. Delete the `stats-collector-db` backup folder from your S3 bucket.
+
+```bash
+S3/edb-internal-backups/<your-S3-string>/databases/transporter-db/
+```
+
+1. Run `helm upgrade` to recreate an empty database with the default settings.
+
+1. Restart `upm-api-stats-collector`:
+
+```bash
+kubectl rollout restart deploy/upm-api-stats-collector -n upm-api-stats-collector
+```
+
+##### Solution B: Increase disk volume size
+
+If you need to preserve the existing data, you must increase the disk's volume size.
+
+1. Edit the cluster configuration.
+
+1. Locate. the `stats-collector-db` specification and increase the value of `.spec.storage.size`.
+
+1. Delete the pod in the crashing loop.
+
+1. Restart `ump-api-stats-collector`.
+
+Once restarted, the database has a larger volume, which resolves the crash loop.
+
+!!! Warning
+Increasing the volume size above the default blocks patch version upgrades for clusters running version `1.2.x`.
 
