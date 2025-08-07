@@ -632,8 +632,11 @@ pvc-4a35b3ba-507e-4d4c-9017-360326e57b9d   5Gi        RWO            Delete     
 
 ### stats-collector-db disk issues
 
-In most cases, if you are having disk issues with `stats-collector-db`, then you are getting (some sort of alert that needs to be explicated here).
-You are in one of two scenarios when this happens: either there is high disk usage and the cluster is still running, or the disk is full and the cluster is crashing.
+In most cases, if you are having disk issues with `stats-collector-db`, then you are getting either:
+
+1. An alert in alert manager saying your disk is close to capacity, if your cluster is still running as the disk is not yet full.
+1. An alert in alert manager saying a pod is in a crash loop, if your cluster is crashed due to full disk. You also won't be able to get relevant disk stats in your cluster's **Monitoring** tab.
+
 You can review the two scenarios and the available workarounds below.
 
 #### Scenario 1: High disk usage while the cluster is still running
@@ -664,11 +667,17 @@ Perform the following steps to reduce the retention rate:
 kubectl rollout restart deploy/upm-api-stats-collector -n upm-api-stats-collector
 ```
 
+After completing these steps, you should notice DB usage staying within the stable range and the alert in Alert Manager should disappear.
+
 ##### Solution B: Increase disk volume size
 
 If you need to keep 7 days of data, you must increase the disk's storage capacity to solve the issue.
 
 1. Edit the cluster configuration.
+
+```bash
+kubectl edit cluster stats-collector-db -n upm-api-stats-collector
+```
 
 1. Locate the `stats-collector-db` specification and increase the value of `.spec.storage.size` to the preferred size.
 
@@ -704,7 +713,14 @@ kubectl delete cluster stats-collector-db -n upm-api-stats-collector
 S3/edb-internal-backups/<your-S3-string>/databases/transporter-db/
 ```
 
-1. Run `helm upgrade` to recreate an empty database with the default settings.
+1. Run `helm upgrade` to recreate an empty database with the default settings:
+
+```bash
+helm upgrade -n edbpgai-bootstrap \
+--install -f ./values.yaml \
+--version "${EDB_PLATFORM_VERSION}" \
+edbpgai-bootstrap "${HCP_HELM_REPO_NAME}/edbpgai-bootstrap
+```
 
 1. Restart `upm-api-stats-collector`:
 
@@ -718,14 +734,30 @@ If you need to preserve the existing data, you must increase the disk's volume s
 
 1. Edit the cluster configuration.
 
+```bash
+kubectl edit cluster stats-collector-db -n upm-api-stats-collector
+```
+
 1. Locate. the `stats-collector-db` specification and increase the value of `.spec.storage.size`.
 
 1. Delete the pod in the crashing loop.
 
 1. Restart `ump-api-stats-collector`.
 
+```bash
+kubectl rollout restart deploy/upm-api-stats-collector -n upm-api-stats-collector
+```
+
 Once restarted, the database has a larger volume, which resolves the crash loop.
 
 !!! Warning
 Increasing the volume size above the default blocks patch version upgrades for clusters running version `1.2.x`.
+!!!
 
+#### How to re-enable cluster upgrades
+
+If you have previously increased the disk volume size but now need to perform a minor version upgrade on HM v1.2.x, then you must first resize the database back to the default size (50GB).
+
+!!! note
+Please contact the Support team for assistance with the database resizing procedure.
+!!!
