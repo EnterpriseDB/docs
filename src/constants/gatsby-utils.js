@@ -328,13 +328,18 @@ const treeToNavigation = (treeNode, pageNode) => {
     (path.includes(rootNode.path) ||
       (rootNode.path.includes(path) && rootNode.depth === depth + 1))
   ) {
-    rootNode.items = treeNode.children.map((n) => {
-      const navNode = treeToNavigation(n, pageNode);
-      // mark "fake" children so that they can be made visually distinct, ignored, etc.
-      if (n.parent !== treeNode || n.rootedTo === treeNode)
-        navNode.rootedTo = true;
-      return navNode;
-    });
+    rootNode.items = treeNode.children
+      .map((n) => {
+        // ignore nodes that are marked as such
+        if (n.mdxNode?.frontmatter?.navExclude) return null;
+
+        const navNode = treeToNavigation(n, pageNode);
+        // mark "fake" children so that they can be made visually distinct, ignored, etc.
+        if (n.parent !== treeNode || n.rootedTo === treeNode)
+          navNode.rootedTo = true;
+        return navNode;
+      })
+      .filter((n) => !!n);
   } else {
     rootNode.items = [];
   }

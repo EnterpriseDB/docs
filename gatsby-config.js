@@ -1,6 +1,7 @@
 require("dotenv").config({
   path: `.env.${process.env.NODE_ENV}`,
 });
+const path = require("path");
 const gracefulFs = require("graceful-fs");
 
 const algoliaTransformer = require("./src/constants/algolia-indexing.js");
@@ -321,6 +322,13 @@ module.exports = {
         // If you do not provide a crossOrigin option, it will skip CORS for manifest.
         // Any invalid keyword or empty string defaults to `anonymous`
         crossOrigin: `use-credentials`,
+      },
+    },
+    {
+      resolve: "gatsby-plugin-root-import",
+      options: {
+        unversioned: path.join(__dirname, "advocacy_docs"),
+        versioned: path.join(__dirname, "product_docs", "docs"),
       },
     },
     {

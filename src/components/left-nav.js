@@ -104,11 +104,11 @@ const LeftNav = ({
 }) => {
   return (
     <ul className="list-unstyled mt-0">
-      {versionArray ? (
+      {version ? (
         <SectionHeadingWithVersions
           navTree={navTree}
           path={versionedPath}
-          versionArray={versionArray}
+          versionArray={versionArray || [version]}
           iconName={iconName}
           product={product}
           hideVersion={hideVersion}

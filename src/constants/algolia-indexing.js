@@ -126,6 +126,16 @@ const mdxTreeToSearchNodes = async (rootNode, filePath) => {
 
   // load imported MDX files and parse them into ASTs
   for (let [constName, importPath] of Object.entries(importConstants)) {
+    if (importPath.startsWith("versioned/"))
+      importPath = importPath.replace(
+        /^versioned\//,
+        path.resolve("product_docs/docs/") + "/",
+      );
+    if (importPath.startsWith("unversioned/"))
+      importPath = importPath.replace(
+        /^unversioned\//,
+        path.resolve("advocacy_docs/") + "/",
+      );
     let importedFile = await read(
       path.resolve(path.dirname(filePath), importPath),
     );

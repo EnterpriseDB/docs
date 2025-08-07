@@ -230,6 +230,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirectsGenerated
             navTitle
             navigation
+            navExclude
             navRootedTo
             noindex
             originalFilePath
@@ -590,6 +591,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       katacodaPanel: DemoPanel
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
+      navExclude: Boolean
       navRootedTo: String
       noindex: Boolean
       originalFilePath: String
