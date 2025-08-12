@@ -3,8 +3,160 @@ product: EDB Postgres Distributed
 version: 6.1.0
 date:  19 August 2025
 intro: |
-  This is the first release of EDB Postgres Distributed 6.1, which includes bug fixes and enhancements to the new features introduced in PGD 6.0.
+  This is a minor release of PGD 6, which introduces direct upgrade support from PGD 4.4.0+ and PGD 5.9.0+. This makes it the first version of PGD 6 that allows for a seamless, in-place upgrade from older versions. In addition to this key feature, PGD 6.1.0 also includes a variety of new features, enhancements, and important bug fixes.
+highlights: | 
+ - **Seamless upgrades from PGD 4 and PGD 5 to PGD 6**: PGD 4.4.0+ and PGD 5.9.0+ users can now perform a direct upgrade to PGD 6, beginning with PGD 6.1.0, ensuring a smooth transition to the latest features.
+ - **Replication to Apache Iceberg**: PGD now supports replication to Apache Iceberg when using the Analytics Accelerator. This new capability allows you to stream data directly from your PGD cluster to an Iceberg data lake and also query the Iceberg data directly from within PGD. This significantly expands your options for large-scale data analytics and integration.
+ - **PGD 6 now supports Materialized Views, including CREATE, ALTER, REFRESH, and DROP.**:  The  CREATE, ALTER, REFRESH, and DROP commands are replicated across the cluster, ensuring that materialized views are consistent on all nodes. When a materialized view is created or concurrently refreshed, the data is populated on the upstream node and then replicated to others, providing full support for this functionality.
 relnotes:
+- relnote: New Function `bdr.autopartition_detach_partition()`
+  details: |
+    For partitions managed by PGD AutoPartition, a new function was introduced: bdr.autopartition_detach_partition(). This gives you greater control over your data retention strategy by allowing you to detach a partition and manually archive its data before it is permanently removed.
+   jira: BDR-82332
+   type: Feature
+   impact: Medium
+
+ - relnote: Simplified Node Configuration with the PGD CLI
+  details: |
+   The pgd command-line tool now includes new commands to make managing individual node configurations easier. You can now use pgd node <node-name> get-config and pgd node <node-name> set-config to retrieve and update specific Postgres settings (GUCs) for any node in your cluster directly from the CLI.
+  jira: 
+  type: Feature
+  impact: Medium
+
+- relnote: PGD CLI View Commit Scopes
+  details: |
+    The PGD CLI now includes a new command, pgd commit-scopes list, that allows you to view the commit scope configuration for your cluster. This command provides details on all commit scopes, including their rules and the groups they apply to, which improves the visibility and management of your data consistency settings.
+ jira: 
+ type: Feature
+impact: Medium
+
+- relnote: PGD CLI -  Part a Node from a Cluster
+details: |
+  The PGD CLI now includes a new command, pgd node part, which provides a streamlined way to remove a node from an active cluster. This command automates the process of calling the node_part SQL function and reports on its progress, simplifying node management directly from the command line.
+jira: 
+type: Feature
+impact: Medium
+
+- relnote: Leader DDL Lock
+details: |
+  New lock type leader DDL lock is used by default for locking DDL statements. This lock locks on write-leaders only, not requiring majority nodes to participate in the locking operation. Old behavior can be restored by adjusting bdr.ddl_locking configuration parameter.
+jira: 
+type: Feature
+impact: Medium
+
+- relnote: Replication of Roles to witness nodes
+details: |
+  Roles are now replicated to witness nodes when they join the nodegroup, and also as and when they are created or altered on data nodes. This is useful mainly when dealing with GUC permissions.
+jira: 
+type: Feature
+impact: Medium
+
+- relnote: Improve Raft snapshot export/import to reset Raft completely
+details: |
+  We've made improvements to how our Raft consensus mechanism handles snapshots. This ensures that in the rare event of a data consistency issue, restoring a snapshot will now fully reset the system's state, allowing operations to resume smoothly from a consistent starting point.
+jira: 
+type: Enhancement
+impact: Medium
+
+- relnote: EPAS Interval Partition Support for PGD
+details: |
+  A new enhancement allows partitions created by EDB Postgres Advanced Server (EPAS) AutoPartition to work correctly within a multi-node PGD environment. This fix ensures partitions are created consistently on each node and are visible across all nodes.
+jira: 
+type: Enhancement
+impact: Medium
+
+- relnote: Improved max_connections Error Reporting
+details: |
+  The Connection Manager now provides more helpful and specific error messages when a max_connections limit is reached. Users will now see a clear message like "sorry, too many clients already," making it much easier to diagnose connection issues.
+jira: 
+type: Enhancement
+impact: Medium
+
+- relnote: Support for commands that generate Table Rewrites in an explicit transaction block
+details: |
+  PGD now supports executing ALTER TABLE commands that generate a table rewrite within a transaction block. Multiple commands are supported in a single transaction block. This simplifies complex DDL operations by applying all changes as a single atomic unit and provides performance optimizations when multiple commands target the same table.
+jira: 
+type: Enhancement
+impact: Medium
+
+- relnote: Postgres Compatibility with PGD - Phase 5
+details: |
+  This is a placeholder for future updates regarding Postgres compatibility.
+jira: BDR-5725
+type: Enhancement
+impact: Medium
+
+- relnote: Removal of listen_address Group Option
+details: |
+  The listen_address option has been removed from pgd group set-option to simplify configuration. The Connection Manager will now use the value from the listen_addresses GUC directly, resolving issues with setting hostnames or multiple addresses that were previously unsupported.
+jira: 
+type: Change
+impact: Medium
+
+- relnote: Fix for Mixed_version Clusters
+details: |
+  We've resolved a bug that could cause replication to fail in a mixed-version PGD cluster (e.g., combining Postgres 12 and Postgres 16), an architecture used temporarily during postgres rolling upgrade. Previously, DDL statements on a newer node could lead to replication slot disconnection on older nodes, with an "unrecognized configuration parameter" error. This fix ensures that replication now functions correctly during a rolling upgrade or in a temporary mixed-version state.
+jira: 46373
+type: Bug Fix
+impact: Medium
+
+- relnote: Connection Manager Behavior on Routing Changes
+  details: |
+    The Connection Manager now correctly handles connections following a change in cluster routing configuration (e.g., switching between global and no routing). This resolves unexpected behavior and ensures client connections are routed as intended after a configuration update.
+jira: 
+type: Bug Fix
+impact: Medium
+
+- relnote: Fix for node_pkey Errors When Rebuilding Parted Nodes
+  details: |
+    A fix has been added to address a bug that could cause a consensus worker to crash with a duplicate key value violates unique constraint "node_pkey" error when a parted node was being rebuilt. This fix ensures that you can now successfully rebuild a parted node using bdr_init_physical without encountering this issue.
+jira: 44467, 45084
+type: Bug Fix
+impact: Medium
+
+- relnote: PGD CLI cluster verify Command Fix for Witness-Only Groups
+  details: |
+    The pgd cluster verify command no longer displays a warning for witness-only groups that do not contain data nodes. This resolves an issue where the command incorrectly flagged these groups, ensuring that the verification output is now accurate for all cluster types.
+jira: 
+type: Bug Fix
+impact: Medium
+
+- relnote: Raft Fix for Parting Lagging Nodes
+details: |
+  Raft no longer fails to recover after a heavily-lagging node that was previously a leader is parted from the cluster. This fixes a bug where the Raft leader could crash with a "BDR node XXX not found" error, which previously required a manual, forceful reset of the Raft state. Now, Raft correctly handles this scenario and recovers automatically, ensuring cluster stability.
+jira: BDR-50099
+type: Bug Fix
+impact: Medium
+
+- relnote: Fix for PGD CLI Multi-Group Setup
+details: |
+  A bug has been fixed in the PGD CLI setup command that prevented the creation of multi-group clusters. Previously, the command would fail with an unhelpful error when attempting to add a node to a second group. The fix ensures that the command now correctly handles the creation of nodes in new groups, allowing for successful multi-group cluster setup.
+jira: 
+type: Bug Fix
+impact: Medium
+
+- relnote: Fix for CLI setup Command GUC Update
+details: |
+  The PGD CLI setup command no longer fails when attempting to update Postgres settings on remote nodes. This fix resolves a "malformed array literal" error that occurred during the cluster setup, improving the reliability of the initialization process.
+jira: 
+type: Bug Fix
+impact: Medium
+
+- relnote: Fix for "Clock Has Moved Backwards" Error with Snowflake Sequences
+details: |
+  A race condition has been fixed that could cause a "clock has moved backwards" error when using Snowflake sequences, even when the system clock was functioning correctly. This fix ensures the sequence correctly handles concurrent access, preventing this error and improving the reliability of Snowflake sequence generation.
+jira: 49376, 43659
+type: Bug Fix
+impact: Medium
+
+- relnote: Fix a crash with pg_failover_slots
+details: |
+  Ensure that CDC hooks are no-op when recovery is in progress or the backend is not connected to a database. This can definitely happen if pg_failover_slots is active.
+jira: 
+type: Bug Fix
+impact: Medium
+
+
 - relnote: Added CLI commands to get and update Postgres settings (GUC).
   details: |
     Add the `pgd node get-config` and `pgd node set-config` commands to allow users to retrieve and modify Postgres settings (GUC) via the CLI.
