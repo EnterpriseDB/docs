@@ -7,7 +7,7 @@ import unified from "unified";
 import visit from "unist-util-visit";
 import rehypeParse from "rehype-parse";
 import hast2html from "hast-util-to-html";
-import { htmlVoidElements } from "html-void-elements";
+import { default as htmlVoidElements } from "html-void-elements" with { type: "json" };
 
 export default function remarkMdxEmbeddedHast() {
   const compiler = this.Compiler;
@@ -29,8 +29,7 @@ export default function remarkMdxEmbeddedHast() {
           .parse(node.value);
 
         if (isUsableHast(hast)) {
-          if (node.position?.start)
-            offsetPosition(hast, node.position?.start);
+          if (node.position?.start) offsetPosition(hast, node.position?.start);
           node.type = "jsx-hast";
           node.children = hast.children;
         } else if (isOpeningTag(hast, node.value)) {
@@ -90,7 +89,10 @@ export default function remarkMdxEmbeddedHast() {
       let endIndex = index + 1;
       while (
         endIndex < parent.children.length &&
-        !(parent.children[endIndex].type === "jsx" && parent.children[endIndex].value.startsWith(valueToMatch))
+        !(
+          parent.children[endIndex].type === "jsx" &&
+          parent.children[endIndex].value.startsWith(valueToMatch)
+        )
       ) {
         ++endIndex;
       }
@@ -180,16 +182,21 @@ export default function remarkMdxEmbeddedHast() {
     }
   }
 
-  function offsetPosition(node, offsetPoint)
-  {
+  function offsetPosition(node, offsetPoint) {
     visit(node, (child) => {
       if (!child.position) return;
-      if (child.position.start?.line) child.position.start.line += offsetPoint.line - 1;
-      if (child.position.start?.column) child.position.start.column += offsetPoint.column - 1;
-      if (child.position.start?.offset) child.position.start.offset += offsetPoint.offset;
-      if (child.position.end?.line) child.position.end.line += offsetPoint.line - 1;
-      if (child.position.end?.column) child.position.end.column += offsetPoint.column - 1;
-      if (child.position.end?.offset) child.position.end.offset += offsetPoint.offset;
+      if (child.position.start?.line)
+        child.position.start.line += offsetPoint.line - 1;
+      if (child.position.start?.column)
+        child.position.start.column += offsetPoint.column - 1;
+      if (child.position.start?.offset)
+        child.position.start.offset += offsetPoint.offset;
+      if (child.position.end?.line)
+        child.position.end.line += offsetPoint.line - 1;
+      if (child.position.end?.column)
+        child.position.end.column += offsetPoint.column - 1;
+      if (child.position.end?.offset)
+        child.position.end.offset += offsetPoint.offset;
     });
   }
 }
