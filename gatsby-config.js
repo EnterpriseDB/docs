@@ -175,7 +175,7 @@ module.exports = {
   pathPrefix: "/docs",
   siteMetadata: {
     title: "EDB Docs",
-    baseUrl: "https://www.enterprisedb.com/docs",
+    baseUrl: "https://www.enterprisedb.com",
     imageUrl: "https://www.enterprisedb.com/docs/images/social.jpg",
     siteUrl: "https://www.enterprisedb.com/docs",
     algoliaIndex: algoliaIndex,

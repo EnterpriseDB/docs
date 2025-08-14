@@ -7,19 +7,27 @@ import { useLocation } from "@gatsbyjs/reach-router";
 const childToString = (child) => {
   if (typeof child === "string") {
     return child; // hit string, unroll
+  } else if (child && child.props && child.props.children?.map) {
+    return child.props.children.map((c) => childToString(c)).join("");
   } else if (child && child.props) {
     return childToString(child.props.children);
-  }
+  } else console.warn("Unexpected child type in CodeBlock:", child);
 
   return "";
 };
 
 const popExtraNewLines = (code) => {
+  if (typeof code[0] === "string") code[0] = code[0].replace(/^\n+/, "");
+  if (typeof code[code.length - 1] === "string")
+    code[code.length - 1] = code[code.length - 1].replace(/\n+$/, "");
   while (
-    code.length - 1 > 0 &&
-    childToString(code[code.length - 1]).trim() === ""
+    code.length > 0 &&
+    childToString(code[code.length - 1]).replace(/\n+$/, "") === ""
   ) {
     code.pop();
+  }
+  while (code.length > 0 && childToString(code[0]).replace(/^\n+/, "") === "") {
+    code.shift();
   }
 };
 
@@ -63,6 +71,8 @@ const splitChildrenIntoCodeAndOutput = (rawChildren, urlpath) => {
       code.push(child);
     }
   }
+
+  popExtraNewLines(code);
 
   return [code, output];
 };
@@ -176,21 +186,17 @@ const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
     ? ["shell"].concat(codeLanguages?.split(",")?.map((l) => l.trim()))
     : [];
 
-  if (codeContent.length > 0) {
-    return (
-      <figure className="codeblock-wrapper katacoda-enabled">
-        <CodePre
-          className={`language-${language}`}
-          content={codeContent}
-          runnable={execLanguages.includes(language)}
-          startWrapped={startWrapped}
-        />
-        {outputContent.length > 0 && <OutputPre content={outputContent} />}
-      </figure>
-    );
-  } else {
-    return null;
-  }
+  return (
+    <figure className="codeblock-wrapper katacoda-enabled">
+      <CodePre
+        className={`language-${language}`}
+        content={codeContent}
+        runnable={execLanguages.includes(language)}
+        startWrapped={startWrapped}
+      />
+      {outputContent.length > 0 && <OutputPre content={outputContent} />}
+    </figure>
+  );
 };
 
 export default CodeBlock;
