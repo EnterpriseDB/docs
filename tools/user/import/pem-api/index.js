@@ -1,5 +1,5 @@
 import path from "path";
-import { existsSync } from "fs";
+import { existsSync, write } from "fs";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
@@ -21,6 +21,7 @@ import nunjucks from "nunjucks";
 import JSON5 from "json5";
 import { parseFragment, serialize } from "parse5";
 import { htmlToJsx } from "html-to-jsx-transform";
+import { rootCertificates } from "tls";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const basePath = path.resolve(__dirname, "../../../..");
@@ -87,7 +88,7 @@ async function cleanup() {
 async function checkoutVersionBranch({ latestVersionPath, version }) {
   console.log("Checking out version branch...");
   const branch = `REL-${version.replace(/\./g, "_")}`;
-  execSync(`cd ${workDir} && git checkout ${branch} && cd $OLDPWD`);
+  execSync(`cd ${workDir} && git checkout ${branch} && git pull && cd $OLDPWD`);
 }
 
 async function loadPEMConfig() {
@@ -133,7 +134,9 @@ async function processAPIDefs(pemState, config, apiDefs) {
   });
   nunjucks.installJinjaCompat();
 
-  const outputDir = path.join(pemState.latestVersionPath, "api");
+  const outputDir = path.join(pemState.latestVersionPath, "pem_rest_api");
+  await fs.rm(outputDir + ".mdx", { force: true }).catch(() => {}); // in case we previously had a single-file output
+  await fs.rm(outputDir, { force: true, recursive: true }).catch(() => {}); // clean directory, if it exists
   await fs.mkdir(outputDir, { recursive: true });
   const njContext = {
     ...config,
@@ -208,8 +211,8 @@ async function processAPIDef(inputFile, outputFile, frontmatter, context) {
   let mdast = mdToMdxProcessor.parse(outputvFile);
   mdast = await oaWidderProcessor.run(mdast, outputvFile);
   mdast = await mdToMdxProcessor.run(mdast, outputvFile);
-  outputvFile.contents = mdToMdxProcessor.stringify(mdast, outputvFile);
-  await fs.writeFile(outputFile, outputvFile.contents);
+  if (inputFile === "REST_API_INDEX.json") await save(mdast, outputFile);
+  else await paginateAndSave(mdast, outputFile);
 }
 
 const mdProcessor = unified()
@@ -489,16 +492,11 @@ function mdToMdxTransformer() {
       parent.children.splice(index, 1, ...replacement);
     });
 
-    frontmatter = Object.assign(
-      {},
-      metadata,
-      {
-        title: title || metadata.title,
-        navTitle: metadata.navTitle || title,
-        navigation: metadata.navigation,
-      },
-      frontmatter,
-    );
+    frontmatter = Object.assign({}, metadata, {
+      title: title || metadata.title,
+      navTitle: metadata.navTitle || title,
+      navigation: metadata.navigation,
+    });
     if (!frontmatter.title) {
       console.error(
         `Title missing: ${JSON.stringify(frontmatter, null, 2)}, ${JSON.stringify(metadata, null, 2)}, ${JSON.stringify(title, null, 2)}`,
@@ -522,4 +520,121 @@ function mdToMdxTransformer() {
 
 function attrEscape(str) {
   return str.replace("<", "&lt;").replace("&", "&amp;").replace('"', "&quot;");
+}
+
+async function save(mdast, outputFile) {
+  const contents = mdToMdxProcessor.stringify(mdast, {
+    contents: "",
+    path: outputFile,
+  });
+  await fs.writeFile(outputFile, contents, "utf8");
+}
+
+async function paginateAndSave(mdast, outputFile) {
+  // index each potential link target by 2nd-level heading. Break into pages, with index as the content before the first 2nd-level heading
+  // rewrite links in each page to point to the correct page (when target is in another section)
+  const basePath = path.join(
+    path.dirname(outputFile),
+    path.basename(outputFile, ".mdx"),
+  );
+  await fs.rm(basePath, { recursive: true, force: true }).catch(() => {});
+  await fs.mkdir(basePath, { recursive: true });
+  let currentFile = "index.mdx";
+  let currentNodes = [];
+  let baseTitle = "";
+  let frontmatter = {};
+  let inSchemas = false;
+  const mapIdToFile = new Map();
+  const sections = [];
+  const write = async (node) => {
+    const outputFile = path.join(basePath, currentFile);
+    const root = { type: "root", children: currentNodes };
+    sections.push({ outputFile, root });
+    if (node) {
+      frontmatter.navTitle = mdast2string(node);
+      frontmatter.title = baseTitle + ": " + frontmatter.navTitle;
+      currentFile =
+        (frontmatter.navTitle || "section")
+          .toLowerCase()
+          .replace(/[^\w]+/g, "-")
+          .replace(/^-+|-+$/g, "") + ".mdx";
+      if (currentFile === "index.mdx") currentFile = "_index.mdx"; // avoid overwriting index
+      currentNodes = [{ type: "yaml", value: dump(frontmatter) }];
+    }
+  };
+
+  for (let node of mdast.children) {
+    if (node.type === "yaml") {
+      frontmatter = load(node.value);
+      baseTitle = frontmatter.title || "";
+    } else if (node.type === "heading" && node.depth === 2 && !inSchemas) {
+      const title = mdast2string(node);
+      if (title.toLowerCase() === "schemas") inSchemas = true; // do not split further after this
+      await write(node);
+      continue;
+    } else if (
+      node.type === "heading" &&
+      node.depth === 3 &&
+      node.children?.[0]?.type === "inlineCode" &&
+      !inSchemas
+    ) {
+      node.depth = 2; // promote these to H2 so we get them in the ToC
+    }
+    currentNodes.push(node);
+  }
+  await write();
+
+  // index links
+  for (let section of sections) {
+    visit(section.root, "element", (node) => {
+      if (node.properties?.id) {
+        mapIdToFile.set(node.properties.id, section.outputFile);
+      }
+    });
+  }
+
+  for (let section of sections) {
+    const frontmatter = load(section.root.children[0].value);
+    // add navigation
+    if (section.outputFile === path.join(basePath, "index.mdx")) {
+      frontmatter.navigation = sections
+        .map((s) => path.basename(s.outputFile, ".mdx"))
+        .filter((f) => f !== "index");
+      frontmatter.indexCards = "simple";
+    } else {
+      // add description
+      for (let node of section.root.children) {
+        if (node.type === "heading") break;
+        if (node.type === "paragraph") {
+          frontmatter.description = mdast2string(node);
+          break;
+        }
+      }
+    }
+
+    section.root.children[0].value = dump(frontmatter);
+
+    // rewrite links
+    visit(section.root, ["link", "element"], (node) => {
+      if (node.url?.startsWith("#") || node.properties?.href?.startsWith("#")) {
+        const targetId = (node.url || node.properties.href).slice(1);
+        const targetFile = mapIdToFile.get(targetId);
+        if (targetFile && targetFile !== section.outputFile) {
+          const newUrl =
+            path.relative(path.dirname(section.outputFile), targetFile) +
+            "#" +
+            targetId;
+          if (node.url) node.url = newUrl;
+          else if (node.properties?.href) node.properties.href = newUrl;
+        }
+      }
+    });
+
+    // write out file
+    const contents = mdToMdxProcessor.stringify(section.root, {
+      contents: "",
+      path: section.outputFile,
+    });
+    await fs.writeFile(section.outputFile, contents);
+  }
 }
