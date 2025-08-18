@@ -305,158 +305,83 @@ Some variants of `ALTER TABLE` have restrictions, noted below.
 
 #### ALTER TABLE examples
 
-This next example works because the type change is binary coercible and so doesn't
-cause a table rewrite. It executes as a catalog-only change.
 
+Different types of `ALTER TABLE ... ALTER COLUMN TYPE` (ATCT) operations are possible. Some ATCT operations update only the metadata of the underlying column type and don't require a rewrite of the underlying table data. This is typically the case when the existing column type and the target type are binary coercible. 
 ```sql
 CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(20));
 ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(128);
 ```
 
-However, making this change to reverse the command isn't possible because
-the change from `VARCHAR(128)` to `VARCHAR(20)` isn't binary coercible.
-
-```sql
-ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(20);
-```
-
-For workarounds, see [Restricted DDL workarounds](ddl-workarounds).
-
-It's useful to provide context for different types of `ALTER TABLE ...
-ALTER COLUMN TYPE` (ATCT) operations that are possible in general and in
-nonreplicated environments.
-
-Some ATCT operations update only the metadata of the underlying column
-type and don't require a rewrite of the underlying table data. This is
-typically the case when the existing column type and the target type are
-binary coercible. For example:
-
+However, making this change to reverse the command that is changed from VARCHAR(128) to VARCHAR(20) isn't binary coercible and will result in table rewrite.
 ```sql
 CREATE TABLE sample (col1 BIGINT PRIMARY KEY, col2 VARCHAR(128), col3 INT);
 ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(256);
 ```
 
-You can also change the column type to `VARCHAR` or `TEXT`
-data types because of binary coercibility. Again, this is just a metadata
-update of the underlying column type.
-
+You can also change the column type to VARCHAR or TEXT data types because of binary coercibility. Again, this is just a metadata update of the underlying column type.
 ```sql
 ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR;
 ALTER TABLE sample ALTER COLUMN col2 TYPE TEXT;
 ```
 
-However, if you want to reduce the size of col2, then that leads to
-a rewrite of the underlying table data. Rewrite of a table is normally
-restricted.
 
+##### TABLE REWRITE examples:
+
+Users may want to change data types of columns, add columns with a non-null default, or run maintenance jobs. These operations are supported by DDL commands in PostgreSQL which could trigger a table rewrite. The table rewrite operation involves creating a new version of the table on disk.  DDL operations such as `CLUSTER` or `VACUUM` directly cause table rewriting without any change in table definition. DDL operations like `ALTER TABLE…ALTER COLUMN TYPE` might change columns and trigger a table rewrite. It copies all the existing data from the old version to the new one, and once the new version is ready and consistent, it replaces the old table with the new one.
+
+!!!Note
+  The examples provided here aren't an exhaustive list of possibly allowable ATCT operations.
+!!!
+Examples of typical table rewrite ATCT operations:
+
+Consider the following table: 
 ```sql
-ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
-ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a PGD node
+CREATE TABLE foo(
+    c1 int,
+    c2 int,
+    c3 int,
+    name text,
+    time_now timestamptz,
+    dollar numeric,
+    indian_currency int GENERATED ALWAYS AS (dollar * 90.50) STORED
+);
+```
+Given that table, the following ALTER TABLE commands will result in triggering a table rewrite.
+
+Change column data type:
+```sql
+ALTER TABLE foo ALTER c1 TYPE bigint;
 ```
 
-To give an example with nontext types, consider col3 above with type
-INTEGER. An ATCT operation that tries to convert to SMALLINT or BIGINT 
-fails in a similar manner as above.
-
+Change column type to incompatible type with USING clause:
 ```sql
-ALTER TABLE sample ALTER COLUMN col3 TYPE bigint;
-ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a PGD node
+ALTER TABLE foo ALTER COLUMN name TYPE int USING name::integer;
 ```
 
-In both of these failing cases, there's an automatic assignment
-cast from the current types to the target types. However, there's no
-binary coercibility, which ends up causing a rewrite of the underlying
-table data.
-
-In such cases, in controlled DBA environments, you can change
-the type of a column to an automatically castable one by adopting
-a rolling upgrade for the type of this column in a nonreplicated
-environment on all the nodes, one by one. Suppose the DDL isn't replicated
-and the change of the column type is to an automatically castable one. 
-You can then allow the rewrite locally on the node
-performing the alter, along with concurrent activity on other nodes on
-this same table. You can then repeat this nonreplicated ATCT operation
-on all the nodes one by one to bring about the desired change of the
-column type across the entire EDB Postgres Distributed cluster. Because this
-involves a rewrite, the activity still takes the DML lock for a
-brief period and thus requires that the whole cluster is available. With
-these specifics in place, you can carry out the rolling upgrade of the nonreplicated
-alter activity like this:
-
+Volatile column types:
 ```sql
--- foreach node in EDB Postgres Distributed cluster do:
-SET bdr.ddl_replication TO FALSE;
-ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
-ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
-RESET bdr.ddl_replication;
--- done
+ALTER TABLE foo ALTER COLUMN time_now TYPE timestamp;
 ```
 
-Due to automatic assignment casts being available for many data types,
-this local nonreplicated ATCT operation supports a wide variety of
-conversions. Also, ATCT operations that use a `USING` clause
-are likely to fail because of the lack of automatic assignment casts.
-This example shows a few common conversions with automatic assignment casts:
-
+Add column with mutable default:
 ```sql
--- foreach node in EDB Postgres Distributed cluster do:
-SET bdr.ddl_replication TO FALSE;
-ATCT operations to-from {INTEGER, SMALLINT, BIGINT}
-ATCT operations to-from {CHAR(n), VARCHAR(n), VARCHAR, TEXT}
-ATCT operations from numeric types to text types
-RESET bdr.ddl_replication;
--- done
+ALTER TABLE foo ADD COLUMN time_clock timestamptz NOT NULL DEFAULT clock_timestamp();
 ```
 
-This example isn't an exhaustive list of possibly allowable ATCT
-operations in a nonreplicated environment. Not all ATCT
-operations work. The cases where no automatic assignment is
-possible fail even if you disable DDL replication. So, while
-conversion from numeric types to text types works in a nonreplicated
-environment, conversion back from text type to numeric types fails.
-
+Generated columns:
 ```sql
-SET bdr.ddl_replication TO FALSE;
--- conversion from BIGINT to TEXT works
-ALTER TABLE sample ALTER COLUMN col3 TYPE TEXT;
--- conversion from TEXT back to BIGINT fails
-ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
-ERROR:  ALTER TABLE ... ALTER COLUMN TYPE which cannot be automatically cast to new type may not affect replicated tables on a PGD node
-RESET bdr.ddl_replication;
+ALTER TABLE foo ALTER COLUMN indian_currency TYPE numeric;
 ```
 
-While the ATCT operations in nonreplicated environments support a
-variety of type conversions, the rewrite
-can still fail if the underlying table data contains values that you can't
-assign to the new data type. For example, suppose the current type for
-a column is `VARCHAR(256)` and you try a nonreplicated ATCT
-operation to convert it into `VARCHAR(128)`. If there's any existing data
-in the table that's wider than 128 bytes, then the rewrite operation
-fails locally.
-
+Run multiple `ALTER TABLE` DDL operations in single transaction block:
 ```sql
-INSERT INTO sample VALUES (1, repeat('a', 200), 10);
-SET bdr.ddl_replication TO FALSE;
-ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(128);
-INFO:  in rewrite
-ERROR:  value too long for type character varying(128)
+BEGIN;
+ALTER TABLE foo ALTER c2 TYPE bigint;
+ALTER TABLE foo ALTER c3 TYPE bigint;
+COMMIT;
 ```
+In a PGD cluster this involves a rewrite, therefore, the rewrite activity takes the global leader lock of type DML and thus requires that all group leaders in cluster are available.
 
-If underlying table data meets the characteristics of the new type,
-then the rewrite succeeds. However,
-replication might fail if other nodes that haven't yet performed the
-nonreplicated rolling data type upgrade introduce new data that
-is wider than 128 bytes concurrently to this local ATCT operation. This
-brings replication to a halt in the cluster. So 
-be aware of the data type restrictions and characteristics at the
-database and application levels while performing these
-nonreplicated rolling data type upgrade operations. We strongly
-recommend that you perform and test such ATCT operations in
-controlled and fully aware DBA environments. These
-ATCT operations are asymmetric, and backing out certain changes that fail
-can lead to table rewrites that take a long time.
-
-Also, you can't perform the implicit castable ALTER activity in transaction blocks.
 
 ### ALTER TYPE
 
