@@ -217,6 +217,8 @@ that the upgraded node is working as expected.
 
 PGD 4 uses HARP-proxy based routing while PGD 5 uses PGD Proxy.  In PGD 6, both are replaced with Connection Manager.
 
+When you upgrade from PGD 4 or 5 to PGD 6, you must take steps to move to Connection Manager.
+
 HARP and PGD Proxy can temporarily coexist with the new
 [connection management](../routing) configuration. This means you can:
 
@@ -234,19 +236,73 @@ PGD 6.1.
 
 A PGD 4 cluster using HARP-proxy based routing continues this routing method to all nodes until the entire cluster is upgraded to 6.1.0 or higher.
 HARP-proxy based routing functions the same within a mixed version cluster. HARP uses its own mechanism to elect a leader since a 4.x cluster does not have a write leader. 
+
 There are two scenarios:
 
  - If Proxy runs separately from PGD nodes, connection manager can be enabled, but not used, on the upgraded nodes. Once the entire cluster is upgraded to version 6.1.0 or higher, connection manager is already enabled and ready. Applications then can be pointed to the connection manager port/node and it will start routing. Once confirmed to be working, proxy can be stopped.
+
  - If Proxy runs on one or more PGD nodes, connection manager can be kept disabled when restarting PGD to 6.1.  Disabling it will prevent port interference. Once the entire cluster is upgraded to version 6.1.0 or higher, use the following steps to change to connection manager routing:
 
-   1. Change the write leader to be same node as the leader proxy is using.
-   2. Choose a PGD node that is not the write leader.
-   3. Fence off with `route_fence` to *true* so it does not become the write leader.
+   1. From one of the upgraded 6.1 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
+
+```sql
+      DO $$
+DECLARE
+    rec RECORD;
+    command TEXT;
+BEGIN
+    FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+    LOOP
+        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
+```
+
+   2. Change the write leader to be same node as the leader proxy is using.
+   3. Choose a PGD node that is not the write leader and fence it off with `route_fence` to *true* so it does not become the write leader.
    4. Stop the node.
-   5. Enable connection manager and restart it.
-   6. Unfence the node.
-   7. Repeat the steps for all remaining nodes.
-   8. Stop proxy and let the application switch to connection manager.
+   5. Enable connection manager by setting the GUC `bdr.enable_builtin_connection_manager` to *true*. 
+   6. Restart the server.
+   7. Stop the HARP proxy on the node.
+   8. Stop the node. 
+   9. Restart the node. This will ensure the connection manager is running.
+    10. Unfence the node HARP as well as PGD routing.
+    11. Repeat the steps for all remaining nodes.
+    12. Stop proxy and let the application switch to connection manager.
+
 
 ### PGD 5 - Moving from PGD Proxy to Connection Manager
+
+A PGD 5.9 cluster first needs to start using the connection manager, since 6.1 does not support PGD proxy.
+
+1. From one of the PGD 5.9 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
+
+ -  ```sql
+      DO $$
+DECLARE
+    rec RECORD;
+    command TEXT;
+BEGIN
+    FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+    LOOP
+        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
+ ```
+  - !!! Note
+    No new users should be added to 5.9 after executing this. If they are added, run the query again. The above block does not change the passwords, it just ensure SCRAM hashes are same across the cluster on all nodes.
+  !!!
+
+    2. Fence a node in this cluster with route_fence so that it does not become the write leader.
+    3. Enable the GUC `bdr.enable_builtin_connection_manager` to *true*. 
+    4. Restart the server.
+    5.  Stop PGD proxy running on the server.
+    6. Restart the server. It will start with the connection manager running on the default port. If the proxy read and write ports were different, the connection manager port read and write ports can be changed to be the same as proxy by `bdr.alter_node_group_option()`.
+    7. Unfence the node.  This node can now accept connections from the user and route to the leader via connection manager.
+    8. Repeat this for each node in the cluster.  This will ensure all nodes are now routing via connection manager.
+    9. For each node in the cluster, upgrade it in a rolling manner as follows:
+
+
+    - Transfer leadership to another node if this node is the leader.
+    - Fence it so it cannot become the leader.
+    - Stop it.
+    - Restart it with the 6.1 package to begin the node upgrade.
+
+  
 
