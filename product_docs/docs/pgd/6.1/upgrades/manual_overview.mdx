@@ -226,34 +226,7 @@ There are two scenarios:
 
  - If Proxy runs on one or more PGD nodes, Connection Manager can be kept disabled when restarting PGD to 6.1.  Disabling it will prevent port interference. Once the entire cluster is upgraded to version 6.1.0 or higher, use the following steps to change to Connection Manager routing:
 
-   1. From one of the upgraded 6.1 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
-
-```sql
-      DO $$
-DECLARE
-    rec RECORD;
-    command TEXT;
-BEGIN
-    FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
-    LOOP
-        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
-```
-
-   2. Change the write leader to be same node as the leader proxy is using.
-   3. Choose a PGD node that is not the write leader and fence it off with `route_fence` to *true* so it does not become the write leader.
-   4. Stop the node.
-   5. Enable Connection Manager by setting the GUC `bdr.enable_builtin_connection_manager` to *true*. 
-   6. Restart the server.
-   7. Stop the HARP proxy on the node.
-   8. Stop the node. 
-   9. Restart the node. This will ensure the Connection Manager is running.
-    10. Unfence the node HARP as well as PGD routing.
-    11. Repeat the steps for all remaining nodes.
-    12. Stop proxy and let the application switch to Connection Manager.
-
-### Updated section:
-
-1. Before upgrade from PGD4.4+ to PGD6.1+, ensure the Connection Manager guc is set to *false* in postgresql.conf:
+1. Before upgrade from PGD 4.4+ to PGD 6.1+, ensure the Connection Manager guc is set to *false* in postgresql.conf:
 
 ```bash
 test-pgd6major-d1:~ $ psql bdrdb
@@ -307,7 +280,7 @@ Output:
 (1 row)
 ```
 
-4. Check the harp-proxy leader:
+4. Check the harp-proxy leader and PGD write leader and ensure they are the same:
 
 ```bash
 test-pgd6major-d1:~ $ harpctl get leader a
@@ -319,8 +292,6 @@ Cluster  Name                     Location Ready Fenced Allow Routing Routing St
 bdrgroup test-pgd6major-d2 a        true  false  true                         primary bdr  6             
 ```
 
-5. Check the PGD write leader:
-
 ```bash
 test-pgd6major-d1:~ $pgd group bdrgroup show --summary -o json | jq -r '. | .[3] | .value'
 ```
@@ -328,8 +299,6 @@ Output:
 ```
 test-pgd6major-d1
 ```
-
-6. Ensure the PGD write leader is the same as the harp-proxy leader:
 
 ```sql
 bdrdb=# select bdr.routing_leadership_transfer('bdrgroup','test-pgd6major-d2');
@@ -350,7 +319,7 @@ Output:
 test-pgd6major-d2
 ```
 
-7. Fence off the non write leader node from HARP: 
+5. Fence off the non write leader node from HARP and verify it was fenced, so it does not become the leader during the middle of the upgrade: 
 
 ```bash
 test-pgd6major-d1:~ $ harpctl fence test-pgd6major-d1 
@@ -359,8 +328,6 @@ Output:
 ```
 2025-08-19T07:20:20.204Z	INFO	cmd/fence.go:42	fence node test-pgd6major-d1
 ```
-
-8. Verify it is fenced:
 
 ```bash
 test-pgd6major-d1:~ $ harpctl get nodes
@@ -373,7 +340,7 @@ bdrgroup test-pgd6major-d1 a        false true   true          N/A            pr
 bdrgroup test-pgd6major-d2 a        true  false  true          ok             primary bdr  6             
 ```
 
-9. Fence from PGD’s routing (`route_fence: true`) as well , so it doesn't end up becoming the leader:
+6. Fence from PGD’s routing (`route_fence: true`) and verify, so it does not end up becoming the leader:
 
 ```bash
 test-pgd6major-d1:~ $ psql bdrdb
@@ -389,9 +356,6 @@ Output:
  
 (1 row)
 ```
-
-10. Verify it got fenced
-
 ```sql
 bdrdb=# select node_name,route_fence from bdr.node_routing_config_summary ;
 ```
@@ -403,19 +367,22 @@ Output:
  test-pgd6major-d1 | t
 (2 rows)
 ```
+7. Perform following steps on *test-pgd6major-d1* to upgrade it and enable connection manager when it comes up since it's disabled by default:
 
-11. Enable the Connection Manager by changing the `guc bdr.enable_builtin_connection_manager` to True in postgresql.conf file 
-12. Stop the Postgres service.
-13. Stop harp manager.
-14. Start the Postgres service.
-15. Start harp manager.
-16. Unfence d1 from harp.
+ - Stop the Postgres service.
+ - Install PGD 6.1 packages and remove PGD 4.4 package.
+ - Stop HARP manager.
+ - Enable the Connection Manager by changing the `guc bdr.enable_builtin_connection_manager` to True in postgresql.conf file 
+ - Start the Postgres service. This performs an in-place upgrade of the PGD local node to 6.1.
+ - Start the Postgres service.
+ - Start harp manager.
+ - Unfence d1 from harp.
 
 ```bash
 test-pgd6major-d1:~ $ harpctl unfence test-pgd6major-d1
 ```
 
-17. Unfence d1 from PGD’s routing 
+8. Unfence d1 from PGD’s routing 
 
 ```sql
 bdrdb=# SELECT bdr.alter_node_option(node_name := 'test-pgd6major-d1', config_key := 'route_fence', config_value := false::TEXT);
@@ -428,11 +395,21 @@ Output:
 (1 row)
 ```
 
-18. Repeat the same steps on all nodes.
-19. Stop proxy and let the application switch to Connection Manager.
-   
+9. Repeat the same steps on all nodes.  Use `bdr.group_raft_details` to confirm the cluster version is now at *6001*.
+10.  From one of the upgraded 6.1 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
 
-### End updated section
+```sql
+      DO $$
+DECLARE
+    rec RECORD;
+    command TEXT;
+BEGIN
+    FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+    LOOP
+        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
+```
+11. Stop proxy and let the application switch to Connection Manager.
+   
 
 ## PGD 5 - Moving from PGD Proxy to Connection Manager
 
