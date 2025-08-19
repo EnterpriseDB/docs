@@ -28,6 +28,38 @@ recovery (DR), such as in the following situations:
 You can use pg_dump, sometimes referred to as *logical backup*,
 normally with PGD.
 
+In order to reduce the risk of global lock timeouts, we recommend
+dumping pre-data, data, and post-data separately. For example:
+
+```console
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=pre-data -f pgd-pre-data.sql
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=data -f pgd-data.sql
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=post-data -f pgd-post-data.sql
+```
+
+And restore by directly executing these SQL files:
+
+```console
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -f pgd-pre-data.sql
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -f pgd-data.sql
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -f pgd-post-data.sql
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+```
+
+After which point the dump will be restored on all nodes in the cluster.
+
+In contrast if you do not split sections out with a naive pg_dump and
+pg_restore, the restore will likely fail with a global lock timeout.
+
+You should also:
+
+- Make sure you have enough disk space for the WAL which may temporarily build up during initial replication if large transactions are run
+- Consider increasing `bdr.global_lock_timeout` toward infinity if you continue to get lock timeouts
+- Consider setting `bdr.ddl_locking` to `off` while the initial load is happening
+
+#### Sequences
+
 pg_dump dumps both local and global sequences as if
 they were local sequences. This behavior is intentional, to allow a PGD
 schema to be dumped and ported to other PostgreSQL databases.
@@ -51,7 +83,7 @@ dump only with `bdr.crdt_raw_value = on`.
 Technical Support recommends the use of physical backup techniques for
 backup and recovery of PGD.
 
-### Physical backup
+## Physical backup and restore
 
 You can take physical backups of a node in an EDB Postgres Distributed cluster using
 standard PostgreSQL software, such as
@@ -81,6 +113,91 @@ PostgreSQL backup techniques to PGD:
     planning must also include plans for how to back up any unreplicated
     local data and a backup of at least one node that subscribes to each
     replication set.
+
+### Restore
+
+While you can take a physical backup with the same procedure as a
+standard PostgreSQL node, it's slightly more complex to
+restore the physical backup of a PGD node.
+
+### EDB Postgres Distributed cluster failure or seeding a new cluster from a backup
+
+The most common use case for restoring a physical backup involves the failure
+or replacement of all the PGD nodes in a cluster, for instance in the event of
+a data center failure.
+
+You might also want to perform this procedure to clone the current contents of a
+EDB Postgres Distributed cluster to seed a QA or development instance.
+
+In that case, you can restore PGD capabilities based on a physical backup
+of a single PGD node, optionally plus WAL archives:
+
+-   If you still have some PGD nodes live and running, fence off the host you
+    restored the PGD node to, so it can't connect to any surviving PGD nodes.
+    This practice ensures that the new node doesn't confuse the existing cluster.
+-   Restore a single PostgreSQL node from a physical backup of one of
+    the PGD nodes.
+-   If you have WAL archives associated with the backup, create a suitable
+    `postgresql.conf`, and start PostgreSQL in recovery to replay up to the latest
+    state. You can specify an alternative `recovery_target` here if needed.
+-   Start the restored node, or promote it to read/write if it was in standby
+    recovery. Keep it fenced from any surviving nodes!
+-   Clean up any leftover PGD metadata that was included in the physical backup.
+-   Fully stop and restart the PostgreSQL instance.
+-   Add further PGD nodes with the standard procedure based on the
+    `bdr.join_node_group()` function call.
+
+#### Cleanup of PGD metadata
+
+To clean up leftover PGD metadata:
+
+1.  Drop the PGD node using [`bdr.drop_node`](/pgd/6/reference/tables-views-functions/functions-internal#bdrdrop_node).
+2.  Fully stop and restart PostgreSQL (important!).
+
+#### Cleanup of replication origins
+
+You must explicitly remove replication origins with a separate step
+because they're recorded persistently in a system catalog. They're
+therefore included in the backup and in the restored instance. They
+aren't removed automatically when dropping the BDR extension because
+they aren't explicitly recorded as its dependencies.
+
+To track progress of incoming replication in a crash-safe way, 
+PGD creates one replication origin for each remote master node. Therefore, 
+for each node in the previous cluster run this once:
+
+```
+SELECT pg_replication_origin_drop('bdr_dbname_grpname_nodename');
+```
+
+You can list replication origins as follows:
+
+```
+SELECT * FROM pg_replication_origin;
+```
+
+Those created by PGD are easily recognized by their name.
+
+#### Cleanup of replication slots
+
+If a physical backup was created with `pg_basebackup`, replication slots
+are omitted from the backup.
+
+Some other backup methods might preserve replications slots, likely in
+outdated or invalid states. Once you restore the backup, use these commands to drop all replication slots:
+
+```
+SELECT pg_drop_replication_slot(slot_name)
+FROM pg_replication_slots;
+```
+
+If you have a reason to preserve some slots,
+you can add a `WHERE slot_name LIKE 'bdr%'` clause, but this is rarely
+useful.
+
+!!! Warning
+    Never use these commands to drop replication slots on a live PGD node
+
 
 ### Eventual consistency
 
@@ -200,88 +317,3 @@ of changes arriving from a single master in COMMIT order.
 !!! Note
     This feature is available only with EDB Postgres Extended.
     Barman doesn't create a `multi_recovery.conf` file.
-
-## Restore
-
-While you can take a physical backup with the same procedure as a
-standard PostgreSQL node, it's slightly more complex to
-restore the physical backup of a PGD node.
-
-### EDB Postgres Distributed cluster failure or seeding a new cluster from a backup
-
-The most common use case for restoring a physical backup involves the failure
-or replacement of all the PGD nodes in a cluster, for instance in the event of
-a data center failure.
-
-You might also want to perform this procedure to clone the current contents of a
-EDB Postgres Distributed cluster to seed a QA or development instance.
-
-In that case, you can restore PGD capabilities based on a physical backup
-of a single PGD node, optionally plus WAL archives:
-
--   If you still have some PGD nodes live and running, fence off the host you
-    restored the PGD node to, so it can't connect to any surviving PGD nodes.
-    This practice ensures that the new node doesn't confuse the existing cluster.
--   Restore a single PostgreSQL node from a physical backup of one of
-    the PGD nodes.
--   If you have WAL archives associated with the backup, create a suitable
-    `postgresql.conf`, and start PostgreSQL in recovery to replay up to the latest
-    state. You can specify an alternative `recovery_target` here if needed.
--   Start the restored node, or promote it to read/write if it was in standby
-    recovery. Keep it fenced from any surviving nodes!
--   Clean up any leftover PGD metadata that was included in the physical backup.
--   Fully stop and restart the PostgreSQL instance.
--   Add further PGD nodes with the standard procedure based on the
-    `bdr.join_node_group()` function call.
-
-#### Cleanup of PGD metadata
-
-To clean up leftover PGD metadata:
-
-1.  Drop the PGD node using [`bdr.drop_node`](/pgd/6/reference/tables-views-functions/functions-internal#bdrdrop_node).
-2.  Fully stop and restart PostgreSQL (important!).
-
-#### Cleanup of replication origins
-
-You must explicitly remove replication origins with a separate step
-because they're recorded persistently in a system catalog. They're
-therefore included in the backup and in the restored instance. They
-aren't removed automatically when dropping the BDR extension because
-they aren't explicitly recorded as its dependencies.
-
-To track progress of incoming replication in a crash-safe way, 
-PGD creates one replication origin for each remote master node. Therefore, 
-for each node in the previous cluster run this once:
-
-```
-SELECT pg_replication_origin_drop('bdr_dbname_grpname_nodename');
-```
-
-You can list replication origins as follows:
-
-```
-SELECT * FROM pg_replication_origin;
-```
-
-Those created by PGD are easily recognized by their name.
-
-#### Cleanup of replication slots
-
-If a physical backup was created with `pg_basebackup`, replication slots
-are omitted from the backup.
-
-Some other backup methods might preserve replications slots, likely in
-outdated or invalid states. Once you restore the backup, use these commands to drop all replication slots:
-
-```
-SELECT pg_drop_replication_slot(slot_name)
-FROM pg_replication_slots;
-```
-
-If you have a reason to preserve some slots,
-you can add a `WHERE slot_name LIKE 'bdr%'` clause, but this is rarely
-useful.
-
-!!! Warning
-    Never use these commands to drop replication slots on a live PGD node
-
