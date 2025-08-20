@@ -2,6 +2,7 @@ import React, { useState, useLayoutEffect, useMemo } from "react";
 import { Helmet } from "react-helmet";
 import { withPrefix } from "gatsby";
 import useSiteMetadata from "../hooks/use-sitemetadata";
+import usePathPrefix from "../hooks/use-path-prefix";
 import {
   Archive,
   AuthenticatedContentPlaceholder,
@@ -66,9 +67,12 @@ const Layout = ({
   background = "light",
 }) => {
   const { baseUrl, imageUrl, title: siteTitle } = useSiteMetadata();
+  const prefix = usePathPrefix();
   const meta = pageMeta || {};
-  const url = meta.path ? baseUrl + meta.path : baseUrl;
-  const canonicalUrl = meta.canonicalPath ? baseUrl + meta.canonicalPath : url;
+  const url = meta.path ? baseUrl + prefix + meta.path : baseUrl + prefix + "/";
+  const canonicalUrl = meta.canonicalPath
+    ? baseUrl + prefix + meta.canonicalPath
+    : url;
   const title = meta.title ? `EDB Docs - ${meta.title}` : siteTitle;
 
   const [dark, setDark] = useState(false);
@@ -87,7 +91,7 @@ const Layout = ({
     ) {
       setDark(true);
     }
-  }, [setDark]);
+  }, [setDark, pageMeta]);
 
   const mdxComponents = useMemo(
     () => ({
