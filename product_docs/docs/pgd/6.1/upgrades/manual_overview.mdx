@@ -408,12 +408,12 @@ BEGIN
     LOOP
         command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
 ```
-11. Stop proxy and let the application switch to Connection Manager.
+11. Stop proxy and let the application switch to Connection Manager.  For new users added after this point, PGD 6.1 will replicate the same hashes to all nodes.
    
 
 ## PGD 5 - Moving from PGD Proxy to Connection Manager
 
-Use the following steps to move it to Connection Manager:
+Use the following steps to move from PGD Proxy to Connection Manager:
 
 1. From one of the PGD 5.9 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
 
@@ -426,6 +426,12 @@ BEGIN
     FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
     LOOP
         command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
+
+        EXECUTE command;
+    END LOOP;
+END;
+$$;
+SELECT wait_slot_confirm_lsn(NULL,NULL); 
  ```
   - !!! Note
     No new users should be added to 5.9 after executing this. If they are added, run the query again. The above block does not change the passwords, it just ensure SCRAM hashes are same across the cluster on all nodes.
@@ -443,7 +449,7 @@ BEGIN
     - Transfer leadership to another node if this node is the leader.
     - Fence it so it cannot become the leader.
     - Stop it.
-    - Restart it with the 6.1 package to begin the node upgrade.
+    - Restart it with the 6.1 package to begin the node upgrade. The node will upgrade to PGD 6.1 on restart.
 
   
 
