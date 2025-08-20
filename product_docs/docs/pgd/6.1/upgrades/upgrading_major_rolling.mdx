@@ -162,8 +162,102 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
   * Run `vacuumdb` with the `ANALYZE` option immediately after the upgrade but before introducing a heavy production load. Running this command minimizes the immediate performance impact, preparing the database for more accurate testing.
   * Remove the old version's data directory, `/opt/postgres/dataold`.
  
+## Worked example: Upgrade PGD 4 to PGD 6.1
 
-## Worked example
+This worked example describes an in-place major version rolling upgrade from PGD 4 to PGD 6.1.
+
+### Check harp-proxy leader
+
+Start the upgrade on a node that isn't the harp-proxy leader. Check the harp-proxy leader:
+
+```bash
+a14b6xa14b4tpgd6major-d1:~ $ harpctl get leader a
+```
+```
+Cluster  Name                     Location Ready Fenced Allow Routing Routing Status Role    Type Lock Duration 
+-------  ----                     -------- ----- ------ ------------- -------------- ----    ---- ------------- 
+bdrgroup test-pgd6major-d2 a        true  false  true                         primary bdr  6 
+```
+### Fence the node
+
+Fence off  the node to be upgraded from HARP and then verify it was fenced, so it does not become the leader during the middle of upgrade:
+```bash
+a14b6xa14b4tpgd6major-d1:~ $ harpctl fence a14b6xa14b4tpgd6major-d1
+```
+```
+2025-08-19T07:20:20.204Z	INFO	cmd/fence.go:42	fence node a14b6xa14b4tpgd6major-d1
+```
+```bash
+a14b6xa14b4tpgd6major-d1:~ $ harpctl get nodes
+Cluster  Name                     Location Ready Fenced Allow Routing Routing Status Role    Type Lock Duration 
+-------  ----                     -------- ----- ------ ------------- -------------- ----    ---- ------------- 
+bdrgroup a14b6xa14b4tpgd6major-d1 a        false true   true          N/A            primary bdr  6             
+bdrgroup a14b6xa14b4tpgd6major-d2 a        true  false  true          ok             primary bdr  6
+```
+
+### Stop the Postgres service
+
+On the fenced node, stop the Postgres service.
+
+### Stop HARP manager
+
+On the fenced node, stop HARP manager.
+
+### Remove and install packages
+
+On the fenced node, remove PGD 4.4 and the cli packages and install the PGD 6.1 packages.
+
+### Enable Connection Manager
+
+On the fenced node, enable Connection Manager by adding the guc `bdr.enable_builtin_connection_manager = true`  in postgresql.conf file. 
+
+### Start the Postgres service
+
+On the fenced node, start Postgres service. This performs an in-place upgrade of the PGD local node to PGD 6.1 with Connection Manager enabled.
+
+### Start the Postgres service
+
+On the fenced node, start the Postgres service.
+
+### Start HARP manager
+
+On the fenced node, start HARP manager.
+
+### Unfence the node
+Unfence the upgraded node from HARP:
+```bash
+a14b6xa14b4tpgd6major-d1:~ $ harpctl unfence a14b6xa14b4tpgd6major-d1
+```
+### Repeat steps for all nodes
+Repeat same steps on all other nodes. 
+
+### Confirm cluster version
+Confirm the updated cluster version is version 6001 by `running bdr.group_raft_details`.
+
+### Confirm SCRAM hashes
+
+From any of the upgrades nodes, run the following query to ensure that SCRAM hashes are the same across all nodes for each user. This is required before applications switch to Connection Manager.
+
+```sql
+DO $$
+DECLARE
+    rec RECORD;
+    command TEXT;
+BEGIN
+    FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+    LOOP
+        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
+        EXECUTE command;
+    END LOOP;
+END;
+```
+
+This completes the worked example for an in-place major version rolling upgrade from PGD 4 to PGD 6.1.
+
+
+
+
+## Worked example: Upgrade PGD 5 to PGD 6.1
 
 This worked example describes an in-place major version rolling upgrade (PGD & Postgres) of a 3-node PGD 5, EPAS 13 cluster to PGD 6, EPAS 17 cluster using the `pgd node upgrade` command.
 
@@ -254,6 +348,11 @@ witness-a1:/home/rocky $ /usr/edb/as17/bin/pgd group group-a show --summary
  Write Leader      | pgd-a1  
  Commit Scope      |         
 ```
+
+
+### Fence the node
+
+Fence a node in this cluster with `pgd node <node-name> set-option route_fence true` so that it does not become the write leader.
 
 ### Initialize the new Postgres instance
 
@@ -549,6 +648,9 @@ pgd-a1:/home/rocky $ /usr/edb/as17/bin/pgd nodes list --versions
 
 The BDR version for node **pgd-a1** was upgraded to 6.1.0 and the Postgres version to 17.6.0.
 
+### Unfence the node
+
+Unfence a node in this cluster with `pgd node <node-name> set-option route_fence false` so that it does not become the write leader.
 
 ### Verify the Connection Manager is working
 
