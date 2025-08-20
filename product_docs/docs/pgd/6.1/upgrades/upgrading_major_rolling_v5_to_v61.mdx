@@ -172,7 +172,7 @@ This worked example describes an in-place major version rolling upgrade (PGD & P
 Ensure you have a 3-node PGD 5, EPAS 13 cluster up and running. This is a TPA-deployed cluster.
 
 ```bash
-enterprisedb@pgd-a1:/home/rocky $ pgd nodes list
+pgd-a1:/home/rocky $ pgd nodes list
 ```
 ```
 Node Name  Group Name Node Kind Join State Node Status
@@ -195,10 +195,11 @@ dnf install edb-as17-server edb-pgd6-essential-epas17 -y
 
 ## Pre-upgrade steps
 
+### Version Check
 Check the current version of the cluster (optional).
 
 ```bash
-enterprisedb@pgd-a1:/home/rocky $ pgd nodes list --versions
+pgd-a1:/home/rocky $ pgd nodes list --versions
 ```
 ```
 Node Name  BDR Version  Postgres Version
@@ -208,10 +209,11 @@ pgd-a2     5.9.0        13.22.28
 witness-a1 5.9.0        13.22.28        
 ```
 
+### Write leader node verification
 Ensure that the node you want to upgrade is not the write leader node.
 
 ```bash
-enterprisedb@pgd-a1:/home/rocky $ pgd group group-a show --summary
+pgd-a1:/home/rocky $ pgd group group-a show --summary
 ```
 ```
 Group Property    Value  
@@ -223,20 +225,20 @@ Write Leader      pgd-a2
 Commit Scope             
 ```
 
-I am on node pgd-a1 and want to upgrade it. My current write leader is pgd-a2, so we are good to go.
+The current write leader is node pgd-a2, so we are good to upgrade node pgd-a1.
 
 Switch the write leader to a different node if it is the node to be upgraded.
 
 Use the `pgd group set-leader` command to switch the write leader if required:
 ```bash
-enterprisedb@witness-a1:/home/rocky $ /usr/edb/as17/bin/pgd group group-a set-leader pgd-a1
+witness-a1:/home/rocky $ /usr/edb/as17/bin/pgd group group-a set-leader pgd-a1
 ```
 ```
 Command executed successfully
 ```
 
 ```bash
-enterprisedb@witness-a1:/home/rocky $ /usr/edb/as17/bin/pgd group group-a show --summary
+witness-a1:/home/rocky $ /usr/edb/as17/bin/pgd group group-a show --summary
 ```
 ```
  Group Property    | Value   
@@ -261,10 +263,10 @@ Create the new data dir if you don't want to use the default one. This example u
 
 Copy the following files and directory (if present), to the new data directory you created for the upgraded version of PostgreSQL:
 
-- postgresql.conf, postgresql.auto.conf,and pg_hba.conf 
-- postgresql.auto.conf
-- pg_hba.conf 
-- the conf.d directory
+- `postgresql.conf`
+- `postgresql.auto.conf`
+- `pg_hba.conf`
+- the `conf.d` directory
 
 ```bash
 cp /opt/postgres/data/postgresql.conf /var/lib/edb/as17/data/
@@ -272,7 +274,7 @@ cp /opt/postgres/data/postgresql.auto.conf /var/lib/edb/as17/data/
 cp /opt/postgres/data/pg_hba.conf /var/lib/edb/as17/data/
 ```
 
-If you have a TPA-deployed cluster, copy the conf.d directory as well:
+If you have a TPA-deployed cluster, copy the `conf.d` directory as well:
 
 ```bash
 cp -r /opt/postgres/data/conf.d /var/lib/edb/as17/data/
@@ -282,7 +284,7 @@ cp -r /opt/postgres/data/conf.d /var/lib/edb/as17/data/
 
 Some configurations may not be supported in PGD 6. In such cases, you will need to find an equivalent setting or determine if the configuration can be safely ignored. 
 
-For instance, I encountered the `operator_precedence_warning` GUC, which I successfully ignored in my new configuration.
+For instance, you may encounter the `operator_precedence_warning` GUC, which can be ignored in the new configuration.
 !!!
 
 Ensure both the old and new servers are shut down:
@@ -299,7 +301,7 @@ systemctl commands were used in this example because the PostgreSQL instance is 
 
 ### Dry run check
 
-Before running the actual upgrade, perform a dry run to check the compatibility and upgrade feasibility. Run the upgrade command with the `--check` option.
+Before running the actual upgrade, perform a dry run to check the compatibility and upgrade feasibility. The `pgd node upgrade` tool has a `--check` option, which performs a dry run of some of the upgrade process. You can use this option to ensure the upgrade goes smoothly. Run the upgrade command with the `--check` option.
 
 ```bash
 /usr/edb/as17/bin/pgd node pgd-a1 upgrade \
@@ -350,7 +352,7 @@ Checking for new cluster tablespace directories               ok
 
 ### Execute the upgrade. 
 
-Run the command without the `--check` option
+If the dry run check passed, you can execute the upgrade by running the command without the `--check` option
 
 ```bash
 /usr/edb/as17/bin/pgd node pgd-a1 upgrade \  
@@ -487,7 +489,7 @@ You can use the `--link` option for a hard link. This option works if both the d
 
 ## Post-upgrade steps
 
-### Update server, data, and binary dir
+### Update the Postgres service file
 
 Update the server version, data directory, and binary directories of the new server in the PostgreSQL service file, located at `/etc/systemd/system/postgres.service`. 
 
@@ -520,7 +522,7 @@ WantedBy=multi-user.target
 ```
 
 ### Start the postgres service
-Execute a daemon-reload and start the postgres service.
+Execute a daemon-reload and start the Postgres service.
 
 ```bash       
 systemctl daemon-reload
@@ -534,7 +536,7 @@ If your server was not running as a service, you can skip the service file updat
 ### Verify the upgraded cluster versions
 
 ```bash
-enterprisedb@pgd-a1:/home/rocky $ /usr/edb/as17/bin/pgd nodes list --versions
+pgd-a1:/home/rocky $ /usr/edb/as17/bin/pgd nodes list --versions
 ```
 ```
  Node Name  | BDR Version         | Postgres Version 
@@ -544,14 +546,14 @@ enterprisedb@pgd-a1:/home/rocky $ /usr/edb/as17/bin/pgd nodes list --versions
  witness-a1 | 5.9.0               | 13.22.28         
 ```
 
-Note that the node pgd-a1’s BDR Version has been upgraded to 6.1.0 and Postgres Version to 17.6.0.
+The BDR version for node **pgd-a1** was upgraded to 6.1.0 and the Postgres version to 17.6.0.
 
 
 ### Verify the Connection Manager is working
 
 Execute a query through the connection manager port (6444 by default) on the upgraded node:
 ```sql
-enterprisedb@pgd-a1:/home/rocky $ psql "host=pgd-a1 port=6444 dbname=bdrdb user=enterprisedb " -c "select node_name from bdr.local_node_summary;"
+pgd-a1:/home/rocky $ psql "host=pgd-a1 port=6444 dbname=bdrdb user=enterprisedb " -c "select node_name from bdr.local_node_summary;"
 ```
 ```
  node_name 
@@ -566,9 +568,9 @@ If PGD Proxy is running on the same host and using the Connection Manager port (
 
 ### Upgrade the remaining nodes
 
-You must perform these steps for every node in the cluster. The only difference will be the node name in the upgrade command. For quick reference, the commands for nodes pgd-a2 and witness-a1 are provided:
+You must perform these steps for every node in the cluster. The only difference will be the node name in the upgrade command. For quick reference, the commands for nodes **pgd-a2** and **witness-a1** are provided:
 
-Node pgd-a2
+Node **pgd-a2**
 
 ```bash
 /usr/edb/as17/bin/pgd node pgd-a2 upgrade \  
@@ -582,7 +584,7 @@ Node pgd-a2
 --new-port 5444
 ```
 
-Node witness-a1
+Node **witness-a1**
 
 ```bash
 /usr/edb/as17/bin/pgd node witness-a1 upgrade \  
@@ -599,7 +601,7 @@ Node witness-a1
 ### Verify the final state of the cluster
 
 ```bash
-enterprisedb@pgd-a2:/home/rocky $ /usr/edb/as17/bin/pgd nodes list --versions
+pgd-a2:/home/rocky $ /usr/edb/as17/bin/pgd nodes list --versions
 ```
 ```
  Node Name  | BDR Version          | Postgres Version 
@@ -614,7 +616,7 @@ All nodes of the cluster have been upgraded to PGD 6.1.0 and EPAS 17.6.0.
 ### Verify the Connection Manager for every data node 
 
 ```sql
-enterprisedb@pgd-a2:/home/rocky $ psql "host=pgd-a2 port=6444 dbname=bdrdb user=enterprisedb " -c "select node_name from bdr.local_node_summary;"
+pgd-a2:/home/rocky $ psql "host=pgd-a2 port=6444 dbname=bdrdb user=enterprisedb " -c "select node_name from bdr.local_node_summary;"
 ```
 ```
  node_name 
@@ -623,7 +625,7 @@ enterprisedb@pgd-a2:/home/rocky $ psql "host=pgd-a2 port=6444 dbname=bdrdb user=
 (1 row)
 ```
 ```sql
-enterprisedb@pgd-a2:/home/rocky $ psql "host=pgd-a2 port=6445 dbname=bdrdb user=enterprisedb " -c "select node_name from bdr.local_node_summary;"
+pgd-a2:/home/rocky $ psql "host=pgd-a2 port=6445 dbname=bdrdb user=enterprisedb " -c "select node_name from bdr.local_node_summary;"
 ```
 ```
  node_name 
