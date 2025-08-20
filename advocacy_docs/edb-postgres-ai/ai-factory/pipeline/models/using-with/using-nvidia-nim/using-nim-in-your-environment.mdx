@@ -1,103 +1,129 @@
 ---
 title: Using NVIDIA NIM Microservices available on build.nvidia.com in your environment
-navTitle: In your environment
-description: Learn how to use NVIDIA NIM Microservices available on build.nvidia.com in your environment, locally or in your private cloud.
+navTitle: Using NVIDIA NIM Microservices available in your environment
+description: Deploy NVIDIA NIM Microservices from build.nvidia.com using AI Factory's KServe-based Model Serving with Kubernetes YAML. No Docker required.
 ---
 
-To use a NVIDIA NIM that's hosted in your own environment, you first need an instance of the model. This tutorial shows how to configure an AWS-hosted instance with the NVIDIA NIM model. It uses the NVIDIA NIM model llama3-8b-instruct.
+EDB AI Factory deploys [NVIDIA NIM microservices](https://build.nvidia.com) with **KServe** using Kubernetes manifests. This guide provides ready-to-use YAML templates for the following NIM types:
 
-## Prerequisites
+- Chat Completion (LLM)
+- Text Embedding
+- Text Reranker
+- Image Embedding
+- Image OCR
 
-* A system capable of running NVIDIA CUDA Toolkit. For this tutorial, we recommend using an **EC2 g5.8xlarge instance** with **1024 GB of gp3 storage** running **Ubuntu 24.04 LTS**, although smaller instance sizes may also work.
-* A build.nvidia.com account. (If you don't have one, you can create one [here](https://build.nvidia.com/explore/discover/).)
+The process is:
 
-## Configuring the system
+1. Set up NVIDIA NGC account and API key.
+2. Create Kubernetes secrets for NGC access and image pulls.
+3. Create GPU Nodes
+4. Deploy an **InferenceService** for each model instance.
+5. Validate
+6. Use in AIDB
 
-### 1. Install NVIDIA CUDA Toolkit
 
-Download and install the CUDA Toolkit from [NVIDIA's official page](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04&target_type=deb_local).
+## Supported Models and GPU Requirements
 
-### 2. Install Docker
+| Model Type       | NIM Model                          | NVIDIA Documented Resource Requirements |
+|------------------|------------------------------------|------------------------------------------|
+| Text Completion  | llama-3.3-70b-instruct              | 4 × L40S                                 |
+| Text Embeddings  | arctic-embed-l                      | 1 × L40S                                 |
+| Image Embeddings | nvclip                              | 1 × L40S                                 |
+| OCR              | paddleocr                           | 1 × L40S                                 |
+| Text Reranking   | llama-3.2-nv-rerankqa-1b-v2         | 1 × L40S                                 |
 
-If your system doesn't have Docker installed, download and install it:
+---
 
--  Instructions for Ubuntu are [here](https://docs.docker.com/engine/install/ubuntu/).
--  Instructions for other Linux platforms are [here](https://docs.docker.com/engine/install/).
+## 1. Set Up NVIDIA NGC API Key
 
-### 3. Generate an NGC API Key
+1. Go to [build.nvidia.com](https://build.nvidia.com) and log in with your NVIDIA account.
+2. In the top-right menu, select **Setup → API Key**.
+3. Click **Generate API Key**.
+4. Copy the key and store it securely. You will need it for the Kubernetes secrets.
 
-Obtain an API key from [build.nvidia.com](https://org.ngc.nvidia.com/setup/api-key). This example refers to this key as `<NGC API KEY>`.
+---
 
-Log in to the NGC container registry:
+## 2. Create Kubernetes Secrets
 
-```shell
-docker login nvcr.io
+Create the NGC API key secret:
+```bash
+kubectl create secret generic nvidia-nim-secrets \
+  --from-literal=NGC_API_KEY="<YOUR_NGC_API_KEY>"
 ```
 
-Use the following credentials:
+## 3. Create GPU Nodes
 
-* Username: `$oauthtoken`
-* Password: `<NGC API KEY>`
+Ensure your Kubernetes cluster has nodes that satisfy the minimum GPU requirement for your chosen NIM model(s).
 
-### 4. Install build.nvidia.com CLI
-
-Download and install the build.nvidia.com CLI from [here](https://org.ngc.nvidia.com/setup/installers/cli).
-
-### 5. Run the NIM Model
-
-Save the following script as a shell script and execute it. (For more information, see [NVIDIA's documentation](https://docs.nvidia.com/nim/large-language-models/latest/getting-started.html#serving-models-from-local-assets).) Remember to substitute `<NGC API KEY>` with the API key you generated.
-
-```shell
-# Choose a container name
-export CONTAINER_NAME=Llama3-8B-Instruct
-NGC_API_KEY="<NGC API KEY>"
-# Define the repository and image
-Repository=nim/meta/llama3-8b-instruct
-export IMG_NAME="nvcr.io/${Repository}:latest"
-# Set local cache path
-export LOCAL_NIM_CACHE=~/.cache/nim
-mkdir -p "$LOCAL_NIM_CACHE"
-# Start the LLM NIM container
-docker run -it --rm --name=$CONTAINER_NAME \
---runtime=nvidia \
---gpus all \
---shm-size=16GB \
--e NGC_API_KEY=$NGC_API_KEY \
--v "$LOCAL_NIM_CACHE:/opt/nim/.cache" \
--u $(id -u) \
--p 8000:8000 \
-$IMG_NAME
+**Node label:**
+```bash
+nvidia.com/gpu: "true"
 ```
 
-### 6. Test the deployment
-
-To verify the model is working, run the following command:
-
-```shell
-curl -X POST "http://0.0.0.0:8000/v1/chat/completions" \
-    -H "Accept: application/json" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "model": "meta/llama3-8b-instruct",
-        "messages": [
-        {
-            "role": "user",
-            "content": "Tell me a story"
-        }
-        ]
-    }'
+**Node taint:**
+```bash
+Key: nvidia.com/gpu
+Value: "true"
+Effect: NoSchedule
 ```
 
-Once you've verified the model is working, you can use it with EDB Postgres AI Accelerator.
+These settings ensure workloads requiring GPUs are scheduled correctly and only on GPU-enabled nodes.
 
-Record the public IP address of the EC2 instance, as you'll need it to connect to the model from EDB Postgres AI Accelerator. This example refers to this address as `<NIM_HOST>`.
 
-## Integrating the model with AI Accelerator
 
-### 1. Enable AI Accelerator in EDB Postgres AI
+## 4. Deploy the following KServe resources
 
-With EDB Postgres Advanced Server, EDB Postgres Extended Server, or a community Postgres instance running, connect to the database. Then enable the AI Accelerator extension by running the following SQL commands:
+**Download the YAML file**:
+- Chat Completion Runtime: [llm-runtime.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/llm-runtime.yaml)
+- Chat Completion Service: [llm-service.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/llm-service.yaml)
+- Text Embedding Runtime: [embed-runtime.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/embedding-runtime.yaml)
+- Text Embedding Service: [embed-service.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/embedding-service.yaml)
+- Text Reranker Runtime: [rerank-runtime.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/rerank-runtime.yaml)
+- Text Reranker Service: [rerank-service.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/rerank-service.yaml)
+- Image Embedding Runtime: [image-embed-runtime.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/image-embed-runtime.yaml)
+- Image Embedding Service: [image-embed-service.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/image-embed-service.yaml)
+- Image OCR Runtime: [ocr-runtime.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/ocr-runtime.yaml)
+- Image OCR Service: [ocr-service.yaml](/edb-postgres-ai/ai-factory/pipeline/models/using-with/using-nvidia-nim/files/ocr-service.yaml)
 
+**If needed**: Update `<your-storage-class>`, and any resource settings to match your environment.
+
+**Apply to your cluster**:
+```bash
+kubectl apply -f llm-runtime.yaml
+kubectl apply -f llm-service.yaml
+```
+ **Check deployment status**:
+```bash
+kubectl get clusterservingruntime
+kubectl get inferenceservice
+```
+**Repeat for each model type** you want to deploy.
+**Verify endpoints** using the provided curl commands.
+**Integrate with EDB Postgres AI Accelerator** using the SQL commands in the registration section.
+
+---
+
+## 5. Validation
+
+Find the endpoint:
+```bash
+kubectl get inferenceservice llama33-8b-instruct -o jsonpath='{.status.url}'
+```
+
+Test it:
+```bash
+curl -X POST "<ENDPOINT>/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "meta/llama3-8b-instruct", "messages": [{"role": "user", "content": "Tell me a story"}]}'
+```
+
+---
+
+
+
+## 6. Use the Model
+
+### 1. Enable AIDB
 ```sql
 CREATE EXTENSION aidb CASCADE;
 ```
@@ -108,7 +134,7 @@ CREATE EXTENSION aidb CASCADE;
 SELECT aidb.create_model(
 'my_nim_llm',
 'nim_completions',
-'{"model": "meta/llama-3.3-70b-instruct", "url": "http://<NIM_HOST>:8000/v1/chat/completions"}'::JSONB
+'{"model": "meta/llama-3.3-70b-instruct", "url": "http://<ENDPOINT>:8000/v1/chat/completions"}'::JSONB
 );
 ```
 
@@ -125,3 +151,13 @@ __OUTPUT__
 ```
 
 Your output may vary. You've successfully used NVIDIA NIM Microservices via the EDB AI Accelerator.
+
+
+
+## Sources
+
+- NVIDIA NIM KServe deployment resources: https://catalog.ngc.nvidia.com/orgs/nim/resources/llm-nim-kserve
+- NVIDIA NIM API reference: https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
+- KServe documentation: https://kserve.github.io/website/latest/modelserving/servingruntimes/
+- EDB AI Factory deployment examples: https://www.enterprisedb.com/docs/edb-postgres-ai/ai-factory/learn/how-to/model-serving/deploy-nim-container/
+- Model examples and tags: build.nvidia.com model cards
