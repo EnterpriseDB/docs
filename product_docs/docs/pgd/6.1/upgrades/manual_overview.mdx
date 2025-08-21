@@ -155,7 +155,12 @@ You don't need to back up and restore when upgrading the BDR extension.
 
 ### BDR extension upgrade
 
-The BDR extension upgrade process consists of a few steps.
+The BDR extension upgrade process consists of the following high-level steps:
+
+#### Fence the node
+
+To make sure the node being upgraded does not become a write leader until the upgrade is complete, you should fence the node before initiating the
+upgrade. 
 
 #### Stop Postgres
 
@@ -173,6 +178,22 @@ installs both the new binary and the extension SQL script. This step is specific
 Once packages are upgraded, you can start the Postgres instance. The BDR
 extension is upgraded upon start when the new binaries
 detect the older version of the extension.
+
+#### Unfence the node
+
+You can unfence the node after the node upgrade is completed.
+
+!!! Note
+A PGD 4 cluster must be running PGD 4.4 before upgrading to PGD 6.1.
+
+Upgrading from PGD 4.4 to PGD 6.1 requires additional steps to move from Harp proxy to Connection Manager. For more information, 
+see the worked example: [Upgrade PGD 4 to PGD 6.1](./upgrading_major_rolling/#worked-example-upgrade-pgd-4-to-pgd-61). 
+
+A PGD 5 cluster must be running PGD 5.9 before upgrading to PGD 6.1.
+
+Upgrading from PGD 5.9 to PGD 6.1 requires additional steps to move from PGD proxy to Connection Manager.  
+For more information, see the worked example: [Upgrade PGD 5 to PGD 6.1](./upgrading_major_rolling/#worked-example-upgrade-pgd-5-to-pgd-61).  
+!!!
 
 ### Postgres upgrade
 
@@ -221,20 +242,20 @@ Use the following steps to move from PGD Proxy to Connection Manager:
 1. From one of the PGD 5.9 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
 
  -  ```sql
-      DO $$
+DO $$
 DECLARE
     rec RECORD;
-    command TEXT;
+    command TEXT;    password TEXT;
 BEGIN
     FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
     LOOP
-        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || ''' || rec.rolpassword || ''';
-
+        password := rec.rolpassword;
+        command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || quote_literal(password);
         EXECUTE command;
     END LOOP;
 END;
 $$;
-SELECT wait_slot_confirm_lsn(NULL,NULL); 
+SELECT wait_slot_confirm_lsn(NULL, NULL);
  ```
   - !!! Note
     No new users should be added to 5.9 after executing this. If they are added, run the query again. The above block does not change the passwords, it just ensure SCRAM hashes are same across the cluster on all nodes.
