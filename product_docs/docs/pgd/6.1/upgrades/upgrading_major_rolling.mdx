@@ -38,6 +38,9 @@ This command shows you information about the pgd group tokened by your `<group_n
 To maintain operational continuity, you need to switch write leaders over to another node in their subgroup before you can upgrade them. 
 To keep the number of planned switchovers to a minimum, when upgrading a subgroup of nodes, upgrade the writer leaders last. 
 
+To make sure the node being upgraded does not become a write leader until the upgrade is complete, you should fence the node before initiating the
+upgrade and then unfence the node after the node upgrade is completed.
+
 Even though you verified which node is the current write leader for planning purposes, the write leader of a subgroup could change to another node at any moment for operational reasons before you upgrade that node. 
 Therefore, you still need to verify that a node isn't the write leader just before upgrading that node.
 
@@ -66,6 +69,9 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 
     `sudo -u postgres pgd group <group_name> set-leader <new_leader_node_name>` 
 
+* **Fence the node**
+  * To make sure the node being upgraded does not become a write leader until the upgrade is complete, you should fence the node before initiating the upgrade.
+
 
 * **Stop Postgres on the target node**
   * Stop the Postgres service on the current node:
@@ -78,7 +84,7 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 * **Install PGD and utilities**
   * Install PGD and its utilities compatible with the Postgres version you're upgrading to:
 
-    `sudo apt install edb-bdr5-pg<new_postgres_version_number> edb-bdr-utilities`
+    `sudo apt install edb-bdr6-pg<new_postgres_version_number> `
 
 * **Initialize the new Postgres instance**
   * Create a directory to house the database files for the new version of PostgreSQL:
@@ -151,6 +157,9 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 
     `sudo -u postgres pgd nodes list --versions`
 
+* **Unfence the node**
+  * You can unfence the node after validating the upgrade.
+
 
 * **Clean up post-upgrade**
   * Run `vacuumdb` with the `ANALYZE` option immediately after the upgrade but before introducing a heavy production load. Running this command minimizes the immediate performance impact, preparing the database for more accurate testing.
@@ -166,6 +175,10 @@ A PGD 4 cluster using HARP Proxy based routing continues this routing method to 
 HARP-proxy based routing functions the same within a mixed version cluster. HARP uses its own mechanism to elect a leader since a 4.x cluster does not have a write leader. 
 Once the entire cluster is upgraded to version 6.1.0 or higher, Connection Manager is already enabled and ready. 
 Applications then can be pointed to the Connection Manager port/node and it will start routing. Once confirmed to be working, proxy can be stopped.
+
+!!!Note
+The worked example assumes Harp proxy is not co-located with a PGD node, as recommended in the PGD architecture.  If you have a Harp proxy co-located with a PGD node, contact EDB Support for upgrade instructions.
+!!!
 
 ### Confirm the harp-proxy leader
 
@@ -207,10 +220,6 @@ On the fenced node, stop HARP manager.
 ### Remove and install packages
 
 On the fenced node, remove PGD 4.4 and the cli packages and install the PGD 6.1 packages.
-
-### Enable Connection Manager
-
-On the fenced node, enable Connection Manager by adding the guc `bdr.enable_builtin_connection_manager = true`  in postgresql.conf file. 
 
 ### Start the Postgres service
 
@@ -299,11 +308,11 @@ witness-a1 group-a    witness   ACTIVE     Up
 
 ### Install packages for the new server and PGD
 
-Ensure that the packages for EPAS 17 and the corresponding PGD 6 packages are installed on all nodes in the cluster.
-To prevent binary conflicts, you must remove the PGD 5 packages, viz., edb-pgd5-cli and edb-bdr5-epas13, before installing the PGD 6 packages. The commands below were used for the RHEL 8 platform. Use the appropriate commands for your specific platform.
+Ensure that the packages for EPAS 17 and the corresponding PGD 6 packages are installed on all nodes in the cluster. To prevent binary conflicts, you must remove the PGD 5 packages, viz., edb-pgd5-cli and edb-bdr5-epas13, before installing the PGD 6 packages. 
+The commands below were used for the RHEL 8 platform. Use the appropriate commands for your specific platform.
 
 ```bash
-dnf remove edb-pgd5-cli edb-bdr5-epas13 -y
+dnf remove edb-pgd5-cli 
 dnf install edb-as17-server edb-pgd6-essential-epas17 -y
 ```
 
@@ -687,10 +696,6 @@ Output:
  pgd-a2
 (1 row)
 ```
-
-!!! Note
-If PGD Proxy is running on the same host and using the Connection Manager port (default 6444), you must stop it before starting the new server. Otherwise, the startup will fail due to a port conflict.
-!!!
 
 ### Clean up and vacuum analyze
 
