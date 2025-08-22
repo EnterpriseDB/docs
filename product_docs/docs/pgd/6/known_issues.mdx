@@ -79,39 +79,10 @@ Take these EDB Postgres Distributed (PGD) design limitations into account when p
 
 ### Multiple databases on single instances
 
-Support for using PGD for multiple databases on the same Postgres instance is
-**deprecated** beginning with PGD 5 and will no longer be supported with PGD 6. As
-we extend the capabilities of the product, the added complexity introduced
-operationally and functionally is no longer viable in a multi-database design.
-
-It's best practice and we recommend that you configure only one database per PGD instance. 
-
-The tooling such as the CLI and Connection Manager currently codify that recommendation. 
-
-While it's still possible to host up to 10 databases in a single instance,
-doing so incurs many immediate risks and current limitations:
-
--   If PGD configuration changes are needed, you must execute administrative commands 
-    for each database. Doing so increases the risk for potential
-    inconsistencies and errors.
-
--   You must monitor each database separately, adding overhead.
-
--   Connection Manager works at the Postgres instance level, not at the database level,
-    meaning the leader node is the same for all databases.
-
--   Each additional database increases the resource requirements on the server.
-    Each one needs its own set of worker processes maintaining replication, for example,
-    logical workers, WAL senders, and WAL receivers. Each one also needs its own
-    set of connections to other instances in the replication cluster. These needs might
-    severely impact performance of all databases.
-
--   Synchronous replication methods, for example, CAMO and Group Commit, won’t work as
-    expected. Since the Postgres WAL is shared between the databases, a
-    synchronous commit confirmation can come from any database, not necessarily in
-    the right order of commits.
-
--   CLI integration assumes one database. 
+Because of many immediate risks and limitations, we currently
+recommend a one-database-per-instance configuration. This best
+practice is also reflected in our tooling, including the CLI and
+Connection Manager, which are designed to work at the instance level.
 
 ### Durability options (Group Commit/CAMO)
 
@@ -230,6 +201,23 @@ these limitations into account when planning:
 PGD was developed to [enable rolling upgrades of PGD](/pgd/6/reference/upgrades) by allowing mixed versions of PGD to operate during the upgrade process. 
 We expect users to run mixed versions only during upgrades and, once an upgrade starts, that they complete that upgrade.
 We don't support running mixed versions of PGD except during an upgrade.
+
+### Large object replication
+
+Logical decoding and replication, which PGD is built upon, does not
+support large objects. As an alternative, use TEXT, BYTEA, JSON, or
+JSONB data types, as appropriate for the application, for values up to
+1 GB in size.
+
+You can check for existing large objects with:
+
+```sql
+SELECT count(*) FROM pg_largeobject;
+```
+
+### Slow performance for tables without primary keys or unique constraints
+
+For updates and deletes to replicate on other nodes, PGD must be able to identify the unique rows affected. If no primary key or unique index is defined for a table, performance of replication and conflict detection can be severely affected. See: https://www.enterprisedb.com/docs/pgd/latest/reference/appusage/behavior/#replication-behavior and https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrdefault_replica_identity 
 
 ### Other limitations
 
