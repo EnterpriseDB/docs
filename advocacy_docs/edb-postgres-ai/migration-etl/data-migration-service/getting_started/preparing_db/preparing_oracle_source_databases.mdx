@@ -6,46 +6,38 @@ navTitle: Preparing Oracle source
 
 <div id="preparing_oracle_sources" class="registered_link"></div>
 
+## Oracle configuration
+
 Configuring Oracle for EDB Data Migration Services (EDB DMS) requires `sysdba` privileges.
 
 Configure an Oracle source database to:
 -  Enable archive log mode.
--  Enable supplemental logging for the database and table columns of interest.
--  Ensure adequate redo log space is available.
--  Create a user with limited privileges to carry out the data migration.
+-  Enable supplemental logging for the database and tables of interest.
+-  Prepare tablespaces for migration user
+-  Create a migration user and grant necessary privileges to carry out the data migration.
+-  Grant SELECT on source tables.
+-  (Optional) Ensure adequate redo log space is available for better performance.
+-  Validate configuration.
 
-Execute SQL statements with `sqlplus` or a similar client.
+### Step1: Enable archive log mode
 
-This command prompts you for the password for `<ORA_USER>`:
+Debezium captures database changes by reading the database's redo logs. To ensure a complete and reliable history of all transactions without risk of data loss, Oracle must be configured in Archive Log Mode. This process saves a copy of every redo log before it is reused, providing Debezium with an unbroken stream of changes.
+
+Log in to oracle **CDB** as sysdba:
 
 ```shell
-sqlplus <ORA_USER>@<ORA_HOST>:<ORA_PORT>/<ORA_SID> as sysdba
+sqlplus <DBA_USER>/<PASSWD>@<HOST>:<PORT>/<CDB_NAME> as sysdba
 ```
 
 Where:
 
- - `<ORA_HOST>` is the Oracle DB hostname.
- - `<ORA_PORT>` is the Oracle DB port.
- - `<ORA_SID>` is the Oracle System ID for the DB or CDB/PDB combination.
- - `<ORA_USER>` is an Oracle DB username with sysdba privileges.
+- `<DBA_USER>` is an oracle user that can log in to the cdb as sysdba.
+- `<PASSWD>` is the password of dba_user.
+- `<HOST>` is the oracle db hostname.
+- `<PORT>` is the oracle db port.
+- `<CDB_NAME>` is the oracle CDB name.
 
-## Oracle configuration
-
-To perform Oracle configuration:
-
-1. [Enable archive log mode](#enable-archive-log-mode).
-1. [Enable database supplemental logging](#enable-database-supplemental-logging).
-1. [Enable supplemental logging for table columns](#enable-supplemental-logging-for-table-columns).
-1. [Verify redo logs for adequate count and size](#verify-redo-logs-for-adequate-count-and-size).
-1. [Create a user with limited privileges for data migration](#create-a-user-with-limited-privileges-for-data-migration).
-1. [Grant `SELECT` on source tables](#grant-select-on-source-tables).
-1. [Validate configuration](#validate-configuration).
-
-### Enable archive log mode
-
-Oracle databases can operate in `ARCHIVELOG` or `NOARCHIVELOG` mode. In `ARCHIVELOG` mode, filled redo logs are archived rather than put back into log rotation to be overwritten. This mode is needed for the change data capture (CDC) process to use LogMiner and produce a complete history of changes after an initial consistent snapshot.
-
-To see the database mode:
+Run the following sql to check whether archive mode is enabled:
 
 ```sql
 archive log list;
@@ -54,70 +46,288 @@ archive log list;
 The returned content indicates the database mode:
 
 ```sql
-Database log mode 	Archive Mode
-...or
+-- below output indicates archive log mode is enabled
+Database log mode 	Archive Mode -- (or "Archive Log Mode" in new versions of oracle)
+-- or below output indicates archive log mode is not enabled
 Database log mode 	No Archive Mode
 ```
 
-If `ARCHIVELOG` mode is enabled, confirm with your DBA that the size of your recovery file destination is appropriate for your workload.
+If your archive mode is already enabled, you can skip this step. Otherwise, log out from previous sql session first, then run the following command:
 
-When enabling archive log mode, you need to enable a fast recovery area. For more information on enabling an Oracle fast recovery area, see [Enabling the Fast Recovery Area](https://docs.oracle.com/en/database/oracle/oracle-database/19/bradv/configuring-rman-client-basic.html#GUID-233338E2-3EE6-4248-A2B6-16A7899DB14F) in the Oracle documentation.
+```shell
+ORACLE_SID=<CDB_NAME> sqlplus /nolog
+```
 
-To enable archive logging:
+Where
+
+- `<CDB_NAME>` is the oracle CDB name.
+
+After entering sql session, run the following SQLs one by one:
 
 ```sql
-ORACLE_SID=<YOUR_SID> sqlplus /nolog
-
-CONNECT <SYSDBA_USER>/<SYSDBA_USER>_PWD AS SYSDBA
+CONNECT <DBA_USER>/<PASSWD> AS sysdba;
+-- Set the location and size for the Fast Recovery Area (FRA)
 alter system set db_recovery_file_dest_size = <RECOVERY_FILE_DEST_SIZE>;
 alter system set db_recovery_file_dest = '<RECOVERY_FILE_DEST>' scope=spfile;
+-- Restart the database in the correct state to enable archiving
 shutdown immediate
 startup mount
+-- Enable archive log mode and open the database for use
 alter database archivelog;
 alter database open;
+-- Verify the change was successful
 archive log list;
 exit;
 ```
 
-Where:
- - `<YOUR_SID>` is the Oracle DB system ID.
- - `<SYSDBA_USER>` is the name of a user with sysdba privileges.
- - `<SYSDBA_USER_PWD>` is the password for `<SYSDBA_USER>`.
- - `<RECOVERY_FILE_DEST_SIZE>` is the size allowed for the recovery behavior, for example, `100G` for 100 gigabytes.
- - `<RECOVERY_FILE_DEST>` is the file system path for an Oracle fast recovery area. This path can be a directory, file system, or Oracle Automatic Storage Management. Consult your DBA for guidance.
+Where
 
-The `archive log list` output shows the database is now in archive log mode.
+- `<DBA_USER>` is an oracle user that can log in to the cdb as sysdba.
+- `<PASSWD>` is the password of dba_user.
+- `<RECOVERY_FILE_DEST>` is the directory path of your FRA, where oracle redo logs will locate.
+- `<RECOVERY_FILE_DEST_SIZE>` is the space allocated to FRA, for example, 100G means 100 gigabytes.
 
-### Enable database supplemental logging
+!!!note
+   db_recovery_file_dest and db_recovery_file_dest_size configure Oracle's **Fast Recovery Area (FRA)**, a vital storage area for the archived logs that Debezium needs. Correctly setting them is essential for database stability, therefore, **always consult your DBA for production settings.**
+
+### Step2: Enable supplemental logging for the database and tables of interest
 
 Supplemental logging refers to the capture of additional information in Oracle redo logs, such as "before" state. This extra redo log information is needed for some log-based applications, such as EDB DMS, to capture change events. See [Supplemental Logging](https://docs.oracle.com/en/database/oracle/oracle-database/19/sutil/oracle-logminer-utility.html#GUID-D857AF96-AC24-4CA1-B620-8EA3DF30D72E) in the Oracle documentation for more information.
 
-You can enable supplemental logging at the database and table level. The following command enables minimal supplemental logging required for LogMiner to function at the database level:
+You need to enable supplemental logging at the database level as well as for those tables you want to migrate, they're crucial for debezium to run data migrations:
+* Database level supplemental logging is the foundation. It ensures every CDC message has a Tracking Number (the Primary Key), so you can uniquely identify which order was changed.
+* Table level Logging is the detail. It ensures the CDC message includes a full copy of the original order form (the "before" image of all columns), not just the item that was updated.
+
+First Log in to oracle **CDB** as sysdba:
+
+```shell
+sqlplus <DBA_USER>/<PASSWD>@<HOST>:<PORT>/<CDB_NAME> as sysdba
+```
+
+Where:
+
+- `<DBA_USER>` is an oracle user that can log in to the cdb as sysdba.
+- `<PASSWD>` is the password of dba_user.
+- `<HOST>` is the oracle db hostname.
+- `<PORT>` is the oracle db port.
+- `<CDB_NAME>` is the oracle CDB name.
+
+Run the following SQL to enable supplemental logging at the entire database level:
 
 ```sql
 ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
 ```
 
-### Enable supplemental logging for table columns
-
-For every table you want to migrate, you must enable supplemental logging. To do
-so for all columns in a table, apply the following statement:
+Then switch to the ***PDB*** you want to migrate:
 
 ```sql
-ALTER TABLE <TABLE> ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+ALTER SESSION SET CONTAINER = <PDB_NAME>;
 ```
 
-Where `<TABLE>` is the identifier for the table to migrate.
+Where:
 
-Use `ALTER` with all table columns you want to migrate.
+- `<PDB_NAME>` is the PDB you want to migrate
 
-### Verify redo logs for adequate count and size
+And enable supplemental logging for all the tables you want to migrate:
+
+```sql
+ALTER TABLE <SCHEMA_NAME>.<TABLE_NAME> ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+```
+
+Where:
+
+- `<SCHEMA_NAME>` is the schema to which your table belongs
+- `<TABLE_NAME>` is the name of a table you want to migrate
+
+!!!note
+   In oracle, a schema is identical to a user, so remember to set schema name correctly when running the above sql, otherwise data migration might encounter errors.
+
+### Step3: Prepared tablespaces for migration user
+
+DMS and the underlying library it relies on(Debezium) requires a ***common user*** to carry out data migration. But before creating such a migration user, we need to first create dedicated tablespaces for it. Two tablespaces are needed:
+* A CDB level tablespace for debezium's internal log mining and management processes that operate at the container level.
+* A PDB level tablespace for operations related to specific tables you're capturing within that PDB.
+
+First Log in to oracle **CDB** as sysdba:
+
+```shell
+sqlplus <DBA_USER>/<PASSWD>@<HOST>:<PORT>/<CDB_NAME> as sysdba
+```
+
+Where:
+
+- `<DBA_USER>` is an oracle user that can log in to the cdb as sysdba.
+- `<PASSWD>` is the password of dba_user.
+- `<HOST>` is the oracle db hostname.
+- `<PORT>` is the oracle db port.
+- `<CDB_NAME>` is the oracle CDB name.
+
+Run the following SQL to create a ***CDB*** tablespace:
+
+```sql
+CREATE TABLESPACE <TABLESPACE_NAME> DATAFILE '<CDB_TABLESPACE_PATH>.dbf' SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+```
+
+Where:
+
+- `<TABLESPACE_NAME>` is the name of the CDB tablespace, any valid name is ok
+- `<CDB_TABLESPACE_PATH>.dbf` is the file path of this tablespace. Consult your DBA for the correct value.
+
+Then switch to the ***PDB*** you want to migrate:
+
+```sql
+ALTER SESSION SET CONTAINER = <PDB_NAME>;
+```
+
+Where:
+
+- `<PDB_NAME>` is the PDB you want to migrate
+
+And create a tablespace for PDB:
+
+```sql
+CREATE TABLESPACE <TABLESPACE_NAME> DATAFILE '<PDB_TABLESPACE_PATH>.dbf' SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+-- continue adding more datafiles if necessary
+-- CREATE TABLESPACE <TABLESPACE_NAME> DATAFILE '<PDB_TABLESPACE_PATH>.dbf' SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+```
+
+Where:
+
+- `<TABLESPACE_NAME>` is the name of the PDB tablespace, for convenience we use the same name as the CDB tablespace.
+- `<PDB_TABLESPACE_PATH>.dbf` is the file path of this tablespace. Consult your DBA for the correct value.
+
+If you're using a non-CDB database, the PDB realted tablespace setup can be omitted.
+
+### Step4: Create a migration user and grant necessary privileges to carry out the data migration
+
+As previous step mentioned, DMS requires a common user. First log in to ***CDB*** as sysdba:
+
+```shell
+sqlplus <DBA_USER>/<PASSWD>@<HOST>:<PORT>/<CDB_NAME> as sysdba
+```
+
+Where:
+
+- `<DBA_USER>` is an oracle user that can log in to the cdb as sysdba.
+- `<PASSWD>` is the password of dba_user.
+- `<HOST>` is the oracle db hostname.
+- `<PORT>` is the oracle db port.
+- `<CDB_NAME>` is the oracle CDB name.
+
+Run the following SQLs one by one to create a migration user and grant necessary permissions:
+
+```sql
+CREATE USER <MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD>
+        DEFAULT TABLESPACE <TABLESPACE_NAME>
+        QUOTA UNLIMITED ON <TABLESPACE_NAME>
+        CONTAINER=ALL;
+    GRANT CREATE SESSION TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SET CONTAINER TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$DATABASE to <MIGRATION_USER> CONTAINER=ALL;
+    GRANT FLASHBACK ANY TABLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ANY TABLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT EXECUTE_CATALOG_ROLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ANY TRANSACTION TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ANY DICTIONARY TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT LOGMINING TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT CREATE TABLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT LOCK ANY TABLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT CREATE SEQUENCE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT EXECUTE ON DBMS_LOGMNR TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_LOGS TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGFILE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVED_LOG TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$TRANSACTION TO <MIGRATION_USER> CONTAINER=ALL;
+```
+
+Where:
+
+- `<MIGRATION_USER>` is the name of the common user you want to create for DMS to use.
+- `<MIGRATION_USER_PASSWORD>` password of migration user.
+- `<TABLESPACE_NAME>` is the name of the CDB tablespace you created in previous step. Remember for convenience we use the same tablespace name for CDB and PDB.
+
+If in step3, you used different names for CDB and PDB, then apart from the above SQLs, you'll have to log in to the ***PDB*** and run the following SQL:
+
+```sql
+ALTER USER <MIGRATION_USER> DEFAULT TABLESPACE <PDB_TABLESPACE_NAME>
+```
+
+If you're using a non-CDB database, run following SQL instead:
+
+```sql
+    CREATE USER <MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD>
+        DEFAULT TABLESPACE <TABLESPACE_NAME>
+        QUOTA UNLIMITED ON <TABLESPACE_NAME>;
+    GRANT CREATE SESSION TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$DATABASE to <MIGRATION_USER>;
+    GRANT FLASHBACK ANY TABLE TO <MIGRATION_USER>;
+    GRANT SELECT ANY TABLE TO <MIGRATION_USER>;
+    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER>;
+    GRANT EXECUTE_CATALOG_ROLE TO <MIGRATION_USER>;
+    GRANT SELECT ANY TRANSACTION TO <MIGRATION_USER>;
+    GRANT SELECT ANY DICTIONARY TO <MIGRATION_USER>;
+    GRANT LOGMINING TO <MIGRATION_USER>;
+    GRANT CREATE TABLE TO <MIGRATION_USER>;
+    GRANT LOCK ANY TABLE TO <MIGRATION_USER>;
+    GRANT CREATE SEQUENCE TO <MIGRATION_USER>;
+    GRANT EXECUTE ON DBMS_LOGMNR TO <MIGRATION_USER>;
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$LOGMNR_LOGS TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$LOGFILE TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$ARCHIVED_LOG TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <MIGRATION_USER>;
+    GRANT SELECT ON V_$TRANSACTION TO <MIGRATION_USER>;
+```
+
+### Step5: Grant SELECT on source tables
+
+First Log in to oracle **PDB** as sysdba:
+
+```shell
+sqlplus <DBA_USER>/<PASSWD>@<HOST>:<PORT>/<PDB_NAME> as sysdba
+```
+
+Where:
+
+- `<DBA_USER>` is an oracle user that can log in to the cdb as sysdba.
+- `<PASSWD>` is the password of dba_user.
+- `<HOST>` is the oracle db hostname.
+- `<PORT>` is the oracle db port.
+- `<PDB_NAME>` is the oracle PDB name
+
+For each table you want to migrate under this PDB, grant its select permission to the MIGRATION_USER you just created:
+
+```sql
+GRANT SELECT ON <SCHEMA_NAME>.<TABLE_NAME> TO <MIGRATION_USER>
+```
+
+Where:
+
+- `<SCHEMA_NAME>` is the schema to which your table belongs.
+- `<TABLE_NAME>` is the name of a table you want to migrate.
+- `<MIGRATION_USER>` is the name of the common user you created in previous step.
+
+!!!note
+   In oracle, a schema is identical to a user, so remember to set schema name correctly when running the above sql, otherwise data migration might encounter errors.
+
+### (Optional)Step6: Ensure adequate redo log space is available for better performance
 
 The migration process involves two phases. The first is a consistent snapshot. The second is continuous streaming of database changes. This stream of database changes is powered by LogMiner and the Oracle DB redo logs.
 
 Database changes have a limited lifetime on the redo logs before the change is no longer present in the log history. This lifetime depends on the size of the redo logs, the number of redo logs, and the change throughput to the database. Also, undersized logs cause frequent log switching and affect migration performance.
 
-To examine the state of the database redo logs:
+To examine the state of the database redo logs, log in to ***CDB*** first:
+
+```shell
+sqlplus <DBA_USER>/<PASSWD>@<HOST>:<PORT>/<CDB_NAME> as sysdba
+```
+
+Then run following sqls:
 
 ```sql
 SELECT GROUP#, TYPE, MEMBER FROM V_$LOGFILE;
@@ -160,122 +370,22 @@ These commands result in four new 8GB log groups. Each group has a single log fi
 
 Consult your DBA for appropriate production sizing.
 
-### Create a user with limited privileges for data migration
+### Step7: Validate configuration
 
-#### Tablespace preparation
-
-Provide a database user with adequate roles to carry out the CDC process.
-
-Then, we recommend creating a tablespace for the CDC user. For container databases, you need to create a pluggable database as well.
-
-This example creates a tablespace and datafiles for CDC migration. Your database settings might vary, but a common configuration with `SMALLFILE` tablespaces and an 8kB database block size results in a maximum of 32GB of storage avaiable per `MAXSIZE` tablespace datafile. Therefore, you might need to add multiple `AUTOEXTEND` datafiles when this limit might be exceeded.
-
-```sql
--- Create the tablespace, or in the case of a CDB/PDB, create the CDB tablespace
-CREATE TABLESPACE <TABLESPACE_NAME> DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf' SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-
--- For CDB/PDB deployments we must specify at least one tablespace datafile for the PDB
-CREATE TABLESPACE <TABLESPACE_NAME> DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCPDB1/logminer_tbs_1.dbf' SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
--- Additional data files can be added with as follows
-ALTER TABLESPACE <TABLESPACE_NAME> ADD DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs_2.dbf' SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-```
-
-Where:
- - `<TABLESPACE_NAME>` is the tablespace name for the CDC migration user to use.
-
-#### User creation and access grants
-
-With the tablespace files in place, you can create a user with appropriate access grants for CDC migration.
-
-For a CDB/PDB database setup, note the tablespace default and quota:
-
-```sql
-    CREATE USER <MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD>
-        DEFAULT TABLESPACE <TABLESPACE_NAME>
-        QUOTA UNLIMITED ON <TABLESPACE_NAME>
-        CONTAINER=ALL;
-    GRANT CREATE SESSION TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SET CONTAINER TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$DATABASE to <MIGRATION_USER> CONTAINER=ALL;
-    GRANT FLASHBACK ANY TABLE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ANY TABLE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT EXECUTE_CATALOG_ROLE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ANY TRANSACTION TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ANY DICTIONARY TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT LOGMINING TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT CREATE TABLE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT LOCK ANY TABLE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT CREATE SEQUENCE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT EXECUTE ON DBMS_LOGMNR TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT EXECUTE ON DBMS_LOGMNR_D TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGMNR_LOGS TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGMNR_CONTENTS TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGFILE TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$ARCHIVED_LOG TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <MIGRATION_USER> CONTAINER=ALL;
-    GRANT SELECT ON V_$TRANSACTION TO <MIGRATION_USER> CONTAINER=ALL;
-```
-
-For a non-CDB database:
-
-```sql
-    CREATE USER <MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD>
-        DEFAULT TABLESPACE <TABLESPACE_NAME>
-        QUOTA UNLIMITED ON <TABLESPACE_NAME>;
-    GRANT CREATE SESSION TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$DATABASE to <MIGRATION_USER>;
-    GRANT FLASHBACK ANY TABLE TO <MIGRATION_USER>;
-    GRANT SELECT ANY TABLE TO <MIGRATION_USER>;
-    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER>;
-    GRANT EXECUTE_CATALOG_ROLE TO <MIGRATION_USER>;
-    GRANT SELECT ANY TRANSACTION TO <MIGRATION_USER>;
-    GRANT SELECT ANY DICTIONARY TO <MIGRATION_USER>;
-    GRANT LOGMINING TO <MIGRATION_USER>;
-    GRANT CREATE TABLE TO <MIGRATION_USER>;
-    GRANT LOCK ANY TABLE TO <MIGRATION_USER>;
-    GRANT CREATE SEQUENCE TO <MIGRATION_USER>;
-    GRANT EXECUTE ON DBMS_LOGMNR TO <MIGRATION_USER>;
-    GRANT EXECUTE ON DBMS_LOGMNR_D TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$LOGMNR_LOGS TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$LOGMNR_CONTENTS TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$LOGFILE TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$ARCHIVED_LOG TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$TRANSACTION TO <MIGRATION_USER>;
-```
-
-Where:
- - `<MIGRATION_USER>` is the name of the user to create for CDC migration table access.
- - `<MIGRATION_USER_PASSWORD>` is the password for the migration user.
- - `<TABLESPACE_NAME>` is the tablespace for `<MIGRATION_USER>`.
-
-### Grant `SELECT` on source tables
-
-The new `<MIGRATION_USER>` needs `SELECT` access to source tables. Oracle doesn't support
-granting access to an entire schema, so you need to do this for each table.
-
-```sql
-GRANT SELECT ON <TABLE_NAME> TO <MIGRATION_USER>
-```
-
-Where:
- - `<MIGRATION_USER>` is the name of the user to create for CDC migration table access.
- - `<TABLE_NAME>` is the name of an individual table to migrate.
-
-### Validate configuration
-
-The EDB DMS Reader installation (packaged as `cdcreader`) comes with a helper script that validates the Oracle configuration and helps you identify any issues. After you configure the database, we recommend running the script to ensure all checks pass.
+The EDB DMS Reader installation (packaged as `cdcreader`) and DMS Agent installation (packaged as `cdcagent`) come with a helper script that validates the Oracle configuration and helps you identify any issues. After you configure the database, we recommend running the script to ensure all checks pass.
 
 Run the script without arguments to print the usage:
 
 ```shell
+# run this command if you're using cdcagent
+/opt/cdcagent/reader/oracleConfigValidation.sh
+# run this command if you're using cdcreader:
 /opt/cdcreader/oracleConfigValidation.sh
 ```
 
 ## SSL configuration
 
-Ensure you configure your source database server to accept SSL connections to allow the EDB DMS Reader to connect to it. You must create a server certificate and a server private key, for example, with OpenSSL, to enable this configuration.
+Ensure you configure your source database server to accept SSL connections to allow the EDB DMS Reader or DMS Agent to connect to it. You must create a server certificate and a server private key, for example, with OpenSSL, to enable this configuration.
 
 ## More information
 
