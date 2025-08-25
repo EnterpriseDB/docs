@@ -53,6 +53,14 @@ const getProductAndVersion = (path) => {
   };
 };
 
+const replacePathVersion = (path, version = "latest") => {
+  const splitPath = path.split("/");
+  const postVersionPath = splitPath.slice(3).join("/");
+  return `/${splitPath[1]}/${version}${
+    postVersionPath.length > 0 ? `/${postVersionPath}` : "/"
+  }`;
+};
+
 const makeVersionArray = (versions, pathVersions, path) => {
   return versions.map((version, i) => ({
     version: version,
@@ -197,12 +205,12 @@ const DocTemplate = ({ data, pageContext }) => {
 
   if (depth === 2 && !navTree.hideVersion) {
     // product version root
-    title += ` v${version}`;
+    title += ` v${preciseVersion || version}`;
   } else if (depth > 2 && !navTree.hideVersion) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
-    title = `${prettyProductName} v${version} - ${title}`;
+    title = `${prettyProductName} v${preciseVersion || version} - ${title}`;
   }
 
   const pageMeta = {
@@ -287,6 +295,15 @@ const DocTemplate = ({ data, pageContext }) => {
               dangerouslySetInnerHTML={{ __html: navTree.displayBanner }}
             />
           ) : null}
+
+          {version === "preview" && (
+            <div className="alert alert-warning mt-3" role="alert">
+              This documentation covers the upcoming release of{" "}
+              {products[product].name}; you may want to read the docs for{" "}
+              <Link to={replacePathVersion(pagePath)}>the current version</Link>
+              .
+            </div>
+          )}
 
           <ContentRow>
             <Col

@@ -4,27 +4,6 @@ import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 import { updates } from "../constants/updates";
 
-const BannerCard = ({ iconName, headingText, children }) => (
-  <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
-    <div className="card rounded border-secondary shadow-sm mb-4 link-underline">
-      <div className="card-body center">
-        <div className="d-flex align-items-center align-text-center justify-content-center mb-3">
-          <Icon
-            iconName={iconName}
-            className="fill-aquamarine"
-            width="64"
-            height="64"
-          />
-          <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
-            {headingText}
-          </h4>
-        </div>
-        <div className="row">{children}</div>
-      </div>
-    </div>
-  </div>
-);
-
 const EDBPGAIBannerCard = ({ children }) => (
   <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
     <div className="card rounded border-secondary shadow-sm mb-4 link-underline">
@@ -119,40 +98,6 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
       </div>
     </div>
   </div>
-);
-
-const BannerWideQuickLinks = ({ children }) => (
-  <div className="col-xl-12 col-lg-12">
-    <div className="mb-4">
-      <div className="row col-12">{children}</div>
-    </div>
-  </div>
-);
-
-const BannerWideCard = ({ iconName, headingText, to, children }) => (
-  <div className="col-xl-12 col-lg-12">
-    <div className="card rounded border-secondary shadow-sm mb-4">
-      <div className="row">{children}</div>
-    </div>
-  </div>
-);
-
-const BannerWideCardLink = ({ to, className, iconName, children }) => (
-  <Link
-    icon={iconName}
-    to={to}
-    className={`col-12 col-md-4 py-2 px-5 text-center fw-bolder ${className}`}
-    style={{ minwidth: "14em" }}
-  >
-    <Icon
-      iconName={iconName || iconNames.DOTTED_BOX}
-      className="fill-aquamarine"
-      width="24"
-      height="24"
-    />
-
-    {children}
-  </Link>
 );
 
 const BannerWideLink = ({ to, className, children }) => (
