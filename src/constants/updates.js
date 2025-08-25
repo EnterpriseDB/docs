@@ -2,6 +2,22 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "CloudNativePG Cluster 1.27.0",
+    icon: IconNames.KUBERNETES,
+    description:
+      "EDB CloudNativePG Cluster 1.27.0 is now available, with dynamic loading of PostgreSQL extensions, logical decoding slot synchronization in HA clusters, and more.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1.27.0_rel_notes/",
+  },
+  {
+    title: "Postgres Enterprise Manager 10.2.0",
+    icon: IconNames.EDB_PEM,
+    description:
+      "EDB Postgres Enterprise Manager 10.2.0 includes new alerts for failover events, support for FIPS-enabled environments, monitoring for PGD 6, and more.",
+    url: "/pem/latest/",
+    moreUrl: "/pem/latest/pem_rel_notes/pem_10.2.0_rel_notes/",
+  },
+  {
     title: "Hybrid Manager 1.2",
     icon: IconNames.MODULE,
     description:
