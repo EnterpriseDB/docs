@@ -497,6 +497,10 @@ const Page = () => {
               pgvector
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/pg_anonymizer">
+              pg_anonymizer
+            </BannerWideLink>
+            
             <BannerWideLink to="/pg_extensions/wal2json">
               wal2json
             </BannerWideLink>
