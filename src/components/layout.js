@@ -2,6 +2,7 @@ import React, { useState, useLayoutEffect, useMemo } from "react";
 import { Helmet } from "react-helmet";
 import { withPrefix } from "gatsby";
 import useSiteMetadata from "../hooks/use-sitemetadata";
+import usePathPrefix from "../hooks/use-path-prefix";
 import {
   Archive,
   AuthenticatedContentPlaceholder,
@@ -66,9 +67,12 @@ const Layout = ({
   background = "light",
 }) => {
   const { baseUrl, imageUrl, title: siteTitle } = useSiteMetadata();
+  const prefix = usePathPrefix();
   const meta = pageMeta || {};
-  const url = meta.path ? baseUrl + meta.path : baseUrl;
-  const canonicalUrl = meta.canonicalPath ? baseUrl + meta.canonicalPath : url;
+  const url = meta.path ? baseUrl + prefix + meta.path : baseUrl + prefix + "/";
+  const canonicalUrl = meta.canonicalPath
+    ? baseUrl + prefix + meta.canonicalPath
+    : url;
   const title = meta.title ? `EDB Docs - ${meta.title}` : siteTitle;
 
   const [dark, setDark] = useState(false);
@@ -81,12 +85,13 @@ const Layout = ({
   // gatsby-ssr handles initial setting of class, this will sync the toggle to that
   useLayoutEffect(() => {
     if (
-      document.documentElement.classList.contains("dark") ||
-      window.localStorage.getItem("dark") === "true"
+      pageMeta &&
+      (document.documentElement.classList.contains("dark") ||
+        window.localStorage.getItem("dark") === "true")
     ) {
       setDark(true);
     }
-  }, [setDark]);
+  }, [setDark, pageMeta]);
 
   const mdxComponents = useMemo(
     () => ({
@@ -157,34 +162,35 @@ const Layout = ({
       value={{
         dark: dark,
         toggleDark: toggleDark,
-        baseUrl: baseUrl,
       }}
     >
-      <Helmet>
-        <html
-          lang="en"
-          className={`${dark && "dark"}`}
-          data-bs-theme={dark && "dark"}
-        />
-        <title>{title}</title>
-        {meta.description && (
-          <meta name="description" content={meta.description} />
-        )}
-        <meta property="og:title" content={meta.title || title} />
-        {meta.description && (
-          <meta property="og:description" content={meta.description} />
-        )}
-        <meta
-          name="viewport"
-          content={`width=${meta.minDeviceWidth || 960}, initial-scale=1, shrink-to-fit=no`}
-        />
-        <meta property="og:image" content={imageUrl} />
-        <meta property="og:url" content={url} />
-        <link rel="canonical" href={canonicalUrl} />
-        <meta name="twitter:card" content="summary_large_image" />
-        {meta.noindex && <meta name="robots" content="noindex" />}
-        <body className={`bg-${background} fixed-container`} />
-      </Helmet>
+      {pageMeta && (
+        <Helmet>
+          <html
+            lang="en"
+            className={`${dark && "dark"}`}
+            data-bs-theme={dark && "dark"}
+          />
+          <title>{title}</title>
+          {meta.description && (
+            <meta name="description" content={meta.description} />
+          )}
+          <meta property="og:title" content={meta.title || title} />
+          {meta.description && (
+            <meta property="og:description" content={meta.description} />
+          )}
+          <meta
+            name="viewport"
+            content={`width=${meta.minDeviceWidth || 960}, initial-scale=1, shrink-to-fit=no`}
+          />
+          <meta property="og:image" content={imageUrl} />
+          <meta property="og:url" content={url} />
+          <link rel="canonical" href={canonicalUrl} />
+          <meta name="twitter:card" content="summary_large_image" />
+          {meta.noindex && <meta name="robots" content="noindex" />}
+          <body className={`bg-${background} fixed-container`} />
+        </Helmet>
+      )}
       <MDXProvider components={mdxComponents}>{children}</MDXProvider>
     </LayoutContext.Provider>
   );

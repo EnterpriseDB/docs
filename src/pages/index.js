@@ -4,27 +4,6 @@ import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 import { updates } from "../constants/updates";
 
-const BannerCard = ({ iconName, headingText, children }) => (
-  <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
-    <div className="card rounded border-secondary shadow-sm mb-4 link-underline">
-      <div className="card-body center">
-        <div className="d-flex align-items-center align-text-center justify-content-center mb-3">
-          <Icon
-            iconName={iconName}
-            className="fill-aquamarine"
-            width="64"
-            height="64"
-          />
-          <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
-            {headingText}
-          </h4>
-        </div>
-        <div className="row">{children}</div>
-      </div>
-    </div>
-  </div>
-);
-
 const EDBPGAIBannerCard = ({ children }) => (
   <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
     <div className="card rounded border-secondary shadow-sm mb-4 link-underline">
@@ -119,40 +98,6 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
       </div>
     </div>
   </div>
-);
-
-const BannerWideQuickLinks = ({ children }) => (
-  <div className="col-xl-12 col-lg-12">
-    <div className="mb-4">
-      <div className="row col-12">{children}</div>
-    </div>
-  </div>
-);
-
-const BannerWideCard = ({ iconName, headingText, to, children }) => (
-  <div className="col-xl-12 col-lg-12">
-    <div className="card rounded border-secondary shadow-sm mb-4">
-      <div className="row">{children}</div>
-    </div>
-  </div>
-);
-
-const BannerWideCardLink = ({ to, className, iconName, children }) => (
-  <Link
-    icon={iconName}
-    to={to}
-    className={`col-12 col-md-4 py-2 px-5 text-center fw-bolder ${className}`}
-    style={{ minwidth: "14em" }}
-  >
-    <Icon
-      iconName={iconName || iconNames.DOTTED_BOX}
-      className="fill-aquamarine"
-      width="24"
-      height="24"
-    />
-
-    {children}
-  </Link>
 );
 
 const BannerWideLink = ({ to, className, children }) => (
@@ -347,8 +292,8 @@ const Page = () => {
           </div>
 
           <BannerWideSubCard
-            iconName={iconNames.TOOLBOX}
-            headingText="Platforms and Tools"
+            iconName={iconNames.IDEA_SHARING}
+            headingText="Platforms"
             to="/edb-postgres-ai/platforms-and-tools/"
             className="primary"
           >
@@ -377,7 +322,13 @@ const Page = () => {
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">
               CloudNativePG™
             </BannerWideLink>
+          </BannerWideSubCard>
 
+          <BannerWideSubCard
+            iconName={iconNames.TOOLBOX}
+            headingText="Tools"
+            to="/edb-postgres-ai/platforms-and-tools/"
+          >
             <BannerDivider
               iconName={iconNames.CONTROL}
               headingText="Management and Monitoring"
@@ -481,6 +432,10 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
+            <BannerWideLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
+              Data Migration Service
+            </BannerWideLink>
+
             <BannerDivider
               iconName={iconNames.CONNECT}
               headingText="Connection Poolers"
@@ -489,24 +444,33 @@ const Page = () => {
 
             <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
             <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
+
+            <BannerDivider
+              iconName={iconNames.TOOLS}
+              headingText="EDB Postgres Tools"
+              toUrl="/tools"
+            />
+
+            <BannerWideLink to="/tools/edb_sqlpatch">
+              EDB SQL Patch
+            </BannerWideLink>
+
+            <BannerWideLink to="/tools/alteruser_utility">
+              alteruser
+            </BannerWideLink>
+
+            <BannerWideLink to="/tools/agent">EDB Agent</BannerWideLink>
+
+            <BannerWideLink to="/language_pack/latest/">
+              Language Pack
+            </BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
             iconName={iconNames.EXTENSION}
-            headingText="Extensions and Tools"
-            to="/edb-postgres-ai/extensions-and-tools"
+            headingText="Extensions"
+            to="/pg_extensions"
           >
-            <BannerWideQuickLinks>
-              <BannerWideLink to="/pg_extensions/" className="col-md-12">
-                Supported Postgres extensions
-              </BannerWideLink>
-              {/* <BannerWideLink to="/pg_tools/" classname="col-md-6">
-                Supported tools
-              </BannerWideLink> */}
-            </BannerWideQuickLinks>
-
-            <BannerDivider headingText="Extensions" toUrl="/pg_extensions/" />
-
             <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
@@ -533,6 +497,10 @@ const Page = () => {
               pgvector
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/pg_anonymizer">
+              pg_anonymizer
+            </BannerWideLink>
+            
             <BannerWideLink to="/pg_extensions/wal2json">
               wal2json
             </BannerWideLink>
@@ -570,22 +538,6 @@ const Page = () => {
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
-
-            <BannerDivider headingText="Tools" toUrl="/tools" />
-
-            <BannerWideLink to="/tools/edb_sqlpatch">
-              EDB SQL Patch
-            </BannerWideLink>
-
-            <BannerWideLink to="/tools/alteruser_utility">
-              alteruser
-            </BannerWideLink>
-
-            <BannerWideLink to="/tools/agent">EDB Agent</BannerWideLink>
-
-            <BannerWideLink to="/language_pack/latest/">
-              Language Pack
-            </BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
@@ -615,6 +567,14 @@ const Page = () => {
             </BannerWideLink>
             <BannerWideLink to="/mysql_data_adapter/latest">
               MySQL
+            </BannerWideLink>
+
+            <BannerDivider
+              headingText="Developer Tools"
+              toUrl="/edb-postgres-ai/integration#developer-tools"
+            />
+            <BannerWideLink to="/supported-open-source/postgrest">
+              postgREST
             </BannerWideLink>
           </BannerWideSubCard>
 

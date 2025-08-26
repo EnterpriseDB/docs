@@ -5,12 +5,16 @@ const {
   default: expressionReplacement,
 } = require("./expression-replacement.js");
 
-const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+const ghBranch =
+  process.env.CI_BUILD_REF ||
+  process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
+  // sort "preview" last, always
   return versions.sort((a, b) =>
-    b.localeCompare(a, undefined, { numeric: true }),
+    a === "preview" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
   );
 };
 
@@ -543,13 +547,11 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     }
     if (fromPath !== toPath) {
       const splitFromPath = fromPath.split(path.posix.sep);
-      const isPermanent =
-        splitFromPath[2] !== "latest" && splitToPath[2] !== "latest";
       actions.createRedirect({
         fromPath,
         toPath: effectiveTo,
         redirectInBrowser: false,
-        isPermanent,
+        isPermanent: false,
       });
     }
 
@@ -589,7 +591,12 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     const toIsLatest = isLatest || isLastVersion;
     if (toIsLatest) {
       const fromPathLatest = replacePathVersion(fromPath);
-      if (fromPathLatest !== fromPath && fromPathLatest !== toPath) {
+      // don't create redirects that point to themselves (and ignore wildcards as this is very easy to get pointed back to itself)
+      if (
+        fromPathLatest !== fromPath &&
+        fromPathLatest !== toPath &&
+        !fromPath.endsWith("/*")
+      ) {
         let value = validPaths.get(fromPathLatest);
         if (!value) validPaths.set(fromPathLatest, (value = []));
         value.push({

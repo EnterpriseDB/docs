@@ -1,66 +1,9 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { env, exit as _exit, argv as _argv } from "process";
-import { authenticate } from "@google-cloud/local-auth";
-import { google } from "googleapis";
 import parseArgs from "minimist";
 
-// If modifying these scopes, delete token.json.
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
-
 const EDBDOCS_PATH = join(env.HOME, ".edbdocs", "extensions");
-const TOKEN_PATH = join(EDBDOCS_PATH, "token.json");
-const CREDENTIALS_PATH = join(EDBDOCS_PATH, "credentials.json");
-
-async function loadSavedCredentialsIfExist() {
-  try {
-    const content = await fs.readFile(TOKEN_PATH);
-    const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials);
-  } catch (err) {
-    return null;
-  }
-}
-
-async function saveCredentials(client) {
-  const content = await fs.readFile(CREDENTIALS_PATH);
-  const keys = JSON.parse(content);
-  const key = keys.installed || keys.web;
-  const payload = JSON.stringify({
-    type: "authorized_user",
-    client_id: key.client_id,
-    client_secret: key.client_secret,
-    refresh_token: client.credentials.refresh_token,
-  });
-  await fs.writeFile(TOKEN_PATH, payload);
-}
-
-async function authorize() {
-  const secretsExist = await fs
-    .access(EDBDOCS_PATH)
-    .then(() => true)
-    .catch(() => false);
-
-  if (!secretsExist) {
-    console.log(
-      `${EDBDOCS_PATH} does not exist. Please create this directory and add the appropriate credentials.json`,
-    );
-    _exit(1);
-  }
-
-  let client = await loadSavedCredentialsIfExist();
-  if (client) {
-    return client;
-  }
-  client = await authenticate({
-    scopes: SCOPES,
-    keyfilePath: CREDENTIALS_PATH,
-  });
-  if (client.credentials) {
-    await saveCredentials(client);
-  }
-  return client;
-}
 
 function processRow(currentState, row, nextRow) {
   switch (currentState.rowState) {
@@ -183,7 +126,7 @@ function composeRow(row, lastRow, currentState) {
     spaceDiff++;
   }
   if (spaceDiff == fullName.length) {
-    console.error("All spaces name found.");
+    console.error("All spaces name found.", row, currentState);
     process.exit(1);
   }
   let lookupName = trimmedName.replaceAll(" ", "_");
@@ -214,7 +157,7 @@ function composeRow(row, lastRow, currentState) {
   );
   output.push(composeCell(true, true, false, true, row[5], lastRow, true));
   for (let i = 6; i < 14; i++) {
-    if (row[i] == "TRUE") {
+    if (row[i] === true) {
       output.push(
         composeCell(
           i == 6 || i == 9 || i == 11,
@@ -226,7 +169,7 @@ function composeRow(row, lastRow, currentState) {
           true,
         ),
       );
-    } else if (row[i] == "FALSE") {
+    } else if (row[i] === false) {
       output.push(
         composeCell(
           i == 6 || i == 9 || i == 11,
@@ -250,7 +193,7 @@ function composeRow(row, lastRow, currentState) {
           true,
         ),
       );
-    } else if (row[i].match(/Q[1-4] 20[0-9][0-9]/gm)) {
+    } else if (row[i].toString().match(/Q[1-4] 20[0-9][0-9]/gm)) {
       output.push(
         composeCell(
           i == 6 || i == 9 || i == 11,
@@ -393,7 +336,7 @@ function _composeCell(
 
 var productToURL = {};
 
-async function processExtensions(auth) {
+async function processExtensions() {
   var argv = parseArgs(_argv.slice(2));
 
   if (argv.source == undefined) {
@@ -407,19 +350,21 @@ async function processExtensions(auth) {
   const extensionsFile = join(argv.source, "extensionrefs.json");
   const extensionsContent = await fs.readFile(extensionsFile);
 
+  const extensionsData = join(argv.source, "extensiondata.json");
+  const extensionsDataContent = await fs.readFile(extensionsData);
+
   productToURL = JSON.parse(extensionsContent);
 
-  const sheets = google.sheets({ version: "v4", auth });
-
-  // const res = await sheets.spreadsheets.values.get({
-  //     spreadsheetId: "1GXzzVYT6CULGgGcyp0VtBfOtbxuWxkOU2pRYW42W4pM",
-  //     range: "Extensions by Offering"
-  // });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: "1UjwikOZhid9PgFd6JPF72XpA-QCmy3uuWnvHRak563U",
-    range: "Extensions by Offering",
+  const rows = JSON.parse(extensionsDataContent).map((row) => {
+    // trim trailing empty cells
+    // this will reduce empty rows to empty arrays, and "subtitle" rows
+    // to a single cell (which is what the rest of the logic expects)
+    while (row.length > 0 && row[row.length - 1].toString().trim() === "") {
+      row.pop();
+    }
+    return row;
   });
-  const rows = res.data.values;
+
   if (!rows || rows.length === 0) {
     console.log("No data found.");
     return;
@@ -452,4 +397,4 @@ async function processExtensions(auth) {
   }
 }
 
-authorize().then(processExtensions).catch(console.error);
+await processExtensions();

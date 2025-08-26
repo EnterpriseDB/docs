@@ -14,8 +14,8 @@ const forceTrailingSlash = (url) => {
 
 // strip path prefix to prevent duplication by <GatsbyLink>
 const stripPathPrefix = (path, pathPrefix) => {
-  if (path.startsWith(pathPrefix)) {
-    return path.replace(pathPrefix, "");
+  if (pathPrefix.length && path.startsWith(pathPrefix)) {
+    return stripPathPrefix(path.slice(pathPrefix.length), pathPrefix);
   }
   return path;
 };
@@ -36,7 +36,10 @@ const hasNonMarkdownExtension = (url) => {
 };
 
 const rewriteUrl = (url, pageUrl, pageIsIndex, productVersions, pathPrefix) => {
-  if (!pageUrl) return forceTrailingSlash(url);
+  if (!pageUrl)
+    return stripMarkdownExtension(
+      stripPathPrefix(forceTrailingSlash(url), pathPrefix),
+    );
 
   // consistent behavior while authoring: base path for relative links
   // should always be the directory containing the file holding the link

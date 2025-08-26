@@ -115,6 +115,24 @@ if (!process.env.GITHUB_REF) {
 
 main().catch((err) => ghCore.setFailed(err));
 
+const pipeline = unified()
+  .use(remarkParse)
+  .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
+  .use(remarkMdxEmbeddedHast)
+  .use(admonitions, {
+    tag: "!!!",
+    icons: "none",
+    infima: true,
+    customTypes: {
+      seealso: "note",
+      hint: "tip",
+      interactive: "interactive",
+    },
+  })
+  .use(mdx)
+  .use(remarkFrontmatter)
+  .freeze();
+
 async function main() {
   const updateLinks = process.env.GITHUB_REF
     ? !!ghCore.getInput("update-links")
@@ -125,24 +143,7 @@ async function main() {
   ]);
 
   const allValidUrlPaths = new Map();
-
-  const pipeline = unified()
-    .use(remarkParse)
-    .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
-    .use(remarkMdxEmbeddedHast)
-    .use(admonitions, {
-      tag: "!!!",
-      icons: "none",
-      infima: true,
-      customTypes: {
-        seealso: "note",
-        hint: "tip",
-        interactive: "interactive",
-      },
-    })
-    .use(mdx)
-    .use(remarkFrontmatter)
-    .freeze();
+  const ignoredUrlPaths = new Set();
 
   // first pass: scan all source files to identify valid URLs, mapping redirects to canonical path
   console.log(
@@ -167,7 +168,7 @@ async function main() {
       allValidUrlPaths.set(latestVersionURLPath(sourcePath), metadata);
     }
     const input = await read(sourcePath);
-    input.data = { allValidUrlPaths, metadata };
+    input.data = { allValidUrlPaths, ignoredUrlPaths, metadata };
     const ast = scanner.parse(input);
     await scanner.run(ast, input);
     for (let message of input.messages) {
@@ -281,11 +282,13 @@ async function main() {
     brokenSlugs = 0;
   for (const sourcePath of sourceFiles) {
     const urlPath = fsPathToURLPath(sourcePath);
+    //if (ignoredUrlPaths.has(urlPath)) continue;
     const metadata = allValidUrlPaths.get(urlPath);
     const input = await read(sourcePath);
-    input.data = { metadata, allValidUrlPaths };
+    input.data = { metadata, ignoredUrlPaths, allValidUrlPaths };
     let result = await processor.process(input); // should normally return input
     linksChecked += metadata.linksChecked || 0;
+    const importMsgRegex = /!!ImportedFrom\((.+)\)/;
     for (let message of result.messages) {
       const props = {
         title: message.ruleId,
@@ -293,6 +296,14 @@ async function main() {
         startLine: message.line,
         startColumn: message.column,
       };
+      if (importMsgRegex.test(message.reason)) {
+        const importPath = message.reason.match(importMsgRegex)[1];
+        message.reason = message.reason.replace(
+          importMsgRegex,
+          ` (imported by ${props.file})`,
+        );
+        props.file = path.relative(basePath, importPath);
+      }
       // don't use fatal messages in vFile, as they are noisy in the console.
       // DO use errors for pathCheck rules, as that doubles the number of annotations GitHub will show
       if (message.fatal || message.ruleId === "pathCheck")
@@ -341,18 +352,64 @@ function index() {
   // grab and store:
   // - each redirect (normalized)
   // - each link target (slugs, id'd elements)
-  return (tree, file) => {
-    const { allValidUrlPaths, metadata } = file.data;
+  return async (tree, file) => {
+    const { allValidUrlPaths, ignoredUrlPaths, metadata } = file.data;
     const slugger = new GithubSlugger();
 
-    visitParents(tree, ["element", "heading", "yaml"], (node) => {
-      if (node.type === "element" && node.properties.id)
+    // handle imports from other MDX files
+    const importConstants = {};
+    const importRegex = /import (?<const>\w+) +from +['"](?<path>[^'"]+\.mdx?)/;
+    const componentRegex = /<(?<name>\w+)(?:\s+[^>]*)?>/;
+    visitParents(tree, "import", (node) => {
+      const importMatch = node.value?.match(importRegex);
+      if (importMatch) {
+        importConstants[importMatch.groups.const] = importMatch.groups.path;
+      }
+    });
+
+    // load imported MDX files and parse them into ASTs
+    for (let [constName, importPath] of Object.entries(importConstants)) {
+      try {
+        let importedFile = await read(
+          path.resolve(path.dirname(file.path), importPath),
+        );
+        let mdxAST = pipeline.parse(importedFile);
+        mdxAST.path = path.resolve(path.dirname(file.path), importPath);
+        importConstants[constName] = mdxAST;
+      } catch (e) {
+        file.message(
+          `Error reading imported file ${importPath}: ${e.message}`,
+          null,
+          "link-check:importReadError",
+        );
+      }
+    }
+
+    visitParents(tree, ["element", "heading", "yaml", "jsx"], (node) => {
+      if (node.type === "jsx") {
+        const componentMatch = node.value.match(componentRegex)?.groups?.name;
+        if (importConstants[componentMatch]) {
+          node.children = importConstants[componentMatch].children;
+          node.data = { importPath: importConstants[componentMatch].path };
+        }
+      } else if (node.type === "element" && node.properties.id)
         metadata.slugs.push(node.properties.id);
       else if (node.type === "heading") {
         metadata.slugs.push(slugger.slug(mdast2string(node)));
       } else if (node.type === "yaml") {
         try {
           const frontmatter = yaml.load(node.value);
+          if (frontmatter.navigation) {
+            for (let child of frontmatter.navigation) {
+              if (!child.startsWith("!")) continue;
+              let urlPath = path.posix.resolve(
+                path.posix.sep,
+                metadata.canonical,
+                child.slice(1),
+              );
+              ignoredUrlPaths.add(urlPath);
+            }
+          }
           for (let redirect of normalizeRedirects(frontmatter, metadata)) {
             metadata.redirects.push(redirect);
             allValidUrlPaths.set(redirect, metadata);
@@ -404,8 +461,8 @@ function cleanup() {
   // - check for valid path
   // - check for valid slug
   // - if path and slug are valid but path is redirect, update path
-  return (tree, file) => {
-    const { allValidUrlPaths, metadata } = file.data;
+  return async (tree, file) => {
+    const { allValidUrlPaths, ignoredUrlPaths, metadata } = file.data;
 
     const relativize = ({ path: relative, latest }) => {
       // if path is identical to current: strip all but hash
@@ -424,7 +481,17 @@ function cleanup() {
       return relative;
     };
 
-    const mapUrlToCanonical = (url, position) => {
+    const checkImportSource = (ancestors) => {
+      for (let i = ancestors.length - 1; i >= 0; --i) {
+        const ancestor = ancestors[i];
+        if (ancestor.data?.importPath) {
+          return `!!ImportedFrom(${ancestor.data.importPath})`;
+        }
+      }
+      return "";
+    };
+
+    const mapUrlToCanonical = (url, position, ancestors) => {
       let test = normalizeUrl(url, metadata.canonical, metadata.index);
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
@@ -443,10 +510,23 @@ function cleanup() {
         if (!noWarnPaths.includes(metadata.canonical))
           file.message(
             `invalid URL path: ${url}` +
-              (url !== testPath + "/" + test.hash ? ` (${testPath})` : ""),
+              (url !== testPath + "/" + test.hash ? ` (${testPath})` : "") +
+              checkImportSource(ancestors),
             position,
             "link-check:pathCheck",
           );
+        return url;
+      }
+
+      // check if path is ignored
+      if (ignoredUrlPaths.has(testPath)) {
+        file.message(
+          `URL path is ignored: ${url}` +
+            (url !== testPath + "/" + test.hash ? ` (${testPath})` : "") +
+            checkImportSource(ancestors),
+          position,
+          "link-check:ignoredPath",
+        );
         return url;
       }
 
@@ -503,7 +583,8 @@ function cleanup() {
       ) {
         if (!noWarnPaths.includes(metadata.canonical))
           file.message(
-            `cannot find slug for ${test.hash} in ${path.relative(basePath, destMetadata.source)}`,
+            `cannot find slug for ${test.hash} in ${path.relative(basePath, destMetadata.source)}` +
+              checkImportSource(ancestors),
             position,
             "link-check:slugCheck",
           );
@@ -512,32 +593,70 @@ function cleanup() {
       return url;
     };
 
-    visitParents(tree, ["link", "image", "element"], (node) => {
-      try {
-        if (
-          node.type === "element" &&
-          node.tagName === "a" &&
-          node.properties.href
-        )
-          node.properties.href = mapUrlToCanonical(
-            node.properties.href,
-            node.position,
-          );
-        else if (
-          node.type === "element" &&
-          node.tagName === "img" &&
-          node.properties.src
-        )
-          node.properties.src = mapUrlToCanonical(
-            node.properties.src,
-            node.position,
-          );
-        else if (node.type === "link" || node.type === "image")
-          node.url = mapUrlToCanonical(node.url, node.position);
-      } catch (e) {
-        file.message(e, node.position);
+    // handle imports from other MDX files
+    const importConstants = {};
+    const importRegex = /import (?<const>\w+) +from +['"](?<path>[^'"]+\.mdx?)/;
+    const componentRegex = /<(?<name>\w+)(?:\s+[^>]*)?>/;
+    visitParents(tree, "import", (node) => {
+      const importMatch = node.value?.match(importRegex);
+      if (importMatch) {
+        importConstants[importMatch.groups.const] = importMatch.groups.path;
       }
     });
+
+    for (let [constName, importPath] of Object.entries(importConstants)) {
+      try {
+        let importedFile = await read(
+          path.resolve(path.dirname(file.path), importPath),
+        );
+        let mdxAST = pipeline.parse(importedFile);
+        mdxAST.path = path.resolve(path.dirname(file.path), importPath);
+        importConstants[constName] = mdxAST;
+      } catch (e) {}
+    }
+
+    visitParents(
+      tree,
+      ["link", "image", "element", "jsx"],
+      (node, ancestors) => {
+        try {
+          if (node.type === "jsx") {
+            const componentMatch =
+              node.value.match(componentRegex)?.groups?.name;
+            if (importConstants[componentMatch]) {
+              node.children = importConstants[componentMatch].children;
+              node.data = { importPath: importConstants[componentMatch].path };
+            }
+          } else if (node.type === "element" && importConstants[node.tagName]) {
+            node.children = importConstants[node.tagName].children;
+            node.data = { importPath: importConstants[node.tagName].path };
+          } else if (
+            node.type === "element" &&
+            node.tagName === "a" &&
+            node.properties.href
+          )
+            node.properties.href = mapUrlToCanonical(
+              node.properties.href,
+              node.position,
+              ancestors,
+            );
+          else if (
+            node.type === "element" &&
+            node.tagName === "img" &&
+            node.properties.src
+          )
+            node.properties.src = mapUrlToCanonical(
+              node.properties.src,
+              node.position,
+              ancestors,
+            );
+          else if (node.type === "link" || node.type === "image")
+            node.url = mapUrlToCanonical(node.url, node.position, ancestors);
+        } catch (e) {
+          file.message(e, node.position);
+        }
+      },
+    );
   };
 }
 
