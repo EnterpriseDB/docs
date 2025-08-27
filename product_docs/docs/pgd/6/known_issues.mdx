@@ -237,6 +237,121 @@ which would otherwise be cheap to replicate.
     Replication of large UPDATE/DELETE query that affected millions of
     rows will still be slow even with indexes.
 
+### EPAS Queue Tables not replicated
+
+EPAS [Queue
+Tables](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_sql/31_create_queue_table/)
+are not replicated. Check for their existence with:
+
+```sql
+SELECT * FROM pg_catalog.edb_queue_table;
+```
+
+### Explicit row-level locks not replicated
+
+Explicit row-level locks like `SELECT ... FOR UPDATE` / `SELECT
+... FOR SHARE` are not replicated. As long as you only write to the
+PGD write leader this will not be a problem.
+
+### Advisory locks not replicated
+
+Postgres advisory locks are not replicated by PGD or physical
+streaming replication, and will not work across the replication
+failover.
+
+Check your application code for uses of `pg_advisory*` and
+`pg_try_advisory*`.
+
+### Avoid DELETE/INSERT of replica identity values
+
+Avoid modification of the replica identity values, such as primary
+keys, especially in quick succession, as it may lead to replication
+conflicts that cannot be automatically resolved, and subsequently to
+divergent data errors.
+
+### TRIGGER and REFERENCES privileges
+
+TRIGGER and REFERENCES privileges are the two types of privileges that
+are not commonly used with PostgreSQL and can cause problems with PGD.
+
+PGD supports triggers, but for security reasons blocks the case when
+the trigger is not owned by the same user as the table on which it is
+defined. That situation can occur when a non-table owner is explicitly
+granted the TRIGGER privilege on a table.
+
+Trigger privileges granted explicitly to non-table-owners may be
+present as part of trigger-based replication solutions, such as Slony
+or Bucardo. PGD generally supersedes functionality of such solutions;
+they are considered insecure and should be avoided.
+
+PGD supports foreign keys but for security and performance reasons
+blocks the case when the owner of the referencing table does not have
+the SELECT privilege on the referenced table. That situation can occur
+when a user is explicitly granted the REFERENCES privilege on a table.
+
+Explicit GRANTs of TRIGGER or REFERENCES privileges can be detected
+using the following query. These two cases are not related to each
+other, but it is convenient to detect both at the same time with one
+query.
+
+```sql
+SELECT * FROM (
+  SELECT  relname
+    ,relowner::regrole as relowner
+    ,split_part(unnest(relacl)::text,'=', 1) as grantee
+    ,split_part(split_part(unnest(relacl)::text,'=', 2), '/', 1) as acl
+  FROM pg_class where relacl is not null) as a   /* Get the raw ACL string(s) */
+  WHERE relowner::regrole::text != grantee  /* NOT table owner */
+  AND ((strpos(acl, 'x') > 0   /* REFERENCES priv */ AND strpos(acl, 'r') = 0)
+  OR strpos(acl, 't') > 0   /* TRIGGER priv */ AND acl != 'arwdDxt' /* NOT ALL */);
+```
+
+Alternatively, you can look for insecure trigger functions using this query:
+
+```sql
+SELECT relname, tgname, proname, relowner, proowner, prosecdef;
+FROM pg_trigger t
+JOIN pg_class c ON t.tgrelid = c.oid
+JOIN pg_proc f ON t.tgfoid = f.oid
+WHERE (relowner != proowner 	/* Different owner */
+  OR prosecdef)  		  /* SECURITY DEFINER */
+  AND proowner != 10  		  /* Non-catalog functions */;
+```
+
+Resolve in the database by modifying trigger ownership and table
+privileges as necessary. Note: if the affected objects are routinely
+created by the application then this should be resolved in the
+application.
+
+### Replica rules are ignored on replicas
+
+Rules, if present, are executed on the origin node, and ignored on replicas.
+
+To check for replica rules, run:
+
+```sql
+SELECT rulename, ev_class, ev_type, ev_enabled
+FROM pg_rewrite
+WHERE ev_type != '1'
+  AND NOT is_instead
+  AND ev_enabled in ('R', 'A');
+```
+
+Resolve in application by eliminating any use of rules that are
+expected to fire on replication, if they exist.
+
+### LISTEN and NOTIFY not replicated
+
+These commands are not replicated and work on each cluster node
+individually. Consider that notifications can be lost in case of a
+failover.
+
+Triggers that send out NOTIFY on commit will work with PGD, as long as
+they are defined as REPLICA TRIGGER.
+
+Instead of LISTEN and NOTIFY consider using replication slots
+directly.
+
 ### Other limitations
 
 This noncomprehensive list includes other limitations that are expected and
