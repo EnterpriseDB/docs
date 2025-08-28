@@ -11,17 +11,78 @@ is to clone new nodes directly from the remaining nodes.
 The role of backup and recovery in PGD is to provide for disaster
 recovery (DR), such as in the following situations:
 
--   Loss of all nodes in the cluster
--   Significant, uncorrectable data corruption across multiple nodes
+- Loss of all nodes in the cluster
+- Significant, uncorrectable data corruption across multiple nodes
     as a result of data corruption, application error, or
     security breach
 
-## Backup
-
-### pg_dump
+## Logical backup and restore
 
 You can use pg_dump, sometimes referred to as *logical backup*,
-normally with PGD.
+normally with PGD. But in order to reduce the risk of global lock
+timeouts, we recommend dumping pre-data, data, and post-data
+separately. For example:
+
+```console
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=pre-data -Fc -f pgd-pre-data.dump
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=data -Fc -f pgd-data.dump
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=post-data -Fc -f pgd-post-data.dump
+```
+
+And restore by directly executing these SQL files:
+
+```console
+pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data -f pgd-pre-data.dump
+pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data -f pgd-data.dump
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data -f pgd-post-data.dump
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+```
+
+After which point the dump will be restored on all nodes in the cluster.
+
+In contrast if you do not split sections out with a naive pg_dump and
+pg_restore, the restore will likely fail with a global lock timeout.
+
+You should also temporarily set the following settings in `postgresql.conf`:
+
+```
+# Increase from the default of `1GB` to something large, but still a
+# fraction of your disk space since the non-WAL data must also fit.
+# This decreases the frequency of checkpoints.
+max_wal_size = 100GB
+
+# Increase the number of writers to make better use of parallel
+# apply. Default is 2. Make sure this isn't overriden lower by the
+# node group config num_writers setting.
+bdr.writers_per_subscription = 5
+
+# Increase the amount of memory for building indexes. Default is
+# 64MB. For example, 1GB assuming 128GB total RAM.
+maintenance_work_mem = 1GB
+
+# Increase the receiver and sender timeout from 1 minute to 1hr to
+# allow large transactions through.
+wal_receiver_timeout = 1h
+wal_sender_timeout = 1h
+```
+
+Additionally:
+
+- Make sure the default bdr.streaming_mode = 'auto' is not overridden so that transactions are streamed.
+- Make sure any session or postgresql.conf settings listed above are not overriden by node group-level settings in general.
+
+And if you continue to get global lock timeouts during initial load,
+temporarily set `bdr.ddl_locking = off` for the initial load.
+
+### Prefer restoring to a single node
+
+Especially when initially setting up a cluster from a Postgres dump,
+we recommend you restore to a cluster with a single PGD node. Then run
+`pgd node setup` for each node you want in the cluster which will do a
+physical join that uses `bdr_init_physical` under the hood.
+
+### Sequences
 
 pg_dump dumps both local and global sequences as if
 they were local sequences. This behavior is intentional, to allow a PGD
@@ -46,7 +107,7 @@ dump only with `bdr.crdt_raw_value = on`.
 Technical Support recommends the use of physical backup techniques for
 backup and recovery of PGD.
 
-### Physical backup
+## Physical backup and restore
 
 You can take physical backups of a node in an EDB Postgres Distributed cluster using
 standard PostgreSQL software, such as
@@ -59,150 +120,31 @@ PostgreSQL node running the BDR extension.
 Consider these specific points when applying
 PostgreSQL backup techniques to PGD:
 
--   PGD operates at the level of a single database, while a physical
+- PGD operates at the level of a single database, while a physical
     backup includes all the databases in the instance. Plan
     your databases to allow them to be easily backed up and restored.
 
--   Backups make a copy of just one node. In the simplest case,
+- Backups make a copy of just one node. In the simplest case,
     every node has a copy of all data, so you need to back up only
     one node to capture all data. However, the goal of PGD isn't
     met if the site containing that single copy goes down, so the
     minimum is at least one node backup per site (with
     many copies, and so on).
 
--   However, each node might have unreplicated local data, or the
+- However, each node might have unreplicated local data, or the
     definition of replication sets might be complex so that all nodes don't
     subscribe to all replication sets. In these cases, backup
     planning must also include plans for how to back up any unreplicated
     local data and a backup of at least one node that subscribes to each
     replication set.
 
-### Eventual consistency
-
-The nodes in an EDB Postgres Distributed cluster are *eventually consistent* but not
-*entirely consistent*. A physical backup of a given node provides
-point-in-time recovery capabilities limited to the states
-actually assumed by that node.
-
-The following example shows how two nodes in the same EDB Postgres Distributed cluster might not
-(and usually don't) go through the same sequence of states.
-
-Consider a cluster with two nodes, `N1` and `N2`, that's initially in
-state `S`. If transaction `W1` is applied to node `N1`, and at the same
-time a non-conflicting transaction `W2` is applied to node `N2`, then
-node `N1` goes through the following states:
-
-```
-(N1)   S  -->  S + W1  -->  S + W1 + W2
-```
-
-Node `N2` goes through the following states:
-
-```
-(N2)   S  -->  S + W2  -->  S + W1 + W2
-```
-
-That is, node `N1` *never* assumes state `S + W2`, and node `N2`
-likewise never assumes state `S + W1`. However, both nodes end up
-in the same state `S + W1 + W2`. Considering this situation might affect how
-you decide on your backup strategy.
-
-### Point-in-time recovery (PITR)
-
-The previous example showed that the changes are also inconsistent in time. 
-`W1` and `W2` both occur at time `T1`, but the change `W1` isn't
-applied to `N2` until `T2`.
-
-PostgreSQL PITR is designed around the assumption of changes arriving
-from a single master in COMMIT order. Thus, PITR is possible by 
-scanning through changes until one particular point in time (PIT) is reached.
-With this scheme, you can restore one node to a single PIT
-from its viewpoint, for example, `T1`. However, that state doesn't include other
-data from other nodes that committed near that time but had not yet
-arrived on the node. As a result, the recovery might be considered to
-be partially inconsistent, or at least consistent for only one
-replication origin.
-
-With PostgreSQL PITR, you can use the standard syntax:
-
-```
-recovery_target_time = T1
-```
-
-PGD allows for changes from multiple masters, all recorded in the
-WAL log for one node, separately identified using replication origin
-identifiers.
-
-PGD allows PITR of all or some replication origins to a specific point in time,
-providing a fully consistent viewpoint across all subsets of nodes.
-
-Thus for multi-origins, you can view the WAL stream as containing multiple
-streams all mixed up into one larger stream. There's still just one PIT,
-but that's reached as different points for each origin separately.
-
-The WAL stream is read until requested origins have found their PIT. 
-All changes are applied up until that point, except that 
-any transaction records aren't marked as committed for an origin after the PIT on that origin is
-reached.
-
-You end up with one LSN "stopping point" in WAL, but you also have one single
-timestamp applied consistently, just as you do with single-origin PITR.
-
-Once you reach the defined PIT, a later one might also be set to allow
-the recovery to continue, as needed.
-
-After the desired stopping point is reached, if the recovered server
-will be promoted, shut it down first. Move the LSN forward to an LSN value higher 
-than used on any timeline on this server using `pg_resetwal`.
-This approach ensures that there are no duplicate LSNs produced by logical
-decoding.
-
-In the specific example shown, `N1` is restored to `T1`. It 
-also includes changes from other nodes that were committed
-by `T1`, even though they weren't applied on `N1` until later.
-
-To request multi-origin PITR, use the standard syntax in
-the `postgresql.conf` file:
-
-```
-recovery_target_time = T1
-```
-
-You need to specify the list of replication origins that are restored to `T1` in one of two ways. 
-You can use a separate `multi_recovery.conf` file by way of
-a new parameter, `recovery_target_origins`:
-
-```
-recovery_target_origins = '*'
-```
-
-Or you can specify the origin subset as a list in `recovery_target_origins`:
-
-```
-recovery_target_origins = '1,3'
-```
-
-The local WAL activity recovery to the specified
-`recovery_target_time` is always performed implicitly. For origins
-that aren't specified in `recovery_target_origins`, recovery can
-stop at any point, depending on when the target for the list
-mentioned in `recovery_target_origins` is achieved.
-
-In the absence of the `multi_recovery.conf` file, the recovery defaults
-to the original PostgreSQL PITR behavior that's designed around the assumption
-of changes arriving from a single master in COMMIT order.
-
-!!! Note
-    This feature is available only with EDB Postgres Extended.
-    Barman doesn't create a `multi_recovery.conf` file.
-
-## Restore
+### Restore
 
 While you can take a physical backup with the same procedure as a
 standard PostgreSQL node, it's slightly more complex to
 restore the physical backup of a PGD node.
 
-### EDB Postgres Distributed cluster failure or seeding a new cluster from a backup
+#### EDB Postgres Distributed cluster failure or seeding a new cluster from a backup
 
 The most common use case for restoring a physical backup involves the failure
 or replacement of all the PGD nodes in a cluster, for instance in the event of
@@ -279,3 +221,123 @@ useful.
 
 !!! Warning
     Never use these commands to drop replication slots on a live PGD node
+
+
+## Eventual consistency
+
+The nodes in an EDB Postgres Distributed cluster are *eventually consistent* but not
+*entirely consistent*. A physical backup of a given node provides
+point-in-time recovery capabilities limited to the states
+actually assumed by that node.
+
+The following example shows how two nodes in the same EDB Postgres Distributed cluster might not
+(and usually don't) go through the same sequence of states.
+
+Consider a cluster with two nodes, `N1` and `N2`, that's initially in
+state `S`. If transaction `W1` is applied to node `N1`, and at the same
+time a non-conflicting transaction `W2` is applied to node `N2`, then
+node `N1` goes through the following states:
+
+```
+(N1)   S  -->  S + W1  -->  S + W1 + W2
+```
+
+Node `N2` goes through the following states:
+
+```
+(N2)   S  -->  S + W2  -->  S + W1 + W2
+```
+
+That is, node `N1` *never* assumes state `S + W2`, and node `N2`
+likewise never assumes state `S + W1`. However, both nodes end up
+in the same state `S + W1 + W2`. Considering this situation might affect how
+you decide on your backup strategy.
+
+### Point-in-time recovery (PITR)
+
+The previous example showed that the changes are also inconsistent in time. 
+`W1` and `W2` both occur at time `T1`, but the change `W1` isn't
+applied to `N2` until `T2`.
+
+PostgreSQL PITR is designed around the assumption of changes arriving
+from a single master in COMMIT order. Thus, PITR is possible by 
+scanning through changes until one particular point in time (PIT) is reached.
+With this scheme, you can restore one node to a single PIT
+from its viewpoint, for example, `T1`. However, that state doesn't include other
+data from other nodes that committed near that time but had not yet
+arrived on the node. As a result, the recovery might be considered to
+be partially inconsistent, or at least consistent for only one
+replication origin.
+
+With PostgreSQL PITR, you can use the standard syntax:
+
+```text
+recovery_target_time = T1
+```
+
+PGD allows for changes from multiple masters, all recorded in the
+WAL log for one node, separately identified using replication origin
+identifiers.
+
+PGD allows PITR of all or some replication origins to a specific point in time,
+providing a fully consistent viewpoint across all subsets of nodes.
+
+Thus for multi-origins, you can view the WAL stream as containing multiple
+streams all mixed up into one larger stream. There's still just one PIT,
+but that's reached as different points for each origin separately.
+
+The WAL stream is read until requested origins have found their PIT. 
+All changes are applied up until that point, except that 
+any transaction records aren't marked as committed for an origin after the PIT on that origin is
+reached.
+
+You end up with one LSN "stopping point" in WAL, but you also have one single
+timestamp applied consistently, just as you do with single-origin PITR.
+
+Once you reach the defined PIT, a later one might also be set to allow
+the recovery to continue, as needed.
+
+After the desired stopping point is reached, if the recovered server
+will be promoted, shut it down first. Move the LSN forward to an LSN value higher 
+than used on any timeline on this server using `pg_resetwal`.
+This approach ensures that there are no duplicate LSNs produced by logical
+decoding.
+
+In the specific example shown, `N1` is restored to `T1`. It 
+also includes changes from other nodes that were committed
+by `T1`, even though they weren't applied on `N1` until later.
+
+To request multi-origin PITR, use the standard syntax in
+the `postgresql.conf` file:
+
+```text
+recovery_target_time = T1
+```
+
+You need to specify the list of replication origins that are restored to `T1` in one of two ways. 
+You can use a separate `multi_recovery.conf` file by way of
+a new parameter, `recovery_target_origins`:
+
+```text
+recovery_target_origins = '*'
+```
+
+Or you can specify the origin subset as a list in `recovery_target_origins`:
+
+```text
+recovery_target_origins = '1,3'
+```
+
+The local WAL activity recovery to the specified
+`recovery_target_time` is always performed implicitly. For origins
+that aren't specified in `recovery_target_origins`, recovery can
+stop at any point, depending on when the target for the list
+mentioned in `recovery_target_origins` is achieved.
+
+In the absence of the `multi_recovery.conf` file, the recovery defaults
+to the original PostgreSQL PITR behavior that's designed around the assumption
+of changes arriving from a single master in COMMIT order.
+
+!!! Note
+    This feature is available only with EDB Postgres Extended.
+    Barman doesn't create a `multi_recovery.conf` file.
