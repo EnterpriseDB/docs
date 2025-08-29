@@ -76,12 +76,103 @@ To enqueue a message on your .NET application, you must:
 
 The following code shows how to use `EDBAQQueue.Enqueue` method. A custom message payload is created and then enqueued.
 
-!!! Note
-
+!!!note
     As an example, we are using the ambient Connection via `EDBAQQueue.Connection` to begin a transaction, so that if anything goes wrong the queue won't be polluted.
+!!!
+
+<TabContainer syncKey="sample">
+<Tab title=".NET">
 
 ```csharp
-// .NET Framework 4.7.2
+using EnterpriseDB.EDBClient;
+
+namespace EnterpriseDB;
+
+internal static class Program
+{
+    // Sample message payload
+    class MyXML
+    {
+        public string Value { get; set; }
+    }
+
+    public static async Task Main(string[] args)
+    {
+        // not for production, move connection string to app settings
+        string connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+        // Note registration of MyXml type
+        var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+        dataSourceBuilder
+            .MapComposite<MyXML>("enterprisedb.myxml");
+
+        await using var dataSource = dataSourceBuilder.Build();
+        await using var connection = await dataSource.OpenConnectionAsync();
+        using var queue = CreateQueue("MSG_QUEUE", connection);
+
+        // Enqueue 5 messages
+        int messagesToSend = 5;
+        for (int i = 0; i < messagesToSend; i++)
+        {
+            var payload = new MyXML()
+            {
+                Value = $"(<Message><MessageText>Test message: {i}</MessageText></Message>)"
+            };
+
+            if (TryEnqueueMessage(queue, payload, out var _))
+            {
+                // MessageId is populated with a unique identifier
+                Console.WriteLine($"Message {i} ({message.MessageId}) enqueued");
+            }
+            else
+            {
+                Console.WriteLine($"Message {i} enqueue failed");
+            }
+        }
+
+    }
+
+    // Creates and returns a queue ready for use in our sample
+    private static EDBAQQueue CreateQueue(string queueName, EDBConnection connection)
+    {
+        var queue = new EDBAQQueue(queueName, connection);
+        queue.MessageType = EDBAQMessageType.Udt;
+        queue.EnqueueOptions.Visibility = EDBAQVisibility.ON_COMMIT;
+        queue.UdtTypeName = "myxml";
+
+        return queue;
+    }
+
+    // Enqueues the payload
+    // If the enqueuing was successfull, message variable receives the queue message and the function returns true
+    // otherwise message is null and the function returns false
+    private static bool TryEnqueueMessage<T>(EDBAQQueue queue, T payload, out EDBAQMessage message)
+    {
+        using EDBTransaction transaction = queue.Connection.BeginTransaction();
+
+        try
+        {
+            message = new EDBAQMessage() { Payload = payload };
+            queue.Enqueue(message);
+            transaction.Commit();
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error while enqueing message: {ex.Message}");
+            transaction?.Rollback();
+
+            message = null;
+            return false;
+        }
+    }
+}
+```
+
+</Tab>
+<Tab title=".NET Framework">
+```csharp
 using System;
 using System.Threading.Tasks;
 using EnterpriseDB.EDBClient;
@@ -170,12 +261,33 @@ namespace EnterpriseDB
         }
     }
 }
+```
 
-// .NET8
+</Tab>
+</TabContainer> 
+
+
+#### Dequeueing a message
+
+To dequeue a message on your .NET application, you must:
+
+1.  Import the `EnterpriseDB.EDBClient` namespace.
+2.  Pass the name of the queue and create the instance of the `EDBAQQueue`.
+3.  Call the `EDBAQQueue.Dequeue()` method.
+
+!!! Note
+
+    The following code shows how to use the `EDBAQQueue.Dequeue` method. A queue is retrieved by its name, and a attempt is made to dequeue a message.
+
+    If a `PostgresException` with `SqlState` set to `P0002` is raised, then the queue is empty or the wait time (set with `queue.DequeueOptions.Wait`) has expired, and the code gracefully returns a `null` message.
+
+<TabContainer syncKey="sample">
+<Tab title=".NET">
+
+```csharp
 using EnterpriseDB.EDBClient;
 
 namespace EnterpriseDB;
-
 internal static class Program
 {
     // Sample message payload
@@ -198,26 +310,28 @@ internal static class Program
         await using var connection = await dataSource.OpenConnectionAsync();
         using var queue = CreateQueue("MSG_QUEUE", connection);
 
-        // Enqueue 5 messages
-        int messagesToSend = 5;
-        for (int i = 0; i < messagesToSend; i++)
+        // Dequeue 5 messages
+        int messagesToDequeue = 5;
+        for (int i = 0; i < messagesToDequeue; i++)
         {
-            var payload = new MyXML()
+            if (TryDequeueMessage(queue, out var message))
             {
-                Value = $"(<Message><MessageText>Test message: {i}</MessageText></Message>)"
-            };
-
-            if (TryEnqueueMessage(queue, payload, out var _))
-            {
-                // MessageId is populated with a unique identifier
-                Console.WriteLine($"Message {i} ({message.MessageId}) enqueued");
+                Console.WriteLine($"Message {message.MessageId} dequeued");
+                        
+                if (message?.Payload is MyXML myXML)
+                {
+                    Console.WriteLine($"MyXML Message received: {myXML.Value}");
+                }
+                else
+                {
+                    Console.WriteLine($"Other message received");
+                }
             }
             else
             {
-                Console.WriteLine($"Message {i} enqueue failed");
+                Console.WriteLine($"No message");
             }
         }
-
     }
 
     // Creates and returns a queue ready for use in our sample
@@ -225,30 +339,39 @@ internal static class Program
     {
         var queue = new EDBAQQueue(queueName, connection);
         queue.MessageType = EDBAQMessageType.Udt;
-        queue.EnqueueOptions.Visibility = EDBAQVisibility.ON_COMMIT;
+        queue.DequeueOptions.Navigation = EDBAQNavigationMode.FIRST_MESSAGE;
+        queue.DequeueOptions.Visibility = EDBAQVisibility.ON_COMMIT;
+        queue.DequeueOptions.Wait = 1; // wait for 1 seconds
         queue.UdtTypeName = "myxml";
 
         return queue;
     }
 
-    // Enqueues the payload
-    // If the enqueuing was successfull, message variable receives the queue message and the function returns true
+    // Dequeus a payload
+    // If the dequeuing was successfull, message variable receives the queue message and the function returns true
     // otherwise message is null and the function returns false
-    private static bool TryEnqueueMessage<T>(EDBAQQueue queue, T payload, out EDBAQMessage message)
+    private static bool TryDequeueMessage(EDBAQQueue queue, out EDBAQMessage message)
     {
         using EDBTransaction transaction = queue.Connection.BeginTransaction();
 
         try
         {
-            message = new EDBAQMessage() { Payload = payload };
-            queue.Enqueue(message);
+            message = queue.Dequeue();
             transaction.Commit();
 
             return true;
         }
+        catch (PostgresException pgException) when (pgException.SqlState == "P0002")
+        {
+            // Queue empty or time out
+            transaction.Commit();
+
+            message = null;
+            return false;
+        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error while enqueing message: {ex.Message}");
+            Console.WriteLine($"Error while dequeuing message: {ex.Message}");
             transaction?.Rollback();
 
             message = null;
@@ -258,23 +381,10 @@ internal static class Program
 }
 ```
 
-
-#### Dequeueing a message
-
-To dequeue a message on your .NET application, you must:
-
-1.  Import the `EnterpriseDB.EDBClient` namespace.
-2.  Pass the name of the queue and create the instance of the `EDBAQQueue`.
-3.  Call the `EDBAQQueue.Dequeue()` method.
-
-!!! Note
-
-    The following code shows how to use the `EDBAQQueue.Dequeue` method. A queue is retrieved by its name, and a attempt is made to dequeue a message.
-
-    If a `PostgresException` with `SqlState` set to `P0002` is raised, then the queue is empty or the wait time (set with `queue.DequeueOptions.Wait`) has expired, and the code gracefully returns a `null` message.
+</Tab>
+<Tab title=".NET Framework">
 
 ```csharp
-// .NET Framework 4.7.2
 using System;
 using System.Threading.Tasks;
 using EnterpriseDB.EDBClient;
@@ -375,103 +485,15 @@ namespace EnterpriseDB
         }
     }
 }
-
-// .NET8
-using EnterpriseDB.EDBClient;
-
-namespace EnterpriseDB;
-internal static class Program
-{
-    // Sample message payload
-    class MyXML
-    {
-        public string Value { get; set; }
-    }
-
-    public static async Task Main(string[] args)
-    {
-        // not for production, move connection string to app settings
-        string connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
-
-        // Note registration of MyXml type
-        var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
-        dataSourceBuilder
-            .MapComposite<MyXML>("enterprisedb.myxml");
-
-        await using var dataSource = dataSourceBuilder.Build();
-        await using var connection = await dataSource.OpenConnectionAsync();
-        using var queue = CreateQueue("MSG_QUEUE", connection);
-
-        // Dequeue 5 messages
-        int messagesToDequeue = 5;
-        for (int i = 0; i < messagesToDequeue; i++)
-        {
-            if (TryDequeueMessage(queue, out var message))
-            {
-                Console.WriteLine($"Message {message.MessageId} dequeued");
-                        
-                if (message?.Payload is MyXML myXML)
-                {
-                    Console.WriteLine($"MyXML Message received: {myXML.Value}");
-                }
-                else
-                {
-                    Console.WriteLine($"Other message received");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"No message");
-            }
-        }
-    }
-
-    // Creates and returns a queue ready for use in our sample
-    private static EDBAQQueue CreateQueue(string queueName, EDBConnection connection)
-    {
-        var queue = new EDBAQQueue(queueName, connection);
-        queue.MessageType = EDBAQMessageType.Udt;
-        queue.DequeueOptions.Navigation = EDBAQNavigationMode.FIRST_MESSAGE;
-        queue.DequeueOptions.Visibility = EDBAQVisibility.ON_COMMIT;
-        queue.DequeueOptions.Wait = 1; // wait for 1 seconds
-        queue.UdtTypeName = "myxml";
-
-        return queue;
-    }
-
-    // Dequeus a payload
-    // If the dequeuing was successfull, message variable receives the queue message and the function returns true
-    // otherwise message is null and the function returns false
-    private static bool TryDequeueMessage(EDBAQQueue queue, out EDBAQMessage message)
-    {
-        using EDBTransaction transaction = queue.Connection.BeginTransaction();
-
-        try
-        {
-            message = queue.Dequeue();
-            transaction.Commit();
-
-            return true;
-        }
-        catch (PostgresException pgException) when (pgException.SqlState == "P0002")
-        {
-            // Queue empty or time out
-            transaction.Commit();
-
-            message = null;
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error while dequeuing message: {ex.Message}");
-            transaction?.Rollback();
-
-            message = null;
-            return false;
-        }
-    }
-}
 ```
+</Tab>
+</TabContainer>
+
+!!!note
+   A full sample project for this article is available in the [EDB .NET documentation samples](https://github.com/EnterpriseDB/edb-dotnet-docs-samples) repository:
+   - .NET Framework sample : [UsingAdvancedQueuing](https://github.com/EnterpriseDB/edb-dotnet-docs-samples/tree/main/netframework/UsingAdvancedQueuing)
+   - .NET sample : [UsingAdvancedQueuing](https://github.com/EnterpriseDB/edb-dotnet-docs-samples/tree/main/net/UsingAdvancedQueuing)
+!!!
 
 ## EDBAQ classes
 
