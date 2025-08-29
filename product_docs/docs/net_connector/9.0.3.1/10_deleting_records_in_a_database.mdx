@@ -7,38 +7,103 @@ title: "Deleting records in a database"
 
 You can use the `ExecuteNonQuery()` method of `EDBCommand` to delete records from a database stored on an EDB Postgres Advanced Server host with a `DELETE` statement.
 
-In the example that follows, the `DELETE` command is stored in the variable `strDeleteQuery`. The code passes the employee number specified by `EmpNo` to the `DELETE` command. The command is then executed using the `ExecuteNonQuery()` method.
+In the example that follows, the `DELETE` command is stored in the variable `deleteCommand`. The values prefixed with a colon (`:`) are placeholders for EDBParameters.
+
+The `EDBParameter` for the employee ID is created and assigned at the same time using command’s parameter collection `EDBParameterCollection.AddWithValue(string parameterName, object value)` method.
+
+The `DELETE` command is then executed by the `ExecuteNonQuery()` method of the `deleteCommand` object.
+
+Note that `ExecuteNonQuery()` method returns the number of rows affected by the command. It is usually a good practice to check the number of affected rows matches your expectations (0 or 1 in this example).
+
+The example deletes an employee having the 1234 ID from the `emp` table:
+
+<TabContainer syncKey="sample">
+<Tab title=".NET">
 
 ```csharp
-<% @ Page Language="C#" Debug="true"%>
-<% @Import Namespace="EnterpriseDB.EDBClient" %>
-<% @Import Namespace="System.Data" %>
-<% @Import Namespace="System.Configuration" %>
-<script language="C#" runat="server" >
-private void Page_Load(object sender, System.EventArgs e)
+using EnterpriseDB.EDBClient;
+
+namespace DeletingRecords;
+
+internal static class Program
 {
-	var strConnectionString = ConfigurationManager.AppSettings["DB_CONN_STRING"];
-	var strDeleteQuery  = "DELETE FROM emp WHERE empno = :ID";
-	try
-	{
-		await using var dataSource = EDBDataSource.Create(ConnectionString);
-		var conn = await dataSource.OpenConnectionAsync();
-		var strDeleteQuery = "DELETE FROM emp WHERE empno = :ID";
-		using var deleteCommand = new EDBCommand(strDeleteQuery, conn);
-		deleteCommand.Parameters.Add(new EDBParameter(":ID", EDBTypes.EDBDbType.Integer));
-		deleteCommand.Parameters[0].Value = 1234;
-		await deleteCommand.ExecuteNonQueryAsync();
-		Response.Write("Record Deleted");
-		await conn.CloseAsync();
-	}
-	catch(Exception exp)
-	{
-		Response.Write(exp.ToString());
-	}
+    static async Task Main(string[] args)
+    {
+        // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+        try
+        {
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var conn = await dataSource.OpenConnectionAsync();
+            await using var deleteCommand = new EDBCommand("DELETE FROM emp WHERE empno = :ID", conn);
+
+            deleteCommand.Parameters.AddWithValue(":ID", 1234);
+
+            var numRows = await deleteCommand.ExecuteNonQueryAsync();
+
+            Console.WriteLine($"{numRows} record(s) deleted successfully");
+
+            await conn.CloseAsync();
+        }
+        catch (Exception exp)
+        {
+            Console.WriteLine($"An error occured: {exp}");
+        }
+    }
 }
-</script>
 ```
 
-Save the sample code in a file named `deleteEmployee.aspx` in a web root directory. 
+</Tab>
+<Tab title=".NET Framework">
 
-To invoke the sample code, enter the following in a browser: `http://localhost/deleteEmployee.aspx`
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+
+namespace DeletingRecords
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+            try
+            {
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var conn = await dataSource.OpenConnectionAsync())
+                {
+                    using (var deleteCommand = new EDBCommand("DELETE FROM emp WHERE empno = :ID", conn))
+                    {
+                        deleteCommand.Parameters.AddWithValue(":ID", 1234);
+                        
+                        var numRows = await deleteCommand.ExecuteNonQueryAsync();
+                
+                        Console.WriteLine($"{numRows} record(s) deleted successfully");
+                    }
+                    await conn.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+</Tab>
+</TabContainer> 
+
+This program should show the following output in the Console :
+
+```text
+1 record(s) deleted successfully
+```
+
+!!!note
+   A full sample project for this article is available in the [EDB .NET documentation samples](https://github.com/EnterpriseDB/edb-dotnet-docs-samples) repository:
+   - .NET Framework sample : [DeletingRecords](https://github.com/EnterpriseDB/edb-dotnet-docs-samples/tree/main/netframework/DeletingRecords)
+   - .NET sample : [DeletingRecords](https://github.com/EnterpriseDB/edb-dotnet-docs-samples/tree/main/net/DeletingRecords)
+!!!
