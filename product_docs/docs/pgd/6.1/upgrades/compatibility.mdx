@@ -4,18 +4,11 @@ title: Compatibility changes
 
 ## Summary
 
-There are several changes in PGD 6.1 when compared to 5.8.1 and other previous versions
+There are some changes in PGD 6.1 that are not compatible with 5.8.1 and other previous versions.
 
-## PGD Essential and PGD Expanded
+## Connection Manager 
 
-There are now two variants of PGD, the Essential and the Expanded.
-The technical differences are explained [here]().
-
-## New compared to PGD 5.8.1
-
-### Connection Manager 
-
-PGD 6.0 introduces a new Connection Manager which replaces the PGD 5's proxy solution with a tightly integrated approach using a background worker to expose read-write, read-only and http-status network interfaces in PGD. 
+PGD 6 introduces a new Connection Manager which replaces the PGD 5's proxy solution with a tightly integrated approach using a background worker to expose read-write, read-only and http-status network interfaces in PGD. 
 For more details check [here](/pgd/latest/reference/connection-manager/%3E).
 
 CM opens 2 ports, one for read-write connections (by default 6432) and one for read-only connections (by default 6433).
@@ -35,14 +28,9 @@ CM logs to the Postgres log.
 
 CM also optionally exposes an http(s) interface (port 8080 by default), which provides liveness check, info about whether the node is read-write or read-only (or neither) and some information about routing.
 
-### DDL behavior
+## DDL behavior
 
-#### Table rewrites are now supported
-
-`ALTER TABLE` which is needed to rewrite a table (some forms of data type change) now works with PGD 6.1
-The rewrite is replicated similarly to table sync, so even non-immutable expressions are replicated correctly.
-
-#### Locking changes
+### Locking changes
 
 There is a new global lock type, `ddl_locking = leader` that's used by PGD 6.1 by default instead of the global DML lock.
 This lock ensures that a table is exclusively locked on all group leaders (as opposed to all nodes).
@@ -52,47 +40,14 @@ For PGD Essential this means that in practice the lock is engaged immediately as
 
 These locking changes are not backward compatible with 5.8.1 or older versions.
 
-#### Tablespace commands
+## Join/part behavior
 
-Tablespace commands are now replicated in 6.1.
-
-#### Database commands
-
-Database commands are now replicated in 6.1.
-
-#### Role replication
-
-Role replication now include the same SCRAM key, meaning that, for example, pgbouncer can use scram authentication, unlike with previous versions of PGD.
-
-#### CREATE INDEX CONCURRENTLY and REINDEX CONCURRENTLY
-
-`CREATE INDEX CONCURRENTLY` and `REINDEX CONCURRENTLY` are now streamed as they are executed, reducing the time needed to replicate them by 50%.
-
-### Join/part behavior
-
-#### Sequences conversion
+### Sequences conversion
 
 When creating a PGD cluster, existing sequences are automatically converted to distributed ones.
 This is not backwards compatible with 5.8.1 or older versions.
 
-#### Role synchronization and replication
-
-There is no need to predefine roles when adding a node, as roles are now synchronized by logical join now.
-
-Even witness nodes are synchronized by logical join and receive all roles.
-
-Roles related to operations and grant/revoke of roles is replicated to witness nodes.
-
-#### Tablespaces
-
-Tablespaces are now synchronized by logical join.
-
-#### Nodes have UUIDs
-
-Nodes now have UUIDs.
-The UUIDs are used for slot and origin names for more consistent identification across node name reuse.
-
-#### Parting a node drops it
+### Parting a node drops it
 
 When a node is parted, it is eventually dropped and the node will not be seen in the `PARTED` state at the end of the parting.
 Therefore, scripts that wait for the node to reach `PARTED` state may need change.
@@ -100,88 +55,22 @@ Parting can also take longer than earlier versions since this operation waits ti
 
 This behavior is not backward compatible with 5.8.1 or older versions.
 
-#### Drop node behavior
+## Other
 
-6.1 removes `bdr.drop_node() function's cascade option in favor of just a single for option.
-Parting of a node ultimately ends with drop.
-This is so that intention can be clearly differentiated: parting being consistent with removal using consensus and all the part machinery, and dropping being inconsistent with the drop of a node.
-
-#### Deprecate force option of part_node
-
-Force option for `bdr.part_node()` is deprecated. 
-`bdr.part_node` with `force = true` serves as an alias for `bdr.drop_node()` with `force = true`. 
-The force option for `part_node` will not be available in future versions of PGD.
-
-#### Disallow part of a node from itself
-
-The parting of a node from itself is not allowed.
-For parting the last node of the cluster, use `drop_node()`.
-
-### CLI
-
-#### New pgd node setup command
-
-The new `pgd node setup` command initializes the pod node.
-Initialization means either creating a new cluster/group if the specified cluster/group does not already exist, or joining the group, using the best method supported in the given configuration.
-
-Joining the nodegroup uses physical join. With this the `bdr_init_physical` utility is deprecated, and the CLI should be used instead.
-
-### Tiered tables
-
-[Tiered tables](/pgd/latest/get-started/expanded-examples/#use-case-4-tiered-tables) are GA in PGD 6+.
-
-### other
-
-#### Predefined commit scopes
-
-In PGD 6.1, when a cluster is created, it contains 4 predefined commit scopes:
-
-* **local protect** - ensures data is on disk on a local node, does not wait for replication
-
-    * `ASYNCHRONOUS` commit
-
-* **lag protect** - tries to keep lag within 30s of the majority of the PGD group, and slows down ingestion when the lag closely approaches that threshold.
-
-    * `MAJORITY ORIGIN GROUP LAG CONTROL (max_lag_time = 30s, max_commit_delay = 10s)`
-
-* **majority protect** - ensures the majority of the PGD group confirms replication of the transaction before considering it committed.
-
-    * `MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT`
-
-* **adaptive protect** - similar to majority protect, but if a majority cannot be reached within 10s, degrades to local protect as long as the node is still a write leader.
-
-    * `MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT DEGRADE ON (timeout = 10s, require_write_lead = true)`
-
-#### Replica identity
+### Replica identity
 
 Replica identity defaults to FULL now.
 This removes some edge cases in conflict detection between inserts, updates, and deletes across node crashes and recovery.
 This is not backwards compatible with PGD 5.8.1 or older versions.
 
-#### Run on (all) writes
+### Run on (all) writes
 
 Run on (all) writes is now not replicated.
 The `bdr.xact_replicate` is set to `off` by default, reducing possible accidental issues with replication of commands sent via the run on (all) nodes command.
 
-#### General UI improvements
+### General UI improvements
 
-- Worker types in `pg_stat_activity_view`
 - Workers renamed to not contain 'pglogical' (this is not backwards compatible with 5.81 or previous versions)
-- Custom wait events for every wait in the extension (previously only about half were covered)
-- Reduced some internal log messages to debug level to avoid confusing users (this is not backwards compatible with PGD 5.8.1 or older versions)
 - Previously deprecated configuration parameters (GUCs) now removed (this includes, for example, all the pglogical prefixed GUCs—this is not backwards compatible with PGD 5.8.1 or older versions).
 - Conflicts are logged neither to Postgres log or `conflict_history` table by default (this is not backwards compatible with PGD 5.8.1 or older versions)
-
-### Changes to defaults
-
-Neither of the following changes are backwards compatible with PGD 5.8.1 or older versions.
-
-#### Global lock timeout
-
-Now, bdr.global_lock_timeout` is set to 1 minute by default.
-
-#### Auto sync
-
-Now `bdr.enable_auto_sync_reconcile` is set to `ON` by default. (see [here](pgd/latest/reference/node_management/automatic_sync/) for more)
-This enables changes from a downed node to be synced to all other nodes.
 
