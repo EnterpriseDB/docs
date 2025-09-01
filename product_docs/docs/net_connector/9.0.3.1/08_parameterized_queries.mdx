@@ -7,41 +7,102 @@ title: "Parameterized queries"
 
 A _parameterized query_ is a query with one or more parameter markers embedded in the SQL statement. Before executing a parameterized query, you must supply a value for each marker found in the text of the SQL statement.
 
-Parameterized queries are useful when you don't know the complete text of a query when you write your code. For example, the value referenced in a `WHERE` clause can be calculated from user input.
+Parameterized queries are useful when you need to supply values dynamically (from user input or from other data in memory, for example). Parameterized queries are also great to prevent SQL injection and for performance, as a query plan can be reused.
 
-As shown in the following example, you must declare the data type of each parameter specified in the parameterized query by creating an `EDBParameter` object and adding that object to the command's parameter collection. Then, you must specify a value for each parameter by calling the parameter's `Value()` function.
+As shown in the following example, you must declare the data type of each parameter specified in the parameterized query by creating an `EDBParameter` object and adding that object to the command's parameter collection. Then, you must specify a value for each parameter by calling the parameter's `Value` property.
 
 The example shows using a parameterized query with an `UPDATE` statement that increases an employee salary:
 
-```cpp
-<% @ Page Language="C#" Debug="true"%>
-<% @Import Namespace="EnterpriseDB.EDBClient" %>
-<% @Import Namespace="System.Data" %>
-<% @Import Namespace="System.Configuration" %>
-<script language="C#" runat="server" >
-private void Page_Load(object sender, System.EventArgs e)
+<TabContainer syncKey="sample">
+<Tab title=".NET">
+
+```csharp
+using EnterpriseDB.EDBClient;
+
+namespace ParameterizedQueries;
+
+internal static class Program
 {
-	var strConnectionString = ConfigurationManager.AppSettings["DB_CONN_STRING"];
-	var updateQuery  = "UPDATE emp SET sal = sal+500 where empno = :ID";
-	try
-	{
-		await using var dataSource = EDBDataSource.Create(ConnectionString);
-		var conn = await dataSource.OpenConnectionAsync();
-		using var cmdUpdate = new EDBCommand(updateQuery, conn);
-		cmdUpdate.Parameters.Add(new EDBParameter(":ID", EDBTypes.EDBDbType.Integer));
-		cmdUpdate.Parameters[0].Value = 7788;
-		await cmdUpdate.ExecuteNonQueryAsync();
-		Response.Write("Record Updated");
-		await conn.CloseAsync();
-	}
-	catch(Exception exp)
-	{
-		Response.Write(exp.ToString());
-	}
+    static async Task Main(string[] args)
+    {
+        try
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var updateQuery = "UPDATE emp SET sal = sal+500 where empno = :ID";
+
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var connection = await dataSource.OpenConnectionAsync();
+            await using var updateCommand = new EDBCommand(updateQuery, connection);
+            
+            var idParameter = updateCommand.Parameters.Add(new EDBParameter(":ID", EDBTypes.EDBDbType.Integer));
+            idParameter.Value = 7788;
+            
+            var numRowsUpdated = await updateCommand.ExecuteNonQueryAsync();
+            
+            Console.WriteLine($"{numRowsUpdated} record(s) updated");
+            await connection.CloseAsync();
+
+        }
+        catch (Exception exp)
+        {
+            Console.WriteLine($"An error occured: {exp}");
+        }
+    }
 }
-</script>
 ```
 
-Save the sample code in a file named `updateSalary.aspx` in a web root directory.
+</Tab>
+<Tab title=".NET Framework">
 
-To invoke the sample code, enter the following in a browser: `http://localhost/updateSalary.aspx`
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+
+namespace ParameterizedQueries
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            try
+            {
+                // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+                var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+                var updateQuery = "UPDATE emp SET sal = sal+500 where empno = :ID";
+
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var connection = await dataSource.OpenConnectionAsync())
+                {
+                    using (var updateCommand = new EDBCommand(updateQuery, connection))
+                    {
+
+                        var idParameter = updateCommand.Parameters.Add(new EDBParameter(":ID", EDBTypes.EDBDbType.Integer));
+                        idParameter.Value = 7788;
+
+                        var numRowsUpdated = await updateCommand.ExecuteNonQueryAsync();
+
+                        Console.WriteLine($"{numRowsUpdated} record(s) updated");
+                    }
+                    await connection.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+</Tab>
+</TabContainer> 
+
+This program should show the following output in the Console:
+
+```text
+1 record(s) updated
+```
