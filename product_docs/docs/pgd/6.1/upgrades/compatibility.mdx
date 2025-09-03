@@ -4,22 +4,46 @@ title: Compatibility changes
 
 ## Summary
 
-There are some changes in PGD 6.1 that are not compatible with 5.8.1 and other previous versions.
+There are some changes in PGD 6.1 that are not compatible with 5.x and other previous versions.
+For users of 4.x, the [version 5.x compatibility](https://www.enterprisedb.com/docs/pgd/5.8/upgrades/compatibility/) changes still apply.
 
 ## Connection Manager 
 
 PGD 6 introduces a new Connection Manager which replaces the PGD 5's proxy solution with a tightly integrated approach using a background worker to expose read-write, read-only and http-status network interfaces in PGD. 
-For more details check [here](/pgd/latest/reference/connection-manager/).
+This means that all the old proxy functions were removed, as there are no longer separate PGD-Proxy instances to manage and the connection manager uses group configuration.
+Moreover, `bdr.proxy_conifg_summary` and `bdr.proxy_config_view
+For more details check [here](/pgd/6.1/reference/connection-manager/).
 
 ## DDL Locking changes
 
 There is a new global lock type, `ddl_locking = leader` that's used by PGD 6.1 by default instead of the global DML lock.
 This lock ensures that a table is exclusively locked on all group leaders (as opposed to all nodes).
 For PGD Essential this means that in practice the lock is engaged immediately as there is only one leader, which means the system exhibits the same behavior as a single node Postgres setup.
-
 `LOCK TABLE` and `TRUNCATE TABLE` now use this new lock type by default (before the default behavior was to not lock outside of the origin node).
 
+`LOCK TABLE` now uses DDL lock for `ACCESS SHARE`, `ROW SHARE`, `ROW EXCLUSIVE`, SHARE UPDATE EXCLUSIVE` and DML lock for `SHARE ROW EXCLUSIVE`, `EXCLUSIVE`, and `ACCESS EXCLUSIVE`.
+This means that `SHARE+` blocks DMLs, but lower levels don't (which is more closely aligned with how these levels work in Postgres).
+`LOCK TABLE` used to always use DML lock.
+
 ## Join/part behavior
+
+### Function and node state changes
+
+For `bdr.part_node`:
+
+- `wait_for_completion` works on the local node
+- the `force` option is deprecated and has the same behavior as bdr.drop_node(force:=true)
+
+For `bdr.drop_node`:
+
+- the `cascade` option was removed
+- `force` now always immediately drops the node locally and assumes previous cascade behavior as well
+
+For `bdr.join_node_group`:
+- the `pause_in_standby` option was removed
+- now whether the node is in standby is determined by `node_kind` when running bdr.create_node
+
+A new node state `PART_CLEANUP` was added, which waits for the group slot to move past any records relevant to the parting node and cleans up origin records related to the node.
 
 ### Sequences conversion
 
@@ -31,23 +55,31 @@ When a node is parted, it is eventually dropped and the node will not be seen in
 Therefore, scripts that wait for the node to reach `PARTED` state may need change.
 Parting can also take longer than earlier versions since this operation waits till the group slot on all crosses of the last transaction from the parting node to ensure consistency.
 
+## Administration function changes
+
+- The `enable_proxy_routing` `group` option is now `enable_routing`, although `bdr.alter_node_group_option` still supports the older syntax for backwards compatibility. The views only show the new name.
+- The already deprecated `bdr.alter_node_group_conifg()` was removed. Use `bdr.alter_node_group_option()` instead.
+- The `managed_locally` option in `bdr.autopartition()` was removed. Only locally managed partitions are now supported. At the same time `ap_is_local` was removed from `bdr.autopartition_rules` catalog as well.
+
 ## Other
 
 ### Replica identity
 
-Replica identity defaults to FULL now.
-This removes some edge cases in conflict detection between inserts, updates, and deletes across node crashes and recovery.
+- Replica identity defaults to FULL now.
+- This removes some edge cases in conflict detection between inserts, updates, and deletes across node crashes and recovery.
 
 ### Run on (all) writes
 
-Run on (all) writes is now not replicated.
-The `bdr.xact_replicate` is set to `off` by default, reducing possible accidental issues with replication of commands sent via the run on (all) nodes command.
+- Run on (all) writes is now not replicated.
+- The `bdr.xact_replicate` is set to `off` by default, reducing possible accidental issues with replication of commands sent via the run on (all) nodes command.
+- Some log messages were reworded to be easier to understand.
+- Some internal log messages' log levels were lowered from `LOG` to `DEBUG` so they may no longer appear in logs.
 
 ### General UI improvements
 
-- Workers renamed to not contain 'pglogical' (this is not backwards compatible with 5.81 or previous versions)
-- Previously deprecated configuration parameters (GUCs) now removed (this includes, for example, all the pglogical prefixed GUCs—this is not backwards compatible with PGD 5.8.1 or older versions).
-- Conflicts are logged neither to Postgres log or `conflict_history` table by default (this is not backwards compatible with PGD 5.8.1 or older versions)
+- Workers renamed to not contain 'pglogical' 
+- Previously deprecated configuration parameters (GUCs) now removed (this includes, for example, all the pglogical prefixed GUCs).
+- Conflicts are logged neither to Postgres log or `conflict_history` table by default
 
 ## Changes to defaults
 
@@ -58,5 +90,5 @@ bdr.global_lock_timeout is set to 1 minute by default.
 ### Auto sync
 
 bdr.enable_auto_sync_reconcile is set to ON by default.
-This feature is documented [here](pgd/latest/reference/node_management/automatic_sync/).
+This feature is documented [here](pgd/6.1/reference/node_management/automatic_sync/).
 It enables changes from a down node to be synced to all other nodes.
