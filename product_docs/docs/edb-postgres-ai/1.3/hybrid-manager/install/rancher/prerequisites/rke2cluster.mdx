@@ -1,118 +1,397 @@
 ---
-title: Creating a Rancher RKE2 cluster for use with Hybrid Manager
-navTitle: Create RKE2 cluster
-description: Learn how to create a Rancher RKE2 cluster for installing PG AI Hybrid Manager.
+title: Setting up a Rancher RKE2 cluster for use with Hybrid Manager
+navTitle: Set up an RKE2 cluster
+description: Learn how to set up a Rancher RKE2 cluster for installing PG AI Hybrid Manager.
 deepToC: true
 ---
 
-## Compute requirements
+After you've installed the necessary system tools, you're ready to set up a Rancher RKE2 cluster for use with Hybrid Manager (HM).
 
-### Control plane
+## Preparing an RKE cluster for HM installation
 
-- **3 machines minimum**
-- **Specifications**: 16vCPU / 32GiB memory each
-- **Availability**: Distributed across three availability zones
-- **Storage**: At least 100GB local disk per machinery
+To successfully install HM on a RKE on-premises cluster, certain prerequisites and configurations must be in place.
 
-### Postgres node fleet
+### Preconfiguration cluster requirements
 
-- **3 machines minimum**
-- **Specifications**: 16vCPU / 32GiB memory each
-- **Scaling**: Adjust quantity/size based on workload requirements
+* HM currently supports:
 
-## Network requirements
+    * RKE2 1.31.X with Kubernetes 1.31.X
+    * RKE2 1.32.X with Kubernetes 1.32.X
 
-### CNI and IP addressing
+### Configure node size and resources
 
-- **CNI**: Working Container Network Interface (using Calico)
-- **IP Space**: /16 IPv4 address space for each downstream Kubernetes cluster
+To support HM and its associated components, the nodes in your Rancher RKE2 cluster must meet the resource requirements.
 
-### DNS requirements
+Please see the [Rancher RKE2](https://docs.rke2.io/install/requirements) for how to set up these master nodes before moving on to the worker nodes that run HM.
 
-- **DNS zone**: Must be available
-- **DNS record**: Must point to the ingress endpoint (load balancer IP or NodePort IP) of the Hybrid Manager (HM) application
+#### Node sizing
 
-### Certificate node_management
+With the RKE2 master nodes and Kubernetes cluster created, you can move onto the two sets of worker nodes required for HM: the HM Control Plane nodes and HM Postgres Data Nodes:
 
-- **Preferred**: [Custom certificates]()
-- **Fallback**: Self-signed certificates (auto-generated)
+##### HM Control Plane nodes
 
-## Load balancer controller
+HM Control Plane (CP) worker nodes must meet the minimum requirements for resource allocation (number of worker nodes and CPU, memory, and disk size for each) as outlined below.
 
-### Requirements
+The size of the telemetry stack (particularly Prometheus and Thanos) you require for your cluster is the primary factor driving scaling up/out for HM CP nodes.
+Because the telemetry stack scales with the number of Postgres databases the CP is monitoring, CP nodes scale with the number of databases being managed.
 
-- **Load balancer controller** required if using `LoadBalancer` type services
-- **Alternative**: Configure installation and services as 'NodePort'
+-   General recommendations:
+    -   3 CP nodes each with:
+        -   CPU: 
+            -   Minimum: 8 vCPUs (for up to 10 Postgres databases)
+            -   Recommended: 16 vCPUs for medium-sized clusters (10-50 Postgres databases)
+            -   For >50 Postgres databases: 16+ vCPUs
+        -   Memory: 
+            -   Minimum: 32 GB RAM (for up to 10 Postgres databases)
+            -   Recommended: 64 GB RAM or more for larger workloads (10-50 Postgres databases)
+            -   For >50 Postgres databases: 64+ GB RAM 
+        -   Disk
+            -   Minimum: 100 GB SSD (for up to 10 Postgres databases)
+            -   Recommended: 200 GB SSD (for 10-50 Postgres databases)
+            -   For >50 Postgres databases: >200 GB SSD
 
-### NodePort configuration
+##### Postgres data nodes
 
-Configure the installation values.yaml if no Load Balancer controller is available.
+At least three worker nodes for the Postgres data nodes are recommended for smaller workloads (5-20 Postgres databases).
+As you scale up Postgres databases beyond around 20, you may require more worker nodes for the Postgres workloads and eventually even more CP nodes for supporting the increasing number of Postgres databases.
+
+-   General recommendations:
+
+    - 6 Postgres data nodes each with:
+      -   CPU:
+          -   Recommended: 16 vCPU
+      -   Memory: 
+          -   Recommended: 32 GB of RAM per node
+        - Disk: 
+          -   Minimum: 100 GB of persistent storage per node (adjust based on database and logging requirements). Use fast disks (SSD) for optimal performance.
+
+#### Taints and labels for CP vs Postgres data nodes machine sets
+
+To (optionally) use different types of nodes for the HM CP nodes and the HM Postgres data nodes hosting the Postgres workloads, RKE2 requires two different machine sets, each with their own taints and labels:
+
+-   CP nodes taints and labels:
+
+    ```yaml
+    spec:
+        replicas: 3
+        template:
+        spec:
+            metadata:
+            labels:
+                edbaiplatform.io/control-plane: "true"
+        taints:
+        - key: edbplatform.io/control-plane
+            value: "true
+            effect: NoSchedule
+    ```
+
+-   Postgres data nodes taints and labels:
+
+    ```yaml
+    spec:
+        replicas: 3
+        template:
+        spec:
+            metadata:
+            labels:
+                edbaiplatform.io/control-plane: “true”
+            taints:
+            - key: edbplatform.io/control-plane
+                value: "true"
+                effect: NoSchedule
+    ```
+
+#### Networking bandwidth
+
+Ensure each node has adequate networking capacity to handle HM communication and external data transfer (for example, S3 backups).
+
+Baseline recommendations:
+
+| Component               | Recommended bandwidth  | Justification                                                                                    |
+| ----------------------- | ---------------------- | ------------------------------------------------------------------------------------------------ |
+| K8s control plane nodes | 1 Gbps+ per node       | Handles internal Kubernetes traffic, API server requests, logs/metrics, and orchestration tasks. |
+| Worker nodes (HM)       | 1 Gbps+ per node       | For HM control components, PostgreSQL replication, internode communication, and metrics/logs.    |
+| External bandwidth      | 1-20 Gbps (aggregated) | S3 backups and inter-cluster replication may require high throughput.                            |
+
+
+### Network configuration and requirements
+
+#### High-level network decisions
+
+1. Decide whether:
+
+   - DCHP is to be available on the node network
+   - your network stack type is IPv4 or Dual stack
+   - your network type is SDN or OVN
+
+1. Determine your:
+   - API virtual IP
+   - Ingress virtual IP
+   - Default Gateway IP
+   - DNS Server IP
+   - Cluster Network CIDR (for pod IP addresses in the Kubernetes cluster)
+   - Service Network CIDR (for internal RKE2 services)
+   - Machine Network CIDR (for the physical or underlay network)
+   - Management Network CIDR
+   - NTP Servers
+
+    as you need this information to set up your cluster.
+
+1.  Ensure your container network interface (CNI) is working using [Calico](https://docs.tigera.io/calico/latest/reference/configure-calico-node#configuring-cni-plugin)
+
+1.  Ensure there is a /16 IPv4 address space for each downstream Kubernetes cluster
+
+1.  Define network policies. Ensure appropriate network policies are set up to manage traffic between Kubernetes control plane, worker nodes (both HM Contorl Plane and HM Postgres data nodes), and external systems.
+
+1.  Define ingress/egress rules.
+
+1.  Ensure communication between cluster components and the HM stack is secure.
+    -   Validate ingress/egress network policies to allow cluster components to communicate while restricting unnecessary external access.
+
+1.  Set up load balancer: If using an external load balancer, configure it to handle RKE2 API traffic and worker node communication.
+
+      -   `nodePortDomain`: The domain to be used by the node port *if load balancers are not enabled*.
+
+1.  Configure DNS
+
+    -   Ensure the DNS zone is available
+    -   Ensure the DNS record is set up for the cluster by pointing it at the ingress point of the HM Portal.
+      -   Load balancer IP if using a load balancer
+      -   NodePort IP if using NodePort configuration
+    -   Ensure your `values.yaml` Helm chart is configured with the following parameters:
+      -   `portal_domain_name: "<your-domain-name-for-HM-portal>`: Sets the public domain name for accessing the main HM portal.
+      -   `server_host: beacon-uat.appl.enterprisedb.network`: Host name through which the beacon server API is reachable.
+      -   `transporter-rw-service:domain_name: "<domain-name-for-your-internal-Transporter-read/write-service>"`: A domain name for the internal Transporter migration read/write service.
+      -   `transporter-dp-agent:rw_service_url: "<url-for-your-internal-Transporter-read/write-service>"`: A URL for the internal Transporter migration read/write service.
+
+1. Setup TLS certificate management
+
+  HM needs [TLS certificates](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man.mdx) to secure the HM Portal.
+
+  [Custom certificates](product_docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man/#set-up-a-custom-x509-certificate-for-the-hybrid-manager-portal) are preferred, with auto-generated self-signed certificates as a fallback option.
+
+1.  Ensure the cluster has adequate private network isolation for worker nodes. RKE2 typically handles this via the software-defined network (SDN) configuration.
+
+### Block storage configuration
+
+HM uses block storage and snapshot features that depend on CSI drivers for the storage class you intend to use.
+
+HM CP nodes use the block storage for internal databases and microservices (example: Thanos writing).
+HM Postgres data nodes use the block storage for their particular type of workload.
+Each individual database could potentially have its own storage class.
+Choose the appropriate custom storage class for each of your use cases.
+
+The storage class determining which CSI driver(s) you need. Verify the following two types of drivers are installed and properly configured in your RKE2 cluster:
+
+-   **Persistent storage driver**: Install a storage class driver compatible with your storage backend.
+
+-   **Snapshot controller**: Configure the CSI snapshot controller for volume snapshot management.
+
+### Namespaces and secrets
+
+**Namespace for HM**: Create a dedicated namespace for HM components to ensure isolation and manageability.
+
+**Secrets**: Create Kubernetes secrets for any required credentials, such as object storage credentials, database access tokens, or other sensitive information.
+
+The following are HM-specific secrets and configurations.
+
+The [GenAI Buider secret](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/genai_secret.mdx) and [DeltaLake object storage secret](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/data_catalog_secret.mdx) for Catalog are optional, as they depend on whether you're setting up your cluster for GenAI Builder or Catalog.
+
+The [Migration Portal secret](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/migration_portal_secrets.mdx) is optional for HM also, depending on if you are using Migration Portal.
+
+#### Use edbctl to create ImagePullSecrect, namespace and pre-required secrets
+
+1. Ensure `edbctl` is [installed and configured](edb-postgres-ai/hybrid-manager/using_hybrid_manager/edbctl/).
+
+1. Create the necessary namespaces and pull secrets:
+
+  ```bash
+  edbctl image-pull-secret create \
+    --username <container registry username> \
+    --passowrd <container registry passowrd> \
+    --registry <local registry URI>
+
+1. When prompted with `Proceed? [y/N]` with the current Kubernetes context, select `y`.
+
+  You should then see something like the following example:
+
+  ```bash
+  2025/02/10 10:10:10 Creating Kubernetes Namespaces and ImagePullSecrets with the provided credentials...
+  2025/02/07 15:29:08 Namespaces and ImagePullSecrets creation completed
+  ```
+
+1. Create the ImagePullSecret list:
+
+  ```bash
+  edbctl image-pull-secret list
+  ```
+
+  You should then see something like the following example output:
+
+    ```bash
+    Current Kubernetes context is: <KubeContext>
+    Namespace edbpgai-bootstrap: exists, all set!
+      Secret edb-cred: exists, all set!
+    Namespace upm-replicator: exists, all set!
+      Secret edb-cred: exists, all set!
+    ```
+
+1. [Create a secret for GenAI Builder and configure DeltaLake object storage](/edb-postgres-ai/hybrid-manager/install/customization/genai_secret/) if you plan to use GenAI Builder.
+
+1. [Create a secret for Catalog](/edb-postgres-ai/hybrid-manager/install/customization/data_catalog_secret/) if you are planning to use Catalog.
+
+1. [Create custom secrets for Migration Portal](/edb-postgres-ai/hybrid-manager/install/customization/migration_portal_secrets/) if you want to secure internal communication for Migration Portal.
+
+### Object storage
+
+To support HM backups, you must connect the cluster to the MinIO storage solution.
+
+Among others, HM uses this bucket to store: 
+
+- Managed storage locations
+- Postgres WALs + backups
+- Logs (both Postgres and internal services)
+- Metrics (both Postgres and internal services)
+
+#### Create a bucket
+
+Create a [MinIO](https://min.io/docs/minio/linux/reference/minio-mc/mc-mb.html) bucket.
+
+#### Create a bucket user
+
+After creating a dedicated bucket for HM with MinIO, create an identity user with full access to the bucket, as well as AWS static credentials for the identity user to grant the Hybrid Manager access to the bucket.
+
+1. Download the [MinIO Client](https://min.io/docs/minio/linux/reference/minio-mc.html).
+
+1.  Retrieve the MinIO deployment name and create a username and password: 
+
+    ```shell
+    export MINIO_DEPLOYMENT_NAME=<minio_deployment_name> # deployment name to MinIO
+    export BUCKET_NAME=<minio_bucket_name> # bucket name
+    export AWS_ACCESS_KEY_ID=<minio_user_name> # user name
+    export AWS_SECRET_ACCESS_KEY=<minio_user_password> # user's password
+    export MINIO_POLICY_NAME=<minio_policy_name> # policy to MinIO
+    ```
+
+1.  Create a new user: 
+
+    ```shell
+    mc admin user add ${MINIO_DEPLOYMENT_NAME} ${AWS_ACCESS_KEY_ID} ${AWS_SECRET_ACCESS_KEY}
+    ```
+
+1.  Create one MinIO policy: 
+
+    ```shell 
+    cat << EOF > policy.json
+    {
+        "Version" : "2012-10-17",
+        "Statement": [
+            {
+                "Effect" : "Allow",
+                "Action" : [
+                    "s3:*"
+                ],
+                "Resource" : [
+                    "arn:aws:s3:::${BUCKET_NAME}",
+                    "arn:aws:s3:::${BUCKET_NAME}/*"
+                ]
+            }
+        ]
+    }
+    EOF
+    ```
+
+1.  Apply the policy:
+
+    ```
+    mc admin policy create ${MINIO_DEPLOYMENT_NAME} ${MINIO_POLICY_NAME} ./policy.json
+    ```
+
+1.  Attach the policy to the user: 
+
+    ```shell 
+    mc admin policy attach ${MINIO_DEPLOYMENT_NAME} ${MINIO_POLICY_NAME} --user ${AWS_ACCESS_KEY_ID}
+    ```
+
+#### Apply the secret for bucket access
+
+After preparing the dedicated user for HM access to the bucket, create and apply the following secret that associates the created user with HM to provide access for object storage:
 
 ```yaml
-beaconAgent:
-  provisioning:
-    loadBalancerEnabled: false
-    nodePortDomain: "<your nodeportdomain url here>"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # name cannot be changed
+  namespace: default # namespace cannot be changed
+stringData:
+    auth_type: credentials
+
+    # Optional: Used only when the object storage server's certificate is not issued by a well-known CA
+    #
+    # Base64 string of the CA bundle for the certificate used by the object storage server
+    aws_ca_bundle_base64: <aws_ca_bundle_base64>
+
+    # Required: Endpoint URL to the object storage
+    aws_endpoint_url_s3: <endpoint-url-to-object-storage>
+
+    # Required: AWS Static Credentials - AWS_ACCESS_KEY_ID
+    aws_access_key_id: xxx
+
+    # Required: AWS Static Credentials - AWS_SECRET_ACCESS_KEY
+    aws_secret_access_key: <AWS_ACCESS_KEY_ID>
+
+    # Required: Bucket name
+    bucket_name: <bucket_name>
+
+    # Required: Region of the bucket
+    aws_region: <aws_region>
+
+    # Optional: true or false
+    # When server-side encryption is disabled, set this to true. By default, its value is false, indicating that server-side encryption is enabled.
+    server_side_encryption_disabled: <boolean>
+
+### Authentication and security keys
+
+HM and its underlying components require secure authentication mechanisms to ensure proper communication between components and to protect sensitive data.
+
+1.  Generate AES-256 encryption key.
+
+    HM uses an AES-256 encryption to secure sensitive data during communication or at rest (for example, database credentials, tokens).
+    To generate a random AES-256 encryption key:
+
+    ```bash
+    export AES_256_KEY=$(openssl rand -base64 32)
+    ```
+
+2.  Store the key in Kubernetes.
+
+    To make the key accessible to HM and associated services, create a Kubernetes secret in the appropriate namespace:
+
+    1.  Run the following command to create the secret:
+
+        ```bash
+        kubectl create secret generic hm-auth-key \
+            --namespace <hm-namespace> \
+            --from-literal=aes-256-key=$AES_256_KEY
+        ```
+
+    2.  Verify the secret:
+
+        ```bash
+        kubectl get secret hm-auth-key --namespace <hm-namespace>
+        ```
 ```
 
-!!! Note
-    The `nodePortDomain` value is used as the URL for all Postgres clusters/instances.
-    It should be a DNS name pointing to the IP addresses of the nodes where Postgres clusters/instances are running.
-!!!
+### Network firewall
 
-### Port requirements
+Your network firewall must be open.
 
-#### Load balancer configuration
 
-If you are using a load balancer, open the following ports:
 
-- 443
-- 8444
-- 9443
-- 9445
 
-### NodePort configuration
 
-If you are using NodePort for ingress instead of a load balancer, refer to the required ports:
 
-- `ingress_http_node_port: "32542"`
-  - This is the HTTP port of the portal.
+### Proceed to setting necessary environmental variables
 
-- `ingress_https_node_port: "30288"`
-  - This is the HTTPS port of the portal. 
-
-- `ingress_grpc_tls_node_port: "30290"`
-  - This is the GRPC port for the Beacon agent.
-
-- `ingress_spire_tls_node_port: "30292"
-  - This is the Spire TLS port.
-
-## Storage Requirements
-
-- **Block storage**: Working Kubernetes storageClass within the cluster
-- **Volume Snapshots**: Volume snapshot classes within the cluster
-- **Object Storage**: S3-compatible [object store]()
-
-## Container registry
-
-- Container registry **must** be accessible from the Rancher cluster
-- This is to host Hybrid Manager images
-
-## Identity Provider
-
-- Optional but recommended
-- This is to integrate with your identity provider (IDP)
-
-## GPU
-
-The Rancher UI currently misses some instance types with GPU when creating a machine pool.
-The following workaround is recommended:
-
-1. Create a machine pool with any instance type, and set the number as `0`.
-2. Update the machine pool with the instance type having the GPU, for example, g6e.12xlarge. The Rancher UI shows missing instance types when updating the machine pool.
-3. Scale up the machine pool.
-
-!!! Note
-Currently, the Rancher 
-
+With the cluster configured, proceed to the next phase of the pre-installation: [setting the necessary environmental variables for installation](setvariables.mdx).
 
