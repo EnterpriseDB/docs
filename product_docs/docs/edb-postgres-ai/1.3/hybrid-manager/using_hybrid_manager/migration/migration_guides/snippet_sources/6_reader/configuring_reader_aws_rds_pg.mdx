@@ -1,56 +1,58 @@
 ---
-title: "Configuring and running the EDB DMS Reader for AWS RDS/Aurora PostgreSQL sources"
-navTitle: "Configuring Reader for AWS RDS/Aurora PostgreSQL"
+title: "Configuring and running the EDB DMS Agent in reader mode for AWS RDS/Aurora PostgreSQL sources"
+navTitle: "Configuring DMS Agent for AWS RDS/Aurora PostgreSQL"
 deepToC: true
 
 ---
 
-Configure and run the DMS Reader to perform a data migration.
+Configure and run the DMS Agent in reader mode to perform a data migration.
 
 ## Prerequisites
 
-1.  Ensure the machine from where you are running the Reader has Java/OpenJDK 17 or later installed.
+1.  Ensure the machine from where you are running the DMS Agent has Java/OpenJDK 17 or later installed.
 
-2.  [Install the EDB DMS Reader](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/installing/).
+2.  [Install the EDB DMS Agent](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/installing/).
 
-3.  Open the EDB DMS Reader located in `/opt/cdcreader/run-cdcreader.sh` and ensure you have write permissions.
+3.  Open the EDB DMS Agent located in `/opt/cdcagent/run-cdcagent.sh` and ensure you have write permissions.
 
-## Configuring the EDB DMS Reader for migrations from AWS RDS for PostgreSQL or Aurora PostgreSQL
+## Configuring the EDB DMS Agent for migrations from AWS RDS for PostgreSQL or Aurora PostgreSQL
 
 Set the variables according to your environment and uncomment the edited lines. See [parameters](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/) for further guidance. The script is reproduced below.
 
 ```shell
 #!/bin/bash -e
-# run_cdcreader.sh
+# run_cdcagent.sh
 #
 # This script provides a convenient place to specify
 # environment variables used to configure the
-# EDB Data Migration Service Reader.
+# EDB Data Migration Service Agent.
 #
-# After env exports, `java` is called to start the
-# software.
 
 ##########################################
-# DMS Reader General Configuration       #
+# DMS Agent General Configuration       #
 ##########################################
 
-# This ID is used to identify DMS Reader
+# This ID is used to identify DMS Agent
 # and is specified by the user.
 export DBCONFIG_ID=<source_name_of_choice>
 
-# This is the DMS backend service used by the Reader
+# Determine the run mode of the DMS Agent
+# The run mode can be set to either 'reader' or 'writer'
+# 'reader' mode is used to read changes from a source database
+# 'writer' mode is used to write changes to a destination database
+export RUN_MODE=reader
+
+# This is the DMS backend service used by the DMS Agent
 # Consult your system administrators
-export RW_SERVICE_HOST=<https://transporter-rw-service.yourdomain.hcp>
+export RW_SERVICE_HOST=https://${TRANSPORTER_RW_SERVICE_DOMAIN_NAME}/transporter
+
+##########################################
+# DMS Agent TLS Configuration           #
+##########################################
 
 # You need to create migration credentials in EDB Postgres AI platform
-# and set these fields with the path of the credential files
-export TLS_PRIVATE_KEY_PATH=$HOME/credentials/client-key.pem
-export TLS_CERTIFICATE_PATH=$HOME/credentials/client-cert.pem
-export TLS_CA_PATH=$HOME/credentials/int.crt
-export APICURIOREQUEST_CLIENT_KEYSTORE_LOCATION=$HOME/credentials/client.keystore.p12
-export APICURIOREQUEST_TRUSTSTORE_LOCATION=$HOME/credentials/int.truststore.p12
-export KAFKASECURITY_CLIENT_KEYSTORE_LOCATION=$HOME/credentials/client.keystore.p12
-export KAFKASECURITY_TRUSTSTORE_LOCATION=$HOME/credentials/int.truststore.p12
+# and set the path of the credentials directory
+export CREDENTIAL_DIRECTORY_PATH=$HOME/credentials
 
 ##########################################
 # DMS Reader Source DB Configuration     #
@@ -94,18 +96,32 @@ export DBCONFIG_DATABASES_0__PASSWORD=<password>
 
 cd "$(dirname "$0")"
 
-java -jar quarkus-run.jar
+echo "Starting in mode: $RUN_MODE"
+
+case "$RUN_MODE" in
+  reader)
+    java -jar ./reader/quarkus-run.jar
+    ;;
+  writer)
+    java -jar ./writer/quarkus-run.jar
+    ;;
+  *)
+    echo "Unknown RUN_MODE: $RUN_MODE"
+    exit 1
+    ;;
+esac
+
 ```
 
 !!!note
 
     Ensure the `DBCONFIG_DATABASES_0__HOSTNAME` value points to the RDS endpoint you can find under the **Connectivity & security** in the AWS Console. A redacted example is `foo_database.cb7asw1xxxxx.eu-west-0.rds.amazonaws.com`.
 
-## Running the EDB DMS Reader
+## Running the EDB DMS Agent
 
-Start the migration:
+Start the DMS Agent:
 
 ```shell
-cd /opt/cdcreader
-./run-cdcreader.sh
+cd /opt/cdcagent
+cdcagent
 ```
