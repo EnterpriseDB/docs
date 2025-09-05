@@ -60,7 +60,20 @@ To modify a commit scope safely, use [`bdr.alter_commit_scope`](/pgd/6/reference
 
 ## Limitations
 
-Take these EDB Postgres Distributed (PGD) design limitations into account when planning your deployment.
+If you have an existing application that works with PostgreSQL, you
+can quickly assess its compatibility with EDB Postgres Distributed by
+using the
+[assess](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/assess/)
+function of the PGD command-line interface (CLI).
+
+The PGD CLI can be installed independently on any Linux or Mac OS
+machine and will generate an assessment report after connecting to the
+source PostgreSQL database remotely.
+
+We have also written out limitations the "assess" command checks here
+for your reference. We have also noted additional limitations that
+must be checked through static scanning and are thus beyond the scope
+of the "assess" command.
 
 ### Nodes
 
@@ -79,39 +92,10 @@ Take these EDB Postgres Distributed (PGD) design limitations into account when p
 
 ### Multiple databases on single instances
 
-Support for using PGD for multiple databases on the same Postgres instance is
-**deprecated** beginning with PGD 5 and will no longer be supported with PGD 6. As
-we extend the capabilities of the product, the added complexity introduced
-operationally and functionally is no longer viable in a multi-database design.
-
-It's best practice and we recommend that you configure only one database per PGD instance. 
-
-The tooling such as the CLI and Connection Manager currently codify that recommendation. 
-
-While it's still possible to host up to 10 databases in a single instance,
-doing so incurs many immediate risks and current limitations:
-
--   If PGD configuration changes are needed, you must execute administrative commands 
-    for each database. Doing so increases the risk for potential
-    inconsistencies and errors.
-
--   You must monitor each database separately, adding overhead.
-
--   Connection Manager works at the Postgres instance level, not at the database level,
-    meaning the leader node is the same for all databases.
-
--   Each additional database increases the resource requirements on the server.
-    Each one needs its own set of worker processes maintaining replication, for example,
-    logical workers, WAL senders, and WAL receivers. Each one also needs its own
-    set of connections to other instances in the replication cluster. These needs might
-    severely impact performance of all databases.
-
--   Synchronous replication methods, for example, CAMO and Group Commit, won’t work as
-    expected. Since the Postgres WAL is shared between the databases, a
-    synchronous commit confirmation can come from any database, not necessarily in
-    the right order of commits.
-
--   CLI integration assumes one database. 
+Because of many immediate risks and limitations, we currently
+recommend a one-database-per-instance configuration. This best
+practice is also reflected in our tooling, including the CLI and
+Connection Manager, which are designed to work at the instance level.
 
 ### Durability options (Group Commit/CAMO)
 
@@ -230,6 +214,192 @@ these limitations into account when planning:
 PGD was developed to [enable rolling upgrades of PGD](/pgd/6/reference/upgrades) by allowing mixed versions of PGD to operate during the upgrade process. 
 We expect users to run mixed versions only during upgrades and, once an upgrade starts, that they complete that upgrade.
 We don't support running mixed versions of PGD except during an upgrade.
+
+### Large object replication
+
+Logical decoding and replication, which PGD is built upon, does not
+support large objects. As an alternative, use TEXT, BYTEA, JSON, or
+JSONB data types, as appropriate for the application, for values up to
+1 GB in size.
+
+You can check for existing large objects with:
+
+```sql
+SELECT count(*) FROM pg_largeobject;
+```
+
+### Slow performance for UPDATE/DELETE heavy workloads on large tables without primary keys or unique constraints
+
+For UPDATEs and DELETEs to replicate on other nodes, PGD must be able
+to identify the unique rows affected. If no primary key or unique
+index is defined for a table, performance of replication and conflict
+detection can be severely affected. See:
+https://www.enterprisedb.com/docs/pgd/latest/reference/appusage/behavior/#replication-behavior
+and
+https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrdefault_replica_identity.
+
+This is particularly something to keep in mind for making
+UPDATEs/DELETEs of only a small number of rows in a very large table,
+which would otherwise be cheap to replicate.
+
+!!! Note
+    For very small tables (a common use for non-indexed tables) things
+    can be actually faster without index.
+
+!!! Note
+    Replication of large UPDATE/DELETE query that affected millions of
+    rows will still be slow even with indexes.
+
+### EPAS Queue Tables not replicated
+
+EPAS [Queue
+Tables](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_sql/31_create_queue_table/)
+are not replicated. Check for their existence with:
+
+```sql
+SELECT * FROM pg_catalog.edb_queue_table;
+```
+
+### Explicit row-level locks not replicated
+
+Explicit row-level locks like `SELECT ... FOR UPDATE` / `SELECT
+... FOR SHARE` are not replicated. As long as you only write to the
+PGD write leader this will not be a problem.
+
+### Advisory locks not replicated
+
+Postgres advisory locks are not replicated by PGD or physical
+streaming replication, and will not work across the replication
+failover.
+
+Check your application code for uses of `pg_advisory*` and
+`pg_try_advisory*`. Consider using `bdr.global_advisory_lock()`
+instead.
+
+### LOCK TABLE commands
+
+`LOCK TABLE` causes a global DML lock to be taken on the table across
+the entire PGD cluster, which requires participation of all PGD
+nodes. This behaviour is similar to
+[bdr.global_lock_table()](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/functions/#bdrglobal_lock_table)
+and can be disabled by setting the configuration variable
+`bdr.lock_table_locking` to "off" (default is "on").
+
+### Avoid DELETE/INSERT of replica identity values
+
+Avoid modification of the replica identity values, such as primary
+keys, especially in quick succession, as it may lead to replication
+conflicts that cannot be automatically resolved, and subsequently to
+divergent data errors.
+
+### TRIGGER and REFERENCES privileges
+
+TRIGGER and REFERENCES privileges are the two types of privileges that
+are not commonly used with PostgreSQL and can cause problems with PGD.
+
+PGD supports triggers, but for security reasons blocks the case when
+the trigger is not owned by the same user as the table on which it is
+defined. That situation can occur when a non-table owner is explicitly
+granted the TRIGGER privilege on a table.
+
+Trigger privileges granted explicitly to non-table-owners may be
+present as part of trigger-based replication solutions, such as Slony
+or Bucardo. PGD generally supersedes functionality of such solutions;
+they are considered insecure and should be avoided.
+
+PGD supports foreign keys but for security and performance reasons
+blocks the case when the owner of the referencing table does not have
+the SELECT privilege on the referenced table. That situation can occur
+when a user is explicitly granted the REFERENCES privilege on a table.
+
+Explicit GRANTs of TRIGGER or REFERENCES privileges can be detected
+using the following query. These two cases are not related to each
+other, but it is convenient to detect both at the same time with one
+query.
+
+```sql
+SELECT * FROM (
+  SELECT  relname
+    ,relowner::regrole as relowner
+    ,split_part(unnest(relacl)::text,'=', 1) as grantee
+    ,split_part(split_part(unnest(relacl)::text,'=', 2), '/', 1) as acl
+  FROM pg_class where relacl is not null) as a   /* Get the raw ACL string(s) */
+  WHERE relowner::regrole::text != grantee  /* NOT table owner */
+  AND ((strpos(acl, 'x') > 0   /* REFERENCES priv */ AND strpos(acl, 'r') = 0)
+  OR strpos(acl, 't') > 0   /* TRIGGER priv */ AND acl != 'arwdDxt' /* NOT ALL */);
+```
+
+Alternatively, you can look for insecure trigger functions using this query:
+
+```sql
+SELECT relname, tgname, proname, relowner, proowner, prosecdef;
+FROM pg_trigger t
+JOIN pg_class c ON t.tgrelid = c.oid
+JOIN pg_proc f ON t.tgfoid = f.oid
+WHERE (relowner != proowner 	/* Different owner */
+  OR prosecdef)  		  /* SECURITY DEFINER */
+  AND proowner != 10  		  /* Non-catalog functions */;
+```
+
+Resolve in the database by modifying trigger ownership and table
+privileges as necessary. Note: if the affected objects are routinely
+created by the application then this should be resolved in the
+application.
+
+### Replica rules are ignored on replicas
+
+Rules, if present, are executed on the origin node, and ignored on replicas.
+
+To check for replica rules, run:
+
+```sql
+SELECT rulename, ev_class, ev_type, ev_enabled
+FROM pg_rewrite
+WHERE ev_type != '1'
+  AND NOT is_instead
+  AND ev_enabled in ('R', 'A');
+```
+
+Resolve in application by eliminating any use of rules that are
+expected to fire on replication, if they exist.
+
+### LISTEN and NOTIFY not replicated
+
+These commands are not replicated and work on each cluster node
+individually. Consider that notifications can be lost in case of a
+failover.
+
+Triggers that send out NOTIFY on commit will work with PGD, as long as
+they are defined as REPLICA TRIGGER.
+
+Instead of LISTEN and NOTIFY consider using replication slots
+directly.
+
+### Sequences
+
+Standard sequences in PostgreSQL aren't multi-node aware and produce
+values that are unique only on the local node. For this reason, PGD
+provides an application-transparent way to generate unique identifiers
+using sequences of integer datatypes across the whole PGD cluster,
+called [global
+sequences](https://www.enterprisedb.com/docs/pgd/latest/reference/sequences/).
+
+To find existing sequences, run:
+
+```sql
+SELECT count(*) FROM pg_sequences;
+```
+
+For sequences created on an existing PGD cluster,
+bdr.default_sequence_kind is "distributed" by default, which means
+that int8 sequences (i.e. BIGINT) will be created with the type
+“snowflakeid”, while int4 (i.e. INTEGER) will be of the type
+“galloc”.
+
+Set `bdr.default_sequence_kind` as appropriate for application
+requirements and EDB recommendations. Any sequences that exist before
+converting a Postgres database to a PGD node are converted
+automatically when a PGD node group is first created.
 
 ### Other limitations
 
