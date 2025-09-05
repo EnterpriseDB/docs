@@ -314,6 +314,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       navRoot = navRoot.parent;
     const navTree = treeToNavigation(navRoot, node);
 
+    // fail fast in a production build: this is easy to overlook
+    if (!navTree.title) {
+      reporter.panicOnBuild(
+        `Navigation tree is missing a title for ${node.fileAbsolutePath}`,
+      );
+    }
+
     // determine next and previous nodes
     const prevNext = findPrevNextNavNodes(navRoot, curr);
 
