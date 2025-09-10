@@ -1,14 +1,16 @@
 ---
 title: "Using EDB OTEL"
 navTitle: Using
+description: Descriptions and examples for the metrics and tracing SQL APIs provided by EDB OTEL 
+deepToC: true
 ---
 
-The edb_otel extension allows metrics to be sent through the OpenTelemetry (OTEL) protocol.
 
+The edb_otel extension allows metrics and traces to be sent through the OpenTelemetry (OTEL) protocol.
 
-## edb_otel APIs
+## Metrics APIs
 
-The following functions are available in edb_otel:
+The following metrics functions are available in edb_otel:
 
 - `edb_otel.report_metric`
 - `edb_otel.command_from_pg_exporter_definition`
@@ -18,8 +20,7 @@ The following views are available in edb_otel:
 
 - `edb_otel.pg_exporter_base_definitions`
 
-
-## `edb_otel.report_metric`
+### `edb_otel.report_metric`
 
 Use this function to define and group metrics:
 
@@ -28,39 +29,65 @@ edb_otel.report_metric(
 	meter_name TEXT, 
 	metric_name TEXT, 
 	metric_type INT, 
-	value TEXT, 
-	labels TEXT
-)
+	value bigint, 
+	[labels TEXT]
+) → boolean
+
+edb_otel.report_metric(
+	meter_name TEXT, 
+	metric_name TEXT, 
+	metric_type INT, 
+	value double precision, 
+	[labels TEXT]
+) → boolean
 ```
 
 | Parameters         | Input or output | Description                                                                                                                                                                       |
 |--------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `meter_name`       | Input           | A name that you want to group a set of metrics against. |
 | `metric_name`      | Input           | The name of the metric. |  
-| `metric_type`      | Input           | The type of the metric. Only the DOUBLE GAUGE type is currently supported, which is represented by the value 4. |
-| `value`            | Input           | A string representing the metric value. It's converted to an appropriate type depending on the value of `metric_type`. |
-| `labels`           | Input           | A JSON string representing additional metadata to associate with the metric. The maximum size is 1024. If the size is larger than 1024, that metric is silently dropped, and a warning is emitted to the database log file. If the payload contains invalid JSON, that metric is dropped, and error information is logged to the log file.| 
+| `metric_type`      | Input           | An integer value between 1 - 4 where each corresponds to an opentelemetry metric type. The mapping of the values to metric types is:<ul><li>`COUNTER` - `1`</li><li>`GAUGE` - `2`</li><li>`UPDOWN COUNTER` - `3`</li><li>`HISTOGRAM` - `4`</li></ul> |
+| `value`            | Input           | A numeric (bigint or double precision) value which represents the metric value. |
+| `labels`           | Input           | (optional) A JSON string representing additional metadata to associate with the metric. The maximum size is 1024. If the size is larger than 1024, that metric is silently dropped, and a warning is emitted to the database log file. If the payload contains invalid JSON, that metric is dropped, and error information is logged to the log file.| 
 
+#### Return value
 
-#### Example:
+`boolean` - `true` if success, else `false`.
 
-  ```sql
-  SELECT edb_otel.report_metric('m1', 'foo', 4, '10', '{"dbname": "foo", "schemaname": "bar", "relname": "baz"}');
-  ```
+#### Example
 
+!!! Info Initialization
+Before using any functions exposed by this extension, it must be loaded:
+```sql
+CREATE EXTENSION edb_otel;
+```
+The examples shown here assume this has already been done.
+!!!
 
-## `edb_otel.command_from_pg_exporter_definition`
+Report a metric of type COUNTER that has an integer value:
+
+```sql
+SELECT edb_otel.report_metric('m1', 'foo', 1, 10::bigint, '{"dbname": "foo", "schemaname": "bar", "relname": "baz"}');
+```
+
+Report a metric of type GAUGE that has a floating point value:
+
+```sql
+SELECT edb_otel.report_metric('m1', 'foo', 2, 63.555, '{"dbname": "foo", "schemaname": "bar", "relname": "baz"}');
+```
+
+### `edb_otel.command_from_pg_exporter_definition`
 
 Use this function to generate a command that can run the query and send the results through edb_otel. It accepts a JSONB value containing the same fields as `pg_exporter` definitions.
 
 ```sql
 edb_otel.command_from_pg_exporter_definition(
-    meter jsonb
-)
+  meter jsonb
+) → text
 ```
 
 
-## `edb_otel.schedule_from_pg_exporter_definition`
+### `edb_otel.schedule_from_pg_exporter_definition`
 
 Use this function to define and schedule custom queries. The query and its metadata, such as metric types and tags, must use a JSONB structure. It accepts a JSONB value containing the parameters that are usually consumed by pg_exporter. It also schedules a pg_cron job that runs the query periodically and sends the results to the OpenTelemetry endpoint.
 
@@ -69,33 +96,216 @@ Use this function to define and schedule custom queries. The query and its metad
 edb_otel.schedule_from_pg_exporter_definition(
     meter jsonb, 
     schedule text
-)
+) → bigint
 ```
 
-### Example:
+#### Example
 
 This custom query adds a count of client backends to the schedule:
 
-  ```sql
-  SELECT edb_otel.schedule_from_pg_exporter_definition(
-    meter := $${
-        "name": "user_activity",
-        "query": "SELECT count(*) AS user_count
-                  FROM pg_stat_activity
-                  WHERE backend_type = 'client backend'",
-        "metrics": [{"user_count": {"usage": "GAUGE"}}]
-    }$$::jsonb,
-	schedule := '* * * * *');
-  ```
+```sql
+SELECT edb_otel.schedule_from_pg_exporter_definition(
+  meter := $${
+      "name": "user_activity",
+      "query": "SELECT count(*) AS user_count
+                FROM pg_stat_activity
+                WHERE backend_type = 'client backend'",
+      "metrics": [{"user_count": {"usage": "GAUGE"}}]
+  }$$::jsonb,
+schedule := '* * * * *');
+```
 
-
-## `edb_otel.pg_exporter_base_definitions`
+### `edb_otel.pg_exporter_base_definitions`
 
 This view contains the meter (queries and their metrics) definitions that pg_exporter brings by default.  You can refresh them from the [pg_exporter collector](https://github.com/pgsty/pg_exporter/tree/main/config) by running `yq` on the directory:
 
 ```shell
 yq eval-all -o=json '. as $item ireduce ({}; . * $item)' [...]/config/*.yml
 ```
+
+## Tracing APIs
+
+The following tracing functions are available in edb_otel:
+
+- `edb_otel.tracing_init`
+- `edb_otel.start_span`
+- `edb_otel.tracing_set_attribute`
+- `edb_otel.tracing_end_span`
+- `edb_otel.tracing_get_http_trace_context`
+
+### `edb_otel.tracing_init`
+
+This is used to initialize tracing environment and sets up all resources
+required to export traces. Each PostgreSQL backend or process that
+requires exporting traces must initialize tracing before using any tracing api.
+Tracing will be initialized only if tracing is enabled.
+
+```sql
+edb_otel.tracing_init() → boolean
+```
+
+#### Parameters
+
+None
+
+#### Return value
+
+`boolean` - `true` if success, else `false`.
+
+### `edb_otel.start_span`
+
+Starts a span.
+
+```sql
+edb_otel.tracing_start_span(
+  trace_name text, 
+  span_name text, 
+  [parent_span bigint]
+) → bigint
+
+edb_otel.tracing_start_span(
+  trace_name text, 
+  span_name text, 
+  [parent_span text]
+) → bigint
+```
+
+#### Parameters
+
+- `trace_name`: Value of the name of the trace for the span.
+- `span_name`: The name of the span.
+- `parent_span`: (optional) A `bigint` or `text` containing a JSON string that can be used to specify
+  a parent span for this span. The parent can be specified by passing a `bigint`
+  value that represents the span key of a span (returned from an earlier call to `tracing_start_span()`), or
+  by passing a string containing the http trace context of a span (returned by [`tracing_get_http_trace_context()`](#edb_oteltracing_get_http_trace_context)).
+
+#### Return value
+
+`bigint` - The key to the span that is started, NULL for failure. It can
+be used to perform subsequent actions on the span, like
+
+- [setting an attribute of the span](#edb_oteltracing_set_attribute)
+- [ending the span](#edb_oteltracing_end_span)
+- [getting the span's http trace context](#edb_oteltracing_get_http_trace_context)
+- [specify the span as the parent of a new span](#edb_otelstart_span)
+
+### `edb_otel.tracing_set_attribute`
+
+Sets an attribute of a span represented by a span key.
+
+```sql
+edb_otel.tracing_set_attribute(
+  span_key bigint, 
+  key text, 
+  value text
+) → boolean
+
+edb_otel.tracing_set_attribute(
+  span_key bigint, 
+  name text, 
+  value bigint
+) → boolean
+
+edb_otel.tracing_set_attribute(
+  span_key bigint, 
+  key text, 
+  value double precision
+) → boolean
+
+edb_otel.tracing_set_attribute(
+  span_key bigint, 
+  key text, 
+  value boolean
+) → boolean
+```
+
+#### Parameters
+
+- `span_key`: The span key of the span.
+- `key`: The name of the attribute.
+- `value`: The value of the attribute. text, bigint, double precision and
+  boolean values are allowed.
+
+#### Return value
+
+`boolean` - `true` if success, else `false`.
+
+### `edb_otel.tracing_end_span`
+
+Ends a span.
+
+```sql
+edb_otel.tracing_end_span(span_key bigint) → boolean
+```
+
+#### Parameters
+
+- `span_key`: The span key of the span.
+
+#### Return value
+
+`boolean` - `true` if success, else `false`.
+
+### `edb_otel.tracing_get_http_trace_context`
+
+Generates http trace context for the specified span. It generates the
+`traceparent` value and if available in the span context, the `tracestate` as
+well. 
+
+```sql
+edb_otel.tracing_get_http_trace_context(span_key bigint) → text
+```
+
+#### Parameters
+
+- `span_key`: The span key of the span.
+
+#### Return value
+
+`text` - http trace context as a json string
+
+It's typically of the form: `{"traceparent":"<TRACE_PARENT_VALUE>"}` where
+`TRACE_PARENT_VALUE` is a value as explained in [Trace Context HTTP Headers Format](https://www.w3.org/TR/trace-context/#trace-context-http-headers-format), for example: `"00-d7c082cc36139d02c223553831870e45-3e0f7fd00ae7f532-01"`.
+
+#### Example
+
+This example demonstrates starting a span and using the return value of `edb_otel.tracing_start_span()` to perform further operations.
+
+```sql
+DO $$
+DECLARE
+	span_key bigint := 0;
+	parent_context text;
+	span_key2 bigint := 0;
+	span_key3 bigint := 0;
+BEGIN
+  -- Initialize tracing environment
+	PERFORM edb_otel.tracing_init();
+  -- Start a span
+	select edb_otel.tracing_start_span('mytrace', 'myspan') into span_key;
+  -- Set a text attribute to the span
+	PERFORM edb_otel.tracing_set_attribute(span_key, 'mytext', 'myvalue');
+  -- Set a integer attribute to the span
+	PERFORM edb_otel.tracing_set_attribute(span_key, 'mybigint', 10::bigint);
+  -- Set a boolean attribute to the span
+	PERFORM edb_otel.tracing_set_attribute(span_key, 'mybool', false);
+  -- Set a double precision attribute to the span
+	PERFORM edb_otel.tracing_set_attribute(span_key, 'mydouble', 3.141);
+  -- Get the http trace context of the span
+	select edb_otel.tracing_get_http_trace_context(span_key) into parent_context;
+  -- Create a child span by specifying the span key of the span as parent
+	select edb_otel.tracing_start_span('ctrace', 'cspan1', span_key) into span_key2;
+  -- Create another child span by specifying the http trace context of the span
+  -- as parent
+	select edb_otel.tracing_start_span('ctrace', 'cspan2', parent_context) into span_key3;
+  -- End all spans
+	PERFORM edb_otel.tracing_end_span(span_key3);
+	PERFORM edb_otel.tracing_end_span(span_key2);
+	PERFORM edb_otel.tracing_end_span(span_key2);
+END $$;
+
+```
+
 
 ## Job scheduling
 
@@ -131,3 +341,18 @@ active   | t
 jobid    | 29
 schedule | * * * * *
 ```
+
+
+## Note on error reporting
+
+The OpenTelemetry API design does its best to prevent the application's business logic 
+from being tightly coupled to the observability pipeline. In doing so, it avoids 
+reporting failures to the calling applications. 
+
+So while the `edb_otel` extension's APIs return values indicating whether the call succeeded, 
+this is limited to failures that the extension reports or discovers. 
+
+For example, if tracing is not enabled, then all the tracing APIs will indicate failure
+by returning `NULL` or `false`. However, if a call to `Span.End()` does not result in
+successful export of the span to the collector endpoint, `edb_otel.start_span`
+will *not* return NULL.

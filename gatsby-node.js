@@ -19,6 +19,7 @@ const {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportMissingTitle,
   reportRedirectCollisions,
   configureLegacyRedirects,
   readFile,
@@ -291,6 +292,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   await processReferenceIndexes(result.data.allReferenceIndex.nodes, reporter);
 
+  const missingTitles = [];
+
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes, productVersions);
   for (let curr of treeRoot) {
@@ -302,6 +305,16 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     const node = curr.mdxNode;
+
+    if (
+      !(
+        node.title ||
+        node.frontmatter?.title ||
+        node.fileAbsolutePath.includes("playground")
+      )
+    ) {
+      missingTitles.push(node.fileAbsolutePath);
+    }
 
     // build navigation tree
     const navigationDepth = 1;
@@ -338,6 +351,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, productVersions, actions);
     }
   }
+  reportMissingTitle(missingTitles, reporter);
   reportRedirectCollisions(validPaths, reporter, gitData.docsRepoUrl);
 };
 

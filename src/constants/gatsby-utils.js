@@ -547,13 +547,11 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     }
     if (fromPath !== toPath) {
       const splitFromPath = fromPath.split(path.posix.sep);
-      const isPermanent =
-        splitFromPath[2] !== "latest" && splitToPath[2] !== "latest";
       actions.createRedirect({
         fromPath,
         toPath: effectiveTo,
         redirectInBrowser: false,
-        isPermanent,
+        isPermanent: false,
       });
     }
 
@@ -593,7 +591,12 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     const toIsLatest = isLatest || isLastVersion;
     if (toIsLatest) {
       const fromPathLatest = replacePathVersion(fromPath);
-      if (fromPathLatest !== fromPath && fromPathLatest !== toPath) {
+      // don't create redirects that point to themselves (and ignore wildcards as this is very easy to get pointed back to itself)
+      if (
+        fromPathLatest !== fromPath &&
+        fromPathLatest !== toPath &&
+        !fromPath.endsWith("/*")
+      ) {
         let value = validPaths.get(fromPathLatest);
         if (!value) validPaths.set(fromPathLatest, (value = []));
         value.push({
@@ -666,6 +669,21 @@ ${list}`);
   reporter.info(
     `redirects: ${collisionCount} collisions across ${sourceCount} locations`,
   );
+};
+
+const reportMissingTitle = (noTitlePaths, reporter) => {
+  if (!noTitlePaths.length) return;
+
+  if (isGHBuild) {
+    for (const ntpath of noTitlePaths) {
+      reporter.warn(`
+::error file=${ntpath},title=Missing title::page will show up as TITLE NEEDED`);
+    }
+  } else {
+    reporter.warn(
+      `Missing titles for the following files:\n\t${noTitlePaths.join("\n\t")}`,
+    );
+  }
 };
 
 const convertLegacyDocsPathToLatest = (fromPath) => {
@@ -800,6 +818,7 @@ module.exports = {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportMissingTitle,
   reportRedirectCollisions,
   configureLegacyRedirects,
   makeFileNodePublic,
