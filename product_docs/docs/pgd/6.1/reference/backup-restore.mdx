@@ -23,43 +23,17 @@ recovery (DR), such as in the following situations:
 ## Logical backup and restore
 
 You can use pg_dump, sometimes referred to as *logical backup*,
-normally with PGD. But in order to reduce the risk of global lock
-timeouts, we recommend dumping pre-data, data, and post-data
-separately. For example:
+normally with PGD.
 
-```console
-pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=pre-data -Fc -f pgd-pre-data.dump
-pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=data -Fc -f pgd-data.dump
-pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=post-data -Fc -f pgd-post-data.dump
-```
+### Temporary postgresql.conf settings
 
-And restore by directly executing these SQL files:
-
-```console
-pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data -f pgd-pre-data.dump
-pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data -f pgd-data.dump
-psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
-pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data -f pgd-post-data.dump
-psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
-```
-
-After which point the dump will be restored on all nodes in the cluster.
-
-In contrast if you do not split sections out with a naive pg_dump and
-pg_restore, the restore will likely fail with a global lock timeout.
-
-You should also temporarily set the following settings in `postgresql.conf`:
+First, temporarily set the following settings in `postgresql.conf`:
 
 ```
 # Increase from the default of `1GB` to something large, but still a
 # fraction of your disk space since the non-WAL data must also fit.
 # This decreases the frequency of checkpoints.
 max_wal_size = 100GB
-
-# Increase the number of writers to make better use of parallel
-# apply. Default is 2. Make sure this isn't overriden lower by the
-# node group config num_writers setting.
-bdr.writers_per_subscription = 5
 
 # Increase the amount of memory for building indexes. Default is
 # 64MB. For example, 1GB assuming 128GB total RAM.
@@ -69,6 +43,20 @@ maintenance_work_mem = 1GB
 # allow large transactions through.
 wal_receiver_timeout = 1h
 wal_sender_timeout = 1h
+
+# Increase the number of writers to make better use of parallel
+# apply. Default is 2. Make sure this isn't overriden lower by the
+# node group config num_writers setting.
+bdr.writers_per_subscription = 5
+
+# Increase Raft-related election timeouts with default values of 6s
+# and 3s.
+bdr.raft_global_election_timeout = 20s
+bdr.raft_group_election_timeout = 10s
+
+# Increase the size of the shared memory queue used by the receiver to
+# send data to the writer process from the default 1MB.
+bdr.writer_input_queue_size = 32MB
 ```
 
 Additionally:
@@ -77,9 +65,38 @@ Additionally:
 - Make sure any session or postgresql.conf settings listed above are not overriden by node group-level settings in general.
 
 And if you continue to get global lock timeouts during initial load,
-temporarily set `bdr.ddl_locking = off` for the initial load.
+add `-cbdr.ddl_locking=off` to `PGOPTIONS`.
 
-### Prefer restoring to a single node
+Now continue with pg_dump and pg_restore.
+
+### pg_dump / pg_restore
+
+In order to reduce the risk of global lock timeouts, we recommend
+dumping pre-data, data, and post-data separately. For example:
+
+```console
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=pre-data -Fc -f pgd-pre-data.dump
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=data -Fc -f pgd-data.dump
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=post-data -Fc -f pgd-post-data.dump
+```
+
+And restore by directly executing these SQL files on a node (do not
+run these on the connection manager port):
+
+```console
+PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data -f pgd-pre-data.dump
+PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data -f pgd-data.dump
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data -f pgd-post-data.dump
+psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+```
+
+After which point the dump will be restored on all nodes in the cluster.
+
+In contrast if you do not split sections out with a naive pg_dump and
+pg_restore, the restore will likely fail with a global lock timeout.
+
+### Prefer restoring to a single node cluster
 
 Especially when initially setting up a cluster from a Postgres dump,
 we recommend you restore to a cluster with a single PGD node. Then run
