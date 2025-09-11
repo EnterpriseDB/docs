@@ -362,3 +362,52 @@ of changes arriving from a single master in COMMIT order.
 !!! Note
     This feature is available only with EDB Postgres Extended.
     Barman doesn't create a `multi_recovery.conf` file.
+
+## Monitoring
+
+Use the following queries to check on the progress of the restore process.
+
+```sql
+SELECT pg_size_pretty(pg_database_size('bdrdb'));
+```
+
+The above query shows the database size on the restoring node. The
+size should grow as the restore makes progress and approaches the size
+of the original node. However, due to bloat, logical restores are
+always a little smaller than the original.
+
+```sql
+SELECT * FROM bdr.node_replication_rates;
+```
+
+The above query shows the rate of replication. However, the progress
+info can be misleading for big transactions; lag and progress will
+appear to stair-step.
+
+```sql
+SELECT
+  application_name,
+  state,
+  wait_event_type,
+  wait_event,
+  now() - state_change AS state_change_ago
+FROM
+  pg_stat_activity
+WHERE
+  application_name LIKE '%pg_restore%';
+```
+
+The above query shows information on what pg_restore is doing, if it's
+blocked/waiting (on what is waiting) or working, and changing its
+status continuously.
+
+Check the following views to see issues with replication slots,
+accumulated lag, broken replication, etc.
+
+- pg_catalog.pg_stat_replication_slots
+- pg_catalog.pg_replication_slots
+- bdr.node_slots
+
+And use `bdr.stat_subscription` to see statistics for each
+subscription, for example to check on parallel apply or transaction
+stream.
