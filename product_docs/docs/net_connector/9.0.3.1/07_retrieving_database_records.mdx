@@ -17,9 +17,9 @@ An `EDBDataReader` object represents a forward-only and read-only stream of data
 The example that follows:
 
 1.  Imports the EDB Postgres Advanced Server namespace `EnterpriseDB.EDBClient`.
-2.  Initializes an `EDBCommand` object with a `SELECT` statement.
-3.  Opens a connection to the database.
-4.  Executes the `EDBCommand` by calling the `ExecuteReader` method of the `EDBCommand` object.
+1.  Initializes an `EDBCommand` object with a `SELECT` statement.
+1.  Opens a connection to the database.
+1.  Executes the `EDBCommand` by calling the `ExecuteReader` method of the `EDBCommand` object.
 
 The results of the SQL statement are retrieved into an `EDBDataReader` object.
 
@@ -27,76 +27,180 @@ Loop through the contents of the `EDBDataReader` object to display the records r
 
 The `Read()` method advances to the next record (if there is one) and returns `true` if a record exists. It returns `false` if `EDBDataReader` has reached the end of the result set.
 
-```cpp
-<% @ Page Language="C#" %>
-<% @Import Namespace="EnterpriseDB.EDBClient" %>
-<% @Import Namespace="System.Data" %>
-<% @Import Namespace="System.Configuration" %>
-<script language="C#" runat="server">
-private void Page_Load(object sender, System.EventArgs e)
-{
-	var strConnectionString = ConfigurationManager.AppSettings["DB_CONN_STRING"];
-	try
-	{
-		await using var dataSource = EDBDataSource.Create(strConnectionString);
-		var conn = await dataSource.OpenConnectionAsync();
-		using var cmdSelect = new EDBCommand("SELECT * FROM dept", conn);
-		cmdSelect.CommandType = CommandType.Text;
-		using var drDept = await cmdSelect.ExecuteReaderAsync();
-		while (await drDept.ReadAsync())
-		{
-			Response.Write("Department Number: " + drDept["deptno"]);
-			Response.Write("\tDepartment Name: " + drDept["dname"]);
-			Response.Write("\tDepartment Location: " + drDept["loc"]);
-			Response.Write("<br>");
-		}
-		await drDept.CloseAsync();
-		await conn.CloseAsync();
-	}
-	catch(Exception exp)
-	{
-      Response.Write(exp.ToString());
-	}
-}
-</script>
+<TabContainer syncKey="sample">
+<Tab title=".NET">
 
+```csharp
+using System.Data;
+using EnterpriseDB.EDBClient;
+
+namespace RetrievingDatabaseRecords;
+
+internal class Program
+{
+    static async Task Main(string[] args)
+    {
+        try
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var conn = await dataSource.OpenConnectionAsync();
+            await using var selectCommand = new EDBCommand("SELECT * FROM dept", conn);
+            selectCommand.CommandType = CommandType.Text;
+            
+            await using var reader = await selectCommand.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                Console.Write($"Department Number: {reader["deptno"]}");
+                Console.Write($"\tDepartment Name: {reader["dname"]}");
+                Console.Write($"\tDepartment Location: {reader["loc"]}");
+                Console.WriteLine();
+            }
+            await reader.CloseAsync();
+            await conn.CloseAsync();
+        }
+        catch (Exception exp)
+        {
+            Console.WriteLine($"An error occured: {exp}");
+        }  
+    }
+}
 ```
 
-To exercise the sample code, save the code in your default web root directory in a file named `selectEmployees.aspx`. Then, to invoke the program, enter the following in a browser: `http://localhost/selectEmployees.aspx`.
+</Tab>
+<Tab title=".NET Framework">
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+
+namespace RetrievingDatabaseRecords
+{
+    internal class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=localhost;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+            try
+            {
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var conn = await dataSource.OpenConnectionAsync())
+                {
+                    using (var selectCommand = new EDBCommand("SELECT * FROM dept", conn))
+                    {
+                        selectCommand.CommandType = CommandType.Text;
+                        using (var reader = await selectCommand.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                Console.Write($"Department Number: {reader["deptno"]}");
+                                Console.Write($"\tDepartment Name: {reader["dname"]}");
+                                Console.Write($"\tDepartment Location: {reader["loc"]}");
+                                Console.WriteLine();
+                            }
+                            await reader.CloseAsync();
+                        }
+                    }
+                    await conn.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+</Tab>
+</TabContainer> 
+
+This program should output the following text on the console : 
+
+```text
+Department Number: 10   Department Name: ACCOUNTING     Department Location: NEW YORK
+Department Number: 20   Department Name: RESEARCH       Department Location: DALLAS
+Department Number: 30   Department Name: SALES          Department Location: CHICAGO
+Department Number: 40   Department Name: OPERATIONS     Department Location: BOSTON
+```
 
 ## Retrieving a single database record
 
-To retrieve a single result from a query, use the `ExecuteScalar()` method of the `EDBCommand` object. The `ExecuteScalar()` method returns the first value of the first column of the first row of the `DataSet` generated by the specified query.
+To retrieve a single result from a query, use the `ExecuteScalar()` method of the `EDBCommand` object. The `ExecuteScalar()` method returns the first value of the first column of the first row of the result set generated by the specified query.
 
-```cpp
-<% @ Page Language="C#" %>
-<% @Import Namespace="EnterpriseDB.EDBClient" %>
-<% @Import Namespace="System.Data" %>
-<% @Import Namespace="System.Configuration" %>
-<script language="C#" runat="server">
-private void Page_Load(object sender, System.EventArgs e)
+<TabContainer syncKey="sample">
+<Tab title=".NET">
+
+```csharp
+static async Task Main(string[] args)
 {
-	var strConnectionString = ConfigurationManager.AppSettings["DB_CONN_STRING"];
-	try
-	{
-		await using var dataSource = EDBDataSource.Create(strConnectionString);
-		var conn = await dataSource.OpenConnectionAsync();
-		using var cmd = new EDBCommand("SELECT MAX(sal) FROM emp", conn);
-		cmd.CommandType = CommandType.Text;
-		var maxSal = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-		Response.Write("Max Salary: " + maxSal);
-		await conn.CloseAsync();
-	}
-	catch(Exception exp)
-	{
-		Response.Write(exp.ToString());
-	}
+    // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+    var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+    try
+    {
+        await using var dataSource = EDBDataSource.Create(connectionString);
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new EDBCommand("SELECT MAX(sal) FROM emp", connection);
+        command.CommandType = CommandType.Text;
+
+        var maxSalObject = await command.ExecuteScalarAsync();
+        if (maxSalObject is decimal maxSal)
+        {
+            Console.WriteLine($"Max Salary: {maxSal}");
+        }
+        
+        await connection.CloseAsync();
+    }
+    catch (Exception exp)
+    {
+        Console.WriteLine($"An error occured: {exp}");
+    }
 }
-</script>
 ```
 
-Save the sample code in a file named `selectscalar.aspx` in a web root directory.
- 
-To invoke the sample code, enter the following in a browser: `http://localhost/selectScalar.aspx`
+</Tab>
+<Tab title=".NET Framework">
 
-The sample includes an explicit conversion of the value returned by the `ExecuteScalar()` method. The `ExecuteScalar()` method returns an object. To view the object, you must convert it to an integer value by using the `Convert.ToInt32` method.
+```csharp
+static async Task Main(string[] args)
+{
+    // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+    var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+    try
+    {
+        using (var dataSource = EDBDataSource.Create(connectionString))
+        using (var connection = await dataSource.OpenConnectionAsync())
+        {
+            using (var command = new EDBCommand("SELECT MAX(sal) FROM emp", connection))
+            {
+                command.CommandType = CommandType.Text;
+
+                var maxSalObject = await command.ExecuteScalarAsync();
+                if (maxSalObject is decimal maxSal)
+                {
+                    Console.WriteLine($"Max Salary: {maxSal}");
+                }
+            }
+            await connection.CloseAsync();
+        }
+    }
+    catch (Exception exp)
+    {
+        Console.WriteLine($"An error occured: {exp}");
+    }
+}
+```
+</Tab>
+</TabContainer> 
+
+This program should output the following text on the console : 
+
+```text
+Max Salary: 5000.00
+```
+
+The sample includes an explicit conversion of the value returned by the ExecuteScalar() method. The ExecuteScalar() method returns an object (it’s a decimal value boxed into an object). You can access the native value by using an explicit cast to a nullable decimal value.

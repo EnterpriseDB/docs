@@ -432,7 +432,7 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
-            <BannerWideLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
+            <BannerWideLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager/migration/">
               Data Migration Service
             </BannerWideLink>
 
@@ -500,7 +500,7 @@ const Page = () => {
             <BannerWideLink to="/pg_extensions/pg_anonymizer">
               pg_anonymizer
             </BannerWideLink>
-            
+
             <BannerWideLink to="/pg_extensions/wal2json">
               wal2json
             </BannerWideLink>

@@ -671,6 +671,21 @@ ${list}`);
   );
 };
 
+const reportMissingTitle = (noTitlePaths, reporter) => {
+  if (!noTitlePaths.length) return;
+
+  if (isGHBuild) {
+    for (const ntpath of noTitlePaths) {
+      reporter.warn(`
+::error file=${ntpath},title=Missing title::page will show up as TITLE NEEDED`);
+    }
+  } else {
+    reporter.warn(
+      `Missing titles for the following files:\n\t${noTitlePaths.join("\n\t")}`,
+    );
+  }
+};
+
 const convertLegacyDocsPathToLatest = (fromPath) => {
   return fromPath
     .replace(/\/\d+(\.?\d+)*\//, "/latest/") // version in middle of path
@@ -803,6 +818,7 @@ module.exports = {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportMissingTitle,
   reportRedirectCollisions,
   configureLegacyRedirects,
   makeFileNodePublic,
