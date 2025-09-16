@@ -72,7 +72,7 @@ def main(args):
             run(["open", html_file])
         else:
             print("generating cover page")
-            data = (BASE_DIR / "cover.html").read_text(encoding="utf-8")
+            data = (BASE_DIR / "cover.html").read_text()
             data = data.replace("[PRODUCT]", title)
             data = data.replace("[VERSION]", version)
             cover_file.write_text(data)
