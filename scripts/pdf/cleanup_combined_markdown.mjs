@@ -344,6 +344,13 @@ function cleanup() {
         const dest = new URL(url.replace(thisProductUrl+'/', ''), `file://${path.dirname(path.resolve(file.path))}/`);
         return dest.toString();
       }
+
+      if ( url.startsWith(thisUnversionedProductUrl)) {
+        const dest = new URL(url.replace(thisUnversionedProductUrl+'/', ''), `file://${path.dirname(path.resolve(file.path))}/`);
+        return dest.toString();
+      }
+
+      return url;
     }
 
     let svgNodes = [];
@@ -368,13 +375,13 @@ function cleanup() {
           node.properties.src
         ) {
           node.properties.src = urlToFileUrl(node.properties.src);
-          if (node.properties.src.endsWith(".svg"))
+          if (node.properties.src.startsWith("file:") && node.properties.src.endsWith(".svg"))
             svgNodes.push(node);
         }
         else if (node.type === "link") node.url = mapUrlToSlug(node.url);
         else if (node.type === "image") {
           node.url = urlToFileUrl(node.url);
-          if (node.url.endsWith(".svg"))
+          if (node.url.startsWith("file:") && node.url.endsWith(".svg"))
             svgNodes.push(node);
         }
       } catch (e) {
