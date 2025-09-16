@@ -47,7 +47,7 @@ def main(args):
         output.check_returncode()
 
         # TODO: Pick up refactoring from this point
-        title = get_title(doc_path) or product
+        title = get_title(mdx_file) or product
 
         print("generating docs html")
         output = run(
@@ -72,7 +72,7 @@ def main(args):
             run(["open", html_file])
         else:
             print("generating cover page")
-            data = (BASE_DIR / "cover.html").read_text()
+            data = (BASE_DIR / "cover.html").read_text(encoding="utf-8")
             data = data.replace("[PRODUCT]", title)
             data = data.replace("[VERSION]", version)
             cover_file.write_text(data)
@@ -293,12 +293,10 @@ def put_index_first(path, nav_order):
     return f'{indice:03d}_{filename}'
 
 
-def get_title(doc_path):
-    index_path = doc_path / "index.mdx"
-    if index_path.exists():
-        with open(index_path) as index_file:
-            for line in (line for line in index_file if "title: " in line):
-                return strip_quotes(line.replace("title: ", ""))
+def get_title(mdx_file):
+    with open(mdx_file) as mdx:
+        for line in (line for line in mdx if re.search("## \d+\s+", line)):
+            return re.sub(r"## \d+\s+", "", line).strip()
     return None
 
 
