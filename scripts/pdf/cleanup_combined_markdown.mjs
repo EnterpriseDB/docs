@@ -19,6 +19,7 @@ import fs from 'node:fs/promises';
 import { optimize } from 'svgo';
 import toVfile from "to-vfile";
 const { read, write } = toVfile;
+import replacer, { expressionRE } from "../../src/constants/expression-replacement.js";
 
 // if this build was triggered by a GH action in response to a PR,
 // use the head ref (the branch that someone is requesting be merged)
@@ -60,6 +61,7 @@ example:
     })
     .use(mdx)
     .use(remarkFrontmatter)
+    .use(expressionReplacement)
     .use(cleanup);
 
   console.log("rewriting links and headings");
@@ -71,6 +73,14 @@ example:
 
   write(result);
 })();
+
+function expressionReplacement() {
+  return (tree, file) => {
+    visitParents(tree, ["text", "code", "inlineCode", "jsx"], (node) => {
+      node.value = replacer({text: node.value, filename: file.path, position: node.position});
+    });
+  };
+}
 
 function cleanup() {
   const originalRE =
