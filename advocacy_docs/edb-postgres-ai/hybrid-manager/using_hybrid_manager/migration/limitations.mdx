@@ -70,7 +70,7 @@ The EDB DMS doesn't support migrating tables with columns that have user-defined
 
 ### TSVECTOR type migration workaround
 
-Although we don't support the migration of `TSVECTOR` type columns, you can apply this workaround to enable their migration. For example, this `messages` table contains a `TSVECTOR` column:
+Although we don't support the migration of `TSVECTOR` type columns, you can apply this workaround to enable their migration. For example, this `messages` table in source database contains a `TSVECTOR` column:
 
 ```sql
 CREATE TABLE messages (
@@ -80,15 +80,24 @@ CREATE TABLE messages (
 );
 ```
 
-The first option is to create a trigger that automatically updates the `tsvector` field. Create the trigger on the destination table before migration and configure it to fire before `INSERT` or `UPDATE` statements.
+Before starting the migration, you need to create a table in the target database without the `TSVECTOR` column like this:
 
 ```sql
-CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
-ON messages FOR EACH ROW EXECUTE FUNCTION
-tsvector_update_trigger(tsv, 'pg_catalog.english', title, body);
+CREATE TABLE messages (
+    title       text,
+    body        text,
+);
 ```
 
-Since the first option won't compute the `TSVECTOR` field for existing rows, the second option is to run the following `UPDATE` statement after the migration is complete to populate the column for all migrated data:
+And then when you create the migration, you need to exclude the `TSVECTOR` column in the UI when you review the tables in the `Review your Tables` page by unchecking the `tsv` column.
+
+After the migration finished, you will get the `title` and `body` columns migrated to the target database. Now you can add the `TSVECTOR` column to the target table like this:
+
+```sql
+ALTER TABLE messages ADD COLUMN tsv TSVECTOR DEFAULT NULL;
+```
+
+And then you need to run the following `UPDATE` statement to populate the column for all migrated data:
 
 ```sql
 UPDATE messages SET tsv = to_tsvector('english', CONCAT(title, ' ', body)) WHERE tsv IS NULL;
