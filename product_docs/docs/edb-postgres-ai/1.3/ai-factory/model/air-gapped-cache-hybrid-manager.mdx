@@ -1,0 +1,300 @@
+---
+title: How-To Use NVIDIA NIM Model Cache in Air‑Gapped Clusters in Hybrid Manager
+navTitle: Use Air‑Gapped Model Cache
+description: Build a model profile cache in a connected environment, upload it to object storage, and use it from an air‑gapped HM cluster.
+---
+
+## Overview
+Use a model cache to run NVIDIA NIM models in environments without internet access. The cache contains the model “profiles” files that the NIM container otherwise downloads from NVIDIA NGC at runtime.
+
+This guide walks through a single flow for all cache types — you do not need separate pages per backend or object store.
+
+- Phase 1: Build the model cache (connected environment)
+- Phase 2: Upload the cache to object storage (AWS or GCP)
+- Phase 3: Use the cache in your air‑gapped cluster (UI only)
+
+## Prerequisites
+- An HM cluster with GPU nodes. Label nodes `nvidia.com/gpu=true` and taint with `nvidia.com/gpu`.
+- NVIDIA NGC API key.
+- A private registry accessible from your air‑gapped cluster.
+
+## Phase 1 — Build the model cache (connected)
+In a connected environment, copy the NIM images you need to your private registry, discover compatible profiles, and pre‑download them into a local cache directory.
+
+What is a “model cache”?
+- A model cache is a set of “profiles” files required by NVIDIA NIM images at runtime. NIM selects profiles based on hardware and backend and typically downloads them from NGC.
+- Only NIM models can use this method. Other KServe‑supported models cannot leverage the NIM profile cache.
+
+### 1) Copy NIM images to your private registry
+Use `skopeo` to copy images from NVIDIA NGC to your registry.
+
+```
+NGC_API_KEY=<your NGC API key>
+REGISTRY=<your registry, e.g. registry.example.com>
+USER=<your registry username>
+PASSWORD=<your registry password>
+
+skopeo login -u '$oauthtoken' -p "${NGC_API_KEY}" nvcr.io
+skopeo login -u "${USER}" -p "${PASSWORD}" "${REGISTRY}"
+
+# Example: text embeddings model
+skopeo copy --override-os linux --multi-arch all \
+  docker://nvcr.io/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest \
+  "docker://${REGISTRY}/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest"
+```
+
+Repeat for each NIM image you plan to use. Common defaults in HM include:
+
+```
+nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:1.8.5
+nvcr.io/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest
+nvcr.io/nim/nvidia/llama-3.2-nv-rerankqa-1b-v2:latest
+nvcr.io/nim/nvidia/nvclip:latest
+nvcr.io/nim/baidu/paddleocr:latest
+```
+
+### 2) (Optional) Update default model image URLs in HM
+If HM is connected, update default model image URLs to point to your registry so future clusters pull from it.
+
+```
+access_key=<your HM API key>
+
+# List models; note each model ID
+curl -k -H "x-access-key:${access_key}" \
+  -X GET "https://<your HM Portal URL>/api/v1/ai-models" | jq .
+
+# Patch a model's image URL
+curl -k -H "x-access-key:${access_key}" \
+  -X PATCH "https://<your HM Portal URL>/api/v1/ai-models/<model ID>" \
+  -d '{"imageUrl":"<your-registry>/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest"}'
+```
+
+### 3) Discover compatible profiles
+Profiles are model‑plus‑hardware variants. Use the NIM container to list profiles for your target environment. You can do this directly with Docker on a GPU host:
+
+```
+export NGC_API_KEY=<your NGC API key>
+docker run -it --rm \
+  --runtime=nvidia \
+  --gpus all \
+  --shm-size=16GB \
+  -e NGC_API_KEY \
+  <your-registry>/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest \
+  list-model-profiles
+```
+
+Record the profile IDs in the “Compatible with system” section for your GPUs.
+
+Alternative: list profiles from Kubernetes (Job)
+If you cannot SSH to a GPU node, run a short‑lived Job in a cluster with GPU access to print compatible profile IDs.
+
+```
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nim-list-job
+  namespace: default
+spec:
+  template:
+    metadata:
+      name: nim-list-pod
+    spec:
+      containers:
+        - name: nim-list
+          image: <your-registry>/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest
+          args: ["list-model-profiles"]
+          env:
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nvidia-nim-secrets
+                  key: NGC_API_KEY
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+            requests:
+              nvidia.com/gpu: "1"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      imagePullSecrets:
+        - name: <your-pull-secret>
+      restartPolicy: Never
+      securityContext:
+        fsGroup: 26
+        runAsGroup: 26
+        runAsNonRoot: true
+        runAsUser: 26
+        seccompProfile:
+          type: RuntimeDefault
+```
+
+Example output (IDs vary by model and hardware):
+```
+MODEL PROFILES
+- Compatible with system and runnable:
+  - 4f904d571fe60ff24695b5ee2aa42da58cb460787a968f1e8a09f5a7e862728d (vllm-bf16-tp1-pp1)
+- With LoRA support:
+  - f749ba07aade1d9e1c36ca1b4d0b67949122bd825e8aa6a52909115888a34b95 (vllm-bf16-tp1-pp1-lora)
+- Compilable to TRT-LLM using just-in-time compilation:
+  - ac34857f8dcbd174ad524974248f2faf271bd2a0355643b2cf1490d0fe7787c2 (tensorrt_llm-trtllm_buildable-bf16-tp1-pp1)
+- With LoRA support:
+  - 7b8458eb682edb0d2a48b4019b098ba0bfbc4377aadeeaa11b346c63c7adf724 (tensorrt_llm-trtllm_buildable-bf16-tp1-pp1-lora)
+- Incompatible with system:
+  - 6c3f01dd2b2a56e3e83f70522e4195d3f2add70b28680082204bbb9d6150eb04 (tensorrt_llm-h100-fp8-tp2-pp1-latency)
+```
+Note: Although HM doesn’t currently expose LoRA support in the UI, you can still cache LoRA‑capable profiles for manual deployments.
+
+### 4) Build the cache locally
+Download only the compatible profiles, or download all profiles if you prefer a universal cache.
+
+Download selected profiles:
+```
+export NGC_API_KEY=<your NGC API key>
+export LOCAL_NIM_CACHE=./model-cache
+mkdir -p "$LOCAL_NIM_CACHE" && chmod -R a+w "$LOCAL_NIM_CACHE"
+
+docker run -v $LOCAL_NIM_CACHE:/opt/nim/.cache \
+  -u $(id -u) \
+  -e NGC_API_KEY \
+  --rm \
+  <your-registry>/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest \
+  download-to-cache \
+  --profiles \
+    <profile_id_1> \
+    <profile_id_2>
+```
+
+Download all profiles:
+```
+export NGC_API_KEY=<your NGC API key>
+export LOCAL_NIM_CACHE=./model-cache
+mkdir -p "$LOCAL_NIM_CACHE" && chmod -R a+w "$LOCAL_NIM_CACHE"
+
+docker run -v $LOCAL_NIM_CACHE:/opt/nim/.cache \
+  -u $(id -u) \
+  -e NGC_API_KEY \
+  --rm \
+  <your-registry>/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest \
+  download-to-cache --all
+```
+
+After this step, `./model-cache` contains the profiles that the NIM container will use when offline. The folder layout looks like:
+
+```
+model-cache/
+└── nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1
+    ├── local_cache
+    └── ngc
+        └── hub
+            ├── models--nim--nvidia--llama-3.2-nemoretriever-300m-embed-v1
+            │   ├── blobs
+            │   │   ├── <hash-1>
+            │   │   ├── <hash-2>
+            │   │   └── ...
+            │   ├── refs
+            │   │   └── <ref-name>
+            │   └── snapshots
+            │       └── <snapshot-name>
+            └── tmp
+```
+
+## Phase 2 — Upload the cache to object storage
+Upload the local cache directory to your object store. Use a distinct prefix per model, for example `model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`.
+
+### AWS S3 example
+```
+aws s3 cp -r ./model-cache \
+  s3://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1
+```
+
+Optional: specify an AWS CLI profile
+```
+aws s3 cp -r ./model-cache \
+  s3://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1 \
+  --profile <aws-profile>
+```
+
+### GCP bucket example
+```
+gcloud storage cp -r ./model-cache \
+  gs://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1
+```
+
+### Supported object store URI formats
+Hybrid Manager supports the following URI formats for the Model Profiles Path:
+
+- s3://<bucket>/<path>
+- gs://<bucket>/<path>
+- hdfs://<namenode-host>:<port>/<path>
+- webhdfs://<namenode-host>:<port>/<path>
+- https://<account>.blob.core.windows.net/<container>/<path> (Azure Blob Storage)
+- https://<hostname>/<path> (generic HTTPS object stores)
+
+## Phase 3 — Use the cache in an air‑gapped cluster
+Create your model from the HM UI and point it at the cache path on your object store. No Kubernetes YAML is required (this differs from KServe).
+
+### Steps in HM UI
+1) Go to AI Factory → Models → Create Model
+2) Choose a default model (for example: llama‑3.2‑nemoretriever‑300m‑embed‑v1)
+3) Set “Model Profiles Path on Object Storage” to the path you uploaded in Phase 2, for example:
+- `s3://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
+- `gs://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
+4) Select your compute (GPU) and size; then create
+
+## Screenshots
+- Screenshot placeholder: Create Model — Model selection
+- Screenshot placeholder: Create Model — Model Profiles Path
+- Screenshot placeholder: Model detail — Cache in use
+
+## Notes
+- Ensure your cluster can pull images from your private registry (configure image pull secrets in HM or the cluster as needed).
+- Build and upload caches for each model you plan to use.
+- You do not need to create secrets or apply any YAML to use the cache in HM.
+
+## Validate the cache and deployment
+
+Follow these steps to verify the image copy, cache upload, and that your model is using the cache in the air‑gapped environment.
+
+1) Validate images in your private registry
+```
+skopeo inspect docker://${REGISTRY}/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest | jq '.Name, .Digest'
+```
+
+2) Validate the local cache before upload
+```
+du -sh ./model-cache
+find ./model-cache -maxdepth 3 -type d | head -n 20
+```
+
+3) Validate the object store upload
+- S3: `aws s3 ls s3://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1/`
+- GCS: `gcloud storage ls gs://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1/`
+- HDFS: `hdfs dfs -ls /model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
+- WebHDFS: `curl -sS "http://<namenode-host>:9870/webhdfs/v1/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1?op=LISTSTATUS" | jq`
+
+4) Validate in HM UI
+- The model card shows status Ready/Healthy
+- The “Model Profiles Path on Object Storage” matches your S3/GS/HDFS/WebHDFS/HTTPS path
+
+5) Run a smoke test against the model endpoint
+From the model details page, copy the endpoint URL and API key. Then, send a minimal embeddings request (for the embeddings model example):
+```
+ENDPOINT=<your model base URL>
+API_KEY=<your model api key>
+
+curl -sS -X POST "$ENDPOINT/v1/embeddings" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input":["hello from EDB"]}' | jq '.data[0].embedding | length'
+```
+You should see a numeric vector length returned.
+
+6) (Optional) Inspect the running pod’s cache usage
+```
+kubectl -n <model-namespace> get pods -l app.kubernetes.io/name=<model-name>
+kubectl -n <model-namespace> logs <pod-name> --tail=200
+kubectl -n <model-namespace> exec -it <pod-name> -- sh -lc 'ls -al /opt/nim/.cache && du -sh /opt/nim/.cache'
+```
+Logs should not show attempts to download from NGC when the cache is present.
