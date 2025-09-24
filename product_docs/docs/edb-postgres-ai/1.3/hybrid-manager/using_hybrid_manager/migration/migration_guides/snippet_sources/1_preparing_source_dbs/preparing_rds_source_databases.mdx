@@ -8,7 +8,7 @@ Before migrating data from an **AWS RDS for PostgreSQL** or **Aurora PostgreSQL*
 
 ## Enable logical replication
 
-To perform logical replication, the EDB DMS Agent requires `rds.logical_replication` set to `1` and `wal_level` set to `logical`.
+To perform logical replication, the EDB DMS Reader requires `rds.logical_replication` set to `1`, `wal_level` set to `logical`, and, optionally, `max_wal_size` set to `8 GB`.
 
 Because AWS RDS databases are databases managed by a cloud service provider, their default configurations cannot be changed directly with psql. Instead, create a parameter group with replication enabled and associate it with your RDS instance.
 
@@ -18,16 +18,23 @@ Because AWS RDS databases are databases managed by a cloud service provider, the
 
 2.  [Associate the created parameter group with your source Amazon RDS database](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Associating.html) using either the AWS Management Console, AWS CLI or RDS API.
 
-3.  [Modify a parameter in a parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Modifying.html) using either the AWS Management Console, AWS CLI or RDS API. 
+3.  [Modify parameters in a parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Modifying.html) using either the AWS Management Console, AWS CLI or RDS API. 
 
-    For this parameter group, you must set `rds.logical_replication` to `1`. After you configure this, the database will automatically set `wal_level` to `logical`.
+    - For this parameter group, you must set `rds.logical_replication` to `1`. After you configure this, the database will automatically set `wal_level` to `logical`.
+
+    - Also ensure `max_wal_size` is configured for adequate WAL LSN lifetime.
+
+      Set the `max_wal_size` value large enough that production traffic is generating mostly timed checkpoints and not requested checkpoints based on WAL size.
+
+      The streaming migration process also requires changes to be available in the WAL until they can be streamed to durable message storage in the cloud infrastructure of EDB DMS. Setting `max_wal_size` too small can affect performance. It can also interfere with the migration process by allowing Postgres LSNs to be dropped from the WAL before they can be streamed. EDB recommends setting `max_wal_size` to at least 8 GB, however, consult your DBA to determine the appropriate size.
 
 4.  [Reboot your AWS RDS database](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RebootInstance.html#USER_RebootInstance.steps) to apply the changes.
 
-5.  Verify that the settings have been set correctly by connecting to the database and checking whether `wal_level` is now set to `logical`. 
+5.  Verify that the settings have been set correctly by connecting to the database and checking whether `wal_level` is now set to `logical` and the size of `max_wal_size`. 
 
     ```psql
     SHOW WAL_LEVEL;
+    SHOW MAX_WAL_SIZE;
     ```
 
     The output should be logical.
@@ -168,8 +175,8 @@ To illustrate, consider the following example:
     [Pass] max_replication_slots is at least 1.
     
      *** [Transporter] - Validate max WAL size
-    max_wal_size: 1 GB
-    [Suggestion] max_wal_size (1 GB) is less than 8 GB
+    max_wal_size: 8 GB
+    [Pass] max_wal_size is at least 8 GB.
     
      *** [Transporter] - Validate checkpoints
     checkpoints_timed: 424
