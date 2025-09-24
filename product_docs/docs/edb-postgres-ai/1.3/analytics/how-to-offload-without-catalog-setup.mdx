@@ -1,0 +1,30 @@
+---
+title: How-to  PGD offloads without a catalog (setup)
+navTitle: Offload w/o catalog setup
+description: Create a PGFS storage location and set the PGD node group to write Iceberg files without a catalog.
+---
+
+## Create storage location and set write target
+
+```sql
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgfs.create_storage_location(
+    'appliance-bucket',
+    '$BUCKET_URL'
+      || '/'
+      || (SELECT node_group_name FROM bdr.node_group WHERE node_group_name != 'world' LIMIT 1)
+      || '/analytics-offload'
+  )
+$$);
+
+CREATE TABLE sentinel_sl_read_test ()
+USING PGAA
+WITH (pgaa.format = 'iceberg', pgaa.storage_location = 'appliance-bucket', pgaa.path = 'nonexistent');
+
+SELECT bdr.alter_node_group_option(
+  (SELECT node_group_name FROM bdr.node_group WHERE node_group_name != 'world' LIMIT 1),
+  'analytics_storage_location',
+  'appliance-bucket'
+);
+```
+

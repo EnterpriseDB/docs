@@ -1,0 +1,78 @@
+---
+title: How-to  Observe storage savings from tiered tables (before)
+navTitle: Storage savings (before)
+description: Measure on-disk size of partitions before enabling AutoPartition offload.
+---
+
+```sql
+-- temp function for faster row counts
+CREATE OR REPLACE FUNCTION temp_get_table_rowcount(schema_name text, table_name text)
+RETURNS bigint AS $$
+DECLARE count bigint;
+BEGIN
+    EXECUTE FORMAT('SELECT COUNT(*) FROM %I.%I', schema_name, table_name) INTO count;
+    RETURN count;
+END $$ LANGUAGE plpgsql;
+
+WITH partitioned_table_info AS (
+  SELECT nspc.nspname AS schema_name,
+         child.relname AS table_name,
+         pg_catalog.pg_get_expr(child.relpartbound, child.oid) AS partition_constraint,
+         pg_get_partition_constraintdef(child.oid) AS partition_constraint_full
+  FROM pg_inherits inh
+  JOIN pg_class parent ON inh.inhparent = parent.oid
+  JOIN pg_class child ON inh.inhrelid = child.oid
+  JOIN pg_namespace nspp ON parent.relnamespace = nspp.oid
+  JOIN pg_namespace nspc ON child.relnamespace = nspc.oid
+  WHERE parent.relname = 'partitioned_table' AND nspp.nspname = 'public'
+),
+pgaa_tables AS (
+  SELECT m.schema_name, m.table_name, m.format,
+    CASE WHEN m.storage_location_name IS NOT NULL THEN FORMAT('pgfs://%s/%s', m.storage_location_name, m.path)
+         WHEN (m.managed_by IS NOT NULL AND m.catalog_namespace IS NOT NULL AND m.catalog_table IS NOT NULL)
+           THEN FORMAT('%s.%s.%s', m.managed_by, m.catalog_namespace, m.catalog_table)
+    END AS path,
+    temp_get_table_rowcount(m.schema_name, m.table_name) AS num_rows,
+    s.total_size AS total_size,
+    pti.partition_constraint
+  FROM pgaa.get_all_analytics_table_settings() m
+  LEFT JOIN LATERAL pgaa.lakehouse_table_stats(FORMAT('%I.%I', m.schema_name, m.table_name)::regclass) s ON TRUE
+  JOIN partitioned_table_info pti ON m.schema_name = pti.schema_name AND m.table_name = pti.table_name
+  WHERE m.storage_location_name IS NOT NULL
+     OR (m.managed_by IS NOT NULL AND m.catalog_namespace IS NOT NULL AND m.catalog_table IS NOT NULL)
+),
+local_tables AS (
+  SELECT pn.nspname AS schema_name,
+         pc.relname AS table_name,
+         temp_get_table_rowcount(pn.nspname, pc.relname) AS num_rows,
+         pg_total_relation_size(FORMAT('%I.%I', pn.nspname, pc.relname)::regclass) AS total_size,
+         pti.partition_constraint
+  FROM pg_class pc
+  JOIN pg_namespace pn ON pc.relnamespace = pn.oid
+  JOIN pg_am am ON am.oid = pc.relam
+  JOIN partitioned_table_info pti ON pn.nspname = pti.schema_name AND pc.relname = pti.table_name
+  WHERE pn.nspname NOT IN ('pg_catalog','information_schema','pg_toast','pg_internal','pgaa','pgfs','bdr')
+    AND pc.relkind = 'r'
+    AND am.amname != 'pgaa'
+),
+all_leaf_tables AS (
+  SELECT schema_name, table_name, format AS pgaa_format, path AS pgaa_path, num_rows, total_size, partition_constraint FROM pgaa_tables
+  UNION
+  SELECT schema_name, table_name, NULL AS pgaa_format, NULL AS pgaa_path, num_rows, total_size, partition_constraint FROM local_tables
+),
+final_table_info AS (
+  SELECT schema_name, table_name,
+    CASE WHEN pgaa_format = 'iceberg' THEN 'iceberg'
+         WHEN pgaa_format = 'delta' THEN 'delta'
+         ELSE 'heap' END AS type,
+    COALESCE(pgaa_path, 'local') AS location,
+    num_rows,
+    total_size AS total_size_bytes,
+    SUBSTRING(partition_constraint, 'FROM \(''([^'']+)') AS start_bound,
+    SUBSTRING(partition_constraint, 'TO \(''([^'']+)') AS end_bound
+  FROM all_leaf_tables
+  ORDER BY partition_constraint ASC
+)
+SELECT * FROM final_table_info;
+```
+
