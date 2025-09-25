@@ -1,0 +1,174 @@
+---
+title: AI Factory Architecture on Hybrid Manager
+navTitle: Architecture
+description: Technical architecture of AI Factory components within Hybrid Manager's Kubernetes infrastructure
+---
+
+## Architectural Overview
+
+AI Factory deploys as a collection of containerized services within Hybrid Manager's Kubernetes infrastructure, delivering [Sovereign AI](/edb-postgres-ai/1.3/ai-factory/concepts/sovereign-ai) capabilities through integrated [model governance](/edb-postgres-ai/1.3/ai-factory/model/library), [inference serving](/edb-postgres-ai/1.3/ai-factory/model/serving/), and [Gen AI application development](/edb-postgres-ai/1.3/ai-factory/gen-ai/) components. The architecture ensures complete data sovereignty by processing all AI workloads within customer-controlled Kubernetes clusters, leveraging local [GPU resources](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu) and object storage.
+
+The system operates across three architectural layers: a control plane for governance and orchestration, a runtime layer for model serving and application execution, and a storage layer for model artifacts and [Knowledge Bases](/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base). These layers integrate through Kubernetes APIs and custom resources, providing unified management while maintaining isolation between projects and workloads.
+
+## Core Components
+
+### Model Library Architecture
+
+The [Model Library](/edb-postgres-ai/1.3/ai-factory/model/library) operates as a control plane service managing model lifecycle and governance across the platform. This service maintains a centralized registry of approved models while enforcing security and compliance policies before models reach production environments.
+
+The library consists of several interconnected services:
+- Registry synchronization service that monitors external container registries
+- Policy engine evaluating models against organizational governance rules
+- Metadata service tracking model versions, performance benchmarks, and approvals
+- Storage interface managing model artifacts in object storage backends
+
+Model metadata persists in PostgreSQL databases managed by Hybrid Manager, ensuring consistency with other platform data. The library exposes models to project namespaces through Kubernetes custom resources, enabling declarative model deployment while maintaining centralized governance. See also: [Model Library explained](/edb-postgres-ai/1.3/ai-factory/model/model-library-explained/).
+
+### Inference Server Infrastructure
+
+Inference servers deploy as KServe [InferenceServices](/edb-postgres-ai/1.3/ai-factory/model/create-inferenceservice/) within project namespaces, providing scalable [Model Serving](/edb-postgres-ai/1.3/ai-factory/model/serving/) through specialized container pods. These pods encapsulate model runtime engines optimized for different frameworks and hardware configurations.
+
+Inference pod configurations include:
+- Model runtime containers
+- Resource specifications defining GPU allocation, memory limits, and CPU requirements (see [Setup GPU](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu) and [Update GPU resources](/edb-postgres-ai/1.3/ai-factory/model/update-gpu-resources/))
+- Volume mounts connecting to model storage and configuration data
+- Environment variables containing endpoint configurations and runtime parameters
+- Health check definitions for liveness and readiness probes
+
+Autoscaling configurations respond to metrics including request latency, GPU utilization, and queue depth, ensuring optimal resource utilization while meeting performance targets. For deployment options, see [Model deployment](/edb-postgres-ai/1.3/ai-factory/model/deployment.mdx) and [Configure ServingRuntime](/edb-postgres-ai/1.3/ai-factory/model/configure-servingruntime/).
+
+### Gen AI Builder Runtime
+
+[Gen AI](/edb-postgres-ai/1.3/ai-factory/gen-ai/) deploys as a multi-tier application providing visual development and runtime execution for AI applications. The architecture separates concerns between user interface, orchestration logic, and execution environments.
+
+The builder runtime encompasses:
+- Web interface pods serving the visual development environment
+- Orchestration service pods coordinating agent and tool execution
+- Agent executor pods running isolated AI workflows with LLM connections
+- Tool service pods providing reusable functions for data access and integration (see [Tools explained](/edb-postgres-ai/1.3/ai-factory/gen-ai/tools/tools-explained/))
+- State management through PostgreSQL with [pgvector and Vector Engine concepts](/edb-postgres-ai/1.3/ai-factory/vector-engine/) for embeddings
+
+Each component runs with specific resource allocations and security contexts, ensuring isolation between user workloads while enabling controlled communication through service mesh policies. The orchestration layer manages workflow execution, maintaining conversation state and coordinating between LLM calls, tool invocations, and data retrievals. See: [Threads explained](/edb-postgres-ai/1.3/ai-factory/gen-ai/threads/threads-explained/), [Rulesets explained](/edb-postgres-ai/1.3/ai-factory/gen-ai/rulesets/rulesets-explained/).
+
+## Infrastructure Integration
+
+### Kubernetes Resource Management
+
+AI Factory leverages Kubernetes resource primitives to ensure predictable performance and fair resource allocation across workloads. Resource management occurs at multiple levels through namespace quotas, pod specifications, and priority classes.
+
+Resource allocation strategies include:
+- Namespace-level quotas limiting total GPU and memory consumption per project
+- Pod resource requests ensuring minimum guaranteed resources for critical workloads
+- Resource limits preventing individual workloads from monopolizing cluster resources
+- Priority classes ensuring production inference receives preferential scheduling
+- Pod disruption budgets maintaining service availability during cluster operations
+
+The scheduler considers GPU requirements when placing pods, using node selectors and affinity rules to ensure pods land on appropriately equipped nodes. Taints and tolerations prevent non-GPU workloads from consuming GPU-enabled nodes, maximizing availability for AI workloads. For a full setup guide, see [Setup GPU](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu).
+
+### GPU Infrastructure
+
+GPU resources integrate through NVIDIA device plugins and container runtimes, enabling native GPU access from containerized workloads. The infrastructure supports various GPU configurations from single-GPU development instances to multi-GPU production deployments.
+
+GPU management capabilities include:
+- Device plugin discovery and advertisement of available GPU resources
+- Container runtime configuration enabling CUDA access from pods
+- Multi-Instance GPU support for partitioning large GPUs across smaller models
+- Time-slicing configurations for development and testing workloads
+- GPU feature discovery for automatic node labeling based on capabilities
+
+Resource allocation considers GPU memory requirements, CUDA compute capabilities, and interconnect topology when scheduling workloads. Production deployments typically receive dedicated GPU allocations while development workloads may share GPUs through time-slicing or MIG partitions.
+
+### Storage Architecture
+
+AI Factory utilizes object storage for model artifacts, datasets, and knowledge bases, with MinIO or cloud provider services (S3, Azure Blob, GCS) serving as primary storage backends. This architecture separates compute from storage, enabling independent scaling and cost optimization.
+
+Storage integration patterns include:
+- Model artifact storage using compressed formats optimized for loading performance
+- Dataset storage with partitioning strategies for efficient parallel processing
+- Vector embedding storage optimized for similarity search operations
+- Checkpoint storage enabling training resumption and model versioning
+- Cache layers reducing repeated downloads of frequently accessed models
+
+Storage access occurs through standardized S3 APIs with authentication via service account credentials or cloud provider identity mechanisms. Persistent volume claims provide local caching for frequently accessed models, reducing network overhead and improving inference latency.
+
+## Network Architecture
+
+### Service Communication
+
+Internal service communication occurs through Kubernetes service discovery with DNS resolution providing stable endpoints for inter-service calls. The service mesh adds security and observability layers without requiring application changes.
+
+Communication patterns include:
+- Service-to-service calls using cluster-local DNS names
+- Load balancing across multiple pod replicas using service endpoints
+- Circuit breaking preventing cascade failures during service degradation
+- Retry mechanisms with exponential backoff for transient failures
+- Timeout configurations preventing indefinite request blocking
+
+Network policies enforce communication boundaries, restricting traffic flow between namespaces and preventing unauthorized service access. These policies implement zero-trust networking principles, requiring explicit authorization for all inter-service communication.
+
+### External Access
+
+External access to AI services occurs through controlled ingress points with authentication and rate limiting. Multiple access patterns support different client requirements while maintaining security boundaries.
+
+Access mechanisms include:
+- Ingress controllers terminating TLS and routing to backend services
+- API gateways providing authentication, authorization, and rate limiting
+- Service mesh gateways enabling fine-grained traffic management
+- Load balancers distributing traffic across available instances
+- WebSocket support for streaming inference responses
+
+Authentication integrates with enterprise identity providers through OAuth2/OIDC protocols, while API keys provide programmatic access for service accounts. Rate limiting prevents resource exhaustion while ensuring fair access across clients.
+
+## High Availability Considerations
+
+### Component Redundancy
+
+Critical services deploy with redundancy to ensure availability during failures or maintenance operations. Redundancy strategies vary based on component statefulness and performance requirements.
+
+Availability patterns include:
+- Multi-replica deployments for stateless inference servers
+- Active-passive configurations for stateful orchestration services
+- Leader election mechanisms for components requiring single-writer semantics
+- Geographic distribution across availability zones where applicable
+- Rolling update strategies maintaining service availability during upgrades
+
+Health monitoring detects component failures triggering automatic recovery procedures. Liveness probes restart unhealthy containers while readiness probes prevent traffic routing to pods still initializing. The scheduler automatically replaces pods on failed nodes, maintaining desired replica counts.
+
+### Data Durability
+
+Data durability relies on underlying storage system guarantees with additional application-level protections for critical data. Object storage provides high durability for model artifacts and datasets while PostgreSQL replication ensures metadata availability.
+
+Durability mechanisms include:
+- Object storage replication across multiple availability zones
+- PostgreSQL streaming replication for metadata databases
+- Backup procedures for configuration and state data
+- Version control for model artifacts and application code
+- Disaster recovery procedures for catastrophic failures
+
+## Operational Monitoring
+
+### Observability Stack
+
+The platform provides comprehensive observability through metrics, logs, and traces collected from all AI components. This observability enables proactive issue detection and performance optimization.
+
+Monitoring capabilities include:
+- Prometheus metrics collection from inference servers and application pods (see [Monitor InferenceService](/edb-postgres-ai/1.3/ai-factory/model/monitor-inferenceservice/))
+- Grafana dashboards visualizing system health and performance trends
+- Centralized logging aggregating container logs and application output
+- Distributed tracing capturing request flows across services
+- Alert rules triggering notifications for anomalous conditions
+
+Custom metrics track AI-specific indicators including inference latency, token generation rates, GPU memory usage, and model accuracy drift. These metrics support both operational monitoring and capacity planning decisions.
+
+### Performance Analysis
+
+Performance monitoring focuses on key indicators affecting user experience and resource efficiency. Metrics collection occurs at multiple granularities from system-wide aggregates to individual request traces.
+
+Performance indicators include:
+- End-to-end request latency from client to response
+- Model inference time excluding network and queuing delays
+- GPU utilization indicating resource efficiency
+- Memory consumption patterns identifying optimization opportunities
+- Queue depths revealing capacity constraints
+
+Analysis tools correlate metrics across layers, identifying bottlenecks and optimization opportunities. This analysis informs scaling decisions, resource allocation adjustments, and architecture improvements.
