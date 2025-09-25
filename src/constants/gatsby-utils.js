@@ -175,6 +175,14 @@ const mdxNodesToTree = (nodes, productVersions) => {
     const addedChildPaths = new Set();
     const orderedNodes = [];
     for (let navEntry of node.mdxNode?.frontmatter?.navigation || []) {
+      if (!navEntry) {
+        reportNonFatalError(
+          "Empty navigation entry",
+          'Check for typos or malformed YAML in frontmatter "navigation" section',
+          node.mdxNode.fileAbsolutePath,
+        );
+        continue;
+      }
       if (navEntry.startsWith("#")) {
         let sectionNode = new Node();
         sectionNode.title = navEntry.replace("#", "").trim();
@@ -689,6 +697,15 @@ const reportMissingTitle = (noTitlePaths, reporter) => {
       `Missing titles for the following files:\n\t${noTitlePaths.join("\n\t")}`,
     );
   }
+};
+
+const reportNonFatalError = (title, message, filePath) => {
+  if (isGHBuild)
+    console.warn(`
+::warning file=${filePath},title=${title}::${message}`);
+  else
+    console.warn(`${filePath}: ${title}
+${message}`);
 };
 
 const convertLegacyDocsPathToLatest = (fromPath) => {
