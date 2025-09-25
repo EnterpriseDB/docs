@@ -1,96 +1,283 @@
 ---
-title: Apache Iceberg
-navTitle: Iceberg
-description: Understand how Apache Iceberg enables scalable, reliable data lake storage and how Analytics Accelerator leverages it within the EDB Postgres ecosystem.
+title: Apache Iceberg Integration with Analytics Accelerator
+navTitle: Apache Iceberg Integration
+description: Understanding Apache Iceberg's architecture and implementation within Analytics Accelerator for scalable data lake operations
 ---
 
-Apache Iceberg is a high-performance, open table format designed for data lakes built on object storage. It provides scalable metadata management, schema evolution, and ACID transactions.
-
-EDB enables Iceberg support within the Analytics Accelerator, allowing Postgres to query and manage large data lake tables efficiently.
-
-For implementation in Hybrid Manager (HM), see [Working with Apache Iceberg in EDB HM](/edb-postgres-ai/hybrid-manager/analytics).
+Terminology: Hybrid Manager (HM) is EDB’s control plane for provisioning and operating Postgres, analytics, and AI across environments. Analytics Accelerator (PGAA) refers to EDB’s analytics capabilities that extend Postgres with lakehouse, tiering, and vectorized query features.
 
 ## What is Apache Iceberg
 
-Iceberg is a table format designed for data lakes. It defines how data files (Parquet, ORC, Avro) are organized and tracked, adding many database-like capabilities to object storage.
+Apache Iceberg is an open table format that brings database-like reliability to data lakes built on object storage. Unlike traditional file-based approaches, Iceberg provides ACID transactions, schema evolution, and time travel capabilities while maintaining compatibility with standard formats like Parquet and ORC. Analytics Accelerator (PGAA) leverages Iceberg to enable PostgreSQL queries against petabyte-scale data lakes without moving data from object storage.
 
-### Key goals
+## Who Uses Iceberg Integration
 
-- **Reliability:** Ensures data consistency with concurrent operations
-- **Performance:** Enables fast queries through partition pruning and metadata optimizations
-- **Scalability:** Designed to manage petabyte-scale tables
-- **Openness:** Apache Software Foundation project with broad ecosystem support
+**Data Engineers** implement Iceberg tables for reliable data pipelines that require schema evolution and concurrent read-write operations. They value Iceberg's ability to handle streaming ingestion while maintaining query consistency.
 
-Related concepts: [Generic concepts - open table formats](learn/explained/generic-concepts#open-table-formats)
+**Data Analysts** query Iceberg tables through Analytics Accelerator using familiar SQL syntax, accessing historical data through time travel queries without understanding underlying storage complexity.
 
-## Key features and benefits
+**Platform Teams** deploy Iceberg as the foundation for multi-engine analytical environments where Spark, Trino, and PostgreSQL must access the same datasets consistently.
 
-- **Schema evolution:** Safely add, drop, or modify columns without rewriting table data
-- **Hidden partitioning:** Partitions data transparently, enabling efficient partition pruning
-- **Time travel and versioning:** Supports querying historical table versions
-- **ACID transactions:** Provides transactional guarantees using optimistic concurrency
-- **Multiple file format support:** Manages Parquet, ORC, and Avro files
-- **Efficient metadata management:** Uses a metadata tree structure for fast query planning and data skipping
-- **Catalog integration:** Supports REST-based catalogs (Project Nessie, AWS Glue), Hive Metastore, and others
+**Data Scientists** leverage Iceberg's versioning capabilities to reproduce experiments and access training data at specific points in time, ensuring model reproducibility.
 
-## Why Apache Iceberg matters for EDB analytics
+## How to Use Iceberg with Analytics Accelerator
 
-Iceberg support enables the Analytics Accelerator to:
+### Basic Setup
 
-- **Unify operational and analytical data:** Query Iceberg tables alongside traditional Postgres data
-- **Leverage cost-effective object storage:** Store large historical datasets efficiently
-- **Improve performance:** Use Iceberg metadata and partition pruning with vectorized engines
-- **Support tiered storage:** PGD can offload data to Iceberg as part of a tiered table strategy
-- **Enable interoperability:** Share data with tools like Spark, Presto, Trino, Flink, and Dremio
-
-Related concepts: [Analytics Accelerator concepts - EDB Postgres Lakehouse](learn/explained/analytics-concepts#edb-postgres-lakehouse)
-
-## How EDB solutions implement Iceberg support
-
-### PGAA extensions
-
-The Postgres Analytical Appliance (PGAA) components within Lakehouse nodes and PGD nodes can read and interact with Iceberg metadata and data files.
-
-### Catalog connectivity
-
-PGAA connects to Iceberg catalogs (such as Lakekeeper, AWS Glue, or REST catalogs) using:
+Connect Analytics Accelerator to an Iceberg catalog to discover and query existing tables:
 
 ```sql
-SELECT pgaa.add_catalog(...);
-SELECT pgaa.attach_catalog(...);
+-- Add Iceberg catalog
+SELECT pgaa.add_catalog(
+  'data_lake',
+  'iceberg-rest',
+  '{"url": "https://catalog.company.com",
+    "warehouse": "analytics",
+    "token": "auth_token"}'
+);
+
+-- Attach catalog for querying
+SELECT pgaa.attach_catalog('data_lake');
+
+-- Query Iceberg tables directly
+SELECT * FROM data_lake.sales.transactions
+WHERE transaction_date >= '2024-01-01';
 ```
 
-This enables discovery of tables, reading schemas, and querying data.
+### Creating External Tables
 
-Querying Iceberg tables
-Users can define external tables in Postgres that reference Iceberg tables:
+Define PostgreSQL tables that reference Iceberg data:
 
 ```sql
-CREATE TABLE my_table USING PGAA WITH (
+CREATE TABLE customer_events () USING PGAA
+WITH (
   pgaa.format = 'iceberg',
-  pgaa.managed_by = 'my_catalog',
-  pgaa.catalog_namespace = 'my_db',
-  pgaa.catalog_table = 'my_table'
+  pgaa.managed_by = 'data_lake',
+  pgaa.catalog_namespace = 'events',
+  pgaa.catalog_table = 'customer_activity'
 );
 ```
 
-Once defined, the table is fully queryable using Postgres SQL.
+### Time Travel Queries
 
-### Writing to Iceberg tables
-PGD can offload data to Iceberg format in object storage:
+Access historical data without maintaining separate copies:
 
-New Iceberg tables can be created
+```sql
+-- Query data as of specific timestamp
+SELECT COUNT(*) FROM sales_facts
+FOR SYSTEM_TIME AS OF '2024-12-31 23:59:59';
 
-Existing Iceberg tables can be appended to
+-- Compare current with historical state
+SELECT
+  current.product_id,
+  current.price as current_price,
+  historical.price as year_end_price
+FROM sales_facts current
+JOIN sales_facts FOR SYSTEM_TIME AS OF '2024-12-31' historical
+  ON current.product_id = historical.product_id
+WHERE current.price != historical.price;
+```
 
-Offload operations typically follow tiered table strategies
+## Understanding Iceberg Architecture
 
-Related concepts: Tiered Tables
+### Metadata Structure
 
-## Related topics
-- [Learn Generic Analytics Concepts](learn/explained/generic-concepts.mdx)
+Iceberg implements a three-layer metadata architecture that enables its advanced capabilities while maintaining performance at scale.
 
-- [Learn Analytics Accelerator Concepts](learn/explained/analytics-concepts.mdx)
+**Metadata Files** track the current table state including schema, partitioning, and snapshot history. Each table modification creates a new metadata file, preserving previous versions for time travel.
 
-- [How-to  Configure an Iceberg REST catalog connection in Hybrid Manager](/edb-postgres-ai/analytics/learn/how-to/configure-iceberg-catalog.mdx)
+**Manifest Lists** organize collections of data files with statistics for partition pruning. Analytics Accelerator uses these statistics to eliminate unnecessary file scanning before query execution begins.
 
+**Manifest Files** contain column-level statistics for individual data files. These statistics enable predicate pushdown, allowing Analytics Accelerator to skip files that cannot contain matching rows.
+
+### Hidden Partitioning
+
+Iceberg abstracts partition complexity from users through hidden partitioning. Queries use natural column values while Iceberg automatically translates these into partition filters:
+
+```sql
+-- User writes simple query
+SELECT * FROM orders WHERE order_date = '2024-03-15';
+
+-- Iceberg automatically prunes to day=2024-03-15 partition
+-- without user knowing partitioning scheme
+```
+
+This abstraction enables partition evolution without query modifications. Organizations can refine partitioning strategies as data volumes grow without breaking existing applications.
+
+### Transaction Model
+
+Iceberg implements optimistic concurrency control using snapshot isolation. Writers create new snapshots that become visible atomically, ensuring readers observe consistent table states despite concurrent modifications.
+
+Analytics Accelerator leverages this model to provide repeatable query results. Long-running analytical queries continue accessing their snapshot even as streaming systems write new data, eliminating read-write conflicts.
+
+## Schema Evolution Capabilities
+
+Iceberg supports comprehensive schema modifications without rewriting data, exposed through Analytics Accelerator's standard SQL commands.
+
+### Safe Schema Changes
+
+Add, rename, or drop columns without touching data files:
+
+```sql
+-- Add column (instant operation)
+ALTER TABLE customer_events ADD COLUMN region VARCHAR;
+
+-- Rename column (metadata only)
+ALTER TABLE customer_events RENAME COLUMN usr_id TO user_id;
+
+-- Drop column (marks as deleted, data retained)
+ALTER TABLE customer_events DROP COLUMN deprecated_field;
+```
+
+### Type Promotions
+
+Widen data types safely as requirements evolve:
+
+```sql
+-- Promote int to bigint
+ALTER TABLE transactions ALTER COLUMN amount TYPE BIGINT;
+
+-- Promote float to double
+ALTER TABLE metrics ALTER COLUMN value TYPE DOUBLE PRECISION;
+```
+
+## Catalog Integration Patterns
+
+Analytics Accelerator supports multiple Iceberg catalog implementations, each suited to different operational requirements.
+
+### REST Catalogs
+
+REST catalogs provide vendor-neutral integration through HTTP protocols. AWS Glue, Tabular, and custom implementations expose Iceberg tables through standardized REST APIs:
+
+```sql
+SELECT pgaa.add_catalog(
+  'aws_catalog',
+  'iceberg-rest',
+  '{"url": "https://glue.us-east-1.amazonaws.com",
+    "warehouse": "production",
+    "credential": "aws_iam"}'
+);
+```
+
+### AWS S3 Tables
+
+Native integration with AWS S3 Tables provides serverless Iceberg catalog functionality:
+
+```sql
+SELECT pgaa.add_catalog(
+  's3_tables',
+  'iceberg-s3tables',
+  '{"arn": "arn:aws:s3tables:us-east-1:123456:bucket/analytics",
+    "region": "us-east-1"}'
+);
+```
+
+### Project Nessie
+
+Nessie adds Git-like branching to Iceberg tables, enabling experimental analyses:
+
+```sql
+-- Query production branch
+SELECT * FROM catalog.main.sales_facts;
+
+-- Query experimental branch
+SELECT * FROM catalog.experiment_branch.sales_facts;
+```
+
+## Performance Optimization Strategies
+
+### File Organization
+
+Optimal file sizing balances parallelism with I/O efficiency. Target 128-512 MB Parquet files through regular compaction:
+
+```sql
+-- Compact small files for better performance
+CALL pgaa.compact_table('catalog.schema.table',
+  target_file_size => '256MB');
+```
+
+### Sort Optimization
+
+Sorting data within files improves compression and enables efficient skipping:
+
+```sql
+-- Z-order by frequently filtered columns
+CALL pgaa.zorder_table('catalog.schema.table',
+  columns => ARRAY['customer_id', 'order_date']);
+```
+
+### Metadata Management
+
+Regular maintenance keeps metadata efficient:
+
+```sql
+-- Expire old snapshots
+CALL pgaa.expire_snapshots('catalog.schema.table',
+  older_than => CURRENT_TIMESTAMP - INTERVAL '30 days');
+
+-- Remove orphan files
+CALL pgaa.remove_orphan_files('catalog.schema.table');
+```
+
+## Common Integration Patterns
+
+### Tiered Storage Architecture
+
+Combine PostgreSQL operational data with Iceberg historical data:
+
+```sql
+-- Unified view across tiers
+CREATE VIEW sales_unified AS
+SELECT * FROM postgres.sales_current
+UNION ALL
+SELECT * FROM iceberg.sales_historical;
+```
+
+### Multi-Engine Processing
+
+Iceberg's open format enables tool specialization:
+
+- **Apache Spark**: Complex ETL transformations
+- **Analytics Accelerator**: Interactive SQL queries
+- **Trino**: Federated queries across systems
+- **Flink**: Stream processing and real-time analytics
+
+### Streaming Data Integration
+
+Process streaming data with consistent snapshots:
+
+```sql
+-- Query latest streaming data
+SELECT COUNT(*) FROM events
+WHERE event_time >= CURRENT_TIMESTAMP - INTERVAL '1 hour';
+
+-- Streaming platforms write continuously
+-- Analytics Accelerator queries see consistent snapshots
+```
+
+## Operational Considerations
+
+### Monitoring Requirements
+
+Track key metrics for optimal performance:
+
+- **Snapshot count**: Indicates metadata growth
+- **File count per partition**: Identifies compaction needs
+- **Metadata operation latency**: Reveals catalog performance
+- **Query pruning effectiveness**: Validates partitioning strategy
+
+### Capacity Planning
+
+Iceberg separates storage from compute, enabling independent scaling:
+
+- **Storage**: Grows with data volume and snapshot retention
+- **Compute**: Scales with concurrent query load
+- **Metadata**: Requires periodic maintenance as tables evolve
+
+### Migration Strategy
+
+Adopt Iceberg incrementally to minimize risk:
+
+1. **Pilot Phase**: Convert non-critical datasets for validation
+2. **Production Migration**: Move high-value analytical tables
+3. **Full Adoption**: Standardize on Iceberg for all analytical data
