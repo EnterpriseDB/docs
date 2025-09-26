@@ -27,70 +27,116 @@ The system distinguishes between "hot" data requiring transactional performance 
 
 ### Basic Configuration
 
-Enable tiered storage on time-partitioned tables through AutoPartition policies:
+Enable tiered storage on a time‑partitioned table using BDR AutoPartition, then configure analytics offload once partitions exist. This mirrors the runbook flow.
+
+Create a partitioned table and initialize AutoPartition (no offload yet):
 
 ```sql
--- Configure automatic partitioning with offload policy
-SELECT autopartition_add_interval_partitions(
-  'transactions',
-  'transaction_date',
-  'monthly',
-  analytics_offload_period => '6 months'
+-- Create a time-partitioned table
+CREATE TABLE partitioned_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+) PARTITION BY RANGE(inserted_at);
+
+-- Create yearly partitions (no offload yet)
+SELECT bdr.autopartition (
+  relation := 'partitioned_table',
+  partition_increment := '1 year',
+  partition_initial_lowerbound := '2010-01-01 00:00:00',
+  managed_locally := TRUE
 );
 
--- Manual offload of specific partition
-SELECT pgaa.offload_partition(
-  'transactions_y2023m12',
-  format => 'iceberg'
+-- Wait for partitions to be created across nodes
+SELECT bdr.autopartition_wait_for_partitions_on_all_nodes('partitioned_table'::regclass, CURRENT_TIMESTAMP::text);
+```
+
+Populate data and then enable offload for cold partitions:
+
+```sql
+-- Insert sample data
+INSERT INTO partitioned_table (
+  SELECT
+    g,
+    '2010-01-01 00:00:00'::timestamp + INTERVAL '1 second' *
+      (EXTRACT (EPOCH FROM (CURRENT_TIMESTAMP - '2010-01-01 00:00:00'::timestamp)) / 1000000 * g),
+    g * 0.001,
+    encode(sha256(g::text::bytea), 'hex')
+  FROM generate_series(1, 1000000) g
 );
 
--- Query transparently across hot and cold data
-SELECT COUNT(*) FROM transactions
-WHERE transaction_date >= '2020-01-01';
--- Automatically queries both PostgreSQL and object storage
+-- Reconfigure AutoPartition to offload partitions older than 1 year
+SELECT bdr.autopartition (
+  relation := 'partitioned_table',
+  partition_increment := '1 year',
+  partition_initial_lowerbound := '2010-01-01 00:00:00',
+  managed_locally := TRUE,
+  analytics_offload_period := '1 year'
+);
 ```
 
 ### Offload Patterns
 
-**Full Partition Offload** moves entire partitions to object storage:
+AutoPartition handles time‑based tiering automatically. For manual/no‑catalog offload of a whole table, use analytics replication:
 
 ```sql
--- Offload complete partition to Iceberg
-SELECT pgaa.offload_table(
-  'orders_2023_q4',
-  format => 'iceberg',
-  drop_source => true
+-- Example: offload an entire transactional table (no catalog)
+CREATE TABLE transactional_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+);
+
+-- Enable replication to analytics storage
+ALTER TABLE transactional_table SET (pgd.replicate_to_analytics = TRUE);
+
+-- Optionally convert to PGAA to read directly from Iceberg
+ALTER TABLE transactional_table
+SET ACCESS METHOD PGAA,
+SET (
+  pgaa.auto_truncate = 'true',
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table'
 );
 ```
 
-**Partial Data Offload** selectively archives data based on conditions:
+Partial offload can be achieved by splitting data into a separate table and offloading only that table:
 
 ```sql
--- Offload settled transactions only
-SELECT pgaa.offload_data(
-  source_table => 'transactions',
-  target_format => 'iceberg',
-  condition => 'status = ''settled'' AND transaction_date < ''2024-01-01'''
+BEGIN;
+CREATE TABLE transactional_table_before_2020 AS
+  SELECT * FROM transactional_table
+  WHERE inserted_at < '2020-01-01';
+DELETE FROM transactional_table WHERE inserted_at < '2020-01-01';
+COMMIT;
+
+ALTER TABLE transactional_table_before_2020 ADD PRIMARY KEY (key, inserted_at);
+ALTER TABLE transactional_table_before_2020 SET (pgd.replicate_to_analytics = TRUE);
+
+-- (Optional) convert to PGAA for direct Iceberg reads
+ALTER TABLE transactional_table_before_2020
+SET ACCESS METHOD PGAA,
+SET (
+  pgaa.auto_truncate = 'true',
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table_before_2020'
 );
 ```
 
 ### Restore Operations
 
-Restore offloaded data when operational requirements change:
+Switch a table back to transactional storage and disable analytics replication:
 
 ```sql
--- Restore partition to transactional storage
-SELECT pgaa.restore_partition(
-  'transactions_y2023m12',
-  mode => 'replace'
-);
-
--- Append restored data to existing table
-SELECT pgaa.restore_data(
-  source => 'archived_orders',
-  target => 'orders',
-  mode => 'append'
-);
+ALTER TABLE transactional_table
+  SET ACCESS METHOD heap,
+  SET (pgd.replicate_to_analytics = FALSE);
 ```
 
 ## Architecture Overview
@@ -103,7 +149,6 @@ The architecture implements three distinct storage tiers optimized for different
 
 **Cold Tier (Object Storage)** holds historical data in columnar formats optimized for analytical queries. Data remains fully queryable but with higher latency acceptable for compliance and analytical use cases.
 
-**Archive Tier (Optional)** provides deep archival for data exceeding retention requirements but requiring preservation for exceptional circumstances. This tier trades query performance for maximum storage efficiency.
 
 ### Query Processing
 
@@ -145,7 +190,7 @@ The system implements intelligent caching for frequently accessed cold partition
 
 ### Regulatory Compliance
 
-Financial services organizations implement tiering to meet regulatory retention requirements cost-effectively. Transaction data remains in PostgreSQL for 90 days supporting operational queries, then automatically offloads to Iceberg for 7-year retention.
+Financial services organizations implement tiering to meet regulatory retention requirements cost-effectively. For example, transaction data can remain in PostgreSQL for 90 days supporting operational queries, then automatically offload to Iceberg for 7-year retention.
 
 The implementation maintains complete audit trails with timestamp tracking for all tier transitions. Compliance queries access historical data transparently, generating reports spanning entire retention periods without manual data assembly.
 
