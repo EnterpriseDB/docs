@@ -1,20 +1,58 @@
 ---
-title: Setting up a Rancher RKE2 cluster for use with Hybrid Manager
-navTitle: Set up an RKE2 cluster
-description: Learn how to set up a Rancher RKE2 cluster for installing PG AI Hybrid Manager.
+title: Preconfigure a Rancher RKE2 cluster for use with Hybrid Manager
+navTitle: Preconfigure an RKE2 cluster for Hybrid Manager
+description: Learn how to set up a Rancher RKE2 cluster for installing Hybrid Manager.
 deepToC: true
 ---
 
-After you've installed the necessary system tools, you're ready to set up a Rancher RKE2 cluster for use with Hybrid Manager (HM).
+After you've [installed the necessary system tools](product_docs/edb-postgres-ai/1.3/hybrid-manager/install/rancher/prerequisites/), you're almost ready to set up a Rancher RKE2 cluster for use with Hybrid Manager (HM).
 
-To successfully install HM on a RKE on-premises cluster, certain prerequisites and configurations must be in place.
+But first, you need the Helm chart by which both preconfiguration and installation depend upon.
 
-## Preconfiguration cluster requirements
+## Configure your Helm chart
+
+The Helm chart (values.yaml) is the core configuration for your HM platform and central to installation.
+
+Throughout the preconfiguration process and installation phase, there are steps that refer to updating the Helm chart `values.yaml`.
+These are critical to a successful installation phase after preconfiguration.
+
+### Adding the EDB Helm repo and retrieving the chart
+
+You just need your EDB Cloudsmith token to add the repo and get the chart to configure.
+
+1. Add the Helm chart repo from EDB Cloudsmith:
+
+  ```bash
+  helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/${<your-EDB-Cloudsmith-token>}/pgai-platform/helm/charts/"
+  ```
+
+1. Update the repo:
+
+  ```bash
+  helm repo update
+  ```
+
+1. Retrieve the default Helm chart: `values.yaml` file:
+
+  ```bash
+  helm show values enterprisedb-edbpgai/edbpgai-bootstrap > values.yaml
+  ```
+
+## Creating your RKE2 cluster
+
+You need a RKE2 cluster to preconfigure and install HM upon.
+The RKE2 cluster must preconfigured precisely for a successful HM installation.
+
+The rest of this guide walks you through the complete preconfiguration process.
+
+### Supported RKE2:Kubernetes version pairs
 
 * HM currently supports:
 
     * RKE2 1.31.X with Kubernetes 1.31.X
     * RKE2 1.32.X with Kubernetes 1.32.X
+
+Once you know which of these configurations you are going to implement, start the cluster creation process either using your CSP for cloud-based deployments or using your standard on-premises workflow.
 
 ## Configure node size and resources
 
@@ -83,13 +121,13 @@ Scale up the machine pool to the desired number of GPU-enabled nodes.
 
 After the GPU nodes are provisioned, you must install the NVIDIA GPU Operator to make the GPU resources available to Kubernetes pods:
 
-Install the operator following the official [Rancher RKE2 documentation](https://docs.rke2.io/advanced#deploy-nvidia-operator).
+Install the NVIDIA GPU Operator following the official [Rancher RKE2 documentation](https://docs.rke2.io/advanced#deploy-nvidia-operator).
 
 After installation, you can label these new nodes appropriately and leverage them for deploying AI/ML models.
 
 ### Taints and labels for CP vs Postgres data nodes machine sets
 
-To (optionally) use different types of nodes for the HM CP nodes and the HM Postgres data nodes hosting the Postgres workloads, RKE2 requires two different machine sets, each with their own taints and labels:
+To use different types of nodes for the HM CP nodes and the HM Postgres data nodes hosting the Postgres workloads, RKE2 requires two different machine sets, each with their own taints and labels:
 
 -   CP nodes taints and labels:
 
@@ -135,36 +173,50 @@ Baseline recommendations:
 | Worker nodes (HM)       | 1 Gbps+ per node       | For HM control components, PostgreSQL replication, internode communication, and metrics/logs.    |
 | External bandwidth      | 1-20 Gbps (aggregated) | S3 backups and inter-cluster replication may require high throughput.                            |
 
-
 ## Network configuration and requirements
 
-### Foundational planning and architecture
+### Foundational planning and networking architecture
 
-Make the high-level architectural decisions and plan your IP address space. 
-These choices are the foundation for everything that follows.
+Before you finish creating your Kubernetes cluster, you must make a series of high-level network and firewall decisions. 
+These choices form the foundation for the rest of the deployment process. 
+The overall sequence is the same whether you are deploying in the cloud or on-premises, but the mechanics differ.
 
-- High-level network decisions: Decide on the fundamental characteristics of your network.
+#### High-level network decisions
 
-  - Network stack: Is your network IPv4 or Dual Stack?
+Decide on the fundamental characteristics of your network.
 
-  - Network type: Are you using a standard SDN or an OVN-based network?
+  - **Network stack**: Is your network IPv4 or Dual Stack (IPv4 + IPv6)?
 
-  - DHCP: Will DHCP be available on the node network?
+  - **CNI/network type**: Choose your Container Network Interface (CNI) implementation, e.g. a standard SDN overlay (Calico, Cilium, Flannel) or an OVN-based network (a standard SDN overlay using Calico is recommended).
 
-#### IP Addresses and CIDR planning
+  - **DHCP vs static**: Confirm whether DHCP will assign node addresses or if you must assign static IPs.
 
-Based on the architecture, gather and allocate all necessary IP addresses and network ranges. 
+For cloud-based deployments, these decisions often map to managed options in your CSP's cluster creation wizard.
+
+For on-premises deployments, your network team must configure your VLANs, subnets, routing, and DHCP servers.
+
+#### IP Address and CIDR planning
+
+Based on the architecture, now you must allocate address space carefully to avoid overlaps. 
 This is your network blueprint.
 
 ##### Static IPs
 
-Determine the API virtual IP, Ingress virtual IP, Default Gateway IP, DNS Server IP(s), and NTP Server IP(s).
+Static IPs:
 
-##### Network ranges (CIDRs)
+- API virtual IP (for HA control plane / API endpoint)
 
-Determine the following CIDRs:
+- Ingress virtual IP (used by on-prem LBs like MetalLB, or by hardware LBs)
 
-- Machine Network CIDR: For the physical or underlay network.
+- Default gateway IP
+
+- DNS server IP(s)
+
+- NTP server IP(s)
+
+##### Network ranges
+
+- Machine Network CIDR: For the underlay/pnetwork.
 
 - Management Network CIDR: For administrative access.
 
@@ -174,40 +226,115 @@ Determine the following CIDRs:
 
 ##### Downstream Cluster Space
 
-Ensure you have a /16 IPv4 address space available for each downstream Kubernetes cluster, as this is a specific platform requirement that impacts your overall IP allocation.
+Reserve a /16 IPv4 block for each downstream cluster if your platform requires it.
 
 ### Core cluster networking
 
-With the network plan in place, you can now set up the internal communication fabric for the Kubernetes cluster itself.
+With your network plan in place, the next step is to enable the cluster’s internal communication fabric and secure it at the pod level.
+This involves installing or confirming your Container Network Interface (CNI) and applying baseline NetworkPolicies.
 
 #### Configure container network interface (CNI)
 
-A working CNI is essential for pods to communicate with each other. 
+A working CNI is essential for pods to communicate with each other and for network policies. 
+
+Every Kubernetes cluster requires a CNI to provide pod-to-pod networking.
+
+##### Cloud deployments
+
+- EKS (AWS): Uses the AWS VPC CNI by default, which assigns pods secondary IPs from your VPC. This integrates natively with AWS networking and security groups. If you need advanced NetworkPolicy or eBPF features, you can add Calico (policy-only) or install Cilium.
+
+- GKE (Google Cloud): Uses Google’s managed dataplane by default, which supports NetworkPolicy and integrates with Google’s firewalling. Third-party CNIs are rarely required.
+
+##### On-prem deployments
+
 Ensure your chosen CNI ([Calico](https://docs.tigera.io/calico/latest/reference/configure-calico-node#configuring-cni-plugin) is preferred) is installed and configured correctly according to its documentation. 
+
+RKE2 ships with Canal (Calico + Flannel) enabled by default. 
+To use another CNI, disable Canal during installation and deploy your preferred CNI.
+
 This step makes the cluster's internal network functional.
+
+!!! Warning
+Do not proceed until all nodes report `Ready`, pods receive IPs from the Pod CIDR, and cross-node pod networking is working.
+!!!
+
+#### Apply baseline NetworkPolicies
+
+Once the CNI is active, immediately establish baseline isolation policies before exposing services externally.
+
+- Start with a default deny ingress policy in each namespace.
+
+- Add allow rules for:
+
+  - DNS egress to CoreDNS.
+
+  - Control plane → Postgres data node communication.
+
+   Metrics and logging pipelines.
+
+This ensures the cluster starts from a secure, least-privilege baseline.
+
+For cloud-based deployments, your CNI may need policy enforcement enabled (e.g., Calico-policy mode for AWS VPC CNI).
+
+For on-premises scenarios, Calico, Cilium, and OVN-K enforce NetworkPolicies natively.
+
+### Create a load balancer
+
+If you are deploying HM to the cloud, install or enable the appropriate load balancer controller, then apply a Service or Ingress resource to trigger creation of the load balancer.
 
 ### External access and firewall rules
 
 Now that the cluster's internal network is running, configure how external traffic will reach the services running inside it.
 
-#### Load balancer
+#### On-premises deployments (NodePort or custom LB)
 
-A load balancer controller is required if using `LoadBalancer` type services.
+For on-premises deployments, external access is typically provided through **NodePort** services.  
+- By default, HM components expose services on specific NodePort values.  
+- You may use NodePort directly, or front these ports with **MetalLB** (software load balancer) or a **hardware load balancer** for a friendlier DNS name and better failover.  
 
-If using an external load balancer, configure it to handle RKE2 API traffic and worker node communication.
+**Required ports (default NodePort values):**
+- **32542** – HM Portal (HTTP)  
+- **30288** – HM Portal (HTTPS)  
+- **30290** – Beacon gRPC  
+- **30292** – Spire TLS  
 
-**Port requirements**
+If you need to change these defaults, update your Helm chart `values.yaml`:
 
-Open the following ports on your firewall for the load balancer:
+```yaml
+ingress_http_node_port: <port>
+ingress_https_node_port: <port>
+ingress_grpc_tls_node_port: <port>
+ingress_spire_tls_node_port: <port>
+```
 
-- 443
-- 8444
-- 9443
-- 9445
+Then open up your firewall for the redefined ports.
 
-#### NodePort configuration
+#### Cloud-based deployments (LoadBalancer) 
 
-If no load balancer is available, configure the `values.yaml` accordingly:
+If you are deploying HM in the cloud (EKS, GKE), use Kubernetes Service: `LoadBalancer` or an `Ingress` resource.
+
+On EKS, install the AWS Load Balancer Controller; on GKE, the controller is built in.
+
+**Required ports (cloud load balancer)**
+
+- **443** – HM Portal (HTTPS ingress)
+
+- **8444** – HM internal API
+
+- **9443** – Beacon gRPC API
+
+- **9445** – Spire TLS
+
+###  DNS, TLS, and application configuration
+
+With the external access path defined, you can now assign user-friendly names to your services and secure them.
+
+#### DNS configuration
+
+### Load balancer or Node Port configuration
+
+If you are deploying on-premises, you do not set `loadBalancerEnabled` to `true`. 
+Instead configure your Helm chart `values.yaml` accordingly:
 
 ```yaml
 beaconAgent:
@@ -221,57 +348,57 @@ The `nodePortDomain` value is used as the URL for all Postgres instances.
 It should be a DNS name pointing to the IP addresses of nodes where Postgres clusters are running.
 !!!
 
-**Port requirements**
 
-Open up the following ports on your firewall for NodePort ingress:
+!!! Note
+If using an external on-premises load balancer strategy in combination with Node Port strategy, `nodePortDomain` should point to the FQDN of a load balancer pointing to the Postgres nodepools. 
+In this way the generated URL for each Postgres instance is working.
+If a load balancer controller is being used, such as `metallb`(https://metallb.io/), it should be configured differently to properly route traffic to the appropriate nodepool services.
+!!!
 
-- 32542
-- 30288
-- 30290
-- 30292
+### Necessary DNS records
 
-If you need to change these values, do so in the `values.yaml` for these values:
-
-- `ingress_http_node_port` - This is the the HTTP port of the HM Portal.
-- `ingress_https_node_port` - This is the the HTTPS port of the HM Portal.
-- `ingress_grpc_tls_node_port` - This is the the GRPC port for Beacon.
-- `ingress_spire_tls_node_port` This is the the Spire TLS port.
-
-and open up your firewall for the redefined ports.
-
-###  DNS, TLS, and application configuration
-
-With the external access path defined, you can now assign user-friendly names to your services and secure them.
-
-#### DNS configuration
-
-Point your public and internal domain nameds to the entry point you configured in the previous step.
--   Create a DNS A-record for your portal domain (portal_domain_name) pointing to the Load Balancer IP or the Node IPs covered by your `nodePortDomain`.
--   Ensure your `values.yaml` Helm chart is configured with the following parameters after deciding on a root domain name for HM:
+Point your public and internal domain names to the entry point you configured in the previous step.
+-   Ensure your Helm chart `values.yaml` is configured with the following parameters after deciding on a root domain name for HM:
 
   -   `portal_domain_name: "portal.<root_domain>`: The host name for the HM Portal.
   -   `server_host: "beacon.<root_domain>"`: The host name through which the beacon server API is reachable.
-  -   `transporter-rw-service:domain_name: "transporter.<root_domain>": The domain name for the internal Transporter migration read/write service.
+  -   `transporter-rw-service:domain_name: "transporter.<root_domain>"`: The domain name for the internal Transporter migration read/write service.
   -   `transporter-dp-agent:rw_service_url: "transporter.<root_domain>/transporter""`: The URL for the internal Transporter migration read/write service.
+
+-   Create a DNS A-record for your portal domain (portal_domain_name) pointing to the Load Balancer IP or the Node IPs covered by your `nodePortDomain`.
 
 #### TLS certificate management
 
 Secure your endpoints (such as the HM Portal) using [TLS certificates](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man.mdx).
 
-This requires DNS hostnames to be finalized so the certificates can be issued for the correct names.
+This requires DNS hostnames to be finalized (see previous step) so the certificates can be issued for the correct names.
 
 [Custom certificates](product_docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man/#set-up-a-custom-x509-certificate-for-the-hybrid-manager-portal) are strongly suggested, with auto-generated self-signed certificates as the default fallback option.
 
-You can also set up a [custom cert-manager issuer](product_docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/#set-up-a-custom-cert-manager-issuer-for-the-hm-portal) for the HM Portal and even setup your own [certificate authority](product_docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/#bring-your-own-private-certificate-authority).
+You can also set up a [custom cert-manager issuer](product_docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man/#set-up-a-custom-cert-manager-issuer-for-the-hm-portal) for the HM Portal and even setup your own [certificate authority](product_docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man/#bring-your-own-private-certificate-authority).
 
-#### IDP setup
+#### User identity configuration
 
-It is strongly recommended to [set up your identity provider](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/byo_idp/index.mdx) (IDP) with HM for managing user access.
+To configure user identity, you have to choose between implementing your own IDP or using HM's native users feature.
+
+It is strongly recommended to [set up your identity provider](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/byo_idp/index.mdx) (IDP) with HM for managing user access in production.
+
 [Native users](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/managing_users/index.mdx) are supported by default, but managing users this way is not recommended in production.
 
-### Network security policies
+To create your first native user (user0), 
 
-With traffic flowing and endpoints secured, implement fine-grained rules to control traffic flow both within the cluster and at its boundaries.
+You need to user's email, hash, userID, userID, and username and set these values in the Helm chart `values.yaml`:
+
+| Parameter  | Description                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `email`    | Email address of the user. Also serves as the user's login identifier for accessing the Console.                                                                                                                                                                                                                                                                                                               |
+| `hash`     | Bcrypt-hashed user password for password store. To generate this value, use `echo ${password} \| htpasswd -BinC 10 userA \| cut -d: -f2`, where the actual password is stored behind the `${password}` variable. `userA` represents the username used during the password hashing process. It can be any arbitrary text, as it's not used elsewhere in the configuration; only the resulting hash is utilized. |
+| `userID`   | Each new user configured with a static password must have a distinct, unique identifier for the user (uuid). You can choose to generate this value with a UUID generator tool or assign a random sequence of characters manually.                                                                                                                                                                              |
+| `username` | Unique username for the user. This is the primary identifier for logging into the Console. It can be the same as `email`.               
+
+### Network security policies hardening
+
+With services exposed and TLS/DNS configured, refine your NetworkPolicies and firewall rules to enforce stricter boundaries.
 
 #### Network policies
 
@@ -285,35 +412,43 @@ Validate and enforce ingress/egress rules on your firewall to ensure that only n
 
 ## Sync EDB Postgres AI Platform container images into a customer owned registry
 
-The software stack of our EDB PGAI is pushed into EDB Cloudsmith registry to provide artifacts for you to use in your local registry.
+The software stack of HM is pushed into EDB Cloudsmith registry to provide artifacts for you to use in your local registry: customer-managed internal registry for Rancher RKE2 on-premises scenarios or your customer-managed registry on your cloud service provider (CSP) registry ([AWS Elastic Container Registry](https://aws.amazon.com/ecr/)(ECR), [Google Cloud Artifact Registry](https://cloud.google.com/artifact-registry/docs) (AR) for HM on Rancher on CSP scenarios.
 
-We require you to have your own secure and approved internal registry and know the EDB PGAI version that you want to install.
+You are required to have your own secure and approved local registry (you use the URI, user, and password for your local container registry in the sync process below) and know the EDB PGAI version that you want to install.
 With this information, all the artifacts from Cloudsmith sync internally into your local registry before installing or upgrading the software stack with the Helm chart.
 
 The sync process needs to preserve the container images' SHA256 to ensure images security and immutability across different environments. 
 
 ### Sync using edbctl
 
-1. Ensure [edbctl is installed and configured](product_docs/edb-postgres-ai/hybrid-manager/using_hybrid_manager/edbctl/).
+1. Ensure [edbctl is installed and configured](product_docs/edb-postgres-ai/hybrid-manager/using_hybrid_manager/edbctl/) if it is not already.
 
 1. Configure the necessary environmental variables:
 
-- Configure the EDB PGAI release to be taken:
+- Define the EDB PGAI release to be taken:
 
   ```bash
   export EDBPGAI_RELEASE=<RELEASE_VERSION>
   ```
 
-- Configure the EDB Cloudsmith access token:
+- Define the EDB Cloudsmith access token:
 
   ```bash
   export CS_EDB_TOKEN=<CS_EDB_TOKEN>
   ```
 
-- Configure the EDB Cloudsmith registry source:
+- Define the EDB Cloudsmith registry source:
 
   ```bash
   export EDB_SOURCE_REGISTRY=pgai-platform
+  ```
+
+- Define you local container registry, user, and passowrd:
+
+  ```bash
+  export LOCAL_REGISTRY_URI=<your_local_container_registry_uri
+  export LOCAL_REGISTRY_USER=><your_local_registry_user>
+  export LOCAL_REGISTRY_PWD=<your_local_registry_password_for_your_user>
   ```
 
 1. Run the `sync-to-local-registry` command:
@@ -334,13 +469,116 @@ The sync process needs to preserve the container images' SHA256 to ensure images
   edbctl operator sync-to-local-registry \
       --destination-registry-uri "<LOCAL_REGISTRY_URI>" \
       --version "${EDBPGAI_RELEASE}" \
-      --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+      --source-registry-username "${LOCAL_SOURCE_REGISTRY}" \
       --source-registry-password "${CS_EDB_TOKEN}" \
       --destination-registry-username "<LOCAL_REGISTRY_USER>" \
       --destination-registry-password "<LOCAL_REGISTRY_PWD>"
   ```
 
 Your local registry is now synced with EDB's Cloudsmith registry.
+
+### Set the containerRegistryURL in your Helm chart
+
+Be sure to set your `containerRegistryURL` to your now synced local container registry's URL in the Helm chart `values.yaml`:
+
+```yaml
+containerRegistryURL: "<your-local-container-registry-url>"
+```
+
+## Image discovery configuration
+
+Image discovery is a process that runs in the Agent (beacon) to discover Postgres images.
+This process connects to your customer-managed local container registry (see previous step) that must be [Docker HTTP V2 compliant](https://docs.docker.com/reference/api/registry/latest/).
+
+### Configuring the Helm chart for image discovery
+
+1. To enable image discovery for HM, first change the value of `beaconAgent.provisioning:imageDiscovery` to `true` in your `values.yaml`.
+
+1. Now set the `beaconAgent.provisioning:imagesetDiscoveryContainerRegistryURL` to the local container registry you synced the EDB images to in the previous step, as this is the container registry from which HM discovers Postsgres container images.
+
+1. Optionally, set `imagesetDiscoveryAllowInsecureRegistry` option to to `true`, if you are planning on establishing a TLS connection without certificate validation.
+
+### Registry credentials
+
+The image discovery process authenticates with your local container image registry using a Kubernetes image pull secret (see next step).
+Therefore, the service account or principal used must have permissions to:
+
+- list repositories
+- list tags
+- read tag manifests
+
+The options 
+See the documentation for your lcoal internal container registry (such as [quay](https://quay.io/)) for on-premises scenario (see previous step) to configure the required registry permissions for the container registry so that HM can access it.
+
+If using a CSP-based local registry for your images (AWS ECR, Google Cloud's AR), use the following examples as a guide:
+
+#### AWS ECR
+
+When using ECR with EKS, `eks_managed_identity` is the only supported authentication type. 
+Before using `eks_managed_identity`, you must create a role having permission [`AmazonEC2ContainerRegistryReadOnly`](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonEC2ContainerRegistryReadOnly.html) then associate that role with your EKS cluster pod identity:
+
+```bash
+EKS_CLUSTER_NAME="<eks_cluster_name>"
+EKS_CLUSTER_REGION="<eks_cluster_region>"
+IMAGE_DISCOVERY_IAM_ROLE_NAME="<iam_role_name>"
+
+cat <<EOF > ./image-discovery-trust.json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowEksAuthToAssumeRoleForPodIdentity",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "pods.eks.amazonaws.com"
+            },
+            "Action": [
+                "sts:AssumeRole",
+                "sts:TagSession"
+            ]
+        }
+    ]
+}
+EOF
+
+aws iam create-role --role-name "${IMAGE_DISCOVERY_IAM_ROLE_NAME}" \
+    --assume-role-policy-document file://image-discovery-trust.json
+
+aws iam attach-role-policy --role-name "${IMAGE_DISCOVERY_IAM_ROLE_NAME}" \
+    --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+IMAGE_DISCOVERY_IAM_ROLE_ARN=$(aws iam get-role --role-name ${IMAGE_DISCOVERY_IAM_ROLE_NAME} | jq -r '.Role.Arn')
+aws eks create-pod-identity-association --cluster-name "${EKS_CLUSTER_NAME}" \
+    --namespace upm-beacon \
+    --service-account upm-beacon-agent-k8s \
+    --role-arn "${IMAGE_DISCOVERY_IAM_ROLE_ARN}" \
+    --region "${EKS_CLUSTER_REGION}"
+```
+
+#### Google Cloud AR
+
+When using Google Cloud AR with Google Kubernetes Engine (GKE), the service account used for generating the image pull secret must have the following roles:
+
+- `roles/artifactregistry.reader` on the project level
+- `roles/browser` on the project level&mdash;in particular, the permission `resourcemanager.projects.list` is required to allow retrieving repositories within AR:
+
+```bash
+gcloud projects add-iam-policy-binding <PROJECT-ID> \
+    --member="serviceAccount:<SERVICE-ACCOUNT-NAME>@<PROJECT-ID>.iam.gserviceaccount.com" \
+    --role="roles/artifactregistry.reader"
+
+gcloud projects add-iam-policy-binding <PROJECT-ID> \
+    --member="serviceAccount:<SERVICE-ACCOUNT-NAME>@<PROJECT-ID>.iam.gserviceaccount.com" \
+    --role="roles/browser"
+```
+
+For more information, see the [Google Cloud AR roles documentation](https://cloud.google.com/artifact-registry/docs/access-control#roles) and [Resource Manager roles documentation](https://cloud.google.com/resource-manager/docs/access-control-proj#using_predefined_roles). 
+
+### Setting the secret value
+
+The final step in configuring image discovery is confirming the `parameters.upm-beacon:image_discovery_secret_name`.
+This is the name of the Kubernetes secret containing the credetials of the container registry for image discovery.
+By default, it is `edb-cred`.
 
 ## Namespaces and preliminary secrets
 
@@ -350,7 +588,7 @@ Create a dedicated namespace for HM components to ensure isolation and manageabi
 
 ### Preparation for object storage and general Kubernetes secrets
 
-Create Kubernetes secrets for any required credentials , such as object storage credentials (example: `aws_secret_access_key`), database access tokens, or other sensitive information.
+Create Kubernetes secrets for any required credentials, such as object storage credentials (example: `aws_secret_access_key`), database access tokens, or any other sensitive information.
 
 ### ImagePullSecret namespace and required secrets
 
@@ -393,6 +631,8 @@ Use edbctl to create the ImagePullSecrect namespace and required secrets:
 
 HM and its underlying components require secure authentication mechanisms to ensure proper communication between components and to protect sensitive data.
 
+#### Generate the key and store it in a secret
+
 1.  Generate AES-256 encryption key.
 
     HM uses an AES-256 encryption to secure sensitive data during communication or at rest (for example, database credentials, tokens).
@@ -420,6 +660,10 @@ HM and its underlying components require secure authentication mechanisms to ens
         kubectl get secret hm-auth-key --namespace <hm-namespace>
         ```
 
+#### Update the Helm chart
+
+In the Helm chart, `values.yaml`, set the field `bootstrapImageTag:upm-istio-gateway:cooke_aeskey` to the AES-256 encryption key you generated in the previous step.
+
 ### Optional KMS key setup
 
 If you are planning on using Transparent Data Encryption (TDE), [configuring a Key Management Store](product_docs/docs/edb-postgres-ai/1.3/hybrid-manager/install/customization/kms_for_tde/index.mdx) (KMS) is required.
@@ -434,10 +678,10 @@ If you are planning on using Transparent Data Encryption (TDE), [configuring a K
 
 ## Storage and cluster preparation
 
-### Block storage
+### Block storage configuration
 
 HM uses Block Storage for all primary, stateful workloads.
-A strategic approach to using Storage Classes to manage performance and cost is recommended.
+A strategic approach to using Kubernetes Storage Classes to manage performance and cost is recommended.
 
 #### Workload segregation
 
@@ -448,34 +692,35 @@ Define and use custom Storage Classes to match the storage I/O profile to the sp
 | HM Control Plane (CP)                        | Internal DBs and microservices (such as Thanos)                                                | Moderate IOPS, High throughput                               | Standard SSD tier for internal state.                                                                                |
 | HM Postgres data nodes                       | Primary database I/O                                                                           | High IOPS, low latency                                       | Premium/high-performance SSD tier (crucial for production)                                                           |                                                                                              |                                                              |                                                                                                                      |
 
-#### Custom storage classes
+### Cluster prerequisites and driver verification
 
-Each individual database can and should potentially use its own Storage Class.
-This is vital for HM to ensure cost-efficiency and performance isolation:
-
-- Production OLTP/OLAP: Use a Storage Class configured for the highest IOPS and lowest latency.
-
-- Development/testing: Use a cheaper Storage Class with lower performance to manage cloud/infrastructure costs.
-
-- Metrics/log storage: Might prefer a class optimized for high throughput or cost-effectiveness.
-
-### Cluster prerequisites and driver verification (Driver)
-
-With your Block Storage strategy outlined (see previous step), you are ready to prepare the cluster for Block Storage and install the appropriate CSI driver.
+With your Block Storage strategy outlined and storage classes collated to your the HM CP and Postgres data node workloads (see previous step), you are ready to implement Block Storage by installing the appropriate CSI driver.
 
 #### Cluster prerequisites
 
-Before deployment, ensure the Kubernetes environment (RKE2) is configured to handle dynamic volume provisioning and data protection.
+Ensure your cluster is configured to handle dynamic volume provisioning and data protection.
 
 #### CSI driver installation
 
-The chosen Storage Class dictates the required Container Storage Interface (CSI) Driver.
+The chosen Storage Class dictates the required Container Storage Interface (CSI) Driver and the CSI driver sets the Storage Classes for the system.
 
-Verify the following two types of drivers are installed and properly configured in your RKE2 cluster:
+Verify the following two types of drivers are installed and properly configured in your cluster:
 
--   **Persistent storage driver**: Install the CSI driver that is compatible with your underlying storage backend (currently, [TopoVLM](https://github.com/topolvm/topolvm) is supported for local storage). This enables the creation of Persistent Volumes (PVs).
+-   **Persistent storage driver**: Install the CSI driver that is compatible with your underlying storage backend (currently, [TopoVLM](https://github.com/topolvm/topolvm) is supported for on-prem local storage for example, but you might use a storage device like PortWorx that includes a CSI driver). This enables the creation of Persistent Volumes (PVs).
 
 -   **Snapshot controller**: Configure the CSI Snapshot Controller (and its related `VolumeSnapshotClass`). This is mandatory for HM to perform consistent volume backups and recovery.
+
+Your CSI driver and Snapshot controller are now installed and configured, with the appropriate Storage Classes implemented.
+
+### Update the Helm chart
+
+With the values of your HM CP storage class implemented, you need to set these values in the Helm chart `values.yaml`.
+
+For the HM CP storage class for internal platform services, set the following value in `parameters:global`:
+
+```yaml
+storage_class: <the-storage-class-implemented-for-internal_services>
+```
 
 ### Object storage configuration (MinIO setup)
 
@@ -583,7 +828,7 @@ stringData:
     server_side_encryption_disabled: <boolean>
 ```
 
-## Proceed to setting necessary environmental variables
+## Proceed to Installation
 
-With the cluster configured, proceed to the next phase of the pre-installation: [setting the necessary environmental variables for installation](setvariables.mdx).
+With the cluster configured, proceed to the installation phase[../installing.mdx].
 
