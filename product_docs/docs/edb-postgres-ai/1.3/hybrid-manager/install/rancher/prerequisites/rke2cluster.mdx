@@ -692,34 +692,51 @@ Define and use custom Storage Classes to match the storage I/O profile to the sp
 | HM Control Plane (CP)                        | Internal DBs and microservices (such as Thanos)                                                | Moderate IOPS, High throughput                               | Standard SSD tier for internal state.                                                                                |
 | HM Postgres data nodes                       | Primary database I/O                                                                           | High IOPS, low latency                                       | Premium/high-performance SSD tier (crucial for production)                                                           |                                                                                              |                                                              |                                                                                                                      |
 
+### Snapshot class (optional, CSI-capable backends only)
+
+In addition to Storage Classes for provisioning volumes, you may also configure a Kubernetes `VolumeSnapshotClass` if your CSI driver supports snapshots. 
+
+- This defines how `PersistentVolume` snapshots are created and managed.  
+- Only one or two snapshot classes are usually required (e.g., one per storage backend).  
+- On-prem with TopoLVM/local CSI: snapshots are not supported. Use HM’s object-store backup mechanism instead.  
+- Cloud deployments or enterprise on-prem CSI (e.g., Portworx, Ceph RBD) generally support snapshots.  
+
+!!! Note
+Snapshots complement object-store backups but do not replace them. Use snapshots for fast rollback and recovery within the same cluster; use object-store backups for long-term retention or disaster recovery.
+!!!
+
 ### Cluster prerequisites and driver verification
 
-With your Block Storage strategy outlined and storage classes collated to your the HM CP and Postgres data node workloads (see previous step), you are ready to implement Block Storage by installing the appropriate CSI driver.
+With your Block Storage strategy and optional snapshot strategy outlined: storage classes identified for the HM CP and Postgres data node workloads (see previous step) and and optional VolumeSnapshotClasses confirmed, you are ready to implement Block Storage and optional snapshots by installing the appropriate CSI driver.
 
 #### Cluster prerequisites
 
-Ensure your cluster is configured to handle dynamic volume provisioning and data protection.
+Ensure your cluster supports **dynamic volume provisioning**.  
+- In cloud deployments, this is typically enabled by default.  
+- In on-premises deployments, verify that your chosen CSI driver (e.g., TopoLVM, Portworx, Ceph RBD) is properly installed and configured.
 
 #### CSI driver installation
 
-The chosen Storage Class dictates the required Container Storage Interface (CSI) Driver and the CSI driver sets the Storage Classes for the system.
+The chosen StorageClass dictates the required Container Storage Interface (CSI) driver, which enables the cluster to dynamically provision Persistent Volumes.
 
-Verify the following two types of drivers are installed and properly configured in your cluster:
+- **Persistent storage driver (required):**  
+  - **On-prem (primary use case):** Use a local CSI driver such as [TopoLVM](https://github.com/topolvm/topolvm) for node-attached storage, or an enterprise driver such as Portworx or Ceph RBD if available.  
+  - **Cloud deployments (alternative):** Use the CSI driver provided by your CSP (e.g., AWS EBS, GCE PD, Azure Disk).  
 
--   **Persistent storage driver**: Install the CSI driver that is compatible with your underlying storage backend (currently, [TopoVLM](https://github.com/topolvm/topolvm) is supported for on-prem local storage for example, but you might use a storage device like PortWorx that includes a CSI driver). This enables the creation of Persistent Volumes (PVs).
+- **Snapshot controller (optional, CSI-capable backends only):**  
+  - If your CSI driver supports snapshots, you can enable the Kubernetes CSI Snapshot Controller and configure a `VolumeSnapshotClass`. This allows fast, volume-level snapshots for operational recovery.  
+  - **On-prem (TopoLVM/local CSI):** Snapshots are not supported. Use HM’s built-in object-store backup and restore for data protection.  
+  - **On-prem (enterprise CSI with snapshot support):** You may enable the snapshot controller if the driver supports it.  
+  - **Cloud:** Most cloud CSI drivers support snapshots. You can use snapshots for short-term rollback, but still use object-store backups for cross-cluster recovery and long-term retention.  
 
--   **Snapshot controller**: Configure the CSI Snapshot Controller (and its related `VolumeSnapshotClass`). This is mandatory for HM to perform consistent volume backups and recovery.
-
-Your CSI driver and Snapshot controller are now installed and configured, with the appropriate Storage Classes implemented.
 
 ### Update the Helm chart
 
-With the values of your HM CP storage class implemented, you need to set these values in the Helm chart `values.yaml`.
-
-For the HM CP storage class for internal platform services, set the following value in `parameters:global`:
+With your chosen StorageClasses created, update the Helm chart `values.yaml`:
 
 ```yaml
-storage_class: <the-storage-class-implemented-for-internal_services>
+global:
+  storage_class: <hm-cp-storage-class>      # for HM internal services
 ```
 
 ### Object storage configuration (MinIO setup)
