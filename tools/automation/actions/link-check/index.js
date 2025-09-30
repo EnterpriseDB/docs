@@ -325,7 +325,7 @@ async function main() {
       if (message.ruleId === "pathCheck") ++brokenPaths;
       else if (message.ruleId === "slugCheck") ++brokenSlugs;
 
-      if (props.file)
+      if (props.file && message.ruleId !== "urlPathRewrite")
         ghCore.context(props.file, props.startLine, props.startColumn);
     }
     linksUpdated += metadata.linksUpdated || 0;
