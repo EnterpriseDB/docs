@@ -20,7 +20,71 @@ These are the currently known issues and limitations identified in the Hybrid Ma
 
 **Workaround**: This advanced workaround requires cluster administrator privileges to limit the amount of image set information being returned by the API. It involves modifying the image discovery tag rules in the `upm-image-library` and `upm-beacon` ConfigMaps, followed by restarting the related pods.
 
-TODO: [UPM-67414]
+<details><summary>Workaround details</summary> 
+
+The workaround modifies the regular expressions (tag rules) used by the image library and beacon components to temporarily limit the number of image tags being indexed. This reduces the API response size, allowing the locations to load.
+
+1.  Find the `upm-image-library` ConfigMap:
+
+    ```shell
+    kubectl get configmaps -n upm-image-library | grep upm-image-library
+    # Example Output: upm-image-library-ttkt29fmf7 1 5d3h
+    ```
+
+1.  Edit the ConfigMap found in the previous step and modify the `tags` rule under each image discovery rule (`edb-postgres-advanced`, `edb-postgres-extended`, `postgresql`). Replace the existing regex with the limiting regex:
+
+    ```YAML
+    # Snippet of the YAML you will edit in the ConfigMap
+    "imageDiscovery": {
+      "rules": {
+        "(^|.*/)edb-postgres-advanced$": {
+          "readme": "EDB postgres advanced server",
+          "tags": [
+            "^(?P<major>\\d+)\\.(?P<minor>\\d+)-2509(?P<day>\\d{2})(?P<hour>\\d{2})(?P<minute>\\d{2})    (?:-(?P<pgdFlavor>pgdx|pgds))?(?:-(?P<suffix>full))?$"
+          ]
+        },
+        # ... repeat for edb-postgres-extended and postgresql ...
+      }
+    }
+    ```
+
+    !!!note 
+        This step must be performed on the primary Hybrid Manager cluster if you are running a multi-DC setup.
+
+1.  Restart the Image Library Pod:
+
+    ```shell
+    kubectl rollout restart deployment upm-image-library -n upm-image-library
+    ```
+
+1.  Get the`upm-beacon` ConfigMap to modify the Agent configuration: 
+
+    ```shell
+    kubectl get configmaps -n upm-beacon beacon-agent-k8s-config
+    ```
+
+1.  Edit the ConfigMap (`beacon-agent-k8s-config`) and modify the `tag_regex` rule under each `postgres_repositories` entry (`edb-postgres-advanced`, `edb-postgres-extended`, `postgresql`).
+
+    ```YAML
+    # Snippet of the YAML you will edit in the ConfigMap
+    postgres_repositories:
+      - name: edb-postgres-advanced
+        description: EDB postgres advanced server
+        tag_regex: "^(?P<major>\\d+)\\.(?P<minor>\\d+)-2509(?P<day>\\d{2})(?P<hour>\\d{2})(?    P<minute>\\d{2})(?:-(?P<pgdFlavor>pgdx|pgds))?(?:-(?P<suffix>full))?$"
+      # ... repeat for edb-postgres-extended and postgresql ...
+    ```
+
+1.  Restart the Agent pod:
+
+    ```shell
+    kubectl rollout restart deployment -n upm-beacon upm-beacon-agent-k8s
+    ```
+
+After completing these steps, the reduced image data size should allow the location API call to succeed, and the locations should appear correctly in the Hybrid Manager console.
+
+</details> 
+
+<br/>
 
 ## Core platform and resources 
 
@@ -106,7 +170,89 @@ SELECT bdr.alter_node_group_option('<subgroup name>','enable_routing','true');
 
 **Description**: Model creation for the `nim-nvidia-nvclip` model will fail within the AI Factory when the profile cache is utilized during the deployment process.
 
-TODO: [UPM-67298 links to confluence page with instructions]
+**Workaround**: The workaround requires an administrator to manually download the necessary model profile from the NVIDIA registry to a local machine. They must then upload the profile files directly to the Hybrid Manager's object storage path, and finally, deploy the model by patching the Kubernetes InferenceService YAML with a specific environment variable to force it to use the pre-cached files instead of attempting a failed network download.
+
+<details><summary>Workaround details</summary> 
+
+1.  Log in to the NVIDIA Container Registry (nvcr.io) using your NGC API key:
+
+    ```shell
+    docker login nvcr.io -u '$oauthtoken' -p $NGC_API_KEY
+    ```
+
+1.  Pull the Docker image to your local machine:
+
+    ```shell
+    docker pull nvcr.io/nim/nvidia/nvclip:latest
+    ```
+
+1.  Prepare a local directory for the downloaded profiles:
+
+    ```shell
+    mkdir -p ./model-cache
+    chmod -R a+w ./model-cache
+    ```
+
+1.  Select the profile for your target GPU. 
+
+    For example, A100 GPU profile: `9367a7048d21c405768203724f863e116d9aeb71d4847fca004930b9b9584bb6`
+
+1.  Run the container to download the profile. The container is run in CPU-only mode (`NIM\_CPU\_ONLY=1`) to prevent GPU-specific initialization issues on the download machine:
+
+    ```shell
+    export NIM_MANIFEST_PROFILE=9367a7048d21c405768203724f863e116d9aeb71d4847fca004930b9b9584bb6
+    export NIM_CPU_ONLY=1
+
+    docker run -v ./model-cache:/opt/nim/.cache -u $(id -u) -e NGC_API_KEY -e NIM_CPU_ONLY -e NIM_MANIFEST_PROFILE --rm nvcr.io/nim/nvidia/nvclip:latest
+    ```
+
+    This container will not exit. You must manually stop the run (Ctrl+C) after you see the line "Health method called" in the logs, which confirms the profile download is complete.
+
+1.  Upload the profiles from your local machine to the object storage bucket used by your Hybrid Manager deployment: 
+
+    ```shell
+    gcloud storage cp -r ./model-cache gs://uat-gke-edb-object-storage/model-cache/nim-nvidia-nvclip
+    ```
+
+    !!!note 
+        Adjust the `gs://` path to match your deployment's configured object storage location.
+
+1.  Create the model `nim-nvidia-nvclip` using the HM console, specifying the Model Profiles Path field as the previous location (e.g., `/model-cache/nim-nvidia-nvclip`). The deployment will initially fail or become stuck.
+
+1.  Export the InferenceService YAML from the Hybrid Manager Kubernetes cluster.
+
+1.  Add the necessary environment variable, `NIM_IGNORE_MODEL_DOWNLOAD_FAIL`, to the env section of the `spec.predictor.model` block in the exported YAML. This flag tells the NIM container to use the locally available cache (the files you uploaded) and ignore the network download failure.
+
+    ```YAML
+    # --- Snippet of the modified InferenceService YAML ---
+    spec:
+      predictor:
+        minReplicas: 1
+        model:
+          modelFormat:
+            name: nim-nvidia-nvclip
+          name: ""
+          env:
+          - name: NIM_IGNORE_MODEL_DOWNLOAD_FAIL  # <-- ADD THIS LINE
+            value: "1"                         # <-- ADD THIS LINE
+          resources:
+            # ... resource requests/limits ...
+          runtime: nim-nvidia-nvclip
+          storageUri: gs://uat-gke-edb-object-storage/model-cache/nim-nvidia-nvclip
+    # ---------------------------------------------------
+    ```
+
+1.  Apply the modified YAML using kubectl to force the deployment to use the pre-downloaded profiles:
+
+    ```shell
+    kubectl apply -f <modified-inference-service-file.yaml> -n <model-cluster-namespace>
+    ```
+
+The pods should now proceed to start successfully, using the model profiles you manually provided via object storage.
+
+</details> 
+
+<br/>
 
 ### AI Model Cluster deployment stalls if object storage path for model profiles is empty
 
