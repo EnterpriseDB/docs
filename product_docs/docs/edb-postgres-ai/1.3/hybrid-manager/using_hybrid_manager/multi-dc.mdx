@@ -29,43 +29,107 @@ Primary ↔ Secondary (same provider/on-prem family)
     - Same provider/on-prem family (no cross-cloud).
 
 - Tools:
-    - `jq`
+    - `jq`, `yq`, AWS command line
 
-1. Export these environment variables once you’ve collected them:
+### Discover and set necessary environmental variables
+
+1. Tell kubectl which clusters are Primary vs. Secondary
+
+    Set the kube contexts you’ll use for all subsequent discovery commands.
 
     ```bash
     export KUBE_CONFIG_PRIMARY_CONTEXT="<primary-kube-ctx-or-arn>"
     export KUBE_CONFIG_SECONDARY_CONTEXT="<secondary-kube-ctx-or-arn>"
-    export TRUST_DOMAIN_PRIMARY="<primary-trust-domain>"
-    export TRUST_DOMAIN_SECONDARY="<secondary-trust-domain>"
-    export BEACON_SERVER_ENDPOINT_PRIMARY="<primary-portal-fqdn>:9445"
-    export SECONDARY_LOCATION_NAME="secondary"   # any unique label; appears as managed-<name>
+    ```
+1. Discover the Primary portal FQDN (used by Beacon/telemetry)
 
-    # Optional (telemetry federation)
-    export PRIMARY_PORTAL_URL="<primary-portal-fqdn>"
-    export SECONDARY_PORTAL_URL="<secondary-portal-fqdn>"
+    Query the Primary cluster for the Beacon gateway host, then export it as PRIMARY_PORTAL_URL.
 
-    # Optional (EKS helper for object storage)
+    ```bash
+    export PRIMARY_PORTAL_URL="$(
+    kubectl --context "$KUBE_CONFIG_PRIMARY_CONTEXT" \
+        -n upm-beacon get gw beacon-server -o json \
+    | jq -r '.spec.servers[1].hosts[0]'
+    )"
+    ```
+1. (Optional) Discover the Secondary portal FQDN
+
+    If you’ll also federate telemetry, capture the Secondary portal host as SECONDARY_PORTAL_URL.
+
+    ```bash
+    export SECONDARY_PORTAL_URL="$(
+    kubectl --context "$KUBE_CONFIG_SECONDARY_CONTEXT" \
+        -n upm-beacon get gw beacon-server -o json \
+    | jq -r '.spec.servers[1].hosts[0]'
+    )"
+    ```
+
+1. Derive the Beacon gRPC endpoint for the Primary
+
+    Beacon listens on :9445 on the Primary portal host.
+
+    ```bash
+    export BEACON_SERVER_ENDPOINT_PRIMARY="${PRIMARY_PORTAL_URL}:9445"
+    ```
+
+1. Discover the SPIRE trust domain for the Primary
+
+    Read the SPIRE server config from the Primary and export TRUST_DOMAIN_PRIMARY.
+
+    ```bash
+    export TRUST_DOMAIN_PRIMARY="$(
+    kubectl --context "$KUBE_CONFIG_PRIMARY_CONTEXT" \
+        -n spire-system get cm spire-server \
+        -o jsonpath="{['data']['server\.conf']}" \
+    | jq -r '.server.trust_domain'
+    )"
+    ```
+
+1. Discover the SPIRE trust domain for the Secondary
+
+    Do the same for the Secondary and export TRUST_DOMAIN_SECONDARY.
+
+    ```bash
+    export TRUST_DOMAIN_SECONDARY="$(
+    kubectl --context "$KUBE_CONFIG_SECONDARY_CONTEXT" \
+        -n spire-system get cm spire-server \
+        -o jsonpath="{['data']['server\.conf']}" \
+    | jq -r '.server.trust_domain'
+    )"
+    ```
+
+1. Choose a label for the managed Secondary location
+
+    Pick any unique label (it will show up as managed-<label> on the Primary).
+
+    ```bash
+    export SECONDARY_LOCATION_NAME="secondary"
+    ```
+
+1. (Optional for EKS/IRSA helpers) Set the EKS identifiers
+
+Only do this if you’ll use the helper to update S3 trust policy and copy the object-store secret.
+
+    ```bash
     export PRIMARY_EKS="<region>:<primary-eks-name>"
     export SECONDARY_EKS="<region>:<secondary-eks-name>"
     export AWS_PROFILE="<aws-profile>"
     ```
 
-1. Discover key values:
+1. Sanity check before proceeding
 
-- Find the primary: portal FQDN for Beacon (append :9445)
-
-    ```bash
-    kubectl get gw beacon-server -n upm-beacon -o json \
-    | jq -r '.spec.servers[1].hosts[0]'
-    ```
-
-- Find the trust domain (run in each cluster)
+Verify the key variables are set (will error if any are missing):
 
     ```bash
-    kubectl get cm spire-server -n spire-system -o jsonpath="{['data']['server\.conf']}" \
-    | jq -r '.server.trust_domain'
+    : "${KUBE_CONFIG_PRIMARY_CONTEXT:?}"; : "${KUBE_CONFIG_SECONDARY_CONTEXT:?}"
+    : "${PRIMARY_PORTAL_URL:?}"; : "${BEACON_SERVER_ENDPOINT_PRIMARY:?}"
+    : "${TRUST_DOMAIN_PRIMARY:?}"; : "${TRUST_DOMAIN_SECONDARY:?}"
+    : "${SECONDARY_LOCATION_NAME:?}"
     ```
+
+!!! Note
+If you open a new shell or run a new CI step later, re-run these exports (or save them to a file and source it).
+!!!
 
 ## Object storage across locations
 
@@ -356,9 +420,9 @@ If you need cross-site metrics/logs:
 
 1. Primary:
 
-```bash
-./install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-```
+    ```bash
+    ./install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
+    ```
 
 1. Secondary: 
 
