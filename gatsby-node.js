@@ -115,7 +115,7 @@ exports.onCreateNode = async ({
       });
     }
 
-    if (node.extension === "sh") {
+    if (node.extension === "sh" || node.extension === "py") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "text/plain",
       });
