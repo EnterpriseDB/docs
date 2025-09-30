@@ -15,7 +15,7 @@ Each node in a Failover Manager cluster has a properties file (by default, named
 After completing the Failover Manager installation, make a working copy of the template before modifying the file contents:
 
 ```text
-# cp /etc/edb/efm-5.0/efm.properties.in /etc/edb/efm-5.0/efm.properties
+# cp /etc/edb/efm-5.1/efm.properties.in /etc/edb/efm-5.1/efm.properties
 ```
 
 After copying the template file, change the owner of the file to efm:
@@ -95,6 +95,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [db.reuse.connection.count](#db_reuse_connection_count)       | Y     |       | 0                                     |                                                                                                                                                                |
 | [auto.failover](#auto_failover)                               | Y     | Y     | true                                  |                                                                                                                                                                |
 | [auto.reconfigure](#auto_reconfigure)                         | Y     |       | true                                  | This value must be same for all the agents.                                                                                                                     |
+| [auto.rewind](#auto_rewind)                                   | Y     |       | false                                 |                                                                                                                                                                |
 | [promotable](#promotable)                                     | Y     |       | true                                  |                                                                                                                                                                |
 | [use.replay.tiebreaker](#use_replay_tiebreaker)               | Y     | Y     | true                                  | This value must be same for all the agents.                                                                                                                     |
 | [standby.restart.delay](#standby_restart_delay)               |       |       | 0                                     |                                                                                                                                                                |
@@ -115,7 +116,11 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [virtual.ip.interface](#virtual_ip)                           |       |       |                                       | Required if you specify a VIP.                                                                                                                                  |
 | [virtual.ip.prefix](#virtual_ip)                              |       |       |                                       | Required if you specify a VIP.                                                                                                                                  |
 | [virtual.ip.single](#virtual_ip)                              | Y     | Y     | Yes                                   | This value must be same for all the nodes.                                                                                                                      |
-| [check.vip.before.promotion](#check_vip_before_promotion)     | Y     | Y     | Yes                                   |                                                                                                                                                                |
+| [check.vip.before.promotion](#check_vip_before_promotion)     | Y     | Y     | Yes                                   |                                                                                                                                                                 |
+| [check.vip.timeout](#check_vip_timeout)                       | Y     | Y     | 60                                    |                                                                                                                                                                 |
+| [release.vip.background](#release_vip_background)             |       |       | true                                  | Required if you specify a VIP.                                                                                                                                  |
+| [release.vip.pre.wait](#release_vip_background)               |       |       | 0                                     | Required if you specify a VIP.                                                                                                                                  |
+| [release.vip.post.wait](#release_vip_background)              |       |       | 0                                     | Required if you specify a VIP.                                                                                                                                  |
 | [pgpool.enable](#pgpool_enable)                               |       |       | false                                 |   **Available in Failover Manager 4.1 and later.**                                                                                                                                                             |
 | [pcp.user](#pgpool_enable)                                    |       |       |                                       | Required if pgpool.enable is set to true. **Available in Failover Manager 4.1 and later.**                                                                                                                       |
 | [pcp.host](#pgpool_enable)                                    |       |       |                                       | Required if pgpool.enable is set to true, this value must be same for all the agents. **Available in Failover Manager 4.1 and later.**                                                                           |
@@ -148,6 +153,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [syslog.enabled](#logtype_enabled)                            | Y     | Y     | false                                 |                                                                                                                                                                |
 | [jgroups.loglevel](#loglevel)                                 |       |       | info                                  |                                                                                                                                                                |
 | [efm.loglevel](#loglevel)                                     |       |       | info                                  |                                                                                                                                                                |
+| [jdbc.loglevel](#loglevel)                                    |       |       | info                                  |                                                                                                                                                                |
 | [jvm.options](#jvm_options)                                   |       |       | -Xmx128m                              |                                                                                                                                                                |
 
 ## Cluster properties
@@ -691,6 +697,23 @@ auto.reconfigure=true
 !!! Note
     `primary_conninfo` is a space-delimited list of keyword=value pairs.
 
+<div id="auto_rewind" class="registered_link"></div>
+
+When the `auto.rewind` property is set to `true`, the agent will attempt to reconfigure a failed or replaced primary database as a standby, running `pg_rewind` if necessary. Some cases that apply:
+-   A primary database failure: when the agents are notified to reconfigure for the new primary, the original primary agent will check to see if it should rebuild.
+-   An isolated primary node: when the node is reconnected to the cluster, the primary agent will check to see if it has been replaced by a newer primary and if it should rebuild (or resume as the primary if there was not a promotion).
+-   On startup: if the agent sees that there is already a primary database in the cluster, and the local database is not configured to be a standby, it will check to see if it should rebuild.
+
+If the agent sees that it should rebuild, it will collect current database configuration settings, run `pg_rewind` with the `--dry-run` option to see if a rewind is needed, rewind if indicated, and reconfigure the database as a standby before resuming monitoring.
+
+```ini
+# Set to true to have this agent attempt to rebuild a failed
+# primary database as a standby after failover. The agent
+# will use pg_rewind if necessary to have the database follow
+# the new primary. See the user's guide for more information.
+auto.rewind=false
+```
+
 <div id="promotable" class="registered_link"></div>
 
 Use the `promotable` property to indicate not to promote a node. The `promotable` property is ignored when a primary agent starts. This simplifies switching back to the original primary after a switchover or failover. To override the setting, use the `efm set-priority` command at runtime. For more information about the `efm set-priority` command, see [Using the efm utility](../07_using_efm_utility/#using_efm_utility).
@@ -996,6 +1019,33 @@ Set the `check.vip.before.promotion` property to `false` to prevent Failover Man
 check.vip.before.promotion=true
 ```
 
+<div id="check_vip_timeout" class="registered_link"></div>
+
+If there is a possibility that the VIP might take longer than the default 60 seconds to become unreachable, use the `check.vip.timeout` property to increase the maximum time Failover Manager will wait.
+
+```ini
+# If check.vip.before.promotion is set to true, use this property to set
+# the total amount of time in seconds to wait for the VIP (when used) to
+# become unreachable.
+check.vip.timeout=60
+```
+
+<div id="release_vip_background" class="registered_link"></div>
+
+The `release.vip.*` properties can be used to control the timing of when the VIP is released from a node. See [Using Failover Manager with virtual IP addresses](05_using_vip_addresses/#using_vip_addresses) for more information.
+
+```ini
+# In certain networks, there can be errors trying to connect to remote databases
+# at the same time the VIP is being released (i.e. on the primary node during a
+# switchover). Set the delete.vip.background property to false to have the agent
+# pause while the VIP is being released. The pre and post wait periods can add
+# time (in seconds) to wait before and after the VIP is released in case there
+# are other network effects that require them.
+release.vip.background=true
+release.vip.pre.wait=0
+release.vip.post.wait=0
+```
+
 <div id="pgpool_enable" class="registered_link"></div>
 
 Use the `pgpool.enable` property to specify if you want to enable the Failover Manager and Pgpool integration for high availability. If you want to enable Pgpool integration in a non-sudo mode (running as the DB owner), the PCPPASS file must be owned by the DB owner operating system user and you must set the file permissions to 600.
@@ -1288,14 +1338,11 @@ Use the `log.dir` property to specify the location to write agent log files. Fai
 To change the startup log location for EFM versions 4.x, modify the `runefm.sh` script located in the EFM bin directory. Set the `LOG` parameter in this script to define the desired log file location.
 
 ```ini
-# Specify the directory of agent logs on the node. If the path
-# does not exist, Failover Manager will attempt to create it. If
-# not specified defaults to '/var/log/efm-<version>'. (To store
-# Failover Manager startup logs in a custom location, modify the
-# path in the service script to point to an existing, writable
-# directory.)
-# If using a custom log directory, you must configure
-# logrotate separately. Use 'man logrotate' for more information.
+# Specify the directory of agent logs on the node. If the path does not exist,
+# Failover Manager will attempt to create it.
+# If not specified defaults to '/var/log/efm-<version>'.
+# If using a custom log directory, you must configure logrotate separately.
+# Use 'man logrotate' for more information.
 log.dir=
 ```
 
@@ -1327,21 +1374,23 @@ For more information about configuring syslog logging, see [Enabling syslog log 
 
 <div id="loglevel" class="registered_link"></div>
 
-Use the `jgroups.loglevel` and `efm.loglevel` parameters to specify the level of detail logged by Failover Manager. The default value is `INFO`. For more information about logging, see [Controlling logging](../09_controlling_logging/#controlling_logging).
+Use the `jgroups.loglevel`, `efm.loglevel`, and `jdbc. loglevel` parameters to specify the level of detail logged by Failover Manager. The default value is `INFO`. For more information about logging, see [Controlling logging](../09_controlling_logging/#controlling_logging).
 
 ```ini
 # Logging levels for JGroups and EFM.
 # Valid values are: TRACE, DEBUG, INFO, WARN, ERROR
 # Default value: INFO
-# It is not necessary to increase these values unless debugging a
-# specific issue. If nodes are not discovering each other at
-# startup, increasing the jgroups level to DEBUG will show
-# information about the TCP connection attempts that may help
-# diagnose the connection failures.
+# It is not necessary to increase these values unless debugging a specific
+# issue. If nodes are not discovering each other at startup, increasing
+# the jgroups level to DEBUG will show information about the TCP connection
+# attempts that may help diagnose the connection failures.
+# If there are issues with creating database connections, increasing
+# the jdbc.loglevel level will show more information.
 # TRACE level logging should be used for diagnosing problems only.
 # It is not supported for production use.
 jgroups.loglevel=INFO
 efm.loglevel=INFO
+jdbc.loglevel=INFO
 ```
 
 <div id="jvm_options" class="registered_link"></div>
