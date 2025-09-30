@@ -54,7 +54,7 @@ Primary ↔ Secondary (same provider/on-prem family)
     ```
 1. (Optional) Discover the Secondary portal FQDN
 
-    If you’ll also federate telemetry, capture the Secondary portal host as SECONDARY_PORTAL_URL.
+    If you’ll also federate telemetry, capture the Secondary portal host as `SECONDARY_PORTAL_URL` and set the environmental variable accordingly:
 
     ```bash
     export SECONDARY_PORTAL_URL="$(
@@ -100,7 +100,7 @@ Primary ↔ Secondary (same provider/on-prem family)
 
 1. Choose a label for the managed Secondary location
 
-    Pick any unique label (it will show up as managed-<label> on the Primary).
+    Pick any unique label (it will show up as `managed-<label>` on the Primary).
 
     ```bash
     export SECONDARY_LOCATION_NAME="secondary"
@@ -109,6 +109,7 @@ Primary ↔ Secondary (same provider/on-prem family)
 1. (Optional for EKS/IRSA helpers) Set the EKS identifiers
 
 Only do this if you’ll use the helper to update S3 trust policy and copy the object-store secret.
+This step requires `PRIMARY_EKS`, `SECONDARY_EKS`, and `AWS_PROFILE`.
 
     ```bash
     export PRIMARY_EKS="<region>:<primary-eks-name>"
@@ -118,13 +119,21 @@ Only do this if you’ll use the helper to update S3 trust policy and copy the o
 
 1. Sanity check before proceeding
 
-Verify the key variables are set (will error if any are missing):
+    Verify the key variables are set (will error if any are missing):
 
     ```bash
     : "${KUBE_CONFIG_PRIMARY_CONTEXT:?}"; : "${KUBE_CONFIG_SECONDARY_CONTEXT:?}"
     : "${PRIMARY_PORTAL_URL:?}"; : "${BEACON_SERVER_ENDPOINT_PRIMARY:?}"
     : "${TRUST_DOMAIN_PRIMARY:?}"; : "${TRUST_DOMAIN_SECONDARY:?}"
     : "${SECONDARY_LOCATION_NAME:?}"
+    ```
+
+    Here are some optional checks if you’re doing telemetry or EKS helper
+    ```bash
+    : "${SECONDARY_PORTAL_URL:?Set if doing telemetry federation}" || true
+    : "${PRIMARY_EKS:?Set if using EKS helper}" || true
+    : "${SECONDARY_EKS:?Set if using EKS helper}" || true
+    : "${AWS_PROFILE:?Set if using EKS helper}" || true
     ```
 
 !!! Note
@@ -144,13 +153,10 @@ Each cluster must have an identical Kubernetes secret named `edb-object-storage`
     Create/sync `edb-object-storage` before installing HM at any secondary location.
     !!!
 
-You create the inital secret when setting up object storage during installation for the Primary.
+You create the initial secret when setting up object storage during installation for the Primary.
 Replicate it now to the Secondary:
 
     ```bash
-    export KUBE_CONFIG_PRIMARY_CONTEXT=<primary-kube-context>
-    export KUBE_CONFIG_SECONDARY_CONTEXT=<secondary-kube-context>
-
     # Clean slate on Secondary
     kubectl delete secret \
     --context=$KUBE_CONFIG_SECONDARY_CONTEXT \
@@ -192,7 +198,7 @@ If you use S3 + IAM Roles for Service Accounts (IRSA), the role must trust both 
 
     - IRSA role trust includes both OIDC providers (if EKS).
 
-## Setup optioms
+## Setup options
 
 Choose Option A (one-shot) or Option B (step-by-step). You’ll reach the same end state.
 
@@ -233,7 +239,7 @@ The master script runs object storage sync, SPIRE federation, Beacon wiring, and
 
 ### Option B — Manual setup (advanced/customizable)
 
-#### Retrive the necessary scripts
+#### Retrieve the necessary scripts
 
 You need to retrieve these scripts in order to manually setup multi-DC:
 - 
@@ -345,7 +351,7 @@ Beacon enables the Primary HM to register the Secondary as a managed “location
 
 1. Edit `/tmp/secondary-boot-values.yaml`:
 
-    ```bash
+    ```yaml
     parameters:
     upm-beacon:
         beacon_location_id: "secondary"   # unique label
@@ -403,13 +409,13 @@ If you need cross-site metrics/logs:
 1. Secondary: 
 
     ```bash
-    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL`
+    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
     ```
 
 1. Primary:.
 
     ```bash
-    /install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
+    ./install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
     ```
 
 1. Validate: port-forward `thanos-query` and hit `/api/v1/stores` for entries containing `thanos-query-federated`.
