@@ -19,7 +19,7 @@ import toVfile from "to-vfile";
 const { read, write } = toVfile;
 
 const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];
-const resourceExts = [".sh"];
+const resourceExts = [".sh", ".py"];
 const rawExts = [".yaml", ".yml"];
 const docsUrl = "https://www.enterprisedb.com/docs";
 // add path here to ignore link warnings
@@ -238,6 +238,17 @@ async function main() {
     );
   }
 
+  // post-process redirects
+  for (let [urlPath, metadata] of allValidUrlPaths) {
+    if (urlPath !== metadata.canonical) continue;
+
+    // map redirects to canonical metadata
+    metadata.redirects = normalizeRedirects(metadata);
+    for (let redirect of metadata.redirects) {
+      allValidUrlPaths.set(redirect, metadata);
+    }
+  }
+
   // handle product versions: update "latest" paths to point to the highest version number, where available
   for (let [urlPath, metadata] of allValidUrlPaths) {
     if (!metadata.version) continue;
@@ -260,8 +271,8 @@ async function main() {
       return null;
     });
     const latestMetadata = pathVersions[0]; // may be null - in which case there is no "latest", just ... last
-    const lastMetadata = pathVersions.find((p) => !!p);
-    if (!lastMetadata) debugger;
+    const lastMetadata = pathVersions.find((p) => !!p); // may be null - in which case there are no versions for this path at all (though there may have been in the past)
+    if (!lastMetadata) continue;
 
     lastMetadata.latest = latestMetadata === lastMetadata;
     if (lastMetadata !== metadata) allValidUrlPaths.set(urlPath, lastMetadata);
@@ -346,6 +357,70 @@ run \`npm run links:fix\` locally.`);
 
   if (brokenPaths > 0)
     ghCore.setFailed(`Broken links found; please fix before publishing!`);
+
+  function getInheritedRedirects(urlPath) {
+    const ret = [];
+    for (
+      let parentPath = path.posix.dirname(urlPath);
+      parentPath &&
+      parentPath !== urlPath &&
+      parentPath !== "/" &&
+      parentPath !== ".";
+      parentPath = path.posix.dirname(parentPath)
+    ) {
+      const parentMetadata = allValidUrlPaths.get(parentPath);
+      if (!parentMetadata) continue;
+      for (let redirect of parentMetadata.redirects) {
+        const splat = redirect.endsWith(":splat");
+        if (!splat) continue;
+        ret.push(
+          path.posix.join(
+            redirect.replace(/:splat$/, ""),
+            path.posix.relative(parentMetadata.canonical, urlPath),
+          ),
+        );
+      }
+    }
+    return ret;
+  }
+
+  function normalizeRedirects(metadata) {
+    const inheritedRedirects = getInheritedRedirects(metadata.canonical);
+    const redirects = [...inheritedRedirects, ...metadata.redirects];
+    return redirects.flatMap((redirect) => {
+      let ret = [];
+      if (redirect.endsWith(":splat") || redirect.endsWith("*")) {
+        ret.push(redirect); // preserve, as we'll use it to match descendents later
+        redirect = redirect.replace(/(:splat|\*)$/, "");
+      }
+      let urlPath = path.posix.resolve(
+        path.posix.sep,
+        metadata.canonical,
+        redirect,
+      );
+      if (metadata.version) {
+        const splitPath = urlPath.split(path.posix.sep);
+        if (metadata.product === splitPath[1]) {
+          const versioned = path.posix.join(
+            path.posix.sep,
+            metadata.product,
+            "latest" === splitPath[2] ? metadata.version : splitPath[2],
+            ...splitPath.slice(3),
+          );
+          const unversioned = path.posix.join(
+            path.posix.sep,
+            metadata.product,
+            "latest",
+            ...splitPath.slice(3),
+          );
+          ret.push(versioned, unversioned);
+        } else {
+          ret.push(urlPath);
+        }
+      }
+      return ret;
+    });
+  }
 }
 
 function index() {
@@ -363,18 +438,19 @@ function index() {
     visitParents(tree, "import", (node) => {
       const importMatch = node.value?.match(importRegex);
       if (importMatch) {
-        importConstants[importMatch.groups.const] = importMatch.groups.path;
+        importConstants[importMatch.groups.const] = resolveImportPath(
+          importMatch.groups.path,
+          file.path,
+        );
       }
     });
 
     // load imported MDX files and parse them into ASTs
     for (let [constName, importPath] of Object.entries(importConstants)) {
       try {
-        let importedFile = await read(
-          path.resolve(path.dirname(file.path), importPath),
-        );
+        let importedFile = await read(importPath);
         let mdxAST = pipeline.parse(importedFile);
-        mdxAST.path = path.resolve(path.dirname(file.path), importPath);
+        mdxAST.path = importPath;
         importConstants[constName] = mdxAST;
       } catch (e) {
         file.message(
@@ -410,10 +486,7 @@ function index() {
               ignoredUrlPaths.add(urlPath);
             }
           }
-          for (let redirect of normalizeRedirects(frontmatter, metadata)) {
-            metadata.redirects.push(redirect);
-            allValidUrlPaths.set(redirect, metadata);
-          }
+          metadata.redirects.push(...(frontmatter.redirects || []));
         } catch (e) {
           file.message(
             `Error parsing frontmatter: ${e.message}`,
@@ -424,36 +497,6 @@ function index() {
       }
     });
   };
-
-  function normalizeRedirects(frontmatter, metadata) {
-    if (!frontmatter.redirects?.length) return [];
-    return frontmatter.redirects.flatMap((redirect) => {
-      let urlPath = path.posix.resolve(
-        path.posix.sep,
-        metadata.canonical,
-        redirect,
-      );
-      if (metadata.version) {
-        const splitPath = urlPath.split(path.posix.sep);
-        if (metadata.product === splitPath[1]) {
-          const versioned = path.posix.join(
-            path.posix.sep,
-            metadata.product,
-            metadata.version,
-            ...splitPath.slice(3),
-          );
-          const unversioned = path.posix.join(
-            path.posix.sep,
-            metadata.product,
-            "latest",
-            ...splitPath.slice(3),
-          );
-          return [versioned, unversioned];
-        }
-      }
-      return urlPath;
-    });
-  }
 }
 
 function cleanup() {
@@ -499,7 +542,7 @@ function cleanup() {
       const isImageUrl = imageExts.includes(ext);
       //if (!(ext || isImageUrl)) return url;
 
-      metadata.linksChecked = metadata.linksChecked || 0 + 1;
+      metadata.linksChecked = (metadata.linksChecked || 0) + 1;
 
       // check valid path (may be a redirect, don't care yet)
       let testPath = test.pathname
@@ -567,7 +610,7 @@ function cleanup() {
           "/" +
           test.hash;
 
-        metadata.linksUpdated = metadata.linksUpdated || 0 + 1;
+        metadata.linksUpdated = (metadata.linksUpdated || 0) + 1;
         file.info(
           `Update link path ${url} to ${newPath}`,
           position,
@@ -600,17 +643,18 @@ function cleanup() {
     visitParents(tree, "import", (node) => {
       const importMatch = node.value?.match(importRegex);
       if (importMatch) {
-        importConstants[importMatch.groups.const] = importMatch.groups.path;
+        importConstants[importMatch.groups.const] = resolveImportPath(
+          importMatch.groups.path,
+          file.path,
+        );
       }
     });
 
     for (let [constName, importPath] of Object.entries(importConstants)) {
       try {
-        let importedFile = await read(
-          path.resolve(path.dirname(file.path), importPath),
-        );
+        let importedFile = await read(importPath);
         let mdxAST = pipeline.parse(importedFile);
-        mdxAST.path = path.resolve(path.dirname(file.path), importPath);
+        mdxAST.path = importPath;
         importConstants[constName] = mdxAST;
       } catch (e) {}
     }
@@ -658,6 +702,21 @@ function cleanup() {
       },
     );
   };
+}
+
+function resolveImportPath(importPath, currentFilePath) {
+  let resolvedPath = importPath;
+  if (resolvedPath.startsWith("versioned/"))
+    resolvedPath = resolvedPath.replace(
+      /^versioned\//,
+      path.resolve(basePath, "product_docs/docs/") + "/",
+    );
+  if (resolvedPath.startsWith("unversioned/"))
+    resolvedPath = resolvedPath.replace(
+      /^unversioned\//,
+      path.resolve(basePath, "advocacy_docs/") + "/",
+    );
+  return path.resolve(path.dirname(currentFilePath), resolvedPath);
 }
 
 function normalizeUrl(url, pagePath, index) {
