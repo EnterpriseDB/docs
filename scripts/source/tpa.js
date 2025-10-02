@@ -219,6 +219,10 @@ function transformer() {
       if (node.value.match(/^<AuthenticatedContentPlaceholder/)) return;
       if (node.value.match(/^<br\/><br\//)) return;
       if (node.value.match(/^<br\/>/)) return;
+      if (node.value.match(/^<br>/)) {
+        node.value = "<br />";
+        return;
+      }
       if (node.value.trim())
         console.warn(
           `${file.path}:${node.position.start.line}:${node.position.start.column} Stripping HTML content:\n\t ` +
