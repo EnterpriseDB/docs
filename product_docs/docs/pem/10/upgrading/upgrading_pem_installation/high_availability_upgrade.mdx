@@ -2,51 +2,141 @@
 title: "Upgrading a PEM installation on high-availability mode using HTTPD"
 ---
 
-If you're using [Failover Manager for high availability](../../considerations/ha_pem.mdx) on your PEM server, you can perform a major or minor upgrade of the PEM installation by updating the PEM packages.
+If you're using a [High Availability PEM](../../considerations/ha_pem.mdx), you can perform a major or minor upgrade of the PEM installation by following the relevant procedure below.
 
-This example uses these IP addresses:
+The example commands provided assume RHEL-based operating system.
 
--  Primary server: 172.17.0.2
--  Secondary server (standby): 172.17.0.3
+!!!Important
+This upgrade procedure is designed to minimise downtime to your PEM cluster.
+However, it will restart your primary database instance once so you should ensure that automatic failover is disabled to allow the primary to come back up and avoid one of the replicas being promoted.
+!!!
 
-The example upgrade is performed on a RHEL-based operating system where HTTPD is used for the web server services.
+## Upgrading a deployment with colocated PEM web application and backend database
 
-## Upgrading the packages
+### Upgrade the primary
 
-1.  On the primary server (172.17.0.2), update the PEM packages: 
+On the primary server:
 
-    ```
+1.  Update the PEM packages: 
+
+    ```shell
     dnf update edb-pem
     ```
 
-    Updating ensures that the latest version of the script required for the upgrade is available.
+1.  Execute the upgrade script: 
 
-1.  Execute the upgrade script. It upgrades PEM to the latest available version and restarts the backend database, the web server, and the PEM agent: 
-
-    ```
+    ```shell
     /usr/edb/pem/bin/configure-pem-server.sh
     ``` 
 
-1.  On the secondary standby server (172.17.0.3), update the PEM packages:
+### Upgrade the replicas
 
-    ```
+On each replica server:
+
+1.  Update the PEM packages:
+
+    ```shell
     dnf update edb-pem
     ```
 
-1.  Copy the configuration files, certificate, and key from the primary server to the secondary server: 
+1.  If you are updating to PEM 10.x from PEM 9 or PEM 10.0, ensure that libpq5 is installed (this is done automatically on the primary by `configure_pem_server.sh`):
+
+    ```shell
+    dnf install libpq5
+    ```
+
+1.  Copy following the configuration files from the primary.
 
     ```
     /etc/httpd/conf.d/edb-pem.conf
     /etc/httpd/conf.d/edb-ssl-pem.conf
     /usr/edb/pem/share/.install-config
-    /usr/edb/pem/resources/server-pem.crt
-    /usr/edb/pem/resources/server-pem.key
     /usr/edb/pem/web/pem.wsgi
     /usr/edb/pem/web/config_setup.py
     ```
 
-    !!!note 
-       If you have more than one standby server, update the packages and copy the configuration files, certificate, and key from the primary server to each standby instance.
-    !!!
+1.  If you are using NGINX as your web server, also copy the following files from the primary.
+
+    ```
+    /etc/edb-uwsgi/uwsgi.ini
+    /usr/lib/tmpfiles.d/edb-uwsgi.conf
+    /etc/systemd/system/edb-uwsgi.service
+    /etc/edb-uwsgi/apps-available/pem.ini
+    /etc/nginx/conf.d/edb-pem.conf
+    ```
+
+    Then reload NGINX and uWSGI:
+
+    ```shell
+    systemctl daemon-reload
+    systemctl enable edb-uwsgi
+    systemctl start edb-uwsgi
+    systemctl restart nginx
+    ```
+
+1.  If you are using Apache HTTPD as your web server, also copy the following files from the primary.
+
+   ```
+   /etc/httpd/conf.d/edb-pem.conf
+   /etc/httpd/conf.d/edb-ssl-pem.conf
+   ```
+
+   The restart Apache HTTPD:
+
+   ```shell
+   systemctl restart httpd
+   ```
+
+The upgrade is complete. 
+
+## Upgrading a deployment with separate PEM web application and backend database servers
+
+### Upgrade the primary backend
+
+On the primary backend database server:
+
+1.  Update the PEM packages: 
+
+    ```shell
+    dnf update edb-pem
+    ```
+
+1.  Execute the upgrade script: 
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh
+    ``` 
+
+### Upgrade the replica backends
+
+On each replica database server:
+
+1.  Update the PEM packages:
+
+    ```shell
+    dnf update edb-pem
+    ```
+
+1.  Copy following the configuration files from the primary.
+
+    ```
+    /usr/edb/pem/share/.install-config
+    ```
+
+### Upgrade the web applications
+
+On each web application server:
+
+1.  Update the PEM packages:
+
+    ```shell
+    dnf update edb-pem
+    ```
+
+1.  Execute the upgrade script: 
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh
+    ``` 
 
 The upgrade is complete. 
