@@ -1,0 +1,102 @@
+---
+title: "Pipelines data preparation output to volumes"
+navTitle: "Volume Destination"
+description: "Using an AIDB Volume as the output destination for a preparer pipeline"
+---
+
+The output of a preparer pipeline can be stored in a Postgres table or in an AIDB volume (with PGFS storage location). Most examples show how to use tables; this page describes how you can store the output in a volume.
+
+## Output format
+Each result will be stored in its own object. The name/key of the object will be the same name/key that the source record has.
+Operations that produce lists of results, like chunking, OCR, or HTML parsing, will store each "part" in its own object.
+
+E.g., a single object `long_text.txt` will be split into chunks; each chunk is stored a separate object. They will have the following names: `long_text.txt.part.0`, `long_text.txt.part.1`, and so on.
+
+## Preparing a destination volume
+A PGFS storage location and an AIDB volume for the intended destination are needed. The volume needs to be writable; whether it is an S3 bucket or a local directory.
+
+_Also refer to the [AIDB volume](../volumes) and [PGFS](../pgfs) docs for more details._
+
+Here, we use a local directory (on the Postgres server) as the destination.
+
+Prepare a local directory:
+```bash
+mkdir -p /tmp/pgfs/preparer_output_chunks
+```
+
+Set up PGFS, allow access to the directory, and configure the storage location:
+```sql
+CREATE EXTENSION IF NOT EXISTS pgfs;
+SET pgfs.allowed_local_fs_paths = '/tmp/pgfs';
+
+SELECT pgfs.create_storage_location('local_tmp_pgfs', 'file:///tmp/pgfs/');
+```
+
+Now set up an AIDB volume for this storage location. Optionally configure the sub-path (here `preparer_output_chunks`).
+Make sure to configure the correct data format; in this case `Text` since we will use a text chunking preparer pipeline.
+```sql
+SELECT aidb.create_volume('chunk_output_volume', 'local_tmp_pgfs', 'preparer_output_chunks/', 'Text');
+```
+
+Test whether the volume can be accessed and confirm that it is empty. Pipelines will write to non-empty destinations with the risk of overwriting existing data.
+```sql
+SELECT * FROM aidb.list_volume_content('chunk_output_volume');
+```
+
+
+## Preparing source data
+Volumes and tables can both be used as a source; the destination type doesn't affect this. Here we use a volume as a realistic example.
+
+```sql
+SELECT pgfs.create_storage_location(
+               'text_files_bucket_aidb', 's3://aidb-rag-app-txt',
+               options => '{"region": "eu-central-1", "skip_signature": "true"}');
+SELECT aidb.create_volume('text_files_volume', 'text_files_bucket_aidb', '/', 'Text');
+
+SELECT * FROM aidb.list_volume_content('text_files_volume');
+```
+
+
+## Creating the preparer pipeline and run it
+Use the [`aidb.create_volume_preparer()`]((../reference/preparers#aidbcreate_volume_preparer) call passing the source and destination volumes we just created.
+
+_Note: the `destination_data_column` and `destination_key_column` arguments should be omitted when using a volume as destination. Volumes behave like key/value stores so there are no column names to configure._
+
+```sql
+SELECT aidb.create_volume_preparer(
+               name => 'chunking_example_volumes',
+               operation => 'ChunkText',
+               source_volume_name => 'text_files_volume',
+               destination_table => 'chunk_output_volume',
+               options => '{"desired_length": 1000}'::JSONB
+       );
+
+SELECT aidb.bulk_data_preparation('chunking_example_volumes');
+```
+
+### Inspect the results
+List the results from within AIDB:
+```sql
+SELECT * FROM aidb.list_volume_content('chunk_output_volume');
+__OUTPUT__
+      file_name      | size |           last_modified
+---------------------+------+-----------------------------------
+ phil.txt.part.17    |    4 | 2025-05-02 15:56:50.161647402 UTC
+ bilge.txt.part.24   |    9 | 2025-05-02 15:56:49.885069607 UTC
+ mark.txt.part.5     |    4 | 2025-05-02 15:56:50.025494534 UTC
+ phil.txt.part.28    |    4 | 2025-05-02 15:56:50.179620037 UTC
+ phil.txt.part.10    |   97 | 2025-05-02 15:56:50.150750239 UTC
+ mark.txt.part.2     |    3 | 2025-05-02 15:56:50.020690984 UTC
+ TianQiu.txt.part.9  |   13 | 2025-05-02 15:56:49.809999366 UTC
+ bilge.txt.part.23   |    5 | 2025-05-02 15:56:49.883231553 UTC
+ phil.txt.part.26    |    8 | 2025-05-02 15:56:50.176445170 UTC
+ TianQiu.txt.part.0  |    8 | 2025-05-02 15:56:49.792321435 UTC
+ phil.txt.part.19    |    8 | 2025-05-02 15:56:50.165073307 UTC
+ bilge.txt.part.15   |   12 | 2025-05-02 15:56:49.869647891 UTC
+...
+ julien.txt.part.2   |    6 | 2025-05-02 15:56:49.909471517 UTC
+ julien.txt.part.5   |    4 | 2025-05-02 15:56:49.914235651 UTC
+(269 rows)
+```
+
+We can see that each chunk is stored as a `part` with a sequential ID.

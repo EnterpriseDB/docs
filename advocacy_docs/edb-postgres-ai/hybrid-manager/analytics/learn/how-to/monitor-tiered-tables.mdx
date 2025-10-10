@@ -1,0 +1,115 @@
+---
+title: Monitor Tiered Tables status and storage savings
+navTitle: Monitor Tiered Tables
+description: Learn how to monitor the status of Tiered Tables, track offload progress, and observe storage savings in Hybrid Manager.
+---
+
+
+After configuring Tiered Tables, it's important to monitor:
+
+- Which partitions have been offloaded
+- Whether offloading is progressing as expected
+- Storage savings on PGD vs. object storage
+- Offload-related activity on your PGD cluster
+
+You can monitor Tiered Tables from both:
+
+- **PGD cluster** — using SQL observability queries
+- **Hybrid Manager** — via monitoring dashboards (if available in your environment)
+
+## Why monitor Tiered Tables?
+
+Monitoring Tiered Tables allows you to:
+
+- Validate that offload is working as configured.
+- Confirm that hot/cold partitioning is behaving as expected.
+- Track storage savings and partition lifecycle.
+- Troubleshoot issues with offload or partition management.
+
+## Goals
+
+After completing this How-To, you will be able to:
+
+- Identify which tables are configured for offload and their current status.
+- Monitor AutoPartition offload activity and job success.
+- Measure storage savings on PGD primary storage.
+- Use observability queries to monitor partition states.
+
+## Prerequisites
+
+Before you begin:
+
+- Tiered Tables must be configured. See:
+- [Configure PGFS storage for Tiered Tables](./configure-tiered-pgfs)
+- [Configure PGD node group for analytics offload](./configure-tiered-offload)
+- [Configure BDR AutoPartition with analytics offload](./configure-tiered-autopartition)
+
+## Monitor analytics table status
+
+To view which PGD tables are marked for analytics offload:
+```sql
+SELECT * FROM bdr.analytics_table;
+```
+Useful columns:
+
+- `relation` — table name
+- `state` — current offload state
+- `enabled` — whether analytics offload is enabled
+- `disabled` — whether offload is disabled
+- `in_progress` — whether offload is currently running
+
+## Monitor AutoPartition offload activity
+
+Check the AutoPartition work queue for offload-related tasks:
+```sql
+SELECT
+wqs.workid, wis.ap_wi_started_at, wis.ap_wi_finished_at,
+wis.ap_wi_status, "partition", sql
+FROM bdr.taskmgr_local_workitem_status wis
+RIGHT JOIN bdr.taskmgr_local_work_queue_status wqs
+ON wis.ap_wi_workid = wqs.workid
+WHERE sql NOT LIKE '%bdr.autopartition_create_partition%'
+ORDER BY ap_wi_finished_at DESC;
+```
+This helps you track:
+
+- When offload jobs ran
+- Their status (success/failure)
+- Which partition was affected
+
+## Monitor storage savings on PGD
+
+To observe reduction in transactional storage used by the parent table:
+```sql
+SELECT pg_size_pretty(pg_total_relation_size('public.application_logs'));
+```
+As partitions are offloaded and truncated, this size should decrease.
+
+## Advanced observability — Heap vs. Offloaded size
+
+To compare local heap vs. offloaded size for partitions:
+You can run an advanced observability query from EDB's recommended runbooks.
+
+- See the observability query from [EDB PGAA-Tiered-Tables-Observability-Queries](https://github.com/EnterpriseDB/edb-postgres-runbooks/tree/main/pgaa-tiered-tables-observability-queries) (EDB public runbooks repository).
+
+This allows you to see:
+
+- Per-partition storage split across heap and Iceberg/Delta
+- Remaining heap size vs. offloaded size
+
+## What you can do next
+
+Now that you can monitor Tiered Tables status and storage savings, you can:
+
+- **Tune your partitioning and offload policies** — adjust `analytics_offload_period` if needed based on observed hot/cold access patterns.
+- **Query Tiered Tables for analytics and BI workloads:**
+- [Query Tiered Tables from PGD and Lakehouse](./query-tiered-tables)
+- **Scale Lakehouse clusters appropriately** to handle offloaded data queries.
+- **Validate compliance and retention goals** — confirm that old data is offloaded and retained per your policy.
+
+## Related How-Tos
+
+- [Configure PGFS storage for Tiered Tables](./configure-tiered-pgfs)
+- [Configure PGD node group for analytics offload](./configure-tiered-offload)
+- [Configure BDR AutoPartition with analytics offload](./configure-tiered-autopartition)
+- [Query Tiered Tables from PGD and Lakehouse](./query-tiered-tables)

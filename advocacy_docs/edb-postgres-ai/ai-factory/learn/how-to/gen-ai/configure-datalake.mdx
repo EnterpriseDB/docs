@@ -1,0 +1,187 @@
+---
+title: Configure the Data Lake in Gen AI Builder
+description: How to configure the Data Lake in Gen AI Builder to support content storage and AI pipelines.
+---
+
+## Who is this for
+
+Platform users setting up **Gen AI Builder** in **Hybrid Manager AI Factory**.
+This includes platform administrators, DevOps engineers, and AI builders configuring backend storage for AI Factory pipelines.
+
+## What you will accomplish
+
+You will configure a **Data Lake** — the object storage backend required for AI Factory services to function.
+
+You will:
+
+-   Create a storage bucket
+-   Set required CORS policies
+-   Generate and provide access credentials
+
+## Why configure the Data Lake
+
+The Data Lake is required to store and power:
+
+-   Uploaded files from Data Sources
+-   Indexed data and embeddings used by Pipelines and Knowledge Bases
+-   Structures and Tools required by Assistants
+-   Temporary artifacts used by AI pipelines
+
+Without a configured Data Lake:
+
+-   Libraries, Knowledge Bases, and Assistants will not function.
+-   RAG pipelines will not operate.
+-   Data Sources cannot be ingested.
+
+The Data Lake **must be configured before adding Data Sources or creating Knowledge Bases**.
+
+For background:
+
+-   [Data Lake explained](/edb-postgres-ai/ai-factory/learn/explained/data-lake-explained)
+-   [AI Factory Concepts](/edb-postgres-ai/ai-factory/learn/explained/ai-factory-concepts)
+-   [Hybrid Manager: Using Gen AI Builder](/edb-postgres-ai/hybrid-manager/ai-factory/gen-ai/builder)
+
+## Complexity and time to complete
+
+-   **Complexity:** Moderate (object storage setup + configuration)
+-   **Estimated time:** 10–20 minutes
+
+## Prerequisites
+
+-   Access to an **S3-compatible object storage provider**:
+-   AWS S3
+-   Google Cloud Storage (GCS) with S3 interoperability enabled
+-   Other compatible services (MinIO, Ceph, etc.)
+-   Permissions to create buckets and manage CORS.
+-   Ability to obtain object storage credentials.
+
+## How to configure the Data Lake
+
+### 1. Create a dedicated bucket
+
+Provision a new bucket dedicated for Gen AI Builder and Pipelines.
+
+**Best practice:** Use a dedicated bucket — do not reuse general-purpose or mixed-content buckets.
+
+#### AWS S3 or compatible
+
+-   Create a new bucket (example: `genai-data-lake-hcp`).
+
+#### Google Cloud Storage (GCS)
+
+-   Create a bucket.
+-   Enable **S3 interoperability**.
+-   Assign required roles:
+-   Storage Admin
+-   Service Account Token Creator
+-   Generate HMAC keys (used as Access Key ID and Secret Access Key).
+
+### 2. Configure CORS policy
+
+You must configure **Cross-Origin Resource Sharing (CORS)** to allow Gen AI Builder console and APIs to interact with the Data Lake.
+
+#### Example CORS for S3-compatible storage
+
+```json
+[
+    {
+        "AllowedHeaders": ["*"],
+        "AllowedMethods": ["PUT", "POST", "DELETE", "GET", "HEAD"],
+        "AllowedOrigins": ["https://<PORTAL_DOMAIN_NAME>"],
+        "ExposeHeaders": []
+    }
+]
+```
+
+#### Example CORS for GCS
+
+1.  Create `cors-config.json`:
+
+```json
+[
+  {
+    "origin": ["https://<PORTAL_DOMAIN_NAME>"],
+    "method": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "responseHeader": ["*"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+2.  Apply CORS policy:
+
+```shell
+gsutil cors set cors-config.json gs://<your-gcs-bucket-name>
+```
+
+### 3. Obtain storage credentials
+
+You will need:
+
+-   Bucket name
+-   S3 Endpoint URL
+-   Access Key ID
+-   Secret Access Key
+-   Region (if applicable)
+
+For GCS: use HMAC keys as your Access Key ID and Secret Access Key.
+
+### 4. Provide credentials to your deployment
+
+Configure your Kubernetes deployment or backend:
+
+-   Use environment variables or a configuration file.
+-   Apply as part of your Helm chart, secrets manager, or Kubernetes Secret.
+
+Example environment variables:
+
+```shell
+DATA_LAKE_BUCKET_NAME=genai-data-lake-hcp
+DATA_LAKE_ENDPOINT_URL=https://<your-endpoint>
+DATA_LAKE_ACCESS_KEY_ID=<access-key-id>
+DATA_LAKE_SECRET_ACCESS_KEY=<secret-access-key>
+DATA_LAKE_REGION=<region>  # If applicable
+```
+
+### 5. Verify connectivity
+
+1.  Log into Gen AI Builder → **Data Lake** section.
+2.  Confirm your configured bucket appears.
+3.  Create a folder or upload a test file to verify permissions.
+
+Example: `genai-data-lake-hcp → Create Folder → Upload File`.
+
+* * *
+
+## Troubleshooting
+
+### Bucket not visible in Gen AI Builder
+
+-   Verify that credentials are correct.
+-   Check that your CORS policy allows the required HTTP methods.
+-   Ensure that the bucket is dedicated to Gen AI Builder / AI Factory.
+
+### Uploads or console interactions fail
+
+-   Confirm CORS settings.
+-   Ensure that API keys or credentials have correct permissions.
+
+### Access denied errors
+
+-   Confirm the Access Key ID and Secret Access Key have required permissions:
+-   S3 or Storage Object Admin
+-   Read / write / delete permissions on the bucket
+
+* * *
+
+## Related topics
+
+-   [Data Lake explained](/edb-postgres-ai/ai-factory/learn/explained/data-lake-explained)
+-   [AI Factory Concepts](/edb-postgres-ai/ai-factory/learn/explained/ai-factory-concepts)
+-   [Configure Data Sources](/edb-postgres-ai/ai-factory/gen-ai/builder/libraries/data-sources)
+-   [Configure Knowledge Bases](/edb-postgres-ai/ai-factory/learn/explained/knowledge-bases-explained/)
+-   [Hybrid Manager: Using Gen AI Builder](/edb-postgres-ai/hybrid-manager/ai-factory/gen-ai/builder)
+
+* * *
+
+Once configured, the Data Lake powers the full AI Factory pipeline — enabling Pipelines, Knowledge Bases, and Assistants to deliver production-grade, trusted AI.

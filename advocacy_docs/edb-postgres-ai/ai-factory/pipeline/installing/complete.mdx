@@ -1,0 +1,114 @@
+---
+title: "Completing and verifying the extension installation"
+navTitle: "Completing the installation"
+description: "Completing and verifying the installation of the AI Database and Postgres File System extensions."
+deepToC: true
+---
+
+### Installing the AI Database extension
+
+The AI Database extension provides a set of functions to run AI/ML models in the database. Install the extension using the `CREATE EXTENSION` command:
+
+```sql
+edb=# CREATE EXTENSION aidb CASCADE;
+__OUTPUT__
+NOTICE:  installing required extension "vector"
+CREATE EXTENSION
+```
+
+#### Additional steps for EDB Postgres Distributed (PGD)
+A manual step is required to set up replication within the PGD cluster for the AIDB extension catalog tables:
+
+```sql
+bdrdb=# SELECT aidb.bdr_setup();
+__OUTPUT__
+ bdr_setup
+-----------
+
+(1 row)
+```
+
+You can confirm that the AIDB tables are part of the desired replication set using this SQL command:
+```sql
+bdrdb=# select * from bdr.tables where nspname='aidb';
+__OUTPUT__
+ relid | nspname |                relname                |    set_name    |             set_ops             | rel_columns | row_filter | conflict_detection
+-------+---------+---------------------------------------+----------------+---------------------------------+-------------+------------+--------------------
+ 18281 | aidb    | pipeline_runtime_state                | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+ 18354 | aidb    | preparer_registry                     | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+ 18363 | aidb    | preparer_registry_source_table        | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+ 18375 | aidb    | preparer_registry_source_volume       | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+ 18430 | aidb    | knowledge_base_registry               | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+ 18440 | aidb    | knowledge_base_registry_source_table  | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+ 18452 | aidb    | knowledge_base_registry_source_volume | p-2y7357q195-a | {INSERT,UPDATE,DELETE,TRUNCATE} |             |            | row_origin
+(7 rows)
+```
+
+#### Setting up background workers
+To use background processing with AIDB pipelines, the extension must be registered as a "preload library" in the Postgres config file.
+
+Add the following setting to the `postgresql.conf` file. The location of the config file depends on your environment. You can identify the location with `SHOW config_file;`.
+
+```
+shared_preload_libraries = 'aidb'
+```
+
+#### Proxy settings
+
+If you're using an HTTP proxy, you may need to set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables in the Postgres environment. You can do this by adding the lines shown in the example that follows to the `environment` file in the `main` directory of the Postgres data directory.
+
+For example, on Ubuntu with community Postgres, the `environment` file is located at `/etc/postgresql/16/main/environment`. Run the following commands to add the proxy settings to the `environment` file, and restart the Postgres service:
+
+```bash
+echo "HTTP_PROXY = 'http://<yourproxysettings>/'" | sudo tee -a /etc/postgresql/16/main/environment
+echo "HTTPS_PROXY = 'http://<yourproxysettings>/'"  | sudo tee -a /etc/postgresql/16/main/environment
+sudo systemctl restart postgresql@16-main
+```
+
+Replace `<yourproxysettings>` with your proxy settings. If you're using a different version of Postgres, replace `16` with your version number. Consult the documentation for your Postgres distribution for the location of the `environment` file.
+
+Airgapped environments aren't currently supported.
+
+### Installing the Postgres File System extension
+
+The Postgres File System (PGFS) extension provides a set of functions to interact with the file system from the database. Install the extension using the `CREATE EXTENSION` command:
+
+```sql
+edb=# create extension pgfs;
+CREATE EXTENSION
+```
+
+### Validating the installation
+
+You can check whether the extensions were installed by running the `\dx` command in psql:
+
+```sql
+edb=# \dx
+__OUTPUT__
+                                     List of installed extensions
+       Name       | Version |   Schema   |                        Description
+------------------+---------+------------+------------------------------------------------------------
+ aidb             | 2.1.1   | aidb       | aidb: makes it easy to build AI applications with postgres
+ pgfs             | 1.0.6   | pgfs       | pgfs: enables access to filesystem-like storage locations
+ vector           | 0.8.0   | public     | vector data type and ivfflat and hnsw access methods
+```
+
+In addition to the aidb, pgfs, and `vector` extensions listed in the output, other extensions are typically listed as well.
+
+## Permissions
+
+A new database role, `aidb_users`, is created as part of the AIDB extension installation. Membership to this role is required for access to most extension functions. This role will not be removed if the extension is deleted.
+
+`aidb_users` is designed to simplify access management for AIDB features:
+
+- **Purpose:** Granting a user the `aidb_users` role provides access to all AIDB functions, allowing access to the extension's capabilities.
+- **Security:** The `aidb_users` role does **not** grant access to AIDB's internal tables, ensuring that only the extension's public API is exposed to users.
+- **Background Workers:** When background workers are used, they execute as the user who defined them, or as a role specified by the user—provided the user has access to that role.
+
+To allow a user to use AIDB functions, simply grant them the `aidb_users` role:
+
+```sql
+GRANT aidb_users TO your_user;
+```
+
+Replace `your_user` with the appropriate database username.
