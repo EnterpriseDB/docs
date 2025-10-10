@@ -163,6 +163,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
     // special-case: if this node is the "rooted-to" page for any other pages, integrate those
     const nodesRootedToThis =
       node.indexes.rootedToPathToNodes.get(node.path) || [];
+
     for (let child of nodesRootedToThis) {
       if (normalizePath(child.mdxNode.frontmatter?.navRootedTo) === node.path)
         child.rootedTo = node;
@@ -170,6 +171,20 @@ const mdxNodesToTree = (nodes, productVersions) => {
       child.categories = child.categories || [];
       child.categories.push(node);
     }
+
+    // handle versioned pages being rooted: don't allow multiple versions to show up in nav
+    const canonicalNodesRootedToThis = nodesRootedToThis.filter(
+      (node, index, arr) => {
+        const { docType, path: urlPath } = node.mdxNode?.fields || {};
+        if (docType !== "doc") return true;
+        return (
+          arr.findIndex(
+            (node) =>
+              node.mdxNode?.fields?.path === replacePathVersion(urlPath),
+          ) === index
+        );
+      },
+    );
 
     // re-order according to navigation order, inserting nodes for headers when present
     const addedChildPaths = new Set();
@@ -219,7 +234,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
       ...node.children
         .filter((child) => !addedChildPaths.has(child.path))
         .sort((a, b) => a.path.localeCompare(b.path)),
-      ...nodesRootedToThis
+      ...canonicalNodesRootedToThis
         .filter((child) => !addedChildPaths.has(child.path))
         .sort((a, b) => a.path.localeCompare(b.path)),
     ];
