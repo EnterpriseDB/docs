@@ -1,0 +1,300 @@
+---
+title: griptape_cloud_vector_store_driver
+navTitle: GriptapeCloudVectorStoreDriver
+
+---
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver"></span>
+
+Bases:
+ [`BaseVectorStoreDriver`](./#griptape.drivers.vector.BaseVectorStoreDriver "BaseVectorStoreDriver (griptape.drivers.vector.BaseVectorStoreDriver)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Type   | Description                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------ |
+| <a href="griptape_cloud_vector_store_driver.mdx#griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.api_key" title="api_key = field(default=Factory(lambda: os.environ['GT_CLOUD_API_KEY']))           class-attribute       instance-attribute    (griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.api_key)"><code class="language-python">api_key</code></a>                                                  | `str`  | API Key for Gen AI Builder.<br/>           |
+| <a href="griptape_cloud_vector_store_driver.mdx#griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.knowledge_base_id" title="knowledge_base_id = field(kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.knowledge_base_id)"><code class="language-python">knowledge_base_id</code></a>                    | `str`  | Knowledge Base ID for Gen AI Builder.<br/> |
+| <a href="griptape_cloud_vector_store_driver.mdx#griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.base_url" title="base_url = field(default=Factory(lambda: os.getenv('GT_CLOUD_BASE_URL', 'https://cloud.griptape.ai')))           class-attribute       instance-attribute    (griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.base_url)"><code class="language-python">base_url</code></a>                 | `str`  | Base URL for Gen AI Builder.<br/>          |
+| <a href="griptape_cloud_vector_store_driver.mdx#griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.headers" title="headers = field(default=Factory(lambda self: {'Authorization': f'Bearer {self.api_key}'}, takes_self=True), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.headers)"><code class="language-python">headers</code></a> | `dict` | Headers for Gen AI Builder.<br/>           |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+@define
+class GriptapeCloudVectorStoreDriver(BaseVectorStoreDriver):
+    """A vector store driver for Gen AI Builder Knowledge Bases.
+
+    Attributes:
+        api_key: API Key for Gen AI Builder.
+        knowledge_base_id: Knowledge Base ID for Gen AI Builder.
+        base_url: Base URL for Gen AI Builder.
+        headers: Headers for Gen AI Builder.
+    """
+
+    base_url: str = field(
+        default=Factory(lambda: os.getenv("GT_CLOUD_BASE_URL", "https://cloud.griptape.ai")),
+    )
+    api_key: str = field(default=Factory(lambda: os.environ["GT_CLOUD_API_KEY"]))
+    knowledge_base_id: str = field(kw_only=True, metadata={"serializable": True})
+    headers: dict = field(
+        default=Factory(lambda self: {"Authorization": f"Bearer {self.api_key}"}, takes_self=True),
+        kw_only=True,
+    )
+    embedding_driver: BaseEmbeddingDriver = field(
+        default=Factory(lambda: DummyEmbeddingDriver()),
+        metadata={"serializable": True},
+        kw_only=True,
+        init=False,
+    )
+
+    def upsert_vector(
+        self,
+        vector: list[float],
+        vector_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        meta: Optional[dict] = None,
+        **kwargs,
+    ) -> str:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support vector upsert.")
+
+    def upsert_text_artifact(
+        self,
+        artifact: TextArtifact,
+        namespace: Optional[str] = None,
+        meta: Optional[dict] = None,
+        vector_id: Optional[str] = None,
+        **kwargs,
+    ) -> str:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support text artifact upsert.")
+
+    def upsert_text(
+        self,
+        string: str,
+        vector_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        meta: Optional[dict] = None,
+        **kwargs,
+    ) -> str:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support text upsert.")
+
+    def load_entry(self, vector_id: str, *, namespace: Optional[str] = None) -> BaseVectorStoreDriver.Entry:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support entry loading.")
+
+    def load_entries(self, *, namespace: Optional[str] = None) -> list[BaseVectorStoreDriver.Entry]:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support entry loading.")
+
+    def load_artifacts(self, *, namespace: Optional[str] = None) -> ListArtifact:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support Artifact loading.")
+
+    def query(
+        self,
+        query: str | TextArtifact | ImageArtifact,
+        *,
+        count: Optional[int] = None,
+        namespace: Optional[str] = None,
+        include_vectors: Optional[bool] = None,
+        distance_metric: Optional[str] = None,
+        # GriptapeCloudVectorStoreDriver-specific params:
+        filter: Optional[dict] = None,  # noqa: A002
+        **kwargs,
+    ) -> list[BaseVectorStoreDriver.Entry]:
+        """Performs a query on the Knowledge Base.
+
+        Performs a query on the Knowledge Base and returns Artifacts with close vector proximity to the query, optionally filtering to only those that match the provided filter(s).
+        """
+        if isinstance(query, ImageArtifact):
+            raise ValueError(f"{self.__class__.__name__} does not support querying with Image Artifacts.")
+        url = griptape_cloud_url(self.base_url, f"api/knowledge-bases/{self.knowledge_base_id}/query")
+
+        query_args = {
+            "count": count,
+            "distance_metric": distance_metric,
+            "filter": filter,
+            "include_vectors": include_vectors,
+        }
+        query_args = {k: v for k, v in query_args.items() if v is not None}
+
+        request: dict[str, Any] = {
+            "query": str(query),
+            "query_args": query_args,
+        }
+
+        response = requests.post(url, json=request, headers=self.headers).json()
+        entries = response.get("entries", [])
+        return [BaseVectorStoreDriver.Entry.from_dict(entry) for entry in entries]
+
+    def delete_vector(self, vector_id: str) -> NoReturn:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support deletion.")
+```
+
+</details>
+
+-   `api_key = field(default=Factory(lambda: os.environ['GT_CLOUD_API_KEY']))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.api_key"></span> 
+
+-   `base_url = field(default=Factory(lambda: os.getenv('GT_CLOUD_BASE_URL', 'https://cloud.griptape.ai')))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.base_url"></span> 
+
+-   `embedding_driver = field(default=Factory(lambda: DummyEmbeddingDriver()), metadata={'serializable': True}, kw_only=True, init=False)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.embedding_driver"></span> 
+
+-   `headers = field(default=Factory(lambda self: {'Authorization': f'Bearer {self.api_key}'}, takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.headers"></span> 
+
+-   `knowledge_base_id = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.knowledge_base_id"></span> 
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.delete_vector"></span>
+
+### delete_vector(vector_id)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def delete_vector(self, vector_id: str) -> NoReturn:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support deletion.")
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.load_artifacts"></span>
+
+### load_artifacts(\*, namespace=None)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def load_artifacts(self, *, namespace: Optional[str] = None) -> ListArtifact:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support Artifact loading.")
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.load_entries"></span>
+
+### load_entries(\*, namespace=None)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def load_entries(self, *, namespace: Optional[str] = None) -> list[BaseVectorStoreDriver.Entry]:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support entry loading.")
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.load_entry"></span>
+
+### load_entry(vector_id, \*, namespace=None)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def load_entry(self, vector_id: str, *, namespace: Optional[str] = None) -> BaseVectorStoreDriver.Entry:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support entry loading.")
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.query"></span>
+
+### query(query, \*, count=None, namespace=None, include_vectors=None, distance_metric=None, filter=None, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def query(
+    self,
+    query: str | TextArtifact | ImageArtifact,
+    *,
+    count: Optional[int] = None,
+    namespace: Optional[str] = None,
+    include_vectors: Optional[bool] = None,
+    distance_metric: Optional[str] = None,
+    # GriptapeCloudVectorStoreDriver-specific params:
+    filter: Optional[dict] = None,  # noqa: A002
+    **kwargs,
+) -> list[BaseVectorStoreDriver.Entry]:
+    """Performs a query on the Knowledge Base.
+
+    Performs a query on the Knowledge Base and returns Artifacts with close vector proximity to the query, optionally filtering to only those that match the provided filter(s).
+    """
+    if isinstance(query, ImageArtifact):
+        raise ValueError(f"{self.__class__.__name__} does not support querying with Image Artifacts.")
+    url = griptape_cloud_url(self.base_url, f"api/knowledge-bases/{self.knowledge_base_id}/query")
+
+    query_args = {
+        "count": count,
+        "distance_metric": distance_metric,
+        "filter": filter,
+        "include_vectors": include_vectors,
+    }
+    query_args = {k: v for k, v in query_args.items() if v is not None}
+
+    request: dict[str, Any] = {
+        "query": str(query),
+        "query_args": query_args,
+    }
+
+    response = requests.post(url, json=request, headers=self.headers).json()
+    entries = response.get("entries", [])
+    return [BaseVectorStoreDriver.Entry.from_dict(entry) for entry in entries]
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.upsert_text"></span>
+
+### upsert_text(string, vector_id=None, namespace=None, meta=None, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def upsert_text(
+    self,
+    string: str,
+    vector_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+    meta: Optional[dict] = None,
+    **kwargs,
+) -> str:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support text upsert.")
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.upsert_text_artifact"></span>
+
+### upsert_text_artifact(artifact, namespace=None, meta=None, vector_id=None, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def upsert_text_artifact(
+    self,
+    artifact: TextArtifact,
+    namespace: Optional[str] = None,
+    meta: Optional[dict] = None,
+    vector_id: Optional[str] = None,
+    **kwargs,
+) -> str:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support text artifact upsert.")
+```
+
+</details>
+
+<span id="griptape.drivers.vector.griptape_cloud_vector_store_driver.GriptapeCloudVectorStoreDriver.upsert_vector"></span>
+
+### upsert_vector(vector, vector_id=None, namespace=None, meta=None, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;griptape_cloud_vector_store_driver.py</code></summary>
+
+```python
+def upsert_vector(
+    self,
+    vector: list[float],
+    vector_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+    meta: Optional[dict] = None,
+    **kwargs,
+) -> str:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support vector upsert.")
+```
+
+</details>

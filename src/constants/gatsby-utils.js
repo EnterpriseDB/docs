@@ -163,6 +163,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
     // special-case: if this node is the "rooted-to" page for any other pages, integrate those
     const nodesRootedToThis =
       node.indexes.rootedToPathToNodes.get(node.path) || [];
+
     for (let child of nodesRootedToThis) {
       if (normalizePath(child.mdxNode.frontmatter?.navRootedTo) === node.path)
         child.rootedTo = node;
@@ -171,10 +172,32 @@ const mdxNodesToTree = (nodes, productVersions) => {
       child.categories.push(node);
     }
 
+    // handle versioned pages being rooted: don't allow multiple versions to show up in nav
+    const canonicalNodesRootedToThis = nodesRootedToThis.filter(
+      (node, index, arr) => {
+        const { docType, path: urlPath } = node.mdxNode?.fields || {};
+        if (docType !== "doc") return true;
+        return (
+          arr.findIndex(
+            (node) =>
+              node.mdxNode?.fields?.path === replacePathVersion(urlPath),
+          ) === index
+        );
+      },
+    );
+
     // re-order according to navigation order, inserting nodes for headers when present
     const addedChildPaths = new Set();
     const orderedNodes = [];
     for (let navEntry of node.mdxNode?.frontmatter?.navigation || []) {
+      if (!navEntry) {
+        reportNonFatalError(
+          "Empty navigation entry",
+          'Check for typos or malformed YAML in frontmatter "navigation" section',
+          node.mdxNode.fileAbsolutePath,
+        );
+        continue;
+      }
       if (navEntry.startsWith("#")) {
         let sectionNode = new Node();
         sectionNode.title = navEntry.replace("#", "").trim();
@@ -211,7 +234,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
       ...node.children
         .filter((child) => !addedChildPaths.has(child.path))
         .sort((a, b) => a.path.localeCompare(b.path)),
-      ...nodesRootedToThis
+      ...canonicalNodesRootedToThis
         .filter((child) => !addedChildPaths.has(child.path))
         .sort((a, b) => a.path.localeCompare(b.path)),
     ];
@@ -328,13 +351,18 @@ const treeToNavigation = (treeNode, pageNode) => {
     (path.includes(rootNode.path) ||
       (rootNode.path.includes(path) && rootNode.depth === depth + 1))
   ) {
-    rootNode.items = treeNode.children.map((n) => {
-      const navNode = treeToNavigation(n, pageNode);
-      // mark "fake" children so that they can be made visually distinct, ignored, etc.
-      if (n.parent !== treeNode || n.rootedTo === treeNode)
-        navNode.rootedTo = true;
-      return navNode;
-    });
+    rootNode.items = treeNode.children
+      .map((n) => {
+        // ignore nodes that are marked as such
+        if (n.mdxNode?.frontmatter?.navExclude) return null;
+
+        const navNode = treeToNavigation(n, pageNode);
+        // mark "fake" children so that they can be made visually distinct, ignored, etc.
+        if (n.parent !== treeNode || n.rootedTo === treeNode)
+          navNode.rootedTo = true;
+        return navNode;
+      })
+      .filter((n) => !!n);
   } else {
     rootNode.items = [];
   }
@@ -684,6 +712,15 @@ const reportMissingTitle = (noTitlePaths, reporter) => {
       `Missing titles for the following files:\n\t${noTitlePaths.join("\n\t")}`,
     );
   }
+};
+
+const reportNonFatalError = (title, message, filePath) => {
+  if (isGHBuild)
+    console.warn(`
+::warning file=${filePath},title=${title}::${message}`);
+  else
+    console.warn(`${filePath}: ${title}
+${message}`);
 };
 
 const convertLegacyDocsPathToLatest = (fromPath) => {

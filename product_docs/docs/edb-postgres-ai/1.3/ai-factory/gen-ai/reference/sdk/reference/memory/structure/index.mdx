@@ -1,0 +1,554 @@
+---
+title: structure
+navTitle: BaseConversationMemory
+
+---
+
+-   `__all__ = ['BaseConversationMemory', 'ConversationMemory', 'Run', 'SummaryConversationMemory']` <small>module-attribute</small>  <span id="griptape.memory.structure.__all__"></span> 
+
+<span id="griptape.memory.structure.BaseConversationMemory"></span>
+
+Bases:
+ [`SerializableMixin`](../../mixins/serializable_mixin.mdx#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+, <span title="abc.ABC">ABC</span>
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+@define
+class BaseConversationMemory(SerializableMixin, ABC):
+    conversation_memory_driver: BaseConversationMemoryDriver = field(
+        default=Factory(lambda: Defaults.drivers_config.conversation_memory_driver), kw_only=True
+    )
+    runs: list[Run] = field(factory=list, kw_only=True, metadata={"serializable": True})
+    meta: dict[str, Any] = field(factory=dict, kw_only=True, metadata={"serializable": True})
+    autoload: bool = field(default=True, kw_only=True)
+    autoprune: bool = field(default=True, kw_only=True)
+    max_runs: Optional[int] = field(default=None, kw_only=True, metadata={"serializable": True})
+
+    def __attrs_post_init__(self) -> None:
+        if self.autoload:
+            self.load_runs()
+
+    def before_add_run(self) -> None:
+        pass
+
+    def add_run(self, run: Run) -> BaseConversationMemory:
+        self.before_add_run()
+        self.try_add_run(run)
+        self.after_add_run()
+
+        return self
+
+    def after_add_run(self) -> None:
+        if self.max_runs:
+            while len(self.runs) > self.max_runs:
+                self.runs.pop(0)
+        self.conversation_memory_driver.store(self.runs, self.meta)
+
+    @abstractmethod
+    def try_add_run(self, run: Run) -> None: ...
+
+    @abstractmethod
+    def to_prompt_stack(self, last_n: Optional[int] = None) -> PromptStack: ...
+
+    def load_runs(self) -> list[Run]:
+        runs, meta = self.conversation_memory_driver.load()
+        self.runs.extend(runs)
+        self.meta = dict_merge(self.meta, meta)
+
+        return self.runs
+
+    def add_to_prompt_stack(
+        self, prompt_driver: BasePromptDriver, prompt_stack: PromptStack, index: Optional[int] = None
+    ) -> PromptStack:
+        """Add the Conversation Memory runs to the Prompt Stack by modifying the messages in place.
+
+        If autoprune is enabled, this will fit as many Conversation Memory runs into the Prompt Stack
+        as possible without exceeding the token limit.
+
+        Args:
+            prompt_driver: The Prompt Driver to use for token counting.
+            prompt_stack: The Prompt Stack to add the Conversation Memory to.
+            index: Optional index to insert the Conversation Memory runs at.
+                   Defaults to appending to the end of the Prompt Stack.
+        """
+        num_runs_to_fit_in_prompt = len(self.runs)
+
+        if self.autoprune:
+            should_prune = True
+            temp_stack = PromptStack()
+
+            # Try to determine how many Conversation Memory runs we can
+            # fit into the Prompt Stack without exceeding the token limit.
+            while should_prune and num_runs_to_fit_in_prompt > 0:
+                temp_stack.messages = prompt_stack.messages.copy()
+
+                # Add n runs from Conversation Memory.
+                # Where we insert into the Prompt Stack doesn't matter here
+                # since we only care about the total token count.
+                memory_inputs = self.to_prompt_stack(num_runs_to_fit_in_prompt).messages
+                temp_stack.messages.extend(memory_inputs)
+
+                # Convert the Prompt Stack into tokens left.
+                tokens_left = prompt_driver.tokenizer.count_input_tokens_left(
+                    prompt_driver.prompt_stack_to_string(temp_stack),
+                )
+                if tokens_left > 0:
+                    # There are still tokens left, no need to prune.
+                    should_prune = False
+                else:
+                    # There were not any tokens left, prune one run and try again.
+                    num_runs_to_fit_in_prompt -= 1
+
+        if num_runs_to_fit_in_prompt:
+            memory_inputs = self.to_prompt_stack(num_runs_to_fit_in_prompt).messages
+            if index is None:
+                prompt_stack.messages.extend(memory_inputs)
+            else:
+                prompt_stack.messages[index:index] = memory_inputs
+
+        return prompt_stack
+```
+
+</details>
+
+-   `autoload = field(default=True, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.BaseConversationMemory.autoload"></span> 
+
+-   `autoprune = field(default=True, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.BaseConversationMemory.autoprune"></span> 
+
+-   `conversation_memory_driver = field(default=Factory(lambda: Defaults.drivers_config.conversation_memory_driver), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.BaseConversationMemory.conversation_memory_driver"></span> 
+
+-   `max_runs = field(default=None, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.BaseConversationMemory.max_runs"></span> 
+
+-   `meta = field(factory=dict, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.BaseConversationMemory.meta"></span> 
+
+-   `runs = field(factory=list, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.BaseConversationMemory.runs"></span> 
+
+<span id="griptape.memory.structure.BaseConversationMemory.__attrs_post_init__"></span>
+
+### **attrs_post_init**()
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+def __attrs_post_init__(self) -> None:
+    if self.autoload:
+        self.load_runs()
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.add_run"></span>
+
+### add_run(run)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+def add_run(self, run: Run) -> BaseConversationMemory:
+    self.before_add_run()
+    self.try_add_run(run)
+    self.after_add_run()
+
+    return self
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.add_to_prompt_stack"></span>
+
+### add_to_prompt_stack(prompt_driver, prompt_stack, index=None)
+
+Add the Conversation Memory runs to the Prompt Stack by modifying the messages in place.
+
+If autoprune is enabled, this will fit as many Conversation Memory runs into the Prompt Stack as possible without exceeding the token limit.
+
+#### Parameters
+
+| Name            | Type                                                                                                                                                                                                  | Description                                                                                                          | Default    |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `prompt_driver` | <a href="../../drivers/prompt#griptape.drivers.prompt.BasePromptDriver" title="BasePromptDriver (griptape.drivers.prompt.BasePromptDriver)"><code class="language-python">BasePromptDriver</code></a> | The Prompt Driver to use for token counting.<br/>                                                                    | `required` |
+| `prompt_stack`  | <a href="../../common#griptape.common.PromptStack" title="PromptStack (griptape.common.PromptStack)"><code class="language-python">PromptStack</code></a>                                             | The Prompt Stack to add the Conversation Memory to.<br/>                                                             | `required` |
+| `index`         | `Optional[int]`                                                                                                                                                                                       | Optional index to insert the Conversation Memory runs at. Defaults to appending to the end of the Prompt Stack.<br/> | `None`     |
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+def add_to_prompt_stack(
+    self, prompt_driver: BasePromptDriver, prompt_stack: PromptStack, index: Optional[int] = None
+) -> PromptStack:
+    """Add the Conversation Memory runs to the Prompt Stack by modifying the messages in place.
+
+    If autoprune is enabled, this will fit as many Conversation Memory runs into the Prompt Stack
+    as possible without exceeding the token limit.
+
+    Args:
+        prompt_driver: The Prompt Driver to use for token counting.
+        prompt_stack: The Prompt Stack to add the Conversation Memory to.
+        index: Optional index to insert the Conversation Memory runs at.
+               Defaults to appending to the end of the Prompt Stack.
+    """
+    num_runs_to_fit_in_prompt = len(self.runs)
+
+    if self.autoprune:
+        should_prune = True
+        temp_stack = PromptStack()
+
+        # Try to determine how many Conversation Memory runs we can
+        # fit into the Prompt Stack without exceeding the token limit.
+        while should_prune and num_runs_to_fit_in_prompt > 0:
+            temp_stack.messages = prompt_stack.messages.copy()
+
+            # Add n runs from Conversation Memory.
+            # Where we insert into the Prompt Stack doesn't matter here
+            # since we only care about the total token count.
+            memory_inputs = self.to_prompt_stack(num_runs_to_fit_in_prompt).messages
+            temp_stack.messages.extend(memory_inputs)
+
+            # Convert the Prompt Stack into tokens left.
+            tokens_left = prompt_driver.tokenizer.count_input_tokens_left(
+                prompt_driver.prompt_stack_to_string(temp_stack),
+            )
+            if tokens_left > 0:
+                # There are still tokens left, no need to prune.
+                should_prune = False
+            else:
+                # There were not any tokens left, prune one run and try again.
+                num_runs_to_fit_in_prompt -= 1
+
+    if num_runs_to_fit_in_prompt:
+        memory_inputs = self.to_prompt_stack(num_runs_to_fit_in_prompt).messages
+        if index is None:
+            prompt_stack.messages.extend(memory_inputs)
+        else:
+            prompt_stack.messages[index:index] = memory_inputs
+
+    return prompt_stack
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.after_add_run"></span>
+
+### after_add_run()
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+def after_add_run(self) -> None:
+    if self.max_runs:
+        while len(self.runs) > self.max_runs:
+            self.runs.pop(0)
+    self.conversation_memory_driver.store(self.runs, self.meta)
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.before_add_run"></span>
+
+### before_add_run()
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+def before_add_run(self) -> None:
+    pass
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.load_runs"></span>
+
+### load_runs()
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+def load_runs(self) -> list[Run]:
+    runs, meta = self.conversation_memory_driver.load()
+    self.runs.extend(runs)
+    self.meta = dict_merge(self.meta, meta)
+
+    return self.runs
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.to_prompt_stack"></span>
+
+### to_prompt_stack(last_n=None)abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+@abstractmethod
+def to_prompt_stack(self, last_n: Optional[int] = None) -> PromptStack: ...
+```
+
+</details>
+
+<span id="griptape.memory.structure.BaseConversationMemory.try_add_run"></span>
+
+### try_add_run(run)abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;base_conversation_memory.py</code></summary>
+
+```python
+@abstractmethod
+def try_add_run(self, run: Run) -> None: ...
+```
+
+</details>
+
+<span id="griptape.memory.structure.ConversationMemory"></span>
+
+## ConversationMemory
+
+Bases:
+ [`BaseConversationMemory`](./#griptape.memory.structure.BaseConversationMemory "BaseConversationMemory (griptape.memory.structure.BaseConversationMemory)")
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;conversation_memory.py</code></summary>
+
+```python
+@define
+class ConversationMemory(BaseConversationMemory):
+    def try_add_run(self, run: Run) -> None:
+        self.runs.append(run)
+
+    def to_prompt_stack(self, last_n: Optional[int] = None) -> PromptStack:
+        prompt_stack = PromptStack()
+        runs = self.runs[-last_n:] if last_n else self.runs
+        for run in runs:
+            prompt_stack.add_user_message(run.input)
+            prompt_stack.add_assistant_message(run.output)
+        return prompt_stack
+```
+
+</details>
+
+<span id="griptape.memory.structure.ConversationMemory.to_prompt_stack"></span>
+
+### to_prompt_stack(last_n=None)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;conversation_memory.py</code></summary>
+
+```python
+def to_prompt_stack(self, last_n: Optional[int] = None) -> PromptStack:
+    prompt_stack = PromptStack()
+    runs = self.runs[-last_n:] if last_n else self.runs
+    for run in runs:
+        prompt_stack.add_user_message(run.input)
+        prompt_stack.add_assistant_message(run.output)
+    return prompt_stack
+```
+
+</details>
+
+<span id="griptape.memory.structure.ConversationMemory.try_add_run"></span>
+
+### try_add_run(run)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;conversation_memory.py</code></summary>
+
+```python
+def try_add_run(self, run: Run) -> None:
+    self.runs.append(run)
+```
+
+</details>
+
+<span id="griptape.memory.structure.Run"></span>
+
+## Run
+
+Bases:
+ [`SerializableMixin`](../../mixins/serializable_mixin.mdx#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;run.py</code></summary>
+
+```python
+@define(kw_only=True)
+class Run(SerializableMixin):
+    id: str = field(default=Factory(lambda: uuid.uuid4().hex), metadata={"serializable": True})
+    meta: Optional[dict] = field(default=None, metadata={"serializable": True})
+    input: BaseArtifact = field(metadata={"serializable": True})
+    output: BaseArtifact = field(metadata={"serializable": True})
+```
+
+</details>
+
+-   `id = field(default=Factory(lambda: uuid.uuid4().hex), metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.Run.id"></span> 
+
+-   `input = field(metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.Run.input"></span> 
+
+-   `meta = field(default=None, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.Run.meta"></span> 
+
+-   `output = field(metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.Run.output"></span> 
+
+<span id="griptape.memory.structure.SummaryConversationMemory"></span>
+
+## SummaryConversationMemory
+
+Bases:
+ [`BaseConversationMemory`](base_conversation_memory.mdx#griptape.memory.structure.base_conversation_memory.BaseConversationMemory "BaseConversationMemory (griptape.memory.structure.base_conversation_memory.BaseConversationMemory)")
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;summary_conversation_memory.py</code></summary>
+
+```python
+@define
+class SummaryConversationMemory(BaseConversationMemory):
+    offset: int = field(default=1, kw_only=True, metadata={"serializable": True})
+    prompt_driver: BasePromptDriver = field(
+        kw_only=True, default=Factory(lambda: Defaults.drivers_config.prompt_driver)
+    )
+    summary: Optional[str] = field(default=None, kw_only=True, metadata={"serializable": True})
+    summary_index: int = field(default=0, kw_only=True, metadata={"serializable": True})
+    summary_get_template: J2 = field(default=Factory(lambda: J2("memory/conversation/summary.j2")), kw_only=True)
+    summarize_conversation_get_template: J2 = field(
+        default=Factory(lambda: J2("memory/conversation/summarize_conversation.j2")),
+        kw_only=True,
+    )
+
+    def to_prompt_stack(self, last_n: Optional[int] = None) -> PromptStack:
+        stack = PromptStack()
+        if self.summary:
+            stack.add_user_message(self.summary_get_template.render(summary=self.summary))
+
+        for r in self.unsummarized_runs(last_n):
+            stack.add_user_message(r.input)
+            stack.add_assistant_message(r.output)
+
+        return stack
+
+    def unsummarized_runs(self, last_n: Optional[int] = None) -> list[Run]:
+        summary_index_runs = self.runs[self.summary_index :]
+
+        if last_n:
+            last_n_runs = self.runs[-last_n:]
+
+            if len(summary_index_runs) > len(last_n_runs):
+                return last_n_runs
+            return summary_index_runs
+        return summary_index_runs
+
+    def try_add_run(self, run: Run) -> None:
+        self.runs.append(run)
+        unsummarized_runs = self.unsummarized_runs()
+        runs_to_summarize = unsummarized_runs[: max(0, len(unsummarized_runs) - self.offset)]
+
+        if len(runs_to_summarize) > 0:
+            self.summary = self.summarize_runs(self.summary, runs_to_summarize)
+            self.summary_index = 1 + self.runs.index(runs_to_summarize[-1])
+
+    def summarize_runs(self, previous_summary: str | None, runs: list[Run]) -> str | None:
+        try:
+            if len(runs) > 0:
+                summary = self.summarize_conversation_get_template.render(summary=previous_summary, runs=runs)
+                return self.prompt_driver.run(
+                    PromptStack(messages=[Message(summary, role=Message.USER_ROLE)]),
+                ).to_text()
+            return previous_summary
+        except Exception as e:
+            logging.exception("Error summarizing memory: %s(%s)", type(e).__name__, e)
+
+            return previous_summary
+```
+
+</details>
+
+-   `offset = field(default=1, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.SummaryConversationMemory.offset"></span> 
+
+-   `prompt_driver = field(kw_only=True, default=Factory(lambda: Defaults.drivers_config.prompt_driver))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.SummaryConversationMemory.prompt_driver"></span> 
+
+-   `summarize_conversation_get_template = field(default=Factory(lambda: J2('memory/conversation/summarize_conversation.j2')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.SummaryConversationMemory.summarize_conversation_get_template"></span> 
+
+-   `summary = field(default=None, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.SummaryConversationMemory.summary"></span> 
+
+-   `summary_get_template = field(default=Factory(lambda: J2('memory/conversation/summary.j2')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.SummaryConversationMemory.summary_get_template"></span> 
+
+-   `summary_index = field(default=0, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.structure.SummaryConversationMemory.summary_index"></span> 
+
+<span id="griptape.memory.structure.SummaryConversationMemory.summarize_runs"></span>
+
+### summarize_runs(previous_summary, runs)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;summary_conversation_memory.py</code></summary>
+
+```python
+def summarize_runs(self, previous_summary: str | None, runs: list[Run]) -> str | None:
+    try:
+        if len(runs) > 0:
+            summary = self.summarize_conversation_get_template.render(summary=previous_summary, runs=runs)
+            return self.prompt_driver.run(
+                PromptStack(messages=[Message(summary, role=Message.USER_ROLE)]),
+            ).to_text()
+        return previous_summary
+    except Exception as e:
+        logging.exception("Error summarizing memory: %s(%s)", type(e).__name__, e)
+
+        return previous_summary
+```
+
+</details>
+
+<span id="griptape.memory.structure.SummaryConversationMemory.to_prompt_stack"></span>
+
+### to_prompt_stack(last_n=None)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;summary_conversation_memory.py</code></summary>
+
+```python
+def to_prompt_stack(self, last_n: Optional[int] = None) -> PromptStack:
+    stack = PromptStack()
+    if self.summary:
+        stack.add_user_message(self.summary_get_template.render(summary=self.summary))
+
+    for r in self.unsummarized_runs(last_n):
+        stack.add_user_message(r.input)
+        stack.add_assistant_message(r.output)
+
+    return stack
+```
+
+</details>
+
+<span id="griptape.memory.structure.SummaryConversationMemory.try_add_run"></span>
+
+### try_add_run(run)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;summary_conversation_memory.py</code></summary>
+
+```python
+def try_add_run(self, run: Run) -> None:
+    self.runs.append(run)
+    unsummarized_runs = self.unsummarized_runs()
+    runs_to_summarize = unsummarized_runs[: max(0, len(unsummarized_runs) - self.offset)]
+
+    if len(runs_to_summarize) > 0:
+        self.summary = self.summarize_runs(self.summary, runs_to_summarize)
+        self.summary_index = 1 + self.runs.index(runs_to_summarize[-1])
+```
+
+</details>
+
+<span id="griptape.memory.structure.SummaryConversationMemory.unsummarized_runs"></span>
+
+### unsummarized_runs(last_n=None)
+
+<details><summary>Source Code in <code>griptape&#47;memory&#47;structure&#47;summary_conversation_memory.py</code></summary>
+
+```python
+def unsummarized_runs(self, last_n: Optional[int] = None) -> list[Run]:
+    summary_index_runs = self.runs[self.summary_index :]
+
+    if last_n:
+        last_n_runs = self.runs[-last_n:]
+
+        if len(summary_index_runs) > len(last_n_runs):
+            return last_n_runs
+        return summary_index_runs
+    return summary_index_runs
+```
+
+</details>

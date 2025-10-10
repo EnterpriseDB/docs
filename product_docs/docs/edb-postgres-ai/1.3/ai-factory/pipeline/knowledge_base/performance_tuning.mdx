@@ -1,0 +1,128 @@
+---
+title: "Pipelines knowledge base performance tuning"
+navTitle: "Performance tuning"
+deepToC: true
+description: "How to tune the performance of knowledge base pipelines."
+---
+
+
+## Background
+
+You can optimize performance (that is, throughput of embeddings per second) by changing pipeline and model settings.
+
+Knowledge base piplines process collections of individual records (rows in a table or objects in a volume). Rather than processing each record individually and sequentially, or processing all of them concurrently,
+AIDB offers batch processing. All the batches get processed sequentially, one after the other. Within each batch, records get processed concurrently wherever possible.
+
+- [Pipeline `batch_size`](/edb-postgres-ai/1.3/ai-factory/pipeline/capabilities/auto-processing) determines the number of records in each batch.
+- Some model providers have configurable internal batch/parallel processing. We recommend leaving these setting at the default values and using the pipeline batch size to control execution.
+
+!!! Note
+Vector indexing also has an impact on pipeline performance. You can disable the vector by using `index_type => 'disabled'` to exclude it from your measurements.
+!!!
+
+## Testing and tuning performance
+
+This example first sets up test data and a knowledge base pipeline, then measures and tunes the batch size.
+
+### 1) Create a table and insert test data
+
+The actual data content length has some impact on model performance. You can use longer text to test that.
+
+```sql
+CREATE TABLE test_data_10k (id  INT PRIMARY KEY, msg TEXT NOT NULL);
+
+INSERT INTO test_data_10k (id, msg) SELECT generate_series(1, 10000) AS id, 'hello world';
+```
+
+### 2) Create a knowledge base pipeline
+
+The optimal batch size may be very different for different models. Measure and tune the batch size for each different model you want to use.
+
+```sql
+SELECT aidb.create_table_knowledge_base(
+    name => 'perf_test',
+    model_name => 'dummy',  -- use the model you want to optimize for
+    source_table => 'test_data_10k',
+    source_data_column => 'msg',
+    source_data_format => 'Text',
+    index_type => 'disabled', -- optionally disable vector indexing to include/exclude it from the measurement
+    auto_processing => 'Disabled',  -- we want to manually run the pipeline to measure the runtime
+    batch_size => 100  -- this is the paramter we will tune during this test
+);
+__OUTPUT__
+INFO:  using vector table: public.perf_test_vector
+NOTICE:  index "vdx_perf_test_vector" does not exist, skipping
+NOTICE:  auto-processing is set to "Disabled". Manually run "SELECT aidb.bulk_embedding('perf_test');" to compute embeddings.
+ create_table_knowledge_base
+-----------------------------
+ perf_test
+(1 row)
+```
+
+### 3) Run the pipeline, measure the performance
+
+This test uses psql. (The `\timing on` command is a feature in psql.) If you use a different interface, find out how it can display timing information.
+
+```sql
+\timing on
+__OUTPUT__
+Timing is on.
+```
+
+Now run the pipeline:
+
+```sql
+SELECT aidb.bulk_embedding('perf_test');
+__OUTPUT__
+INFO:  perf_test: (re)setting state table to process all data...
+INFO:  perf_test: Starting... Batch size 100, unprocessed rows: 10000, count(source records): 10000, count(embeddings): 0
+INFO:  perf_test: Batch iteration finished, unprocessed rows: 9900, count(source records): 10000, count(embeddings): 100
+INFO:  perf_test: Batch iteration finished, unprocessed rows: 9800, count(source records): 10000, count(embeddings): 200
+...
+INFO:  perf_test: Batch iteration finished, unprocessed rows: 0, count(source records): 10000, count(embeddings): 10000
+INFO:  perf_test: finished, unprocessed rows: 0, count(source records): 10000, count(embeddings): 10000
+ bulk_embedding
+----------------
+
+(1 row)
+
+Time: 207161,174 ms (03:27,161)
+```
+
+### 4) Tune the batch size
+
+You can use this call to adjust the batch size of the pipeline. This example increases the batch size by 10x to 1000 records:
+
+```sql
+SELECT aidb.set_auto_knowledge_base('perf_test', 'Disabled', batch_size=>1000);
+```
+
+Run the pipeline again.
+
+!!! Note
+When using a Postgres table as the source, with auto-processing disabled, AIDB has no means to detect changes in the source data. So each bulk_embedding call has to reprocess everything.
+
+This is convenient for performance testing.
+
+If you want to measure performance with a volumes source, delete and re-create the knowledge base between each test. AIDB can detect changes on volumes even with auto-processing disabled.
+
+!!!
+```sql
+SELECT aidb.bulk_embedding('perf_test');
+__OUTPUT__
+INFO:  perf_test: (re)setting state table to process all data...
+INFO:  perf_test: Starting... Batch size 1000, unprocessed rows: 10000, count(source records): 10000, count(embeddings): 10000
+...
+INFO:  perf_test: finished, unprocessed rows: 0, count(source records): 10000, count(embeddings): 10000
+ bulk_embedding
+----------------
+
+(1 row)
+
+Time: 154276,486 ms (02:34,276)
+```
+
+
+## Conclusion
+
+In this test, the pipeline took 02:34 min with batch size 1000 and 03:27 min with size 100. You can continue testing larger sizes until performance no longer improves or even declines.

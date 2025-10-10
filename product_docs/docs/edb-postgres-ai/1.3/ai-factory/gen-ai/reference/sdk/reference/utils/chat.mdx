@@ -1,0 +1,276 @@
+---
+title: chat
+navTitle: Chat
+
+---
+
+<span id="griptape.utils.chat.Chat"></span>
+
+Utility for running a chat with a Structure.
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                   | Type                                                                                                                                                       | Description                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a href="chat.mdx#griptape.utils.chat.Chat.structure" title="structure = field()           class-attribute       instance-attribute    (griptape.utils.chat.Chat.structure)"><code class="language-python">structure</code></a>                                                                                                        | <a href="../structures#griptape.structures.Structure" title="Structure (griptape.structures.Structure)"><code class="language-python">Structure</code></a> | The Structure to run.<br/>                                                                                                                                                      |
+| <a href="chat.mdx#griptape.utils.chat.Chat.exit_keywords" title="exit_keywords = field(default=['exit'], kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.exit_keywords)"><code class="language-python">exit_keywords</code></a>                                                          | <a href="../../data/artifacts.mdx#list" title="List (list)"><code class="language-python">list[str]</code></a>                                             | Keywords that will exit the chat.<br/>                                                                                                                                          |
+| <a href="chat.mdx#griptape.utils.chat.Chat.exiting_text" title="exiting_text = field(default='Exiting...', kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.exiting_text)"><code class="language-python">exiting_text</code></a>                                                          | `str`                                                                                                                                                      | Text to display when exiting the chat.<br/>                                                                                                                                     |
+| <a href="chat.mdx#griptape.utils.chat.Chat.processing_text" title="processing_text = field(default='Thinking...', kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.processing_text)"><code class="language-python">processing_text</code></a>                                             | `str`                                                                                                                                                      | Text to display while processing the user's input.<br/>                                                                                                                         |
+| <a href="chat.mdx#griptape.utils.chat.Chat.intro_text" title="intro_text = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.intro_text)"><code class="language-python">intro_text</code></a>                                                                          | `Optional[str]`                                                                                                                                            | Text to display when the chat starts.<br/>                                                                                                                                      |
+| <a href="chat.mdx#griptape.utils.chat.Chat.prompt_prefix" title="prompt_prefix = field(default='User: ', kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.prompt_prefix)"><code class="language-python">prompt_prefix</code></a>                                                          | `str`                                                                                                                                                      | Prefix for the user's input.<br/>                                                                                                                                               |
+| <a href="chat.mdx#griptape.utils.chat.Chat.response_prefix" title="response_prefix = field(default='Assistant: ', kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.response_prefix)"><code class="language-python">response_prefix</code></a>                                             | `str`                                                                                                                                                      | Prefix for the assistant's response.<br/>                                                                                                                                       |
+| <a href="chat.mdx#griptape.utils.chat.Chat.handle_input" title="handle_input = field(default=Factory(lambda self: self.default_handle_input, takes_self=True), kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.handle_input)"><code class="language-python">handle_input</code></a>      | `Callable[[str], str]`                                                                                                                                     | Function to get the user's input.<br/>                                                                                                                                          |
+| <a href="chat.mdx#griptape.utils.chat.Chat.handle_output" title="handle_output = field(default=Factory(lambda self: self.default_handle_output, takes_self=True), kw_only=True)           class-attribute       instance-attribute    (griptape.utils.chat.Chat.handle_output)"><code class="language-python">handle_output</code></a> | `Callable[..., None]`                                                                                                                                      | Function to output text. Takes a `text` argument for the text to output. Also takes a `stream` argument which will be set to True when streaming Prompt Tasks are present.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+@define
+class Chat:
+    """Utility for running a chat with a Structure.
+
+    Attributes:
+        structure: The Structure to run.
+        exit_keywords: Keywords that will exit the chat.
+        exiting_text: Text to display when exiting the chat.
+        processing_text: Text to display while processing the user's input.
+        intro_text: Text to display when the chat starts.
+        prompt_prefix: Prefix for the user's input.
+        response_prefix: Prefix for the assistant's response.
+        handle_input: Function to get the user's input.
+        handle_output: Function to output text. Takes a `text` argument for the text to output.
+                   Also takes a `stream` argument which will be set to True when streaming Prompt Tasks are present.
+    """
+
+    class ChatPrompt(Prompt):
+        prompt_suffix = ""  # We don't want rich's default prompt suffix
+
+    structure: Structure = field()
+    exit_keywords: list[str] = field(default=["exit"], kw_only=True)
+    exiting_text: str = field(default="Exiting...", kw_only=True)
+    processing_text: str = field(default="Thinking...", kw_only=True)
+    intro_text: Optional[str] = field(default=None, kw_only=True)
+    prompt_prefix: str = field(default="User: ", kw_only=True)
+    response_prefix: str = field(default="Assistant: ", kw_only=True)
+    handle_input: Callable[[str], str] = field(
+        default=Factory(lambda self: self.default_handle_input, takes_self=True), kw_only=True
+    )
+    handle_output: Callable[..., None] = field(
+        default=Factory(lambda self: self.default_handle_output, takes_self=True),
+        kw_only=True,
+    )
+    logger_level: int = field(default=logging.ERROR, kw_only=True)
+
+    def default_handle_input(self, prompt_prefix: str) -> str:
+        return Chat.ChatPrompt.ask(prompt_prefix)
+
+    def default_handle_output(self, text: str, *, stream: bool = False) -> None:
+        if stream:
+            rprint(text, end="", flush=True)
+        else:
+            rprint(text)
+
+    def start(self) -> None:
+        from griptape.configs import Defaults
+
+        # Hide Gen AI Builder's logging output except for errors
+        old_logger_level = logging.getLogger(Defaults.logging_config.logger_name).getEffectiveLevel()
+        logging.getLogger(Defaults.logging_config.logger_name).setLevel(self.logger_level)
+
+        if self.intro_text:
+            self._call_handle_output(self.intro_text)
+
+        has_streaming_tasks = self._has_streaming_tasks()
+        while True:
+            question = self.handle_input(self.prompt_prefix)
+
+            if question.lower() in self.exit_keywords:
+                self._call_handle_output(self.exiting_text)
+                break
+
+            if has_streaming_tasks:
+                self._call_handle_output(self.processing_text)
+                stream = Stream(self.structure).run(question)
+                first_chunk = next(stream)
+                self._call_handle_output(self.response_prefix + first_chunk.value, stream=True)
+                for chunk in stream:
+                    self._call_handle_output(chunk.value, stream=True)
+            else:
+                self._call_handle_output(self.processing_text)
+                self._call_handle_output(f"{self.response_prefix}{self.structure.run(question).output.to_text()}")
+
+        # Restore the original logger level
+        logging.getLogger(Defaults.logging_config.logger_name).setLevel(old_logger_level)
+
+    def _has_streaming_tasks(self) -> bool:
+        from griptape.tasks.prompt_task import PromptTask
+
+        return any(isinstance(task, PromptTask) and task.prompt_driver.stream for task in self.structure.tasks)
+
+    def _call_handle_output(self, text: str, *, stream: bool = False) -> None:
+        func_params = inspect.signature(self.handle_output).parameters.copy()
+        has_kwargs = False
+        for param in func_params.values():
+            # if there is a **kwargs parameter, we can safely
+            # pass all the params to the function
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                has_kwargs = True
+                break
+
+        if "stream" in func_params or has_kwargs:
+            self.handle_output(text, stream=stream)
+        else:
+            self.handle_output(text)
+```
+
+</details>
+
+-   `exit_keywords = field(default=['exit'], kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.exit_keywords"></span> 
+
+-   `exiting_text = field(default='Exiting...', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.exiting_text"></span> 
+
+-   `handle_input = field(default=Factory(lambda self: self.default_handle_input, takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.handle_input"></span> 
+
+-   `handle_output = field(default=Factory(lambda self: self.default_handle_output, takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.handle_output"></span> 
+
+-   `intro_text = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.intro_text"></span> 
+
+-   `logger_level = field(default=logging.ERROR, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.logger_level"></span> 
+
+-   `processing_text = field(default='Thinking...', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.processing_text"></span> 
+
+-   `prompt_prefix = field(default='User: ', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.prompt_prefix"></span> 
+
+-   `response_prefix = field(default='Assistant: ', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.response_prefix"></span> 
+
+-   `structure = field()` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.structure"></span> 
+
+<span id="griptape.utils.chat.Chat.ChatPrompt"></span>
+
+### ChatPrompt
+
+Bases:
+
+<span title="rich.prompt.Prompt">Prompt</span>
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+class ChatPrompt(Prompt):
+    prompt_suffix = ""  # We don't want rich's default prompt suffix
+```
+
+</details>
+
+-   `prompt_suffix = ''` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.utils.chat.Chat.ChatPrompt.prompt_suffix"></span> 
+
+<span id="griptape.utils.chat.Chat._call_handle_output"></span>
+
+### \_call_handle_output(text, \*, stream=False)
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+def _call_handle_output(self, text: str, *, stream: bool = False) -> None:
+    func_params = inspect.signature(self.handle_output).parameters.copy()
+    has_kwargs = False
+    for param in func_params.values():
+        # if there is a **kwargs parameter, we can safely
+        # pass all the params to the function
+        if param.kind == inspect.Parameter.VAR_KEYWORD:
+            has_kwargs = True
+            break
+
+    if "stream" in func_params or has_kwargs:
+        self.handle_output(text, stream=stream)
+    else:
+        self.handle_output(text)
+```
+
+</details>
+
+<span id="griptape.utils.chat.Chat._has_streaming_tasks"></span>
+
+### \_has_streaming_tasks()
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+def _has_streaming_tasks(self) -> bool:
+    from griptape.tasks.prompt_task import PromptTask
+
+    return any(isinstance(task, PromptTask) and task.prompt_driver.stream for task in self.structure.tasks)
+```
+
+</details>
+
+<span id="griptape.utils.chat.Chat.default_handle_input"></span>
+
+### default_handle_input(prompt_prefix)
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+def default_handle_input(self, prompt_prefix: str) -> str:
+    return Chat.ChatPrompt.ask(prompt_prefix)
+```
+
+</details>
+
+<span id="griptape.utils.chat.Chat.default_handle_output"></span>
+
+### default_handle_output(text, \*, stream=False)
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+def default_handle_output(self, text: str, *, stream: bool = False) -> None:
+    if stream:
+        rprint(text, end="", flush=True)
+    else:
+        rprint(text)
+```
+
+</details>
+
+<span id="griptape.utils.chat.Chat.start"></span>
+
+### start()
+
+<details><summary>Source Code in <code>griptape&#47;utils&#47;chat.py</code></summary>
+
+```python
+def start(self) -> None:
+    from griptape.configs import Defaults
+
+    # Hide Gen AI Builder's logging output except for errors
+    old_logger_level = logging.getLogger(Defaults.logging_config.logger_name).getEffectiveLevel()
+    logging.getLogger(Defaults.logging_config.logger_name).setLevel(self.logger_level)
+
+    if self.intro_text:
+        self._call_handle_output(self.intro_text)
+
+    has_streaming_tasks = self._has_streaming_tasks()
+    while True:
+        question = self.handle_input(self.prompt_prefix)
+
+        if question.lower() in self.exit_keywords:
+            self._call_handle_output(self.exiting_text)
+            break
+
+        if has_streaming_tasks:
+            self._call_handle_output(self.processing_text)
+            stream = Stream(self.structure).run(question)
+            first_chunk = next(stream)
+            self._call_handle_output(self.response_prefix + first_chunk.value, stream=True)
+            for chunk in stream:
+                self._call_handle_output(chunk.value, stream=True)
+        else:
+            self._call_handle_output(self.processing_text)
+            self._call_handle_output(f"{self.response_prefix}{self.structure.run(question).output.to_text()}")
+
+    # Restore the original logger level
+    logging.getLogger(Defaults.logging_config.logger_name).setLevel(old_logger_level)
+```
+
+</details>

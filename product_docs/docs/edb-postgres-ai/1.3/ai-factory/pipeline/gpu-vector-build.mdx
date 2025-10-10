@@ -1,0 +1,185 @@
+---
+title: "GPU-accelerated vector index build"
+navTitle: "GPU vector build"
+description: "Accelerate vector index builds using NVIDIA GPUs for large vector tables."
+prevNext: True
+redirects:
+- /edb-postgres-ai/ai-factory/pipeline/gpu-vector-build/
+- /purl/aidb/gpuvectorbuild
+---
+
+## Overview
+
+Building a vector index is a compute‑intensive process that can run for hours or days on very large tables. EDB Postgres AI – AI Accelerator (aidb) can use NVIDIA GPUs to accelerate vector index creation for the VectorChord `vchordq` index type.
+
+Use GPU acceleration when creating indexes on large vector columns to significantly reduce build time.
+
+## Requirements
+
+Before using GPU acceleration, ensure the environment meets these requirements:
+
+- Supported OS: Ubuntu 22.04/24.04, Debian 12, RHEL 9.
+- CPU architecture: x86_64.
+- Supported NVIDIA GPUs: architectures 8.9 and 9.0 (for example, L40, L4, H100, H200, GH200).
+- NVIDIA GPU driver installed and functional.
+- NVIDIA CUDA runtime 12.9 or newer installed.
+- The VectorChord extension available on the system (for the `vchordq` index type). See the [Vector Engine documentation](/edb-postgres-ai/latest/ai-factory/vector-engine/) for install and usage details.
+
+See also: general platform support in [Compatibility](./compatibility).
+
+## Enable GPU acceleration
+
+GPU acceleration is disabled by default. Enable it per session or at the server level.
+
+- Per session:
+
+```sql
+SET aidb.gpu_acceleration = 'enable';
+```
+
+- Persist in the server configuration and reload:
+
+```sql
+ALTER SYSTEM SET aidb.gpu_acceleration = 'enable';
+SELECT pg_reload_conf();
+```
+
+To disable, set the value to `disable` and reload the configuration.
+
+## Quick start example
+
+The following example creates a table with a vector column, inserts sample data, and builds a GPU‑accelerated VectorChord index.
+
+1) Create a test table:
+
+```sql
+CREATE TABLE test_10k_vecs (
+  id        bigserial PRIMARY KEY,
+  embedding vector(2000)
+);
+```
+
+2) Insert sample vectors:
+
+```sql
+INSERT INTO test_10k_vecs (embedding)
+SELECT arr.embedding
+FROM generate_series(1, 10000) AS g(i)
+CROSS JOIN LATERAL (
+  SELECT array_agg(((g.i - 1) * 3 + gs.j)::real)
+  FROM generate_series(1, 2000) AS gs(j)
+) AS arr(embedding);
+```
+
+3) Build the GPU‑accelerated index:
+
+```sql
+SELECT aidb.create_vector_index_on_gpu(
+  table_name      => 'public.test_10k_vecs',
+  column_name     => 'embedding',
+  cluster_count   => 1000
+);
+```
+
+When the function completes, the table has a VectorChord `vchordq` index ready for use.
+
+## Function reference
+
+The `aidb.create_vector_index_on_gpu()` function runs the entire VectorChord index build on the GPU. It is analogous to `CREATE INDEX` for VectorChord.
+
+Signature example with all parameters:
+
+```sql
+SELECT aidb.create_vector_index_on_gpu(
+  table_name        => 'public.test_10k_vecs',
+  column_name       => 'embedding',
+  cluster_count     => 1000,
+  sampling_factor   => 256,
+  kmeans_iterations => 10,
+  kmeans_nredo      => 1,
+  distance_operator => 'ip',
+  batch_size        => 1000000
+);
+```
+
+Parameters:
+
+- table_name: Fully qualified table name (`schema.table`).
+- column_name: Name of the vector column to index.
+- cluster_count: Number of clusters to use for the index (VectorChord “lists”).
+- sampling_factor: Optional. Number of sample vectors for k‑means. Default: 256.
+- kmeans_iterations: Optional. Number of k‑means iterations. Default: 10.
+- kmeans_nredo: Optional. Number of k‑means restarts. Default: 1.
+- distance_operator: Optional. Distance metric. One of `ip` (inner product), `l2` (Euclidean), or `cos` (cosine). Default: `ip`.
+- batch_size: Optional. Controls processing batch size. Larger batches increase memory use but can improve throughput.
+
+## Verification
+
+After the function returns, verify that the index exists and is usable.
+
+- List indexes on the table:
+
+```
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'public' AND tablename = 'test_10k_vecs';
+```
+
+- Run an example query with your intended distance operator and use `EXPLAIN` to confirm index usage.
+
+### Verify index usage with EXPLAIN
+
+Replace `:query_vec` with a query vector literal or parameter of the same dimension as your column. Choose the operator that matches the `distance_operator` you used for index creation.
+
+- L2 distance (`l2`):
+
+```sql
+EXPLAIN
+SELECT id
+FROM test_10k_vecs
+ORDER BY embedding <-> :query_vec
+LIMIT 10;
+```
+
+- Inner product (`ip`):
+
+```sql
+EXPLAIN
+SELECT id
+FROM test_10k_vecs
+ORDER BY embedding <#> :query_vec
+LIMIT 10;
+```
+
+- Cosine distance (`cos`):
+
+```sql
+EXPLAIN
+SELECT id
+FROM test_10k_vecs
+ORDER BY embedding <=> :query_vec
+LIMIT 10;
+```
+
+The plan should indicate an index‑assisted path (for example, Index Scan) rather than a full sequential scan. If needed for testing, temporarily set `SET enable_seqscan = off;` to encourage index usage while validating.
+
+For details on vector distance operators `<->` (L2), `<#>` (inner product), and `<=>` (cosine), see the [Vector Engine](/edb-postgres-ai/latest/ai-factory/vector-engine/) documentation.
+
+## Tuning and guidance
+
+- Cluster count: Choose a value appropriate for your data size and query patterns, following VectorChord guidance for the number of lists.
+- Batch size: Increase for faster builds when sufficient GPU memory is available; reduce if you encounter out‑of‑memory conditions.
+- Distance operator: Match to how you plan to query the data (`ip`, `l2`, or `cos`).
+
+## Troubleshooting
+
+- GPU acceleration not enabled: Ensure `aidb.gpu_acceleration = 'enable'` and reload configuration if set via `ALTER SYSTEM`.
+- No compatible GPU detected: Verify NVIDIA drivers and CUDA runtime installation.
+- Missing VectorChord components: Ensure the VectorChord extension and its index type are installed on the node.
+- Invalid arguments: Confirm the vector column exists, has a fixed dimension, and the table name is fully qualified.
+
+## Notes and limitations
+
+- GPU acceleration currently applies to VectorChord `vchordq` index builds.
+- Supported hardware and OS are limited to the platforms listed in Requirements.
+- The function runs synchronously and returns when the index build completes or fails.

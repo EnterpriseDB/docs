@@ -17,6 +17,10 @@ const products = {
   barman: { name: "Barman" },
   "EDB Advanced Storage Pack": { name: "EDB Advanced Storage Pack" },
   edb_plus: { name: "EDB*Plus" },
+  "edb-postgres-ai": {
+    name: "EDB Postgres AI",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
   "EDB LDAP Sync": { name: "EDB LDAP Sync" },
   epas: {

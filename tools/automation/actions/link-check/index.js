@@ -16,6 +16,7 @@ import remarkMdxEmbeddedHast from "./lib/mdast-embedded-hast.mjs";
 import mdast2string from "mdast-util-to-string";
 import GithubSlugger from "github-slugger";
 import toVfile from "to-vfile";
+import { url } from "inspector";
 const { read, write } = toVfile;
 
 const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];

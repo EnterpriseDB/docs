@@ -1,6 +1,7 @@
 require("dotenv").config({
   path: `.env.${process.env.NODE_ENV}`,
 });
+const path = require("path");
 const gracefulFs = require("graceful-fs");
 
 const algoliaTransformer = require("./src/constants/algolia-indexing.js");
@@ -28,6 +29,10 @@ const sourceToPluginConfig = {
     path: "product_docs/docs/postgres_distributed_for_kubernetes",
   },
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
+  "edb-postgres-ai": {
+    name: "edb-postgres-ai",
+    path: "product_docs/docs/edb-postgres-ai",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
@@ -317,6 +322,13 @@ module.exports = {
         // If you do not provide a crossOrigin option, it will skip CORS for manifest.
         // Any invalid keyword or empty string defaults to `anonymous`
         crossOrigin: `use-credentials`,
+      },
+    },
+    {
+      resolve: "gatsby-plugin-root-import",
+      options: {
+        unversioned: path.join(__dirname, "advocacy_docs"),
+        versioned: path.join(__dirname, "product_docs", "docs"),
       },
     },
     {

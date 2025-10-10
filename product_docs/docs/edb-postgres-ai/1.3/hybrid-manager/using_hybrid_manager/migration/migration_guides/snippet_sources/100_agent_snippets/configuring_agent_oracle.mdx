@@ -1,0 +1,94 @@
+---
+title: Configuring the HM Agent to register your Oracle database
+navTitle: Configuring 
+description: Configure the HM Agent to connect to your Oracle database.
+---
+
+Configure the HM Agent (deployed as `beacon-agent`) to allow it to connect to your Hybrid Manager and fetch monitoring data from the source database.
+
+## Prerequisites
+
+-   You created a machine user and access key with the `estate ingester` role assigned to it. 
+-   You need the project ID for the project you are using for this migration. To obtain the ID, navigate to your project and fetch the ID from the URL displayed in the browser.
+
+## Set environment variables
+
+1.  Ensure that following environment variables are available in your configuration.
+    These environment variables must be permanently available as they are required each time the HM Agent starts.
+
+    !!!info
+       It is possible to set these values directly in the config files, but as they contain secrets it is generally advisable to handle them as environment variables managed through a secrets manager.
+
+    - Set `BEACON_AGENT_ACCESS_KEY` to the access key you obtained from the console when you created a machine user. To set this value for a terminal session:
+
+      ```shell
+      export BEACON_AGENT_ACCESS_KEY=<access_key>
+      ```
+
+    - Set the `DSN` environment variable to the Data Source Name (DSN) of the database you want to migrate. The `<username>` and `<password>` correspond to the user you granted permissions when preparing the database. To set this value for a terminal session:
+
+      ```shell
+      export DSN="oracle://<username>:<password>@localhost:8999/<oracle_db_name>"
+      ```
+
+      For example: 
+
+      ```shell
+      export DSN="oracle://oracle:oracle@localhost:1521/ORCLPDB1"
+      ```
+
+      If you plan to connect to more than one database with then HM Agent, you can specify multiple such variables, for example `DSN1`, `DSN2`. 
+      You can use any name you wish for these variables because they will be referenced by name in the configuration file.
+
+## Prepare a configuration file
+
+1.  Create a Beacon configuration directory in your home directory:
+
+    ```shell
+    mkdir ${HOME}/.beacon
+    ```
+
+    !!!Note
+    If the location specified above is not convenient, you also use either:
+
+    - `/etc/beacon`
+    - The directory from which you execute any `beacon-agent` command. 
+    
+    The HM Agent looks for its configuration file starting with `/etc/beacon`, then `${HOME}/.beacon`. As a final fallback, it searches the directory from which it's executed.
+    !!!
+
+1.  Inside this directory, create a new file `beacon_agent.yaml`:
+
+    ```shell
+    touch .beacon/beacon_agent.yaml
+    ```
+
+1.  Copy and paste the following template into the new file. This template is designed to enable the HM console to generate a migration assessment, as well as ingest all schemas for assessment and import. To control schema ingestion (for example, to exclude or include schemas), see [Controlling schema ingestion](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/schema_ingestion/).
+
+    ```yaml
+    ---
+    agent:
+      access_key: $BEACON_AGENT_ACCESS_KEY
+      beacon_server: <beacon-server>:9443
+      project_id: <project-id>
+      providers:
+        - onprem
+      root_ca_path: ""
+      schema_providers:
+        - "onprem-schema"
+    provider:
+      onprem:
+        databases:
+          - resource_id: "<resource_id>"
+            dsn: $DSN
+            schema:
+              enabled: true
+              poll_interval: 15s 
+            tags:
+              - "<tag_names>"
+    ```
+
+1.  Edit the placeholders denoted by `<>` with appropriate values.
+    Refer to [Parameter reference](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/#parameter-reference) for explanations of each parameter and how to obtain the appropriate value.
+
+The HM Agent is now configured, you may proceed to running or configuring the HM Agent to run as a service.
