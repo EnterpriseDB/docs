@@ -336,8 +336,8 @@ GRANT SELECT ON <SCHEMA_NAME>.<TABLE_NAME> TO <MIGRATION_USER>
 Where:
 
 - `<SCHEMA_NAME>` is the name of the schema that contains the table you want to migrate.
-- `<TABLE_NAME>` is the name of the specific table you want to migrate.
-- `<MIGRATION_USER>` is the name of the common user you created in the previous step.
+- `<TABLE_NAME>` is the name of an individual table to migrate and is case-sensitive.
+- `<MIGRATION_USER>` is the name of the user being granted SELECT access on the table for CDC migration purposes.
 
 !!! Note
     For Oracle, the terms schema and user are interchangeable. Be sure to use the correct schema name to prevent migration errors.
@@ -411,14 +411,81 @@ These commands will create four new 8GB Redo Log groups, each with a single Redo
 
 ### Step 7: Validate Configuration
 
+Now that you have configured the source database, validate your Oracle configuration. For this, you may use the configuration validation script packaged with the DMS Agent.
+
+#### Prerequisites
+
+1.  Ensure the machine from where you are running the DMS Agent has Java/OpenJDK 17 or later installed.
+
+1.  [Install the EDB DMS Agent](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/installing_agent/).
+
+1.  Navigate to the EDB DMS Agent folder in `/opt/cdcagent/`.
+
+#### Run the config validation script
+
 The EDB DMS Reader installation (packaged as `cdcreader`) comes with a helper script that validates the Oracle configuration and helps you identify any issues. After configuring the database, we recommend running the script to ensure all checks pass.
 
-Run the script without arguments to print the usage:
+1.  Create an array that contains the name of all the tables that need to be migrated in &lt;schema_name>.&lt;table_name> format. In this example:
 
-```shell
-# Run this command if you're using cdcreader:
-/opt/cdcreader/oracleConfigValidation.sh
-```
+    ```bash
+    arr=(test1.table1 test1.table2 test1.table3 test1.table4)
+    ```
+
+1.  Run the script with the necessary parameters. In this example:
+
+    ```bash
+    ODB_SYSDBA_USERNAME=sys ODB_SYSDBA_PASSWORD=password ODB_HOST=localhost ODB_PORT=5432 ORACLE_SID=postgres ODB_DBZ_USERNAME=debezium ODB_DBZ_PASSWORD=dbz LOG_MINER_TBS_NAME=LOGMINER_TBS ./oracleConfigValidation.sh "${arr[@]}"
+    ```
+
+    You should get a response similar to the following:
+
+    ```shell
+    *** [Transporter] - Validate system user connectivity
+    [Pass] Provide username and password of system user can connect to database.
+    
+     *** [Transporter] - Validate debezium user connectivity
+    [Pass] Provide username and password of debezium user can connect to database.
+    
+     *** [Transporter] - Validate Archive Log mode
+    [Pass] Database log mode is Archive Mode.
+    
+     *** [Transporter] - Validate fast recovery area parameters
+    [Pass] Recovery area path was set.
+    [Pass] Recovery area size limit meets requirements.
+    [Pass] Recovery area remaining size meets requirements.
+    
+     *** [Transporter] - Validate if database supplemental logging is enabled
+    [Pass] Supplemental logging check for database is passed.
+    
+     *** [Transporter] - Validate if table supplemental logging is enabled
+    [Pass] All source tables enable supplemental logging.
+    
+     *** [Transporter] - Validate redo log count&size
+    [Pass] Redo log count meets the requirements.
+    [Pass] Redo log size meets the requirements.  
+    [Pass] Redo logs are all active.
+    
+     *** [Transporter] - Validate if tablespace for migration with Limited Privileges were created
+    [Pass] LOGMINER_TBS tablespace has enough datafiles.
+    [Pass] LogMiner DataFile Size meet the requirements.
+    [Pass] LogMiner DataFile Max Size meet the requirements.
+    [Pass] LogMiner DataFile are auto-extendable.
+    
+     *** [Transporter] - Validate if user for migration with Limited Privileges were created
+    Oracle version is 19, which is 12c or newer.
+    [Pass] This user has all sys privileges that migration needs.
+    [Pass] This user has all role privileges that migration needs.
+    [Pass] This user has all select privilege on specific tables that migration needs.
+    [Pass] This user has all execute privilege on specific tables that migration needs.
+    
+     *** [Transporter] - Validate if user for migration with LOGMINER_TBS tablespace
+    [Pass] User for migration use LOGMINER_TBS tablespace.
+    ```
+    
+    Your database is ready for CDC migration.
+
+!!!note 
+    Address any `[Failed]` or `[Suggestion]` statuses by modifying the source database settings as recommended in this page. `[Failed]` checks are blocking issues and must be resolved before the DMS can execute the data migration. `[Suggestion]` checks will allow migration but may negatively affect performance if left unaddressed.
 
 ## SSL configuration
 
