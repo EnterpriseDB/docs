@@ -7,42 +7,98 @@ description: Learn how to configure the beacon agent for monitoring with Hybrid 
 Configure the agent (deployed as `beacon-agent`) to allow it to connect to your Hybrid Manager and fetch monitoring data from the source database.
 
 !!!info
-
-   You can also use the Agent to [assess your Oracle database for migration](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/).
+    You can use the agent for different purposes. If you don't want to use your agent for monitoring, but to assess your Oracle database for migration, leave this page and see [Migrating Oracle databases](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/).
 
 ## Prerequisites
 
--   You created a machine user and access key with the `estate ingester` role assigned to it. See [Creating a machine user](../create_machine_user.mdx).
--   You need the project ID for the project where you want to monitor the database. To obtain the ID, navigate to your project and fetch the ID from the URL displayed in the browser.
+-   You created a [machine user and access key with the `estate ingester` role](../create_machine_user) assigned to it.
+
+-   Request the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll have to look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the HM Agent.
+
+-   The HM Agent requires a trusted connection to the `beacon_server` service in your HM instance. If the server running the Agent doesn't inherently trust the HM's TLS certificate (managed by your organization's security infrastructure), request the administrator or installer of your HM instance to provide the file with the certificate. Store this certificate on the machine running the HM Agent. You will need to provide the directory path to this certificate later to configure the HM Agent.
+
+    See [What is the root certificate?](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/#what-is-the-root-certificate-ca) for more information about the certificate and instructions for administrators to download it.
 
 ## Set environment variables
 
+Ensure that following environment variables are available in your configuration.
+These environment variables must be permanently available as they are required each time the agent starts.
+
+!!!info
+It is possible to set these values directly in the config files, but as they contain secrets it is generally advisable to handle them as environment variables managed through a secrets manager.
+!!!
+
 1.  Change to the [OS user you previously created](../agent_os_user.mdx) to perform the agent configuration.
 
-2.  Ensure that following environment variables are available in your configuration.
-    These environment variables must be permanently available as they are required each time the agent starts.
+1.  Set `BEACON_AGENT_ACCESS_KEY` to the access key you obtained from the HM console when you [created a machine user](../create_machine_user.mdx).
 
-    !!!info
+    ```shell
+    export BEACON_AGENT_ACCESS_KEY=<access_key>
+    ```
 
-       It is possible to set these values directly in the config files, but as they contain secrets it is generally advisable to handle them as environment variables managed through a secrets manager.
+1.  Set the administrator-provided hostname (URL) for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) as an environment variable, so the HM Agent can access the correct service endpoint.
 
-    -   Set `BEACON_AGENT_ACCESS_KEY` to the access key you obtained from the HM console when you [created a machine user](../create_machine_user.mdx).
+    To export it as an environment variable for this terminal session:
 
-    -   Set the `DSN` environment variable to the Data Source Name (DSN) of the database you want to monitor. Use the following format:
+    ```shell
+    export BEACON_SERVICE_DOMAIN_NAME=<beacon_service_domain_name>
+    ```
 
-        ```
-        export DSN="<postgresql/oracle>://<user>:<password>@<host>:<port>/<database_name>"
-        ```
+1.  You need the project ID for the project you are using for monitoring. From the HM console, navigate to your project. In the URL displayed in the browser, look for the ID with the `prj_` prefix. For example, if your browser displays this URL:
 
-        When connecting to a Postgres database, you must include `?sslmode=disable` to ensure the connection succeeds. For example, to connect as user `postgres` authenticated with password `password` to a database `postgres` on port 5432 you would specify:
+    ```shell
+    https://portal.example.com/projects/prj_5Wuqyl5JtpvxjiYC/clusters
+    ```
 
-        ```
-        export DSN="postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
-        ```
+    The project ID would be `prj_5Wuqyl5JtpvxjiYC`.
 
-        !!!note
-        The `?sslmode=disable` parameter instructs the Agent to use an unencrypted connection. This bypasses the default `require` or `prefer` database requirements for SSL certificates, enabling a connection with Hybrid Manager.
-        !!!
+    Export your project ID as an environment variable for this terminal session, so the HM Agent can access the project you are using for monitoring:
+
+    ```shell
+    export PROJECT_ID=<HM_console_project_ID>
+    ```
+
+1.  Set the `DSN` environment variable to the Data Source Name (DSN) of the database you want to monitor. Use the following format:
+
+    ```
+    export DSN="<postgresql/oracle>://<user>:<password>@<host>:<port>/<database_name>"
+    ```
+
+    Here are a couple of examples:
+
+    <TabContainer syncKey="dsn_examples">
+    <Tab title="Postgres (SSL on)">
+
+    To connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` you would specify:
+
+    ```
+    export DSN="postgresql://postgres:password@localhost:5432/postgres"
+    ```
+
+    </Tab>
+
+    <Tab title="Postgres (SSL off)">
+
+    If your Postgres database is configured with SSL disabled (or if you require an unencrypted connection), append `?sslmode=disable` to the DSN string.
+    
+    For example, to connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL disabled, you would specify:
+
+    ```
+    export DSN="postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
+    ```
+
+    </Tab>
+
+    <Tab title="Special characters in passwords">
+
+    The Agent only supports ASCII characters in user passwords. If your Postgres or Oracle user's password contains special, non-ASCII characters, use the URL-encoded version of the password in the DSN string (or password environment variable). For example, if your password is `pa$$word`, you must encode the `$$` characters as `%24%24`:
+
+    ```
+    export DSN="postgresql://postgres:pa%24%24word@localhost:5432/postgres?sslmode=disable"
+    ```
+
+    </Tab>
+    </TabContainer>
 
     If you plan to connect to more than one database with this agent, you can specify multiple such variables, for example `DSN1`, `DSN2`. 
     You can use any name you wish for these variables because they will be referenced by name in the configuration file.
@@ -77,8 +133,8 @@ Configure the agent (deployed as `beacon-agent`) to allow it to connect to your 
     ---
     agent:
       access_key: $BEACON_AGENT_ACCESS_KEY
-      beacon_server: <beacon-server>:9443
-      project_id: <project-id>
+      beacon_server: $BEACON_SERVICE_DOMAIN_NAME:9443
+      project_id: $PROJECT_ID
       providers:
         - onprem
       schema_providers:
