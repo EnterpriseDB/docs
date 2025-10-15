@@ -477,6 +477,10 @@ const Page = () => {
               EDB Advanced Storage Pack
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/apache_age/">
+              Apache AGE
+            </BannerWideLink>
+
             <BannerWideLink to="/pg_extensions/pg_tuner">
               EDB Postgres Tuner
             </BannerWideLink>
