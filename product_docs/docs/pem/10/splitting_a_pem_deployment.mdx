@@ -2,14 +2,14 @@
 title: "Splitting an existing PEM server"
 ---
 
-This document provides a procedure for splitting an existing PEM installation into two installations.
-This is useful if your original PEM instance has become overloaded, and you wish to split the load over two servers.
-It can also be useful if you are restructuring your database estate and wish to take a segmented approach to monitoring.
+You can split an existing PEM installation into two installations.
+Splitting is useful if your original PEM instance has become overloaded and you want to split the load over two servers.
+It can also be useful if you're restructuring your database estate and want to take a segmented approach to monitoring.
 
-You can also use this procedure to split an existing PEM instance into three or more instances by applying the instructions to each new instance.
+You can split an existing PEM instance into three or more instances by splitting each new instance. You can also set up a new PEM instance and move a portion of the monitored servers and agents to the new instance.
 
-Follow the steps below to set up a new PEM instance and move a portion of the monitored servers and agents to the new instance.
-In this guide, we show example commands for PostgreSQL 16. Modify the service name and file paths as appropriate to your environment.
+!!! Note
+    The example commands are for PostgreSQL 16. Modify the service name and file paths as appropriate for your environment.
 
 ## Install PEM on the new host
 
@@ -25,7 +25,7 @@ Ensure the versions of Postgres and PEM in your new environment match the versio
 
 On the new PEM host:
 
-1.  Stop both the Postgres and PEM agent services:
+1.  Stop the Postgres and PEM agent services:
     
     ```shell
     systemctl stop postgresql-16
@@ -48,12 +48,12 @@ On the new PEM host:
 ## Update the pg_hba.conf file on the new PEM instance
 
 At this point, the `pg_hba.conf` file on the new PEM instance is a
-copy of that on the existing PEM instance. If any entries reference the
-external IP of the existing PEM server (e.g., `host ... <old_ip> ...`),
+copy of the one on the existing PEM instance. If any entries reference the
+external IP of the existing PEM server (for example, `host ... <old_ip> ...`),
 modify them to use the new PEM server IP address or
 `localhost`/`127.0.0.1`, as appropriate.
 
-You may now start the Postgres and PEM agent services, although you may need to restart them again in subsequent steps.
+You can now start the Postgres and PEM agent services. (You might need to restart them again later.)
     
     ```shell
     systemctl start postgresql-16
@@ -62,52 +62,51 @@ You may now start the Postgres and PEM agent services, although you may need to 
 
 ## Configure SSL on the new server and reconfigure PEM agents
 
-This step is different depending on how you wish to manage SSL certificates.
-We describe four different approaches below.
-Select only the one that meets your needs.
+How you configure SSL depends on how you want to manage SSL certificates.
+From the four approaches, select the one that meets your needs.
 
-All of these scenarios are viable if you are using unique agent users, or a single common agent user.
+All of these scenarios are viable if you're using unique agent users or a single common agent user.
 
 !!!Note External certificate authorities
 If you exclusively use SSL certificates provided or signed by an external certificate authority, go to [Approach 4](#approach-4--use-only-certificates-from-an-external-ca).
 !!!
 
 !!!Note Web server certificates
-This section is concerned with configuring SSL for connections to Postgres.
-For the PEM web application, a new self-signed certificate will have been generated during server configuration.
-You can replace the web server certificate following [the documentation](certificates/#web-server-certificates).
+These instructions are for configuring SSL for connections to Postgres.
+For the PEM web application, generate a new self-signed certificate during server configuration.
+You can replace the web server certificate by following [the documentation](certificates/#web-server-certificates).
 !!!
 
-### Approach 1 – Reuse certificates from the existing PEM Instance
+### Approach 1 – Reuse certificates from the existing PEM instance
 
-Use this approach if you are content to use the same server certificates for both PEM instances.
-This approach requires no modification of any SSL settings or files.
+Use this approach if you want to use the same server certificates for both PEM instances.
+This approach requires no changes to any SSL settings or files.
 
 !!! Note
-In general we recommend Approach 2 over Approach 1 because it ensures each PEM server has a unique identity.
-This is good practice and is required if you wish to use stricter client SSL modes such as `verify-full`.
+In general, we recommend Approach 2 over Approach 1 because it ensures each PEM server has a unique identity.
+This is good practice and is required if you want to use stricter client SSL modes such as `verify-full`.
 !!! 
 
-1.  Copy the PEM agent certificates (by default, these are located in `/root/.pem` on Linux and `C:\Users\\AppData\Roaming\pem` on Windows) from the old PEM instance to the new PEM instance.
+1.  Copy the PEM agent certificates from the old PEM instance to the new PEM instance. (By default, these are located in `/root/.pem` on Linux and `C:\Users\\AppData\Roaming\pem` on Windows.)
 
-2.  Restart Postgres and PEM Agent services on the new system.
+2.  Restart Postgres and the PEM agent services on the new system.
 
-3.  For all agents you wish to migrate to the new PEM instance, update the `pemhost` parameter in the `agent.cfg` file of all agents to the address of the new PEM instance.
+3.  For all agents you want to migrate to the new PEM instance, update the `pemhost` parameter in the `agent.cfg` file of all agents to the address of the new PEM instance.
 
 4.  Restart the affected PEM agents.
 
 ### Approach 2 – Use different server certificates but the same CA
 
-Use this approach if you wish to have different server certificates on
-the two PEM servers and are content to allow both PEM servers to act as
-a single certificate authority. 
+Use this approach if you want to have different server certificates on
+the two PEM servers and want to allow both PEM servers to act as
+a single certificate authority.
 
 Using this approach, agent certificates issued by either PEM server will
 be signed identically and trusted by both servers. This is convenient as
 it avoids the need to replace any agent certificates while still
 ensuring the servers have distinct identities.
 
-1.  Backup the existing `server.crt` and `server.key` located in the Postgres data directory.
+1.  Back up the existing `server.crt` and `server.key` located in the Postgres data directory.
 
 2.  Generate a new `server.key` and CSR for the new PEM server.
 
@@ -116,7 +115,7 @@ ensuring the servers have distinct identities.
     openssl req -new -key server.key -out server.csr -subj '/C=your_country/ST=your_state/L=your_locality/O=your_org/CN=common_name_for_server'
     
     ```
-3.  Sign the CSR and generate a server certificate with your existing CA certificate.
+3.  Sign the CSR, and generate a server certificate with your existing CA certificate.
 
     ```shell
     openssl x509 -req -days 365 -in server.csr -CA ca_certificate.crt -CAkey ca_key.key -CAcreateserial -out server.crt
@@ -129,26 +128,26 @@ ensuring the servers have distinct identities.
     chmod 600 /var/lib/pgsql/16/data/server.crt
     ```
 
-5.  Restart Postgres and PEM Agent services on the new system.
+5.  Restart Postgres and PEM agent services on the new system.
 
-6.  For all agents you wish to migrate to the new PEM instance, update the `pemhost` parameter in the `agent.cfg` file of all agents to the address of the new PEM instance.
+6.  For all agents you want to migrate to the new PEM instance, update the `pemhost` parameter in the `agent.cfg` file of all agents to the address of the new PEM instance.
 
 7.  Restart the affected PEM agents.
 
 ### Approach 3 – Replace all server and agent certificates
 
-Use this approach if you wish to have completely distinct server
-certificates and certificate authorities for the two servers. Under this
-approach, a given agent will only be able to authenticate with its
-'parent' PEM server. The two PEM instances will have no SSL
+Use this approach if you want to have completely distinct server
+certificates and certificate authorities for the two servers. Using this
+approach, a given agent can authenticate only with its
+"parent" PEM server. The two PEM instances will have no SSL
 configuration in common.
 
 !!!Important
 This approach requires generating new client certificates for every agent.
-Unless you have orchestration tooling capable of doing this, or are using a [common agent user](certificates/index.mdx#generate-a-common-agent-certificate-and-key-pair) this can be a significant effort.
+Unless you have orchestration tooling capable of doing this or are using a [common agent user](certificates/index.mdx#generate-a-common-agent-certificate-and-key-pair), this can be a significant effort.
 !!!
 
-1.  Follow the instructions for [Regenerating the server SSL certificates](certificates/replacing_ssl_certificates.mdx) to regenerate the following files.
+1.  Follow the instructions for [regenerating the server SSL certificates](certificates/replacing_ssl_certificates.mdx) to regenerate the following files:
     - `server.crt`
     - `server.key`
     - `root.crt`
@@ -156,9 +155,9 @@ Unless you have orchestration tooling capable of doing this, or are using a [com
     - `ca_certificate.crt`
     - `ca_key.key`
 
-5.  Restart Postgres and PEM Agent services on the new system.
+5.  Restart Postgres and PEM agent services on the new system.
 
-6.  For all agents you wish to migrate to the new PEM instance, update the `pemhost` parameter in the `agent.cfg` file of all agents to the address of the new PEM instance.
+6.  For all agents you want to migrate to the new PEM instance, update the `pemhost` parameter in the `agent.cfg` file of all agents to the address of the new PEM instance.
 
 7.  [Regenerate agent certificates](certificates/regenerating_agent_certificates/) for each agent user and copy the new certificates and keys into place. 
     You must also regenerate the certificate and key and for the agent on the PEM server.
@@ -171,10 +170,10 @@ Use this approach if you exclusively use SSL certificates provided or
 signed by an external certificate authority. 
 
 Because your existing agent certificates were issued by a trusted
-authority which is included in the Postgres server CA cert, both PEM
-servers will be able to validate all your agent certificates, meaning
-all agents are already able to connect to either PEM server. You simply
-need to request a new server certificate for the new PEM server.
+authority that's included in the Postgres server CA cert, both PEM
+servers can validate all your agent certificates, meaning
+all agents are already able to connect to either PEM server. You
+need to request a new server certificate only for the new PEM server.
 
 1.  Obtain a new server certificate and key from your provider, supplying the details of the new PEM instance.
 
@@ -186,11 +185,11 @@ need to request a new server certificate for the new PEM server.
 
 You now have two PEM instances, with your existing agents split between them.
 However, both instances contain records for all agents.
-Clean up the PEM instances to reduce wasted resources and false alerts by marking the agents that are not connected to each instance as inactive.
+Clean up the PEM instances to reduce wasted resources and false alerts by marking the agents that aren't connected to each instance as inactive.
 
-In the PEM Web Application, delete the agent and its monitored servers by right-clicking on them in Object Explorer and selecting **Remove**.
+In the PEM web application, delete the agent and its monitored servers. In Object Explorer, right-click each one and select **Remove**.
 
-Alternatively, you can perform this action through SQL. Execute the following on the `pem` database.
+Alternatively, you can perform this action through SQL. Execute the following on the `pem` database:
 
 ```sql
 UPDATE pem.agent SET active = false WHERE id in (list_of_ids);
@@ -203,4 +202,4 @@ Open the PEM monitoring dashboard of the new instance.
 
 - Confirm that only the required servers and agents are visible.
 - Verify that these servers/agents show an active status and are sending metrics.
-- Check the agent logs for any connection or authentication errors. 
+- Check the agent logs for any connection or authentication errors.
