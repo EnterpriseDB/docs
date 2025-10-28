@@ -1,79 +1,92 @@
 ---
-title: Configuring the Agent
-navTitle: Configure the Beacon Agent
-description: Learn how to configure the beacon agent for monitoring with Hybrid Manager.
+title: Configuring the HM agent
+navTitle: Configure the HM agent
+description: Learn how to configure the agent for monitoring with Hybrid Manager.
 ---
 
 Configure the agent (deployed as `beacon-agent`) to allow it to connect to your Hybrid Manager and fetch monitoring data from the source database.
 
 !!!info
-    You can use the agent for different purposes. If you don't want to use your agent for monitoring, but to assess your Oracle database for migration, leave this page and see [Migrating Oracle databases](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/).
+You can also use the agent to [assess your Oracle database for migration](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed).
+!!!
 
 ## Prerequisites
 
--   You created a machine user and access key with the `estate ingester` role assigned to it. See [Creating a machine user](../create_machine_user.mdx).
+You [created a machine user and access key with the `estate ingester` role](../create_machine_user) assigned to it. 
 
--   You need the project ID for the project where you want to monitor the database. To obtain the ID, navigate to your project and fetch the ID from the URL displayed in the browser.
+Store the access key in an environment variable named `$BEACON_AGENT_ACCESS_KEY` so the HM agent can access it later.
 
-## Set environment variables
+## Obtain Hybrid Manager connection parameters
 
-1.  Change to the [OS user you previously created](../agent_os_user.mdx) to perform the agent configuration.
+The HM agent requires specific configuration values that are set during the HM installation. You cannot access these yourself. Contact the administrator or installer of your HM instance to request the following values:
 
-2.  Ensure that following environment variables are available in your configuration.
-    These environment variables must be permanently available as they are required each time the agent starts.
+-    **Beacon server hostname**: When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Request the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll have to look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the HM agent.
 
-    !!!info
-    It is possible to set these values directly in the config files, but as they contain secrets it is generally advisable to handle them as environment variables managed through a secrets manager.
-    !!!
+-    **Root certificate path (if required)**:The HM agent requires a trusted connection to the `beacon_server` service in your HM instance. If the server running the agent doesn't inherently trust the HM's TLS certificate (managed by your organization's security infrastructure), request the administrator or installer of your HM instance to provide the file with the certificate. Store this certificate on the machine running the HM agent. You will need to provide the directory path to this certificate later to configure the HM agent.
 
-    -   Set `BEACON_AGENT_ACCESS_KEY` to the access key you obtained from the HM console when you [created a machine user](../create_machine_user.mdx).
+See [Administrative tasks](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) for more information about the `beacon_server` and root certificate.
 
-    -   Set the `DSN` environment variable to the Data Source Name (DSN) of the database you want to monitor. Use the following format:
+## Define source database connection parameters 
 
-        ```shell
-        export DSN="<postgresql/oracle>://<user>:<password>@<host>:<port>/<database_name>"
-        ```
+The DSN is the connection string the HM agent uses to connect to your source database. Set the `databases.dsn` parameter using an environment variable `$DSN` (recommended) or direct URL format.
 
-        Here are a couple of examples:
+A DSN string for connections to databases must use this format:
 
-        <TabContainer syncKey="dsn_examples">
-        <Tab title="Postgres (SSL on)">
+```shell
+DSN="<postgresql/oracle>://<user>:<password>@<host>:<port>/<database_name>"
+```
 
-        In most production environments, SSL is enabled to ensure network traffic is encrypted.
+Where: 
 
-        To connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL enabled, you would specify:
+- `<postgresql/oracle>` is the type of database you are registering, either `postgresql` for all types of Postgres databases (EDB Postgres, AWS RDS for PostgreSQL, etc.) or `oracle` for Oracle databases.
+- The `<username>` and `<password>` correspond to the user you granted permissions when preparing the database.
+- `<host>` is the hostname of the instance where your database is running. 
+- `<port>` ist the port number of the database you want to fetch data from.
+- `<database_name>` is the name of the database you want to fetch data from. 
 
-        ```shell
-        export DSN="postgresql://postgres:password@localhost:5432/postgres"
-        ```
+Examples:
 
-        </Tab>
+<TabContainer syncKey="dsn_examples">
+<Tab title="Postgres (SSL on)">
 
-        <Tab title="Postgres (SSL off)">
+In most production environments, SSL is enabled to ensure network traffic is encrypted.
 
-        If your Postgres database is configured with SSL disabled, or if you require an unencrypted connection, append `?sslmode=disable` to the DSN string.
+To connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL enabled, you would specify:
+
+```shell
+DSN="postgresql://postgres:password@localhost:5432/postgres"
+```
+
+</Tab>
+
+<Tab title="Postgres (SSL off)">
+
+If your Postgres database is configured with SSL disabled, or if you require an unencrypted connection, append `?sslmode=disable` to the DSN string.
     
-        For example, to connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL disabled, you would specify:
+For example, to connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL disabled, you would specify:
 
-        ```shell
-        export DSN="postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
-        ```
+```shell
+DSN="postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
+```
 
-        </Tab>
-        </TabContainer>
+</Tab>
+</TabContainer>
 
-        !!!note Special characters in passwords
-        If your Postgres or Oracle user's password contains special, non-ASCII characters, use the URL-encoded version of the password in the DSN string (or password environment variable). For example, if your password is `pa$$word`, you must encode the `$$` characters as `%24%24`:
+!!!note Special characters in passwords
+If your Postgres or Oracle user's password contains special, non-ASCII characters, use the URL-encoded version of the password in the DSN string (or password environment variable). For example, if your password is `pa$$word`, you must encode the `$$` characters as `%24%24`:
 
-        ```shell
-        export DSN="postgresql://postgres:pa%24%24word@localhost:5432/postgres?sslmode=disable"
-        ```
-        !!!
+```shell
+DSN="postgresql://postgres:pa%24%24word@localhost:5432/postgres?sslmode=disable"
+```
+    
+!!!
 
-        If you plan to connect to more than one database with this agent, you can specify multiple such variables, for example `DSN1`, `DSN2`. 
-        You can use any name you wish for these variables because they will be referenced by name in the configuration file.
+If you plan to connect to more than one database with this agent, you can specify multiple such variables, for example `DSN1`, `DSN2`. 
+You can use any name you wish for these variables because they will be referenced by name in the configuration file.
 
 ## Prepare a configuration file
+
+1.  Change to the [OS user you previously created](../agent_os_user.mdx) to perform the agent configuration.
 
 1.  Create a configuration directory in your home directory:
 
@@ -97,14 +110,16 @@ Configure the agent (deployed as `beacon-agent`) to allow it to connect to your 
     touch .beacon/beacon_agent.yaml
     ```
 
-3.  Copy and paste the following template into the new file. This template is designed to enable all monitoring options, and generate a migration assessment:
+3.  Copy and paste the following template into the new file. This template is designed to enable all monitoring options, and generate a migration assessment.
+
+    In this template, `$BEACON_AGENT_ACCESS_KEY` and `$DSN` are the environment variables you configured previously. Replace all `< >` placeholders in the template following the [Parameter reference](../configure_agent.mdx#parameter-reference).
 
     ```yaml
     ---
     agent:
       access_key: $BEACON_AGENT_ACCESS_KEY
-      beacon_server: <beacon-server>:9443
-      project_id: <project-id>
+      beacon_server: <beacon_server>:9443
+      project_id: <project_id>
       providers:
         - onprem
       schema_providers:
@@ -136,6 +151,8 @@ Configure the agent (deployed as `beacon-agent`) to allow it to connect to your 
           - resource_id: <resource_id>
             disable_host_association: false
             dsn: $DSN
+            tags:
+              - "<tag_names>"
             logs:
               disabled: false
             metrics:
@@ -172,12 +189,21 @@ Configure the agent (deployed as `beacon-agent`) to allow it to connect to your 
       location_id: <location-id>
     ```
 
-4.  Edit the placeholders denoted by `<>` with appropriate values.
-    Refer to [Parameter reference](../configure_agent.mdx#parameter-reference) for explanations of each parameter and how to obtain the appropriate value.
+1.  Save the file. 
 
-## Test the Agent locally
+You have now configured the HM agent, you can proceed to running it or configuring it to run as a service.
 
-To perform an initial test of the Agent, you can configure it to send the data—usually sent to Hybrid Manager—to your terminal (standard output) instead. This helps you quickly verify whether the Agent can successfully collect data from the source database and lets you preview the gathered information.
+## Recommendations for setting environment variables
+
+Although it's possible to set all parameters directly in the config file, we recommend handling sensitive data, such as `$BEACON_AGENT_ACCESS_KEY` or `$DSN` as environment variables managed through a secrets manager. This strategy prevents sensitive credentials from being stored in plaintext configuration files. If you use environment variables, you must ensure they are available to the agent while it is running.
+
+Consult your organization's IT department on the safest approach for production environments.
+
+For short-lived migrations, or testing and demo purposes, you can use the `export` command in an active terminal session.
+
+## Test the agent locally
+
+To perform an initial test of the agent, you can configure it to send the data—usually sent to Hybrid Manager—to your terminal (standard output) instead. This helps you quickly verify whether the agent can successfully collect data from the source database and lets you preview the gathered information.
 
 You can run the agent in standard output mode by modifying the `beacon_agent.yaml` file and setting the `"agent.beacon_server"` value to `"stdout"`:
 
@@ -230,7 +256,7 @@ agent:
 
 ## Validate the configuration file
 
-Next, you can validate whether the Agent can connect to the Hybrid Manager using the specified credentials by making a test connection to the Hybrid Manager and printing a summary of your configuration.
+Next, you can validate whether the agent can connect to the Hybrid Manager using the specified credentials by making a test connection to the Hybrid Manager and printing a summary of your configuration.
 
 ```shell
 beacon-agent --config 
@@ -254,37 +280,37 @@ If any error are shown in the output, it must be resolved before proceeding.
 
 This section contains additional information to help you understand and edit the agent's configuration file.
 
-| YAML agent settings                  | Placeholder            | Guidelines                                                                                                                                                                                                      |
-|--------------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `agent.access_key`                   | N/A                    | Access key you obtained from the HM console when you [created a machine user](../create_machine_user.mdx).                                                                                                      |
-| `agent.root_ca_path`                 | N/A                    | If required, obtain the root certificate from an administrator and store it locally. Then, set this value to the path where you stored it. See [Administrative tasks](../admin_tasks.mdx) for more information. |
-| `agent.schema_providers`             | N/A                    | Set to `- "onprem-schema"` to enable schema ingestion and migration assessment capabilities. Remove this section if you don't want to allow schema information to be collected.                                 |
-| `general.metrics.push.root_ca_path`  | N/A                    | Set to the same value as `agent.root_ca_path`.                                                                                                                                                                  |
-| `agent.beacon_server`                | `<beacon-server>:9443` | Obtain the host URL of your beacon server from an administrator, the port is fixed as 9443. See [Administrative tasks](../admin_tasks.mdx) for more information.                                                |
-| `agent.beacon_dispatcher_server`     | `<beacon-server>:9443` | The same as `agent.beacon_server`.                                                                                                                                                                              |
-| `general.metrics.push.push_endpoint` | `<beacon-server>:9443` | The same as `agent.beacon_server`.                                                                                                                                                                              |
-| `agent.project_id`                   | `<project-id>`         | To obtain your project’s ID, go to the HM console, select **Projects**, and select your project. The ID is the identifier starting with “prj\_” in the URL of that page.                                        |
-| `general.metrics.usage.company_code` | `<company-code>`       | Your company code can be found on the [EDB Support Portal](https://techsupport.enterprisedb.com/company).                                                                                                       |
-| `dispatcher.location_id`             | `<location_id>`        | A unique identifier used by the Hybrid Manager for this agent/location. Consider setting this to the same value as `provider.onprem.host.resource_id` for convenience.                                          |
+| YAML agent settings                  | Placeholder                        | Guidelines                                                                                                                                                                                                                                                                                                                      |
+|--------------------------------------|------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `agent.access_key`                   | `$BEACON_AGENT_ACCESS_KEY`         | Access key you obtained from the HM console when you [created a machine user with the `estate ingester` role](../create_machine_user.mdx). After creating the key, you can store it as the environment variable `$BEACON_AGENT_ACCESS_KEY` for usage with the HM agent.                                                         |
+| `agent.root_ca_path`                 | N/A                                | Set to `""` if your organization has configured the machine where HM agent runs to trust HM's TLS certificate. Otherwise, obtain the root certificate from an administrator and store it locally. Then, set this value to the path where you stored it. See [Administrative tasks](../admin_tasks.mdx) for more information.    |
+| `agent.schema_providers`             | N/A                                | Set to `- "onprem-schema"` to enable schema ingestion and migration assessment capabilities. Remove this section if you don't want to allow schema information to be collected.                                                                                                                                                 |
+| `general.metrics.push.root_ca_path`  | N/A                                | Set to the same value as `agent.root_ca_path`.                                                                                                                                                                                                                                                                                  |
+| `agent.beacon_server`                | `<beacon_server>:9443` | Host URL that allows the agent to connect to the correct service endpoint. Obtain the host URL of your beacon server from an administrator, the port is fixed as 9443. See [Administrative tasks](../admin_tasks.mdx) for more information.                                                                                     |
+| `agent.beacon_dispatcher_server`     | `<beacon_server>:9443` | The same as `agent.beacon_server`.                                                                                                                                                                                                                                                                                              |
+| `general.metrics.push.push_endpoint` | `<beacon_server>:9443` | The same as `agent.beacon_server`.                                                                                                                                                                                                                                                                                              |
+| `agent.project_id`                   | `<project_id>`                     | To obtain your project’s ID, go to the HM console, select **Projects**, and select your project. Your browser displays a URL like `https://portal.example.com/projects/prj_5Wuqyl5JtpvxjiYC/clusters`. The project ID is the identifier starting with “prj\_” in the URL of that page. In this example: `prj_5Wuqyl5JtpvxjiYC`. |
+| `general.metrics.usage.company_code` | `<company-code>`                   | Your company code can be found on the [EDB Support Portal](https://techsupport.enterprisedb.com/company).                                                                                                                                                                                                                       |
+| `dispatcher.location_id`             | `<location_id>`                    | A unique identifier used by the Hybrid Manager for this agent/location. Consider setting this to the same value as `provider.onprem.host.resource_id` for convenience.                                                                                                                                                          |
 
 Settings relevant to the database configuration:
 
-| YAML database settings               | Placeholder     | Guidelines                                                                                                                                                                                                                                              |
-| ------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `databases.resource_id`              | `<resource-id>` | Assign an identifier to your database. This will link your database to an identifier. Encase in double quotes. Must be unique within the project.                                                                                                       |
-| `databases.dsn`                      | N/A             | Connection string or DSN that provides access to your remote database. <br/> * The DSN must follow the format: `<database_type>://<user>:<password>@<host>:<port>/<database_name>`. <br/> * The `database_type` can be postgresql or oracle.            |
-| `databases.poll_interval`            | N/A             | Specifies how often the Hybrid Manager checks polls the database for basic metadata. Provide the value in minutes (m) or seconds (s).                                                                                                                   |
-| `databases.tags`                     | N/A             | Assign tags to label the migration of that specific database. Encase in double quotes and introduce each tag with a dash.                                                                                                                               |
-| `databases.disable_host_association` | N/A             | Set to `true` to prevent this database being associated with the host on which the agent is running. For example, if the agent is running on a different server.                                                                                        |
-| `host.resource_id`                   | `<host-id>`     | Assign an identifier to the host on which the agent is running, by default this will be populated by the hostname detected during setup. This will link your host machine to an identifier. Encase in double quotes. Must be unique within the project. |
-| `host.metrics.disabled`              | N/A             | Set to `true` to disable the collection of host metrics from the host on which the agent is located.                                                                                                                                                    |
+| YAML database settings               | Placeholder     | Guidelines                                                                                                                                                                                                                                                              |
+|--------------------------------------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `databases.resource_id`              | `<resource-id>` | Assign a unique identifier to your database. Encase in double quotes. Reuse the same id when configuring the DMS agent for migrations. This consistency is essential for the DMS to correctly correlate the resource across both the HM agent and DMS agent components. |
+| `databases.dsn`                      | N/A             | Connection string or DSN that provides access to your remote database. <br/> The DSN must follow the format: `<database_type>://<user>:<password>@<host>:<port>/<database_name>`. <br/> The `database_type` can be postgresql or oracle.                                |
+| `databases.poll_interval`            | N/A             | Specifies how often the Hybrid Manager polls the database for basic metadata. Provide the value in minutes (m) or seconds (s).                                                                                                                                          |
+| `databases.tags`                     | N/A             | Assign tags for resource labeling. Encase in double quotes and introduce each tag with a dash.                                                                                                                                                                          |
+| `databases.disable_host_association` | N/A             | Set to `true` to prevent this database being associated with the host on which the agent is running. For example, if the agent is running on a different server.                                                                                                        |
+| `host.resource_id`                   | `<host-id>`     | Assign an identifier to the host on which the agent is running, by default this will be populated by the hostname detected during setup. This will link your host machine to an identifier. Encase in double quotes. Must be unique within the project.                 |
+| `host.metrics.disabled`              | N/A             | Set to `true` to disable the collection of host metrics from the host on which the agent is located.                                                                                                                                                                    |
 
 Settings related to schema ingestion:
 
 | YAML database schema settings    | Placeholder/Value      | Guidelines                                                                                                                             |
 |----------------------------------|------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
 | `databases.schema.enabled`       | N/A                    | Set to `true` to enable schema ingestion for the database. Set to `false` to disable it.                                               |
-| `databases.schema.poll_interval` | N/A                    | Defines how frequently the Agent checks for schema changes. Provide a value in seconds or minutes (for example, 15 s or 1m).          |
+| `databases.schema.poll_interval` | N/A                    | Defines how frequently the agent checks for schema changes. Provide a value in seconds or minutes (for example, 15 s or 1m).          |
 | `databases.schema.filter`        | N/A                    | Use this block to specify which schemas to include or exclude from ingestion. It contains the `mode` and `names` parameters.           |
 | `databases.schema.filter.mode`   | `include` or `exclude` | Specifies the filtering behavior. Use `include` to only ingest listed schemas, or `exclude` to ingest all schemas except those listed. |
 | `databases.schema.filter.names`  | `<schema_name>`        | A list of strings representing the names of the schemas to be filtered. This list works in conjunction with the mode setting.          |
@@ -292,5 +318,7 @@ Settings related to schema ingestion:
 ## Related topics
 
 -   [Fine-tuning monitoring data collection](fine_tune_monitoring/) ► Learn how to customize the monitoring features and enable/disable a subset of them. 
--   [Configuring multiple databases](multiple_dbs/) ► Learn how to use the same Agent config file to connect and fetch data from more than one database.
+-   [Configuring multiple databases](multiple_dbs/) ► Learn how to use the same agent config file to connect and fetch data from more than one database.
 -   [Enabling usage reporting in Hybrid Manager](usage_reporting/) ► Learn how to complement monitoring efforts by providing EDB with basic insights into product usage.
+-   [Administrative tasks](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) ► Learn how an HM instance's administrator can obtain the values for the root certificate and `beacon_server`.
+-   [Use the agent to assess your Oracle database for migration](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed) ► Use the HM agent to asses Oracle databases and extract schema for conversion with the Migration Portal. 
