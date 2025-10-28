@@ -1,0 +1,159 @@
+---
+title: "Sizing PEM Deployments"
+navTitle: "Sizing"
+redirects: []
+---
+
+This guide aims to help you allocate the right amount of resources to your PEM server(s).
+It explains the key factors driving resource requirements in PEM and provides t-shirt sizing to help you get started.
+
+!!!Important PEM is Postgres
+PEM is based around a Postgres database. The majority of the business logic is implemented as SQL functions.
+It is therefore imperative that you treat it like any other Postgres instance, following configuration and tuning best practices to keep it responsive.
+PEM monitors itself, so you can leverage tools like dashboards, [Performance Diagnostic](../tuning_performance/performance_diagnostic.mdx) 
+and [SQL Profiler](../profiling_workloads/using_sql_profiler.mdx) to understand performance.
+!!!
+
+## Factors affecting resource requirements
+
+### Number of agents/connections
+
+The number of agents directly drives the number of connections to the Postgres database. 
+The number of connections is a key driver of resource usage in any Postgres deployment as each connection spawns a process.
+
+In default configuration, most agents will make one connection.
+If enable_heartbeat_connection is true, each agent will make two connections.
+Any agent with `alert_threads`, `enable_smtp`, `enable_webhooks`, or `enable_snmp` set will open additional connections for these features.
+
+Because this connection is idle for a large proportion of the time, you can afford to run a slightly higher max_connections than otherwise.
+However, fundamentally this is still Postgres and as the number of connections moves beyond 100, connection overhead starts to dominate resource usages and connection pooling becomes increasingly important.
+For this reason, we strongly recommend pgBouncer is deployed as part of larger PEM deployments.
+
+Assuming you have a moderate number of connections, or that connection pooling is in place, memory and CPU requirements are driven by the following factors.
+
+### Size of frequently accessed data - memory
+
+Our sizing advice for memory is based on the aim of keeping all the most frequently accessed data in shared buffers to minimize I/O.
+The most frequently accessed data comprises:
+- The `pemdata` schema, which contains the latest data point for every probe
+- Various tables in the `pem` schema used to manage probe and alert dispatch
+
+As such, the size of this data is determined primarily by the total number of probes and the amount of data returned by each one.
+In practice, this is determined by the number of monitored objects, which is typically dominated by more numerous objects like tables and indexes.
+
+The recommended sizes below are based on the assumption that approximately 25% of RAM will be dedicated to shared buffers.
+
+### Rate of probe and alert execution - CPU and alert threads
+
+PEM is continually ingesting new probe data and evaluating the latest data against the configured alert thresholds.
+PEM needs sufficient CPU time available to execute all alerts and probes at the specified frequency.
+For example, if there are 100 alerts to evaluate at a frequency of one evaluation per minute, PEM needs to evaluate 100 alerts per minute.
+If PEM cannot maintain the required rate, alerts will be delayed or may not trigger at all.
+
+The number of alert and probe executions scales with:
+- The number of probes and alerts
+- The configured frequency of the probes and alerts
+
+Our recommended CPU numbers are based on providing enough CPU time to maintain the required rate of probe and alert execution with PEM's default configuration.
+If you enable many additional alerts or probes, or increase the frequency, you may need to scale CPU accordingly.
+
+!!!Note Alert Threads
+In larger deployments it is necessary to increase the total number of alert threads to allow PEM to efficiently access more CPU time for alert evaluation.
+This can be changed by modifying the `alert_threads` setting of the PEM agent running on the PEM host(s).
+!!!
+
+### Size of historical data - storage
+
+PEM's storage requirements are typically driven by the amount of historical data it is storing.
+This is driven by three factors:
+
+- The number of monitored objects (typically dominated by more numerous objects like tables and indexes)
+- How frequently the data is updated (allowing for the fact that PEM applies compression such that repeated values are not stored)
+- The retention period of the data
+
+Our recommended storage values are based on PEMs default probe frequencies and retention periods, plus assumptions about how much the data can be compressed.
+
+
+## PEM t-shirt sizing
+!!! Important
+For all the reasons explained above, the load on the PEM server is critically dependent on the nature of the estate it is monitoring. 
+The size guide below is just a starting point. 
+For large sizes, we strongly recommend that you start by adding a subset of your monitored servers to PEM and measuring resource usage. 
+Do not be surprised if your eventual resource needs differ significantly from those suggested below.
+!!!
+
+### Nano
+If you just want to try PEM and connect 1 or 2 monitored servers for a while, only one user
+
+- CPUs: 1
+- RAM: 2 GB
+- Storage: 20 GB
+- IOPS: <100
+
+### Tiny
+Start here if you're monitoring a single HA cluster with a handful of users of the web app
+
+- CPUs: 2
+- RAM: 4GB
+- Storage: 50GB
+- IOPS: <100
+
+### Small
+Start here if you're monitoring up to 50 servers with  less than five concurrent users of the web app. If you have more than approximately 50,000 tables or 50,000 indexes in total across the 50 servers, go one size higher.
+
+- CPUs: 4
+- RAM: 8 GB
+- Storage: 200 GB
+- IOPS: 300
+
+### Medium
+Start here if you're monitoring up to 100 servers with ~5 concurrent users of the web app. If you have more than approximately 100,000 tables or 100,000 indexes in total across the 100 servers, go one size higher.
+
+- CPUs: 6
+- RAM: 16 GB
+- Storage: 300 GB
+- IOPS: 500
+
+If you enable heartbeat connections on agents, you should also deploy pgBouncer at this size.
+
+### Large
+Start here if you're monitoring up to 300 servers with ~10 concurrent users of the web app. If you have more than approximately 250,000 tables or 250,000 indexes in total across the 300 servers, go one size higher. If you have less than 100,000 tables or 100,000 in total, you may find that this is over-specced.
+
+#### Backend server
+
+- CPUs: 8
+- RAM: 32 GB
+- Storage: 1.5 TB
+- IOPS: 2000
+- Alert threads: ~2
+- pgBouncer
+
+#### Frontend server
+
+- CPUs: 1-2
+- RAM: 2-4GB
+- Storage: 20GB
+- IOPS <100
+
+### X Large
+Start here if you're monitoring up to 600 servers with >10 concurrent users of the web app. If you have more than approximately 500,000 tables or 500,000 indexes in total across the 600 servers, go one size higher. If you have less than 250,000 tables or 250,000 in total, you may find that this is over-specced.
+
+#### Backend server
+
+- CPUs: 12
+- RAM: 48GB
+- Storage: 3TB
+- IOPS: 4000
+- Alert threads: ~3
+- pgBouncer
+
+#### Frontend server
+
+- CPUs: 2
+- RAM: 4GB
+- Storage: 20GB
+- IOPS: 100
+
+### XX Large
+For >600 servers, we recommend segmenting your estate into multiple domains each with its own PEM deployment. 
+
