@@ -15,6 +15,9 @@ const path = require("path");
 const remark = require("remark");
 const mdx = require("remark-mdx");
 const remarkFrontmatter = require("remark-frontmatter");
+const {
+  default: expressionReplacement,
+} = require("./expression-replacement.js");
 
 const mdxNodeToAlgoliaNode = (node, productVersions) => {
   let newNode = { ...node };
@@ -229,6 +232,14 @@ const buildFinalAlgoliaNodes = async (nodes, productVersions) => {
       continue;
     }
 
+    const replacementArgs = {
+      currentProduct: node.fields.product || node.frontmatter.product,
+      currentVersion: node.fields.version || node.frontmatter.version,
+      currentFullVersion: node.frontmatter.version,
+      productVersions,
+      filename: node.fileAbsolutePath,
+    };
+
     const algoliaNode = mdxNodeToAlgoliaNode(node, productVersions);
     const searchNodes = await mdxTreeToSearchNodes(
       node.mdxAST,
@@ -252,9 +263,12 @@ const buildFinalAlgoliaNodes = async (nodes, productVersions) => {
       if (newNode.heading)
         newNode.title = newNode.title + " » " + newNode.heading;
       newNode.excerpt = utf8Truncate(
-        trimSpaces(searchNode.text),
+        trimSpaces(
+          expressionReplacement({ text: searchNode.text, ...replacementArgs }),
+        ),
         EXCERPT_HARD_TRUNCATE_BYTES,
       );
+
       if (searchNode.headingId) {
         newNode.path = `${newNode.path}#${searchNode.headingId}`;
       }
