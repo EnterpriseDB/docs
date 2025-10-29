@@ -62,4 +62,34 @@ ALL (left_dc) CAMO DEGRADE ON (timeout=20ms, require_write_lead=true) TO ASYNC
 
 Again, you should set the `timeout` parameter, as the default is `0`. 
 
+## Monitoring degrade events
+
+Degrade events are tracked in the [bdr.stat_commit_scope](/pgd/latest/reference/tables-views-functions/catalogs-visible/#bdrstat_commit_scope) view. Three key metrics provide visibility into degrade behavior:
+
+- **`ndegrades`**: Counts per-transaction degrade events. Each time a backend hits the degrade timeout during commit and successfully degrades that transaction, this counter is incremented. This shows how many individual transactions have experienced degradation.
+
+- **`nconfig_degrades`**: Counts configuration-level state changes to degraded mode. This is incremented when the background worker (manager process) switches the commit scope's shared state to degraded based on node availability checks. This indicates how many times the commit scope configuration itself entered degraded state, which then affects all subsequent transactions until recovered.
+
+- **`last_state_change_time`**: Records the timestamp of the last configuration-level state change (either entering or recovering from degraded state). This helps identify when the commit scope last transitioned between normal and degraded operation, useful for correlating degrade events with other system events or outages.
+
+### Example monitoring query
+
+```sql
+-- View commit scope statistics including degrade events and last state change
+SELECT
+  commit_scope_name,
+  ndegrades,
+  nconfig_degrades,
+  last_state_change_time,
+  CASE
+    WHEN last_state_change_time IS NULL THEN 'never degraded'
+    WHEN age(now(), last_state_change_time) < interval '5 seconds' THEN 'recently changed'
+    ELSE 'stable for ' || age(now(), last_state_change_time)::text
+  END AS state_change_info
+FROM bdr.stat_commit_scope
+WHERE ndegrades > 0 OR nconfig_degrades > 0
+ORDER BY last_state_change_time DESC NULLS LAST;
+```
+
+These metrics together provide complete visibility into both immediate per-transaction fallback and longer-term state management degrade behavior, along with temporal context for troubleshooting.
 
