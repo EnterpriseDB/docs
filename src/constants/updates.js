@@ -2,6 +2,31 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Hybrid Manager 1.3",
+    icon: IconNames.MODULE,
+    description:
+      "The latest release of EDB Postgres® AI Hybrid Manager brings enhanced DR & resiliency, unified observability, platform stability & flexibility, data-sovereign AI for migration, expanded AI Factory performance, and secure AI model access.",
+    url: "/edb-postgres-ai/latest/hybrid-manager/",
+    moreUrl:
+      "/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_1.3_rel_notes/",
+  },
+  {
+    title: "CloudNativePG Cluster 1.27.1",
+    icon: IconNames.KUBERNETES,
+    description:
+      "EDB CloudNativePG Cluster 1.27.1 adopts the new format of container images and image catalog artifacts, updates the default PostgreSQL version to 18, and adds a CHECKPOINT step before PostgreSQL shutdowns.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_27_1_rel_notes/",
+  },
+  {
+    title: "Trusted Postgres Architect 23.40",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.40 adds support for upgrading EDB Postgres Distributed (PGD) v5 clusters to v6, extends support for configuring PGD-S clusters, improves support for EFM 5.1, along with fixes and enhancements.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/",
+  },
+  {
     title: "CloudNativePG Cluster 1.27.0",
     icon: IconNames.KUBERNETES,
     description:
