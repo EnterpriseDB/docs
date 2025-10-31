@@ -1,0 +1,229 @@
+---
+title: Configure PGD data tiering
+navTitle: Configure PGD data tiering
+description: Step-by-step guide to configure PGD data tiering.
+---
+
+Configure your PGD cluster to manage your data lifecycle by moving Postgres data to object storage using the three different available methods.
+
+## Prerequisites
+
+- Active Hybrid Manager instance
+- Provisioned PGD cluster: Version 6.0+ with PGAA and PGFS extensions enabled (PGAA extension version 1.4)
+- Lakehouse Cluster (recommended): For querying offloaded data
+- Catalog service: Optional — HM-managed Lakekeeper or external REST-compatible catalog
+- Object storage: S3-compatible (S3, GCS, MinIO, etc.) with credentials if private
+- User permissions: Database user must have create/alter/execute privileges for PGD and PGAA functions
+- You have Iceberg or Delta Lake tables available
+- You have an Iceberg catalog prepared if working with Iceberg tables
+
+## Initial configuration
+
+Configure your PGD cluster to point to object storage for analytics.
+
+<TabContainer syncKey="intro">
+<Tab title="Hybrid Manager Console">
+
+Select your PGD cluster -> Quick Actions -> Enable Analytics for Cluster
+
+Enable metrics?
+
+</Tab>
+
+<Tab title="psql">
+
+1. Create a storage lacation using the PGFS extension
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgfs.create_storage_location(
+        'storage_location_name',
+        'protocol://your-bucket-name/path/',
+        '{"region": "region-name"}',
+        '{"access_key_id": "...", "secret_access_key": "..."}'
+      );
+      ```
+
+1. Point PGD to the defined storage location
+
+      ```sql
+      SELECT bdr.alter_node_group_option('default_group', 'analytics_storage_location', 'my_s3_alias');
+      ```
+
+</Tab>
+</TabContainer>
+
+### Convert to Tier table
+
+Configure an existing heap table to use tiered tables.
+
+<TabContainer syncKey="TT">
+<Tab title="Hybrid Manager Console">
+
+Configure a tiered table:
+
+1. Find your heap table in the **Tables** tab.
+1. Select **Convert to Tier Table**.
+1. Enter the following information:
+
+    (screenshot)
+
+    - **Partition Column** must be a `DATE` or `TIMESTAMP` for `RANGE` partitioning. It must also be included in the primary key.
+    - **Initial Lower Bound** Chronological starting point for the first partition.
+    - **Analytics Offload Period**: Threshold age beyond which the data moves into cold storage. 
+    - **Partition Increment**: Time interval in between partitions.
+    - **Minimum Advance Partitions**: The system attempts to always have at least this number of partitions.  
+    - **Maximum Advance Partitions**: Number of partitions to create if the number of partitions falls below the value of **Minimum Advance Partitions**.
+    - **Enable real-time analytics replication** replicate hot data to analytics constantly as long as the partition is newer than **Analytics Offload Period**.
+
+1. Once the process completes, the table **Type** changes from **Heap** to **Tiered**.
+1. Expand the table to view the individual partitions: the type displays as **Heap** or **HTAP** (if you enabled real-time analytics replication) for the hot tier, and **Iceberg** or **Delta** for the cold tier.  
+
+</Tab>
+
+<Tab title="psql">
+
+1. Use the `pgaa.convert_to_tiered_table` function to define the partitioning scheme and activate the offload rule:
+
+```sql
+CALL pgaa.convert_to_tiered_table(
+    relation := 'partitioned_table',
+    range_partition_column := 'date', 
+    initial_lower_bound := '2010-01-01 00:00:00',
+    partition_increment := '1 year',
+    analytics_offload_period := '1 year',
+    enable_replication := FALSE 
+);
+```
+
+Where:
+- `relation` is the name of the table. This function uses Autopartition to configure the table data into partitions. 
+- `range_partition_column` specifies the column to partition by. It must be `DATE` or `TIMESTAMP`, and it must also be included in the primary key.
+- `initial_lower_bound` specifies the chronological starting point for the first partition.
+- `partition_increment` defines the time interval in between partitions.
+- `analytics_offload_period` defines the age threshold that automatically triggers the migration of all older partitions to object storage, marking the data as "cold".
+- `enable_replication` When set to `FALSE`, the table's data is only offloaded once partitions exceed the cold data threshold, If set to `TRUE`, it triggers immediate real-time replication.
+
+This function converts the heap table into a tiered table and initiates the automated process to offload partitions older than `analytics_offload_period` to the configured object storage.
+
+</Tab>
+</TabContainer>
+
+### Enable Replication
+
+Configure an existing heap table to stream data to object storage.
+
+<TabContainer syncKey="replication">
+<Tab title="Hybrid Manager Console">
+
+To enable replication:
+1. Find your table in the **Tables** tab.
+1. Select **Actions** then **Enable Replication**.
+1. Confirm the operation and select **Enable Replication**.
+1. The table **Type** changes from **Heap** to **HTAP** and **Replication** shows as **Enabled**.
+
+Screenshot
+
+To disable replication:
+1. Find your table in the **Tables** tab.
+1. Select **Actions** then **Disable Replication**.
+1. Confirm the operation and select **Disable Replication**.
+1. The table **Type** changes from **HTAP** to **Heap** and **Replication** shows as **Disabled**.
+
+</Tab>
+
+<Tab title="psql">
+
+Use the `pgaa.enable_analytics_replication` function to enable continuos replication of a heap table.
+
+```sql
+CALL pgaa.enable_analytics_replication(relation => 'public.transactional_table'::regclass);
+```
+
+The function converts the heap table to an analytical HTAP table and starts the logical replication worker.
+
+To disable replication:
+
+```sql
+CALL pgaa.disable_analytics_replication(relation => 'public.transactional_table'::regclass);
+```
+
+The function stops the analytics replication worker process from capturing and streaming any further DML changes to the external object storage. The table is no longer contributing data to the analytics platform, though the data that was already offloaded remains in object storage.
+
+</Tab>
+</TabContainer>
+
+### Offload Table
+
+Configure an existing HTAP table to move its contents to cold storage and stop replication.
+
+<TabContainer syncKey="offload">
+<Tab title="Hybrid Manager Console">
+
+To offload the table:
+1. Find your HTAP table in the **Tables** tab.
+1. Select **Actions** then **Offload Table**.
+1. Confirm the operation and select **Offload Table**.
+1. The table **Type** changes from **HTAP** to **Iceberg** or **Delta** and **Replication** shows as **Disabled**.
+
+
+To restore the table:
+1. Find your Iceberg/Delta table in the **Tables** tab.
+1. Select **Actions** then **Restore Table**.
+1. Confirm the operation and select **Restore Table**.
+1. The table **Type** changes from  **Iceberg** or **Delta** to **Heap** and **Replication** shows as **Disabled**.
+
+
+</Tab>
+
+<Tab title="psql">
+
+Use the `pgaa.convert_to_analytics` function to convert a synchronized HTAP table into a cold, pure-analytics table and remove the data from local disk.
+
+```sql
+CALL pgaa.convert_to_analytics(relation => 'public.transactional_table'::regclass);
+```
+
+The function removes the local data and redefines the table's access method to point solely to the external Iceberg/Delta files.
+
+Restore the table:
+
+Use the `pgaa.restore_from_analytics` function to bring the data stored in the external analytics tier back into the PostgreSQL transactional storage as a heap table.
+
+```sql
+CALL pgaa.restore_from_analytics(relation => 'public.transactional_table'::regclass);
+```
+
+The function checks the table's configuration, identifies its external Iceberg/Delta path in object storage, and rewrites the data back into the table's local storage structure. Once the data is locally present, the function sets the table's access method back to the local transactional endpoint again.
+
+</Tab>
+</TabContainer>
+
+## Other operations
+
+**Trigger compaction**
+
+Perform a trigger compaction to improve the performance and storage efficiency of your external analytics tables residing in object storage.
+
+<TabContainer syncKey="compaction">
+<Tab title="Hybrid Manager Console">
+
+1. Find your HTAP or Iceberg/Delta table in the **Tables** tab.
+1. Select **Actions** then **Trigger Compaction**.
+1. Confirm the operation and select **Trigger Compaction**.
+1. The value of **Object Storage Size** decreases.
+
+</Tab>
+
+<Tab title="psql">
+
+The function `pgaa.execute_compaction` triggers a backend optimization job to improve the performance and storage efficiency of your external analytics tables residing in object storage.
+
+Purpose: To execute the equivalent of an OPTIMIZE command on the external table. It reduces the number of small data files (Parquet files) that accumulate during frequent writes (like offloading or streaming replication).
+
+```sql
+CALL compact_table ('public.transactional_table');
+```
+
+</Tab>
+</TabContainer>
