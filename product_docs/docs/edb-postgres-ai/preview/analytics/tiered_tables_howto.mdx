@@ -8,13 +8,15 @@ Manage the data lifecycle of your PGD cluster by moving Postgres data to object 
 
 ## Prerequisites
 
-- Active Hybrid Manager instance version 1.3.
-- Provisioned PGD cluster version 6.0 or later with PGFS extension and PGAA extension version 1.4.0.
+- Active Hybrid Manager instance version HM 2025.11.
+- Provisioned PGD cluster version 6.1 or later with PGFS extension and PGAA extension version 1.4.0 or later.
 - Catalog service (optional): HM-managed Lakekeeper or external REST-compatible catalog.
 - Object storage: S3-compatible with credentials.
 - User permissions: the database user must have `CREATE`/`ALTER`/`EXECUTE` privileges for the PGD and PGAA functions.
-- Iceberg catalog if working with Iceberg tables.
 - Lakehouse Cluster (recommended) for querying offloaded data.
+
+!!! Note 
+    To check versions, run `SELECT bdr.bdr_version();` for PGD and `SELECT pgaa.pgaa_version();` for the PGAA extension.
 
 ## Initial configuration
 
@@ -40,13 +42,7 @@ Point to storage/catalog:
 
 <Tab title="psql">
 
-1. Enable statistics for the node group: 
-
-      ```sql
-      SET bdr.prefer_analytics_engine=true;
-      ```
-
-1. Create a storage lacation using the PGFS extension:
+1. Create a storage location using the PGFS extension. See [Creating a storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) for details.
 
       ```sql
       SELECT bdr.replicate_ddl_command($$
@@ -61,7 +57,7 @@ Point to storage/catalog:
 1. Point PGD to the defined storage location:
 
       ```sql
-      SELECT bdr.alter_node_group_option('default_group', 'analytics_storage_location', 'my_s3_alias');
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_storage_location', 'storage_location_name');
       ```
 
 1. If performing catalog-managed offloads, configure a connection to an external catalog:
@@ -89,7 +85,7 @@ Point to storage/catalog:
 </Tab>
 </TabContainer>
 
-### Convert to Tier table
+### Convert to Tiered table
 
 Configure an existing heap table to use tiered tables.
 
@@ -99,16 +95,16 @@ Configure an existing heap table to use tiered tables.
 Configure a tiered table:
 
 1. Find your non-partitioned heap table in the **Tables** tab.
-1. Select **Convert to Tier Table**.
+1. Select **Convert to Tiered Table**.
 1. Enter the following information:
 
     - **Partition Column** must be a `DATE` or `TIMESTAMP` for `RANGE` partitioning. It must also be included in the primary key.
     - **Initial Lower Bound** sets chronological starting point for the first partition.
     - **Analytics Offload Period**: is the threshold age beyond which the data moves into "cold" storage. 
     - **Partition Increment**: refers to the time interval in between partitions.
-    - **Minimum Advance Partitions**: establishes the minimum number of partitions this table has.
-    - **Maximum Advance Partitions**: limits the number of partitions to create if the number of partitions falls below the value of **Minimum Advance Partitions**.
-    - **Enable real-time analytics replication** triggers repplication for data newer than **Analytics Offload Period** ("hot" data).
+    - **Minimum Advance Partitions**: establishes the minimum count of partitions that the system must proactively create and maintain ahead of the current date.
+    - **Maximum Advance Partitions**: sets the number of partitions to create if the number of partitions falls below the value of **Minimum Advance Partitions**.
+    - **Enable real-time analytics replication** triggers replication for data newer than **Analytics Offload Period** ("hot" data).
 
 !!! Note 
     Tables with sequences or foreign key constraints are not supported with tiered tables. Drop the sequence or constraint before converting to tiered table, then recreate it after conversion.
@@ -249,7 +245,7 @@ The function checks the table's configuration, identifies its external Iceberg/D
 
 **Trigger compaction**
 
-Perform a trigger compaction to improve the performance and storage efficiency of your external analytics tables residing in object storage.
+Perform compaction to improve the performance and storage efficiency of your external analytics tables residing in object storage.
 
 <TabContainer syncKey="compaction">
 <Tab title="Hybrid Manager Console">
@@ -266,7 +262,7 @@ Perform a trigger compaction to improve the performance and storage efficiency o
 Use the function `pgaa.execute_compaction` to trigger the compaction job.
 
 ```sql
-CALL pgaa.compact_table ('public.transactional_table');
+CALL pgaa.execute_compaction ('public.transactional_table');
 ```
 
 </Tab>
@@ -276,7 +272,7 @@ CALL pgaa.compact_table ('public.transactional_table');
 
 Attach as many external catalogs as desired to access table data that has been offloaded to object storage by different PGD clusters.
 
-<TabContainer syncKey="compaction">
+<TabContainer syncKey="catalog">
 <Tab title="Hybrid Manager Console">
 
 1. Select your cluster and navigate to **Catalogs**, then select **Add Catalog**.
@@ -284,7 +280,7 @@ Attach as many external catalogs as desired to access table data that has been o
 1. Find the newly added catalog under **Catalogs**, select **Actions**, **Import**, and confirm.
 1. This operation imports the metadata of all the tables available in this catalog. You may select **Sync** to continously synchronize with the source catalog.
 1. Examine the newly imported external tables under the **Tables** section, listed as **Iceberg** tables.
-1. You may restore these tables to your local Postgres storage by selecting the **Offload** option.
+1. You may restore these tables to your local Postgres storage by selecting the **Restore** option.
 
 </Tab>
 
