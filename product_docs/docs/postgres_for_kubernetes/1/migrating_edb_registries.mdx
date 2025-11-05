@@ -1,0 +1,191 @@
+---
+title: Migrating to the unified private EDB container registry
+navTitle: Registry migration guide
+description: Instructions for migrating a {{name.ln}} system from a previous tier-based registry configuration to EDB's unified container image registry
+---
+
+## What's changing
+
+Previously, EDB published operator and operand images selectively to one of several private repositories: `k8s_standard`, `k8s_enterprise`, `k8s_standard_pgd`, `k8s_enterprise_pgd`. Your repository was determined by your subscription level *and* which operator(s) you wished to use. Additionally, public registries may have
+been used for some operand images, including those provided by EDB and by the CloudNativePG project. 
+
+Now, all operators and operands are provided via a single repository, `k8s`. If your subscription includes access to a given image, you will be able to pull it via this repository. The old repositories will remain available for the time being, but new images will be published to the unified repository. Thus, future operator *and* operand upgrades will require migrating to the unified repository.
+
+### Summary of changes
+
+| Old Repository Path                        | New Unified Repository Path |
+|--------------------------------------------|-----------------------------|
+| docker.enterprisedb.com/k8s_enterprise     | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/k8s_standard       | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/k8s_enterprise_pgd | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/k8s_standard_pgd   | docker.enterprisedb.com/k8s |
+| docker.enterprsedb.com/anything_else       | docker.enterprisedb.com/k8s |
+| quay.io/enterprisedb                       | docker.enterprisedb.com/k8s |
+
+## Scope of changes
+
+- **Pull secrets** Because the old system relied on specifying the desired repository via the username when authenticating, you'll need to update the credentials storied in secrets that Kubernetes uses to pull images. 
+- **Helm values** If you're using Helm charts, you'll need to update the `image.repository` and `image.imageCredentials.username` values. 
+- **Manifest image names** If you're using custom manifests that specify one of the old repository paths as part of an `imageName` or `images[].image` value, you'll need to update those as well. 
+
+## Migration processes
+
+### Updating credentials
+
+In all cases, begin by updating any stored credentials used by your system. 
+
+Collect the following information:
+
+1. Your [EDB account token](/repos/getting_started/with_web/get_your_token/)
+2. The name of the repository, which will be `k8s`
+3. The repository server, which will be `docker.enterprisedb.com`
+
+The instructions that follow assume your token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
+
+#### Pull secrets
+
+If you're working directly with operator manifests, you'll need to update pull secrets in the relevant namespaces. 
+
+For {{name.ln}}, the default namespace is `postgresql-operator-system`. To create or update the pull secret in this namespace, you would run:
+
+```shell
+kubectl create secret -n postgresql-operator-system docker-registry edb-pull-secret \                
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | kubectl apply -f -
+```
+
+!!! Tip 
+    These examples overwrite existing secrets; if you have additional credentials stored (for example, to authenticate with internal repositories), you'll want to instead unpack the value and update only the credentials for `.auths["docker.enterprisedb.com"]`, leaving other servers untouched.
+
+For EDB Postgres Distributed for Kubernetes, the default namespace is `pgd-operator-system`. To create or update the pull secret in this namespace, you would run:
+
+```shell
+kubectl create secret -n pgd-operator-system docker-registry edb-pull-secret \                
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | kubectl apply -f -
+```
+
+!!! Tip 
+    If you're using alternative namespaces, adjust these commands as appropriate.
+
+#### OpenShift pull secrets
+
+The relevant pull secrets live in the `openshift-operators` namespace on OpenShift. 
+
+For {{name.ln}} and operand images, you'll need to update `postgresql-operator-pull-secret`:
+
+```shell
+oc create secret -n openshift-operators docker-registry postgresql-operator-pull-secret \                
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+If you're using the EDB Postgres Distributed for Kubernetes operator, you'll ***also*** need to update  `pgd-operator-pull-secret`:
+
+```shell
+oc create secret -n openshift-operators docker-registry pgd-operator-pull-secret \                
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+### Updating Helm values
+
+For your {{name.ln}} Helm releases, you'll need to update override values for both `image.repository` and `image.imageCredentials.username`:
+
+```shell
+helm upgrade --reuse-values \
+  --set image.repository=docker.enterprisedb.com/k8s/edb-postgres-for-kubernetes \
+  --set image.imageCredentials.username=k8s \
+  edb-pg4k \
+  edb/edb-postgres-for-kubernetes
+```
+
+(here, `edb-pg4k` and `edb/edb-postgres-for-kubernetes` are the release and pathname used in other examples; substitute your own values)
+
+For your EDB Postgres Distributed for Kubernetes Helm releases, you'll need to override values for both `global.image.repository` and `image.imageCredentials.username`:
+
+```shell
+helm upgrade --reuse-values \
+  --set global.image.repository=docker.enterprisedb.com/k8s \
+  --set image.imageCredentials.username=k8s \
+  edb-pg4k-pgd \
+  edb/edb-postgres-distributed-for-kubernetes
+```
+
+(here, `edb-pg4k-pgd` and `edb/edb-postgres-distributed-for-kubernetes` are the release and pathname used in other examples; substitute your own values)
+
+### Updating image paths in manifests
+
+For operators or operands deployed via custom manifests (including the examples contained within current and past versions of this documentation), you'll need to update these manifests directly to update image references that specify the server and repository name as part of the image name. 
+
+Refer to the repository paths under [Summary of changes](#summary-of-changes) for a full list of paths that you'll need to update if found among your manifests.
+
+#### Example: imageName
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: postgresql-extended-cluster
+spec:
+  instances: 3
+  imageName: docker.enterprisedb.com/k8s_enterprise/edb-postgres-extended:16
+```
+
+Here is a cluster manifest that deploys three EDB Postgres Extended instances. The image path referenced in `spec.imageName` is out of date and will need to be updated:
+
+```yaml 
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended:16
+```
+
+Deploy this update in the usual manner (`kubectl apply ...`).
+
+#### Example: ImageCatalog images
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: ImageCatalog
+metadata:
+  name: postgresql
+  namespace: default
+spec:
+  images:
+    - major: 15
+      image: quay.io/enterprisedb/postgresql:15.14-system-trixie
+    - major: 16
+      image: quay.io/enterprisedb/postgresql:16.10-system-trixie
+    - major: 17
+      image: quay.io/enterprisedb/postgresql:17.6-system-trixie
+    - major: 18
+      image: quay.io/enterprisedb/postgresql:18.0-system-trixie
+```
+
+Here is an ImageCatalog manifest that defines a set of images to be referenced elsewhere. The image paths referenced in `spec.images[].image` values are out of date and will need to be updated:
+
+```yaml
+spec:
+  images:
+    - major: 15
+      image: docker.enterprisedb.com/k8s/postgresql:15.14-system-trixie
+    - major: 16
+      image: docker.enterprisedb.com/k8s/postgresql:16.10-system-trixie
+    - major: 17
+      image: docker.enterprisedb.com/k8s/postgresql:17.6-system-trixie
+    - major: 18
+      image: docker.enterprisedb.com/k8s/postgresql:18.0-system-trixie
+```
+
+Deploy this update in the usual manner (`kubectl apply ...`).
+
