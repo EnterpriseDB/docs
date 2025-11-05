@@ -148,6 +148,13 @@ const Section = ({ section }) => (
   </div>
 );
 
+const FormatVersion = (version) => {
+  if (!/^\d/.test(version)) {
+    return version;
+  }
+  return "v" + version;
+};
+
 const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
@@ -205,12 +212,12 @@ const DocTemplate = ({ data, pageContext }) => {
 
   if (depth === 2 && !navTree.hideVersion) {
     // product version root
-    title += ` v${preciseVersion || version}`;
+    title += ` ${FormatVersion(preciseVersion || version)}`;
   } else if (depth > 2 && !navTree.hideVersion) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
-    title = `${prettyProductName} v${preciseVersion || version} - ${title}`;
+    title = `${prettyProductName} ${FormatVersion(preciseVersion || version)} - ${title}`;
   }
 
   const pageMeta = {
@@ -267,7 +274,7 @@ const DocTemplate = ({ data, pageContext }) => {
               {frontmatter.title}{" "}
               {!navTree.hideVersion && (
                 <span className="fw-light ms-2 text-muted bg-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-                  v{preciseVersion || version}
+                  {FormatVersion(preciseVersion || version)}
                 </span>
               )}
             </h1>
@@ -292,18 +299,14 @@ const DocTemplate = ({ data, pageContext }) => {
             <div
               className="alert alert-warning mt-3"
               role="alert"
-              dangerouslySetInnerHTML={{ __html: navTree.displayBanner }}
+              dangerouslySetInnerHTML={{
+                __html: navTree.displayBanner.replace(
+                  /href="latest:splat"/,
+                  `href="${replacePathVersion(pagePath)}"`,
+                ),
+              }}
             />
           ) : null}
-
-          {version === "preview" && (
-            <div className="alert alert-warning mt-3" role="alert">
-              This documentation covers the upcoming release of{" "}
-              {products[product].name}; you may want to read the docs for{" "}
-              <Link to={replacePathVersion(pagePath)}>the current version</Link>
-              .
-            </div>
-          )}
 
           <ContentRow>
             <Col
