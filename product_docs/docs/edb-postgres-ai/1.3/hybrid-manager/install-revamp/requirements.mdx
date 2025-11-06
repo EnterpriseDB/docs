@@ -30,6 +30,28 @@ Avoid pre-deploying components like `cert-manager`, as Hybrid Manager manages th
 | Red Hat OpenShift | 4.17, 4.18, 4.19 | 1.30, 1.31, 1.32 |
 | Cloud-managed Kubernetes | EKS, GKE | Managed by CSP |
 
+#### Bastion host and CLI tools
+
+A **Bastion Host** (or jump box) is strongly recommended for secure, private access to the API, Portal, and PostgreSQL endpoints. This host serves as your dedicated operational workstation for installation and validation activities. It may also be a strict requirement for EDB Remote DBA (RDBA) or Managed Services.
+
+* **Required installation tools:**
+    * **Helm:** Renders and applies Kubernetes manifests. [Install Helm](https://helm.sh/docs/intro/install/)
+    * **yq:** Command-line YAML processor for preparing Hybrid Manager installation files. [Install yq](https://github.com/mikefarah/yq#install)
+    * **kubectl:** The primary Kubernetes CLI tool to manage your cluster. [Install kubectl](https://kubernetes.io/docs/tasks/tools/)
+    * **Utility Tools:** 
+        * **`curl`** Utility for downloads and API interaction. [Install curl](https://curl.se/download.html).
+        * **`OpenSSL`** Utility for certificate management. [Install OpenSSL](https://www.openssl.org/source/).  
+        * **`htpasswd`** Utility for managing static user passwords. Installation is typically bundled with your operating system's Apache utilities (e.g., apache2-utils or httpd-tools).
+
+* **EDB operational tools:**
+    * **pgdcli:** CLI for managing Postgres Distributed clusters. [Install pgdcli](https://www.enterprisedb.com/docs/pgd/latest/reference/pgdcli/)
+    * **Sentinel:** EDB tool for monitoring and failover management. [Install Sentinel](https://www.enterprisedb.com/docs/sentinel/latest/)
+
+* **Kubernetes/CSP platform CLIs:**
+    * **aws-cli:** AWS Command Line Interface. [Install aws-cli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+    * **gcloud:** Google Cloud CLI. [Install gcloud](https://cloud.google.com/sdk/docs/install)
+    * **oc:** OpenShift CLI. [Install oc](https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html)
+
 #### Initial configuration settings
 
 Before moving to installation, confirm the following core settings are prepared and that you can access the target Kubernetes cluster API endpoint.
@@ -126,13 +148,24 @@ kubectl get nodes -l edbaiplatform.io/control-plane="true"
 kubectl get nodes -o json | jq '.items[] | select(.metadata.labels["edbaiplatform.io/control-plane"]=="true") | {name: .metadata.name, taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/control-plane")))}'
 ```
 
-**3. Check taints and labels for data plane nodes:**
+> Data plane node validation
+
+**3. List data plane nodes and check label:**
+
+```bash
+kubectl get nodes -l edbaiplatform.io/postgres="true"
+
+**4. Check taints and labels for data plane nodes:**
 
 ```bash
 kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, labels: .metadata.labels["edbaiplatform.io/postgres"], taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/postgres")))}'
 ```
 
-**4. Example of expected YAML specification (for provisioning scripts)**
+**5. Example YAML specifications**
+
+If you are provisioning dedicated node pools (separate nodes for control plane vs. data plane), you must use separate configuration specifications for each pool.
+
+*Control plane only specification:*
 
 ```yaml
 spec:
@@ -148,32 +181,76 @@ spec:
             effect: NoSchedule
 ```
 
+*Data plane only specification:*
+
+```yaml
+spec:
+    replicas: 6
+    template:
+    spec:
+        metadata:
+        labels:
+            edbaiplatform.io/postgres: "true"
+        taints:
+        - key: edbaiplatform.io/postgres
+            value: "true"
+            effect: NoSchedule
+```
+
 ---
 
 ### 3. Local network and ingress
+
+With your network plan in place, the next step is to enable the cluster’s **internal communication fabric** (via the Container Network Interface or CNI), prepare for **external traffic routing** (via a Load Balancer Controller or NodePort alternative), and configure **DNS** resolution for all portal and database endpoints.
 
 #### Container network interface (CNI)
 
 A working **CNI** (like Calico or Cilium) is a strict requirement for pod-to-pod networking and network policies.
 
 * **Recommended IP space:** Plan for a `/16` IPv4 address space for the cluster network CIDR.
-* **Validation:** Check for CNI setup and assigned CIDRs.
+* **Validation:** Check for CNI setup and assigned CIDRs:
     ```bash
     kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR
     kubectl get svc
     ```
+This shows the pod network CIDR assigned to each node, which indicates that the internal cluster networking is prepared.
 
 #### Load balancer and ingress
 
-You must provision an ingress mechanism for the HM portal and Postgres endpoints. **TCP load balancing is required** in all cases.
+You must provision an ingress mechanism for the HM portal and Postgres endpoints. 
+**TCP load balancing is required** in all cases.
+
+Supported Load Balancer technologies range from cloud provider-specific controllers like **AWS Load Balancer controller** to on-premise solutions like **MetalLB** or a dedicated appliance like **BigIP F5** combined with its F5 Load Balancer Controller. 
+A load balancer controller is required if using `LoadBalancer` type services.
+
+##### Required ports for ingress
+
+The firewall or load balancer must expose the following ports for Hybrid Manager and Postgres services:
 
 | Port | Service | Notes |
 | :--- | :--- | :--- |
-| **443** | HM portal (HTTPS) | Publicly exposed ingress for the main UI. |
-| **5432** | Default PSQL | Exposed for database client connections. |
-| **6432** | PGD connection manager | Exposed for Postgres Distributed connections. |
+| **443** | HM Portal | HTTPS ingress to the HM user interface. |
+| **8444** | HM internal API | Internal Hybrid Manager API. |
+| **9443** | Beacon gRPC API | API for agents reporting to the Beacon server. |
+| **9445** | Spire TLS | TLS port used by the Spire service. |
+| **5432** | Default PSQL | Default port for PostgreSQL client connections. |
+| **6432** | PGD Connection Manager | Port for Postgres Distributed (PGD) client connections. |
 
-**Load balancer controller:** Required for the optimal experience, especially if using dynamic `LoadBalancer` type services (e.g., AWS Load Balancer controller, MetalLB, F5 controller).
+##### CSP load balancer firewall configuration
+
+For Cloud Service Provider (CSP) load balancers, you may need to apply specific **resource annotations** to the Istio ingress gateway service to configure network settings, such as setting the firewall scheme:
+
+```yaml
+resourceAnnotations:
+ - name: istio-ingressgateway
+ - kind: Service
+   annotations:
+     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+```
+
+**Load balancer controller:** 
+
+Required for the optimal experience, especially if using dynamic `LoadBalancer` type services (e.g., AWS Load Balancer controller, MetalLB, F5 controller).
 
 * **Validation:** Test the controller by creating a generic service.
     ```bash
@@ -181,8 +258,20 @@ You must provision an ingress mechanism for the HM portal and Postgres endpoints
     kubectl get svc test-lb
     ```
 
-**NodePort alternative:** If not using a load balancer controller, you must configure NodePort ingress.
+If the LoadBalancer controller is functioning properly, the `test-lb` service is assigned an external IP or hostname.
+
+**NodePort alternative:** 
+
+If not using a load balancer controller, you must configure NodePort ingress.
+
 * **Dependencies:** `values.yaml` must set `beaconAgent.provisioning.loadBalancersEnabled: false` and use the `nodePortDomain` setting.
+
+
+
+
+
+
+
 
 #### DNS requirements
 
