@@ -1,99 +1,114 @@
 ---
-title: Tiered Tables in Hybrid Manager
-navTitle: Tiered Tables
-description: Learn how Hybrid Manager implements and manages Tiered Tables with PGD and Lakehouse for cost-efficient, scalable analytics.
+title: PGD data tiering
+navTitle: PGD data tiering
+description: Understand how writing Postgres data to lakehouse table enables cost-efficient data lifecycle management
 ---
 
-Tiered Tables in Hybrid Manager (HM) provide an automated solution for managing large time-series or historical datasets by moving older data from PGD clusters to cost-effective object storage in Apache Iceberg® format.
+Integrate Advanced High Availability or Distributed High Availability cluster (PGD) with Analytics Accelerator lakehouse to manage your data lifecycle by moving Postgres data from expensive transactional storage to cost-effective object storage while maintaining transparent query access.
 
-Hub quick links: [Analytics Hub](/edb-postgres-ai/current/analytics/) — [Concepts](/edb-postgres-ai/current/analytics/analytics-concepts) — [How-Tos](/edb-postgres-ai/current/analytics#how-tos-runbook-aligned)
+This architecture implements two distinct storage tiers optimized for different access patterns:
 
-Hybrid Manager integrates this capability across:
+- **"Hot" Tier** stores current operational data requiring sub-millisecond latency and full transactional capabilities in PostgreSQL storage.
+- **"Cold" Tier** holds historical data in columnar formats optimized for analytical queries, such as Apache Iceberg® or Delta Lake, in object storage.
 
-- PGD clusters with BDR AutoPartition
-- PGAA extensions for offloading
-- Lakehouse Clusters for querying
-- Centralized catalog services (Lakekeeper or external Iceberg catalogs)
+## Why use PGD data tiering
 
-For a conceptual overview of Tiered Tables, see [Understanding Tiered Tables with EDB Postgres](/edb-postgres-ai/current/analytics/tiered_tables).
+Unify data management and analytics by separating active data from historical data, optimizing both cost and speed.
 
-## Why use Tiered Tables with Hybrid Manager
+**Cost & storage efficiency** 
+- Reduce your transactional database size by moving historical data to a low-cost data lake.
+- Reduce storage costs and improve operational efficiency since smaller databases backup faster, require less storage, and restore more quickly during disaster recovery.
+- Track storage statistics and size reduction, quantify cost savings, and monitor the partition lifecycle.
 
-- **Lower storage costs:** Offload "cold" data to object storage (Iceberg) and shrink primary PGD transactional tables.
-- **Faster transactional performance:** Keep "hot" data partitions small for efficient PGD operations.
-- **Automated lifecycle management:** Move data across tiers automatically based on age.
-- **Transparent analytics:** Query both hot and cold data via PGD parent table or Lakehouse Cluster.
-- **Unified management:** Configure and monitor all components through Hybrid Manager.
+**Performance & query access**
+- Optimize queries through partition pruning (instantly discarding irrelevant partitions) and parallel processing across both storage tiers.
+- Run queries on the fastest available engine utilizing standard PostgreSQL processing for recent "hot" data, and the Analytics Accelerator's vectorized engine for compressed, columnar "cold" data in object storage.
+- Improve efficiency of active data by removing historical data, resulting in more efficient indexes, faster background operations, and improved cache hit rates.
+- Merge results transparently, presenting a unified dataset to applications.
 
-## Key terms and architecture overview
+**Data integrity**
+- Drive efficient lifecycle management and ensure consistent visibility across the PGD cluster by utilizing comprehensive metadata to track all partition locations, offload timestamps, and lifecycle states.
+- Improve cluster reliability and maintain data integrity with automatic retries and rollbacks for failed offload operations.
 
-For definitions of analytics terms used in Hybrid Manager—such as PGFS, PGAA, Analytics Offload, and Lakehouse—see [Analytics concepts (hub)](/edb-postgres-ai/current/analytics/analytics-concepts).
+## Use cases
 
-## When should I use Tiered Tables in Hybrid Manager?
+  - **Regulatory compliance**: Maintain lean, high-performance transactional systems by offloading aged data. Ensure regulatory compliance through complete, long-term data retention and maintenance of comprehensive audit trails.
+  - **Time-series analytics (IoT platforms)**: Optimize data management for sensor and event streams. Ensure operational dashboards access recent, "hot" data while historical analytics utilize aggregated, cost-effective "cold" data.
+  - **Financial services**: Cost-efficiently manage massive transaction histories that must be retained for years due to regulatory requirements but are rarely queried.
+  - **Retail & seasonal business cycles**: Manage order histories by setting adaptive tiering policies, ensuring order data from peak seasons remains "hot" longer to support customer service and extended return periods.
 
-Use Tiered Tables in Hybrid Manager when you want to:
+## How to configure PGD data tiering
 
-- **Manage large time-series datasets** in a cost-efficient way.
-- **Keep PGD operational tables lean** for better performance.
-- **Meet compliance needs** by keeping older data available but outside of PGD storage.
-- **Enable BI users to run historical trend queries** without impacting production databases.
-- **Automate your data lifecycle** with minimal manual intervention.
+There are three distinct methods for managing data lifecycle and offloading data from your PGD cluster to object storage for analytics, based on your requirements.
 
-## Use cases for Tiered Tables
+### Automated tiered tables
 
-- **Time-series data:** Logging, IoT sensor readings, application telemetry.
-- **Archival:** Long-term retention of cold data for compliance.
-- **Historical trend analysis:** BI tools querying years of data without impacting PGD performance.
-- **Large, append-mostly tables:** Keep transactional footprint small while retaining full analytical access.
+This method enables tiered storage within a table by automatically creating new partitions and offloading old data based on a specified threshold. It leverages PGD AutoPartition to perform automatic analytics offload to object storage. 
 
-## How Tiered Tables work in your HM architecture
+The PGD Task Manager automatically monitors the age of the table's partitions. When a partition becomes older than the defined offload period, it bulk-copies the entire partition to the object store, and then truncates it locally.
 
-- **PGD clusters:** Manage partitioning and automatic offload of old partitions to Iceberg.
-- **PGFS storage locations:** Define object storage targets for offload.
-- **Iceberg catalogs:** Optionally manage offloaded tables in a catalog (Lakekeeper or external).
-- **Lakehouse Clusters:** Provide scalable analytical compute to query offloaded Iceberg data.
-- **Monitoring:** Use HM monitoring tools and observability queries to track offload status and storage savings.
+The main benefit of this method is zero-touch data lifecycle management that optimizes storage costs. 
 
-## Prerequisites within EDB Hybrid Manager
+### Analytics replication
 
-Before implementing Tiered Tables in HM:
+Use this method to continuously synchronize an entire table in near real-time with an analytical copy in object storage, regardless of the age of the data.
 
-- **Active Hybrid Manager instance**
-- **Provisioned PGD cluster:** Version 6.0+ with PGAA and PGFS extensions enabled
-- **Lakehouse Cluster (recommended):** For querying offloaded data
-- **Catalog service:** Optional, but recommended — HM-managed Lakekeeper or external REST-compatible catalog
-- **Machine user for catalog (if using catalog):** With appropriate catalog data writer/reader permissions
-- **Object storage:** S3-compatible, with credentials if private
-- **User permissions:** Database user must have create/alter/execute privileges for BDR and PGAA functions
+The system uses continuous logical replication that captures every DML operation on the table and streams it to the external object storage destination.
 
-## Main capabilities
+This method converts your origin heap table to an HTAP type. An HTAP table is a heap table that is mapped to an analytics table at the destination object storage where PGD replicates any changes. 
 
-- **Automated partitioning:** Define BDR AutoPartition strategy and `analytics_offload_period`.
-- **Storage tiering:** Use PGFS or Iceberg catalog targets for offloaded data.
-- **Query transparently:** PGD parent table queries can hit both local and Iceberg tiers. Lakehouse Clusters can query Iceberg tables directly.
-- **Monitor status:** Track offload progress, validate Iceberg content, and observe space savings.
+You may also configure replication for partitions within a tiered table newer than the threshold offload period.
 
-## Getting started with Tiered Tables in Hybrid Manager
+The main benefit is near real-time, analytical replica of an entire transactional table for immediate analytics.
 
-To begin using Tiered Tables with Hybrid Manager:
+Disable replication to switch the table back to heap and only use transactional storage.
 
-1. [Configure PGFS](/edb-postgres-ai/current/ai-factory/pipeline/pgfs/) for object storage access.
-2. Learn [Tiered Tables concepts](/edb-postgres-ai/current/analytics/tiered_tables) and apply policies (AutoPartition, offload period) in PGD.
-3. (Optional) Use a catalog (Lakekeeper or external) when interoperability across engines is needed.
-4. Query offloaded Iceberg data via Lakehouse clusters.
+### Table offload
 
-## Related resources
+This method offers a one-time, surgical way to clear local storage, leaving only the copy in object storage. You can only perform this operation on tables that are already set with replication (HTAP tables).
 
-- [PGFS reference](/edb-postgres-ai/current/ai-factory/pipeline/pgfs/)
-- [Tiered Tables concepts](/edb-postgres-ai/current/analytics/tiered_tables)
+The system converts a replicated HTAP table into PGAA table. A PGAA table is a pure, "cold" analytics table in object storage, available in the Delta or Iceberg format. This process truncates the local copy, effectively eliminating local storage overhead.
 
-## Observability tips
+The main benefit is a rapid release of local disk space for tables that are no longer actively transactional.
 
-- Use HM dashboards for PGD cluster health and offload progress.
-- Run analytics queries on `bdr.analytics_table` and partition views.
-- Use `pg_total_relation_size()` to observe space reclaimed on PGD nodes.
-- Use cloud storage console or analytics to track Iceberg object size growth.
+Restore the table back to HTAP to recreate that local storage and resume replication.
 
-## Next topic
+Method | Purpose | Use case | Origin Table | Destination table 
+----------|-----------------------------|---------------- | ----- | -------
+Tiered tables | Automated <br />Lifecycle Management | High-volume time-series<br /> data where historical retention<br /> is critical and automated. | Heap | Heap/HTAP ("hot" partitios)<br /> PGAA ("cold" partitions)
+Replication | Continuous <br />Synchronization | Replicating a transactional table<br /> in near real-time for general analytics. | Heap | HTAP 
+Offload | Selective<br /> Archiving | One-time, surgical removal and<br /> archival of a specific table. | HTAP | PGAA
 
-[Lakehouse Clusters in Hybrid Manager](./lakehouse)
+### Other operations
+
+**Trigger compaction**
+
+Perform compaction to improve the performance and storage efficiency of your external analytics tables residing in object storage.
+
+Compaction optimizes performance by consolidating the multiple small Parquet files created during offloading an replication into fewer, larger, and more compressed files, similar to an `OPTIMIZE` command.
+
+**Metadata management**
+
+There are two primary ways to manage the metadata of your object store tables:
+
+- **No-catalog offload**: The metadata is stored alongside the data files and managed directly by the object storage file system. PGD uses the [PGFS extension](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs) to connect directly to the object storage.
+
+- **Catalog-managed offload**: This method decouples the data from the metadata. The metadata is stored and managed by a centralized service, such as Iceberg REST, creating a universal registry that allows Postgres and other tools (like Spark or Trino) to query the same data lake tables. When you offload data, the system writes the Parquet files to object storage, but registers the table's metadata in the external catalog. You may also read tables managed by an external catalog by attaching them to your data group.
+
+## Operational Considerations
+
+Ensure cost efficiency and high availability by proactively managing your systems.
+
+**Management & Planning**
+- **Monitor** partition growth rates, offload success rates, and query patterns across tiers. Use dashboards to track storage utilization trends and validate cost savings.
+- Perform **capacity** planning for both the "hot" tier (local ingestion rates) and the "cold" tier (predictable growth in object storage).
+- **Schedule your workload** for offload and restore operations to run during maintenance windows to minimize impact on production.
+
+**Maintenance & Resilience**
+- **Routinely maintain** efficiency through regular jobs, such as partition merging in "cold" storage, and orphan file cleanup.
+- Account for the distributed nature of the data in your **backup strategy**, setting different frequencies for the "hot" tier and relying on the durability guarantees of object storage for the "cold" tier.
+- Ensure all offload operations are **reversible** through restore operations, allowing temporary transactional access to historical data when needed.
+
+## Related topics
+
+-   [Configure PGD data tiering](/edb-postgres-ai/latest/analytics/tiered_tables_howto) ► Learn how to configure your PGD cluster to manage your date lifecycle by moving Postgres data to object storage. 
