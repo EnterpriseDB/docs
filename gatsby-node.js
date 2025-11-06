@@ -396,7 +396,6 @@ const createDoc = (
       navTree,
       prevNext,
       productVersions,
-      versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       pathVersions,
     },

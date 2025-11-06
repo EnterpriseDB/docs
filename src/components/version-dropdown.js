@@ -35,10 +35,7 @@ const VersionDropdown = ({ versionArray, preciseVersion, path }) => {
             key={version.url}
             active={isActive(version.version)}
           >
-            {FormatVersion(version.version)}{" "}
-            {isActive(version.version) && preciseVersion !== activeVersion
-              ? `(${preciseVersion})`
-              : ""}
+            {FormatVersion(version.preciseVersion)}{" "}
           </DropdownItem>
         ))}
       </Dropdown.Menu>

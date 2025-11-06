@@ -266,11 +266,19 @@ const computeFrontmatterForTreeNode = (treeNode) => {
 };
 
 const buildProductVersions = (nodes) => {
-  const versionIndex = {};
+  const versionIndex = { __preciseVersions: {} };
 
   nodes.forEach((node) => {
     const { docType, product, version } = node.fields;
     if (docType !== "doc") return;
+
+    const preciseVersion =
+      node.frontmatter?.version || node.frontmatter?.directoryDefaults?.version;
+    if (preciseVersion) {
+      versionIndex.__preciseVersions[product] =
+        versionIndex.__preciseVersions[product] || {};
+      versionIndex.__preciseVersions[product][version] = preciseVersion;
+    }
 
     if (!versionIndex[product]) {
       versionIndex[product] = [version];
@@ -282,6 +290,7 @@ const buildProductVersions = (nodes) => {
   });
 
   for (const product in versionIndex) {
+    if (product === "__preciseVersions") continue;
     versionIndex[product] = sortVersionArray(versionIndex[product]);
   }
 
@@ -573,23 +582,29 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     // (which will be the behavior when multiple versions share the same redirect)
     // it may also affect other redirects, but we probably want the same behavior there as well
     // this behavior has the following conditions:
-    // - there are multiple sources for this redirect path
+    // - there are multiple sources (targets) for this redirect path
     // - the redirect path is unversioned (first segment is not a product OR second segment is not a version in that product OR 'latest')
     // - the redirect target path (this node's path) is versioned
     // - the target path is NOT the latest version of its page
+    // - one of the other target paths IS the latest version of its page
     // ...in this case, we will skip creating the redirect, and squelch warnings about it later on
     const splitFromPath = fromPath.split(path.posix.sep);
     if (
-      validPaths.get(fromPath)?.length > 1 &&
+      node.fields.docType === "doc" &&
+      !isLastVersion &&
       !(
         productVersions[splitFromPath[1]] &&
         productVersions[splitFromPath[1]].includes(splitFromPath[2])
       ) &&
-      node.fields.docType === "doc" &&
-      !isLastVersion
-    )
+      validPaths.get(fromPath)?.some((p) => p.urlpath.includes("/latest/"))
+    ) {
+      const sources = validPaths.get(fromPath);
+      sources.splice(
+        sources.findIndex((s) => s.urlpath === toPath),
+        1,
+      ); // remove this from sources to squelch warnings
       continue; // silently skip redirect - it'll be added elsewhere for the correct version
-
+    }
     let effectiveTo = toPath;
     if (fromPath.endsWith(":splat/")) {
       fromPath = fromPath.replace(/\/?:splat\/$/, "/*");
@@ -685,33 +700,13 @@ const reportRedirectCollisions = (
   for (const [urlpath, sources] of validPaths) {
     if (sources.length <= 1) continue;
 
-    //
-    // remove annoying warnings for a special case: unversioned redirect paths within a versioned product topic
-    // this is a common pattern for "permalink" redirects that are intended to point to the latest version of a topic
-    // (which will be the behavior when multiple versions share the same redirect)
-    // it may also affect other redirects, but the default behavior is likely intended there as well
-    // this reduces noise in the warning output significantly, and allows us to fork versioned products
-    // without needing to go back and clean up old redirects - they'll automatically start pointing to the latest version
-    //
-
-    const splitFromPath = urlpath.split(path.posix.sep);
-    const filteredSources = sources.filter((s) => {
-      const splitToPath = s.urlpath.split(path.posix.sep);
-      const versions = productVersions[splitToPath[1]] || [];
-      return (
-        s.urlpath !== urlpath &&
-        splitFromPath[1] === splitToPath[1] &&
-        (splitFromPath[2] === "latest" || versions.includes(splitFromPath[2]))
-      );
-    });
-    if (!filteredSources.length) continue;
-
     collisionCount += 1;
-    sourceCount += filteredSources.length;
+    sourceCount += sources.length - 1;
 
-    for (const source of filteredSources) {
+    for (const source of sources) {
+      if (source.urlPath === urlpath) continue;
       if (isGHBuild) {
-        let list = filteredSources
+        let list = sources
           .filter((s) => s !== source)
           .map((existing) => {
             const existingIsRedirect = existing.urlpath !== urlpath;
@@ -733,7 +728,7 @@ const reportRedirectCollisions = (
           .replace(/\r/g, "%0D")
           .replace(/\n/g, "%0A")}`);
       } else {
-        let list = filteredSources
+        let list = sources
           .filter((s) => s !== source)
           .map((existing) => {
             const existingIsRedirect = existing.urlpath !== urlpath;

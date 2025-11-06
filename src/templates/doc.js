@@ -61,9 +61,13 @@ const replacePathVersion = (path, version = "latest") => {
   }`;
 };
 
-const makeVersionArray = (versions, pathVersions, path) => {
-  return versions.map((version, i) => ({
+const makeVersionArray = (productVersions, product, pathVersions, path) => {
+  return productVersions[product].map((version, i) => ({
     version: version,
+    preciseVersion:
+      (productVersions.__preciseVersions[product] &&
+        productVersions.__preciseVersions[product][version]) ||
+      version,
     url:
       pathVersions[i] ||
       `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
@@ -159,22 +163,17 @@ const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
   const { path: versionedPath, mtime, depth } = fields;
-  const {
-    frontmatter,
-    pagePath,
-    productVersions,
-    versions,
-    navTree,
-    prevNext,
-  } = pageContext;
+  const { frontmatter, pagePath, productVersions, navTree, prevNext } =
+    pageContext;
 
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
+  const { product, version } = getProductAndVersion(versionedPath);
   const versionArray = makeVersionArray(
-    versions,
+    productVersions,
+    product,
     pageContext.pathVersions,
     versionedPath,
   );
-  const { product, version } = getProductAndVersion(versionedPath);
 
   const {
     deepToC,

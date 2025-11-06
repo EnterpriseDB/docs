@@ -8,6 +8,29 @@ const algoliaTransformer = require("./src/constants/algolia-indexing.js");
 
 const { replacePathVersion } = require("./src/constants/gatsby-utils.js");
 
+const reporter = require("gatsby-cli/lib/reporter");
+
+// monkey patch reporter.warn to avoid spam when reporting long running queries
+// source: https://github.com/gatsbyjs/gatsby/discussions/30767#discussioncomment-1834382
+const originalReporterWarn = reporter.warn;
+reporter.warn = (text) => {
+  if (
+    text.includes("Query takes too long") ||
+    text.includes("This query took more than 15s to run")
+  ) {
+    return originalReporterWarn(text.replace(/Context:.*/s, ""));
+  }
+
+  return originalReporterWarn(text);
+};
+// also get rid of this stupid crap
+const originalError = reporter.error;
+reporter.error = function (...args) {
+  let text = (typeof args[0] == "string" && args[0]) || "";
+  if (!text.includes("Note: The code generator has deoptimised the styling of"))
+    return originalError.apply(this, args);
+};
+
 const ANSI_BLUE = "\x1b[34m";
 const ANSI_GREEN = "\x1b[32m";
 const ANSI_STOP = "\x1b[0m";
