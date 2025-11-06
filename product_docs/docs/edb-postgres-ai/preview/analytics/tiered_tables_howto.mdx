@@ -4,11 +4,11 @@ navTitle: Configure PGD data tiering
 description: Step-by-step guide to configure PGD data tiering.
 ---
 
-Manage the data lifecycle of your PGD cluster by moving Postgres data to object storage using three different available methods. Configure PGD data tiering either through the Hybrid Manager Console or manually from your PGD cluster command line.
+Manage the data lifecycle of your Advanced High Availability or Distributed High Availability cluster (PGD) by moving Postgres data to object storage using three different available methods. Configure PGD data tiering either through the Hybrid Manager (HM) console or manually from your PGD cluster command line.
 
 ## Prerequisites
 
-- Active Hybrid Manager instance version HM 2025.11.
+- Active HM instance version HM 2025.11 and later versions.
 - Provisioned PGD cluster version 6.1 or later with PGFS extension and PGAA extension version 1.4.0 or later.
 - Catalog service (optional): HM-managed Lakekeeper or external REST-compatible catalog.
 - Object storage: S3-compatible with credentials.
@@ -20,23 +20,22 @@ Manage the data lifecycle of your PGD cluster by moving Postgres data to object 
 
 ## Initial configuration
 
-Configure your PGD cluster to point to object storage for analytics and to an external catalog service to write metadata to if you are using one. Enable statistics for the node group disks in order to view the impact of tiered storage.
+Configure your PGD cluster to point to object storage for analytics and to an external catalog service to write metadata to if you are using one. 
+
 
 <TabContainer syncKey="intro">
-<Tab title="Hybrid Manager Console">
+<Tab title="HM console">
 
-Enable statistics for the node group disks:
+When you deploy your PGD cluster, HM automatically provisions a storage location and a write catalog location within your configured object storage at provisioning time.
 
-1. Find your PGD cluster in the Hybrid Manager Console and select **Quick Actions**.
+Enable statistics for the node group disks in order to view the impact of tiered storage:
+
+1. Find your PGD cluster in the HM console and select **Quick Actions**.
 1. Select **Edit Cluster**.
 1. Navigate to **Data Groups** and select your data group.
 1. Select **Edit**, then **DB configuration**.
 1. Find the configuration parameter `edb.collect_table_statistics` and change its value to `all`.
 1. **Save** the changes.
-
-Point to storage/catalog:
-
-- Instructions needed
 
 </Tab>
 
@@ -65,12 +64,11 @@ Point to storage/catalog:
       ```sql
       SELECT bdr.replicate_ddl_command($$
         SELECT pgaa.add_catalog(
-          'catalog-name',
+          'write-catalog-name',
           'iceberg-rest',
           '{
-            "url": "https://url/to/catalog",
+            "url": "https://your-catalog-rest-endpoint.com",
             "token": "YOUR_AUTH_TOKEN",
-            "warehouse": "pgaa_test",
            }'
         )
       );
@@ -79,7 +77,7 @@ Point to storage/catalog:
 1. Set the catalog as the analytics write destination:
 
       ```sql
-      SELECT bdr.alter_node_group_option('default_group', 'analytics_write_catalog', 'catalog-name');
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_write_catalog', 'write-catalog-name');
       ```
 
 </Tab>
@@ -90,7 +88,7 @@ Point to storage/catalog:
 Configure an existing heap table to use tiered tables.
 
 <TabContainer syncKey="TT">
-<Tab title="Hybrid Manager Console">
+<Tab title="HM console">
 
 Configure a tiered table:
 
@@ -153,7 +151,7 @@ This function converts the heap table into a tiered table and initiates the auto
 Configure an existing heap table to stream data to object storage.
 
 <TabContainer syncKey="replication">
-<Tab title="Hybrid Manager Console">
+<Tab title="HM console">
 
 To enable replication:
 1. Find your table in the **Tables** tab. Your table must have a primary key.
@@ -197,7 +195,7 @@ The function stops the analytics replication worker process from capturing and s
 Move the contents of an existing HTAP table to "cold" storage, truncate the local copy, and stop replication.
 
 <TabContainer syncKey="offload">
-<Tab title="Hybrid Manager Console">
+<Tab title="HM console">
 
 To offload the table:
 1. Find your HTAP table in the **Tables** tab.
@@ -243,7 +241,7 @@ The function checks the table's configuration, identifies its external Iceberg/D
 Perform compaction to improve the performance and storage efficiency of your external analytics tables residing in object storage.
 
 <TabContainer syncKey="compaction">
-<Tab title="Hybrid Manager Console">
+<Tab title="HM console">
 
 1. Find your HTAP or Iceberg or Delta table in the **Tables** tab.
 1. Select **Actions** then **Trigger Compaction**.
@@ -265,14 +263,14 @@ CALL pgaa.execute_compaction ('public.transactional_table');
 
 **Read tables from an external catalog**
 
-Attach as many external catalogs as desired to access table data that has been offloaded to object storage by different PGD clusters.
+Attach as many external catalogs as desired to access table data offloaded to object storage by other PGD clusters.
 
 <TabContainer syncKey="catalog">
-<Tab title="Hybrid Manager Console">
+<Tab title="HM console">
 
 1. Select your cluster and navigate to **Catalogs**, then select **Add Catalog**.
-1. Provide the name of the exsiting catalog and select **Add Managed Catalog**.
-1. Find the newly added catalog under **Catalogs**, select **Actions**, **Import**, and confirm.
+1. Find the catalog you want to attach by typing the cluster ID of the origin PGD cluster, select the catalog, and select **Add Managed Catalog**.
+1. Locate the newly added catalog under **Catalogs**, select **Actions**, **Import**, and confirm.
 1. This operation imports the metadata of all the tables available in this catalog. You may select **Sync** to continously synchronize with the source catalog.
 1. Examine the newly imported external tables under the **Tables** section, listed as **Iceberg** tables.
 1. You may restore these tables to your local Postgres storage by selecting the **Restore** option.
@@ -281,7 +279,32 @@ Attach as many external catalogs as desired to access table data that has been o
 
 <Tab title="psql">
 
-Steps required.
+1. Register the external catalog's connection details:
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgaa.add_catalog(
+          'read-catalog-name',
+          'iceberg-rest',
+          '{
+            "url": "https://your-catalog-rest-endpoint.com",
+            "token": "YOUR_READ_ONLY_TOKEN",
+           }'
+        )
+      );
+      ```
+1. Attach the catalog to the session:
+
+      ```sql
+      SELECT pgaa.attach_catalog('read-catalog-name');
+      ```
+
+1. Once attached, find and query the tables in the external object storage. Use a three-part naming convention: `catalog_name`.`schema_name`.`table_name`.
+
+      ```sql
+      SELECT * FROM pgaa.catalog_tables('read-catalog-name');
+      SELECT COUNT(*) FROM read-catalog-name.schema_name.table_name;
+      ```
 
 </Tab>
 </TabContainer>
