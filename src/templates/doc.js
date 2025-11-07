@@ -301,7 +301,7 @@ const DocTemplate = ({ data, pageContext }) => {
               dangerouslySetInnerHTML={{
                 __html: navTree.displayBanner.replace(
                   /href="latest:splat"/,
-                  `href="${replacePathVersion(pagePath)}"`,
+                  `href="${pageContext.pathVersions[0] || getProductUrlBase(pagePath)}"`,
                 ),
               }}
             />
