@@ -1,0 +1,1457 @@
+---
+title: structures
+navTitle: Agent
+
+---
+
+-   `__all__ = ['Agent', 'Pipeline', 'Structure', 'Workflow']` <small>module-attribute</small>  <span id="griptape.structures.__all__"></span> 
+
+<span id="griptape.structures.Agent"></span>
+
+Bases:
+ [`Structure`](./#griptape.structures.Structure "Structure (griptape.structures.Structure)")
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+@define
+class Agent(Structure):
+    input: Union[str, list, tuple, BaseArtifact, Callable[[BaseTask], BaseArtifact]] = field(
+        default=lambda task: task.full_context["args"][0] if task.full_context["args"] else TextArtifact(value=""),
+    )
+    stream: Optional[bool] = field(default=None, kw_only=True)
+    prompt_driver: Optional[BasePromptDriver] = field(default=None, kw_only=True)
+    output_schema: Optional[Union[Schema, type[BaseModel]]] = field(default=None, kw_only=True)
+    tools: list[BaseTool] = field(factory=list, kw_only=True)
+    max_meta_memory_entries: Optional[int] = field(default=20, kw_only=True)
+    fail_fast: bool = field(default=False, kw_only=True)
+    _tasks: list[Union[BaseTask, list[BaseTask]]] = field(
+        factory=list, kw_only=True, alias="tasks", metadata={"serializable": True}
+    )
+
+    @fail_fast.validator  # pyright: ignore[reportAttributeAccessIssue]
+    def validate_fail_fast(self, _: Attribute, fail_fast: bool) -> None:  # noqa: FBT001
+        if fail_fast:
+            raise ValueError("Agents cannot fail fast, as they can only have 1 task.")
+
+    @prompt_driver.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+    def validate_prompt_driver(self, _: Attribute, prompt_driver: Optional[BasePromptDriver]) -> None:
+        if prompt_driver is not None and self.stream is not None:
+            warnings.warn(
+                "`Agent.prompt_driver` is set, but `Agent.stream` was provided. `Agent.stream` will be ignored. This will be an error in the future.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    @_tasks.validator  # pyright: ignore[reportAttributeAccessIssue]
+    def validate_tasks(self, _: Attribute, tasks: list) -> None:
+        if tasks and self.prompt_driver is not None:
+            warnings.warn(
+                "`Agent.tasks` is set, but `Agent.prompt_driver` was provided. `Agent.prompt_driver` will be ignored. This will be an error in the future.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    def __attrs_post_init__(self) -> None:
+        super().__attrs_post_init__()
+
+        if len(self.tasks) == 0:
+            self._init_task()
+
+    @property
+    def task(self) -> BaseTask:
+        return self.tasks[0]
+
+    def add_task(self, task: BaseTask) -> BaseTask:
+        self._tasks.clear()
+
+        task.preprocess(self)
+
+        self._tasks.append(task)
+
+        return task
+
+    def add_tasks(self, *tasks: BaseTask | list[BaseTask]) -> list[BaseTask]:
+        if len(tasks) > 1:
+            raise ValueError("Agents can only have one task.")
+        return super().add_tasks(*tasks)
+
+    @observable
+    def try_run(self, *args) -> Agent:
+        self.task.run()
+
+        return self
+
+    def _init_task(self) -> None:
+        if self.stream is None:
+            with validators.disabled():
+                self.stream = Defaults.drivers_config.prompt_driver.stream
+
+        if self.prompt_driver is None:
+            with validators.disabled():
+                prompt_driver = evolve(Defaults.drivers_config.prompt_driver, stream=self.stream)
+                self.prompt_driver = prompt_driver
+        else:
+            prompt_driver = self.prompt_driver
+
+        task = PromptTask(
+            self.input,
+            prompt_driver=prompt_driver,
+            tools=self.tools,
+            output_schema=self.output_schema,
+            max_meta_memory_entries=self.max_meta_memory_entries,
+        )
+
+        self.add_task(task)
+```
+
+</details>
+
+-   `_tasks = field(factory=list, kw_only=True, alias='tasks', metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent._tasks"></span> 
+
+-   `fail_fast = field(default=False, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.fail_fast"></span> 
+
+-   `input = field(default=lambda task: task.full_context['args'][0] if task.full_context['args'] else TextArtifact(value=''))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.input"></span> 
+
+-   `max_meta_memory_entries = field(default=20, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.max_meta_memory_entries"></span> 
+
+-   `output_schema = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.output_schema"></span> 
+
+-   `prompt_driver = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.prompt_driver"></span> 
+
+-   `stream = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.stream"></span> 
+
+-   `task` <small>property</small>  <span id="griptape.structures.Agent.task"></span> 
+
+-   `tools = field(factory=list, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Agent.tools"></span> 
+
+<span id="griptape.structures.Agent.__attrs_post_init__"></span>
+
+### **attrs_post_init**()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+def __attrs_post_init__(self) -> None:
+    super().__attrs_post_init__()
+
+    if len(self.tasks) == 0:
+        self._init_task()
+```
+
+</details>
+
+<span id="griptape.structures.Agent._init_task"></span>
+
+### \_init_task()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+def _init_task(self) -> None:
+    if self.stream is None:
+        with validators.disabled():
+            self.stream = Defaults.drivers_config.prompt_driver.stream
+
+    if self.prompt_driver is None:
+        with validators.disabled():
+            prompt_driver = evolve(Defaults.drivers_config.prompt_driver, stream=self.stream)
+            self.prompt_driver = prompt_driver
+    else:
+        prompt_driver = self.prompt_driver
+
+    task = PromptTask(
+        self.input,
+        prompt_driver=prompt_driver,
+        tools=self.tools,
+        output_schema=self.output_schema,
+        max_meta_memory_entries=self.max_meta_memory_entries,
+    )
+
+    self.add_task(task)
+```
+
+</details>
+
+<span id="griptape.structures.Agent.add_task"></span>
+
+### add_task(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+def add_task(self, task: BaseTask) -> BaseTask:
+    self._tasks.clear()
+
+    task.preprocess(self)
+
+    self._tasks.append(task)
+
+    return task
+```
+
+</details>
+
+<span id="griptape.structures.Agent.add_tasks"></span>
+
+### add_tasks(\*tasks)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+def add_tasks(self, *tasks: BaseTask | list[BaseTask]) -> list[BaseTask]:
+    if len(tasks) > 1:
+        raise ValueError("Agents can only have one task.")
+    return super().add_tasks(*tasks)
+```
+
+</details>
+
+<span id="griptape.structures.Agent.try_run"></span>
+
+### try_run(\*args)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+@observable
+def try_run(self, *args) -> Agent:
+    self.task.run()
+
+    return self
+```
+
+</details>
+
+<span id="griptape.structures.Agent.validate_fail_fast"></span>
+
+### validate*fail_fast(*, fail_fast)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+@fail_fast.validator  # pyright: ignore[reportAttributeAccessIssue]
+def validate_fail_fast(self, _: Attribute, fail_fast: bool) -> None:  # noqa: FBT001
+    if fail_fast:
+        raise ValueError("Agents cannot fail fast, as they can only have 1 task.")
+```
+
+</details>
+
+<span id="griptape.structures.Agent.validate_prompt_driver"></span>
+
+### validate*prompt_driver(*, prompt_driver)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+@prompt_driver.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+def validate_prompt_driver(self, _: Attribute, prompt_driver: Optional[BasePromptDriver]) -> None:
+    if prompt_driver is not None and self.stream is not None:
+        warnings.warn(
+            "`Agent.prompt_driver` is set, but `Agent.stream` was provided. `Agent.stream` will be ignored. This will be an error in the future.",
+            UserWarning,
+            stacklevel=2,
+        )
+```
+
+</details>
+
+<span id="griptape.structures.Agent.validate_tasks"></span>
+
+### validate*tasks(*, tasks)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;agent.py</code></summary>
+
+```python
+@_tasks.validator  # pyright: ignore[reportAttributeAccessIssue]
+def validate_tasks(self, _: Attribute, tasks: list) -> None:
+    if tasks and self.prompt_driver is not None:
+        warnings.warn(
+            "`Agent.tasks` is set, but `Agent.prompt_driver` was provided. `Agent.prompt_driver` will be ignored. This will be an error in the future.",
+            UserWarning,
+            stacklevel=2,
+        )
+```
+
+</details>
+
+<span id="griptape.structures.Pipeline"></span>
+
+## Pipeline
+
+Bases:
+ [`Structure`](./#griptape.structures.Structure "Structure (griptape.structures.Structure)")
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;pipeline.py</code></summary>
+
+```python
+@define
+class Pipeline(Structure):
+    def add_task(self, task: BaseTask) -> BaseTask:
+        if (existing_task := self.try_find_task(task.id)) is not None:
+            return existing_task
+
+        task.preprocess(self)
+
+        if self.output_task:
+            self.output_task.child_ids.append(task.id)
+            task.parent_ids.append(self.output_task.id)
+
+        self._tasks.append(task)
+
+        return task
+
+    def insert_task(self, parent_task: BaseTask, task: BaseTask) -> BaseTask:
+        task.preprocess(self)
+
+        if parent_task.children:
+            child_task = parent_task.children[0]
+
+            task.child_ids.append(child_task.id)
+            child_task.parent_ids.append(task.id)
+
+            child_task.parent_ids.remove(parent_task.id)
+            parent_task.child_ids.remove(child_task.id)
+
+        task.parent_ids.append(parent_task.id)
+        parent_task.child_ids.append(task.id)
+
+        parent_index = self.tasks.index(parent_task)
+        self._tasks.insert(parent_index + 1, task)
+
+        return task
+
+    @observable
+    def try_run(self, *args) -> Pipeline:
+        self.__run_from_task(self.input_task)
+
+        return self
+
+    def context(self, task: BaseTask) -> dict[str, Any]:
+        context = super().context(task)
+
+        context.update(
+            {
+                "parent_output": task.parents[0].output if task.parents else None,
+                "task_outputs": self.task_outputs,
+                "parent": task.parents[0] if task.parents else None,
+                "child": task.children[0] if task.children else None,
+            },
+        )
+
+        return context
+
+    def __run_from_task(self, task: Optional[BaseTask]) -> None:
+        if task is None or isinstance(task.run(), ErrorArtifact) and self.fail_fast:
+            return
+        self.__run_from_task(next(iter(task.children), None))
+```
+
+</details>
+
+<span id="griptape.structures.Pipeline.__run_from_task"></span>
+
+### \_\_run_from_task(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;pipeline.py</code></summary>
+
+```python
+def __run_from_task(self, task: Optional[BaseTask]) -> None:
+    if task is None or isinstance(task.run(), ErrorArtifact) and self.fail_fast:
+        return
+    self.__run_from_task(next(iter(task.children), None))
+```
+
+</details>
+
+<span id="griptape.structures.Pipeline.add_task"></span>
+
+### add_task(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;pipeline.py</code></summary>
+
+```python
+def add_task(self, task: BaseTask) -> BaseTask:
+    if (existing_task := self.try_find_task(task.id)) is not None:
+        return existing_task
+
+    task.preprocess(self)
+
+    if self.output_task:
+        self.output_task.child_ids.append(task.id)
+        task.parent_ids.append(self.output_task.id)
+
+    self._tasks.append(task)
+
+    return task
+```
+
+</details>
+
+<span id="griptape.structures.Pipeline.context"></span>
+
+### context(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;pipeline.py</code></summary>
+
+```python
+def context(self, task: BaseTask) -> dict[str, Any]:
+    context = super().context(task)
+
+    context.update(
+        {
+            "parent_output": task.parents[0].output if task.parents else None,
+            "task_outputs": self.task_outputs,
+            "parent": task.parents[0] if task.parents else None,
+            "child": task.children[0] if task.children else None,
+        },
+    )
+
+    return context
+```
+
+</details>
+
+<span id="griptape.structures.Pipeline.insert_task"></span>
+
+### insert_task(parent_task, task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;pipeline.py</code></summary>
+
+```python
+def insert_task(self, parent_task: BaseTask, task: BaseTask) -> BaseTask:
+    task.preprocess(self)
+
+    if parent_task.children:
+        child_task = parent_task.children[0]
+
+        task.child_ids.append(child_task.id)
+        child_task.parent_ids.append(task.id)
+
+        child_task.parent_ids.remove(parent_task.id)
+        parent_task.child_ids.remove(child_task.id)
+
+    task.parent_ids.append(parent_task.id)
+    parent_task.child_ids.append(task.id)
+
+    parent_index = self.tasks.index(parent_task)
+    self._tasks.insert(parent_index + 1, task)
+
+    return task
+```
+
+</details>
+
+<span id="griptape.structures.Pipeline.try_run"></span>
+
+### try_run(\*args)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;pipeline.py</code></summary>
+
+```python
+@observable
+def try_run(self, *args) -> Pipeline:
+    self.__run_from_task(self.input_task)
+
+    return self
+```
+
+</details>
+
+<span id="griptape.structures.Structure"></span>
+
+## Structure
+
+Bases:
+ [`RuleMixin`](../mixins/rule_mixin.mdx#griptape.mixins.rule_mixin.RuleMixin "RuleMixin (griptape.mixins.rule_mixin.RuleMixin)")
+,  [`SerializableMixin`](../mixins/serializable_mixin.mdx#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+,  [`RunnableMixin[&#39;Structure&#39;]`](../mixins/runnable_mixin.mdx#griptape.mixins.runnable_mixin.RunnableMixin "RunnableMixin (griptape.mixins.runnable_mixin.RunnableMixin)")
+, <span title="abc.ABC">ABC</span>
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@define
+class Structure(RuleMixin, SerializableMixin, RunnableMixin["Structure"], ABC):
+    id: str = field(default=Factory(lambda: uuid.uuid4().hex), kw_only=True, metadata={"serializable": True})
+    _tasks: list[Union[BaseTask, list[BaseTask]]] = field(
+        factory=list, kw_only=True, alias="tasks", metadata={"serializable": True}
+    )
+    conversation_memory: Optional[BaseConversationMemory] = field(
+        default=Factory(lambda: ConversationMemory()),
+        kw_only=True,
+        metadata={"serializable": True},
+    )
+    conversation_memory_strategy: Literal["per_structure", "per_task"] = field(
+        default="per_structure", kw_only=True, metadata={"serializable": True}
+    )
+    task_memory: TaskMemory = field(
+        default=Factory(lambda self: TaskMemory(), takes_self=True),
+        kw_only=True,
+    )
+    meta_memory: MetaMemory = field(default=Factory(lambda: MetaMemory()), kw_only=True)
+    fail_fast: bool = field(default=True, kw_only=True, metadata={"serializable": True})
+    _execution_args: tuple = ()
+    _event_queue: Queue[BaseEvent] = field(default=Factory(lambda: Queue()), init=False)
+
+    def __attrs_post_init__(self) -> None:
+        tasks = self._tasks.copy()
+        self._tasks.clear()
+        self.add_tasks(*tasks)
+
+    def __add__(self, other: BaseTask | list[BaseTask | list[BaseTask]]) -> list[BaseTask]:
+        return self.add_tasks(*other) if isinstance(other, list) else self.add_tasks(other)
+
+    @property
+    def tasks(self) -> list[BaseTask]:
+        tasks = []
+
+        for task in self._tasks:
+            if isinstance(task, list):
+                tasks.extend(task)
+            else:
+                tasks.append(task)
+        return tasks
+
+    @property
+    def execution_args(self) -> tuple:
+        return self._execution_args
+
+    @property
+    def input_task(self) -> Optional[BaseTask]:
+        return self.tasks[0] if self.tasks else None
+
+    @property
+    def output_task(self) -> Optional[BaseTask]:
+        return self.tasks[-1] if self.tasks else None
+
+    @property
+    def output(self) -> BaseArtifact:
+        if self.output_task is None:
+            raise ValueError("Structure has no output Task. Add a Task to the Structure to generate output.")
+        if self.output_task.output is None:
+            raise ValueError("Structure's output Task has no output. Run the Structure to generate output.")
+        return self.output_task.output
+
+    @property
+    def task_outputs(self) -> dict[str, Optional[BaseArtifact]]:
+        return {task.id: task.output for task in self.tasks}
+
+    @property
+    def finished_tasks(self) -> list[BaseTask]:
+        return [s for s in self.tasks if s.is_finished()]
+
+    def is_finished(self) -> bool:
+        return all(not s.can_run() for s in self.tasks)
+
+    def is_running(self) -> bool:
+        return any(s for s in self.tasks if s.is_running())
+
+    def find_task(self, task_id: str) -> BaseTask:
+        if (task := self.try_find_task(task_id)) is not None:
+            return task
+        raise ValueError(f"Task with id {task_id} doesn't exist.")
+
+    def try_find_task(self, task_id: str) -> Optional[BaseTask]:
+        for task in self.tasks:
+            if task.id == task_id:
+                return task
+        return None
+
+    def add_tasks(self, *tasks: BaseTask | list[BaseTask]) -> list[BaseTask]:
+        added_tasks = []
+        for task in tasks:
+            if isinstance(task, list):
+                added_tasks.extend(self.add_tasks(*task))
+            else:
+                added_tasks.append(self.add_task(task))
+        return added_tasks
+
+    def context(self, task: BaseTask) -> dict[str, Any]:
+        return {"args": self.execution_args, "structure": self}
+
+    def resolve_relationships(self) -> None:
+        task_by_id = {}
+        for task in self.tasks:
+            if task.id in task_by_id:
+                raise ValueError(f"Duplicate task with id {task.id} found.")
+            task_by_id[task.id] = task
+
+        for task in self.tasks:
+            # Ensure parents include this task as a child
+            for parent_id in task.parent_ids:
+                if parent_id not in task_by_id:
+                    raise ValueError(f"Task with id {parent_id} doesn't exist.")
+                parent = task_by_id[parent_id]
+                if task.id not in parent.child_ids:
+                    parent.child_ids.append(task.id)
+
+            # Ensure children include this task as a parent
+            for child_id in task.child_ids:
+                if child_id not in task_by_id:
+                    raise ValueError(f"Task with id {child_id} doesn't exist.")
+                child = task_by_id[child_id]
+                if task.id not in child.parent_ids:
+                    child.parent_ids.append(task.id)
+
+    @observable
+    def before_run(self, args: Any) -> None:
+        super().before_run(args)
+        self._execution_args = args
+
+        [task.reset() for task in self.tasks]
+
+        if self.input_task is not None:
+            EventBus.publish_event(
+                StartStructureRunEvent(
+                    structure_id=self.id,
+                    input_task_input=self.input_task.input,
+                    input_task_output=self.input_task.output,
+                ),
+            )
+
+        self.resolve_relationships()
+
+    @observable
+    def after_run(self) -> None:
+        super().after_run()
+
+        if self.output_task is not None:
+            if (
+                self.conversation_memory_strategy == "per_structure"
+                and self.conversation_memory is not None
+                and self.input_task is not None
+                and self.output_task.output is not None
+            ):
+                run = Run(input=self.input_task.input, output=self.output_task.output)
+
+                self.conversation_memory.add_run(run)
+
+            EventBus.publish_event(
+                FinishStructureRunEvent(
+                    structure_id=self.id,
+                    output_task_input=self.output_task.input,
+                    output_task_output=self.output_task.output,
+                ),
+                flush=True,
+            )
+
+    @abstractmethod
+    def add_task(self, task: BaseTask) -> BaseTask: ...
+
+    @observable
+    def run(self, *args) -> Structure:
+        self.before_run(args)
+
+        result = self.try_run(*args)
+
+        self.after_run()
+
+        return result
+
+    @observable
+    def run_stream(self, *args, event_types: Optional[list[type[BaseEvent]]] = None) -> Iterator[BaseEvent]:
+        if event_types is None:
+            event_types = [BaseEvent]
+        elif FinishStructureRunEvent not in event_types:
+            event_types = [*event_types, FinishStructureRunEvent]
+
+        with EventListener(self._event_queue.put, event_types=event_types):
+            t = Thread(target=with_contextvars(self.run), args=args)
+            t.start()
+
+            while True:
+                event = self._event_queue.get()
+                if isinstance(event, FinishStructureRunEvent) and event.structure_id == self.id:
+                    break
+                else:
+                    yield event
+            t.join()
+
+    @abstractmethod
+    def try_run(self, *args) -> Structure: ...
+```
+
+</details>
+
+-   `_event_queue = field(default=Factory(lambda: Queue()), init=False)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure._event_queue"></span> 
+
+-   `_execution_args = ()` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure._execution_args"></span> 
+
+-   `_tasks = field(factory=list, kw_only=True, alias='tasks', metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure._tasks"></span> 
+
+-   `conversation_memory = field(default=Factory(lambda: ConversationMemory()), kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure.conversation_memory"></span> 
+
+-   `conversation_memory_strategy = field(default='per_structure', kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure.conversation_memory_strategy"></span> 
+
+-   `execution_args` <small>property</small>  <span id="griptape.structures.Structure.execution_args"></span> 
+
+-   `fail_fast = field(default=True, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure.fail_fast"></span> 
+
+-   `finished_tasks` <small>property</small>  <span id="griptape.structures.Structure.finished_tasks"></span> 
+
+-   `id = field(default=Factory(lambda: uuid.uuid4().hex), kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure.id"></span> 
+
+-   `input_task` <small>property</small>  <span id="griptape.structures.Structure.input_task"></span> 
+
+-   `meta_memory = field(default=Factory(lambda: MetaMemory()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure.meta_memory"></span> 
+
+-   `output` <small>property</small>  <span id="griptape.structures.Structure.output"></span> 
+
+-   `output_task` <small>property</small>  <span id="griptape.structures.Structure.output_task"></span> 
+
+-   `task_memory = field(default=Factory(lambda self: TaskMemory(), takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.structures.Structure.task_memory"></span> 
+
+-   `task_outputs` <small>property</small>  <span id="griptape.structures.Structure.task_outputs"></span> 
+
+-   `tasks` <small>property</small>  <span id="griptape.structures.Structure.tasks"></span> 
+
+<span id="griptape.structures.Structure.__add__"></span>
+
+### **add**(other)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def __add__(self, other: BaseTask | list[BaseTask | list[BaseTask]]) -> list[BaseTask]:
+    return self.add_tasks(*other) if isinstance(other, list) else self.add_tasks(other)
+```
+
+</details>
+
+<span id="griptape.structures.Structure.__attrs_post_init__"></span>
+
+### **attrs_post_init**()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def __attrs_post_init__(self) -> None:
+    tasks = self._tasks.copy()
+    self._tasks.clear()
+    self.add_tasks(*tasks)
+```
+
+</details>
+
+<span id="griptape.structures.Structure.add_task"></span>
+
+### add_task(task)abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@abstractmethod
+def add_task(self, task: BaseTask) -> BaseTask: ...
+```
+
+</details>
+
+<span id="griptape.structures.Structure.add_tasks"></span>
+
+### add_tasks(\*tasks)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def add_tasks(self, *tasks: BaseTask | list[BaseTask]) -> list[BaseTask]:
+    added_tasks = []
+    for task in tasks:
+        if isinstance(task, list):
+            added_tasks.extend(self.add_tasks(*task))
+        else:
+            added_tasks.append(self.add_task(task))
+    return added_tasks
+```
+
+</details>
+
+<span id="griptape.structures.Structure.after_run"></span>
+
+### after_run()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@observable
+def after_run(self) -> None:
+    super().after_run()
+
+    if self.output_task is not None:
+        if (
+            self.conversation_memory_strategy == "per_structure"
+            and self.conversation_memory is not None
+            and self.input_task is not None
+            and self.output_task.output is not None
+        ):
+            run = Run(input=self.input_task.input, output=self.output_task.output)
+
+            self.conversation_memory.add_run(run)
+
+        EventBus.publish_event(
+            FinishStructureRunEvent(
+                structure_id=self.id,
+                output_task_input=self.output_task.input,
+                output_task_output=self.output_task.output,
+            ),
+            flush=True,
+        )
+```
+
+</details>
+
+<span id="griptape.structures.Structure.before_run"></span>
+
+### before_run(args)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@observable
+def before_run(self, args: Any) -> None:
+    super().before_run(args)
+    self._execution_args = args
+
+    [task.reset() for task in self.tasks]
+
+    if self.input_task is not None:
+        EventBus.publish_event(
+            StartStructureRunEvent(
+                structure_id=self.id,
+                input_task_input=self.input_task.input,
+                input_task_output=self.input_task.output,
+            ),
+        )
+
+    self.resolve_relationships()
+```
+
+</details>
+
+<span id="griptape.structures.Structure.context"></span>
+
+### context(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def context(self, task: BaseTask) -> dict[str, Any]:
+    return {"args": self.execution_args, "structure": self}
+```
+
+</details>
+
+<span id="griptape.structures.Structure.find_task"></span>
+
+### find_task(task_id)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def find_task(self, task_id: str) -> BaseTask:
+    if (task := self.try_find_task(task_id)) is not None:
+        return task
+    raise ValueError(f"Task with id {task_id} doesn't exist.")
+```
+
+</details>
+
+<span id="griptape.structures.Structure.is_finished"></span>
+
+### is_finished()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def is_finished(self) -> bool:
+    return all(not s.can_run() for s in self.tasks)
+```
+
+</details>
+
+<span id="griptape.structures.Structure.is_running"></span>
+
+### is_running()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def is_running(self) -> bool:
+    return any(s for s in self.tasks if s.is_running())
+```
+
+</details>
+
+<span id="griptape.structures.Structure.resolve_relationships"></span>
+
+### resolve_relationships()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def resolve_relationships(self) -> None:
+    task_by_id = {}
+    for task in self.tasks:
+        if task.id in task_by_id:
+            raise ValueError(f"Duplicate task with id {task.id} found.")
+        task_by_id[task.id] = task
+
+    for task in self.tasks:
+        # Ensure parents include this task as a child
+        for parent_id in task.parent_ids:
+            if parent_id not in task_by_id:
+                raise ValueError(f"Task with id {parent_id} doesn't exist.")
+            parent = task_by_id[parent_id]
+            if task.id not in parent.child_ids:
+                parent.child_ids.append(task.id)
+
+        # Ensure children include this task as a parent
+        for child_id in task.child_ids:
+            if child_id not in task_by_id:
+                raise ValueError(f"Task with id {child_id} doesn't exist.")
+            child = task_by_id[child_id]
+            if task.id not in child.parent_ids:
+                child.parent_ids.append(task.id)
+```
+
+</details>
+
+<span id="griptape.structures.Structure.run"></span>
+
+### run(\*args)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@observable
+def run(self, *args) -> Structure:
+    self.before_run(args)
+
+    result = self.try_run(*args)
+
+    self.after_run()
+
+    return result
+```
+
+</details>
+
+<span id="griptape.structures.Structure.run_stream"></span>
+
+### run_stream(\*args, event_types=None)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@observable
+def run_stream(self, *args, event_types: Optional[list[type[BaseEvent]]] = None) -> Iterator[BaseEvent]:
+    if event_types is None:
+        event_types = [BaseEvent]
+    elif FinishStructureRunEvent not in event_types:
+        event_types = [*event_types, FinishStructureRunEvent]
+
+    with EventListener(self._event_queue.put, event_types=event_types):
+        t = Thread(target=with_contextvars(self.run), args=args)
+        t.start()
+
+        while True:
+            event = self._event_queue.get()
+            if isinstance(event, FinishStructureRunEvent) and event.structure_id == self.id:
+                break
+            else:
+                yield event
+        t.join()
+```
+
+</details>
+
+<span id="griptape.structures.Structure.try_find_task"></span>
+
+### try_find_task(task_id)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+def try_find_task(self, task_id: str) -> Optional[BaseTask]:
+    for task in self.tasks:
+        if task.id == task_id:
+            return task
+    return None
+```
+
+</details>
+
+<span id="griptape.structures.Structure.try_run"></span>
+
+### try_run(\*args)abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;structure.py</code></summary>
+
+```python
+@abstractmethod
+def try_run(self, *args) -> Structure: ...
+```
+
+</details>
+
+<span id="griptape.structures.Workflow"></span>
+
+## Workflow
+
+Bases:
+ [`Structure`](./#griptape.structures.Structure "Structure (griptape.structures.Structure)")
+,  [`FuturesExecutorMixin`](../mixins/futures_executor_mixin.mdx#griptape.mixins.futures_executor_mixin.FuturesExecutorMixin "FuturesExecutorMixin (griptape.mixins.futures_executor_mixin.FuturesExecutorMixin)")
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+@define
+class Workflow(Structure, FuturesExecutorMixin):
+    @property
+    def input_task(self) -> Optional[BaseTask]:
+        return self.order_tasks()[0] if self.tasks else None
+
+    @property
+    def output_task(self) -> Optional[BaseTask]:
+        return self.order_tasks()[-1] if self.tasks else None
+
+    @property
+    def input_tasks(self) -> list[BaseTask]:
+        return [task for task in self.tasks if not task.parents]
+
+    @property
+    def output_tasks(self) -> list[BaseTask]:
+        return [task for task in self.tasks if not task.children]
+
+    @property
+    def outputs(self) -> list[BaseArtifact]:
+        return [task.output for task in self.output_tasks if task.output is not None]
+
+    def add_task(self, task: BaseTask) -> BaseTask:
+        if (existing_task := self.try_find_task(task.id)) is not None:
+            return existing_task
+
+        task.preprocess(self)
+
+        self._tasks.append(task)
+
+        return task
+
+    def insert_tasks(
+        self,
+        parent_tasks: BaseTask | list[BaseTask],
+        tasks: BaseTask | list[BaseTask],
+        child_tasks: BaseTask | list[BaseTask],
+        *,
+        preserve_relationship: bool = False,
+    ) -> list[BaseTask]:
+        """Insert tasks between parent and child tasks in the workflow.
+
+        Args:
+            parent_tasks: The tasks that will be the parents of the new tasks.
+            tasks: The tasks to insert between the parent and child tasks.
+            child_tasks: The tasks that will be the children of the new tasks.
+            preserve_relationship: Whether to preserve the parent/child relationship when inserting between parent and child tasks.
+        """
+        if not isinstance(parent_tasks, list):
+            parent_tasks = [parent_tasks]
+        if not isinstance(tasks, list):
+            tasks = [tasks]
+        if not isinstance(child_tasks, list):
+            child_tasks = [child_tasks]
+
+        for task in tasks:
+            self.insert_task(parent_tasks, task, child_tasks, preserve_relationship=preserve_relationship)
+
+        return tasks
+
+    def insert_task(
+        self,
+        parent_tasks: list[BaseTask],
+        task: BaseTask,
+        child_tasks: list[BaseTask],
+        *,
+        preserve_relationship: bool = False,
+    ) -> BaseTask:
+        task.preprocess(self)
+
+        self.__link_task_to_children(task, child_tasks)
+
+        if not preserve_relationship:
+            self.__remove_old_parent_child_relationships(parent_tasks, child_tasks)
+
+        last_parent_index = self.__link_task_to_parents(task, parent_tasks)
+
+        # Insert the new task once, just after the last parent task
+        self._tasks.insert(last_parent_index + 1, task)
+
+        return task
+
+    @observable
+    def try_run(self, *args) -> Workflow:
+        exit_loop = False
+
+        with self.create_futures_executor() as futures_executor:
+            while not self.is_finished() and not exit_loop:
+                futures_list = {}
+                ordered_tasks = self.order_tasks()
+
+                for task in ordered_tasks:
+                    if task.can_run():
+                        future = futures_executor.submit(with_contextvars(task.run))
+                        futures_list[future] = task
+
+                # Wait for all tasks to complete
+                for future in futures.as_completed(futures_list):
+                    if isinstance(future.result(), ErrorArtifact) and self.fail_fast:
+                        exit_loop = True
+
+                        break
+
+            return self
+
+    def context(self, task: BaseTask) -> dict[str, Any]:
+        context = super().context(task)
+
+        context.update(
+            {
+                "task_outputs": self.task_outputs,
+                "parent_outputs": task.parent_outputs,
+                "parents_output_text": task.parents_output_text,
+                "parents": {parent.id: parent for parent in task.parents},
+                "children": {child.id: child for child in task.children},
+            },
+        )
+
+        return context
+
+    def to_graph(self) -> dict[str, set[str]]:
+        graph: dict[str, set[str]] = {}
+
+        for key_task in self.tasks:
+            graph[key_task.id] = set()
+
+            for value_task in self.tasks:
+                if key_task.id in value_task.child_ids:
+                    graph[key_task.id].add(value_task.id)
+
+        return graph
+
+    def order_tasks(self) -> list[BaseTask]:
+        return [self.find_task(task_id) for task_id in TopologicalSorter(self.to_graph()).static_order()]
+
+    def __link_task_to_children(self, task: BaseTask, child_tasks: list[BaseTask]) -> None:
+        for child_task in child_tasks:
+            # Link the new task to the child task
+            if child_task.id not in task.child_ids:
+                task.child_ids.append(child_task.id)
+            if task.id not in child_task.parent_ids:
+                child_task.parent_ids.append(task.id)
+
+    def __remove_old_parent_child_relationships(
+        self,
+        parent_tasks: list[BaseTask],
+        child_tasks: list[BaseTask],
+    ) -> None:
+        for parent_task in parent_tasks:
+            for child_task in child_tasks:
+                # Remove the old parent/child relationship
+                if child_task.id in parent_task.child_ids:
+                    parent_task.child_ids.remove(child_task.id)
+                if parent_task.id in child_task.parent_ids:
+                    child_task.parent_ids.remove(parent_task.id)
+
+    def __link_task_to_parents(self, task: BaseTask, parent_tasks: list[BaseTask]) -> int:
+        last_parent_index = -1
+        for parent_task in parent_tasks:
+            # Link the new task to the parent task
+            if parent_task.id not in task.parent_ids:
+                task.parent_ids.append(parent_task.id)
+            if task.id not in parent_task.child_ids:
+                parent_task.child_ids.append(task.id)
+
+            try:
+                parent_index = self.tasks.index(parent_task)
+            except ValueError as exc:
+                raise ValueError(f"Parent task {parent_task.id} not found in workflow.") from exc
+            else:
+                last_parent_index = max(last_parent_index, parent_index)
+
+        return last_parent_index
+```
+
+</details>
+
+-   `input_task` <small>property</small>  <span id="griptape.structures.Workflow.input_task"></span> 
+
+-   `input_tasks` <small>property</small>  <span id="griptape.structures.Workflow.input_tasks"></span> 
+
+-   `output_task` <small>property</small>  <span id="griptape.structures.Workflow.output_task"></span> 
+
+-   `output_tasks` <small>property</small>  <span id="griptape.structures.Workflow.output_tasks"></span> 
+
+-   `outputs` <small>property</small>  <span id="griptape.structures.Workflow.outputs"></span> 
+
+<span id="griptape.structures.Workflow.__link_task_to_children"></span>
+
+### \_\_link_task_to_children(task, child_tasks)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def __link_task_to_children(self, task: BaseTask, child_tasks: list[BaseTask]) -> None:
+    for child_task in child_tasks:
+        # Link the new task to the child task
+        if child_task.id not in task.child_ids:
+            task.child_ids.append(child_task.id)
+        if task.id not in child_task.parent_ids:
+            child_task.parent_ids.append(task.id)
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.__link_task_to_parents"></span>
+
+### \_\_link_task_to_parents(task, parent_tasks)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def __link_task_to_parents(self, task: BaseTask, parent_tasks: list[BaseTask]) -> int:
+    last_parent_index = -1
+    for parent_task in parent_tasks:
+        # Link the new task to the parent task
+        if parent_task.id not in task.parent_ids:
+            task.parent_ids.append(parent_task.id)
+        if task.id not in parent_task.child_ids:
+            parent_task.child_ids.append(task.id)
+
+        try:
+            parent_index = self.tasks.index(parent_task)
+        except ValueError as exc:
+            raise ValueError(f"Parent task {parent_task.id} not found in workflow.") from exc
+        else:
+            last_parent_index = max(last_parent_index, parent_index)
+
+    return last_parent_index
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.__remove_old_parent_child_relationships"></span>
+
+### \_\_remove_old_parent_child_relationships(parent_tasks, child_tasks)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def __remove_old_parent_child_relationships(
+    self,
+    parent_tasks: list[BaseTask],
+    child_tasks: list[BaseTask],
+) -> None:
+    for parent_task in parent_tasks:
+        for child_task in child_tasks:
+            # Remove the old parent/child relationship
+            if child_task.id in parent_task.child_ids:
+                parent_task.child_ids.remove(child_task.id)
+            if parent_task.id in child_task.parent_ids:
+                child_task.parent_ids.remove(parent_task.id)
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.add_task"></span>
+
+### add_task(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def add_task(self, task: BaseTask) -> BaseTask:
+    if (existing_task := self.try_find_task(task.id)) is not None:
+        return existing_task
+
+    task.preprocess(self)
+
+    self._tasks.append(task)
+
+    return task
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.context"></span>
+
+### context(task)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def context(self, task: BaseTask) -> dict[str, Any]:
+    context = super().context(task)
+
+    context.update(
+        {
+            "task_outputs": self.task_outputs,
+            "parent_outputs": task.parent_outputs,
+            "parents_output_text": task.parents_output_text,
+            "parents": {parent.id: parent for parent in task.parents},
+            "children": {child.id: child for child in task.children},
+        },
+    )
+
+    return context
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.insert_task"></span>
+
+### insert_task(parent_tasks, task, child_tasks, \*, preserve_relationship=False)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def insert_task(
+    self,
+    parent_tasks: list[BaseTask],
+    task: BaseTask,
+    child_tasks: list[BaseTask],
+    *,
+    preserve_relationship: bool = False,
+) -> BaseTask:
+    task.preprocess(self)
+
+    self.__link_task_to_children(task, child_tasks)
+
+    if not preserve_relationship:
+        self.__remove_old_parent_child_relationships(parent_tasks, child_tasks)
+
+    last_parent_index = self.__link_task_to_parents(task, parent_tasks)
+
+    # Insert the new task once, just after the last parent task
+    self._tasks.insert(last_parent_index + 1, task)
+
+    return task
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.insert_tasks"></span>
+
+### insert_tasks(parent_tasks, tasks, child_tasks, \*, preserve_relationship=False)
+
+Insert tasks between parent and child tasks in the workflow.
+
+#### Parameters
+
+| Name                    | Type                                                                                                                                                      | Description                                                                                           | Default    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
+| `parent_tasks`          | <a href="../tasks#griptape.tasks.BaseTask" title="BaseTask (griptape.tasks.BaseTask)"><code class="language-python">BaseTask \| list[BaseTask]</code></a> | The tasks that will be the parents of the new tasks.<br/>                                             | `required` |
+| `tasks`                 | <a href="../tasks#griptape.tasks.BaseTask" title="BaseTask (griptape.tasks.BaseTask)"><code class="language-python">BaseTask \| list[BaseTask]</code></a> | The tasks to insert between the parent and child tasks.<br/>                                          | `required` |
+| `child_tasks`           | <a href="../tasks#griptape.tasks.BaseTask" title="BaseTask (griptape.tasks.BaseTask)"><code class="language-python">BaseTask \| list[BaseTask]</code></a> | The tasks that will be the children of the new tasks.<br/>                                            | `required` |
+| `preserve_relationship` | `bool`                                                                                                                                                    | Whether to preserve the parent/child relationship when inserting between parent and child tasks.<br/> | `False`    |
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def insert_tasks(
+    self,
+    parent_tasks: BaseTask | list[BaseTask],
+    tasks: BaseTask | list[BaseTask],
+    child_tasks: BaseTask | list[BaseTask],
+    *,
+    preserve_relationship: bool = False,
+) -> list[BaseTask]:
+    """Insert tasks between parent and child tasks in the workflow.
+
+    Args:
+        parent_tasks: The tasks that will be the parents of the new tasks.
+        tasks: The tasks to insert between the parent and child tasks.
+        child_tasks: The tasks that will be the children of the new tasks.
+        preserve_relationship: Whether to preserve the parent/child relationship when inserting between parent and child tasks.
+    """
+    if not isinstance(parent_tasks, list):
+        parent_tasks = [parent_tasks]
+    if not isinstance(tasks, list):
+        tasks = [tasks]
+    if not isinstance(child_tasks, list):
+        child_tasks = [child_tasks]
+
+    for task in tasks:
+        self.insert_task(parent_tasks, task, child_tasks, preserve_relationship=preserve_relationship)
+
+    return tasks
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.order_tasks"></span>
+
+### order_tasks()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def order_tasks(self) -> list[BaseTask]:
+    return [self.find_task(task_id) for task_id in TopologicalSorter(self.to_graph()).static_order()]
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.to_graph"></span>
+
+### to_graph()
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+def to_graph(self) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+
+    for key_task in self.tasks:
+        graph[key_task.id] = set()
+
+        for value_task in self.tasks:
+            if key_task.id in value_task.child_ids:
+                graph[key_task.id].add(value_task.id)
+
+    return graph
+```
+
+</details>
+
+<span id="griptape.structures.Workflow.try_run"></span>
+
+### try_run(\*args)
+
+<details><summary>Source Code in <code>griptape&#47;structures&#47;workflow.py</code></summary>
+
+```python
+@observable
+def try_run(self, *args) -> Workflow:
+    exit_loop = False
+
+    with self.create_futures_executor() as futures_executor:
+        while not self.is_finished() and not exit_loop:
+            futures_list = {}
+            ordered_tasks = self.order_tasks()
+
+            for task in ordered_tasks:
+                if task.can_run():
+                    future = futures_executor.submit(with_contextvars(task.run))
+                    futures_list[future] = task
+
+            # Wait for all tasks to complete
+            for future in futures.as_completed(futures_list):
+                if isinstance(future.result(), ErrorArtifact) and self.fail_fast:
+                    exit_loop = True
+
+                    break
+
+        return self
+```
+
+</details>

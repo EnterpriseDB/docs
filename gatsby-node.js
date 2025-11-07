@@ -353,7 +353,12 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   }
   reportMissingTitle(missingTitles, reporter);
-  reportRedirectCollisions(validPaths, reporter, gitData.docsRepoUrl);
+  reportRedirectCollisions(
+    validPaths,
+    reporter,
+    gitData.docsRepoUrl,
+    productVersions,
+  );
 };
 
 const createDoc = (
@@ -391,7 +396,6 @@ const createDoc = (
       navTree,
       prevNext,
       productVersions,
-      versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       pathVersions,
     },

@@ -1,0 +1,115 @@
+---
+title: amazon_opensearch
+navTitle: AmazonOpenSearchVectorStoreDriver
+
+---
+
+-   `__all__ = ['AmazonOpenSearchVectorStoreDriver']` <small>module-attribute</small>  <span id="griptape.drivers.vector.amazon_opensearch.__all__"></span> 
+
+<span id="griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver"></span>
+
+Bases:
+ [`OpenSearchVectorStoreDriver`](opensearch.mdx#griptape.drivers.vector.opensearch.OpenSearchVectorStoreDriver "OpenSearchVectorStoreDriver (griptape.drivers.vector.opensearch.OpenSearchVectorStoreDriver)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Type                     | Description                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| <a href="amazon_opensearch.mdx#griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.session" title="session = field(default=Factory(lambda: import_optional_dependency('boto3').Session()), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.session)"><code class="language-python">session</code></a>                                                                                                      | `Session`                | The boto3 session to use.<br/>                                                                                                             |
+| <a href="amazon_opensearch.mdx#griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.service" title="service = field(default='es', kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.service)"><code class="language-python">service</code></a>                                                                                                                                                                | `str`                    | Service name for AWS Signature v4. Values can be 'es' or 'aoss' for for OpenSearch Serverless. Defaults to 'es'.<br/>                      |
+| <a href="amazon_opensearch.mdx#griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.http_auth" title="http_auth = field(default=Factory(lambda self: import_optional_dependency('opensearchpy').AWSV4SignerAuth(self.session.get_credentials(), self.session.region_name, self.service), takes_self=True))           class-attribute       instance-attribute    (griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.http_auth)"><code class="language-python">http_auth</code></a> | `str \| tuple[str, str]` | The HTTP authentication credentials to use. Defaults to using credentials in the boto3 session.<br/>                                       |
+| <a href="opensearch.mdx#griptape.drivers.vector.opensearch.OpenSearchVectorStoreDriver.client" title="client() (griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.client)"><code class="language-python">client</code></a>                                                                                                                                                                                                                                                                                | `OpenSearch`             | An optional OpenSearch client to use. Defaults to a new client using the host, port, http_auth, use_ssl, and verify_certs attributes.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;amazon_opensearch_vector_store_driver.py</code></summary>
+
+```python
+@define
+class AmazonOpenSearchVectorStoreDriver(OpenSearchVectorStoreDriver):
+    """A Vector Store Driver for Amazon OpenSearch.
+
+    Attributes:
+        session: The boto3 session to use.
+        service: Service name for AWS Signature v4. Values can be 'es' or 'aoss' for for OpenSearch Serverless. Defaults to 'es'.
+        http_auth: The HTTP authentication credentials to use. Defaults to using credentials in the boto3 session.
+        client: An optional OpenSearch client to use. Defaults to a new client using the host, port, http_auth, use_ssl, and verify_certs attributes.
+    """
+
+    session: Session = field(default=Factory(lambda: import_optional_dependency("boto3").Session()), kw_only=True)
+    service: str = field(default="es", kw_only=True)
+    http_auth: str | tuple[str, str] = field(
+        default=Factory(
+            lambda self: import_optional_dependency("opensearchpy").AWSV4SignerAuth(
+                self.session.get_credentials(),
+                self.session.region_name,
+                self.service,
+            ),
+            takes_self=True,
+        ),
+    )
+
+    def upsert_vector(
+        self,
+        vector: list[float],
+        *,
+        vector_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        meta: Optional[dict] = None,
+        **kwargs,
+    ) -> str:
+        """Inserts or updates a vector in OpenSearch.
+
+        If a vector with the given vector ID already exists, it is updated; otherwise, a new vector is inserted.
+        Metadata associated with the vector can also be provided.
+        """
+        vector_id = vector_id or str_to_hash(str(vector))
+        doc = {"vector": vector, "namespace": namespace, "metadata": meta}
+        doc.update(kwargs)
+        if self.service == "aoss":
+            response = self.client.index(index=self.index_name, body=doc)
+        else:
+            response = self.client.index(index=self.index_name, id=vector_id, body=doc)
+
+        return response["_id"]
+```
+
+</details>
+
+-   `http_auth = field(default=Factory(lambda self: import_optional_dependency('opensearchpy').AWSV4SignerAuth(self.session.get_credentials(), self.session.region_name, self.service), takes_self=True))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.http_auth"></span> 
+
+-   `service = field(default='es', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.service"></span> 
+
+-   `session = field(default=Factory(lambda: import_optional_dependency('boto3').Session()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.session"></span> 
+
+<span id="griptape.drivers.vector.amazon_opensearch.AmazonOpenSearchVectorStoreDriver.upsert_vector"></span>
+
+### upsert_vector(vector, \*, vector_id=None, namespace=None, meta=None, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;vector&#47;amazon_opensearch_vector_store_driver.py</code></summary>
+
+```python
+def upsert_vector(
+    self,
+    vector: list[float],
+    *,
+    vector_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+    meta: Optional[dict] = None,
+    **kwargs,
+) -> str:
+    """Inserts or updates a vector in OpenSearch.
+
+    If a vector with the given vector ID already exists, it is updated; otherwise, a new vector is inserted.
+    Metadata associated with the vector can also be provided.
+    """
+    vector_id = vector_id or str_to_hash(str(vector))
+    doc = {"vector": vector, "namespace": namespace, "metadata": meta}
+    doc.update(kwargs)
+    if self.service == "aoss":
+        response = self.client.index(index=self.index_name, body=doc)
+    else:
+        response = self.client.index(index=self.index_name, id=vector_id, body=doc)
+
+    return response["_id"]
+```
+
+</details>

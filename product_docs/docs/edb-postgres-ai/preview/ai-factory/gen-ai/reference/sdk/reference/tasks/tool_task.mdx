@@ -1,0 +1,331 @@
+---
+title: tool_task
+navTitle: ToolTask
+
+---
+
+<span id="griptape.tasks.tool_task.ToolTask"></span>
+
+Bases:
+ [`PromptTask`](./#griptape.tasks.PromptTask "PromptTask (griptape.tasks.PromptTask)")
+,  [`ActionsSubtaskOriginMixin`](../mixins/actions_subtask_origin_mixin.mdx#griptape.mixins.actions_subtask_origin_mixin.ActionsSubtaskOriginMixin "ActionsSubtaskOriginMixin (griptape.mixins.actions_subtask_origin_mixin.ActionsSubtaskOriginMixin)")
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+@define
+class ToolTask(PromptTask, ActionsSubtaskOriginMixin):
+    DEFAULT_MAX_STEPS = 0
+    ACTION_PATTERN = r"(?s)[^{]*({.*})"
+
+    tool: BaseTool = field(kw_only=True, metadata={"serializable": True})
+    subtask: Optional[ActionsSubtask] = field(default=None, kw_only=True)
+    task_memory: Optional[TaskMemory] = field(default=None, kw_only=True)
+    tools: list[BaseTool] = field(factory=list, kw_only=True, metadata={"serializable": False})
+    max_subtasks: int = field(default=DEFAULT_MAX_STEPS, kw_only=True, metadata={"serializable": False})
+
+    @property
+    def prompt_stack(self) -> PromptStack:
+        stack = super().prompt_stack
+        stack.tools = [self.tool]
+
+        return stack
+
+    def __attrs_post_init__(self) -> None:
+        super().__attrs_post_init__()
+        if self.task_memory is not None:
+            self.set_default_tools_memory(self.task_memory)
+
+    def preprocess(self, structure: Structure) -> ToolTask:
+        super().preprocess(structure)
+
+        if self.task_memory is None and structure.task_memory is not None:
+            self.set_default_tools_memory(structure.task_memory)
+
+        return self
+
+    def default_generate_system_template(self, _: PromptTask) -> str:
+        return J2("tasks/tool_task/system.j2").render(
+            rulesets=J2("rulesets/rulesets.j2").render(rulesets=self.rulesets),
+            action_schema=utils.minify_json(json.dumps(self.tool.schema())),
+            meta_memory=J2("memory/meta/meta_memory.j2").render(meta_memories=self.meta_memories),
+            use_native_tools=self.prompt_driver.use_native_tools,
+        )
+
+    def actions_schema(self) -> Schema:
+        return self._actions_schema_for_tools([self.tool])
+
+    def try_run(self) -> ListArtifact | TextArtifact | ErrorArtifact:
+        warnings.warn(
+            "`ToolTask` is deprecated and will be removed in a future release. Use `PromptTask` with `reflect_on_tool_use=False` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        result = self.prompt_driver.run(self.prompt_stack)
+
+        if self.prompt_driver.use_native_tools:
+            subtask_input = result.to_artifact(meta={"is_react_prompt": False})
+        else:
+            action_matches = re.findall(self.ACTION_PATTERN, result.to_text(), re.DOTALL)
+
+            if not action_matches:
+                return ErrorArtifact("No action found in prompt output.")
+            data = action_matches[-1]
+            action_dict = json.loads(data)
+
+            action_dict["tag"] = self.tool.name
+            subtask_input = TextArtifact(
+                J2("tasks/tool_task/subtask.j2").render(action_json=json.dumps(action_dict)),
+                meta={"is_react_prompt": True},
+            )
+
+        try:
+            subtask = self.add_subtask(ActionsSubtask(subtask_input))
+
+            output = subtask.run()
+
+            if isinstance(output, ListArtifact):
+                output = output[0]
+        except Exception as e:
+            output = ErrorArtifact(f"Error processing tool input: {e}", exception=e)
+        return output
+
+    def find_tool(self, tool_name: str) -> BaseTool:
+        if self.tool.name == tool_name:
+            return self.tool
+        raise ValueError(f"Tool with name {tool_name} not found.")
+
+    def find_memory(self, memory_name: str) -> TaskMemory:
+        raise NotImplementedError("ToolTask does not support Task Memory.")
+
+    def find_subtask(self, subtask_id: str) -> ActionsSubtask:
+        if self.subtask and self.subtask.id == subtask_id:
+            return self.subtask
+        raise ValueError(f"Subtask with id {subtask_id} not found.")
+
+    def add_subtask(self, subtask: BaseSubtask) -> ActionsSubtask:
+        if not isinstance(subtask, ActionsSubtask):
+            raise TypeError("Subtask must be an instance of ActionsSubtask.")
+
+        self.subtask = subtask
+        self.subtask.attach_to(self)
+
+        return self.subtask
+
+    def set_default_tools_memory(self, memory: TaskMemory) -> None:
+        self.task_memory = memory
+
+        if self.task_memory:
+            if self.tool.input_memory is None:
+                self.tool.input_memory = [self.task_memory]
+            if self.tool.output_memory is None and self.tool.off_prompt:
+                self.tool.output_memory = {getattr(a, "name"): [self.task_memory] for a in self.tool.activities()}
+```
+
+</details>
+
+-   `ACTION_PATTERN = '(?s)[^{]*({.*})'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.ACTION_PATTERN"></span> 
+
+-   `DEFAULT_MAX_STEPS = 0` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.DEFAULT_MAX_STEPS"></span> 
+
+-   `max_subtasks = field(default=DEFAULT_MAX_STEPS, kw_only=True, metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.max_subtasks"></span> 
+
+-   `prompt_stack` <small>property</small>  <span id="griptape.tasks.tool_task.ToolTask.prompt_stack"></span> 
+
+-   `subtask = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.subtask"></span> 
+
+-   `task_memory = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.task_memory"></span> 
+
+-   `tool = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.tool"></span> 
+
+-   `tools = field(factory=list, kw_only=True, metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.tool_task.ToolTask.tools"></span> 
+
+<span id="griptape.tasks.tool_task.ToolTask.__attrs_post_init__"></span>
+
+### **attrs_post_init**()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def __attrs_post_init__(self) -> None:
+    super().__attrs_post_init__()
+    if self.task_memory is not None:
+        self.set_default_tools_memory(self.task_memory)
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.actions_schema"></span>
+
+### actions_schema()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def actions_schema(self) -> Schema:
+    return self._actions_schema_for_tools([self.tool])
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.add_subtask"></span>
+
+### add_subtask(subtask)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def add_subtask(self, subtask: BaseSubtask) -> ActionsSubtask:
+    if not isinstance(subtask, ActionsSubtask):
+        raise TypeError("Subtask must be an instance of ActionsSubtask.")
+
+    self.subtask = subtask
+    self.subtask.attach_to(self)
+
+    return self.subtask
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.default_generate_system_template"></span>
+
+### default*generate_system_template(*)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def default_generate_system_template(self, _: PromptTask) -> str:
+    return J2("tasks/tool_task/system.j2").render(
+        rulesets=J2("rulesets/rulesets.j2").render(rulesets=self.rulesets),
+        action_schema=utils.minify_json(json.dumps(self.tool.schema())),
+        meta_memory=J2("memory/meta/meta_memory.j2").render(meta_memories=self.meta_memories),
+        use_native_tools=self.prompt_driver.use_native_tools,
+    )
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.find_memory"></span>
+
+### find_memory(memory_name)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def find_memory(self, memory_name: str) -> TaskMemory:
+    raise NotImplementedError("ToolTask does not support Task Memory.")
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.find_subtask"></span>
+
+### find_subtask(subtask_id)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def find_subtask(self, subtask_id: str) -> ActionsSubtask:
+    if self.subtask and self.subtask.id == subtask_id:
+        return self.subtask
+    raise ValueError(f"Subtask with id {subtask_id} not found.")
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.find_tool"></span>
+
+### find_tool(tool_name)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def find_tool(self, tool_name: str) -> BaseTool:
+    if self.tool.name == tool_name:
+        return self.tool
+    raise ValueError(f"Tool with name {tool_name} not found.")
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.preprocess"></span>
+
+### preprocess(structure)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def preprocess(self, structure: Structure) -> ToolTask:
+    super().preprocess(structure)
+
+    if self.task_memory is None and structure.task_memory is not None:
+        self.set_default_tools_memory(structure.task_memory)
+
+    return self
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.set_default_tools_memory"></span>
+
+### set_default_tools_memory(memory)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def set_default_tools_memory(self, memory: TaskMemory) -> None:
+    self.task_memory = memory
+
+    if self.task_memory:
+        if self.tool.input_memory is None:
+            self.tool.input_memory = [self.task_memory]
+        if self.tool.output_memory is None and self.tool.off_prompt:
+            self.tool.output_memory = {getattr(a, "name"): [self.task_memory] for a in self.tool.activities()}
+```
+
+</details>
+
+<span id="griptape.tasks.tool_task.ToolTask.try_run"></span>
+
+### try_run()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;tool_task.py</code></summary>
+
+```python
+def try_run(self) -> ListArtifact | TextArtifact | ErrorArtifact:
+    warnings.warn(
+        "`ToolTask` is deprecated and will be removed in a future release. Use `PromptTask` with `reflect_on_tool_use=False` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    result = self.prompt_driver.run(self.prompt_stack)
+
+    if self.prompt_driver.use_native_tools:
+        subtask_input = result.to_artifact(meta={"is_react_prompt": False})
+    else:
+        action_matches = re.findall(self.ACTION_PATTERN, result.to_text(), re.DOTALL)
+
+        if not action_matches:
+            return ErrorArtifact("No action found in prompt output.")
+        data = action_matches[-1]
+        action_dict = json.loads(data)
+
+        action_dict["tag"] = self.tool.name
+        subtask_input = TextArtifact(
+            J2("tasks/tool_task/subtask.j2").render(action_json=json.dumps(action_dict)),
+            meta={"is_react_prompt": True},
+        )
+
+    try:
+        subtask = self.add_subtask(ActionsSubtask(subtask_input))
+
+        output = subtask.run()
+
+        if isinstance(output, ListArtifact):
+            output = output[0]
+    except Exception as e:
+        output = ErrorArtifact(f"Error processing tool input: {e}", exception=e)
+    return output
+```
+
+</details>

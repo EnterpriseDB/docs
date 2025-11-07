@@ -1,0 +1,96 @@
+---
+title: AIDB volumes for accessing PGFS storage locations
+navTitle: Volumes
+description: AIDB volumes for accessing PGFS storage locations.
+---
+
+## Overview
+Volumes in AIDB allow you to use external storage, instead of a postgres table, as the data source for pipelines.
+
+Unstructured data like PDFs or images is often stored in object stores like AWS S3. With AIDB volumes, you can integrate such data into your AI pipelines.
+
+### PGFS storage locations and AIDB volumes
+AIDB volumes allow access to PGFS storage locations. This means a storage location in PGFS must be created first. See [PGFS](pgfs).
+* **PGFS storage location:** Represents an external storage provider with all necessary configuration like a path and credentials.
+* **AIDB volume:** Connects a storage location to AIDB. Multiple volumes for the same storage location are possible. In a volume, you configure the data format in the destination and optionally, a sub-path.
+
+## Creating a volume
+Assign a name to the new volume and specify which PGFS storage location it should point to.
+
+The third argument is an optional sub-path in the storage location. This allows you to create multiple volumes in the same storage location, pointing to different paths within a bucket.
+
+The last argument is the data format, the supported types are [`aidb.PipelineDataFormat`](reference/knowledge_bases#aidbpipelinedataformat). This is metadata used by pipelines to decide how to treat the objects in the volume. The data format is not a filter. You should ensure that the volume only contains objects of the specified format.
+
+```sql
+SELECT aidb.create_volume('volume_name', 'pgfs_storage_location_name', '/', 'Image');
+```
+
+### Examples
+You can find more information on [creating the PGFS storage location in the PGFS docs](pgfs).
+
+Accessing a public S3 bucket with text documents:
+```sql
+SELECT pgfs.create_storage_location(
+               'aidb_rag_bucket', 's3://aidb-rag-app',
+               options => '{"region": "eu-central-1", "skip_signature": "true"}');
+
+SELECT aidb.create_volume('aidb_rag_bucket_volume', 'aidb_rag_bucket', '/', 'Text');
+
+SELECT * FROM aidb.list_volume_content('aidb_rag_bucket_volume');
+```
+
+Accessing a local directory containing images (e.g. for an OCR preparer pipeline). The volume points to the directory `/tmp/pgfs/ocr_input/`:
+```sql
+CREATE EXTENSION IF NOT EXISTS pgfs;
+SET pgfs.allowed_local_fs_paths = '/tmp/pgfs';
+
+SELECT pgfs.create_storage_location('local_tmp_pgfs', 'file:///tmp/pgfs/');
+
+SELECT aidb.create_volume('ocr_input_volume', 'local_tmp_pgfs', 'ocr_input/', 'Image');
+
+SELECT * FROM aidb.list_volume_content('ocr_input_volume');
+```
+
+
+
+## Other management functions
+The following management functions allow you to list and delete volumes:
+
+```sql
+SELECT aidb.list_volumes();
+```
+
+```sql
+SELECT aidb.delete_volume('volume_name');
+```
+
+_Note: deleting a PGFS storage location will delete all volumes created on top of it._
+
+
+
+## Accessing volumes
+Volumes can be accessed in two different ways:
+1. By using them within a pipeline as the data source
+2. With direct access SQL functions
+
+The direct access SQL functions are useful to test newly created storage locations and volumes before configuring them in a pipeline.
+They can also be used to build custom SQL queries that work with external storage.
+
+### Listing content
+This command will return a table listing all the objects present in the volume.
+
+```sql
+SELECT * FROM aidb.list_volume_content('volume_name');
+```
+
+### Reading an object
+This command will read the contents of an object and return them as a BYTEA type.
+```sql
+SELECT aidb.read_volume_file('volume_name', 'object_name.txt');
+```
+
+As an example, if your objects contain plain text, they can be converted like this:
+
+```sql
+SELECT convert_from(aidb.read_volume_file('my_text_files', 'hello_world.txt'), 'utf8');
+```
