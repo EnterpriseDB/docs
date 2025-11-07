@@ -1,6 +1,6 @@
 import React from "react";
 import { Container, Row, Col } from "react-bootstrap";
-import { graphql, Link } from "gatsby";
+import { graphql, Link, withPrefix } from "gatsby";
 import {
   isPathAnIndexPage,
   getRelativeFilePathFromPageAbsolutePath,
@@ -51,14 +51,6 @@ const getProductAndVersion = (path) => {
     product: path.split("/")[1],
     version: path.split("/")[2],
   };
-};
-
-const replacePathVersion = (path, version = "latest") => {
-  const splitPath = path.split("/");
-  const postVersionPath = splitPath.slice(3).join("/");
-  return `/${splitPath[1]}/${version}${
-    postVersionPath.length > 0 ? `/${postVersionPath}` : "/"
-  }`;
 };
 
 const makeVersionArray = (productVersions, product, pathVersions, path) => {
@@ -301,7 +293,7 @@ const DocTemplate = ({ data, pageContext }) => {
               dangerouslySetInnerHTML={{
                 __html: navTree.displayBanner.replace(
                   /href="latest:splat"/,
-                  `href="${pageContext.pathVersions[0] || getProductUrlBase(pagePath)}"`,
+                  `href="${withPrefix(pageContext.pathVersions[0] || getProductUrlBase(pagePath))}"`,
                 ),
               }}
             />
