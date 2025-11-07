@@ -1,0 +1,128 @@
+---
+title: Configuring the HM agent to register your Oracle database
+navTitle: Configuring 
+description: Configure the HM agent to connect to your Oracle database.
+---
+
+Configure the HM agent (deployed as `beacon-agent`) to establish a secure connection with your Hybrid Manager (HM) and retrieve necessary schema and migration data from your Oracle source database.
+
+## Prerequisites
+
+You [created a machine user and access key with the `estate ingester` role](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_creating_machine_user/) assigned to it. 
+
+Store the access key in an environment variable named `$BEACON_AGENT_ACCESS_KEY` so the HM agent can access it later.
+
+## Obtain Hybrid Manager connection parameters
+
+The HM agent requires specific configuration values that are set during the HM installation. You cannot access these yourself. Contact the administrator or installer of your HM instance to request the following values:
+
+-    **Beacon server hostname**: When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Request the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll have to look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the HM agent.
+
+-    **Root certificate path (if required)**:The HM agent requires a trusted connection to the `beacon_server` service in your HM instance. If the server running the Agent doesn't inherently trust the HM's TLS certificate (managed by your organization's security infrastructure), request the administrator or installer of your HM instance to provide the file with the certificate. Store this certificate on the machine running the HM agent. You will need to provide the directory path to this certificate later to configure the HM agent.
+
+See [Administrative tasks](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) for more information about the `beacon_server` and root certificate.
+
+## Define source database connection parameters 
+
+The DSN is the connection string the HM agent uses to connect to your Oracle source database. Set the `databases.dsn` parameter using an environment variable `$DSN` or direct URL format.
+
+A DSN string for connections to Oracle databases must use this format:
+
+```shell
+DSN="oracle://<username>:<password>@<host>:<port>/<oracle_db_name>"
+```
+
+Where: 
+
+- The `<username>` and `<password>` correspond to the user you granted permissions when preparing the database.
+- `<host>` is the hostname of the instance where your Oracle database is running. 
+- `<port>` ist the port number of the database you want to fetch data from.
+- `<oracle_db_name>` is the catalog or name of the database you want to fetch data from. 
+      
+For example, to connect as user `oracle` authenticated with password `password` to a database `ORCLPDB1` on port `1521` (assuming the agent is running on the same instance as the Oracle database):
+
+```shell
+DSN="oracle://oracle:password@localhost:1521/ORCLPDB1"
+```
+
+!!!Note Special characters in passwords
+If your Postgres or Oracle user's password contains special, non-ASCII characters, use the URL-encoded version of the password in the DSN string (or password environment variable). For example, if your password is `pa$$word`, you must encode the `$$` characters as `%24%24`:
+      
+```shell
+DSN="oracle://oracle:pa%24%24word@localhost:1521/ORCLPDB1"
+```
+
+!!!
+
+If you plan to connect to more than one database with the HM agent, you can specify multiple such connection strings, for example, `$DSN1`, `$DSN2`, if you are using environment variables for the `database.dsn` settings.
+You can use any name you wish for these variables because they will be referenced by name in the configuration file.
+
+## Prepare a configuration file
+
+Prepare a configuration file for your agent.
+
+1.  Create an HM agent configuration directory in your home directory:
+
+    ```shell
+    mkdir ${HOME}/.beacon
+    ```
+
+    !!!Note
+    If the location specified above is not convenient, you also use either:
+
+    - `/etc/beacon`
+    - The directory from which you execute any `beacon-agent` command. 
+    
+    The HM agent looks for its configuration file starting with `/etc/beacon`, then `${HOME}/.beacon`. As a final fallback, it searches the directory from which it's executed.
+    !!!
+
+1.  Inside this directory, create a new file `beacon_agent.yaml`:
+
+    ```shell
+    touch .beacon/beacon_agent.yaml
+    ```
+
+1.  Copy and paste the following template into the new file. This template is designed to enable the HM console to generate a migration assessment, as well as ingest all schemas for assessment and import.
+
+    In this template, `$BEACON_AGENT_ACCESS_KEY` and `$DSN` are the environment variables you configured previously. Replace all `< >` placeholders in the template following the [Parameter reference](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/#parameter-reference).
+
+    ```yaml
+    ---
+    agent:
+      access_key: $BEACON_AGENT_ACCESS_KEY
+      beacon_server: <beacon_server>:9443
+      project_id: <project_id>
+      providers:
+        - onprem
+      root_ca_path: ""
+      schema_providers:
+        - "onprem-schema"
+    provider:
+      onprem:
+        databases:
+          - resource_id: "<resource_id>"
+            dsn: $DSN
+            schema:
+              enabled: true
+              poll_interval: 15s 
+            tags:
+              - "<tag_names>"
+    ```
+
+1.  Save the file. 
+
+You have now configured the HM agent, you can proceed to running it or configuring it to run as a service.
+
+## Recommendations for setting environment variables
+
+Although it's possible to set all parameters directly in the config file, we recommend handling sensitive data, such as `$BEACON_AGENT_ACCESS_KEY` or `$DSN` as environment variables managed through a secrets manager. This strategy prevents sensitive credentials from being stored in plaintext configuration files. If you use environment variables, you must ensure they are available to the Agent while it is running.
+
+Consult your organization's IT department on the safest approach for production environments.
+
+For short-lived migrations, or testing and demo purposes, you can use the `export` command in an active terminal session.
+
+## Related topics
+
+-  For more granular control of schema ingestion (for example, to exclude or include schemas), see [Controlling schema ingestion](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/schema_ingestion/).
+
+-  If your administrator requires some guidance on how to obtain the values for the root certificate and `beacon_server`, see [Administrative tasks](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/).

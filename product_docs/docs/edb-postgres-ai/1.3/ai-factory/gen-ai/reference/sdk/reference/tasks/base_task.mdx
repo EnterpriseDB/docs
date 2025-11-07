@@ -1,0 +1,627 @@
+---
+title: base_task
+navTitle: BaseTask
+
+---
+
+-   `T = TypeVar('T', bound=BaseArtifact)` <small>module-attribute</small>  <span id="griptape.tasks.base_task.T"></span> 
+
+-   `logger = logging.getLogger(Defaults.logging_config.logger_name)` <small>module-attribute</small>  <span id="griptape.tasks.base_task.logger"></span> 
+
+<span id="griptape.tasks.base_task.BaseTask"></span>
+
+Bases:
+ [`FuturesExecutorMixin`](../mixins/futures_executor_mixin.mdx#griptape.mixins.futures_executor_mixin.FuturesExecutorMixin "FuturesExecutorMixin (griptape.mixins.futures_executor_mixin.FuturesExecutorMixin)")
+,  [`SerializableMixin`](../mixins/serializable_mixin.mdx#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+,  [`RunnableMixin[&#39;BaseTask&#39;]`](../mixins/runnable_mixin.mdx#griptape.mixins.runnable_mixin.RunnableMixin "RunnableMixin (griptape.mixins.runnable_mixin.RunnableMixin)")
+, <span title="abc.ABC">ABC</span>,  [`Generic[T]`](base_task.mdx#griptape.tasks.base_task.T "typing.Generic")
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+@define
+class BaseTask(FuturesExecutorMixin, SerializableMixin, RunnableMixin["BaseTask"], ABC, Generic[T]):
+    class State(Enum):
+        PENDING = 1
+        RUNNING = 2
+        FINISHED = 3
+        SKIPPED = 4
+
+    id: str = field(default=Factory(lambda: uuid.uuid4().hex), kw_only=True, metadata={"serializable": True})
+    state: State = field(default=State.PENDING, kw_only=True, metadata={"serializable": True})
+    parent_ids: list[str] = field(factory=list, kw_only=True, metadata={"serializable": True})
+    child_ids: list[str] = field(factory=list, kw_only=True, metadata={"serializable": True})
+    max_meta_memory_entries: Optional[int] = field(default=20, kw_only=True, metadata={"serializable": True})
+    structure: Optional[Structure] = field(default=None, kw_only=True)
+
+    output: Optional[T] = field(default=None, init=False)
+    context: dict[str, Any] = field(factory=dict, kw_only=True, metadata={"serializable": True})
+    _execution_args: tuple = field(factory=tuple, init=False)
+
+    @property
+    def execution_args(self) -> tuple:
+        return self._execution_args
+
+    def __rshift__(self, other: BaseTask | list[BaseTask]) -> BaseTask | list[BaseTask]:
+        if isinstance(other, list):
+            self.add_children(other)
+        else:
+            self.add_child(other)
+
+        return other
+
+    def __lshift__(self, other: BaseTask | list[BaseTask]) -> BaseTask | list[BaseTask]:
+        if isinstance(other, list):
+            self.add_parents(other)
+        else:
+            self.add_parent(other)
+
+        return other
+
+    def __attrs_post_init__(self) -> None:
+        if self.structure is not None:
+            self.structure.add_task(self)
+
+    @property
+    @abstractmethod
+    def input(self) -> BaseArtifact: ...
+
+    @property
+    def parents(self) -> list[BaseTask]:
+        if self.structure is not None:
+            return [self.structure.find_task(parent_id) for parent_id in self.parent_ids]
+        raise ValueError("Structure must be set to access parents")
+
+    @property
+    def children(self) -> list[BaseTask]:
+        if self.structure is not None:
+            return [self.structure.find_task(child_id) for child_id in self.child_ids]
+        raise ValueError("Structure must be set to access children")
+
+    @property
+    def parent_outputs(self) -> dict[str, BaseArtifact]:
+        return {parent.id: parent.output for parent in self.parents if parent.output}
+
+    @property
+    def parents_output_text(self) -> str:
+        return "\n".join([parent.output.to_text() for parent in self.parents if parent.output])
+
+    @property
+    def meta_memories(self) -> list[BaseMetaEntry]:
+        if self.structure is not None and self.structure.meta_memory:
+            if self.max_meta_memory_entries:
+                return self.structure.meta_memory.entries[: self.max_meta_memory_entries]
+            return self.structure.meta_memory.entries
+        return []
+
+    def __str__(self) -> str:
+        return str(self.output.value) if self.output is not None else ""
+
+    def add_parents(self, parents: list[BaseTask]) -> None:
+        for parent in parents:
+            self.add_parent(parent)
+
+    def add_parent(self, parent: BaseTask) -> BaseTask:
+        if parent.id not in self.parent_ids:
+            self.parent_ids.append(parent.id)
+
+        if self.id not in parent.child_ids:
+            parent.child_ids.append(self.id)
+
+        if self.structure is not None and parent not in self.structure.tasks:
+            self.structure.add_task(parent)
+
+        return self
+
+    def add_children(self, children: list[BaseTask]) -> None:
+        for child in children:
+            self.add_child(child)
+
+    def add_child(self, child: BaseTask) -> BaseTask:
+        if child.id not in self.child_ids:
+            self.child_ids.append(child.id)
+
+        if self.id not in child.parent_ids:
+            child.parent_ids.append(self.id)
+
+        if self.structure is not None and child not in self.structure.tasks:
+            self.structure.add_task(child)
+
+        return self
+
+    def preprocess(self, structure: Structure) -> BaseTask:
+        self.structure = structure
+
+        return self
+
+    def is_pending(self) -> bool:
+        return self.state == BaseTask.State.PENDING
+
+    def is_finished(self) -> bool:
+        return self.state == BaseTask.State.FINISHED
+
+    def is_running(self) -> bool:
+        return self.state == BaseTask.State.RUNNING
+
+    def is_skipped(self) -> bool:
+        return self.state == BaseTask.State.SKIPPED
+
+    def before_run(self) -> None:
+        super().before_run()
+        if self.structure is not None:
+            EventBus.publish_event(
+                StartTaskEvent(
+                    task_id=self.id,
+                    task_parent_ids=self.parent_ids,
+                    task_child_ids=self.child_ids,
+                    task_input=self.input,
+                    task_output=self.output,
+                ),
+            )
+
+    def run(self, *args) -> T:
+        try:
+            self._execution_args = args
+
+            self.state = BaseTask.State.RUNNING
+
+            self.before_run()
+
+            self.output = self.try_run()
+
+            self.after_run()
+        except Exception as e:
+            logger.exception("%s %s\n%s", self.__class__.__name__, self.id, e)
+
+            self.output = cast("T", ErrorArtifact(str(e), exception=e))
+        finally:
+            self.state = BaseTask.State.FINISHED
+
+        return self.output
+
+    def after_run(self) -> None:
+        super().after_run()
+        if self.structure is not None:
+            EventBus.publish_event(
+                FinishTaskEvent(
+                    task_id=self.id,
+                    task_parent_ids=self.parent_ids,
+                    task_child_ids=self.child_ids,
+                    task_input=self.input,
+                    task_output=self.output,
+                ),
+            )
+
+    def can_run(self) -> bool:
+        # If this Task has been skipped or is not pending, it should not run
+        if self.is_skipped() or not self.is_pending():
+            return False
+
+        # If this Task has parents, and _all_ of them are skipped, it should not run
+        if self.parents and all(parent.is_skipped() for parent in self.parents):
+            self.state = BaseTask.State.SKIPPED
+            return False
+
+        # If _all_ this Task's unskipped parents are finished, it should run
+        unskipped_parents = [parent for parent in self.parents if not parent.is_skipped()]
+
+        return all(parent.is_finished() for parent in unskipped_parents)
+
+    def reset(self) -> BaseTask:
+        self.state = BaseTask.State.PENDING
+        self.output = None
+        self._execution_args = ()
+
+        return self
+
+    @abstractmethod
+    def try_run(self) -> T: ...
+
+    @property
+    def full_context(self) -> dict[str, Any]:
+        # Need to deep copy so that the serialized context doesn't contain non-serializable data
+        context = deepcopy(self.context)
+        if self.structure is None:
+            context.update({"args": self._execution_args})
+        else:
+            context.update(self.structure.context(self))
+
+        return context
+```
+
+</details>
+
+-   `_execution_args = field(factory=tuple, init=False)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask._execution_args"></span> 
+
+-   `child_ids = field(factory=list, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.child_ids"></span> 
+
+-   `children` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.children"></span> 
+
+-   `context = field(factory=dict, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.context"></span> 
+
+-   `execution_args` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.execution_args"></span> 
+
+-   `full_context` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.full_context"></span> 
+
+-   `id = field(default=Factory(lambda: uuid.uuid4().hex), kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.id"></span> 
+
+-   `input` <small>abstractmethod</small> <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.input"></span> 
+
+-   `max_meta_memory_entries = field(default=20, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.max_meta_memory_entries"></span> 
+
+-   `meta_memories` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.meta_memories"></span> 
+
+-   `output = field(default=None, init=False)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.output"></span> 
+
+-   `parent_ids = field(factory=list, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.parent_ids"></span> 
+
+-   `parent_outputs` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.parent_outputs"></span> 
+
+-   `parents` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.parents"></span> 
+
+-   `parents_output_text` <small>property</small>  <span id="griptape.tasks.base_task.BaseTask.parents_output_text"></span> 
+
+-   `state = field(default=State.PENDING, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.state"></span> 
+
+-   `structure = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.structure"></span> 
+
+<span id="griptape.tasks.base_task.BaseTask.State"></span>
+
+### State
+
+Bases:
+
+<span title="enum.Enum">Enum</span>
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+class State(Enum):
+    PENDING = 1
+    RUNNING = 2
+    FINISHED = 3
+    SKIPPED = 4
+```
+
+</details>
+
+-   `FINISHED = 3` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.State.FINISHED"></span> 
+
+-   `PENDING = 1` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.State.PENDING"></span> 
+
+-   `RUNNING = 2` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.State.RUNNING"></span> 
+
+-   `SKIPPED = 4` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.tasks.base_task.BaseTask.State.SKIPPED"></span> 
+
+<span id="griptape.tasks.base_task.BaseTask.__attrs_post_init__"></span>
+
+### **attrs_post_init**()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def __attrs_post_init__(self) -> None:
+    if self.structure is not None:
+        self.structure.add_task(self)
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.__lshift__"></span>
+
+### **lshift**(other)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def __lshift__(self, other: BaseTask | list[BaseTask]) -> BaseTask | list[BaseTask]:
+    if isinstance(other, list):
+        self.add_parents(other)
+    else:
+        self.add_parent(other)
+
+    return other
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.__rshift__"></span>
+
+### **rshift**(other)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def __rshift__(self, other: BaseTask | list[BaseTask]) -> BaseTask | list[BaseTask]:
+    if isinstance(other, list):
+        self.add_children(other)
+    else:
+        self.add_child(other)
+
+    return other
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.__str__"></span>
+
+### **str**()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def __str__(self) -> str:
+    return str(self.output.value) if self.output is not None else ""
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.add_child"></span>
+
+### add_child(child)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def add_child(self, child: BaseTask) -> BaseTask:
+    if child.id not in self.child_ids:
+        self.child_ids.append(child.id)
+
+    if self.id not in child.parent_ids:
+        child.parent_ids.append(self.id)
+
+    if self.structure is not None and child not in self.structure.tasks:
+        self.structure.add_task(child)
+
+    return self
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.add_children"></span>
+
+### add_children(children)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def add_children(self, children: list[BaseTask]) -> None:
+    for child in children:
+        self.add_child(child)
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.add_parent"></span>
+
+### add_parent(parent)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def add_parent(self, parent: BaseTask) -> BaseTask:
+    if parent.id not in self.parent_ids:
+        self.parent_ids.append(parent.id)
+
+    if self.id not in parent.child_ids:
+        parent.child_ids.append(self.id)
+
+    if self.structure is not None and parent not in self.structure.tasks:
+        self.structure.add_task(parent)
+
+    return self
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.add_parents"></span>
+
+### add_parents(parents)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def add_parents(self, parents: list[BaseTask]) -> None:
+    for parent in parents:
+        self.add_parent(parent)
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.after_run"></span>
+
+### after_run()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def after_run(self) -> None:
+    super().after_run()
+    if self.structure is not None:
+        EventBus.publish_event(
+            FinishTaskEvent(
+                task_id=self.id,
+                task_parent_ids=self.parent_ids,
+                task_child_ids=self.child_ids,
+                task_input=self.input,
+                task_output=self.output,
+            ),
+        )
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.before_run"></span>
+
+### before_run()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def before_run(self) -> None:
+    super().before_run()
+    if self.structure is not None:
+        EventBus.publish_event(
+            StartTaskEvent(
+                task_id=self.id,
+                task_parent_ids=self.parent_ids,
+                task_child_ids=self.child_ids,
+                task_input=self.input,
+                task_output=self.output,
+            ),
+        )
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.can_run"></span>
+
+### can_run()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def can_run(self) -> bool:
+    # If this Task has been skipped or is not pending, it should not run
+    if self.is_skipped() or not self.is_pending():
+        return False
+
+    # If this Task has parents, and _all_ of them are skipped, it should not run
+    if self.parents and all(parent.is_skipped() for parent in self.parents):
+        self.state = BaseTask.State.SKIPPED
+        return False
+
+    # If _all_ this Task's unskipped parents are finished, it should run
+    unskipped_parents = [parent for parent in self.parents if not parent.is_skipped()]
+
+    return all(parent.is_finished() for parent in unskipped_parents)
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.is_finished"></span>
+
+### is_finished()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def is_finished(self) -> bool:
+    return self.state == BaseTask.State.FINISHED
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.is_pending"></span>
+
+### is_pending()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def is_pending(self) -> bool:
+    return self.state == BaseTask.State.PENDING
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.is_running"></span>
+
+### is_running()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def is_running(self) -> bool:
+    return self.state == BaseTask.State.RUNNING
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.is_skipped"></span>
+
+### is_skipped()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def is_skipped(self) -> bool:
+    return self.state == BaseTask.State.SKIPPED
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.preprocess"></span>
+
+### preprocess(structure)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def preprocess(self, structure: Structure) -> BaseTask:
+    self.structure = structure
+
+    return self
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.reset"></span>
+
+### reset()
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def reset(self) -> BaseTask:
+    self.state = BaseTask.State.PENDING
+    self.output = None
+    self._execution_args = ()
+
+    return self
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.run"></span>
+
+### run(\*args)
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+def run(self, *args) -> T:
+    try:
+        self._execution_args = args
+
+        self.state = BaseTask.State.RUNNING
+
+        self.before_run()
+
+        self.output = self.try_run()
+
+        self.after_run()
+    except Exception as e:
+        logger.exception("%s %s\n%s", self.__class__.__name__, self.id, e)
+
+        self.output = cast("T", ErrorArtifact(str(e), exception=e))
+    finally:
+        self.state = BaseTask.State.FINISHED
+
+    return self.output
+```
+
+</details>
+
+<span id="griptape.tasks.base_task.BaseTask.try_run"></span>
+
+### try_run()abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;tasks&#47;base_task.py</code></summary>
+
+```python
+@abstractmethod
+def try_run(self) -> T: ...
+```
+
+</details>

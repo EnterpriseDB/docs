@@ -1,0 +1,266 @@
+---
+title: amazon_bedrock
+navTitle: AmazonBedrockCohereEmbeddingDriver
+
+---
+
+-   `__all__ = ['AmazonBedrockCohereEmbeddingDriver', 'AmazonBedrockTitanEmbeddingDriver']` <small>module-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.__all__"></span> 
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver"></span>
+
+Bases:
+ [`BaseEmbeddingDriver`](./#griptape.drivers.embedding.BaseEmbeddingDriver "BaseEmbeddingDriver (griptape.drivers.embedding.BaseEmbeddingDriver)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Type                                                                                                                                                                                                                           | Description                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.model" title="model = field(default=DEFAULT_MODEL, kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.model)"><code class="language-python">model</code></a>                                                                                   | `str`                                                                                                                                                                                                                          | Embedding model name. Defaults to DEFAULT_MODEL.<br/>                                                                                                                                                                                                                         |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.input_type" title="input_type = field(default='search_query', kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.input_type)"><code class="language-python">input_type</code></a>                                                              | `str`                                                                                                                                                                                                                          | Defaults to `search_query`. Prepends special tokens to differentiate each type from one another: `search_document` when you encode documents for embeddings that you store in a vector database. `search_query` when querying your vector DB to find relevant documents.<br/> |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.session" title="session = field(default=Factory(lambda: import_optional_dependency('boto3').Session()), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.session)"><code class="language-python">session</code></a>                          | `Session`                                                                                                                                                                                                                      | Optionally provide custom `boto3.Session`.<br/>                                                                                                                                                                                                                               |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.tokenizer" title="tokenizer = field(default=Factory(lambda self: AmazonBedrockTokenizer(model=self.model), takes_self=True), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.tokenizer)"><code class="language-python">tokenizer</code></a> | <a href="../../tokenizers/base_tokenizer.mdx#griptape.tokenizers.base_tokenizer.BaseTokenizer" title="BaseTokenizer (griptape.tokenizers.base_tokenizer.BaseTokenizer)"><code class="language-python">BaseTokenizer</code></a> | Optionally provide custom `BedrockCohereTokenizer`.<br/>                                                                                                                                                                                                                      |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.client" title="client() (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.client)"><code class="language-python">client</code></a>                                                                                                                                                                                | `BedrockRuntimeClient`                                                                                                                                                                                                         | Optionally provide custom `bedrock-runtime` client.<br/>                                                                                                                                                                                                                      |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_cohere_embedding_driver.py</code></summary>
+
+```python
+@define
+class AmazonBedrockCohereEmbeddingDriver(BaseEmbeddingDriver):
+    """Amazon Bedrock Cohere Embedding Driver.
+
+    Attributes:
+        model: Embedding model name. Defaults to DEFAULT_MODEL.
+        input_type: Defaults to `search_query`. Prepends special tokens to differentiate each type from one another:
+            `search_document` when you encode documents for embeddings that you store in a vector database.
+            `search_query` when querying your vector DB to find relevant documents.
+        session: Optionally provide custom `boto3.Session`.
+        tokenizer: Optionally provide custom `BedrockCohereTokenizer`.
+        client: Optionally provide custom `bedrock-runtime` client.
+    """
+
+    DEFAULT_MODEL = "cohere.embed-english-v3"
+
+    model: str = field(default=DEFAULT_MODEL, kw_only=True)
+    input_type: str = field(default="search_query", kw_only=True)
+    session: boto3.Session = field(default=Factory(lambda: import_optional_dependency("boto3").Session()), kw_only=True)
+    tokenizer: BaseTokenizer = field(
+        default=Factory(lambda self: AmazonBedrockTokenizer(model=self.model), takes_self=True),
+        kw_only=True,
+    )
+    _client: Optional[BedrockRuntimeClient] = field(
+        default=None, kw_only=True, alias="client", metadata={"serializable": False}
+    )
+
+    @lazy_property()
+    def client(self) -> BedrockRuntimeClient:
+        return self.session.client("bedrock-runtime")
+
+    def try_embed_chunk(self, chunk: str, **kwargs) -> list[float]:
+        payload = {"input_type": self.input_type, "texts": [chunk]}
+
+        response = self.client.invoke_model(
+            body=json.dumps(payload),
+            modelId=self.model,
+            accept="*/*",
+            contentType="application/json",
+        )
+        response_body = json.loads(response.get("body").read())
+
+        return response_body.get("embeddings")[0]
+```
+
+</details>
+
+-   `DEFAULT_MODEL = 'cohere.embed-english-v3'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.DEFAULT_MODEL"></span> 
+
+-   `_client = field(default=None, kw_only=True, alias='client', metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver._client"></span> 
+
+-   `input_type = field(default='search_query', kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.input_type"></span> 
+
+-   `model = field(default=DEFAULT_MODEL, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.model"></span> 
+
+-   `session = field(default=Factory(lambda: import_optional_dependency('boto3').Session()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.session"></span> 
+
+-   `tokenizer = field(default=Factory(lambda self: AmazonBedrockTokenizer(model=self.model), takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.tokenizer"></span> 
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.client"></span>
+
+### client()
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_cohere_embedding_driver.py</code></summary>
+
+```python
+@lazy_property()
+def client(self) -> BedrockRuntimeClient:
+    return self.session.client("bedrock-runtime")
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockCohereEmbeddingDriver.try_embed_chunk"></span>
+
+### try_embed_chunk(chunk, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_cohere_embedding_driver.py</code></summary>
+
+```python
+def try_embed_chunk(self, chunk: str, **kwargs) -> list[float]:
+    payload = {"input_type": self.input_type, "texts": [chunk]}
+
+    response = self.client.invoke_model(
+        body=json.dumps(payload),
+        modelId=self.model,
+        accept="*/*",
+        contentType="application/json",
+    )
+    response_body = json.loads(response.get("body").read())
+
+    return response_body.get("embeddings")[0]
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver"></span>
+
+## AmazonBedrockTitanEmbeddingDriver
+
+Bases:
+ [`BaseEmbeddingDriver`](./#griptape.drivers.embedding.BaseEmbeddingDriver "BaseEmbeddingDriver (griptape.drivers.embedding.BaseEmbeddingDriver)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Type                                                                                                                                                                                                                           | Description                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.model" title="model = field(default=DEFAULT_MODEL, kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.model)"><code class="language-python">model</code></a>                                                  | `str`                                                                                                                                                                                                                          | Embedding model name. Defaults to DEFAULT_MODEL.<br/>    |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.tokenizer" title="tokenizer = field(default=Factory(lambda self: AmazonBedrockTokenizer(model=self.model), takes_self=True), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.tokenizer)"><code class="language-python">tokenizer</code></a> | <a href="../../tokenizers/base_tokenizer.mdx#griptape.tokenizers.base_tokenizer.BaseTokenizer" title="BaseTokenizer (griptape.tokenizers.base_tokenizer.BaseTokenizer)"><code class="language-python">BaseTokenizer</code></a> | Optionally provide custom `BedrockTitanTokenizer`.<br/>  |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.session" title="session = field(default=Factory(lambda: import_optional_dependency('boto3').Session()), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.session)"><code class="language-python">session</code></a>                          | `Session`                                                                                                                                                                                                                      | Optionally provide custom `boto3.Session`.<br/>          |
+| <a href="amazon_bedrock.mdx#griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.client" title="client() (griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.client)"><code class="language-python">client</code></a>                                                                                                                                                                                | `BedrockRuntimeClient`                                                                                                                                                                                                         | Optionally provide custom `bedrock-runtime` client.<br/> |
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_titan_embedding_driver.py</code></summary>
+
+```python
+@define
+class AmazonBedrockTitanEmbeddingDriver(BaseEmbeddingDriver):
+    """Amazon Bedrock Titan Embedding Driver.
+
+    Attributes:
+        model: Embedding model name. Defaults to DEFAULT_MODEL.
+        tokenizer: Optionally provide custom `BedrockTitanTokenizer`.
+        session: Optionally provide custom `boto3.Session`.
+        client: Optionally provide custom `bedrock-runtime` client.
+    """
+
+    DEFAULT_MODEL = "amazon.titan-embed-text-v1"
+
+    model: str = field(default=DEFAULT_MODEL, kw_only=True, metadata={"serializable": True})
+    session: boto3.Session = field(default=Factory(lambda: import_optional_dependency("boto3").Session()), kw_only=True)
+    tokenizer: BaseTokenizer = field(
+        default=Factory(lambda self: AmazonBedrockTokenizer(model=self.model), takes_self=True),
+        kw_only=True,
+    )
+    _client: Optional[BedrockRuntimeClient] = field(
+        default=None, kw_only=True, alias="client", metadata={"serializable": False}
+    )
+
+    @lazy_property()
+    def client(self) -> BedrockRuntimeClient:
+        return self.session.client("bedrock-runtime")
+
+    def try_embed_artifact(self, artifact: TextArtifact | ImageArtifact, **kwargs) -> list[float]:
+        if isinstance(artifact, TextArtifact):
+            return self.try_embed_chunk(artifact.value)
+        return self._invoke_model({"inputImage": base64.b64encode(artifact.value).decode()})["embedding"]
+
+    def try_embed_chunk(self, chunk: str, **kwargs) -> list[float]:
+        return self._invoke_model(
+            {
+                "inputText": chunk,
+            }
+        )["embedding"]
+
+    def _invoke_model(self, payload: dict) -> dict[str, Any]:
+        response = self.client.invoke_model(
+            body=json.dumps(payload),
+            modelId=self.model,
+            accept="application/json",
+            contentType="application/json",
+        )
+        return json.loads(response.get("body").read())
+```
+
+</details>
+
+-   `DEFAULT_MODEL = 'amazon.titan-embed-text-v1'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.DEFAULT_MODEL"></span> 
+
+-   `_client = field(default=None, kw_only=True, alias='client', metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver._client"></span> 
+
+-   `model = field(default=DEFAULT_MODEL, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.model"></span> 
+
+-   `session = field(default=Factory(lambda: import_optional_dependency('boto3').Session()), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.session"></span> 
+
+-   `tokenizer = field(default=Factory(lambda self: AmazonBedrockTokenizer(model=self.model), takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.tokenizer"></span> 
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver._invoke_model"></span>
+
+### \_invoke_model(payload)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_titan_embedding_driver.py</code></summary>
+
+```python
+def _invoke_model(self, payload: dict) -> dict[str, Any]:
+    response = self.client.invoke_model(
+        body=json.dumps(payload),
+        modelId=self.model,
+        accept="application/json",
+        contentType="application/json",
+    )
+    return json.loads(response.get("body").read())
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.client"></span>
+
+### client()
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_titan_embedding_driver.py</code></summary>
+
+```python
+@lazy_property()
+def client(self) -> BedrockRuntimeClient:
+    return self.session.client("bedrock-runtime")
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.try_embed_artifact"></span>
+
+### try_embed_artifact(artifact, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_titan_embedding_driver.py</code></summary>
+
+```python
+def try_embed_artifact(self, artifact: TextArtifact | ImageArtifact, **kwargs) -> list[float]:
+    if isinstance(artifact, TextArtifact):
+        return self.try_embed_chunk(artifact.value)
+    return self._invoke_model({"inputImage": base64.b64encode(artifact.value).decode()})["embedding"]
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.amazon_bedrock.AmazonBedrockTitanEmbeddingDriver.try_embed_chunk"></span>
+
+### try_embed_chunk(chunk, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;drivers&#47;embedding&#47;amazon_bedrock_titan_embedding_driver.py</code></summary>
+
+```python
+def try_embed_chunk(self, chunk: str, **kwargs) -> list[float]:
+    return self._invoke_model(
+        {
+            "inputText": chunk,
+        }
+    )["embedding"]
+```
+
+</details>
