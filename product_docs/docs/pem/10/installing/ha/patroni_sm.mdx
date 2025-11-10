@@ -1,0 +1,385 @@
+---
+title: "HA PEM using the SM architecture with Patroni"
+navTitle: "SM architecture with Patroni"
+---
+
+This page provides detailed instructions to install and configure a High Availability (HA) PEM deployment according to reference architecture SM.
+
+This example uses Patroni for cluster management, PostgreSQL 17 as the PEM backend database, and multi-host strings as the mechanism for routing traffic to the primary.
+Our operating system is RHEL 9 x86. 
+
+Please see [High Availability Patterns for PEM Deployment](../../considerations/ha_pem.mdx) to understand other options.
+    
+The examples that follow use these IP addresses:
+
+-   172.16.161.200 - PEM Backend Primary
+-   172.16.161.201 - PEM Backend Standby 1
+-   172.16.161.202 - PEM Backend Standby 2
+-   172.16.161.211 - PEM Web Application 1
+-   172.16.161.212 - PEM Web Application 2
+-   172.16.161.213 - PEM Web Application 3
+-   172.16.161.111 - etcd1
+-   172.16.161.112 - etcd2
+-   172.16.161.113 - etcd3
+
+## Setting up a Distributed Consensus Store with etcd
+
+Patroni requires a Distributed Consensus Store (DCS). If you already have a DCS set up using etcd, you may skip this step and use your existing DCS.
+Here we will create a minimal three-node DCS on three hosts, separate from the HA PEM application cluster.
+
+On each node:
+
+1.  Install etcd from the PGDG repository
+
+    ```shell
+    dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    dnf --enablerepo=pgdg-rhel9-extras install -y etcd
+    ```
+2.  Replace the contents `/etc/etcd/etcd.conf` with the following, substituting the appropriate values for `<node-ip>` and `node-name`.
+    For example, `172.16.161.311` and `etc1`.
+
+    ```ini
+    #[Member]
+    ETCD_LISTEN_PEER_URLS="http://<node-ip>:2380"
+    ETCD_LISTEN_CLIENT_URLS="http://localhost:2379,http://<node-ip>:2379"
+    ETCD_NAME="<node-name>"
+    #[Clustering]
+    ETCD_INITIAL_ADVERTISE_PEER_URLS="http://<node-ip>:2380"
+    ETCD_INITIAL_CLUSTER="etcd1=http://172.16.161.111:2380,etcd2=http://172.16.161.112:2380,etcd3=http://172.16.161.113:2380"
+    ETCD_ADVERTISE_CLIENT_URLS="http://<node-ip>:2379"
+    ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-1"
+    ETCD_INITIAL_CLUSTER_STATE="new"
+    ```
+
+3.  Ensure that ports `2380` and `2379` are open on the firewall.
+
+    ```shell
+    firewall-cmd --zone=public --add-port=2380/tcp --permanent
+    firewall-cmd --zone=public --add-port=2379/tcp --permanent
+    firewall-cmd --reload      
+    ```
+
+4. Ensure that the etcd service is restarted and enabled.
+
+    ```shell
+    systemctl enable etcd
+    systemctl restart etcd
+    ```
+
+## Deploying the PEM backend
+
+### Initial package installation and Postgres configuration
+
+Perform the following steps on all backend nodes unless stated otherwise.
+
+1.  Install the following packages:
+
+    -   [PostgreSQL](/postgresql/latest/installing/) (backend database for PEM Server)
+    -   [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites) (see Prerequisites in PEM server installation)
+    -   [PEM Server](/pem/latest/installing/)
+    -   [Patroni](/patroni/latest/installing/)
+
+    ```shell
+    dnf -qy module disable postgresql
+    dnf -y install postgresql17-server postgresql17-contrib edb-pem sslutils_17
+    ```
+
+1.  Initialize a Postgres database and start the service.
+
+    ```shell
+    PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/pgsql-17/bin/postgresql-17-setup initdb
+    systemctl start postgresql-17
+    systemctl enable postgresql-17
+    ```
+
+1.  Open port `5432` on the firewall:
+
+    ```shell
+    firewall-cmd --zone=public --add-port=5432/tcp --permanent 
+    firewall-cmd --reload      
+    ```
+
+### Configure PEM on the primary backend node
+
+Configure the PEM database installation **on the primary backend server only**:
+
+Perform the following steps on the primary.
+
+1.  Create a superuser that can login using a password. This is the user we will use to install PEM.
+    It will also become the agent-server binding user for the agents running on PEM backend hosts.
+    ```shell
+    su - postgres -c "psql -c \"create role pemserver login superuser password 'your-password-here';\""
+    ```
+
+1.  Run the PEM configuration script, specifying option 3 (Database) and the IPs of all three backend hosts.
+    Provide the loopback IP rather than the external IP for the primary.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 -ho '127.0.0.1,172.16.161.201,172.16.161.202' -su pemserver
+    ```
+    You will be prompted for various additional details. 
+    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+1. Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](user_settings.md).
+   At this stage, you can only complete the backend configuration. 
+   We will configure the web application later.
+
+
+### Copy the configuration record to the standbys
+
+Copy the file `/usr/edb/pem/share/.install-config` from the primary to all standbys.
+This ensures you will be able to upgrade PEM from whichever node is the current primary in future.
+
+### Set up Patroni on the primary node
+
+#### Create Patroni users and generate a configuration file
+
+1.  Create the Patroni superuser, replication and rewind roles. Execute the following SQL as a superuser.
+
+   ```sql
+    -- Patroni superuser
+    CREATE USER patroni_super WITH SUPERUSER ENCRYPTED PASSWORD 'your-password-here';
+
+    -- Patroni replication user
+    CREATE USER patroni_rep WITH REPLICATION ENCRYPTED PASSWORD 'your-password-here';
+
+    -- Patroni rewind user, if you intend to enable use_pg_rewind in your Patroni configuration
+    CREATE USER patroni_rew WITH ENCRYPTED PASSWORD 'your-password-here';
+    GRANT EXECUTE ON function pg_catalog.pg_ls_dir(text, boolean, boolean) TO patroni_rew;
+    GRANT EXECUTE ON function pg_catalog.pg_stat_file(text, boolean) TO patroni_rew;
+    GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text) TO patroni_rew;
+    GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text, bigint, bigint, boolean) TO patroni_rew;
+    ```
+
+    Give the passwords of your choice.
+
+1.  Generate a Patroni configuration file from the current instance.
+    Ensure it is owned by the user `postgres`.
+
+    ```shell
+    patroni --generate-config --dsn 'host=localhost user=patroni_super dbname=postgres' /etc/patroni/patroni.yml
+    chown postgres:postgres /etc/patroni/patroni.yml
+    ```
+
+#### Edit the generated configuration file
+
+In the generated file:
+
+1.  Set the name of the cluster under `scope` and a unique name for the node under `name`.
+
+1.  Tell Patroni to use your etcd cluster as its DCS.
+    Add the following to the top-level file.
+
+    ```yaml
+    etcd3:
+      hosts:
+        - 172.16.161.111:2379
+        - 172.16.161.112:2379
+        - 172.16.161.113:2379
+    ```
+
+1.  Add the details of the users you configured in step 1 under `postgresql.authentication`.
+    For example:
+
+    ```yaml
+    authentication:
+        replication:
+            username: 'patroni_rep'
+            password: your-password-here
+        superuser:
+            username: patroni_super
+            password: your-password-here
+        rewind:
+            username: patroni_rew
+            password: your-password-here
+      ```
+
+1.  Change `postgresql.listen` to `'*:5432'`
+
+1.  Remove the entirety of the `postgresql.pg_hba` section, including the `pg_hba:` key itself.
+    If you have created any rules that you wish to keep, you may wish to take a copy for the next step.
+
+1.  Create a `pg_hba` section under `bootstrap.dcs.postgresql` and populate it with a common set of HBA rules for all nodes.
+    The example below provides all the access required for PEM and Patroni in this example.
+
+    ```yaml
+    # Allow users of the web interface to connect to pem and postgres databases
+    - hostssl pem      +pem_user   127.0.0.1/32      scram-sha-256
+    - hostssl postgres +pem_user   127.0.0.1/32      scram-sha-256
+    - hostssl pem      +pem_user   172.16.161.211/32  scram-sha-256
+    - hostssl postgres +pem_user   172.16.161.211/32  scram-sha-256
+    - hostssl pem      +pem_user   172.16.161.212/32  scram-sha-256
+    - hostssl postgres +pem_user   172.16.161.212/32  scram-sha-256
+    - hostssl pem      +pem_user   172.16.161.213/32  scram-sha-256
+    - hostssl postgres +pem_user   172.16.161.213/32  scram-sha-256
+   
+    # Allow the PEM server agents to register and connect to send data to PEM server
+    - hostssl pem      +pem_agent  127.0.0.1/32            cert
+    - hostssl pem      +pem_admin  172.16.161.200/32        scram-sha-256
+    - hostssl pem      +pem_agent  172.16.161.200/32        cert
+    - hostssl pem      +pem_admin  172.16.161.201/32        scram-sha-256
+    - hostssl pem      +pem_agent  172.16.161.201/32        cert
+    - hostssl pem      +pem_admin  172.16.161.202/32        scram-sha-256
+    - hostssl pem      +pem_agent  172.16.161.202/32        cert
+   
+    # Allow monitoring agents to connect to PEM
+    # Specify the subnet you selected during PEM configuration
+    - hostssl pem      +pem_user   0.0.0.0/0               scram-sha-256
+    - hostssl pem      +pem_agent  0.0.0.0/0               cert
+
+    # Allow our Patroni users to connect as required
+    # Superuser only requires local connection
+    - host    all             patroni-sup     127.0.0.1/32            scram-sha-256
+    # Replication and rewind users require connection from other Patroni hosts
+    - hostssl replication     patroni_rep     127.0.0.1/32            scram-sha-256
+    - hostssl all             patroni_rew     127.0.0.1/32            scram-sha-256
+    - hostssl replication     patroni_rep     172.16.161.200/32        scram-sha-256
+    - hostssl all             patroni_rew     172.16.161.200/32        scram-sha-256
+    - hostssl replication     patroni_rep     172.16.161.201/32        scram-sha-256
+    - hostssl all             patroni_rew     172.16.161.201/32        scram-sha-256
+    - hostssl replication     patroni_rep     172.16.161.202/32        scram-sha-256
+    - hostssl all             patroni_rew     172.16.161.202/32        scram-sha-256
+
+    # This is the default config for this PG package
+    - local   all             all                                     peer
+    - host    all             all             127.0.0.1/32            scram-sha-256
+    - host    all             all             ::1/128                 scram-sha-256
+    - local   replication     all                                     peer
+    - host    replication     all             127.0.0.1/32            scram-sha-256
+    - host    replication     all             ::1/128                 scram-sha-256
+    ```
+
+1.  Stop and disable the Postgres service and start Patroni
+
+    ```shell
+    systemctl disable --now postgresql-17
+    systemctl enable --now patroni
+    ```
+
+### Set up the standby nodes
+
+On each standby node:
+
+1.  Stop and disable the service for Postgres.
+
+    ```shell
+    systemctl disable --now postgresql-17
+    ```
+
+2.  Remove the data directory of the database server.
+
+    ```shell
+    rm -r /var/lib/pgsql/17/data
+    ```
+
+3.  Create a Patroni configuration file in `/etc/patroni/patroni.yml`.
+    Use the same content as the primary, with the following changes:
+    - Remove the entire `bootstrap` section
+    - Change the `name` to a unique name for each standby
+    - Change the IP addresses under `restapi` and `postgresql.connect_address` to the address of the standby you are configuring.
+
+4.  Start and enable Patroni.
+
+    ```shell
+    systemctl enable --now patroni
+    ```
+
+### Register agents and servers on the standbys
+
+On each standby, perform the following steps.
+
+1.  Register the PEM agent. Specify a multi-host string as the PEM server host and enable alert and notification handling.
+    For consistency with the primary, we provide the loopback IP address 127.0.0.1 for the local host.
+    For example, for Standby 1:
+
+    ```shell
+    export PEM_SERVER_PASSWORD=pemserver-password-here
+    /usr/edb/pem/agent/bin/pemworker --register-agent \
+                                     --pem-server '172.16.161.200,127.0.0.1,172.16.161.202' \
+                                     --pem-user pemserver \
+                                     --pem-port 5432 \
+                                     -o alert_threads=1 \
+                                     --enable-snmp true \
+                                     --enable-webhook true \
+                                     --enable-smtp true \
+                                     --max-webhook-retries 3
+    ```
+    Enable and start the PEM agent service:
+
+     ```shell
+     systemctl enable --now pemagent
+     ```
+     See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
+
+1.  Register the Postgres instance with PEM. 
+    The following command means the PEM web application will use the server's external IP when making a client connection to the database, 
+    but the PEM Agent will use the loopback interface to connect locally.
+
+    ```shell
+    export PEM_SERVER_PASSWORD=pemserver-password-here
+    export PEM_MONITORED_SERVER_PASSWORD=pemserver-password-here
+    /usr/edb/pem/agent/bin/pemworker --register-server \
+                                     --pem-user pemserver \
+                                     --server-addr 172.16.161.201 \
+                                     --server-port 5432 \
+                                     --server-database postgres \
+                                     --server-user pemserver \
+                                     --asb-host-name localhost  
+    ```
+    
+    See [Registering a Postgres Server](/pem/latest/registering_database_server/) for more information
+
+1.  Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each standby.
+
+    ```sql
+    SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5432;
+    ```
+
+    !!! Info
+    In older versions of PEM, the PEM server and its local agent had to have ID 1. 
+    This is no longer the case from PEM 10.1. Instead this SQL flags this server and agent as belonging to a PEM deployment, 
+    which in turn enables important system jobs such as purging expired data when this server is the primary.
+    !!!
+
+
+## Deploy the PEM Web Application
+
+Perform the following steps on all web application hosts.
+
+1.  Install the PEM package and Postgres (for the client binaries):
+
+    ```shell
+    dnf install edb-pem postgresql17-server
+    ```
+
+1.  Open the following ports on the firewall of all servers:
+
+    -   `8443` for PEM Server (HTTPS)
+
+    For example:
+
+    ```shell
+    firewall-cmd --zone=public --add-port=8443/tcp --permanent
+    firewall-cmd --reload      
+    ```
+
+1.  Configure the PEM web application. Provide a multi-host string including the primary and all standbys as the PEM server address.
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 2 -ho '172.16.161.200,172.16.161.201,172.16.161.202'
+    ```
+    You will be prompted for various additional details. 
+    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+1.  Run the `configure-selinux.sh` script to configure the SELinux policy for PEM.
+
+    ```shell
+    USE_NGINX=1 /usr/edb/pem/bin/configure-selinux.sh
+    ```
+
+1.  You can now login to any of the web application instances using the `pemserver` superuser we created earlier.
+
+1.  If you chose to synchronize PEM web application user preferences between instances,
+    complete the setup now by [configuring each web application instance to use the backend for user settings](user_settings.md#configure-the-pem-web-applications).
+
+1.  If you are using PEM 10.2 or 10.1, login to the PEM web application, right click the primary server in Object Explorer and navigate to `Properties > PEM Agent`.
+    If the value of **Host** is a multi-host string, change it to `localhost` or `127.0.0.1`.

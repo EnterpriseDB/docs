@@ -41,14 +41,14 @@ Perform the following steps on all nodes unless stated otherwise.
 
     -   [EDB Postgres Advanced Server](/epas/latest/installing/) (backend database for PEM Server)
     -   [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites) (see Prerequisites in PEM server installation)
-    -   [PEM Server](/pem/latest/installing/)
+    -   [PEM Server](/pem/latest/installing/) and libpq5
     -   [EDB Failover Manager](/efm/latest/installing/)
 
     ```shell
     dnf -qy module disable postgresql
     dnf -y install epel-release
     dnf config-manager --set-enabled crb
-    dnf -y install edb-as17-server edb-pem edb-as17-server-sslutils edb-efm50
+    dnf -y install edb-as17-server edb-pem edb-as17-server-sslutils edb-efm50 libpq5
     ```
 
 1.  Initialize a Postgres database and start the service.
@@ -89,7 +89,7 @@ Perform the following steps on the primary.
 1.  Create a superuser that can login using a password.
     
     ```shell
-    su - enterprisedb -c "psql edb -c \"create role pemserver login superuser password 'your-password-here';\""
+    su - enterprisedb -c "psql edb -c \"CREATE ROLE pemserver LOGIN SUPERUSER PASSWORD 'your-password-here';\""
     ```
 
 1.  Add the following line to the the `pg_hba.conf` file to permit the new user to connect from any of the server IPs.
@@ -197,7 +197,7 @@ In this step, we will create the same files and directories on the standbys.
 1.  Create the replication role:
 
     ```shell
-    psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
+    psql -h 172.16.161.200 -p 5444 -U pemserver edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
     ```
 
     Give the password of your choice.
@@ -293,7 +293,7 @@ On each standby, perform the following steps.
     For example:
 
     ```shell
-    export PEM_SERVER_PASSWORD=password
+    export PEM_SERVER_PASSWORD=pemserver-password-here
     /usr/edb/pem/agent/bin/pemworker --register-agent \
                                      --pem-server 172.17.0.12 \
                                      --pem-user pemserver \
@@ -307,7 +307,7 @@ On each standby, perform the following steps.
      Enable and start the PEM agent service:
 
      ```shell
-     systemctl enable --now pem-agent
+     systemctl enable --now pemagent
      ```
      
      See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
@@ -317,7 +317,8 @@ On each standby, perform the following steps.
     but the PEM Agent will use the loopback interface to connect locally.
 
     ```shell
-    export PEM_SERVER_PASSWORD=password
+    export PEM_SERVER_PASSWORD=pemserver-password-here
+    export PEM_MONITORED_SERVER_PASSWORD=pemserver-password-here
     /usr/edb/pem/agent/bin/pemworker --register-server \
                                      --pem-user pemserver \
                                      --server-addr 172.16.161.201 \
@@ -333,7 +334,7 @@ On each standby, perform the following steps.
     1.  Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each.
 
     ```sql
-    SELECT pem.register_pem_server(server_id) FROM pem.server WHERE server='172.16.161.201' and port=5444;
+    SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5444;
     ```
 
     !!! Info
@@ -517,3 +518,8 @@ Perform the following steps to set up EFM:
 This status confirms that EFM is set up successfully and managing the failover for the PEM server.
 
 In case of failover, any of the standbys are promoted as the primary node, and PEM agents connect to the new primary node. You can replace the failed primary node with a new standby using the procedure above.
+
+## Correct the agent-server binding host on the primary
+
+If you are using PEM 10.2 or 10.1, login to the PEM web application, right click the primary server in Object Explorer and navigate to `Properties > PEM Agent`.
+If the value of **Host** is set to the VIP, change it to `localhost` or `127.0.0.1`.
