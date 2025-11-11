@@ -8,70 +8,74 @@ This guide aims to help you allocate the right amount of resources to your PEM s
 It explains the key factors driving resource requirements in PEM and provides t-shirt sizing to help you get started.
 
 !!!Important PEM is Postgres
-PEM is based around a Postgres database. The majority of the business logic is implemented as SQL functions.
-It is therefore imperative that you treat it like any other Postgres instance, following configuration and tuning best practices to keep it responsive.
-PEM monitors itself, so you can leverage tools like dashboards, [Performance Diagnostic](../tuning_performance/performance_diagnostic.mdx) 
-and [SQL Profiler](../profiling_workloads/using_sql_profiler.mdx) to understand performance.
+PEM is fundamentally built upon a Postgres database, with most of its core logic executed via SQL functions.
+It is crucial to treat PEM as a standard Postgres instance. To ensure optimal responsiveness, you must adhere to all conventional Postgres configuration and tuning best practices.
+Furthermore, PEM monitors performance, allowing you to use its integrated tools, such as dashboards, the [Performance Diagnostic](../tuning_performance/performance_diagnostic.mdx), and [SQL Profiler](../profiling_workloads/using_sql_profiler.mdx), to analyze and understand its behavior.
 !!!
 
 ## Factors affecting resource requirements
 
 ### Number of agents/connections
 
-The number of agents directly drives the number of connections to the Postgres database. 
-The number of connections is a key driver of resource usage in any Postgres deployment as each connection spawns a process.
+The number of agents directly determines the number of connections to the Postgres database. 
+Since every connection starts a new process, the connection count is a critical factor in the resource consumption of the entire Postgres deployment.
 
-In default configuration, most agents will make one connection.
-If enable_heartbeat_connection is true, each agent will make two connections.
-Any agent with `alert_threads`, `enable_smtp`, `enable_webhooks`, or `enable_snmp` set will open additional connections for these features.
+By default, most agents use one connection.
+If `enable_heartbeat_connection` is set to true, each agent uses two connections.
+Agents configured with `alert_threads`, `enable_smtp`, `enable_webhooks`, or `enable_snmp` set will open additional connections for those functionalities.
 
-Because this connection is idle for a large proportion of the time, you can afford to run a slightly higher max_connections than otherwise.
-However, fundamentally this is still Postgres and as the number of connections moves beyond 100, connection overhead starts to dominate resource usages and connection pooling becomes increasingly important.
-For this reason, we strongly recommend pgBouncer is deployed as part of larger PEM deployments.
+SInce many of these connections are idle most of the time, you can safely set `max_connections` slightly higher than you must otherwise.
+However, it is crucial to remember this is still Postgres: once the connection count exceeds 100, connection overhead rapidly consumes resources.
+For this reason, for any large-scale PEM deployment, we strongly recommend deploying pgBouncer to manage connections efficiently.
 
-Assuming you have a moderate number of connections, or that connection pooling is in place, memory and CPU requirements are driven by the following factors.
+Assuming you manage connections effectively either through a moderate number or with connection pooling in place, memory and CPU needs will then be determined by the following factors.
 
 ### Size of frequently accessed data - memory
 
-Our sizing advice for memory is based on the aim of keeping all the most frequently accessed data in shared buffers to minimize I/O.
-The most frequently accessed data comprises:
-- The `pemdata` schema, which contains the latest data point for every probe
-- Various tables in the `pem` schema used to manage probe and alert dispatch
+Our memory sizing recommendations are designed to ensure the most frequently used data resides entirely within Postgres's shared buffers, thereby minimising disk I/O and maximising performance.
+This high-priority, frequently accessed data includes:
+- The `pemdata` schema, which stores the most recent data points collected by all probes.
+- Various tables within the `pem` schema used for managing probe execution and alert dispatching.
 
-As such, the size of this data is determined primarily by the total number of probes and the amount of data returned by each one.
-In practice, this is determined by the number of monitored objects, which is typically dominated by more numerous objects like tables and indexes.
+The size of this critical data is primarily driven by the total number of probes and the volume of data each probe returns.
+In practical terms, this size is determined by the number of monitored database objects, particularly the more numerous objects like tables and indexes.
 
 The recommended sizes below are based on the assumption that approximately 25% of RAM will be dedicated to shared buffers.
 
 ### Rate of probe and alert execution - CPU and alert threads
 
-PEM is continually ingesting new probe data and evaluating the latest data against the configured alert thresholds.
-PEM needs sufficient CPU time available to execute all alerts and probes at the specified frequency.
-For example, if there are 100 alerts to evaluate at a frequency of one evaluation per minute, PEM needs to evaluate 100 alerts per minute.
-If PEM cannot maintain the required rate, alerts will be delayed or may not trigger at all.
+PEM constantly performs two critical tasks: ingesting new probe data and evaluating that data against the configured alert thresholds.
+Consequently, PEM requires sufficient CPU time to execute all configured probes and alerts at their specified frequency.
+For instance, a setup with 100 alerts set to run once per minute demands a processing capacity of 100 alert evaluations per minute.
+ Failure to meet this required execution rate will result in delayed alerts or the possibility that alerts may fail to trigger entirely.
 
 The number of alert and probe executions scales with:
 - The number of probes and alerts
 - The configured frequency of the probes and alerts
 
-Our recommended CPU numbers are based on providing enough CPU time to maintain the required rate of probe and alert execution with PEM's default configuration.
-If you enable many additional alerts or probes, or increase the frequency, you may need to scale CPU accordingly.
+Our recommended CPU numbers are calculated to ensure PEM can maintain the required execution rate for all probes and alerts using the default configuration.
+If you decide to customise your setup by enabling many additional alerts or probes, or increasing the execution frequency, you may need to scale the CPU accordingly to prevent delays.
 
 !!!Note Alert Threads
-In larger deployments it is necessary to increase the total number of alert threads to allow PEM to efficiently access more CPU time for alert evaluation.
+In larger deployments, it is necessary to increase the total number of alert threads in the PEM agent configuration on the PEM host(s). This modification allows PEM to efficiently utilise more CPU time specifically for alert evaluation, preventing bottlenecks.
 This can be changed by modifying the `alert_threads` setting of the PEM agent running on the PEM host(s).
 !!!
 
 ### Size of historical data - storage
 
-PEM's storage requirements are typically driven by the amount of historical data it is storing.
-This is driven by three factors:
+PEM's storage needs are primarily determined by the volume of historical data it retains.
 
-- The number of monitored objects (typically dominated by more numerous objects like tables and indexes)
-- How frequently the data is updated (allowing for the fact that PEM applies compression such that repeated values are not stored)
-- The retention period of the data
+Three main factors drive this volume:
 
-Our recommended storage values are based on PEMs default probe frequencies and retention periods, plus assumptions about how much the data can be compressed.
+- Monitored Object Count &mdash; This count determines the raw amount of data collected (typically dominated by numerous objects like tables and indexes).
+
+- Data Update Frequency &mdash; How often the probe data changes (PEM applies compression, so repeated, unchanged values do not consume extra space).
+
+- Data Retention Period &mdash; How long the historical data is configured to be kept.
+
+Our recommended storage sizes are based on PEM's default probe frequencies, standard retention periods, and an estimated data compression rate.
+
+
 
 
 ## PEM t-shirt sizing
@@ -83,7 +87,7 @@ Do not be surprised if your eventual resource needs differ significantly from th
 !!!
 
 ### Nano
-If you just want to try PEM and connect 1 or 2 monitored servers for a while, only one user
+If you want to try PEM and connect 1 or 2 monitored servers for a while, only one user
 
 - CPU: 1
 - RAM: 2 GB
@@ -99,7 +103,7 @@ Start here if you're monitoring a single HA cluster with a handful of users of t
 - IOPS: `<100`
 
 ### Small
-Start here if you're monitoring up to 50 servers with  less than five concurrent users of the web app. If you have more than approximately 50,000 tables or 50,000 indexes in total across the 50 servers, go one size higher.
+Start here if you're monitoring up to 50 servers with less than five concurrent users of the web app. If you have more than approximately 50,000 tables or 50,000 indexes in total across the 50 servers, go one size higher.
 
 - CPUs: 4
 - RAM: 8 GB
