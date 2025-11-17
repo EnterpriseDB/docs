@@ -30,7 +30,7 @@ The user specified in the `--dsn` option will be created if it does not exist. I
 
 ### Support for Transparent Data Encryption (TDE)
 
-Transparent Data Encryption (TDE) is an optional feature available in EDB Postgres Advanced Server and EDB Postgres Extended Server versions 15 and later. 
+Transparent Data Encryption (TDE) is an optional feature available in EDB Postgres Advanced Server and EDB Postgres Extended Server versions 15 and later.
 
 The `pgd node setup` command supports this feature when initializing a new database server or when joining an existing node to the cluster. The TDE options exposed by `pgd node setup` are similar to the [initdb TDE options](/tde/latest/initdb_tde_options), with the following exceptions:
 - The option `--data-encryption` is a boolean-only flag (it does not accept the AES key length value).
@@ -141,3 +141,40 @@ pgd node node-2 setup --dsn "host=host-2 port=5432 user=pgdadmin dbname=pgddb" \
 This command is similar to the setting up the subsequent nodes, but we are setting up `node-2` again. The `--dsn` option is the connection string for the node, which is typically set to `host=hostname port=5432 user=pgdadmin dbname=pgd`. The `cluster-dsn` must point to an active node, it can point to connection manager, or proxy endpoint etc., CLI will get the real DSN of the node behind it. In this case, we are setting it to `host=host-1 port=5432 user=pgdadmin dbname=pgd`, which is the connection string for the first node in the cluster.
 
 This is useful when a node has been `parted` and `dropped` from the cluster for some activity like maintenance and needs to be rejoined to the cluster. The command will perform a logical join of the node to the cluster, which will create a new node in the cluster and start streaming replication from the remote node.
+
+### Configuring the first node with TDE options
+
+```shell
+pgd node node-1 setup \
+--dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb" \
+--listen-addr "localhost,host-1" \
+--group-name group-1 --cluster-name pgd \
+-D /var/lib/edb-pge/17/main \
+--data-encryption \
+--key-wrap-command "openssl enc -e -aes-128-cbc -pbkdf2 -pass pass:secret -out %p" \
+--key-unwrap-command "openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:secret -in %p"
+```
+
+The `pgd node setup` command for a TDE-enabled cluster is similar to the standard command, but requires additional TDE-specific options.
+
+We specify three additional options for Transparent Data Encryption (TDE): `--data-encryption`, `--key-wrap-command`, and `--key-unwrap-command`. The description for each of these options is provided in the preceding section.
+
+For simplicity, the values for `--key-wrap-command` and `--key-unwrap-command` use a simple passphrase; however, you can configure more secure mechanisms, such as an external Key Management Service (KMS).
+
+The `--data-encryption-keylen` option is not explicitly set here, defaulting the key length to 128 bits. You should set this option explicitly if a key length of 256 bits is desired.
+
+### Configuring a second node with TDE options
+
+```shell
+pgd node node-2 setup \
+--dsn "host=host-2 port=5432 user=pgdadmin dbname=pgddb" \
+--listen-addr "localhost,host-2" \
+-D /var/lib/edb-pge/17/main \
+--cluster-dsn "host=host-1 port=5432 user=pgdadmin dbname=pgddb" \
+--key-wrap-command "openssl enc -e -aes-128-cbc -pbkdf2 -pass pass:secret -out %p" \
+--key-unwrap-command "openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:secret -in %p"
+```
+
+This command is similar to the setup used for the first node, retaining the required TDE options. The remaining arguments are consistent with the standard command used when setting up subsequent nodes in a cluster.
+
+In this instance, only the `--key-wrap-command` and `--key-unwrap-command` options are explicitly set, and their values **must be identical** to those provided for the initial node.
