@@ -5,10 +5,10 @@ description: Plan and document your Hybrid Manager platform architecture.
 deepToC: true
 ---
 
-## Architectural discovery
+# Architectural discovery
 
 The goal of architectural discovery is to navigate and then document the necessary decisions to successfully deploy Hybrid Manager (HM) in your environment. 
-These decisions form the blueprint for meeting infrastructure requirements (phase 2) and installing Kubernetes (phase 3).
+These decisions form the blueprint for meeting infrastructure requirements (phase 2) and installing Kubernetes (phase 3).  These questions cover a very broad set of considerations extending just the database layer.  
 
 This guide focuses on two perspectives:
 
@@ -19,7 +19,7 @@ Acquiring and reviewing **diagrams** of your current and target environment is t
 
 ---
 
-### Locality: where will Hybrid Manager live?
+## Locality: where will Hybrid Manager live?
 
 Understanding the physical or logical locations of your database and dependent applications is crucial for determining the necessary architecture.
 
@@ -35,11 +35,7 @@ Understanding the physical or logical locations of your database and dependent a
 
 ---
 
-### Business continuity and activeness
-
-This section explores your requirements for high availability and disaster recovery, which directly influence your choice of deployment topology.
-
-#### Disaster recovery (hot/cold standby)
+## Disaster recovery (hot/cold standby)
 
 Disaster recovery (DR) ensures business continuity across different locations.
 
@@ -51,85 +47,111 @@ Disaster recovery (DR) ensures business continuity across different locations.
     * Having a dedicated secondary location indicates a strong architectural requirement.
     * If no formal DR practice exists, the HM DBaaS far-away replica solution may provide new capabilities.
 
-#### Activeness (active/passive vs. active/active)
+---
+
+## Activeness (active/passive vs. active/active)
 
 Activeness describes how your distributed locations are utilized for critical workloads.
 
 * **Questions to answer:**
-    * If you have multiple locations, how does the critical workload utilize these systems?
+    * If you have multiple locations, how does the critical dependent workload utilize these systems?
     * Is one location active and the other passive in terms of transaction processing (OLTP)?
     * Is one location active for OLTP, and the other active for analytical processing (OLAP/BI)?
-
-* **Questions to ask:**
-    * In case of multiple locations, how do you utilize these systems in terms of the **critical workload**?
-    * Is one active and the other is passive in terms of **transaction processing (OLTP)**?
-    * Is one active in terms of OLTP, and the other is active in terms of **analytical processing (OLAP/BI)**?
 
 * **Analysis:**
     * If your target state requires simultaneous writes to multiple database instances (i.e., true **active/active** across locations), **Postgres Distributed** is the required solution due to its multi-writer capability.
     * Understanding whether a location is passively waiting (cold standby) or actively running (hot standby) helps define resource requirements and recovery time objectives (RTO).
+    * **Business continuity:** The architectural choices around active/passive, active/active, and standby models must balance the organization's tolerance for downtime/data loss against the cost of maintaining redundant systems.
 
-> **Business continuity:** The architectural choices around active/passive, active/active, and standby models must balance the organization's tolerance for downtime/data loss against the cost of maintaining redundant systems.
+These topics naturally follow the discussion of Activeness and help complete the picture of your application ecosystem.
+
+* Ingress traffic routing in terms of the consuming application.
+* Replication at various application layers.
+* Caching layers (and their location relative to the database).
+* Session demands (e.g., is session replication handled at the application layer?).
 
 ---
 
-### Lifecycle operations
+## Lifecycle operations
 
 Understanding your operations practices helps determine the complexity of the Kubernetes environment required to manage the database service.
 
-* **Questions to ask:**
+* **Questions to answer:**
     * How are components upgraded, and are the locations utilized in a particular pattern to support lifecycle operations patterns such as **Blue/Green** or **Canary**?
     * Consider both **DML and DDL updates** (data and schema) or **engine upgrades** such as database major versions?
     * What **pre-production environments** (staging, development, testing) are included in preparing for production lifecycle operations?
 
 * **Analysis:**
     * Practices like Blue/Green deployment demonstrate capability that aligns well with the micromanaged upgrade and zero-downtime features offered by EDB's database solutions.
+
     * The existence and number of pre-production environments influence the total cluster count and resource sizing.
+---
+
+## Kubernetes: broad considerations
+Supported platforms:
+- Amazon EKS (Elastic Kubernetes Service)
+- Google GKE (Google Kubernetes Engine)
+- Rancher RKE2 (Rancher Kubernetes Engine)
+- Red Hat OpenShift (RHOS)
+
+Considerations:
+- Hybrid Manager and Kubernetes have a 1:1 relationship—each HM deployment requires its own dedicated Kubernetes cluster.
+- The Kubernetes cluster must be dedicated to Hybrid Manager at this time; sharing with other workloads is not supported.
+- The customer is responsible for the full lifecycle management of the Kubernetes cluster (provisioning, upgrades, scaling, etc.)
 
 ---
 
-### Additional considerations
+# Hybrid Manager Architectures
 
-These topics naturally follow the discussion of Activeness and help complete the picture of your application ecosystem.
-
-* Ingress traffic routing
-* Replication at various application layers
-* Caching layers (and their location relative to the database)
-* Session demands (e.g., is session replication handled at the application layer?)
-* Business logic engine location and usage
-
----
-
-## Architectural case study: the value of discovery
-
-A customer initially provided requirements for an active/passive RDBMS solution. Based on this limited view, a Postgres High Availability solution was recommended.
-
-* After subsequent incidents, it was revealed that:
-    1.  Reporting workloads required additional replicas (read-only usage).
-    2.  The application layer *upstream* of the database was already an active/active system distributed across two physical data centers.
-
-The ultimate recommendation shifted to an eventual migration to **Postgres Distributed** to properly align the database architecture with the upstream application requirements. 
-This case demonstrates that a view limited to only the database layer may not reveal the true needs and demands of the entire solution.
-
----
-
-## Hybrid Manager reference architectures
-
-These diagrams illustrate common and advanced deployment patterns for Hybrid Manager.
-
-#### Hybrid Manager minimum install
-
-The minimum install provides a fully capable product deployment sufficient for building an Estate, supporting Migration, and initial AI Factory capabilities.
-
+## Hybrid Manager minimum install
 ![Hybrid Manager Minimum](../images/HCP_reference_architectures-minimum.svg)
 
-### Hybrid Manager fully featured deployment
+### Diagram Legend
+
+The legend defines the colors and logical groupings used in the architecture diagram:
+
+* **Locality:** The highest-level physical or logical grouping, such as a physical data center or a geographical region (e.g., "City 1" and "Data Center 1").  
+* **Kubernetes Cluster:** The complete Kubernetes environment, including all control plane and worker nodes, that hosts the entire platform.  
+* **EDB Hybrid Manager:** The logical boundary for the core HM components. This is typically implemented as a dedicated Kubernetes namespace (e.g., edb-platform-control-plane).  
+* **Compute Machine:** The virtual machines (e.g., vm01, vm02, vm03) that serve as the Kubernetes worker nodes, providing the CPU, memory, and storage for the cluster.  
+* **Infrastructure Abstraction:** This critical layer represents Kubernetes-native resources that abstract underlying physical or virtual infrastructure. These resources must be provided by the Kubernetes cluster's environment.  
+  * **Example 1: type: LoadBalancer**: This is a Kubernetes Service type that requests an external load balancer. In public cloud environments (like AWS, GCP, Azure), this is automatically provisioned as a managed service. In on-premises or bare-metal deployments, you must provide a solution (like MetalLB) to fulfill these LoadBalancer requests.  
+  * **Example 2: StorageClass**: This resource abstracts the "Block Storage" and "Object Storage" requirements. It maps Kubernetes storage requests (Persistent Volume Claims) to actual, provisioned storage hardware or software (like local-pv, Ceph, vSphere, or cloud-based disks).
+
+### External Requirements
+
+These are the prerequisite services and infrastructure that must be available in your environment **before** you can deploy the Hybrid Manager. They are dependencies that the platform relies on but does not provide.
+
+* **Container Registry:** The EDB registry that hosts the HM container images.  
+* **Domain Name Service:** A functional DNS capability for resolving internal and external hostnames.  
+* **Identity Provider:** An external service (like Okta, Keycloak, or Azure AD) for user authentication via OIDC. See [Security and access management](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/byo_idp/).  
+* **Local Network:** The underlying network infrastructure allowing communication to and from the cluster.  
+* **Key Management Service (KMS):** An external service to manage and store encryption keys. See [KMS for TDE](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/kms_for_tde/).  
+* **Block Storage:** Storage solutions (like S3, EBS, or on-prem equivalents) required for persistent data, exposed to K8s via a StorageClass.
+* **Object Storage:** Storage solutions (like S3, EBS, or on-prem equivalents) required for persistent data, exposed to K8s via a StorageClass.
+* **Certificate Signer Authority:** An internal or external CA to issue and sign TLS certificates for secure communication. See [Certificate Management](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/).
+
+
+### Hybrid Manager Control Plane
+
+These are the core microservices that make up the Hybrid Manager platform, running inside the Kubernetes cluster (within the "EDB Hybrid Manager" boundary).
+
+* **GenAI**: Provides AI/ML capabilities. See [GenAI in Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/ai-factory/gen-ai/)
+* **Postgres Lifecycle Operations**: Manages deployment, scaling, and updates. See [Using Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/)  
+* **Telemetry**: Collects and reports metrics. See [Monitoring and observability](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/#monitoring-and-observability)  
+* **Migration Assistant**: Assists with database migrations. See [Database migration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/)  
+* **AuthN/AuthZ**: Handles authentication and authorization. See [Security and access management](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/#security-and-access-management)  
+* **Estate**: Manages resource inventory. See [External Databases](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/)  
+* **Spiffe/Spire**: Provides workload identity. See [Security and access management](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/#security-and-access-management)
+
+
+## Hybrid Manager fully featured deployment
 
 This view shows a fully capable Hybrid Manager deployment, including resources like GPU acceleration.
 
 ![Hybrid Manager Fully Featured](../images/HCP_reference_architectures-full-featured.svg)
 
-### Hybrid Manager multi-location (hub and spoke)
+## Hybrid Manager multi-location (hub and spoke)
 
 The multi-location capability is primarily a DBaaS offering following a hub and spoke model.
 1.  As a DBaaS offering, many additional capabilities are not available on the secondary Hybrid Manager.
@@ -138,7 +160,7 @@ The multi-location capability is primarily a DBaaS offering following a hub and 
 
 ![Hybrid Manager Multi-Location](../images/HCP_reference_architectures-multi-location.svg)
 
-### Hybrid Manager distributed reference architecture
+## Hybrid Manager distributed reference architecture
 
 This reference architecture, while requiring significant infrastructure (e.g., nine data centers), represents the ultimate architectural goal for achieving the highest levels of SLA and scale.
 
@@ -146,7 +168,7 @@ This reference architecture, while requiring significant infrastructure (e.g., n
 
 ---
 
-## Building your `values.yaml`
+# Building your `values.yaml`
 
 The decisions made during this discovery process will directly populate critical initial entries in your configuration file.
 
@@ -159,15 +181,4 @@ bootstrapImageTag: <Version>
 parameters:
   upm-beacon:
     beacon_location_id: <Deployment_Location_Name>
-```
-
-Example:
-
-```yaml
-system: eks
-bootstrapImageName: [docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap-eks](https://docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap-eks)
-bootstrapImageTag: v1.3.0
-parameters:
-  upm-beacon:
-    beacon_location_id: Dallas
 ```
