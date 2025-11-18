@@ -1,0 +1,27 @@
+---
+title: "Dynamic partition management"
+description: "How are child partitions managed dynamically in an EDB Postgres Replication Server environment."
+---
+
+In EDB Postgres Replication Server, managing child partitions is essential for optimizing data distribution and query performance. Child partitions allow you to divide large tables into smaller, more manageable pieces based on specific criteria, such as range or list partitioning.
+
+**Dynamic partition management** automatically detects when a child partition is added to or removed from a published table at runtime. It then replicates this change to all target subscriptions (in an SMR cluster) or master databases (in an MMR cluster). This replication is done while preserving the original transactional order, which guarantees data consistency between the source and all target database nodes. This feature is currently only supported for PostgreSQL and EPAS publication databases using WAL-based CDC mode.
+
+## DDL conflict handling
+
+If the same partition change (addition or removal) is introduced simultaneously on both the source and target databases, replication will stop by default, and the conflict will be logged.
+
+To control this behavior, use the new configuration option, `ddlConflictResolution`. The possible values are:
+
+- `error` (Default): Halts the replication process upon encountering a DDL conflict.
+- `skip` &mdash; Discards the conflicting DDL operation on the target database and continues replication.
+
+!!!note
+- For MMR (Multi-Master Replication) &mdash; Manually adding/removing a partition on a master node is permitted, but it risks data inconsistency across the nodes because CDC row changes rely on the partition's presence at the moment of routing.
+
+- For SMR (Single-Master Replication) &mdash; Explicitly changing partitions on the target (Subscription) database is not a valid operation (as it should be read-only) and will lead to unpredictable behavior and data inconsistency.
+!!!
+
+## Event log table cleanup
+
+Dynamic partition management records all partition DDL changes in the table `_edb_replicator_pub.rrep_ddl_event_log`. This event log table is automatically and periodically cleaned up by the existing "control events cleanup job" within the replication server's framework.
