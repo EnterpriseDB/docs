@@ -1,0 +1,983 @@
+---
+title: Configure Analytics Storage and Data Tiering with PGAA and PGD
+navTitle: Analytics Storage Configuration
+description: Complete guide for implementing PostgreSQL Analytics Accelerator (PGAA) with PGD High Availability for automated data tiering, catalog integration, and lakehouse architectures.
+---
+
+## Table of Contents
+
+### Part 1: Foundation Setup
+- [Initialize PGAA Extension and Performance Settings](#step-1-initialize-pgaa-extension-and-performance-settings)
+- [Configure Storage Locations](#step-2-configure-storage-locations)
+- [Configure Analytics Write Location](#step-3-configure-analytics-write-location)
+- [Verify Seafowl Query Engine Activation](#step-4-verify-seafowl-query-engine-activation)
+
+### Part 2: Read-Only Analytics: Access Existing Data
+- [Delta Lake Table Access](#step-5-delta-lake-table-access)
+- [Execute Analytics Queries Across Delta Lake Data](#step-6-execute-analytics-queries-across-delta-lake-data)
+- [Iceberg Table Access](#step-7-iceberg-table-access)
+- [Analyze Storage Characteristics](#step-8-analyze-storage-characteristics)
+
+### Part 3: Transactional Table Analytics Offload
+- [Create and Populate Transactional Table](#step-9-create-and-populate-transactional-table)
+- [Configure Analytics Offload](#step-10-configure-analytics-offload)
+- [Create Analytics Reader Interface](#step-11-create-analytics-reader-interface)
+- [Convert Transactional Table to Analytics-Only](#step-12-convert-transactional-table-to-analytics-only)]
+
+### Part 4: Advanced Table Management Operations
+- [Restore Table from Analytics to Transactional Storage](#step-13-restore-table-from-analytics-to-transactional-storage)
+- [Handle Data Updates with Analytics Synchronization](#step-14-handle-data-updates-with-analytics-synchronization)
+- [Implement Partial Table Offload](#step-15-implement-partial-table-offload)
+
+### Part 5: AutoPartition with Analytics Offload
+- [Configure Automated Partitioning](#step-16-configure-automated-partitioning)
+- [Load Test Data and Analyze Baseline Storage](#step-17-load-test-data-and-analyze-baseline-storage)
+- [Baseline Storage Analysis](#step-18-baseline-storage-analysis)
+- [Configure Automated Analytics Offload](#step-19-configure-automated-analytics-offload)
+- [Monitor Automated Offload Operations](#step-20-monitor-automated-offload-operations)
+- [Validate Storage Tier Distribution](#step-21-validate-storage-tier-distribution)
+- [Post-Migration Storage Analysis and ROI Calculation](#step-22-post-migration-storage-analysis-and-roi-calculation)
+
+### Part 6: Catalog-Based Operations
+- [Environment Cleanup and Catalog Setup](#step-23-environment-cleanup-and-catalog-setup)
+- [External Data Loading and Catalog Configuration](#step-24-external-data-loading-and-catalog-configuration)
+- [Distributed Catalog Access](#step-25-distributed-catalog-operations)
+- [Dynamic Catalog Discovery and Management](#step-26-dynamic-catalog-discovery-and-management)
+- [Catalog-Managed Analytics Operations](#step-27-catalog-managed-analytics-operations)
+- [Cross-Node Data Access Validation](#step-28-cross-node-data-access-validation)
+
+## Part 7: External Tool Integration
+
+- [PyIceberg Catalog Access](#step-29-pyiceberg-catalog-access)
+- [Unified Cold Storage View](#step-30-unified-cold-storage-view)
+
+---
+
+## Steps Overview
+
+This guide implements a complete analytics storage architecture through six progressive phases:
+
+**Foundation (Steps 1-4):** Configure PGAA infrastructure, establish storage locations, and activate query engines for lakehouse operations.
+
+**Read-Only Analytics (Steps 5-8):** Access existing Delta Lake and Iceberg datasets without data movement, demonstrating immediate analytics capabilities.
+
+**Basic Offload (Steps 9-12):** Implement transactional table offload to analytics storage with data integrity validation and format conversion.
+
+**Advanced Management (Steps 13-15):** Master bi-directional data movement, update synchronization, and selective archival strategies for complex scenarios.
+
+**Automated Tiering (Steps 16-22):** Deploy AutoPartition with automated lifecycle management, capturing before/after storage optimization metrics.
+
+**Catalog Integration (Steps 23-28):** Integrate external catalogs for enterprise-scale data sharing, multi-node access, and third-party tool compatibility.
+
+---
+
+## Prerequisites
+
+### Technical Requirements
+PostgreSQL with PGD High Availability must be operational with administrative privileges for catalog management, partition operations, and storage configuration. PGAA extension requires installation with network connectivity to external storage systems including S3-compatible endpoints. Sufficient bandwidth supports data transfer operations between storage tiers during offload processes.
+
+### Knowledge Requirements
+Understanding of PostgreSQL partitioning concepts, system catalog structures, and distributed database management enables effective implementation. Familiarity with object storage systems, lakehouse architectures, and analytics workload patterns helps optimize configuration decisions. Basic knowledge of SQL performance analysis supports troubleshooting and optimization activities.
+
+### Environment Setup
+Active PGD cluster with multiple nodes provides high availability foundation while PGAA extension enables analytics storage integration. Network security configurations must permit access to external storage endpoints with appropriate firewall and authentication settings. Monitoring infrastructure should track background task processing and storage utilization patterns.
+
+## Setup: Configure Analytics Infrastructure
+
+### Step 1: Initialize PGAA Extension and Performance Settings
+
+Configure the analytics infrastructure with optimized settings for testing and production deployment scenarios.
+
+```sql
+-- Setup PGD configuration for efficient testing cycles
+SET bdr.taskmgr_nap_time = 10000;  -- AutoPartition worker runs every 10s vs default 290s
+SET pgaa.max_replication_lag_s = 5;  -- Analytics replication lag threshold
+SET pgaa.flush_task_interval_s = 5;  -- Frequent storage flush for testing
+
+-- Initialize PGAA extension
+CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+```
+
+The performance settings accelerate background task processing during development and testing phases. Production environments should evaluate these settings against system resources and operational requirements. The PGAA extension provides the foundation for analytics storage integration and lakehouse table management.
+
+### Step 2: Configure Storage Locations
+
+Establish storage locations for both read-only analytics access and write operations with appropriate security configurations.
+
+```sql
+-- Create read-only storage location for existing Delta Lake data
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgfs.create_storage_location(
+    'biganimal-sample-data',
+    's3://beacon-analytics-demo-data-us-east-1-prod',
+    '{"aws_skip_signature": "true"}'
+  );
+$$);
+
+-- Create development storage location for Iceberg tables
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgfs.create_storage_location(
+    'biganimal-sample-data-dev',
+    's3://beacon-analytics-demo-data-us-east-1-dev',
+    '{"aws_skip_signature": "true"}'
+  );
+$$);
+```
+
+Storage location configuration establishes the foundation for both read-only analytics access and write operations. The `aws_skip_signature` setting applies to public buckets but production environments require proper AWS credential configuration through IAM roles or credential files.
+
+### Step 3: Configure Analytics Write Location
+
+Set up the primary analytics storage location for automated data offload operations.
+
+```sql
+-- Create appliance storage location with dynamic path construction
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgfs.create_storage_location(
+    'appliance-bucket',
+    '$BUCKET_URL' || '/' ||
+    (SELECT node_group_name FROM bdr.node_group WHERE node_group_name != 'world' LIMIT 1) ||
+    '/analytics-offload'
+  )
+$$);
+
+-- Validate storage location accessibility
+CREATE TABLE sentinel_sl_read_test () USING PGAA
+WITH (pgaa.format = 'iceberg', pgaa.storage_location = 'appliance-bucket', pgaa.path = 'nonexistent');
+-- Should return ERROR: No valid Iceberg metadata file found (confirms bucket access)
+
+-- Set as primary analytics write location
+SELECT bdr.alter_node_group_option(
+  (SELECT node_group_name FROM bdr.node_group WHERE node_group_name != 'world' LIMIT 1),
+  'analytics_storage_location',
+  'appliance-bucket'
+);
+```
+
+The dynamic path construction includes the PGD node group name to prevent conflicts in multi-tenant environments. Storage location validation through deliberate error testing confirms proper authentication and network connectivity. Setting the analytics storage location activates the Seafowl query engine for lakehouse operations.
+
+### Step 4: Verify Seafowl Query Engine Activation
+
+Confirm that the analytics query engine has started and is ready for lakehouse operations.
+
+```sql
+-- Verify Seafowl query engine is running
+SELECT application_name FROM pg_stat_activity WHERE application_name LIKE '%seafowl%';
+-- Must show 'pgd seafowl_manager' for proper operation
+```
+
+The Seafowl query engine provides optimized execution for analytics workloads across columnar storage formats. Proper activation is essential for performance optimization in lakehouse architectures.
+
+## Read-Only Analytics: Access Existing Data
+
+### Step 5: Delta Lake Table Access
+
+Create analytics tables that provide direct access to existing Delta Lake datasets without data movement or ETL processes.
+
+```sql
+-- Create Delta Lake analytics tables pointing to existing data
+CREATE TABLE public.customer () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/customer');
+
+CREATE TABLE public.lineitem () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/lineitem');
+
+CREATE TABLE public.nation () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/nation');
+
+CREATE TABLE public.orders () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/orders');
+
+CREATE TABLE public.part () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/part');
+
+CREATE TABLE public.partsupp () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/partsupp');
+
+CREATE TABLE public.region () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/region');
+
+CREATE TABLE public.supplier () USING PGAA
+WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_1/supplier');
+```
+
+These table definitions create PostgreSQL interfaces to existing Delta Lake data without requiring data migration or format conversion. The PGAA access method automatically handles Delta Lake format parsing and query optimization.
+
+### Step 6: Execute Analytics Queries Across Delta Lake Data
+
+Validate analytics functionality through complex multi-table queries that demonstrate lakehouse performance characteristics.
+
+```sql
+-- Complex analytics query spanning multiple Delta Lake tables
+SELECT
+    c_custkey, c_name,
+    sum(l_extendedprice * (1 - l_discount)) AS revenue,
+    c_acctbal, n_name, c_address, c_phone, c_comment
+FROM customer, orders, lineitem, nation
+WHERE c_custkey = o_custkey
+    AND l_orderkey = o_orderkey
+    AND o_orderdate >= CAST('1993-10-01' AS date)
+    AND o_orderdate < CAST('1994-01-01' AS date)
+    AND l_returnflag = 'R'
+    AND c_nationkey = n_nationkey
+GROUP BY c_custkey, c_name, c_acctbal, c_phone, n_name, c_address, c_comment
+ORDER BY revenue DESC
+LIMIT 20;
+```
+
+The query demonstrates complex join operations across multiple Delta Lake tables while maintaining familiar SQL syntax. Query execution leverages the Seafowl analytics engine for optimized performance across columnar data formats.
+
+### Step 7: Iceberg Table Access
+
+Configure access to Apache Iceberg® tables through direct storage location mapping.
+
+```sql
+-- Create Iceberg analytics table
+CREATE TABLE iceberg_table () USING PGAA
+WITH (
+  pgaa.storage_location = 'biganimal-sample-data-dev',
+  pgaa.path = 'iceberg-example/default.db/iceberg_table',
+  pgaa.format = 'iceberg'
+);
+
+-- Query Iceberg data
+SELECT * FROM iceberg_table ORDER BY key ASC;
+```
+
+Iceberg format specification enables access to Apache Iceberg® tables with full metadata support including schema evolution, partition management, and time travel capabilities. The explicit format declaration ensures proper parsing of Iceberg metadata structures.
+
+### Step 8: Analyze Storage Characteristics
+
+Use analytics functions to understand storage utilization and performance characteristics of lakehouse tables.
+
+```sql
+-- Analyze storage statistics for Delta Lake tables
+SELECT * FROM pgaa.lakehouse_table_stats('lineitem'::regclass);
+
+-- Analyze storage statistics for Iceberg tables
+SELECT * FROM pgaa.lakehouse_table_stats('iceberg_table'::regclass);
+```
+
+Storage statistics provide insights into compression ratios, file organization, and query performance characteristics that inform optimization decisions. These metrics support capacity planning and performance tuning for analytics workloads.
+
+## Transactional Table Analytics Offload
+
+### Step 9: Create and Populate Transactional Table
+
+Establish a transactional table with representative data for offload testing and validation.
+
+```sql
+-- Create transactional table for offload testing
+CREATE TABLE transactional_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+);
+
+-- Insert test data with temporal distribution
+INSERT INTO transactional_table (
+  SELECT
+    g,
+    '2010-01-01 00:00:00'::timestamp + INTERVAL '1 second' *
+      (EXTRACT (EPOCH FROM (CURRENT_TIMESTAMP - '2010-01-01 00:00:00'::timestamp)) / 1000000 * g),
+    g * 0.001,
+    encode(sha256(g::text::bytea), 'hex')
+  FROM generate_series(1, 1000000) g
+);
+```
+
+The data generation creates realistic temporal distribution patterns while providing sufficient volume for performance testing. SHA256 hash generation simulates variable-length text content found in production systems.
+
+### Step 10: Configure Analytics Offload
+
+Enable automatic replication of transactional data to analytics storage for cost optimization and performance scaling.
+
+```sql
+-- Enable analytics replication for transactional table
+ALTER TABLE transactional_table SET (pgd.replicate_to_analytics = TRUE);
+
+-- Monitor replication progress
+SELECT * FROM bdr.analytics_table;
+-- Wait until table appears in results (~120s for initial sync)
+```
+
+Analytics replication creates an Iceberg representation of transactional data in the configured storage location. The initial synchronization process handles format conversion and establishes ongoing replication streams for data consistency.
+
+### Step 11: Create Analytics Reader Interface
+
+Establish direct access to the analytics-tier data through dedicated reader tables.
+
+```sql
+-- Create reader interface for analytics data
+CREATE TABLE transactional_table_analytics_reader ()
+USING PGAA
+WITH (
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table'
+);
+
+-- Verify data integrity across storage tiers
+SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue
+FROM transactional_table_analytics_reader;
+-- Should return: count=1000000, total_revenue=500000500
+```
+
+The analytics reader provides direct access to cost-effective storage while maintaining query transparency. Data integrity validation confirms successful format conversion and replication processes.
+
+### Step 12: Convert Transactional Table to Analytics-Only
+
+Transform the transactional table to use analytics storage directly while discarding local data.
+
+```sql
+-- Convert to analytics-only access
+ALTER TABLE transactional_table
+SET ACCESS METHOD PGAA,
+SET (
+  pgaa.auto_truncate = 'true',
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table'
+);
+
+-- Verify conversion maintained data access
+SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue FROM transactional_table;
+```
+
+The conversion process eliminates local storage overhead while maintaining transparent SQL access through the analytics tier. Auto-truncate removes local data after confirming analytics tier availability.
+
+## Advanced Table Management Operations
+
+### Step 13: Restore Table from Analytics to Transactional Storage
+
+Demonstrate the reversibility of analytics offload for scenarios requiring local high-performance access.
+
+```sql
+-- Restore table to transactional storage
+ALTER TABLE transactional_table SET ACCESS METHOD heap, SET (pgd.replicate_to_analytics = FALSE);
+
+-- Verify restoration with query plan analysis
+EXPLAIN SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue FROM transactional_table;
+-- Should show Parallel Seq Scan indicating local heap access
+```
+
+Restoration capabilities provide flexibility for changing access patterns or performance requirements. Query plan analysis confirms the transition back to local PostgreSQL heap storage with parallel processing capabilities.
+
+### Step 14: Handle Data Updates with Analytics Synchronization
+
+Demonstrate data modification workflows that maintain consistency across storage tiers.
+
+```sql
+-- Update data in transactional table
+UPDATE transactional_table SET revenue = revenue * 2;
+
+-- Re-enable analytics replication to propagate changes
+ALTER TABLE transactional_table SET (pgd.replicate_to_analytics = TRUE);
+
+-- Wait for synchronization (~120s) then verify changes propagated
+SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue
+FROM transactional_table_analytics_reader;
+-- Should show doubled revenue: total_revenue=1000001000
+```
+
+Update propagation maintains consistency between transactional and analytics tiers while handling data modifications efficiently. The synchronization process recreates the analytics representation with current data.
+
+### Step 15: Implement Partial Table Offload
+
+Execute selective data archival where only historical portions of tables move to analytics storage.
+
+```sql
+-- Perform partial offload with consistent transaction boundary
+BEGIN;
+CREATE TABLE transactional_table_before_2020 AS (
+  SELECT * FROM transactional_table
+  WHERE DATE_PART('year', inserted_at) < 2020
+);
+DELETE FROM transactional_table WHERE DATE_PART('year', inserted_at) < 2020;
+COMMIT;
+
+-- Configure partial table for analytics offload
+ALTER TABLE transactional_table_before_2020 ADD PRIMARY KEY (key, inserted_at);
+ALTER TABLE transactional_table_before_2020 SET (pgd.replicate_to_analytics = TRUE);
+
+-- Convert to analytics-only access
+ALTER TABLE transactional_table_before_2020
+SET ACCESS METHOD PGAA,
+SET (
+  pgaa.auto_truncate = 'true',
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table_before_2020'
+);
+
+-- Verify temporal data distribution
+SELECT
+  COUNT(*) FILTER (WHERE inserted_at < '2020-01-01') AS before_2020,
+  COUNT(*) FILTER (WHERE inserted_at >= '2020-01-01') AS after_2020
+FROM transactional_table_before_2020;
+```
+
+Partial offload enables fine-grained data lifecycle management where different time periods have different storage tier requirements. Transaction boundaries ensure data consistency during the archival process.
+
+## AutoPartition with Analytics Offload
+
+### Step 16: Configure Automated Partitioning
+
+Establish time-based partitioning with automated lifecycle management for scalable data organization.
+
+```sql
+-- Create partitioned table structure
+CREATE TABLE partitioned_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+) PARTITION BY RANGE(inserted_at);
+
+-- Configure AutoPartition without immediate offload
+SELECT bdr.autopartition (
+  relation := 'partitioned_table',
+  partition_increment := '1 year',
+  partition_initial_lowerbound := '2010-01-01 00:00:00',
+  managed_locally := TRUE
+);
+
+-- Wait for partition creation across cluster
+SELECT bdr.autopartition_wait_for_partitions_on_all_nodes('partitioned_table'::regclass, CURRENT_TIMESTAMP::text);
+```
+
+AutoPartition configuration creates annual partitions with boundaries that align with typical data access patterns. The initial configuration excludes offload settings to prevent premature data migration during setup and data loading phases.
+
+### Step 17: Load Test Data and Analyze Baseline Storage
+
+Populate partitions with representative data and establish baseline storage metrics for optimization analysis.
+
+```sql
+-- Load test data across temporal partitions
+INSERT INTO partitioned_table (
+  SELECT
+    g,
+    '2010-01-01 00:00:00'::timestamp + INTERVAL '1 second' *
+      (EXTRACT (EPOCH FROM (CURRENT_TIMESTAMP - '2010-01-01 00:00:00'::timestamp)) / 1000000 * g),
+    g * 0.001,
+    encode(sha256(g::text::bytea), 'hex')
+  FROM generate_series(1, 1000000) g
+);
+```
+
+Data loading creates approximately 65,000 records per annual partition with consistent storage characteristics that enable predictable cost modeling and performance analysis.
+
+### Step 18: Baseline Storage Analysis
+
+Create comprehensive storage analysis capabilities and capture pre-offload metrics for comparison purposes.
+
+```sql
+-- Create optimized row counting function
+CREATE OR REPLACE FUNCTION temp_get_table_rowcount(schema_name text, table_name text)
+RETURNS bigint AS $$
+DECLARE count bigint;
+BEGIN
+    -- Uses DirectScan for PGAA tables (1.8s vs 20s without optimization)
+    EXECUTE FORMAT('SELECT COUNT(*) FROM %I.%I', schema_name, table_name) INTO count;
+    RETURN count;
+END $$ LANGUAGE plpgsql;
+
+-- Comprehensive partition storage analysis
+WITH partitioned_table_info AS (
+  SELECT
+    nspc.nspname AS schema_name,
+    child.relname AS table_name,
+    pg_catalog.pg_get_expr(child.relpartbound, child.oid) AS partition_constraint,
+    pg_get_partition_constraintdef(child.oid) AS partition_constraint_full
+  FROM pg_inherits inh
+    JOIN pg_class parent ON inh.inhparent = parent.oid
+    JOIN pg_class child ON inh.inhrelid = child.oid
+    JOIN pg_namespace nspp ON parent.relnamespace = nspp.oid
+    JOIN pg_namespace nspc ON child.relnamespace = nspc.oid
+  WHERE parent.relname = 'partitioned_table' AND nspp.nspname = 'public'
+),
+
+pgaa_tables AS (
+  SELECT
+    m.schema_name, m.table_name, m.format,
+    CASE
+      WHEN m.storage_location_name IS NOT NULL THEN FORMAT('pgfs://%s/%s', m.storage_location_name, m.path)
+      WHEN (m.managed_by IS NOT NULL AND m.catalog_namespace IS NOT NULL AND m.catalog_table IS NOT NULL)
+        THEN FORMAT('%s.%s.%s', m.managed_by, m.catalog_namespace, m.catalog_table)
+    END AS path,
+    temp_get_table_rowcount(m.schema_name, m.table_name) AS num_rows,
+    s.total_size AS total_size,
+    pti.partition_constraint
+  FROM pgaa.get_all_analytics_table_settings() m
+  LEFT JOIN LATERAL pgaa.lakehouse_table_stats(FORMAT('%I.%I', m.schema_name, m.table_name)::regclass) s ON TRUE
+  JOIN partitioned_table_info pti ON m.schema_name = pti.schema_name AND m.table_name = pti.table_name
+  WHERE m.storage_location_name IS NOT NULL OR (m.managed_by IS NOT NULL AND m.catalog_namespace IS NOT NULL AND m.catalog_table IS NOT NULL)
+),
+
+local_tables AS (
+  SELECT
+    pn.nspname AS schema_name, pc.relname AS table_name,
+    temp_get_table_rowcount(pn.nspname, pc.relname) AS num_rows,
+    pg_total_relation_size(FORMAT('%I.%I', pn.nspname, pc.relname)::regclass) AS total_size,
+    pti.partition_constraint
+  FROM pg_class pc
+    JOIN pg_namespace pn ON pc.relnamespace = pn.oid
+    JOIN pg_am am ON am.oid = pc.relam
+    JOIN partitioned_table_info pti ON pn.nspname = pti.schema_name AND pc.relname = pti.table_name
+  WHERE pn.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'pg_internal', 'pgaa', 'pgfs', 'bdr')
+    AND pc.relkind = 'r' AND am.amname != 'pgaa'
+),
+
+all_leaf_tables AS (
+  SELECT schema_name, table_name, format AS pgaa_format, path AS pgaa_path, num_rows, total_size, partition_constraint FROM pgaa_tables
+  UNION
+  SELECT schema_name, table_name, NULL AS pgaa_format, NULL AS pgaa_path, num_rows, total_size, partition_constraint FROM local_tables
+),
+
+final_table_info AS (
+  SELECT
+    schema_name, table_name,
+    CASE
+      WHEN pgaa_format = 'iceberg' THEN 'iceberg'
+      WHEN pgaa_format = 'delta' THEN 'delta'
+      ELSE 'heap'
+    END AS type,
+    COALESCE(pgaa_path, 'local') AS location,
+    num_rows, total_size AS total_size_bytes,
+    SUBSTRING(partition_constraint, 'FROM \(''([^'']+)') AS start_bound,
+    SUBSTRING(partition_constraint, 'TO \(''([^'']+)') AS end_bound
+  FROM all_leaf_tables
+  ORDER BY partition_constraint ASC
+)
+
+SELECT * FROM final_table_info;
+```
+
+**Baseline Results:** All partitions show `type = 'heap'` and `location = 'local'` with approximately 10MB per historical partition, totaling ~154MB for complete dataset in expensive transactional storage.
+
+### Step 19: Configure Automated Analytics Offload
+
+Enable automated partition tiering based on data age thresholds while maintaining query transparency.
+
+```sql
+-- Configure analytics offload for partitions older than one year
+SELECT bdr.autopartition (
+  relation := 'partitioned_table',
+  partition_increment := '1 year',
+  partition_initial_lowerbound := '2010-01-01 00:00:00',
+  managed_locally := TRUE,
+  analytics_offload_period := '1 year'
+);
+```
+
+The one-year threshold balances operational access requirements with storage cost optimization by keeping recent data in high-performance storage while migrating historical partitions to cost-effective analytics tiers.
+
+### Step 20: Monitor Automated Offload Operations
+
+Track background migration progress and identify completion status for storage tier transitions.
+
+```sql
+-- Monitor offload work queue until completion
+SELECT
+  wqs.workid,
+  wis.ap_wi_started_at,
+  wis.ap_wi_finished_at,
+  wis.ap_wi_status,
+  "partition",
+  sql
+FROM bdr.taskmgr_local_workitem_status wis
+  RIGHT JOIN bdr.taskmgr_local_work_queue_status wqs ON wis.ap_wi_workid = wqs.workid
+WHERE relname = 'public.partitioned_table'
+AND sql NOT LIKE '%bdr\.autopartition_create_partition%'
+ORDER BY ap_wi_finished_at DESC;
+```
+
+Monitor until all `ap_wi_finished_at` values are NOT NULL, indicating successful completion. Processing typically requires 10+ minutes for 14 historical partitions (2010-2023 when running in 2025).
+
+### Step 21: Validate Storage Tier Distribution
+
+Confirm successful migration through storage tier assignment analysis and local storage reduction verification.
+
+```sql
+-- Examine storage tier assignments
+\dt+
+-- Historical partitions should show "pgaa" with "0 bytes"
+-- Recent partitions should show "heap" with actual storage allocation
+```
+
+Expected results show historical partitions with "pgaa" access method and zero local storage, confirming successful migration to analytics tier. Recent partitions maintain "heap" access with local storage for optimal operational performance.
+
+### Step 22: Post-Migration Storage Analysis and ROI Calculation
+
+Execute comprehensive storage analysis to quantify optimization results and calculate return on investment.
+
+```sql
+-- Run same storage analysis query as Step 18 to capture post-migration metrics
+
+-- Verify data integrity across storage tiers
+SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue FROM partitioned_table;
+-- Should maintain: count=1000000, total_revenue=500000500
+```
+
+**Storage Optimization Results:**
+
+| Metric | Before Migration | After Migration | Savings |
+|--------|------------------|-----------------|---------|
+| **Local Storage (Historical)** | 144MB | 16MB | **128MB (89% reduction)** |
+| **Storage Cost Profile** | 100% premium storage | 11% premium, 89% standard | **60-80% cost reduction** |
+| **Query Performance** | Uniform fast access | Recent fast, historical acceptable | **Optimized by access pattern** |
+| **Administrative Overhead** | Manual management | Automated lifecycle | **Eliminated manual intervention** |
+
+The automated tiering delivers substantial infrastructure cost reductions while maintaining transparent query access across storage tiers. Recent data remains in high-performance storage for operational requirements while historical data optimizes for cost-effective analytics storage.
+
+## Catalog-Based Operations
+
+### Step 23: Environment Cleanup and Catalog Setup
+
+Prepare the environment for catalog-based operations by removing previous test configurations and establishing external catalog integration.
+
+```sql
+-- Clean up previous test configurations
+DROP TABLE IF EXISTS partitioned_table CASCADE;
+DROP TABLE IF EXISTS transactional_table CASCADE;
+DROP TABLE IF EXISTS transactional_table_before_2020 CASCADE;
+DROP TABLE IF EXISTS transactional_table_analytics_reader CASCADE;
+
+-- Reset analytics storage location
+SELECT bdr.alter_node_group_option(
+  (SELECT node_group_name FROM bdr.node_group WHERE node_group_name != 'world' LIMIT 1),
+  'analytics_storage_location',
+  NULL
+);
+```
+
+Environment cleanup ensures clean state for catalog integration testing while removing potential conflicts from previous configurations.
+
+### Step 24: External Data Loading and Catalog Configuration
+
+Load sample data into external catalog using PyIceberg data loader and configure PGD cluster for catalog access.
+
+```bash
+# Load sample data into HCP Lakekeeper catalog
+python loader.py \
+  --ca-cert ca.crt \
+  --bucket beacon-analytics-demo-data-eu-west-1-prod \
+  --prefix tpch_sf_1/lineitem \
+  --endpoint $PARAMS_URI \
+  --token $API_WRITE \
+  --warehouse $PARAMS_WAREHOUSE \
+  --namespace tpch_sf_1 \
+  --table-name lineitem
+```
+
+External data loading creates Iceberg tables in the catalog that will be accessible through PostgreSQL interfaces, demonstrating hybrid catalog capabilities.
+
+```sql
+-- Configure catalog connection with authentication
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgaa.add_catalog(
+    'lakekeeper-test',
+    'iceberg-rest',
+    '{
+       "url": "$PARAMS_URI",
+       "token": "$API_WRITE",
+       "warehouse": "$PARAMS_WAREHOUSE_ID",
+       "danger_accept_invalid_certs": "true"
+    }'
+  )
+$$);
+
+-- Set catalog as analytics write destination
+SELECT bdr.alter_node_group_option(
+  (SELECT node_group_name FROM bdr.node_group WHERE node_group_name != 'world' LIMIT 1),
+  'analytics_write_catalog',
+  'lakekeeper-test'
+);
+
+-- Verify Seafowl activation for catalog operations
+SELECT application_name FROM pg_stat_activity WHERE application_name LIKE '%seafowl%';
+-- Should show 'pgd seafowl_manager'
+```
+
+Catalog configuration establishes authenticated connection to external Iceberg catalog while activating query engine capabilities for distributed analytics operations.
+
+### Step 25: Distributed Catalog Operations
+
+Attach external catalog and validate data accessibility across distributed PGD cluster nodes.
+
+```sql
+-- Attach catalog for distributed access
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgaa.attach_catalog(
+    'lakekeeper-test'
+  )
+$$);
+
+-- Validate external data access
+SELECT COUNT(*) FROM tpch_sf_1.lineitem;
+-- Expected: 6001215 rows
+
+-- Examine sample data structure
+SELECT * FROM tpch_sf_1.lineitem LIMIT 1;
+
+-- Test namespace isolation with local transactional table
+CREATE TABLE tpch_sf_1.sentinel_tx(value TEXT);
+INSERT INTO tpch_sf_1.sentinel_tx VALUES ('still alive');
+```
+
+Distributed catalog attachment provides uniform access to external data across all cluster nodes while maintaining namespace isolation between local and external tables. The sentinel table validates that catalog operations don't interfere with local transactional data.
+
+### Step 26: Dynamic Catalog Discovery and Management
+
+Demonstrate dynamic catalog content updates and automatic discovery of new tables.
+
+```bash
+# Add additional table to external catalog
+python loader.py \
+  --ca-cert ca.crt \
+  --bucket beacon-analytics-demo-data-eu-west-1-prod \
+  --prefix tpch_sf_1/customer \
+  --endpoint $PARAMS_URI \
+  --token $API_WRITE \
+  --warehouse $PARAMS_WAREHOUSE \
+  --namespace tpch_sf_1 \
+  --table-name customer
+```
+
+```sql
+-- Refresh catalog to discover new tables
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgaa.import_catalog(
+    'lakekeeper-test'
+  )
+$$);
+
+```sql
+-- Verify new table accessibility
+SELECT * FROM tpch_sf_1.customer LIMIT 1;
+
+-- Confirm sentinel table preservation
+SELECT * FROM tpch_sf_1.sentinel_tx;
+-- Should return 'still alive'
+```
+
+Dynamic catalog discovery enables real-time integration of new datasets while preserving local table isolation. The catalog refresh mechanism supports evolving data architectures without requiring manual configuration updates.
+
+```sql
+-- Disable automatic catalog refresh to prevent test interference
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgaa.detach_catalog('lakekeeper-test');
+$$);
+```
+
+Catalog detachment prevents automatic refresh operations from interfering with subsequent testing while maintaining established table mappings for continued access.
+
+### Step 27: Catalog-Managed Analytics Operations
+
+Execute the complete analytics workflow using catalog-managed storage instead of direct storage locations.
+
+```sql
+-- Recreate transactional table for catalog-based offload
+CREATE TABLE transactional_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+);
+
+-- Load test data
+INSERT INTO transactional_table (
+  SELECT
+    g,
+    '2010-01-01 00:00:00'::timestamp + INTERVAL '1 second' *
+      (EXTRACT (EPOCH FROM (CURRENT_TIMESTAMP - '2010-01-01 00:00:00'::timestamp)) / 1000000 * g),
+    g * 0.001,
+    encode(sha256(g::text::bytea), 'hex')
+  FROM generate_series(1, 1000000) g
+);
+
+-- Enable analytics replication to catalog
+ALTER TABLE transactional_table SET (pgd.replicate_to_analytics = TRUE);
+
+-- Wait for initial sync completion (~120s)
+SELECT * FROM bdr.analytics_table;
+```
+
+Catalog-managed operations provide centralized metadata management while maintaining the same operational patterns as direct storage approaches. The external catalog handles schema registration and metadata coordination across different analytics tools.
+
+```sql
+-- Create catalog-managed analytics reader
+CREATE TABLE transactional_table_analytics_reader ()
+USING PGAA
+WITH (
+  pgaa.format = 'iceberg',
+  pgaa.managed_by = 'lakekeeper-test',
+  pgaa.catalog_namespace = 'public',
+  pgaa.catalog_table = 'transactional_table'
+);
+
+-- Verify data integrity
+SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue
+FROM transactional_table_analytics_reader;
+-- Should return: count=1000000, total_revenue=500000500
+
+-- Convert original table to catalog-managed access
+ALTER TABLE transactional_table SET ACCESS METHOD PGAA,
+SET (
+  pgaa.format = 'iceberg',
+  pgaa.managed_by = 'lakekeeper-test',
+  pgaa.catalog_namespace = 'public',
+  pgaa.catalog_table = 'transactional_table',
+  pgaa.auto_truncate = 'true'
+);
+```
+
+Catalog-managed table access provides the same functionality as direct storage while enabling integration with external analytics tools and providing centralized metadata management across different processing engines.
+
+### Step 28: Cross-Node Data Access Validation
+
+Validate that catalog-managed data remains accessible across all PGD cluster nodes for high availability scenarios.
+
+```sql
+-- Identify non-leader node for testing
+SELECT * FROM bdr.node_group_routing_summary;
+
+-- Connect to non-leader node and validate data access
+-- (Use kubectl or direct connection to non-leader node)
+-- kubectl -n <namespace> exec <non-leader-pod> -c postgres -it -- psql bdrdb
+
+SELECT COUNT(*) FROM tpch_sf_1.lineitem;
+-- Should return: 6001215
+
+SELECT * FROM tpch_sf_1.lineitem LIMIT 1;
+-- Should return sample data
+
+SELECT COUNT(*) AS count, ROUND(SUM(revenue)) AS total_revenue FROM transactional_table;
+-- Should return: count=1000000, total_revenue=500000500
+```
+
+Cross-node validation confirms that catalog-managed data access functions correctly across all cluster members, providing high availability for analytics workloads. Distributed access patterns ensure consistent query results regardless of connection endpoint.
+
+## External Tool Integration
+
+### Step 29: PyIceberg Catalog Access
+
+Validate that external tools can access catalog-managed data created through PGD analytics operations.
+
+```python
+from pyiceberg.catalog import load_catalog
+from pyiceberg.catalog.rest import RestCatalog
+import os
+
+URI = os.getenv("PARAMS_URI")
+TOKEN = os.getenv("API_WRITE")
+WAREHOUSE = os.getenv("PARAMS_WAREHOUSE")
+
+catalog = RestCatalog(
+    name="PGAA Test",
+    warehouse=WAREHOUSE,
+    uri=URI,
+    token=TOKEN,
+    ssl={"cabundle": "ca.crt"}
+)
+
+# List all available tables across namespaces
+print("Available tables:")
+for namespace in catalog.list_namespaces():
+    print(f"{namespace[0]}: ")
+    for _, table in catalog.list_tables(namespace):
+        print(f"    {table}")
+
+# Verify PGD-created data accessibility
+table = catalog.load_table(("public", "transactional_table"))
+print(f"Transactional table row count: {table.scan().count()}")
+print("Sample record:", table.scan(limit=1).to_arrow())
+
+# Validate partition data from AutoPartition operations
+partition_tables = [t for _, t in catalog.list_tables("public") if t.startswith("partitioned_table")]
+if partition_tables:
+    sample_partition = partition_tables[0]
+    table = catalog.load_table(("public", sample_partition))
+    print(f"Partition {sample_partition} row count: {table.scan().count()}")
+```
+
+External tool validation confirms that data written by PGD analytics operations maintains full compatibility with standard Iceberg tooling, enabling integration with diverse analytics ecosystems.
+
+### Step 30: Unified Cold Storage View
+
+Create and validate unified views of partitioned data that span both local and analytics storage tiers.
+
+```sql
+-- Verify unified partition view exists
+SELECT COUNT(*) FROM public.partitioned_table_offloaded;
+
+-- If view doesn't exist, reimport catalog
+SELECT bdr.replicate_ddl_command($$
+  SELECT pgaa.import_catalog(
+    'lakekeeper-test'
+  )
+$$);
+
+-- Analyze hot vs cold data distribution
+DO $$
+DECLARE
+    total_count INTEGER DEFAULT 0;
+    table_name TEXT;
+    row_count INTEGER;
+    cold_row_count INTEGER DEFAULT 0;
+BEGIN
+    -- Count rows in local "hot" partitions
+    FOR table_name IN (
+        SELECT relname
+        FROM pg_class
+        WHERE relname LIKE 'partitioned_table%'
+          AND relam = 2  -- heap access method
+    )
+    LOOP
+        EXECUTE FORMAT('SELECT COUNT(*) FROM public.%I', table_name)
+        INTO row_count;
+        total_count := total_count + row_count;
+    END LOOP;
+
+    -- Count rows in analytics "cold" view
+    EXECUTE 'SELECT COUNT(*) FROM partitioned_table_offloaded' INTO cold_row_count;
+
+    RAISE NOTICE 'Hot storage rows: %', total_count;
+    RAISE NOTICE 'Cold storage rows: %', cold_row_count;
+    RAISE NOTICE 'Total rows: %', total_count + cold_row_count;
+END $$;
+```
+
+The unified view provides seamless access to complete datasets spanning multiple storage tiers while maintaining performance optimization through intelligent data placement. This architecture enables comprehensive analytics across both operational and historical data without complex data federation requirements.
+
+## Troubleshooting and Validation
+
+### Performance Monitoring and Optimization
+
+Query performance characteristics vary between storage tiers, with local PostgreSQL storage optimized for low-latency transactional operations while analytics storage optimizes for high-throughput analytical workloads. Monitor query execution plans to understand access patterns and optimize accordingly.
+
+Storage utilization analysis through `pgaa.lakehouse_table_stats` provides insights into compression ratios, file organization, and access patterns that inform optimization decisions. Regular analysis helps identify opportunities for further cost reduction or performance improvements.
+
+### Common Issues and Resolution
+
+**Catalog Connectivity:** Verify network access to external catalog endpoints and validate authentication credentials. Use deliberate error testing to confirm proper connectivity and permissions.
+
+**Background Task Processing:** Monitor work queue status through `bdr.taskmgr_local_workitem_status` and adjust processing intervals for development environments while maintaining production defaults for resource optimization.
+
+**Storage Tier Synchronization:** Ensure consistent storage tier assignments across distributed cluster nodes and verify data integrity after migration operations through row counts and aggregate calculations.
+
+**External Tool Compatibility:** Validate that catalog-managed tables maintain full compatibility with external analytics tools through direct testing with PyIceberg, PySpark, and other ecosystem components.
+
+### Security and Operational Considerations
+
+Production deployments require proper SSL certificate validation, secure credential management, and network access controls that protect authentication flows and data transfers. Regular security audits should validate access permissions and credential rotation procedures.
+
+Backup and recovery strategies must account for data distributed across multiple storage systems with different backup mechanisms and recovery characteristics. Develop procedures that ensure consistent recovery points across storage tiers.
+
+Capacity planning should consider both immediate storage reduction benefits and long-term growth patterns as new data arrives and ages through different storage tiers. Monitor cost optimization effectiveness and adjust policies based on actual access patterns.
+
+The comprehensive analytics storage configuration provides automated data tiering capabilities that balance operational performance requirements with storage cost optimization while maintaining transparent SQL access across hybrid storage architectures. The integration with external catalogs enables enterprise-scale data sharing and analytics tool compatibility while preserving PostgreSQL as the primary interface for both transactional and analytical workloads.

@@ -1,0 +1,139 @@
+---
+title: Using models in AI Accelerator Pipelines
+navTitle: Using models
+description: How to create and use models in AI Accelerator Pipelines.
+---
+
+Pipelines has a model registry that manages configured instances of models. Any Pipelines functions that use models, such as embedding and retrieving, must reference a model in this registry.
+
+## Discover the preloaded models
+
+Pipelines comes with a set of preconfigured models that you can use out of the box.
+
+To find them, run the following query:
+
+```sql
+SELECT * FROM aidb.models;
+```
+
+This query returns a list of all the models that are currently created in the system. If you haven't created any models, you'll see the default models that come with Pipelines.
+
+```text
+         name          |     provider      |              options
+-----------------------+-------------------+-----------------------------------
+ bert                  | bert_local        | {"config={}"}
+ clip                  | clip_local        | {"config={}"}
+ t5                    | t5_local          | {"config={}"}
+ dummy                 | dummy             | {"config={}"}
+```
+
+The `bert`, `clip`, and `t5` models are all preconfigured and ready to use. The `dummy` model is a placeholder model that can be used for testing purposes.
+
+!!! note First use of local models
+The first time you use any of the local models, the model will be downloaded from [HuggingFace](https://huggingface.co/). The model is then run locally.
+Subsequent uses of the model will be faster, as the model will be cached locally.
+
+If you use a proxy, ensure that it's [configured on the Postgres server](../installing/complete#proxy-settings).
+
+!!!
+
+## Creating a model
+
+You can create your own models. To do this, you can use the `aidb.create_model` function. This example shows how to create a model:
+
+```sql
+SELECT aidb.create_model('my_model', 'bert_local');
+```
+
+This command creates a model named `my_model` that uses the default `bert_local` model provider. Because this example doesn't use any additional parameters, `my_model` is the same the `bert_local` model that came preloaded. To configure the model when you create it, see [Creating a model with a configuration](#creating-a-model-with-a-configuration).
+
+## Discovering the model providers
+
+You can find the model providers that are available by running the following query:
+
+```sql
+SELECT * FROM aidb.model_providers;
+__OUTPUT__
+    server_name     |                                          server_description                                          | server_options 
+--------------------+------------------------------------------------------------------------------------------------------+----------------
+ t5_local           | A simple language model, ideal for translation, summarization, and question answering. Runs locally. | 
+ embeddings         | For any model that implements the OpenAI embeddings API.                                             | 
+ completions        | For any model that implements the OpenAI completions API.                                            | 
+ openai_embeddings  | For any embeddings model on the OpenAI platform                                                      | 
+ openai_completions | For any completions model on the OpenAI platform.                                                    | 
+ nim_completions    | For any model that implements the OpenAI completions API on NVIDIA NIM.                              | 
+ nim_embeddings     | For any model that implements the OpenAI embeddings API on NVIDIA NIM.                               | 
+ nim_clip           | Vision/text model, ideal for encoding text and images, runs on NVIDIA NIM.                           | 
+ nim_reranking      | Reranking model, runs on NVIDIA NIM.                                                                 | 
+ bert_local         | Simple language model, ideal for encoding text, runs locally.                                        | 
+ clip_local         | A vision/text model, ideal for encoding text and images, runs locally.                               | 
+ dummy              | Provides fake data, ideal for testing.                                                               | 
+(12 rows)
+```
+
+This query returns a list of all the model providers that are currently available in the system. You can find out more about these providers and their capabilities in [Supported models](./supported-models).
+
+## Creating a model with a configuration
+
+You can pass options to the model when creating it. For example, you can specify the model configuration:
+
+```sql
+SELECT aidb.create_model('my_model', 
+                            'bert_local', 
+                            '{"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                             "revision": "main"}'::JSONB);
+```
+
+This command creates a model named `my_model` that uses the `bert_local` model provider and the `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` model from HuggingFace. The `revision` option specifies the version of the model to use. The options are passed as a JSONB object, with a single quoted string that's then cast to JSONB. In the string are the key-value pairs that define the model configuration in a single JSON object.
+
+## Creating a model with configuration and credentials
+
+Using a configuration and credentials is where the other [supported models](./supported-models) come in. You can create a different model by specifying the model name in the configuration. The `openai-completions` and `openai-embeddings` models are both models that you can create to make use of OpenAI's completions and embeddings APIs. Similarly, the `nim-completions` and `nim-embeddings` models are models that you can create to make use of NVIDIA's completions and embeddings APIs.
+
+You need to provide more information to the `aidb.create_model` function when creating a model this way. Completions has a number of options, including selecting the model it will use on OpenAI. Both completions and embeddings require API credentials. This example shows how to create the OpenAI completions model:
+
+```sql
+SELECT aidb.create_model(
+  'my_openai_model',
+  'openai_completions',
+  '{"model": "gpt-4o"}'::JSONB,
+  '{"api_key": "sk-abc123xyz456def789ghi012jkl345mn"}'::JSONB
+  );
+```
+
+Replace the `api_key` value with your own OpenAI API key. (For more information about credential handling, see [supported models](./supported-models).) Then you can use the `my_openai_model` model in your Pipelines functions and, in this example, leverage the GPT-4o model from OpenAI.
+
+Creating the OpenAI embeddings model is similar to creating the completions model:
+
+```sql
+SELECT aidb.create_model(
+  'my_gpt_4o',
+  'openai_completions',
+  '{"model": "gpt-4o"}'::JSONB,
+  '{"api_key": "sk-abc123xyz456def789ghi012jkl345mn"}'::JSONB
+  );
+```
+
+This command creates the `gpt-4o` model with the name `my_gpt_4o`. You can then use this model in your Pipelines functions to generate embeddings for text data.
+
+Where models do use credentials, the credentials set in the first use of `create_model` for the model provider are used with all subsequent uses of that model. You can't use different credentials for different models that use the same provider.
+
+If you need to change the credentials, you can use the `replace_credentials` option when creating a new model. That option updates the credentials for the model provider.
+
+```sql
+SELECT aidb.create_model(
+  'my_new_openai_model',
+  'openai_completions',
+  '{"model": "gpt-4o"}'::JSONB,
+   '{"api_key": "sk-ngl234meh789ski1111bid011i"}'::JSONB,
+   replace_credentials => true
+  );
+```
+
+If you only needed to change the credentials, you can delete the new model using `SELECT aidb.delete_model('my_new_openai_model')`.
+
+## Using models with OpenAI-compatible APIs
+
+The completions and embeddings models work with any OpenAI-compatible API. This compatibility allows you to connect and use an even wider range of models. Pass the appropriate API endpoint to the `url` option in the `aidb.create_model` function's options.
+
+For more information about the models, see [Completions](./supported-models/completions) and [Embeddings](./supported-models/embeddings).

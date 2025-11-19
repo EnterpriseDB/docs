@@ -10,27 +10,31 @@ legacyRedirectsGenerated:
 
 <div id="using_vip_addresses" class="registered_link"></div>
 
-Failover Manager can be used along with a virtual IP address (VIP) for routing requests to the current primary node. 
+Failover Manager can be used along with a virtual IP address (VIP) for routing requests to the current primary node.
 
 !!! Note "Cloud provider support and alternatives"
     Virtual IP addresses aren't supported by many cloud providers. In those environments, use another mechanism, such as an elastic IP address on AWS, that can be changed when needed by a fencing or post-promotion script.
 
 ## Behavior during shutdown of an EFM agent
 
-Failover Manager will not drop the virtual IP address from the primary node when the agent for that node shuts down. As a convenience for testing, the primary node's agent will *acquire* the VIP during startup if the node does not already have it, but otherwise starting and stopping Failover Manager has no effect on whether the node holds the virtual IP address. 
+Failover Manager will not drop the virtual IP address from the primary node when the agent for that node shuts down. As a convenience for testing, the primary node's agent will *acquire* the VIP during startup if the node does not already have it, but otherwise starting and stopping Failover Manager has no effect on whether the node holds the virtual IP address.
 
 This allows you to upgrade and perform maintenance on EFM services without interrupting access to the database.
 
 ## Behavior during promotion of a node from standby to primary
 
-The VIP should be initially assigned to the primary node. When EFM detects failure of the primary node's database, it will release the VIP and then assign it to a standby node as that node is promoted to be the new primary. 
+The VIP should be initially assigned to the primary node. When EFM detects failure of the primary node's database, it will release the VIP and then assign it to a standby node as that node is promoted to be the new primary.
 
-EFM verifies (via the command configured via the [`ping.server.command`](01_cluster_properties.mdx#ping_server_command) cluster property) that the VIP is not currently in use during promotion of a standby, and will not promote a new primary node until or unless the ping indicates the VIP is unreachable. You can disable this behavior via the [`check.vip.before.promotion`](01_cluster_properties.mdx#check_vip_before_promotion) cluster property. 
+EFM verifies (using the command configured in the [`ping.server.command`](01_cluster_properties.mdx#ping_server_command) cluster property) that the VIP is not currently in use during promotion of a standby, and will not promote a new primary node until or unless the ping indicates the VIP is unreachable. You can disable this behavior via the [`check.vip.before.promotion`](01_cluster_properties.mdx#check_vip_before_promotion) cluster property, or increase the amount of time to wait with the [`check.vip.timeout`](01_cluster_properties.mdx#check_vip_timeout) cluster property.
 
 !!!tip "Meaning of the ping command exit code"
-   Failover Manager uses the exit code of the ping command to determine whether an address is reachable. A zero exit code indicates the address is reachable (in this context, this means the VIP is assigned). A non-zero exit code indicates the address isn't reachable (in this context, this means the VIP is unassigned). 
-   
+   Failover Manager uses the exit code of the ping command to determine whether an address is reachable. A zero exit code indicates the address is reachable (in this context, this means the VIP is assigned). A non-zero exit code indicates the address isn't reachable (in this context, this means the VIP is unassigned).
+
    This matches the behavior of the standard [`ping(8)`](https://manned.org/ping.8) command; if you configure a different command via the [`ping.server.command`](01_cluster_properties.mdx#ping_server_command) cluster property, it should also conform to this behavior.
+
+## Behavior of the primary agent when releasing the VIP
+
+The default behavior of the primary agent is to release the VIP in the background while performing other tasks. In some environments, this can prevent new database connections from the agent that are being made at the same time. This can prevent, for example, the primary agent from being able to choose a standby database to promote during a switchover (when there is more than one promotable standby database). Setting the [`release.vip.pre.wait`](01_cluster_properties.mdx#release_vip_background) property to a non-zero value, e.g. 5 seconds, allows you to avoid this issue by having the agent wait until after a standby has been chosen before dropping the VIP.
 
 ## Configuring Postgres when using multiple addresses for nodes
 
@@ -82,7 +86,7 @@ Invoke the `efm_address` script as the root user. The efm user is created during
 
 ## Testing the VIP
 
-When using a virtual IP (VIP) address with Failover Manager, it's important to test the VIP functionality manually before starting Failover Manager. This catches any network-related issues before they cause a problem during an actual failover. 
+When using a virtual IP (VIP) address with Failover Manager, it's important to test the VIP functionality manually before starting Failover Manager. This catches any network-related issues before they cause a problem during an actual failover.
 
 !!!important
    While testing the VIP, make sure that Failover Manager isn't running.

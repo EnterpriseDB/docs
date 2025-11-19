@@ -1,0 +1,143 @@
+---
+title: Enabling AI Factory
+navTitle: How To Enable AI Factory
+description: Enabling AI Factory in EDB Postgres AI Hybrid Manager
+---
+
+Before you can use **GenAI Builder** in Hybrid Manager, you need to enable **AI Factory**.
+This involves two main steps:
+
+1. Setting up a **Fernet key** for encryption (if not already created).
+2. Connecting GenAI Builder to an **S3-compatible bucket** for its datalake.
+
+---
+
+## 1. Generate a Fernet key (if not already created)
+
+AI Factory uses a Fernet key to encrypt sensitive data.
+If you ran one of the `-install-secrets.sh` scripts during Hybrid Manager setup, you may already have this key.
+
+If not, generate it manually with the following commands (requires `kubectl` configured for your HM cluster):
+
+```bash
+FERNET_KEY=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64)
+
+kubectl create namespace upm-griptape
+
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fernet-secret
+  namespace: upm-griptape
+stringData:
+  FERNET_KEY: ${FERNET_KEY}
+EOF
+````
+
+This creates a Kubernetes secret in the `upm-griptape` namespace for GenAI Builder to use.
+
+---
+
+## 2. Create an S3-compatible bucket
+
+GenAI Builder requires an **S3 bucket** (the datalake) to store structures, tools, and indexed data.
+
+Gather the following information from your bucket provider:
+
+| Field             | Example                               |
+| ----------------- | ------------------------------------- |
+| Bucket name       | `mycompany-genai-datalake`            |
+| Access key        | AWS access key ID or equivalent       |
+| Secret access key | AWS secret access key or equivalent   |
+| URL               | `https://s3.us-west-2.amazonaws.com/` |
+| Region            | `us-west-2`                           |
+
+>  **Note:** The bucket name must be globally unique if using AWS.
+
+---
+
+### Optional: CORS configuration
+
+If you plan to use the **GenAI Builder web UI**, configure CORS rules on the bucket so the UI can access it.
+For AWS S3, a typical configuration is:
+
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["PUT", "POST", "DELETE", "GET", "HEAD"],
+    "AllowedOrigins": ["https://${PORTAL_DOMAIN_NAME}"],
+    "ExposeHeaders": []
+  }
+]
+```
+
+Replace `${PORTAL_DOMAIN_NAME}` with your HM portal domain.
+
+---
+
+### Google Cloud Storage (GCS)
+
+GCS can be used via its **S3 interoperability layer**:
+
+1. Enable S3 interoperability in GCS settings.
+2. Create or update a service account with roles:
+
+* *Storage Admin*
+* *Service Account Token Creator*
+3. Generate an HMAC key pair.
+4. Configure bucket CORS (save as `cors.json`):
+
+```json
+[
+  {
+    "origin": ["https://<portal-url>"],
+    "method": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "responseHeader": ["*"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+Apply with:
+
+```bash
+gsutil cors set cors.json gs://<bucket-name>
+```
+
+---
+
+## 3. Connect the bucket to GenAI Builder
+
+Once your bucket is ready:
+
+1. In Hybrid Manager, open **Launchpad** → **GenAI Builder**.
+2. Log in with your administrator account
+
+* Default: `owner@mycompany.com` / password `pgai_admin`
+3. In the **Administrator Console**, open the AI Factory configuration form.
+4. Enter your bucket details:
+
+| Field         | Example                               |
+| ------------- | ------------------------------------- |
+| S3 URL        | `https://s3.us-west-2.amazonaws.com/` |
+| S3 Bucket     | `mycompany-genai-datalake`            |
+| S3 Access Key | `AKIA…`                               |
+| S3 Secret Key | `wJalr…`                              |
+| S3 Region     | `us-west-2`                           |
+
+5. Click **Submit**.
+
+---
+
+## 4. Success: AI Factory enabled
+
+Once saved:
+
+* GenAI Builder can store and retrieve content in your datalake.
+* You can now create **Libraries, Knowledge Bases, and Assistants**.
+* Configuration details (like the Fernet key and bucket settings) are handled for you inside Hybrid Manager.
+
+>  AI Factory is now enabled and ready to use.
+

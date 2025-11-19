@@ -1,0 +1,98 @@
+---
+title: "Sizing PEM Deployments"
+navTitle: "Sizing"
+redirects: []
+---
+
+This guide aims to help you allocate the right amount of resources to your PEM server(s).
+It explains the key factors driving resource requirements in PEM and provides t-shirt sizing to help you get started.
+
+!!!Important PEM is Postgres
+PEM is fundamentally built upon a Postgres database, with most of its core logic executed via SQL functions.
+It is crucial to treat PEM as a standard Postgres instance. To ensure optimal responsiveness, you must adhere to all conventional Postgres configuration and tuning best practices.
+Furthermore, PEM monitors performance, allowing you to use its integrated tools, such as dashboards, the [Performance Diagnostic](../tuning_performance/performance_diagnostic.mdx), and [SQL Profiler](../profiling_workloads/using_sql_profiler.mdx), to analyze and understand its behavior.
+!!!
+
+## Factors affecting resource requirements
+
+### Number of agents/connections
+
+The number of agents directly determines the number of connections to the Postgres database. 
+Since every connection starts a new process, the connection count is a critical factor in the resource consumption of the entire Postgres deployment.
+
+By default, most agents use one connection.
+If `enable_heartbeat_connection` is set to true, each agent uses two connections.
+Agents configured with `alert_threads`, `enable_smtp`, `enable_webhooks`, or `enable_snmp` set will open additional connections for those functionalities.
+
+Since many of these connections are idle most of the time, you can safely set `max_connections` slightly higher than you would otherwise.
+However, it is crucial to remember this is still Postgres: once the connection count exceeds 100, connection overhead rapidly consumes resources.
+For this reason, for any large-scale PEM deployment, we strongly recommend deploying pgBouncer to manage connections efficiently.
+
+Assuming you manage connections effectively either through a moderate number or with connection pooling in place, memory and CPU needs will then be determined by the following factors.
+
+### Size of frequently accessed data - memory
+
+Our memory sizing recommendations are designed to ensure the most frequently used data resides entirely within Postgres's shared buffers, thereby minimising disk I/O and maximising performance.
+This high-priority, frequently accessed data includes:
+- The `pemdata` schema, which stores the most recent data points collected by all probes.
+- Various tables within the `pem` schema used for managing probe execution and alert dispatching.
+
+The size of this critical data is primarily driven by the total number of probes and the volume of data each probe returns.
+In practical terms, this size is determined by the number of monitored database objects, particularly the more numerous objects like tables and indexes.
+
+The recommended sizes below are based on the assumption that approximately 25% of RAM will be dedicated to shared buffers.
+
+### Rate of probe and alert execution - CPU and alert threads
+
+PEM constantly performs two critical tasks: ingesting new probe data and evaluating that data against the configured alert thresholds.
+Consequently, PEM requires sufficient CPU time to execute all configured probes and alerts at their specified frequency.
+For instance, a setup with 100 alerts set to run once per minute demands a processing capacity of 100 alert evaluations per minute.
+ Failure to meet this required execution rate will result in delayed alerts or the possibility that alerts may fail to trigger entirely.
+
+The number of alert and probe executions scales with:
+- The number of probes and alerts
+- The configured frequency of the probes and alerts
+
+Our recommended CPU numbers are calculated to ensure PEM can maintain the required execution rate for all probes and alerts using the default configuration.
+If you decide to customise your setup by enabling many additional alerts or probes, or increasing the execution frequency, you may need to scale the CPU accordingly to prevent delays.
+
+!!!Note Alert Threads
+In larger deployments, it is necessary to increase the total number of alert threads in the PEM agent configuration on the PEM host(s). This modification allows PEM to efficiently utilise more CPU time specifically for alert evaluation, preventing bottlenecks.
+This can be changed by modifying the `alert_threads` setting of the PEM agent running on the PEM host(s).
+!!!
+
+### Size of historical data - storage
+
+PEM's storage needs are primarily determined by the volume of historical data it retains.
+
+Three main factors drive this volume:
+
+- Monitored Object Count &mdash; This count determines the raw amount of data collected (typically dominated by numerous objects like tables and indexes).
+
+- Data Update Frequency &mdash; How often the probe data changes (PEM applies compression, so repeated, unchanged values do not consume extra space).
+
+- Data Retention Period &mdash; How long the historical data is configured to be kept.
+
+Our recommended storage sizes are based on PEM's default probe frequencies, standard retention periods, and an estimated data compression rate.
+
+
+## PEM t-shirt sizing
+
+!!! Important
+For all the reasons explained above, the load on the PEM server is critically dependent on the nature of the estate it is monitoring. 
+The size guide below is just a starting point. 
+For large sizes, we strongly recommend that you start by adding a subset of your monitored servers to PEM and measuring resource usage. 
+Do not be surprised if your eventual resource needs differ significantly from those suggested below.
+!!!
+
+| Size&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description                                                                                   | Component | CPUs | RAM    | Storage | IOPS   | Other Notes                                                      |
+|------------------------------------------------------|-----------------------------------------------------------------------------------------------|-----------|------|--------|---------|--------|------------------------------------------------------------------|
+| Nano                                                 | For testing PEM,<br/>1–2 monitored servers,<br/> single user                                  | —         | 1    | 2 GB   | 20 GB   | &lt;100 | —                                                                |
+| Tiny                                                 | For a single HA cluster,<br/> with a few web app users                                        | —         | 2    | 4 GB   | 50 GB   | &lt;100 | —                                                                |
+| Small                                                | For ≤50 servers,<br/> &lt;5 concurrent web users;<br/> go higher if >50 k tables/indexes   | —         | 4    | 8 GB   | 200 GB  | 300  | —                                                                |
+| Medium                                               | For ≤100 servers,<br/> ~5 concurrent web users;<br/> go higher if >100 k tables/indexes | —         | 6    | 16 GB  | 300 GB  | 500  | Use **pgBouncer**<br/> if heartbeat<br/> connections are enabled |
+| Large                                                | For ≤300 servers,<br/> ~10 concurrent users;<br/> go higher if >250 k tables/indexes    | Backend   | 8    | 32 GB  | 1.5 TB  | 2000 | ~2 alert threads,<br/> **pgBouncer**                             |
+|                                                      |                                                                                               | Frontend  | 1–2  | 2–4 GB | 20 GB   | &lt;100 | —                                                                |
+| X Large                                              | For ≤600 servers,<br/> >10 concurrent users;<br/> go higher if >500 k tables/indexes    | Backend   | 12   | 48 GB  | 3 TB    | 4000 | ~3 alert threads,<br/> **pgBouncer**                             |
+|                                                      |                                                                                               | Frontend  | 2    | 4 GB   | 20 GB   | 100  | —                                                                |
+| XX Large                                             | For >600 servers,<br/> - recommend multiple PEM domains                                     | —         | —    | —      | —       | —      | Segment estate<br/> into multiple<br/> PEM deployments           |

@@ -19,6 +19,7 @@ const {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportMissingTitle,
   reportRedirectCollisions,
   configureLegacyRedirects,
   readFile,
@@ -114,7 +115,7 @@ exports.onCreateNode = async ({
       });
     }
 
-    if (node.extension === "sh") {
+    if (node.extension === "sh" || node.extension === "py") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "text/plain",
       });
@@ -229,6 +230,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirectsGenerated
             navTitle
             navigation
+            navExclude
             navRootedTo
             noindex
             originalFilePath
@@ -291,6 +293,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   await processReferenceIndexes(result.data.allReferenceIndex.nodes, reporter);
 
+  const missingTitles = [];
+
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes, productVersions);
   for (let curr of treeRoot) {
@@ -302,6 +306,16 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     const node = curr.mdxNode;
+
+    if (
+      !(
+        node.title ||
+        node.frontmatter?.title ||
+        node.fileAbsolutePath.includes("playground")
+      )
+    ) {
+      missingTitles.push(node.fileAbsolutePath);
+    }
 
     // build navigation tree
     const navigationDepth = 1;
@@ -338,7 +352,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, productVersions, actions);
     }
   }
-  reportRedirectCollisions(validPaths, reporter, gitData.docsRepoUrl);
+  reportMissingTitle(missingTitles, reporter);
+  reportRedirectCollisions(
+    validPaths,
+    reporter,
+    gitData.docsRepoUrl,
+    productVersions,
+  );
 };
 
 const createDoc = (
@@ -376,7 +396,6 @@ const createDoc = (
       navTree,
       prevNext,
       productVersions,
-      versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       pathVersions,
     },
@@ -576,6 +595,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       katacodaPanel: DemoPanel
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
+      navExclude: Boolean
       navRootedTo: String
       noindex: Boolean
       originalFilePath: String

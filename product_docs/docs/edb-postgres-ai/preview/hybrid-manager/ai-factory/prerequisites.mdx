@@ -1,0 +1,161 @@
+---
+title: Prerequisites for AI Factory on Hybrid Manager
+navTitle: Prerequisites
+description: Environment requirements, GPU planning, and registry configuration needed before deploying AI Factory components
+---
+
+## Infrastructure Requirements
+
+### Kubernetes Cluster Foundation
+
+AI Factory requires a properly configured Hybrid Manager Kubernetes cluster with sufficient resources for AI workloads. The cluster must support GPU scheduling and have appropriate node groups configured for different workload types.
+
+**Cluster Requirements**
+- Kubernetes 1.27 or later with GPU device plugin support
+- NVIDIA GPU operator installed for GPU node management
+- Sufficient CPU and memory for orchestration components
+- Network policies supporting service mesh communication
+
+### GPU Node Configuration
+
+GPU resources are essential for model serving operations. Node configuration must align with model requirements and expected workload characteristics.
+
+**GPU Node Requirements**
+- NVIDIA GPUs with CUDA 12.1+ support
+- GPU nodes labeled with `nvidia.com/gpu=true`
+- GPU taint `nvidia.com/gpu` for dedicated scheduling
+- Sufficient GPU memory for target model sizes
+
+**Model Resource Requirements**
+
+| Model Type | Example Model | GPU Requirements | Container Image |
+|---|---|---|---|
+| Text Completion | llama-3.3-nemotron-super-49b | 4 x L40S | nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:1.8.5 |
+| Text Embeddings | llama-3.2-nemoretriever-300m | 1 x L40S | nvcr.io/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest |
+| Image Embeddings | nvclip | 1 x L40S | nvcr.io/nim/nvidia/nvclip:latest |
+| OCR | paddleocr | 1 x L40S | nvcr.io/nim/baidu/paddleocr:latest |
+| Text Reranking | llama-3.2-nv-rerankqa-1b | 1 x L40S | nvcr.io/nim/nvidia/llama-3.2-nv-rerankqa-1b-v2:latest |
+
+Reference the [NVIDIA NIM documentation](https://docs.nvidia.com/nim/) for detailed resource specifications per model.
+
+## Registry Configuration
+
+### Internet-Connected Deployments
+
+For clusters with internet access, configure NVIDIA NGC registry authentication to enable model image pulls.
+
+#### NGC API Key Configuration
+
+Obtain an NGC API key following the [NVIDIA NGC documentation](https://docs.nvidia.com/ngc/gpu-cloud/ngc-user-guide/index.html#ngc-api-keys).
+
+Create the required secrets:
+
+```bash
+# Set your NGC API key
+NGC_API_KEY=<your-ngc-api-key>
+
+# Create model runtime secret
+kubectl -n default create secret generic nvidia-nim-secrets \
+    --from-literal=NGC_API_KEY=${NGC_API_KEY}
+
+# Enable secret replication across namespaces
+kubectl -n default annotate secret nvidia-nim-secrets \
+    replicator.v1.mittwald.de/replicate-to='m-.*'
+```
+
+#### Image Pull Secret Configuration
+
+Configure Docker registry authentication for image pulls:
+
+```bash
+# Create image pull secret
+kubectl -n default create secret docker-registry ngc-cred \
+    --docker-server=nvcr.io \
+    --docker-username='$oauthtoken' \
+    --docker-password=${NGC_API_KEY}
+
+# Enable secret replication
+kubectl -n default annotate secret ngc-cred \
+    replicator.v1.mittwald.de/replicate-to='m-.*'
+```
+
+### Air-Gapped Deployments
+
+For environments without internet access, use the hub guides to prepare images and deployment assets in advance, and configure private registry access in Hybrid Manager.
+
+#### Model Image Migration
+
+Prepare and mirror required model images to your private registry following these hub references:
+
+- Private registries and image governance: [Model Library](/edb-postgres-ai/current/ai-factory/model/library)
+- KServe manifests and deployment flow: [Using NVIDIA NIM in your environment](/edb-postgres-ai/current/ai-factory/pipeline/models/using-with/using-nvidia-nim/using-nim-in-your-environment)
+
+
+#### Model Registry Updates
+
+Update default model references to point to your private registry. Work with your Model Library configuration and HM API/console paths.
+
+#### Profile Caching (NIM)
+
+Some NVIDIA NIM models use runtime profiles that must be available locally for offline operation. Follow NVIDIA’s documentation for profile discovery and caching strategies.
+
+- NVIDIA NIM docs: https://docs.nvidia.com/nim/
+- Hub usage patterns: [Using NVIDIA NIM in your environment](/edb-postgres-ai/current/ai-factory/pipeline/models/using-with/using-nvidia-nim/using-nim-in-your-environment)
+- [Air Gapped Cache](/edb-postgres-ai/current/ai-factory/model/air-gapped-cache-hybrid-manager)
+
+## Network Requirements
+
+### Service Communication
+
+AI Factory components require specific network configurations for inter-service communication.
+
+**Network Policies**
+- Allow traffic between model serving pods and application namespaces
+- Enable ingress for external model endpoint access
+- Support service mesh communication for observability
+
+**DNS Resolution**
+- Cluster-local DNS for internal service discovery
+- External DNS for public endpoint access if required
+
+### Storage Access
+
+Ensure network connectivity to required storage systems.
+
+**Object Storage**
+- S3-compatible storage for model artifacts and profiles
+- Sufficient bandwidth for model download operations
+- IAM roles or credentials for storage access
+
+## Security Prerequisites
+
+### RBAC Configuration
+
+Configure role-based access control for AI Factory operations.
+
+**Required Roles**
+- Namespace administrator for project-level management
+- Model operator for deployment operations
+- Read-only access for monitoring and observability
+
+### Certificate Management
+
+Prepare SSL certificates for secure communication.
+
+**Certificate Requirements**
+- TLS certificates for model endpoint exposure
+- Internal CA for service mesh communication
+- Certificate rotation procedures for compliance
+
+
+## Next Steps
+
+With prerequisites satisfied, proceed to:
+
+1. [GPU Setup Guide](/edb-postgres-ai/current/ai-factory/model/setup-gpu) for detailed GPU configuration
+2. [Model Library Configuration](/edb-postgres-ai/current/ai-factory/model/library) for registry integration
+3. [Create First InferenceService](/edb-postgres-ai/current/ai-factory/model/create-inferenceservice) to deploy initial model
+
+For planning assistance, consult:
+- [AI Factory Architecture](/edb-postgres-ai/current/ai-factory/gen-ai/architecture)
+- [Model Serving Concepts](/edb-postgres-ai/current/ai-factory/model/model-serving-concepts)

@@ -1,0 +1,208 @@
+---
+title: json_extraction_engine
+navTitle: JsonExtractionEngine
+
+---
+
+<span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine"></span>
+
+Bases:
+ [`BaseExtractionEngine`](..#griptape.engines.BaseExtractionEngine "BaseExtractionEngine (griptape.engines.BaseExtractionEngine)")
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;extraction&#47;json_extraction_engine.py</code></summary>
+
+```python
+@define
+class JsonExtractionEngine(BaseExtractionEngine):
+    JSON_PATTERN = r"(?s)[^\[]*(\[.*\])"
+
+    template_schema: dict = field(kw_only=True)
+    generate_system_template: J2 = field(default=Factory(lambda: J2("engines/extraction/json/system.j2")), kw_only=True)
+    generate_user_template: J2 = field(default=Factory(lambda: J2("engines/extraction/json/user.j2")), kw_only=True)
+
+    def extract_artifacts(
+        self,
+        artifacts: ListArtifact[TextArtifact],
+        *,
+        rulesets: Optional[list[Ruleset]] = None,
+        **kwargs,
+    ) -> ListArtifact[JsonArtifact]:
+        return ListArtifact(
+            self._extract_rec(cast("list[TextArtifact]", artifacts.value), [], rulesets=rulesets),
+            item_separator="\n",
+        )
+
+    def json_to_text_artifacts(self, json_input: str) -> list[JsonArtifact]:
+        json_matches = re.findall(self.JSON_PATTERN, json_input, re.DOTALL)
+
+        if json_matches:
+            return [JsonArtifact(e) for e in json.loads(json_matches[-1])]
+        return []
+
+    def _extract_rec(
+        self,
+        artifacts: list[TextArtifact],
+        extractions: list[JsonArtifact],
+        *,
+        rulesets: Optional[list[Ruleset]] = None,
+    ) -> list[JsonArtifact]:
+        artifacts_text = self.chunk_joiner.join([a.value for a in artifacts])
+        system_prompt = self.generate_system_template.render(
+            json_template_schema=json.dumps(self.template_schema),
+            rulesets=J2("rulesets/rulesets.j2").render(rulesets=rulesets),
+        )
+        user_prompt = self.generate_user_template.render(
+            text=artifacts_text,
+        )
+
+        if (
+            self.prompt_driver.tokenizer.count_input_tokens_left(user_prompt + system_prompt)
+            >= self.min_response_tokens
+        ):
+            extractions.extend(
+                self.json_to_text_artifacts(
+                    self.prompt_driver.run(
+                        PromptStack(
+                            messages=[
+                                Message(system_prompt, role=Message.SYSTEM_ROLE),
+                                Message(user_prompt, role=Message.USER_ROLE),
+                            ]
+                        )
+                    ).value
+                ),
+            )
+
+            return extractions
+        chunks = self.chunker.chunk(artifacts_text)
+        partial_text = self.generate_user_template.render(
+            text=chunks[0].value,
+        )
+
+        extractions.extend(
+            self.json_to_text_artifacts(
+                self.prompt_driver.run(
+                    PromptStack(
+                        messages=[
+                            Message(system_prompt, role=Message.SYSTEM_ROLE),
+                            Message(partial_text, role=Message.USER_ROLE),
+                        ]
+                    )
+                ).value,
+            ),
+        )
+
+        return self._extract_rec(chunks[1:], extractions, rulesets=rulesets)
+```
+
+</details>
+
+-   `JSON_PATTERN = '(?s)[^\\[]*(\\[.*\\])'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine.JSON_PATTERN"></span> 
+
+-   `generate_system_template = field(default=Factory(lambda: J2('engines/extraction/json/system.j2')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine.generate_system_template"></span> 
+
+-   `generate_user_template = field(default=Factory(lambda: J2('engines/extraction/json/user.j2')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine.generate_user_template"></span> 
+
+-   `template_schema = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine.template_schema"></span> 
+
+<span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine._extract_rec"></span>
+
+### \_extract_rec(artifacts, extractions, \*, rulesets=None)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;extraction&#47;json_extraction_engine.py</code></summary>
+
+```python
+def _extract_rec(
+    self,
+    artifacts: list[TextArtifact],
+    extractions: list[JsonArtifact],
+    *,
+    rulesets: Optional[list[Ruleset]] = None,
+) -> list[JsonArtifact]:
+    artifacts_text = self.chunk_joiner.join([a.value for a in artifacts])
+    system_prompt = self.generate_system_template.render(
+        json_template_schema=json.dumps(self.template_schema),
+        rulesets=J2("rulesets/rulesets.j2").render(rulesets=rulesets),
+    )
+    user_prompt = self.generate_user_template.render(
+        text=artifacts_text,
+    )
+
+    if (
+        self.prompt_driver.tokenizer.count_input_tokens_left(user_prompt + system_prompt)
+        >= self.min_response_tokens
+    ):
+        extractions.extend(
+            self.json_to_text_artifacts(
+                self.prompt_driver.run(
+                    PromptStack(
+                        messages=[
+                            Message(system_prompt, role=Message.SYSTEM_ROLE),
+                            Message(user_prompt, role=Message.USER_ROLE),
+                        ]
+                    )
+                ).value
+            ),
+        )
+
+        return extractions
+    chunks = self.chunker.chunk(artifacts_text)
+    partial_text = self.generate_user_template.render(
+        text=chunks[0].value,
+    )
+
+    extractions.extend(
+        self.json_to_text_artifacts(
+            self.prompt_driver.run(
+                PromptStack(
+                    messages=[
+                        Message(system_prompt, role=Message.SYSTEM_ROLE),
+                        Message(partial_text, role=Message.USER_ROLE),
+                    ]
+                )
+            ).value,
+        ),
+    )
+
+    return self._extract_rec(chunks[1:], extractions, rulesets=rulesets)
+```
+
+</details>
+
+<span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine.extract_artifacts"></span>
+
+### extract_artifacts(artifacts, \*, rulesets=None, \*\*kwargs)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;extraction&#47;json_extraction_engine.py</code></summary>
+
+```python
+def extract_artifacts(
+    self,
+    artifacts: ListArtifact[TextArtifact],
+    *,
+    rulesets: Optional[list[Ruleset]] = None,
+    **kwargs,
+) -> ListArtifact[JsonArtifact]:
+    return ListArtifact(
+        self._extract_rec(cast("list[TextArtifact]", artifacts.value), [], rulesets=rulesets),
+        item_separator="\n",
+    )
+```
+
+</details>
+
+<span id="griptape.engines.extraction.json_extraction_engine.JsonExtractionEngine.json_to_text_artifacts"></span>
+
+### json_to_text_artifacts(json_input)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;extraction&#47;json_extraction_engine.py</code></summary>
+
+```python
+def json_to_text_artifacts(self, json_input: str) -> list[JsonArtifact]:
+    json_matches = re.findall(self.JSON_PATTERN, json_input, re.DOTALL)
+
+    if json_matches:
+        return [JsonArtifact(e) for e in json.loads(json_matches[-1])]
+    return []
+```
+
+</details>

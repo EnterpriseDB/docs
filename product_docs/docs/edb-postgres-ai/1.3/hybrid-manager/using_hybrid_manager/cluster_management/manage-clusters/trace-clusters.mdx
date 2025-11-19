@@ -1,0 +1,254 @@
+---
+title: Tracing clusters back to their Kubernetes resources
+navTitle: Trace clusters
+description: Learn about tracing a Hybrid Manager cluster to its Kubernetes resources.
+---
+
+While managing your Postgres clusters on Hybrid Manager (HM), you may need to look at the status of the Kubernetes infrastructure your Postgres clusters are running on. These are the Kubernetes worker nodes. For example, you may want to see if a node is failing because you're seeing issues in the HM interface or you're running out of resources.
+
+There are several ways to get information useful for tracing clusters back to their Kubernetes resources:
+
+-   From the [HM console](trace-clusters/#using-hm-to-collate-the-cluster-to-its-namespace)
+-   From the [Grafana Hardware Utilization dashboard](trace-clusters/#grafana-hardware-utilization-dashboard)
+-   Using [Loki and Fluent Bit](trace-clusters.mdx#loki-and-fluent-bit)
+-   If you're an administrator, using [kubectl to check underlying cluster resources](trace-clusters/#using-kubectl-to-check-underlying-cluster-resources)
+
+If you're tracing back a distributed high-availability cluster, you need to be aware of some differences from tracing high-availability or single-node clusters. See [Tracing back distributed high-availability clusters](trace-clusters/#tracing-back-distributed-high-availability-clusters)
+
+## Using HM to collate the cluster to its namespace
+
+When tracing back a Postgres cluster created using HM to its underlying Kubernetes resources, the first place to start is the cluster's **Overview** page in HM. (To get to that page, on the **Estate** page, select the cluster.)
+There, find the Kubernetes namespace associated with the cluster by looking at the end of the url in your browser:
+
+![Browse cluster](../../../images/browser_cluster.png)
+
+In this example, cluster psr-test1 is associated with namespace `p-b666674Q0h`. To further trace the cluster back to its resources, its associated namespace is an essential first piece of the puzzle. Using it, you can find even more.
+
+After you have the namespace for the cluster you're exploring, the next stop is the built-in Grafana dashboards.
+
+## Grafana Hardware Utilization dashboard
+
+To access the Grafana dashboards, use the HM launchpad. From the profile menu, select **Launchpad**.
+From the launchpad, on the **Grafana** tile, select **View Service**.
+
+In the landing page in Grafana, in the **Search** field, enter `Hardware Utilization`. The **Hardware Utilization** dashboard lets you see underlying Kubernetes worker nodes and the Kubernetes pods with Postgres workloads running on top of some of them.
+
+![Hardware Utilization dashboard](../../../images/hard_utiliz.png)
+
+### Pods
+
+In the **Postgres Pod Status** section, use the namespace associated with the Postgres cluster you're looking into to identify the pods whose name starts with the same designation as the namespace your Postgres cluster is associated with.
+These pod names are suffixed with `-1`, `-2`, `-3`, and so on, as the workload is split among pods.
+From the Postgres Nodes table, you can also see the state of the pod in the State column and the node the pod is running on in the Node column.
+
+### Resource availability
+
+After you have collated your pods with the underlying Kubernetes worker nodes, you can then use the node names under **Resource Availability** to get more information about the resources available for those nodes:
+
+-   **Available Cores**: The number of cores left available after the workloads have used what they need.
+-   **Total Cores**: The total number of cores the node needs before any utilization from a workload or workloads. (There can be more than one pod on a worker node.)
+-   **Available Memory**: The amount of memory available after the workloads have utilized what they need.
+-   **Total Memory:** The total memory the node has without any workloads using any.
+
+### Resource commitments
+
+When you have a Kubernetes worker node that you want to look into the Postgres workload on top, another helpful section of the dashboard is the **Resource Commitments** table.
+Here you can see what sort of demand is being exacted on each node, including the nodes that underlie the pods you're interested in:
+
+-   **CPU Requests**: The amount of CPU of the node being requested by workloads provisioned or being provisioned by the HM.
+-   **CPU Limits**: The sum total of CPU limits from pods on the node.
+-   **Memory Requests**: The amount of memory from the node being requested by workloads provisioned or being provisioned by the HM.
+-   **Memory Limits**: The sum total of memory limits from pods on the node.
+
+### Requests
+
+Both CPU and memory requests are guaranteed-met (guaranteed given the node isn't over-provisioned) demands on the node by the pods running on top of it. This doesn't mean that each pods has to demand 25% at any one time. One or more could be idle, for example, requiring much less CPU at that time.
+
+However, it does mean that each of the pods could potentially use 25% of the CPU resource at one time.
+Suppose pods 1, 2, and 3 each have CPU requests on Node A and each of the three pods have a 25% CPU request on the node.
+Given that no other pods are making CPU demands on Node A, the total request demand on the node is 75%, which means that the node can handle the CPU load.
+
+If other pods from other clusters were also making demands on Node A, for example, another pod had a 30% request on the node, then the node would be over-provisioned at 105%.
+
+### Limits
+
+Both CPU and memory limits are the upper bounds on CPU and memory of a node's resources that a pod can use.
+Suppose the limits for pods 1, 2, and 3 are 50% CPU each, all on Node A.
+This means that Node A's CPU limit is 150%.
+It can't provide more than 100% CPU at one time, so if all three pods burst to 50%, they're throttled as a result.
+If pod 1 bursts to 50% CPU limit and the other two are using only 25% each under normal operation, then pod 1 gets the 50% it needs.
+
+In the case of memory, consider a similar scenario where pods 1, 2, and 3 are each at 50% memory on Node A. Suppose all three try to burst to the 50% threshold. A container in a pod may be [killed](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#requests-and-limits) by the Linux kernel.
+
+### Troubleshooting potential resource issues using the Hardware Utilization dashboard
+
+Suppose you have a Postgres cluster you requested to provision and it seems to be stuck for 15 minutes or more at 85% complete.
+From the HM console, you can find the namespace associated with the cluster's name using the last bit of the url in the web browser. 
+
+Suppose in this case you're looking into namespace `p-b666674Q0h`. Using the **Hardware Utilization** dashboard, you can first find the pods associated with that namespace—suppose again `p-b666674Q0h-1`, `p-b666674Q0h-2`, and `p-b666674Q0h-3`—and check the statuses of these pods.
+It's likely that one or more pods are in a `Pending` state. For example, `p-b666674Q0h-3` may still be pending, while `p-b666674Q0h-1` and `p-b666674Q0h-2` are running.
+You can then identify the node that `p-b666674Q0h-3` is running on from the Postgres Nodes table under **Postgres Pod Status**.
+
+Suppose `p-b666674Q0h-3` is running on node `ip-10-0-73-251.eu-west-2.compute.internal`.
+When you check `ip-10-0-73-251.eu-west-2.compute.internal` in the **Resource Availability** table, you notice that 0.5 cores are available out of a total of 8 cores and 0.8Gi of memory available out of a total of 20.3.
+You can conclude from this that there aren't lot of resources left on the node for another pod.
+
+Looking in `ip-10-0-73-251.eu-west-2.compute.internal` on the **Resource Commitments** table, suppose you notice that the node has 129% CPU requests and 106% memory requests.  
+Given that the requests are above 100%, you can conclude that the node is being over-provisioned.
+This explains why your pod `p-b666674Q0h-3` is stuck in `Pending` state.
+Without more resources, this Postgres cluster can't complete.
+You can use the HM to edit the cluster you're trying to provision to need less CPU and memory, and the provisioning process continues.
+If making the cluster smaller doesn't meet your needs, you must allocate more database worker nodes to the Kubernetes cluster manually or up the max nodes for your autoscaler so it knows to provision more.
+
+## Loki and Fluent Bit
+
+You can find deeper information about a pod and its status using Loki on the Fluent Bit service logs.
+To find this view: 
+
+1.  From the navigation panel in Grafana, select **Explore**.
+
+2.  From the menu next to **Outline**, select **Loki**.
+
+3.  Use the **Label filters** menu to select **service_name** on the left and **fluent-bit** on the right.
+
+4.  Run the search query on Loki's Fluent Bit logs for pods associated with that namespace. Copy and paste the namespace associated with the cluster you're interested in analyzing further into the **Line contains** field and select **Run Query**.
+
+    You can see how long logs that contain the namespace you searched for have been collected for. Below that you can see the actual logs.
+
+    Turn on **Pretty JSON** to see each instance of the searched-for namespace highlighted throughout the logs.
+
+You may see error messages associated with the namespace you're searching for throughout, like `Can't find target pod` associated with the pod you're searching for. Or, under a `reason: FailedScheduling`, you might see a message like:
+
+```
+"0/43 nodes are available: 1 node(s) had untolerated taint (CriticalAddonsOnly: true), 3 node(s) had untolerated taint (edbaiplatform.io/control-plane: true), 39 Insufficeint cpu, 4 Insuffcient memory. preemtion: 0/43 nodes are available: 39 No preemption vitims found for upcoming pod, Preemption is not helpful for scheduling."
+```
+
+This message tells the exact reason why the pod is failing to complete: insufficient CPU and memory.
+
+## Tracing back distributed high-availability clusters
+
+Tracing distributed high-availability (DHA) clusters is slightly different from tracing back high-availability or single-node clusters.
+That's because DHA clusters are split into one or more data groups, and each of these data groups has two to three nodes per group.
+
+For example, suppose you have a DHA cluster with two data groups, A and B, each with three nodes.
+If you go to the **Monitoring** tab of the cluster's main page, then go to the **Monitoring** section of that tab, you can change the second value from the default **CLuster level** to **Node level**.
+After changing the value to **Node level**, you can expand the final menu to the right to show each of the six nodes of the cluster: Data Group A's 1, 2, and 3, as well as Data group B's 1, 2, and 3.
+
+To get back to the Kubernetes level, go to the [**Hardware Utilization** dashboard](#grafana-hardware-utilization-dashboard) in Grafana.
+
+Next, look at the **Postgres Nodes** section near the bottom-left of the **Hardware Utilization** dashboard.
+You can find the six nodes you just saw in the cluster's **Monitoring** tab represented by a pod for each, in the format `<id-of-cluster/namespace>-a-1-1`, `<<id-of-cluster/namespace>-a-2-1>`, and so on.
+The pod's designation calls out the data group the pod belongs to (A or B) and which node of the pod it is: 1, 2, or 3.
+
+After you have the pod designations, you can see both the node it's attempting to run on and the state of the pod.
+With the node id, you can then use that to see both the resource availability and resource commitments of that node, in the [**Resource Availability**](trace-clusters.mdx#resource-availability) and [**Resource Commitments**](trace-clusters.mdx#resource-commitments) sections of the dashboard respectively. You can see how many cores the node has left, how much memory, and so on.
+
+As with single-node or HA clusters, you can troubleshoot some resource issues from here. Or, you can go into **Explore**  and use [Loki and Fluent Bit](trace-clusters.mdx#loki-and-fluent-bit) to dive down to the log level of the pods you're interested in.
+
+## Using kubectl to check underlying cluster resources
+
+If you're an administrator with Kubernetes access, you can use kubectl to analyze the Kubernetes worker nodes underlying your Postgres clusters. 
+
+To get started, when connected to HM with kubectl, first use the `kubectl get clusterwrappers` command. This command collates the name of the Postgres cluster you're tracing back to the namespace the cluster belongs to and provides some high-level information about the age of the cluster and its current state:
+
+```bash
+kubectl get clusterwrappers
+```
+
+This command displays:
+
+- The clusters you have by namespace, including the project ID the cluster is associated with 
+- The cluster name, which you can use to collate with that cluster's namespace
+- The cluster's state and age
+
+```bash
+NAME           PROJECTID              CLUSTERNAME        STATE     AGE
+p-6gtrowr94d   prj_X9s5sGg5Zl2tDl1v   dbcluster-1        Healthy   2d2h
+p-ha6mloybrf   prj_X9s5sGg5Zl2tDl1v   dbcluster-2        Healthy   5d23h
+p-p93ou61mgw   prj_X9s5sGg5Zl2tDl1v   dbcluster-3        Healthy   6d
+```
+
+Suppose you're trying to trace `dbcluster1` back to its Kubernetes resources. For example, you now know that `dbcluster1` is in the `p-6gtrowr94d` namespace. Each Postgres cluster has exactly one namespace. 
+You can see that the state of the cluster is currently healthy and its age is two days and two hours.
+
+When you have the name of the namespace for the Postgres cluster you're interested in, you can use that to see the pods running for that namespace:
+
+```bash
+kubectl get pods --namespace p-6gtrowr94d
+```
+
+Given that everything is functioning right, you see something like this as output:
+
+```
+NAME             READY   STATUS    RESTARTS   AGE
+p-6gtrowr94d-1   3/3     Running   0          2d2h
+p-6gtrowr94d-2   3/3     Running   0          2d2h
+p-6gtrowr94d-3   3/3     Running   0          2d2h
+```
+
+### Postgres clusters pending
+
+Suppose you have a new cluster that you made using HM in a Provisioning state at 92% complete. The new cluster is named `psrtest-1`, and you want to see what's going on at the Kubernetes level.
+First use `kubectl get clusterwrappers` to collate the name of the PG cluster in HM with its namespace:
+
+```
+kubectl get clusterwrappers
+__OUTPUT__
+NAME           PROJECTID              CLUSTERNAME        STATE     AGE
+p-gime4xeamp   prj_X9s5sGg5Zl2tDl1v   psrtest-1          Pending   9m40s
+```
+
+You already see that the status of the cluster is Pending, which makes sense as HM showed it was still provisioning.
+You can look deeper and also see how the pod provisioning is going now that you have the namespace for the cluster:
+
+```bash
+kubectl get pods --namespace p-gime4xeamp
+__OUTPUT__
+AME                          READY   STATUS      RESTARTS   AGE
+p-gime4xeamp-1                0/3     Pending     0          7m17s
+p-gime4xeamp-1-initdb-g6d9b   0/1     Completed   0          9m46s
+```
+
+You see that one pod was successfully created and another is still being created.
+At this point, it doesn't seem like this cluster is actually stalled. It's just still being provisioned.
+
+After a while, if the pod is still has Pending status, then there's good reason to think you ran out of resources.
+For example:
+
+```bash
+kubectl get pods --namespace p-gime4xeamp
+__OUTPUT__
+NAME                          READY   STATUS      RESTARTS   AGE
+p-gime4xeamp-1                0/3     Pending     0          28m
+p-gime4xeamp-1-initdb-g6d9b   0/1     Completed   0          32m
+```
+
+To verify whether you ran out of resources, you can use `kubectl describe pod` to see exactly what's going on with it:
+
+```bash
+kubectl --namespace p-gime4xeamp describe pod p-gime4xamp-1
+```
+
+This command returns a lot of information about the pod that you don't need.
+But the very end of the output gives you more specifics about what's going wrong.
+For example, in this case you see:
+
+```bash
+  Normal   NotTriggerScaleUp  4m15s (x181 over 34m)  cluster-autoscaler  pod didn't trigger scale-up: 7 max node group size reached
+```
+
+This tells you that the autoscaler hit its max node group size. As a result, the pod can't be completed.
+
+!!! Warning
+    Even if you have enough resources for another cluster, if you try to create too many simultaneously, the system tries to create all of them at once. In this case, it's possible that none can be fully provisioned as they spread the load.
+
+### Adding resources
+
+After you've learned that you hit the max node group size such that a pod can't be completed, change the max node group size so that it's larger. In an AWS EKS deployment, you do this by going to your AWS Console and then to EKS.
+
+1.  Select the EKS cluster you're working with, and then select the **Compute** tab.
+2.  In the  **Node groups** section, select a `PGNodeGroup`, and then select **Edit**.
+3.  Change value of **Maximum Size** for the node group to something higher than what it was.
+    HM then continues to provision the cluster.
+
+If you tried to create many clusters at once, you may have to expand the **Maximum** size accordingly.

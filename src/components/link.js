@@ -60,17 +60,29 @@ const rewriteUrl = (url, pageUrl, pageIsIndex, productVersions, pathPrefix) => {
   let resultHref = result.href.replace(/^loc:/, "");
   resultHref = stripPathPrefix(resultHref, pathPrefix);
   resultHref = stripMarkdownExtension(resultHref);
-
-  // if this looks like a versioned product link that points at the latest version, rewrite to the "latest" path
-  // this avoids depending on redirects (which won't play well with client-side nav)
   const splitPath = resultHref.split("/");
-  if (
-    productVersions &&
-    productVersions[splitPath[1]] &&
-    productVersions[splitPath[1]][0] === splitPath[2]
-  ) {
-    splitPath[2] = "latest";
-    resultHref = splitPath.join("/");
+
+  // special handling for versioned product links
+  if (productVersions && productVersions[splitPath[1]]) {
+    // if this looks like a versioned product link where the version is "current"...
+    // ...replace with the same version as the containing page IF the products match...
+    // ...else, replace with "latest"
+    if (splitPath[2] === "current") {
+      const splitPageUrl = pageUrl.split("/");
+      if (splitPath[1] === splitPageUrl[1]) {
+        splitPath[2] = splitPageUrl[2];
+      } else {
+        splitPath[2] = "latest";
+      }
+      resultHref = splitPath.join("/");
+    }
+
+    // if this looks like a versioned product link that points at the latest version, rewrite to the "latest" path
+    // this avoids depending on redirects (which won't play well with client-side nav)
+    if (productVersions[splitPath[1]][0] === splitPath[2]) {
+      splitPath[2] = "latest";
+      resultHref = splitPath.join("/");
+    }
   }
 
   return forceTrailingSlash(resultHref);

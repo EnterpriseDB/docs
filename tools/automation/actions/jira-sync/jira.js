@@ -26,7 +26,7 @@ if (!process.env.GITHUB_REF) {
   };
 }
 
-const JiraAuth = core.getInput("jira-auth");
+const JiraAuth = core.getInput("jira-auth"); // should be "email:token"
 
 main().catch((err) => ghCore.setFailed(err));
 
@@ -42,6 +42,16 @@ async function main() {
   // load previously synched issues from Jira
   const jiraIssues = await loadSynchedJiraIssues();
 
+  if (!jiraIssues) {
+    ghCore.setFailed("Failed to load Jira issues");
+    return;
+  }
+
+  console.log(jiraIssues.length + " synched Jira issues found");
+
+  // don't run this automatically - it means something has gone wrong
+  //await markDuplicates(jiraIssues);
+
   const newIssues = {
     issueUpdates: [],
   };
@@ -49,8 +59,43 @@ async function main() {
   // for each open issue,
   for (let ghi of ghIssues) {
     // 1. check to see if a matching issue already exists in Jira
-    const existingIssue = jiraIssues.find((i) =>
+    const existingIssues = jiraIssues.filter((i) =>
       i.fields?.summary?.includes("Docs GH #" + ghi.number),
+    );
+
+    existingIssues.sort((a, b) => {
+      const aUpdated = Date.parse(a.fields?.created);
+      const bUpdated = Date.parse(b.fields?.created);
+      if (
+        ["Published", "Done"].includes(a.fields?.status?.name) &&
+        !["Published", "Done"].includes(b.fields?.status?.name)
+      )
+        return -1;
+      if (
+        ["Published", "Done"].includes(b.fields?.status?.name) &&
+        !["Published", "Done"].includes(a.fields?.status?.name)
+      )
+        return 1;
+      if (
+        ["Rejected"].includes(a.fields?.status?.name) &&
+        !["Rejected"].includes(b.fields?.status?.name)
+      )
+        return 1;
+      if (
+        ["Rejected"].includes(b.fields?.status?.name) &&
+        !["Rejected"].includes(a.fields?.status?.name)
+      )
+        return -1;
+      return aUpdated - bUpdated;
+    });
+
+    const existingIssue = existingIssues[0];
+
+    console.log(
+      "Existing issues for #" + ghi.number,
+      existingIssues
+        .map((i) => i.key + (i === existingIssue ? "*" : ""))
+        .join(", "),
     );
 
     // 2. update (matching) or create
@@ -121,27 +166,36 @@ async function loadGHIssues(issueNumber) {
   return ret;
 }
 
-async function loadSynchedJiraIssues(accumulateIssues) {
+async function loadSynchedJiraIssues(accumulateIssues, nextPageToken) {
   console.log(`Loading synched Jira issues`);
-  const query = `summary ~ "\\"Docs GH #\\"" order by created ASC`;
+  const query = `summary ~ "\\"Docs GH #\\"" AND project = "Technical Documentation" order by created ASC`;
 
   try {
+    const queryBody = {
+      jql: query,
+      fields: ["updated", "created", "summary", "description", "status"],
+      maxResults: 100,
+    };
+
+    if (nextPageToken) {
+      queryBody.nextPageToken = nextPageToken;
+    }
     const response = await fetch(
-      `https://enterprisedb.atlassian.net/rest/api/3/search?jql=${encodeURIComponent(
-        query,
-      )}&startAt=${(accumulateIssues || []).length}&maxResults=100`,
+      `https://enterprisedb.atlassian.net/rest/api/3/search/jql`,
       {
-        method: "GET",
+        method: "POST",
         headers: {
           Authorization: `Basic ${Buffer.from(JiraAuth).toString("base64")}`,
           Accept: "application/json",
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify(queryBody),
       },
     );
     const json = await response.json();
     accumulateIssues = [...(accumulateIssues || []), ...(json?.issues || [])];
-    if (json?.total > json?.startAt + json?.maxResults)
-      return loadSynchedJiraIssues(accumulateIssues);
+    if (json?.nextPageToken)
+      return loadSynchedJiraIssues(accumulateIssues, json?.nextPageToken);
     return accumulateIssues;
   } catch (err) {
     console.error(err);
@@ -392,4 +446,143 @@ async function createIssues(jiraIssues) {
       title: `Failed to create new issues`,
     });
   return json;
+}
+
+async function markDuplicates(jiraIssues) {
+  const seen = new Map();
+  for (let issue of jiraIssues) {
+    const GHID = (issue.fields?.summary?.match(/Docs GH #(\d+)/) || [])[1];
+    if (seen.has(GHID)) {
+      seen.get(GHID).push(issue);
+    } else {
+      seen.set(GHID, [issue]);
+    }
+  }
+
+  let duplicates = 0,
+    redundant = 0;
+  for (let [GHID, issues] of seen.entries()) {
+    if (issues.length > 1) {
+      let doneIssues = issues.filter((k) =>
+        ["Published", "Done"].includes(k.fields?.status?.name),
+      );
+      let rejectedIssues = issues.filter((k) =>
+        ["Rejected"].includes(k.fields?.status?.name),
+      );
+      let inprogressIssues = issues.filter(
+        (k) =>
+          !["Backlog", "Published", "Done", "Rejected"].includes(
+            k.fields?.status?.name,
+          ),
+      );
+      let openIssues = issues.filter(
+        (k) =>
+          !["Published", "Done", "Rejected"].includes(k.fields?.status?.name),
+      );
+      if (openIssues.length > 1) {
+        duplicates++;
+        redundant += openIssues.length - 1;
+
+        console.warn(
+          `Duplicate issues found for GH #${GHID}: ${openIssues.map((k) => k.key).join(", ")}`,
+          doneIssues.length
+            ? ` (Done: ${doneIssues.map((k) => k.key).join(", ")})`
+            : "",
+          rejectedIssues.length
+            ? ` (Rejected: ${rejectedIssues.map((k) => k.key).join(", ")})`
+            : "",
+        );
+        const orig = doneIssues[0] || inprogressIssues[0] || openIssues[0];
+        for (let dup of openIssues) {
+          if (dup.key === orig.key) continue;
+          await closeAsDuplicate(dup, orig);
+        }
+      }
+    }
+  }
+  console.log(
+    `Found ${duplicates} duplicate issues, ${redundant} redundant issues.`,
+  );
+}
+
+async function closeAsDuplicate(issue, original) {
+  console.log(`Closing ${issue.key} as duplicate of ${original.key}`);
+  // first, transition the duplicate to "Rejected"
+  // then, create an issueLink of type "Relates" from the original to the duplicate
+  try {
+    // get transitions for the issue
+    const transitionsResponse = await fetch(
+      `https://enterprisedb.atlassian.net/rest/api/3/issue/${issue.key}/transitions`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${Buffer.from(JiraAuth).toString("base64")}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    const transitionsJson = await transitionsResponse.json();
+    const rejectedTransition = transitionsJson.transitions.find(
+      (t) => t.to.name === "Rejected",
+    );
+    if (!rejectedTransition) {
+      console.error(`No "Rejected" transition found for ${issue.key}`);
+      return;
+    }
+
+    // transition the issue to "Rejected"
+    await fetch(
+      `https://enterprisedb.atlassian.net/rest/api/3/issue/${issue.key}/transitions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(JiraAuth).toString("base64")}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transition: { id: rejectedTransition.id },
+        }),
+      },
+    );
+  } catch (err) {
+    console.error(`Failed to transition ${issue.key} to Rejected:`, err);
+    return;
+  }
+
+  try {
+    await fetch("https://enterprisedb.atlassian.net/rest/api/3/issueLink", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(JiraAuth).toString("base64")}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: { name: "Relates" },
+        outwardIssue: { key: original.key },
+        inwardIssue: { key: issue.key },
+        comment: {
+          body: {
+            content: [
+              {
+                content: [
+                  {
+                    text: "Duplicate of " + original.key,
+                    type: "text",
+                  },
+                ],
+                type: "paragraph",
+              },
+            ],
+            type: "doc",
+            version: 1,
+          },
+        },
+      }),
+    });
+  } catch (err) {
+    console.error(`Failed to link ${issue.key} to ${original.key}:`, err);
+    return;
+  }
 }

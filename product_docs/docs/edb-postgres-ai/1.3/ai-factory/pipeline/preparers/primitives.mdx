@@ -1,0 +1,187 @@
+---
+title: "Pipelines data preparation primitives and options"
+navTitle: "Operation Primitives"
+description: "The data preparation primitives available in EDB Postgres AIs AI Accelerator Pipelines."
+---
+
+For most use cases, we recommend that you use the aidb [preparers](/edb-postgres-ai/1.3/ai-factory/pipeline/preparers/usage) to perform bulk preprocessing preparation steps on your data.
+
+However, for testing and developing the configurations that suit your data best, you can use the following primitives. These functions allow you to test operations and their configurations on individual inputs with minimal setup. This is useful for quick experimentation before scaling up with a preparer for bulk data preparation.
+
+## Configuration
+
+All data preparation operations can be customized with different options. The API for these options is identical between the primitives and the preparer, so you can prototype options with the `aidb.chunk_text()` primitive for use with a scalable preparer that performs the `ChunkText` operation.
+
+## Chunk text
+
+Call `aidb.chunk_text()` to intelligently split long text into smaller, semantically coherent chunks, ideal for processing or storage within LLM context limits.
+
+```sql
+SELECT * FROM aidb.chunk_text(
+    input => 'This is a significantly longer text example that might require splitting into smaller chunks. The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters. This enables processing or storage of data in manageable parts.',
+    options => '{"desired_length": 120, "max_length": 150}'
+);
+
+__OUTPUT__
+ part_id |                                                                       chunk
+---------+---------------------------------------------------------------------------------------------------------------------------------------------------
+       0 | This is a significantly longer text example that might require splitting into smaller chunks.
+       1 | The purpose of this function is to partition text data into segments of a specified maximum length, for example, this sentence 145 is characters.
+       2 | This enables processing or storage of data in manageable parts.
+(3 rows)
+```
+
+### Options
+
+- `desired_length` (required): The target chunk size, in characters. This is the size the splitter will try to reach when forming each chunk, while preserving semantic structure. If `max_length` isn't provided, `desired_length` also acts as the hard upper limit for the chunk size.
+- `max_length` (optional): The upper bound for chunk size, in characters. If specified, the function will try to generate chunks close to `desired_length` but may extend up to `max_length` to preserve larger semantic units (like full sentences or paragraphs). Chunks will exceed `desired_length` only when it's necessary to avoid cutting across meaningful boundaries.
+  - Specifying `desired_length = max_length` results in fixed-size chunks (for example, when filling a context window exactly for embeddings).
+  - Use a larger `max_length` if you want to stay within a soft limit but allow some flexibility to preserve higher semantic units, common in RAG, summarization, or Q&A applications.
+
+### Algorithm summary
+
+- Text is split using a hierarchy of semantic boundaries: characters, graphemes, words, sentences, and increasingly long newline sequences (for example, paragraphs).
+- The splitter attempts to form the largest semantically valid chunk that fits within the specified size range.
+- Chunks may be returned that are shorter than `desired_length` if adding the next semantic unit would exceed max_length.
+
+!!! Tip
+This operation transforms the shape of the data, automatically unnesting collections by introducing a `part_id` column. See the [unnesting concept](/edb-postgres-ai/1.3/ai-factory/pipeline/preparers/concepts#unnesting) for more details.
+!!!
+
+## Parse HTML
+
+Call `aidb.parse_html()` to extract text from HTML.
+
+```sql
+SELECT * FROM aidb.parse_html(
+    html =>
+        '<h1>Hello, world!</h1>
+        <p>This is my first web page.</p>
+        <p>
+            It contains some <strong>bold text</strong>, some <em>italic test</em>, and a <a href="https://google.com" target="_blank">link</a>.
+        </p>
+
+        <img src="postgres_logo.png" alt="Postgres Logo Image">
+
+        <ol>
+            <li>List item</li>
+            <li>List item</li>
+            <li>List item</li>
+        </ol>',
+    options => '{"method": "StructuredPlaintext"}' -- Default
+);
+
+__OUTPUT__
+                        parse_html
+-----------------------------------------------------------
+ Hello, world!                                            +
+                                                          +
+ This is my first web page.                               +
+                                                          +
+ It contains some bold text, some italic test, and a link.+
+                                                          +
+ Postgres Logo Image                                      +
+ List item                                                +
+ List item                                                +
+ List item                                                +
+
+(1 row)
+```
+
+- The `method` determines how the HTML is parsed:
+  - `StructuredPlaintext` (default) &mdash; Algorithmic text extraction to plaintext.
+  - `StructuredMarkdown` &mdash; Algorithmic text extraction to Markdown-like text that retains some syntactical context.
+
+## Parse PDF
+
+Call `aidb.parse_pdf()` to extract text from PDF bytes.
+
+```sql
+SELECT * FROM aidb.parse_pdf(
+    bytes => decode('255044462d312e340a25b89a929d0a312030206f626a3c3c2f547970652f436174616c6f672f50616765732033203020523e3e0a656e646f626a0a322030206f626a3c3c2f50726f64756365722847656d426f782047656d426f782e50646620312e37202831372e302e33352e313034323b202e4e4554204672616d65776f726b29292f4372656174696f6e4461746528443a32303231313032383135313732312b303227303027293e3e0a656e646f626a0a332030206f626a3c3c2f547970652f50616765732f4b6964735b34203020525d2f436f756e7420312f4d65646961426f785b302030203539352e3332203834312e39325d3e3e0a656e646f626a0a342030206f626a3c3c2f547970652f506167652f506172656e742033203020522f5265736f75726365733c3c2f466f6e743c3c2f46302036203020523e3e3e3e2f436f6e74656e74732035203020523e3e0a656e646f626a0a352030206f626a3c3c2f4c656e6774682035393e3e73747265616d0a42540a2f46302031322054660a3120302030203120313030203730322e3733363636363720546d0a2848656c6c6f20576f726c642129546a0a45540a656e6473747265616d0a656e646f626a0a362030206f626a3c3c2f547970652f466f6e742f537562747970652f54797065312f42617365466f6e742f48656c7665746963612f4669727374436861722033322f4c61737443686172203131342f5769647468732037203020522f466f6e7444657363726970746f722038203020523e3e0a656e646f626a0a372030206f626a5b3237382032373820302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203020302030203732322030203020302030203020302030203020302030203020302030203020393434203020302030203020302030203020302030203020302030203535362035353620302030203020302030203020323232203020302035353620302030203333335d0a656e646f626a0a382030206f626a3c3c2f547970652f466f6e7444657363726970746f722f466c6167732033322f466f6e744e616d652f48656c7665746963612f466f6e7446616d696c792848656c766574696361292f466f6e74576569676874203530302f4974616c6963416e676c6520302f466f6e7442426f785b2d313636202d3232352031303030203933315d2f436170486569676874203731382f58486569676874203532332f417363656e74203731382f44657363656e74202d3230372f5374656d482037362f5374656d562038383e3e0a656e646f626a0a787265660a3020390a303030303030303030302036353533352066200a30303030303030303135203030303030206e200a30303030303030303539203030303030206e200a30303030303030313739203030303030206e200a30303030303030323537203030303030206e200a30303030303030333436203030303030206e200a30303030303030343531203030303030206e200a30303030303030353733203030303030206e200a30303030303030373733203030303030206e200a747261696c65720a3c3c2f526f6f742031203020522f49445b3c39333932413539463342453742383430383035443632373436453841344632393e3c39333932413539463342453742383430383035443632373436453841344632393e5d2f496e666f2032203020522f53697a6520393e3e0a7374617274787265660a3938380a2525454f460a', 'hex'),
+    options => '{"method": "Structured", "allow_partial_parsing": true}' -- Default
+);
+
+__OUTPUT__
+ part_id |     text
+---------+--------------
+       0 | Hello World!+
+         |
+(1 row)
+```
+
+- The `method` determines how the PDF is parsed:
+  - `Structured` (Default) &mdash; Algorithmic text extraction. Structural PDF parsing that relies on the PDF specification can struggle with PDFs that are not spec-compliant, especially if they include complex or proprietary encodings and different fonts.
+    - The `allow_partial_parsing` flag determines whether to continue to parse PDFs when the parser encounters errors on one or more pages. Defaults to `true`.
+
+- The `part_id` column in the output references the index of the page from which the text was extracted.
+
+!!! Tip
+This operation transforms the shape of the data, automatically unnesting collections by introducing a `part_id` column. See the [unnesting concept](/edb-postgres-ai/1.3/ai-factory/pipeline/preparers/concepts#unnesting) for more detail.
+!!!
+
+## Summarize text
+
+Call `aidb.summarize_text()` to summarize text:
+
+```sql
+-- Create a model for use in summarization
+SELECT aidb.create_model('my_t5_model', 't5_local');
+
+SELECT * FROM aidb.summarize_text(
+    input => 'There are times when the night sky glows with bands of color. The bands may begin as cloud shapes and then spread into a great arc across the entire sky. They may fall in folds like a curtain drawn across the heavens. The lights usually grow brighter, then suddenly dim. During this time the sky glows with pale yellow, pink, green, violet, blue, and red. These lights are called the Aurora Borealis. Some people call them the Northern Lights. Scientists have been watching them for hundreds of years. They are not quite sure what causes them. In ancient times Long Beach City College WRSC Page 2 of 2 people were afraid of the Lights. They imagined that they saw fiery dragons in the sky. Some even concluded that the heavens were on fire.',
+    options => '{"model": "my_t5_model"}'
+);
+
+__OUTPUT__
+ create_model
+--------------
+ my_t5_model
+(1 row)
+
+                                                                                     summarize_text
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ the night sky glows with bands of color . they may begin as cloud shapes and then spread into a great arc across the entire sky . the lights usually grow brighter, then suddenly dim .
+(1 row)
+```
+
+ - The `model` is the name of the created model to use for summarization. The model must support the `decode_text()` and `decode_text_batch()` [model primitives](/edb-postgres-ai/1.3/ai-factory/pipeline/models/primitives).
+
+## Perform OCR
+
+Call `aidb.perform_ocr()` to parse text from image bytes:
+
+```sql
+-- Create a model for use in OCR
+SELECT aidb.create_model(
+    'my_paddle_ocr_model',
+    'nim_paddle_ocr',
+    credentials => '{"api_key": "__NVIDIA_NIM_API_KEY__" }'::JSONB
+);
+
+SELECT * FROM aidb.perform_ocr(
+    decode('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bUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEDbUEKaaaf2H//xABDEAABAwEFBQcBBAYIBwAAAAABAAIDBAUREpKhEBNhYrEGFDEyQVFgQCEiU1QVQlBSgpMjM0NVcoGywgcgMDSRs9H/2gAIAQEACT8A8SjojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojojovXZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fJObZx6fUdo6SinczGI5XLttZmddtrMzrttZv8xV8dXRy3hs0f2tJb4/sztFS1FoNLw6njde8GPz5frObZx6fUW9U0jxAyLdRxtcu1lc90FPJKGmBgBLGkq0JaSLu80u9jYHOvjXa+v/AJDFWPqooHvcJXtDXHEb/Af8/h9Bac9IZqucSmJ5aTc1TvmqJaO+SR5vc44vpPzVp9T9ZzbOPT6n0s2quyFfkKlSBkcbS9zifsAb9pKE0NKHmNhg/rZgPsLy70arQrH7sbx4gqzM9v8ACnD9JNYe61HlMnuxw/fVzbSqot6+o/CjVrVMYnG8jE1YYXEH1whTTz0wcHS01QcYfG7xdG5f0sHdWTQR+rzJ5Qq+aOmidc5scu4gi9mK16s0sbxfLHUGoY3/ABgpgZaVE4RVIHg/1EgCwPteaO+SXzCBjv8AeVaVVHvRvGCerMDsoXeZ6IOAmhqPtexhPnjcq4tcbO31NUR+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', 'base64'),
+    options => '{"model": "my_paddle_ocr_model"}'
+);
+
+__OUTPUT__
+ create_model
+--------------
+my_paddle_ocr_model
+(1 row)
+
+ part_id |       text
+---------+------------------
+       0 | Tesseract sample
+(1 row)
+```
+
+- The `model` is the name of the created model to use for OCR. The model must support the `perform_ocr` operation.
+
+!!! Tip
+This operation transforms the shape of the data, automatically unnesting collections by introducing a `part_id` column. See the [unnesting concept](/edb-postgres-ai/1.3/ai-factory/pipeline/preparers/concepts#unnesting) for more detail.
+!!!
+
+!!! Note
+Limitations of the model still apply. For example, the [NVIDIA NIM Image OCR API](https://docs.nvidia.com/nim/ingestion/table-extraction/latest/api-reference.html) model provider only supports `png` and `jpeg` image inputs.
+!!!

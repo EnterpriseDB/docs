@@ -1,0 +1,301 @@
+---
+title: RAG Engine
+navigation:
+  - extraction-engines
+  - summary-engines
+  - eval-engines
+originalFilePath: >-
+  https://github.com/EnterpriseDB/pgai-ai-builder/blob/main/docs/griptape-framework/engines/rag-engines.md
+editTarget: originalFilePath
+
+---
+
+## RAG Engines
+
+[Rag Engine](../reference/engines/rag) is an abstraction for implementing modular retrieval augmented generation (RAG) pipelines.
+
+### RAG Stages
+
+`RagEngine`s consist of three *stages*: `QueryRagStage`, `RetrievalRagStage`, and `ResponseRagStage`. These stages are always executed sequentially. Each stage comprises multiple *modules*, which are executed in a customized manner. Due to this unique structure, `RagEngines` are not intended to replace [Workflows](../structures/workflows.mdx) or [Pipelines](../structures/pipelines.mdx).
+
+### RAG Modules
+
+RAG modules are used to implement actions in the different stages of the RAG pipeline. `RagEngine` enables developers to easily add new modules to experiment with novel RAG strategies.
+
+The three stages of the pipeline implemented in RAG Engines, together with their purposes and associated modules, are as follows:
+
+### Query Stage
+
+This stage is used for modifying input queries before they are submitted.
+
+#### Query Stage Modules
+
+-   `TranslateQueryRagModule` is for translating the query into another language.
+
+### Retrieval Stage
+
+Results are retrieved in this stage, either from a vector store in the form of chunks, or with a text loader. You may optionally use a rerank module in this stage to rerank results in order of their relevance to the original query.
+
+#### Retrieval Stage Modules
+
+-   `TextChunksRerankRagModule` is for re-ranking retrieved results.
+-   `TextLoaderRetrievalRagModule` is for retrieving data with text loaders in real time.
+-   `VectorStoreRetrievalRagModule` is for retrieving text chunks from a vector store.
+
+### Response Stage
+
+Responses are generated in this final stage.
+
+#### Response Stage Modules
+
+-   `PromptResponseRagModule` is for generating responses based on retrieved text chunks.
+-   `TextChunksResponseRagModule` is for responding with retrieved text chunks.
+-   `FootnotePromptResponseRagModule` is for responding with automatic footnotes from text chunk references.
+
+### RAG Context
+
+`RagContext` is a container object for passing around queries, text chunks, module configs, and other metadata. `RagContext` is modified by modules when appropriate. Some modules support runtime config overrides through `RagContext.module_configs`.
+
+### Simple Example
+
+The following example shows a simple RAG pipeline that retrieves data from a local vector store and generates a response:
+
+<TabContainer>
+<Tab title="Code">
+
+```python
+from griptape.chunkers import TextChunker
+from griptape.drivers.embedding.openai import OpenAiEmbeddingDriver
+from griptape.drivers.vector.local import LocalVectorStoreDriver
+from griptape.engines.rag import RagContext, RagEngine
+from griptape.engines.rag.modules import (
+    PromptResponseRagModule,
+    VectorStoreRetrievalRagModule,
+)
+from griptape.engines.rag.stages import (
+    ResponseRagStage,
+    RetrievalRagStage,
+)
+from griptape.loaders import WebLoader
+
+vector_store = LocalVectorStoreDriver(embedding_driver=OpenAiEmbeddingDriver())
+
+# Load some data from a couple sources.
+web_artifact = WebLoader().load("https://griptape.ai")
+chunks = TextChunker(max_tokens=250).chunk(web_artifact)
+vector_store.upsert_collection({"griptape": chunks})
+
+rag_engine = RagEngine(
+    # This stage is responsible for retrieving the relevant chunks.
+    retrieval_stage=RetrievalRagStage(
+        retrieval_modules=[
+            VectorStoreRetrievalRagModule(
+                name="WebRetriever",
+                vector_store_driver=vector_store,
+                query_params={"namespace": "griptape"},
+            ),
+        ],
+    ),
+    # This stage is responsible for generating the final response.
+    response_stage=ResponseRagStage(
+        response_modules=[
+            PromptResponseRagModule(),
+        ]
+    ),
+)
+
+rag_context = RagContext(query="What is Griptape?")
+rag_context = rag_engine.process(rag_context)
+print(rag_context.outputs[0].to_text())
+
+```
+
+</Tab>
+
+<Tab title="Logs">
+
+```text
+Griptape is a platform that provides developers with tools to build, deploy, and scale end-to-end solutions, particularly those powered by large language models (LLMs). It includes the Griptape AI Framework and Griptape AI Cloud, which offer features like building business logic with Python, deploying ETL pipelines, composing retrieval patterns, and writing agents, pipelines, and workflows. Griptape also offers automated data preparation, retrieval as a service, and a structure runtime for building AI agents and workflows. It focuses on providing security, performance, and scalability while simplifying infrastructure management.
+
+```
+
+</Tab>
+</TabContainer>
+
+### Advanced Example
+
+The following example shows an advanced RAG pipeline that does the following:
+
+-   Translates incoming queries into English.
+-   Retrieves data from a local vector store and a local file.
+-   Reranks the results using the local rerank driver.
+-   Generates multiple types of response.
+
+<TabContainer>
+<Tab title="Code">
+
+```python
+from rich.pretty import pprint
+
+from griptape.chunkers import TextChunker
+from griptape.common.reference import Reference
+from griptape.drivers.embedding.openai import OpenAiEmbeddingDriver
+from griptape.drivers.prompt.openai import OpenAiChatPromptDriver
+from griptape.drivers.rerank.local import LocalRerankDriver
+from griptape.drivers.vector.local import LocalVectorStoreDriver
+from griptape.engines.rag import RagContext, RagEngine
+from griptape.engines.rag.modules import (
+    FootnotePromptResponseRagModule,
+    PromptResponseRagModule,
+    TextChunksRerankRagModule,
+    TextChunksResponseRagModule,
+    TextLoaderRetrievalRagModule,
+    TranslateQueryRagModule,
+    VectorStoreRetrievalRagModule,
+)
+from griptape.engines.rag.stages import (
+    QueryRagStage,
+    ResponseRagStage,
+    RetrievalRagStage,
+)
+from griptape.loaders import TextLoader, WebLoader
+from griptape.rules import Rule, Ruleset
+
+prompt_driver = OpenAiChatPromptDriver(model="gpt-4.1")
+vector_store = LocalVectorStoreDriver(embedding_driver=OpenAiEmbeddingDriver())
+rerank_driver = LocalRerankDriver()
+web_loader = WebLoader()
+text_chunker = TextChunker(max_tokens=250)
+
+# Load some data from a couple sources.
+sites = [
+    {
+        "title": "Griptape Site",
+        "url": "https://www.griptape.ai",
+    },
+    {"title": "Griptape GitHub", "url": "https://github.com/griptape-ai/griptape"},
+]
+site_artifacts = list(web_loader.load_collection([site["url"] for site in sites]).values())
+
+# Set a reference on each artifact so that the FootnotePromptResponseRagModule can generate footnotes.
+for site_arifact, site in zip(site_artifacts, sites):
+    site_arifact.reference = Reference(title=site["title"], url=site["url"])
+
+# Chunk each site artifact.
+site_artifacts_chunks = [text_chunker.chunk(artifact) for artifact in site_artifacts]
+# Flatten the list of chunks before inserting them into the vector store.
+site_artifacts_chunks = [
+    site_artifact_chunk for site_artifact_chunk in site_artifacts_chunks for site_artifact_chunk in site_artifact_chunk
+]
+vector_store.upsert_collection({"griptape": site_artifacts_chunks})
+
+rag_engine = RagEngine(
+    # This stage is responsible for producing the query. It can include things like translation, rewriting, etc.
+    query_stage=QueryRagStage(query_modules=[TranslateQueryRagModule(prompt_driver=prompt_driver, language="english")]),
+    # This stage is responsible for retrieving the relevant chunks.
+    retrieval_stage=RetrievalRagStage(
+        max_chunks=5,
+        retrieval_modules=[  # Modules can pull from different sources.
+            # Such as a vector store
+            VectorStoreRetrievalRagModule(
+                name="WebRetriever",
+                vector_store_driver=vector_store,
+                query_params={"top_n": 20, "namespace": "griptape"},
+            ),
+            # Or a text source.
+            TextLoaderRetrievalRagModule(
+                loader=TextLoader(),
+                vector_store_driver=vector_store,
+                source="README.md",
+            ),
+        ],
+        # We can rerank the chunks before passing them to the response stage to ensure the best ones are used.
+        rerank_module=TextChunksRerankRagModule(rerank_driver=LocalRerankDriver()),
+    ),
+    # This stage is responsible for generating the final response.
+    response_stage=ResponseRagStage(
+        response_modules=[
+            # You can have multiple response modules to generate different types of responses.
+            PromptResponseRagModule(
+                prompt_driver=prompt_driver,
+                rulesets=[Ruleset(name="Concise", rules=[Rule("Answer concisely")])],
+            ),
+            # This one generates a response with footnotes.
+            FootnotePromptResponseRagModule(prompt_driver=prompt_driver),
+            # This one just returns the text chunks directly with no LLM generation.
+            TextChunksResponseRagModule(),
+        ]
+    ),
+)
+
+rag_context = RagContext(
+    query="¿Qué ofrecen los servicios en la nube de Griptape?",  # What do Griptape's cloud services offer?
+)
+rag_context = rag_engine.process(rag_context)
+
+# Let's print out the interesting responses
+for output in rag_context.outputs[:2]:
+    print(output.to_text() + "\n")
+
+# We can also see the references that were configured up-front
+pprint(rag_context.get_references())
+
+```
+
+</Tab>
+
+<Tab title="Logs">
+
+```text
+Griptape's cloud services offer infrastructure management, hosting and operating everything from data processing pipelines to retrieval-ready databases and serverless application runtimes. They provide automated data preparation (ETL), retrieval as a service (RAG), and a structure runtime for building AI agents, pipelines, and workflows.
+
+Griptape's cloud services offer a range of features designed to simplify the deployment and management of AI-powered applications. These services include:
+
+1. **Deployment and Scaling**: Griptape allows you to deploy and run ETL, RAG, and other structures you develop, with simple API abstractions and without the need for infrastructure management. It also supports seamless scaling to accommodate growing workload requirements[1].
+
+2. **Management and Monitoring**: You can monitor your applications directly in Griptape Cloud or integrate with third-party services. The platform provides tools to measure performance, reliability, and spending across the organization, and enforce policies for users, structures, tasks, and queries[1].
+
+3. **Automated Data Preparation (ETL)**: Griptape Cloud enables you to connect to any data source, extract, clean, chunk, embed, and add metadata to your data, and load it into a vector database index[2].
+
+4. **Retrieval as a Service (RAG)**: The service allows you to generate answers, summaries, and details from your own data using ready-made retrieval patterns, or customize and compose your own patterns from scratch[2].
+
+5. **Structure Runtime (RUN)**: You can build AI agents, pipelines, and workflows, and plug them into client applications. This includes support for real-time interfaces, transactional processes, and batch workloads[2].
+
+These features are designed to provide a comprehensive solution for building, deploying, and managing AI applications without the need for extensive infrastructure management.
+
+Footnotes:
+
+1. Griptape Site, https://www.griptape.ai
+2. Griptape Site, https://www.griptape.ai
+
+[
+│   Reference(
+│   │   type='Reference',
+│   │   module_name='griptape.common.reference',
+│   │   id='d653b438d0534390b3038928b55f4289',
+│   │   title='Griptape Site',
+│   │   authors=[],
+│   │   source=None,
+│   │   year=None,
+│   │   url='https://www.griptape.ai'
+│   ),
+│   Reference(
+│   │   type='Reference',
+│   │   module_name='griptape.common.reference',
+│   │   id='a00cdda10944460fbe2d72c6cfd702ee',
+│   │   title='Griptape GitHub',
+│   │   authors=[],
+│   │   source=None,
+│   │   year=None,
+│   │   url='https://github.com/griptape-ai/griptape'
+│   )
+]
+
+```
+
+</Tab>
+</TabContainer>
+
+### RAG Tool
+
+See [RagTool](../tools/official-tools#rag) for an example of how to integrate the RAG Tool with an Agent.

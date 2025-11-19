@@ -1,0 +1,121 @@
+---
+title: Configure BDR AutoPartition with analytics offload
+navTitle: Configure AutoPartition
+description: Learn how to configure BDR AutoPartition on a PGD table for Tiered Tables with analytics offload.
+---
+
+To implement Tiered Tables, you must configure **BDR AutoPartition** on your PGD table.
+
+This enables:
+
+- Automatic time-based partitioning of your table
+- Automatic offloading of old partitions to object storage in Apache Iceberg® format
+
+**You can control:**
+
+- How often new partitions are created
+- How old a partition must be to be offloaded (analytics_offload_period)
+
+For background on how Tiered Tables work, see:
+[Tiered Tables in Hybrid Manager](../../tiered_tables.mdx)
+
+## Prerequisites
+
+Before configuring AutoPartition:
+
+- You have configured the PGD node group for analytics offload.
+[Configure PGD node group for analytics offload](./configure-tiered-offload)
+
+- You have created a PGFS storage location and/or configured an Iceberg catalog.
+[Configure PGFS for Tiered Tables](./configure-tiered-pgfs)
+
+- You have created your target table and partitioned it by a time-based column (for example `event_timestamp`).
+
+## Steps
+
+1. Create your partitioned table (if not already created).
+
+Example:
+
+```sql
+CREATE TABLE public.application_logs (
+log_id BIGSERIAL,
+event_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+application_name TEXT,
+log_level VARCHAR(10),
+message TEXT,
+PRIMARY KEY (log_id, event_timestamp)
+) PARTITION BY RANGE (event_timestamp);
+```
+
+1. Configure AutoPartition for the table.
+
+Example:
+
+```sql
+SELECT bdr.autopartition (
+relation := 'public.application_logs',
+partition_increment := '1 month',
+partition_initial_lowerbound := '2023-01-01 00:00:00',
+managed_locally := TRUE,
+analytics_offload_period := '6 months'
+);
+```
+
+- `partition_increment` — How often to create new partitions.
+- `partition_initial_lowerbound` — Start date for partition creation.
+- `analytics_offload_period` — Age threshold for offloading partitions (e.g. 6 months old).
+
+1. Verify AutoPartition configuration.
+
+```sql
+SELECT * FROM bdr.partition_config WHERE relid = 'public.application_logs'::regclass;
+```
+
+You should see the partitioning policy and the `analytics_offload_period`.
+
+1. Verify partitions are being created.
+
+```sql
+SELECT relname, relkind FROM pg_class WHERE relname LIKE 'application_logs_part_%';
+```
+
+1. Monitor AutoPartition tasks.
+
+```sql
+SELECT
+wqs.workid, wis.ap_wi_started_at, wis.ap_wi_finished_at,
+wis.ap_wi_status, "partition", sql
+FROM bdr.taskmgr_local_workitem_status wis
+RIGHT JOIN bdr.taskmgr_local_work_queue_status wqs
+ON wis.ap_wi_workid = wqs.workid
+WHERE relname = 'public.application_logs' AND sql NOT LIKE '%bdr.autopartition_create_partition%'
+ORDER BY ap_wi_finished_at DESC;
+```
+
+## Notes
+
+- AutoPartition will automatically manage new partitions and trigger offload as partitions become eligible.
+- You can **adjust the analytics_offload_period** at any time by running bdr.autopartition() again with a new value.
+- You can **pause/resume AutoPartition** on a table if needed.
+
+## Next steps
+
+Now that you have configured AutoPartition:
+
+- You can **monitor Tiered Table offload and validate storage savings**:
+[Monitor Tiered Tables status and storage savings](./monitor-tiered-tables)
+
+- You can **query Tiered Tables** — your PGD parent table will transparently include hot (local) and cold (offloaded) partitions:
+[Query Tiered Tables from PGD and Lakehouse](./query-tiered-tables)
+
+- You can **adjust PGD offload policies** if needed:
+[Configure PGD node group for analytics offload](./configure-tiered-offload)
+
+- You can **optimize Iceberg storage locations** if needed:
+[Configure PGFS for Tiered Tables](./configure-tiered-pgfs)
+
+## Related concepts
+
+For architecture overview and concepts behind Tiered Tables, see:
+[Tiered Tables in Hybrid Manager](../../tiered_tables)

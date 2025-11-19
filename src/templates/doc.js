@@ -1,6 +1,6 @@
 import React from "react";
 import { Container, Row, Col } from "react-bootstrap";
-import { graphql, Link } from "gatsby";
+import { graphql, Link, withPrefix } from "gatsby";
 import {
   isPathAnIndexPage,
   getRelativeFilePathFromPageAbsolutePath,
@@ -53,17 +53,13 @@ const getProductAndVersion = (path) => {
   };
 };
 
-const replacePathVersion = (path, version = "latest") => {
-  const splitPath = path.split("/");
-  const postVersionPath = splitPath.slice(3).join("/");
-  return `/${splitPath[1]}/${version}${
-    postVersionPath.length > 0 ? `/${postVersionPath}` : "/"
-  }`;
-};
-
-const makeVersionArray = (versions, pathVersions, path) => {
-  return versions.map((version, i) => ({
+const makeVersionArray = (productVersions, product, pathVersions, path) => {
+  return productVersions[product].map((version, i) => ({
     version: version,
+    preciseVersion:
+      (productVersions.__preciseVersions[product] &&
+        productVersions.__preciseVersions[product][version]) ||
+      version,
     url:
       pathVersions[i] ||
       `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
@@ -148,26 +144,28 @@ const Section = ({ section }) => (
   </div>
 );
 
+const FormatVersion = (version) => {
+  if (!/^\d/.test(version)) {
+    return version;
+  }
+  return "v" + version;
+};
+
 const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
   const { path: versionedPath, mtime, depth } = fields;
-  const {
-    frontmatter,
-    pagePath,
-    productVersions,
-    versions,
-    navTree,
-    prevNext,
-  } = pageContext;
+  const { frontmatter, pagePath, productVersions, navTree, prevNext } =
+    pageContext;
 
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
+  const { product, version } = getProductAndVersion(versionedPath);
   const versionArray = makeVersionArray(
-    versions,
+    productVersions,
+    product,
     pageContext.pathVersions,
     versionedPath,
   );
-  const { product, version } = getProductAndVersion(versionedPath);
 
   const {
     deepToC,
@@ -205,12 +203,12 @@ const DocTemplate = ({ data, pageContext }) => {
 
   if (depth === 2 && !navTree.hideVersion) {
     // product version root
-    title += ` v${preciseVersion || version}`;
+    title += ` ${FormatVersion(preciseVersion || version)}`;
   } else if (depth > 2 && !navTree.hideVersion) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
-    title = `${prettyProductName} v${preciseVersion || version} - ${title}`;
+    title = `${prettyProductName} ${FormatVersion(preciseVersion || version)} - ${title}`;
   }
 
   const pageMeta = {
@@ -267,7 +265,7 @@ const DocTemplate = ({ data, pageContext }) => {
               {frontmatter.title}{" "}
               {!navTree.hideVersion && (
                 <span className="fw-light ms-2 text-muted bg-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-                  v{preciseVersion || version}
+                  {FormatVersion(preciseVersion || version)}
                 </span>
               )}
             </h1>
@@ -292,18 +290,14 @@ const DocTemplate = ({ data, pageContext }) => {
             <div
               className="alert alert-warning mt-3"
               role="alert"
-              dangerouslySetInnerHTML={{ __html: navTree.displayBanner }}
+              dangerouslySetInnerHTML={{
+                __html: navTree.displayBanner.replace(
+                  /href="latest:splat"/,
+                  `href="${withPrefix(pageContext.pathVersions[0] || getProductUrlBase(pagePath))}"`,
+                ),
+              }}
             />
           ) : null}
-
-          {version === "preview" && (
-            <div className="alert alert-warning mt-3" role="alert">
-              This documentation covers the upcoming release of{" "}
-              {products[product].name}; you may want to read the docs for{" "}
-              <Link to={replacePathVersion(pagePath)}>the current version</Link>
-              .
-            </div>
-          )}
 
           <ContentRow>
             <Col

@@ -1,0 +1,142 @@
+---
+title: Optimizing migration performance
+navTitle: Performance considerations
+description: Learn about recommendended specifications to improve the performance and speed of database migrations using EDB Hybrid Manager.
+deepToC: true
+redirects:
+- /edb-postgres-ai/migration-etl/data-migration-service/specs
+---
+
+You can leverage the EDB Data Migration Service (DMS), a service included with the Hybrid Manager (HM), to migrate your data from existing databases (Oracle, self-managed Postgres, etc.) to a HM-managed database cluster. EDB DMS supports two migration methods: snapshot and snapshot + streaming, allowing you to migrate your data with minimal to no downtime.
+
+## Understanding migration workloads in HM
+
+The EDB Data Migration Service runs within the same Kubernetes environment where your EDB Hybrid Manager is deployed (on-premises, AWS, Red Hat OpenShift, and Google Cloud). This means that most of the workloads required for migration operations are managed and optimized by your Kubernetes cluster.
+
+Generally, you don't need to extensively fine-tune resources, as your Kubernetes environment meeting the general requirements for running the Hybrid Manager should ensure a smooth migration. However, for large datasets, optimizing specific components can significantly accelerate the process. 
+
+The key components to consider for resource allocation are:
+
+-   **EDB DMS Reader:** This component can run on the same machine as the source database, or on an auxiliary machine that can connect to the source database and to the Hybrid Manager.
+
+-   **Destination database cluster:** This can be the database managed by HM or a different external self-managed database, however here we'll focus on an HM-managed database. This is where your data will reside.
+
+-   **EDB DMS Writer:** This component is only required if your migration destination is an external (self-managed) database cluster, and it runs on that database's host machine.
+
+Whether you perform a snapshot or snapshot + streaming migration also affects performance differently: 
+
+-   **Snapshot migrations:** They primarily focus on efficiently transferring a large volume of existing data from a source database to the destination. Performance for these is heavily influenced by total data size and sustained disk I/O.
+
+-   **Snapshot + streaming migrations:** They first transfer a snapshot of existing data and then continuously stream ongoing changes (transactions) from the source to the destination. Performance here is driven by the sustained transaction rate (TPS) and the ability to keep up with the source's write activity.
+
+## Optimizing migration performance for large datasets
+
+The HM and DMS are designed to handle resource usage automatically. For datasets smaller than 100 GB, they are configured to perform fast migrations without further tuning. However, for datasets larger than 100 GB, a few targeted alterations can lead to significantly better performance and quicker migrations.
+
+### Tuning destination database performance
+
+Optimizing the destination database cluster (whether an HM-managed database or a self-managed database) provides the most significant performance benefits from resource tuning.
+
+!!!note
+
+   These recommendations are based on current testing and are subject to change. EDB continuously works to improve migration performance and reduce migration times.
+
+<br/>
+
+#### Storage recommendations
+
+During a migration, storage IOPS can peak at 2000, with an average throughput of roughly 300 MB/s and peaks up to 350 MB/s. To accommodate these demands:
+
+-   Separate WAL and data volumes: Aim for storage volumes that can handle a minimum of 2500-3000 IOPS and at least 200-250 MB/s of throughput for both your data and Write-Ahead Log (WAL) volumes. Using separate volumes for WAL and data is highly recommended for optimal performance.
+
+-   Unified storage and WAL volume: A unified storage and WAL volume can adversely affect performance. For example, using a single volume with 3000 IOPS and 125 MB/s throughput can increase migration time by over 40%. If you must use a unified storage and WAL volume, we recommend a throughput of 300-400 MB/s. Keep in mind that if the WAL becomes full, the migration will fail.
+
+<details><summary>How to adjust this?</summary>
+
+For HM-managed database clusters: 
+
+-   Adjust WAL and data volume allocation by [editing](/edb-postgres-ai/1.2/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Storage**. 
+
+-   By default, HM-managed clusters use separate volumes for data and WAL volumes, but if you unselected the **Use a separate storage volume for Write-Ahead Logs** option during cluster creation, you won't be able to enable this setting post creation. 
+
+-   Volume speeds (IOPS or throughput) are determined by the cluster's underlying infrastructure. When migrating to an HM-managed database cluster, the specific storage classes available for your cluster, and their associated IOPS and throughput characteristics, are determined by your HM administrator (and the underlying cloud or on-premise environment). Therefore, review the storage options available for your clusters and work with your HM administrators to ensure the selected storage meets the recommended performance criteria. For more information on cloud provider infrastructure provisioning, see [Request Amazon EBS volume modifications](https://docs.aws.amazon.com/ebs/latest/userguide/requesting-ebs-volume-modifications.html) or [Google Cloud - About Persistent Disk performance](https://cloud.google.com/compute/docs/disks/performance). 
+
+</details>
+
+<br/>
+
+#### Memory recommendations
+
+While 5 GB of memory is sufficient, a larger amount will facilitate optimal performance during a migration. Use at least 10 GB of memory for the destination database.
+
+<details><summary>How to adjust this?</summary>
+
+For HM-managed database clusters: 
+
+-   Adjust memory allocation by [editing](/edb-postgres-ai/1.2/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Cluster Settings** > **Instance size**.
+
+-   Additionally, you can also adjust the `shared_buffers`, `effective_cache_size` and `wal_buffers` parameters in the **DB Configuration**.
+
+</details>
+
+<br/>
+
+#### CPU recommendations
+
+The destination database cluster should have at least 4 CPU cores. A lower core count will negatively impact migration performance.
+
+<details><summary>How to adjust this?</summary>
+
+For HM-managed database clusters, adjust CPU allocation by [editing](/edb-postgres-ai/1.2/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **Instance size**.
+
+</details>
+
+<br/>
+
+!!!note
+
+   Apply these optimizations for the duration of the migration process. After the migration is complete, you can adjust these values as needed based on your ongoing workload requirements.
+
+Extensive testing has shown that the biggest factor affecting migration performance is volume speed (IOPS and throughput). While decreasing CPU below recommendations can reduce performance, it's not nearly to the degree that low IOPS and throughput for storage will. Halving the storage throughput can increase migration time by over 40%, whereas halving the CPU count to 2 cores might increase it by 10-15%. These recommendations are designed to yield the best migration performance; using lower values may still result in successful migrations but at a slower speed.
+
+#### WAL configuration
+
+WAL checkpoints are one of the most resource-intensive tasks during a data migration. By default, `max_wal_size` is set to 1 GB, which means that a checkpoint is made for every gigabyte written to the WAL file. During a migration, this can result in checkpoints occurring every 30-60 seconds, putting a substantial load on the destination database. 
+
+By increasing the `max_wal_size` for the duration of the migration, you can reduce the load on the destination database. Our tests found that a larger `max_wal_size` doesn't impact migration speed; for instance, a migration with a 20 GB `max_wal_size` takes the same amount of time as one with a 1 GB setting. However, the migration using the 20 GB setting consumed approximately 50% less resources.
+
+Given that WAL logging ensures that all migrated data is properly saved via checkpoints, disabling `max_wal_size` is not a viable option for most EDB databases, as several critical features depend on it.
+
+<details><summary>How to adjust this?</summary>
+
+For HM-managed database clusters: 
+
+Adjust WAL configurations by [editing](/edb-postgres-ai/1.2/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/edit-clusters/#editing-a-cluster) your cluster's **DB Configuration**. Search for the `max_wal_size` parameter, provide the new size in MB and save to apply the configuration. 
+
+</details>
+
+<br/>
+
+### Tuning EBD DMS Reader and Writer performance
+
+Optimal performance for the EDB DMS Reader and Writer is achieved when the host machines where these components are installed follow these specifications.
+
+#### EDB DMS Reader
+
+**CPU:** 3 CPU cores
+
+**Memory:** 4 GB 
+
+#### EDB DMS Writer
+
+**CPU:** 2 CPU cores
+
+**Memory:** 2.5 GB 
+
+### Shared host considerations
+
+For optimal migration performance, carefully consider resource allocation when EDB DMS components and source database run on the same machine/host.
+
+-   **DMS Reader/Writer share a host:** If both DMS Reader and Writer are on the same machine, provision combined resources (at least 5 CPU cores and 6.5 GB memory).
+
+-   **DMS Component and source database share a host:** If a DMS Reader or Writer is on the same host as the source database, ensure the host's resources are significantly increased to accommodate both the database's operational workload and the migration's demands.

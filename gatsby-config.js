@@ -1,11 +1,35 @@
 require("dotenv").config({
   path: `.env.${process.env.NODE_ENV}`,
 });
+const path = require("path");
 const gracefulFs = require("graceful-fs");
 
 const algoliaTransformer = require("./src/constants/algolia-indexing.js");
 
 const { replacePathVersion } = require("./src/constants/gatsby-utils.js");
+
+const reporter = require("gatsby-cli/lib/reporter");
+
+// monkey patch reporter.warn to avoid spam when reporting long running queries
+// source: https://github.com/gatsbyjs/gatsby/discussions/30767#discussioncomment-1834382
+const originalReporterWarn = reporter.warn;
+reporter.warn = (text) => {
+  if (
+    text.includes("Query takes too long") ||
+    text.includes("This query took more than 15s to run")
+  ) {
+    return originalReporterWarn(text.replace(/Context:.*/s, ""));
+  }
+
+  return originalReporterWarn(text);
+};
+// also get rid of this stupid crap
+const originalError = reporter.error;
+reporter.error = function (...args) {
+  let text = (typeof args[0] == "string" && args[0]) || "";
+  if (!text.includes("Note: The code generator has deoptimised the styling of"))
+    return originalError.apply(this, args);
+};
 
 const ANSI_BLUE = "\x1b[34m";
 const ANSI_GREEN = "\x1b[32m";
@@ -28,6 +52,10 @@ const sourceToPluginConfig = {
     path: "product_docs/docs/postgres_distributed_for_kubernetes",
   },
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
+  "edb-postgres-ai": {
+    name: "edb-postgres-ai",
+    path: "product_docs/docs/edb-postgres-ai",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
@@ -317,6 +345,13 @@ module.exports = {
         // If you do not provide a crossOrigin option, it will skip CORS for manifest.
         // Any invalid keyword or empty string defaults to `anonymous`
         crossOrigin: `use-credentials`,
+      },
+    },
+    {
+      resolve: "gatsby-plugin-root-import",
+      options: {
+        unversioned: path.join(__dirname, "advocacy_docs"),
+        versioned: path.join(__dirname, "product_docs", "docs"),
       },
     },
     {

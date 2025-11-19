@@ -19,6 +19,7 @@ import fs from 'node:fs/promises';
 import { optimize } from 'svgo';
 import toVfile from "to-vfile";
 const { read, write } = toVfile;
+import replacer, { expressionRE } from "../../src/constants/expression-replacement.js";
 
 // if this build was triggered by a GH action in response to a PR,
 // use the head ref (the branch that someone is requesting be merged)
@@ -60,6 +61,7 @@ example:
     })
     .use(mdx)
     .use(remarkFrontmatter)
+    .use(expressionReplacement)
     .use(cleanup);
 
   console.log("rewriting links and headings");
@@ -71,6 +73,14 @@ example:
 
   write(result);
 })();
+
+function expressionReplacement() {
+  return (tree, file) => {
+    visitParents(tree, ["text", "code", "inlineCode", "jsx"], (node) => {
+      node.value = replacer({text: node.value, filename: file.path, position: node.position});
+    });
+  };
+}
 
 function cleanup() {
   const originalRE =
@@ -334,6 +344,13 @@ function cleanup() {
         const dest = new URL(url.replace(thisProductUrl+'/', ''), `file://${path.dirname(path.resolve(file.path))}/`);
         return dest.toString();
       }
+
+      if ( url.startsWith(thisUnversionedProductUrl)) {
+        const dest = new URL(url.replace(thisUnversionedProductUrl+'/', ''), `file://${path.dirname(path.resolve(file.path))}/`);
+        return dest.toString();
+      }
+
+      return url;
     }
 
     let svgNodes = [];
@@ -358,13 +375,13 @@ function cleanup() {
           node.properties.src
         ) {
           node.properties.src = urlToFileUrl(node.properties.src);
-          if (node.properties.src.endsWith(".svg"))
+          if (node.properties.src.startsWith("file:") && node.properties.src.endsWith(".svg"))
             svgNodes.push(node);
         }
         else if (node.type === "link") node.url = mapUrlToSlug(node.url);
         else if (node.type === "image") {
           node.url = urlToFileUrl(node.url);
-          if (node.url.endsWith(".svg"))
+          if (node.url.startsWith("file:") && node.url.endsWith(".svg"))
             svgNodes.push(node);
         }
       } catch (e) {

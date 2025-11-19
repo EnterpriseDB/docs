@@ -183,15 +183,15 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Analytics Accelerator"
-              to="/edb-postgres-ai/analytics"
+              to="/edb-postgres-ai/latest/analytics"
             >
-              <BannerCardLink to="/edb-postgres-ai/analytics/lakehouse/">
+              <BannerCardLink to="/edb-postgres-ai/latest/analytics/lakehouse/">
                 Analytics Engine
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
               </BannerCardLink>
 
-              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
+              <BannerCardLink to="/edb-postgres-ai/latest/analytics/quick_start/">
                 Managed Lakehouse
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>
@@ -205,21 +205,21 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
               headingText="AI Factory"
-              to="/edb-postgres-ai/ai-factory"
+              to="/edb-postgres-ai/latest/ai-factory"
             >
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/vector-engine/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/vector-engine/">
                 Vector Engine
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/pipeline/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/pipeline/">
                 AI Pipeline
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/gen-ai/agent-studio/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/agent-studio/">
                 Agent Studio
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-factory/model/serving/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/model/serving/">
                 Model Serving
               </BannerCardLink>
             </BannerSubCard>
@@ -227,21 +227,21 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.MODULE}
               headingText="Hybrid Management"
-              to="/edb-postgres-ai/hybrid-manager"
+              to="/edb-postgres-ai/latest/hybrid-manager"
             >
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/overview/">
+              <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/overview/">
                 Overview
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager">
+              <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager">
                 Using Hybrid Manager
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/analytics/">
+              <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/analytics/">
                 Analytics
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/ai-factory/">
+              <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/ai-factory/">
                 Sovereign AI
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager/migration">
+              <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration">
                 Migrations
               </BannerCardLink>
             </BannerSubCard>
@@ -475,6 +475,10 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
               EDB Advanced Storage Pack
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/apache_age/">
+              Apache AGE
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pg_tuner">
