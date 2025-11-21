@@ -1,0 +1,348 @@
+---
+title: Installing Hybrid Manager
+navTitle: Install Revamp
+description: Learn how to plan for, prepare for, and install Hybrid Manager.
+deepToC: true
+---
+
+# Kubernetes Secrets
+
+Create Kubernetes secrets for any required credentials, such as object storage credentials (example: `aws_secret_access_key`), database access tokens, or any other sensitive information.
+
+## Image Pull Secret
+**Optionality**
+- strict requirement
+
+**Depedency:** 
+- k8s secret `edb-cred`
+- values.yaml default to `edb-cred` in default namespace
+
+Use edbctl to create the ImagePullSecrect namespace and required secrets:
+
+1.  Create the necessary namespaces and pull secrets:
+
+    ```bash
+    edbctl image-pull-secret create \
+      --username <container registry username> \
+      --password <container registry passowrd> \
+      --registry <local registry URI>
+
+    ```
+
+2.  When prompted with `Proceed? [y/N]` with the current Kubernetes context, select `y`.
+
+    You should then see something like the following example:
+
+    ```bash
+    2025/02/10 10:10:10 Creating Kubernetes Namespaces and ImagePullSecrets with the provided credentials...
+    2025/02/07 15:29:08 Namespaces and ImagePullSecrets creation completed
+    ```
+
+3.  Create the ImagePullSecret list:
+
+    ```bash
+    edbctl image-pull-secret list
+    ```
+
+    You should then see something like the following example output:
+
+    ```bash
+    Current Kubernetes context is: <your-KubeContext>
+    Namespace edbpgai-bootstrap: exists, all set!
+      Secret edb-cred: exists, all set!
+    Namespace upm-replicator: exists, all set!
+      Secret edb-cred: exists, all set!
+    ```
+
+**Spot Validation**
+```bash
+# 1. Check that the edb-cred secret exists in the target namespace
+kubectl get secret edb-cred -n edbpgai-bootstrap
+
+# 2. Check that the default service account references the edb-cred secret for image pulls
+kubectl get serviceaccount default -n edbpgai-bootstrap -o yaml | grep edb-cred
+
+# 3. Deploy a test pod (lasso) in the namespace to validate image pull using the secret
+kubectl run lasso \
+  --rm -it \
+  --image=docker.enterprisedb.com/pgai-platform/lasso:latest \
+  --restart=Never \
+  -n edbpgai-bootstrap \
+  --image-pull-policy=Always \
+  -- bash
+
+# 4. (Optional) Describe the test pod to confirm the imagePullSecrets are set
+kubectl describe pod lasso -n edbpgai-bootstrap | grep -i imagepull
+```
+
+## Object Storage Secret
+**Optionality**
+- strictly required
+
+**Dependencies**
+- implements requirement [Object Storage requirement](../requirements.mdx#7-object-storage)
+- k8s secret `edb-object-storage` in default namespace which is an EDB specification
+
+### AWS IAM object storage
+
+**EKS or ROSA**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # the name cannot be changed
+  namespace: default # the namespace cannot be changed
+stringData:
+  auth_type: workloadIdentity
+  aws_region: <AWS_BUCKET_REGION>
+  aws_role_arn: <PRIMARY_IDENTITY_ROLE_ARN>
+  bucket_name: <AWS_BUCKET_NAME>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+**Other k8s**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # the name cannot be changed
+  namespace: default # the namespace cannot be changed
+stringData:
+  auth_type: credentials
+  aws_region: <AWS_BUCKET_REGION>
+  bucket_name: <AWS_BUCKET_NAME>
+  aws_access_key_id: <AWS_ACCESS_KEY_ID>
+  aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+### Azure Blob Storage Account
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  # The name must be edb-object-storage
+  name: edb-object-storage
+  # The namespace must be default
+  namespace: default
+stringData:
+  # The blob storage provider
+  provider: azure
+  # Subscription ID to the Storage Account
+  subscription_id: <AZURE_SUBSCRIPTION_ID>
+  # Name of the Azure Resource Group which contains the Storage Account
+  resource_group_name: <AZURE_RESOURCE_GROUP>
+  # Name of the Azure Storage Account
+  storage_account_name: <AZURE_STORAGE_ACCOUNT>
+  # Name of the Azure Storage Account Container
+  storage_account_container_name: <AZURE_STORAGE_CONTAINER>
+  # Storage Account Key
+  storage_account_key: <AZURE_STORAGE_KEY>
+  # Region to the Storage Account
+  region: <AZURE_REGION>
+  # Client ID to the service principal
+  client_id: <AZURE_CLIENT_ID>
+  # Client Secret to the service principal
+  client_secret: <AZURE_CLIENT_SECRET>
+  # Tenant ID to the service principal
+  tenant_id: <AZURE_TENANT_ID>
+```
+
+### GCP object storage
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  # The name must be edb-object-storage
+  name: edb-object-storage
+  # The namespace must be default
+  namespace: default
+stringData:
+  # Specifies the cloud provider. In this case, it is set to gcp.
+  provider: gcp
+  # The region where the GCP bucket is located.
+  location_id: <GCP_BUCKET_REGION>
+  # The ID of the GCP project.
+  project_id: <GCP_PROJECT_ID>
+  # The name of the GCP bucket.
+  bucket_name: <GCP_BUCKET_NAME>
+  # The base64 encoded JSON credentials for accessing the GCP bucket.
+  credentials_json_base64: <GCP_CREDENTIAL_BASE64>
+```
+
+### Other S3 Compatible Storage
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # name cannot be changed
+  namespace: default # namespace cannot be changed
+stringData:
+    auth_type: credentials
+    # Optional: Used only when the object storage server's certificate is not issued by a well-known CA
+    #
+    # Base64 string of the CA bundle for the certificate used by the object storage server
+    aws_ca_bundle_base64: <CA_BUNDLE_BASE64>
+    # Required: Endpoint URL to the object storage
+    aws_endpoint_url_s3: <S3_ENDPOINT_URL>
+    # Required: AWS Static Credentials - AWS_ACCESS_KEY_ID
+    aws_access_key_id: <AWS_ACCESS_KEY_ID>
+    # Required: AWS Static Credentials - AWS_SECRET_ACCESS_KEY
+    aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+    # Required: Bucket name
+    bucket_name: <S3_BUCKET_NAME>
+    # Required: Region of the bucket
+    aws_region: <S3_REGION>
+    # Optional: true or false
+    #
+    # When server-side encryption is disabled, set this to true. By default, its value is false, indicating that server-side encryption is enabled.
+    server_side_encryption_disabled: <true|false>
+```
+
+## TLS Kubernetes Secrets
+
+### Customer Certificate Authority
+**Optionality** 
+- Required for optimal experience
+- implements [Customer Certificate Authority](../requirements.mdx#customer-certificate-authority)
+
+**Dependencies**
+- values.yaml `parameters.global.ca_secret_name`(`<ca_secret_name>`)
+- k8s secret created for (`<ca_secret_name>`)
+
+setup your own [certificate authority](/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man/#bring-your-own-private-certificate-authority).
+
+* https://laughing-waddle-g6ky9qv.pages.github.io/dev/advanced/custom-certificates/#set-up-a-custom-cert-manager-issuer-for-the-hcp-portal
+
+### Customer Certificate
+**Optionality**
+- alternative to [Customer Certificate Authority](../requirements.mdx#customer-certificate-authority)
+- implements [Customer Certificate](../requirements.mdx#customer-certificate)
+
+**Dependencies** 
+- values.yaml `parameters.global.portal_certificate_secret:` (`<my-portal-certificate>`)
+- k8s secret created for (`<my-portal-certificate>`)
+
+* https://laughing-waddle-g6ky9qv.pages.github.io/dev/advanced/custom-certificates/#set-up-a-custom-cert-manager-issuer-for-the-hcp-portal
+* https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/#set-up-a-custom-x509-certificate-for-the-hybrid-manager-portal 
+
+## addtional secrets configuration
+
+### Fernet symmetric encryption for GenAI, AI Factory
+* [Create a secret for GenAI Builder](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/genai_secret/) or [see also AI Factory](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/how-to-enable-ai-factory/#1-generate-a-ferne%5B)
+* k8s secret in namespace upm-griptape
+
+### Fernet symmetric encryption for Lake House
+* [Create a secret for Catalog](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/data_catalog_secret/)
+* k8s secret in namespace upm-lakekeeper
+
+### Data Migration Service secrets
+* [Create custom secrets for Migration Portal](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/migration_portal_secrets/)
+* k8s secret in namespace edb-migration-portal and edb-migration-copilot
+
+**Dependencies**
+- values.yaml `parameters.edb-migration-copilot.db_secrets`
+- values.yaml `parameters.edb-migration-copilot.metrics_auth_secrets`
+- values.yaml `parameters.edb-migration-portal.copilot_secrets`
+- values.yaml `parameters.edb-migration-portal.db_owner`
+- values.yaml `parameters.edb-migration-portal.db_secrets`
+- values.yaml `parameters.edb-migration-portal.db_superuser_secrets`
+
+# Non-Secret Prep
+
+##  Internal backup folder
+This is a universally unique folder name for the Hybrid Manager backups for disaster recovery and multi-location.
+- values.yaml `parameters.global.internal_backup_folder: twelveCharacterString`
+
+## change mandatory static User-0 password
+**Optionality:**
+- strict requirement for User-0
+- password change is required for optimal security
+
+**Dependency:**
+- values.yaml `pgai.portal.authentication.staticPasswords.hash:`
+- values.yaml `pgai.portal.authentication.staticPasswords.email:`
+- values.yaml `pgai.portal.authentication.staticPasswords.username:`
+- values.yaml `pgai.portal.authentication.staticPasswords.userID: c5998173-a605-449a-a9a5-4a9c33e26df7`
+
+```
+bcrypt hash of the string "password": $(echo password | htpasswd -BinC 10 admin | cut -d: -f2)
+```
+or
+```
+echo 'password' | htpasswd -BinC 10 admin | cut -d: -f2
+```
+
+## sync images
+
+* https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/edbctl/edbctl_image/
+
+# validate
+
+* https://knowledge.enterprisedb.com/hc/en-us/articles/20574035583260-How-to-use-kubectl-edb-diagnostic-to-collect-Hybrid-Manager-cluster-diagnostics 
+
+**Validation: Create a generic LoadBalancer Service**
+To validate your LoadBalancer controller is working, create a simple service (no deployment required):
+```bash
+kubectl create service loadbalancer test-lb --tcp=80:80
+kubectl get svc test-lb
+```
+If the LoadBalancer controller is functioning, the `test-lb` service will be assigned an external IP or hostname.
+
+# values.yaml
+
+```yaml
+system: <Kubernetes>
+bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
+bootstrapImageTag: <Version>
+containerRegistryURL: "<Container Registry Domain>/pgai-platform"
+parameters:
+  global:
+    internal_backup_folder: <twelveCharacterString>
+    portal_domain_name: <Portal Domain>
+    storage_class: <Block Storage>
+    portal_certificate_issuer_kind: <ClusterIssuer>
+    portal_certificate_issuer_name: <my-issuer>
+    trust_domain: <Portal Domain>
+  upm-beacon:
+    beacon_location_id: <Location>
+    server_host: <Agent Domain>
+  transporter-rw-service:
+    domain_name: <Migration Domain>
+  transporter-dp-agent:
+    rw_service_url: https://<Migration Domain>/transporter
+beaconAgent:
+  provisioning:
+    imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+    imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+  transparentDataEncryptionMethods:
+    - <available_encryption_method>
+pgai:
+  portal:
+    authentication:
+      idpConnectors:
+        - config:
+            caData: <base64 encyrption of Certificate Authority from SSO provider>
+            emailAttr: email
+            groupsAttr: groups
+            entityIssuer: https://<Portal Domain>/auth/callback
+            redirectURI: https://<Portal Domain>/auth/callback
+            ssoURL: https://login.microsoft.com/<azure service identifier>/saml2
+            usernameAttr: name
+          id: azure
+          name: Azure
+          type: saml
+      staticPasswords:
+        - email: <email>
+          hash: <hashed_password>
+          userID: c5998173-a605-449a-a9a5-4a9c33e26df7
+          username: <email-or-username>
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+```

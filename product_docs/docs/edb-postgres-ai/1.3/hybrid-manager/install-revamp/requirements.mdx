@@ -22,10 +22,10 @@ This document serves as your comprehensive checklist.
 After architectural discovery, you should have a clear understanding of your Kubernetes environment and the requirements for Hybrid Manager. The main output is your initial `values.yaml`.
 
 **Good `values.yaml` hygiene:**
-- `values.yaml` is critical—manage it as a single source of truth with strict version control (Git or similar). Never pass it informally; always use a collaborative, versioned platform.
+- `values.yaml` is critical. It must be the single source of truth with strict version control (Git or similar). Never pass it informally; always use a collaborative, versioned platform.
 - With [Helm](https://helm.sh/docs/), `values.yaml` overrides only the settings you specify; all others use chart defaults. See [Helm: Chart Values](https://helm.sh/docs/chart_template_guide/values_files/).
 - Only include keys you want to customize. Concise files are easier to manage.
-- For lists (like `resourceAnnotations`), Helm replaces the entire list—always specify the full structure for each item.
+- For lists (like `resourceAnnotations`), Helm replaces the entire list. Be sure to always specify the full structure for each item in the list.
 - For YAML syntax, see [YAML Collections](https://yaml.org/spec/1.2.2/#collections).
 - For more options and defaults, see the chart’s documentation, `values.yaml.template`, or the [Helm](https://helm.sh/docs/) and [Kubernetes](https://kubernetes.io/docs/home/) docs.
 
@@ -45,7 +45,7 @@ beaconAgent:
 ## Requirements checklist
 
 - [ ] 1. Bastion host and CLI tools
-- [ ] 2. Kubernetes cluster prerequisites
+- [ ] 2. Kubernetes
 - [ ] 3. Compute
   - [ ] 3.1 Control plane nodes
   - [ ] 3.2 Data plane nodes
@@ -53,14 +53,16 @@ beaconAgent:
 - [ ] 4. Local networking
 - [ ] 5. Ingress
   - [ ] 5.1 Load Balancer Controller
-  - [ ] 5.2 DNS
+  - [ ] 5.2 Domain Name Service
   - [ ] 5.3 Portal certificate management
 - [ ] 6. Block storage
   - [ ] 6.1 Volume snapshots
 - [ ] 7. Object storage
 - [ ] 8. Container registry
 - [ ] 9. Identity provider (IdP)
-- [ ] 10. Key management storage for Transparent Data Encryption
+- [ ] 10. Key management storage (KMS) for Transparent Data Encryption (TDE)
+
+---
 
 # Meeting Requirements
 
@@ -69,6 +71,7 @@ beaconAgent:
 A **Bastion Host** (or jump box) is strongly recommended for secure, private access to the API, Portal, and PostgreSQL endpoints. This host serves as your dedicated operational workstation for installation and validation activities. It may also be a strict requirement for EDB Remote DBA (RDBA) or Managed Services.
 
 * **Installation tools:**
+    * **edbctl**: EDB's CLI tool for Hybrid Manager. [Install edbctl](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/edbctl/)
     * **Helm:** Renders and applies Kubernetes manifests. [Install Helm](https://helm.sh/docs/intro/install/)
     * **yq:** Command-line YAML processor for preparing Hybrid Manager installation files. [Install yq](https://github.com/mikefarah/yq#install)
     * **kubectl:** The primary Kubernetes CLI tool to manage your cluster. [Install kubectl](https://kubernetes.io/docs/tasks/tools/)
@@ -87,8 +90,9 @@ A **Bastion Host** (or jump box) is strongly recommended for secure, private acc
     * **gcloud:** Google Cloud CLI. [Install gcloud](https://cloud.google.com/sdk/docs/install)
     * **oc:** OpenShift CLI. [Install oc](https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html)
 
+---
 
-## 2. Kubernetes cluster prerequisites
+## 2. Kubernetes
 
 The Kubernetes cluster must be **dedicated** to the purpose of Hybrid Manager. 
 Avoid pre-deploying components like `cert-manager`, as Hybrid Manager manages these internally.
@@ -237,7 +241,7 @@ kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, labels: .metad
 ---
 
 ## 4. Local networking
-Hybrid Manager is not terribly opinionated about local networking.  The standard for networking capabilities is set by the Cloud Service Providers which all provide fine networking even for heavy workloads.  Low latency high bandwidth even across availability zones.  On-premise networking should follow best practices of switching bonding and link redundancy.
+Hybrid Manager is not terribly opinionated about local networking.  The standard for networking capabilities is set by the Cloud Service Providers which all provide fine networking even for heavy workloads.  Low latency high bandwidth even across availability zones.  On-premise networking should follow best practices of switching, link bonding and link redundancy.
 
 ### Container network interface (CNI)
 
@@ -254,6 +258,7 @@ A working **CNI** (like Calico or Cilium) is a strict requirement for pod-to-pod
     kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR
     kubectl get svc
     ```
+---
 
 ## 5. Ingress
 
@@ -282,7 +287,7 @@ Examples here range from the AWS Load Balancer controller to MetalLB or a BigIP 
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 ```
 
-**Spot Validatetion**
+**Spot Validation**
 ```bash
 kubectl get pods -A | grep -i 'load\|lb\|router\|metallb\|gateway'
 ```
@@ -424,7 +429,7 @@ Notably, Hybrid Manager and containerized Postgres are particularly well suited 
 
 ### 6.1 Volume snapshots
 
-Volume snapshots are required for the optimal experience (backups/DR).
+Volume Snapshots: Volume snapshot classes within the cluster.  There is no Hybrid Manager option for this as we simply detect whether volume snapshots are supported by the block storage storageclass and depend on a volumesnapshot controller being present.  This requires a kubernetes controller for volume snapshots which in case of AWS EKS is an addon for example.
 
 **Optionality** 
 - Required for optimal experience
@@ -433,6 +438,7 @@ Volume snapshots are required for the optimal experience (backups/DR).
     ```bash
     kubectl get volumesnapshotclass
     ```
+---
 
 ## 7. Object storage
 
@@ -452,6 +458,8 @@ Object storage must be fully S3 compatible.  many so-called S3 compatible object
 **Dependencies** 
 - k8s secret which is EDB-specific: requires a Kubernetes secret named `edb-object-storage` provisioned in the default namespace, following EDB's specification for object storage integration.
 
+---
+
 ## 8. Container registry
 | Registry Provider                  | Supported Auth            | Recommended Auth      |
 |------------------------------------|--------------------------|-----------------------|
@@ -459,7 +467,6 @@ Object storage must be fully S3 compatible.  many so-called S3 compatible object
 | Amazon Elastic Container Registry (ECR) | eks_managed_identity | eks_managed_identity  |
 | Google Artifact Registry (GAR)     | token, basic             | basic                 |
 | EDB Repo (Proof of Concept or Pilot activity only!)                    | token                    | token                 |
-
 
 * Requirement: Container registry accessible from the Kubernetes Cluster
 * Purpose: Host Hybrid Manager images and Postgres images
@@ -503,7 +510,9 @@ Hybrid Manager is not intended to provide user authentication directly.
 - values.yaml `pgai.portal.authentication.staticPasswords.username`
 - values.yaml `pgai.portal.authentication.staticPasswords.userID`
 
-There is a single mandatory staic `User-0` for install purposes.  Additional static users can be created at the time of provisioning but no UI is provided to manage these as it's not an intended secure pattern.  Here at the minimum you should set the password for this required static user.
+There is a single mandatory static `User-0` for install purposes.  Additional static users can be created at the time of provisioning but no UI is provided to manage these as it's not an intended secure pattern.  Here at the minimum you should set the password for this required static user.
+
+---
 
 ## 10. Key management storage for Transparent Data Encryption
 
@@ -541,7 +550,7 @@ beaconAgent:
     imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
     imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
   transparentDataEncryptionMethods:
-    - aws_kms
+    - <available_encryption_method>
 pgai:
   portal:
     authentication:
