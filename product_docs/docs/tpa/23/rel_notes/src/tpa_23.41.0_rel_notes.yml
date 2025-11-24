@@ -1,0 +1,470 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+
+product: Trusted Postgres Architect
+version: 23.41.0
+date: 26 November 2025
+intro: |
+  New features, enhancements, bug fixes, and other changes in Trusted Postgres Architect 23.41.0 include the following:
+
+highlights: |
+  - Perform updates of all cluster components - not just Postgres and PGD
+  - Hardening of the default Patroni configuration, with many new options to fine-tune security measures
+  - Support for minor version upgrades of PGD 6 (PGD-X and PGD-S)
+  - Support for Postgres 18
+
+
+relnotes:
+- relnote: Updated the internal dictionary of the AWS regions
+  details: |
+    The change updates the internal dictionary of the AWS regions to expand
+    the coverage of the supported regions and corresponding AZs.
+  jira:
+  - TPA-1090
+  type: Change
+  impact: low
+
+- relnote: Secure etcd and Patroni defaults for new `tpaexec configure` clusters
+  details: |
+    When creating a new cluster configuration using `tpaexec configure`, the
+    generated `config.yml` file will now automatically enable SSL/TLS encryption and
+    mutual TLS (mTLS) authentication for both `etcd` and `Patroni` by default. This
+    ensures that new deployments start with a secure communication baseline out-of-the-box.
+    
+    The following variables are now set by default for new configurations: 
+    - `etcd_ssl_enabled: true` 
+    - `etcd_authentication_mode: mtls` 
+    - `patroni_ssl_enabled: true` 
+    - `patroni_authentication_mode: mtls` 
+    
+    Existing cluster configurations are unaffected by this change.
+  jira:
+  - TPA-1133
+  type: Enhancement
+  impact: high
+
+- relnote: Communication with the `etcd` cluster can now be secured using SSL/TLS
+  details: |
+    A new configuration parameter, `etcd_ssl_enabled`, has been introduced
+    to enable TLS encryption for all `etcd` communication. This significantly hardens
+    the security of the cluster''s distributed control plane. When `etcd_ssl_enabled`
+    is set to `true`: 
+    - The deployment process automatically generates the required
+    TLS certificates for each `etcd` node. These certificates now include both DNS
+    and IP Subject Alternative Names (SANs) for robust validation.
+    - Both peer-to-peer and client-server `etcd` connections are configured to use HTTPS. 
+    - Downstream components, including **Patroni** and internal health checks using `etcdctl`,
+    are automatically configured to connect to `etcd` securely over HTTPS. 
+    
+    To maintain backward compatibility with existing deployments, this feature is disabled by
+    default (`etcd_ssl_enabled: false`).
+  jira:
+  - TPA-1131
+  - TPA-1132
+  - TPA-1137
+  type: Enhancement
+  impact: medium
+
+- relnote: TPA now runs `pgd-proxy` instead of `journalctl` for PGD Proxy version detection
+  details: |
+    There are some edge cases where `journalctl` does not return the expected
+    version. Hence, TPA now runs `pgd-proxy` directly to get the version information
+    instead. 
+  jira:
+  - TPA-953
+  addresses:
+  - '46753'
+  - '46426'
+  type: Change
+  impact: medium
+
+- relnote: Mutual TLS (mTLS) Authentication for Patroni REST API
+  details: |
+    Support for mutual TLS has been added to provide a more secure, certificate-based
+    authentication method for the Patroni REST API. A new configuration variable,
+    `patroni_authentication_mode`, is now available. You can set this to `mtls` to
+    enable this feature. When enabled (which requires `patroni_ssl_enabled: true`),
+    the deployment automation will: 
+    - Configure the Patroni REST API server to require and validate client certificates. 
+    - Automatically configure clients, including `patronictl` and HAProxy health checks, with the necessary client certificates
+    and keys to connect securely. 
+    
+    The default authentication mode remains `basic`
+    (username and password) to ensure backward compatibility with existing deployments.
+  jira:
+  - TPA-1135
+  - TPA-1139
+  type: Enhancement
+  impact: medium
+
+- relnote: Improve security of Patroni REST API with access `allowlist`
+  details: |
+    The security of the Patroni REST API has been enhanced by configuring an
+    `allowlist` for unsafe API endpoints (which accept `POST`, `PUT`, `PATCH`, `DELETE`).
+    This measure prevents unauthorized nodes from performing administrative actions,
+    such as restarting a database node or changing the cluster configuration. The
+    `allowlist` is dynamically populated with the hostnames of the Patroni cluster
+    members based on the Ansible inventory, ensuring that only authorized nodes can
+    perform requests to these sensitive API endpoints.
+  jira:
+  - TPA-1134
+  type: Enhancement
+  impact: medium
+
+- relnote: TPA now supports minor version upgrades for PGD-X
+  details: |
+    The `tpaexec upgrade` command can now perform minor version upgrades of
+    postgres and PGD on a cluster running the PGD-X architecture. The upgrade process
+    checks cluster health and upgrades the nodes one at a time. This scenario supports
+    the use of `update_hosts` variable to upgrade a subset of the cluster when used
+    accordingly to the best practice recommendations found in the documentation.
+  jira:
+  - TPA-1040
+  type: Enhancement
+  impact: medium
+
+- relnote: Support upgrade of components M1 and PGD/BDR clusters
+  details: |
+    All cluster software components (failover managers, PEM, Barman, etc.) can now be updated, either to a specific
+    version by specifying the component package version in `config.yml` or to the
+    latest available when it is not provided. A list of components for upgrade can
+    be passed to the `--components` flag as a comma-separated list. If this flag is
+    not passed, `postgres` will be updated. Specifying `--components=all` will update
+    all applicable software components.
+  jira:
+  - TPA-926
+  - TPA-927
+  - TPA-925
+  - TPA-924
+  type: Enhancement
+  impact: high
+
+- relnote: Documented `postgres_port` in TPA documentation
+  details: |
+    Added detail of the parameter `postgres_port` in the TPA documentation.
+    `postgres_port` is the variable allowing the customization of the listening port
+    for Postgres. This variable ensures consistent use of the set value across
+    all components of the cluster relying on the information.
+  jira:
+  - TPA-1145
+  type: Change
+  impact: low
+
+- relnote: Moved the pre-deploy hook outside repositories role.
+  details: |
+    In previous versions, this hook was part of the repositories role. 
+    When TPA introduced the possibility to exclude this role from deployments, 
+    it created a situation whereby this hook could be unintentionally skipped. 
+    To avoid this situation, we moved the hook
+    outside the role so it's always executed.
+  jira:
+  - TPA-1153
+  addresses:
+  - 52412
+  type: Change
+  impact: medium
+
+- relnote: Fixed task selection for pgdcli
+  details: |
+    Fixed a bug whereby the `pgdcli` role would be run on `bdr` nodes even when task
+    selectors were used which should implicitly exclude it.
+  jira:
+  - TPA-1184
+  type: Bug Fix
+  impact: low
+
+- relnote: Disabled TRACK and TRACE methods on the PEM HTTPD server
+  details: |
+    PEM 10.3 contains a fix for HTTPD configuration, moving the directive to rewrite TRACK/TRACE requests to the <VirtualHost> section for the
+    default virtual host on port defined by the "pem_server_ssl_port" variable. 
+    This change applies the same fix to all new deployments of PEM, regardless of version.
+  jira:
+  - TPA-1191
+  addresses:
+  - 54529
+  type: Change
+  impact: low
+
+- relnote: Introduced new instance-level variables to control how servers and agents are displayed in PEM
+  details: |
+    Introduced four new instance variables for use with the `pem-agent` role:
+    - `monitoring_group` - `monitoring_agent_group` - `monitoring_cluster` - `monitoring_agent_cluster`
+    Also introduce the instance variable `pem_agent_group` for use with the `pem-server`
+    role alongside the existing variable `pem-server-group`. Collectively, these variables
+    determine which group and cluster the servers and agents are assigned to in PEM.
+    See the documentation for a full explanation.
+  jira:
+  - TPA-1152
+  type: Enhancement
+  impact: low
+
+- relnote: Patroni REST API SSL/TLS connections are now correctly configured and secure
+  details: |
+    Previously, enabling SSL for the Patroni REST API (`patroni_ssl_enabled:
+    true`) used a self-signed certificate. This resulted in `CERTIFICATE_VERIFY_FAILED`
+    errors for clients like `patronictl`, making the feature unusable in a secure
+    configuration. This has been fixed by implementing a proper certificate generation
+    process. The Patroni REST API server is now configured with a server certificate
+    signed by a Certificate Authority (CA) created by TPA for the TPA cluster. Additionally,
+    the `ctl` section of the `patroni.yml` configuration has been corrected to ensure
+    `patronictl` is properly configured to use the CA for server validation and to
+    present its own client certificate and key for authentication (mTLS). As a result,
+    enabling SSL for the Patroni REST API now provides a fully secure and verifiable
+    communication channel for all clients.'
+  jira:
+  - TPA-449
+  type: Bug Fix
+  impact: high
+
+- relnote: Fixed a fatal error during Docker container provisioning
+  details: |
+    When creating containers on modern versions of docker using user-defined
+    networks, `provision` would sometime crash with a 'dict object' has no attribute
+    'IPAddress' error. This was caused by an outdated method of discovering the container's
+    IP address. The logic has been updated to be compatible with modern Docker network
+    structures, making container creation more robust.
+  jira:
+  - TPA-1230
+  type: Bug Fix
+  impact: low
+
+- relnote: Fixed `etcd` package installation on SLES
+  details: |
+    Deployments on SLES-based distributions that require `etcd` (such as those
+    using Patroni) would previously fail because the `etcd` package could not be found
+    in the standard repositories. This has been resolved by enabling the PGDG `extras`
+    repository, which provides the necessary package and allows the installation to
+    succeed.
+  jira:
+  - TPA-1026
+  type: Bug Fix
+  impact: low
+
+- relnote: Changed the default EFM password encryption to scram-sha-256
+  details: |
+    TPA now defaults to `efm_user_password_encryption: scram-sha-256` for
+    all new clusters configured with EFM as the failover manager. This change applies
+    when running `tpaexec configure` with `--enable-efm` or `--failover-manager efm`.
+    This addresses the deprecation of MD5 password encryption in PostgreSQL 18 and
+    provides improved security for all PostgreSQL versions. Existing clusters are
+    unaffected. Users can override this default by explicitly setting `efm_user_password_encryption:
+    md5` in config.yml if needed, though MD5 support will be removed from TPA in a
+    future release.
+  jira:
+  - TPA-1155
+  type: Change
+  impact: high
+
+- relnote: The `tpaexec configure` command now adds `efm_version` to config.yml.
+  details: |
+    Support for explicitly adding the `efm_version` if introduced when executing
+    `tpaexec configure` and choosing EFM as the failover manager. This can be seen
+    when invoking `tpaexec` as follows: `tpaexec configure my-cluster-dir -a M1
+    --enable-efm --efm-version 5.2 (\u2026)`. Additionally, documentation covering
+    the `efm_version` selection has been added.
+  jira:
+  - TPA-1169
+  - TPA-1170
+  type: Change
+  impact: high
+
+- relnote: Added `efm-post-config` hook.
+  details: |
+    A new `efm-post-config` hook has been introduced to be able to execute
+    new tasks after the efm configuration has taken place. New documentation explaining
+    how to use it has also been developed under the 'TPA hooks' section.
+  jira:
+  - TPA-1196
+  type: Change
+  impact: low
+
+- relnote: Added support for pgaudit and postgis plugins on PG18.
+  details: |
+    Adding PG18 support for those plugins. The version of those depends on
+    the Postgres version being supported as well. We have removed
+    versions 11 and 12 from the plugin lists as they are no longer
+    widely supported.
+  jira:
+  - TPA-1154
+  type: Change
+  impact: low
+
+- relnote: TPA now supports minor version upgrades for PGD-S
+  details: |
+    The `tpaexec upgrade` command can now perform minor version upgrades of
+    postgres and PGD on a cluster running the PGD-S architecture. The upgrade process
+    checks cluster health and upgrades the nodes one at a time. This scenario supports
+    the use of `update_hosts` variable to upgrade a subset of the cluster when used
+    accordingly to the best practice recommendations found in the documentation.
+  jira:
+  - TPA-1039
+  - TPA-1208
+  - TPA-1209
+  type: Enhancement
+  impact: medium
+
+- relnote: Fixed race conditions during concurrent updates to the Barman .pgpass file
+  details: |
+    Previously, when multiple backed-up nodes attempted to update the Barman
+    node's `.pgpass` file concurrently, a race condition could occur, resulting in partial
+    or incomplete entries. TPA now serializes this process, ensuring that the Barman
+    node's `.pgpass` file is updated sequentially to prevent loss.
+  jira:
+  - TPA-1207
+  addresses:
+  - 52460
+  type: Bug Fix
+  impact: medium
+
+- relnote: Start PGD proxy after the network is available
+  details: |
+    This service needs the network service to be up and running before it can
+    be started. `Wants` and `After` directives have been added to the PGD Proxy service
+    unit to ensure that.
+  jira:
+  - TPA-1206
+  addresses:
+  - 54251
+  - 52731
+  type: Change
+  impact: low
+
+- relnote: Fix unwanted_packages to support 'common' key that applies to all distribution
+  details: |
+    Previously, when setting `unwanted_packages` using the `common` key was not supported,
+    which differs from the behavior of other package dictionary that can be set in config.yml.
+    This fix introduces the support for the `common` key, ensuring
+    any package listed under this key will be removed if present on any distribution
+    in use in the cluster.
+  jira:
+  - TPA-1210
+  type: Bug Fix
+  impact: medium
+
+- relnote: Install libpq5 on PEM server v10+ for RHEL
+  details: PEM 10.1 added `libpq5` as a dependency to fix `psycopg` errors related
+    to `kerberos` authentication on RHEL 9 servers. To ensure `libpq5` is installed, TPA now
+    explicitly installs it on RHEL servers when the PEM server version is 10 or greater.
+  jira:
+  - TPA-1166
+  - PEM-5609
+  type: Change
+  impact: low
+
+- relnote: Install `libcurl-full` when required
+  details: |
+    `libcurl-minimal` is installed certain RHEL-esque images, and while it
+    satisfies the package dependencies for `edb-pem-agent`, it does NOT provide the
+    complete set of APIs required (namely for SMTP) If it is installed, we remove
+    it and install the `libcurl-full` meta-package to ensure full `libcurl` functionality
+    exists for the PEM agent. Because the `edb-pem` package depends on the `edb-pem-agent`
+    package, the `libcurl-minimal` package must also be removed on the PEM server
+    in order to avoid dependency resolution conflicts. This is done by installing
+    the package with the `allowerase` parameter.
+  jira:
+  - TPA-1211
+  type: Change
+  impact: low
+
+- relnote: Added auto.basebackup property for EFM 5.2 and above.
+  details: |
+    Starting with EFM 5.2, there will be a new property `auto.basebackup` that
+    adds on to the new auto-rebuild capability. Users can use the existing pg_rewind
+    feature, pg_basebackup, or tell EFM to use both (pg_basebackup will be run if
+    pg_rewind fails).
+  jira:
+  - TPA-1205
+  type: Change
+  impact: medium
+
+- relnote: Fixed an issue whereby `tpaexec test` did not remove data after testing in PGD clusters.
+  details: |
+    After deploying a cluster and running `tpaexec test` on that cluster, creates
+    an additional entry in bdr.replication_set_table which is not later removed. The
+    fix makes the test run on a temporary schema called `tpatest`, which is later
+    removed after the test is finished.
+  jira:
+  - TPA-1177
+  addresses:
+  - '53224'
+  type: Bug Fix
+  impact: low
+
+- relnote: Fixed issue with missing PGD CLI on proxy nodes when performing upgrade (3.7 to 5).
+  details: |
+    When performing a regular deploy, or an upgrade from a 'BDR-Always-ON'
+    setup to 'PGD-Always-ON', the proxy nodes (previously deployed with the 'harp-proxy'
+    role), will not come shipped with the PGD CLI when trying to install it with the
+    'pgd-proxy' role, necessary to perform the upgrade. This fix ensures that the
+    PGD CLI will be installed on the proxy nodes and nodes with a 'bdr' role, also
+    on the nodes featuring only the 'pgdcli' role.
+  jira:
+  - TPA-1174
+  - TPA-1214
+  type: Bug Fix
+  impact: low
+
+- relnote: Improved automation of PGD5.9+ to PGD6 upgrade.
+  details: |
+    For a PGD v5.9 to v6 migration, Connection Manager is a requirement instead
+    of PGD proxy. A new command `switch2cm` has been introduced to facilitate this
+    transition. The new command requires that the cluster's config.yml must be prepared
+    by running `tpaexec reconfigure <cluster> --enable-connection-manager`. https://www.enterprisedb.com/docs/tpa/latest/tpaexec-upgrade/#upgrading-from-pgd-always-on-to-pgd-x
+  jira:
+  - TPA-1148
+  type: Enhancement
+  impact: high
+
+- relnote: Added support for validity period in OpenSSL generated certificates
+  details: |
+    Previously, some SSL certificates (OpenVPN, PEM and TPA itself) used in TPA didn't come
+    with a way of specifying the number of days before expiration. This change adds
+    a variable called `openssl_certificate_validity` (default 3650 days), that can
+    be used to determine the number of days an SSL certificate will last before expiring.
+    In order to force TPA to reload a new certificate with a new expiration date,
+    you must pass the appropriate option to `tpaexec deploy` `-e pem_web_server_renew_tls_certificates=true"`
+    or `-e tpa_tls_renew_tls_certificates=true")`.
+  jira:
+  - TPA-1175
+  type: Enhancement
+  impact: low
+
+- relnote: Enable etcd Basic Authentication and Role-Based Access Control
+  details: |
+    This release introduces a new capability to secure the etcd distributed
+    key-value store with client authentication. You can now enable basic authentication
+    and configure a dedicated user for Patroni with granular, least-privilege permissions.
+    A new configuration variable, `etcd_authentication_mode`, has been added to control
+    the feature. When set to `basic`, the deployment automation will: 
+    - Set up an administrative `root` user. 
+    - Create a dedicated etcd user for Patroni, given by the new `patroni_etcd_user` configuration option, and grant it read-write permissions
+    limited to its cluster''s key prefix (e.g., `/tpa/cluster_name`). 
+    - Configure Patroni to automatically use these credentials to securely connect and authenticate
+    with etcd. 
+    
+    To maintain backward compatibility, this feature is disabled by default
+    (`etcd_authentication_mode: none`).
+  jira:
+  - TPA-1128
+  - TPA-1136
+  type: Enhancement
+  impact: medium
+
+- relnote: Mutual TLS (mTLS) Authentication for `etcd`
+  details: |
+    Support for mutual TLS has been added to secure all `etcd` communication.
+    A new `mtls` option is now available for the `etcd_authentication_mode` variable.
+    When `etcd_authentication_mode` is set to `mtls` (which requires `etcd_ssl_enabled:
+    true`), the deployment automation will enforce certificate-based authentication
+    for: 
+    - Peer-to-peer communication between all `etcd` nodes. 
+    - Client-server communication from clients like Patroni. 
+    
+    TPA automatically configures both the `etcd`
+    servers and the Patroni clients with the necessary certificates and keys to ensure
+    a fully secure and validated connection.
+  jira:
+  - TPA-1129
+  - TPA-1130
+  - TPA-1138
+  type: Enhancement
+  impact: medium
