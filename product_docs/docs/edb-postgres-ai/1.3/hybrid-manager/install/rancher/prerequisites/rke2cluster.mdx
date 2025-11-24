@@ -18,15 +18,15 @@ These are critical to a successful installation phase after preconfiguration.
 
 ### Adding the EDB Helm repo and retrieving the chart
 
-You just need your EDB Cloudsmith token to add the repo and get the chart to configure.
+You just need your EDB Repos 2.0 token to add the repo and get the chart to configure.
 
-1.  Add the Helm chart repo from EDB Cloudsmith:
+1.  Add the Helm chart repo from EDB Repos 2.0:
 
     ```bash
-    helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/<your-EDB-Cloudsmith-token>/pgai-platform/helm/charts/"
+    helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/<your-edb-repos-token>/pgai-platform/helm/charts/"
     ```
 
-    ...where `<your-EDB-Cloudsmith-token>` is your EDB Cloudsmith repository access token.
+    where `<your-edb-repos-token>` is your EDB Repos 2.0 access token.
 
 2.  Update the repo:
 
@@ -187,9 +187,9 @@ The overall sequence is the same whether you are deploying in the cloud or on-pr
 
 Decide on the fundamental characteristics of your network.
 
--   **Network stack**: Is your network IPv4 or Dual Stack (IPv4 + IPv6)?
+-   **Network stack**: Your network must be IPv4.
 
--   **CNI/network type**: Choose your Container Network Interface (CNI) implementation, e.g. a standard SDN overlay (Calico, Cilium, Flannel) or an OVN-based network (a standard SDN overlay using Calico is recommended).
+-   **CNI/network type**: We recommend a standard SDN overlay using Calico.
 
 -   **DHCP vs static**: Confirm whether DHCP will assign node addresses or if you must assign static IPs.
 
@@ -391,13 +391,11 @@ You can also set up a [custom cert-manager issuer](/edb-postgres-ai/1.3/hybrid-m
 
 To configure user identity, you have to choose between implementing your own IdP or using HM's native users feature.
 
-It is strongly recommended to [set up your identity provider](/edb-postgres-ai/1.3/hybrid-manager/install/customization/byo_idp/index.mdx) IdP) with HM for managing user access in production.
+It is strongly recommended to [set up your identity provider (IdP)](/edb-postgres-ai/1.3/hybrid-manager/install/customization/byo_idp/index.mdx) with HM for managing user access in production.
 
 [Native users](/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/managing_users/index.mdx) are supported by default, but managing users this way is not recommended in production.
 
-To create your first native user (user0), 
-
-You need to user's email, hash, userID, userID, and username:
+To create your first native user (userA) you need the user's email, hash, userID, and username:
 
 | Parameter  | Description                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -419,15 +417,14 @@ This is crucial for securing traffic between the control plane, data nodes, and 
 
 ### Ingress/egress rules
 
-Harden the boundaries.
 Validate and enforce ingress/egress rules on your firewall to ensure that only necessary traffic is allowed into and out of the cluster, restricting all other access.
 
 ## Sync EDB Postgres AI Platform container images into a customer owned registry
 
-The software stack of HM is pushed into EDB Cloudsmith registry to provide artifacts for you to use in your local registry: customer-managed internal registry for Rancher RKE2 on-premises scenarios or your customer-managed registry on your cloud service provider (CSP) registry ([AWS Elastic Container Registry](https://aws.amazon.com/ecr/)(ECR), [Google Cloud Artifact Registry](https://cloud.google.com/artifact-registry/docs) (AR) for HM on Rancher on CSP scenarios.
+The software stack of HM is pushed into EDB Repos 2.0 registry to provide artifacts for you to use in your local registry: customer-managed internal registry for Rancher RKE2 on-premises scenarios or your customer-managed registry on your cloud service provider (CSP) registry [AWS Elastic Container Registry](https://aws.amazon.com/ecr/) (ECR), [Google Cloud Artifact Registry](https://cloud.google.com/artifact-registry/docs) (AR) for HM on Rancher on CSP scenarios.
 
 You are required to have your own secure and approved local registry (you use the URI, user, and password for your local container registry in the sync process below) and know the EDB PGAI version that you want to install.
-With this information, all the artifacts from Cloudsmith sync internally into your local registry before installing or upgrading the software stack with the Helm chart.
+With this information, all the artifacts from EDB Repos 2.0 sync internally into your local registry before installing or upgrading the software stack with the Helm chart.
 
 The sync process needs to preserve the container images' SHA256 to ensure images security and immutability across different environments. 
 
@@ -443,19 +440,19 @@ The sync process needs to preserve the container images' SHA256 to ensure images
     export EDBPGAI_RELEASE=<EDB-pgai-release-version>
     ```
 
--   Define the EDB Cloudsmith access token:
+-   Define the EDB Repos 2.0 access token:
 
     ```bash
-    export CS_EDB_TOKEN=<your-Cloudsmith-token>
+    export CS_EDB_TOKEN=<your-edb-repos-token>
     ```
 
--   Define the EDB Cloudsmith registry source:
+-   Define the EDB Repos 2.0 registry source:
 
     ```bash
     export EDB_SOURCE_REGISTRY=pgai-platform
     ```
 
--   Define you local container registry, user, and passowrd:
+-   Define you local container registry, user, and password:
 
     ```bash
     export LOCAL_REGISTRY_URI=<your_local_container_registry_uri
@@ -487,7 +484,7 @@ The sync process needs to preserve the container images' SHA256 to ensure images
         --destination-registry-password "${LOCAL_REGISTRY_PWD}"
     ```
 
-Your local registry is now synced with EDB's Cloudsmith registry.
+Your local registry is now synced with EDB Repos 2.0 registry.
 
 ### Set the containerRegistryURL in your Helm chart
 
@@ -611,7 +608,7 @@ Use edbctl to create the ImagePullSecrect namespace and required secrets:
     ```bash
     edbctl image-pull-secret create \
       --username <container registry username> \
-      --passowrd <container registry passowrd> \
+      --password <container registry password> \
       --registry <local registry URI>
 
     ```
@@ -692,7 +689,7 @@ In the Helm chart, `values.yaml`, set the field `parameters.upm-istio-gateway.co
 
 ### Block storage configuration
 
-HM uses Block Storage for all primary, stateful workloads.
+HM uses Block Storage for all primary and stateful workloads.
 A strategic approach to using Kubernetes Storage Classes to manage performance and cost is recommended.
 
 #### Workload segregation
@@ -710,8 +707,9 @@ In addition to Storage Classes for provisioning volumes, you may also configure 
 
 -   This defines how `PersistentVolume` snapshots are created and managed.  
 -   Only one or two snapshot classes are usually required (e.g., one per storage backend).  
--   On-prem with TopoLVM/local CSI: snapshots are not supported. Use HM’s object-store backup mechanism instead.  
--   Cloud deployments or enterprise on-prem CSI (e.g., Portworx, Ceph RBD) generally support snapshots.  
+-   On-prem with TopoLVM: snapshots are supported. 
+-   Local CSI: snapshots are not supported. Use HM’s object-store backup mechanism in this case.   
+-   Cloud deployments or enterprise on-prem CSI generally support snapshots.  
 
 !!!Note
 
@@ -751,8 +749,6 @@ With your chosen StorageClasses created, update the Helm chart `values.yaml`:
 global:
   storage_class: <hm-cp-storage-class>
 ```
-
-for HM internal services.
 
 ### KMS key setup
 
@@ -864,6 +860,6 @@ stringData:
     server_side_encryption_disabled: <boolean>
 ```
 
-## Proceed to Installation
+## Proceed to installation
 
-With the cluster configured, proceed to the installation phase[../installing.mdx].
+With the cluster configured, proceed to the [installation phase](../installing/).
