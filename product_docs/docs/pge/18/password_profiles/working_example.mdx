@@ -44,91 +44,93 @@ The CREATE EXTENSION command is used to add the password profile functionality t
   ```
 
 - Create a new profile as a superuser or as user1
+ 
+  ```sql
+  SELECT PASSWORD_PROFILE.PG_CREATE_PROFILE('my_profile');
+  ```
 
-```sql
-SELECT PASSWORD_PROFILE.PG_CREATE_PROFILE('my_profile');
-```
-
-This command creates a new profile and adds an entry to `PG_PROFILE` catalog.
+  This command creates a new profile and adds an entry to `PG_PROFILE` catalog.
 
 - Alter the profile to set `failed_login_attempts` to 2, `password_lock_time` to 1 day, `password_life_time` to 3 days and `password_grace_time` to 1 day.
 
-```sql
-SELECT PASSWORD_PROFILE.PG_ALTER_PROFILE('my_profile', 2, 1, 3, 1);
+  ```sql
+  SELECT PASSWORD_PROFILE.PG_ALTER_PROFILE('my_profile', 2, 1, 3, 1);
+  
+  SELECT * FROM pg_profile;
+  __OUTPUT__
+    oid  |  prfname  | prffailedloginattempts | prfpasswordlocktime | prfpasswordlifetime | prfpasswordgracetime | prfpasswordverifyfuncdb | prfpasswordverifyfunc
+  -------+-----------+------------------------+---------------------+---------------------+----------------------+-------------------------+-----------------------
+    6108 | default   |                     -2 |                  -2 |                  -2 |                   -2 |                         |
+   16397 | myprofile |                      2 |               86400 |              259200 |                86400 |                       0 |                     0
+   (2 rows)
+  ```
 
-SELECT * FROM pg_profile;
-__OUTPUT__
-  oid  |  prfname  | prffailedloginattempts | prfpasswordlocktime | prfpasswordlifetime | prfpasswordgracetime | prfpasswordverifyfuncdb | prfpasswordverifyfunc
--------+-----------+------------------------+---------------------+---------------------+----------------------+-------------------------+-----------------------
-  6108 | default   |                     -2 |                  -2 |                  -2 |                   -2 |                         |
- 16397 | myprofile |                      2 |               86400 |              259200 |                86400 |                       0 |                     0
- (2 rows)
-```
-
-The `prfpasswordverifyfunc` and `prfpasswordverifyfuncdb` column values are null for `DEFAULT` profile. For `myprofile` they are set to 0, as no values were provided while creating this profile, so it referes to `DEFAULT` profile values.
+  The `prfpasswordverifyfunc` and `prfpasswordverifyfuncdb` column values are null for `DEFAULT` profile. For `myprofile` they are set to 0, as no values were provided while creating this profile, so it referes to `DEFAULT` profile values.
 
 
 - Attach the profile to a role
 
-```sql
-SELECT PASSWORD_PROFILE.PG_ATTACH_ROLE_PROFILE('user1', 'myprofile');
+  ```sql
+  SELECT PASSWORD_PROFILE.PG_ATTACH_ROLE_PROFILE('user1', 'myprofile');
+  
+  SELECT * FROM pg_auth_profile;
+  __OUTPUT__
+   roleid | profileid | roleaccountstatus | rolefailedlogins | rolelockdate |       rolepasswordsetat       | rolepasswordexpire
+  --------+-----------+-------------------+------------------+--------------+-------------------------------+--------------------
+    16384 |     16397 |                 0 |                0 |              | 2025-08-23 05:02:28.70456+00 |
+  (1 row)
+  ```
 
-SELECT * FROM pg_auth_profile;
-__OUTPUT__
- roleid | profileid | roleaccountstatus | rolefailedlogins | rolelockdate |       rolepasswordsetat       | rolepasswordexpire
---------+-----------+-------------------+------------------+--------------+-------------------------------+--------------------
-  16384 |     16397 |                 0 |                0 |              | 2025-08-23 05:02:28.70456+00 |
-(1 row)
-```
+  Here the `rolepasswordsetat` column shows the timestamp when the role is attached to the profile. This column value gets updated whenever the role password is updated.
 
-Here the `rolepasswordsetat` column shows the timestamp when the role is attached to the profile. This column value gets updated whenever the role password is updated.
+- Now try one failed login attempt and then query:
 
-Now try one failed login attempt and then query:
+  ```sql
+  SELECT roleid, password_profile.PG_GET_ROLE_STATUS('myuser'), rolefailedlogins, rolelockdate FROM pg_auth_profile;
+  __OUTPUT__
+  roleid | pg_get_role_status | rolefailedlogins | rolelockdate
+  -------+--------------------+------------------+--------------
+   16384 | OPEN               |                1 |
+  (1 row)
+  ```
 
-```sql
-SELECT roleid, password_profile.PG_GET_ROLE_STATUS('myuser'), rolefailedlogins, rolelockdate FROM pg_auth_profile;
-__OUTPUT__
-roleid | pg_get_role_status | rolefailedlogins | rolelockdate
--------+--------------------+------------------+--------------
- 16384 | OPEN               |                1 |
-(1 row)
-```
+  You can see the `rolefailedlogins` column has been incremented by 1 and the role status is `open`. 
 
-You can see the `rolefailedlogins` column has been incremented by 1 and the role status is `open`. Now try more failed log in attempts and then query again:
+- Now try more failed log in attempts and then query again:
 
-```sql
-\c - myuser
-Password for user myuser:
-FATAL:  role "myuser" is locked
-Previous connection kept
+  ```sql
+  \c - myuser
+  Password for user myuser:
+  FATAL:  role "myuser" is locked
+  Previous connection kept
+  
+  SELECT roleid, password_profile.PG_GET_ROLE_STATUS('myuser'), rolefailedlogins, rolelockdate FROM pg_auth_profile;
+  __OUTPUT__
+  roleid | pg_get_role_status | rolefailedlogins |          rolelockdate
+  -------+--------------------+------------------+-------------------------------
+   16384 | LOCKED(TIMED)      |                0 | 2025-08-24 07:53:58.524348+00
+  (1 row)
+  ```
 
-SELECT roleid, password_profile.PG_GET_ROLE_STATUS('myuser'), rolefailedlogins, rolelockdate FROM pg_auth_profile;
-__OUTPUT__
-roleid | pg_get_role_status | rolefailedlogins |          rolelockdate
--------+--------------------+------------------+-------------------------------
- 16384 | LOCKED(TIMED)      |                0 | 2025-08-24 07:53:58.524348+00
-(1 row)
-```
+  Due to multiple failed login attempts, the user account has been locked. The role status shows as `LOCKED(TIMED)`, and the failed login attempt counter has been reset to `0`.
+  
+  The TIMED status indicates that the account will automatically unlock after one day, as defined by the `PASSWORD_LOCK_TIME` parameter. A timestamp is also recorded when the account becomes locked.
+  
+  Once the lock period expires, the user will be able to log in again, and the status will return to OPEN.
 
-Due to multiple failed login attempts, the user account has been locked. The role status shows as `LOCKED(TIMED)`, and the failed login attempt counter has been reset to `0`.
+- If the user successfully logs in after a few failed attempts but before reaching the maximum limit (set by `FAILED_LOGIN_ATTEMPTS`), the failed login counter is also reset to 0.
 
-The TIMED status indicates that the account will automatically unlock after one day, as defined by the `PASSWORD_LOCK_TIME` parameter. A timestamp is also recorded when the account becomes locked.
+  ```sql
+  \c - myuser
+  Password for user myuser:
+  You are now connected to database "postgres" as user "myuser".
+  
+  SELECT roleid, password_profile.PG_GET_ROLE_STATUS('myuser'), rolefailedlogins, rolelockdate FROM pg_auth_profile;
+  __OUTPUT__
+  roleid | pg_get_role_status | rolefailedlogins |          rolelockdate
+  -------+--------------------+------------------+-------------------------------
+   16384 | OPEN               |                0 | 2025-08-24 07:53:58.524348+00
+  (1 row)
+  ```
 
-Once the lock period expires, the user will be able to log in again, and the status will return to OPEN.
-
-If the user successfully logs in after a few failed attempts but before reaching the maximum limit (set by `FAILED_LOGIN_ATTEMPTS`), the failed login counter is also reset to 0.
-
-```sql
-\c - myuser
-Password for user myuser:
-You are now connected to database "postgres" as user "myuser".
-
-SELECT roleid, password_profile.PG_GET_ROLE_STATUS('myuser'), rolefailedlogins, rolelockdate FROM pg_auth_profile;
-__OUTPUT__
-roleid | pg_get_role_status | rolefailedlogins |          rolelockdate
--------+--------------------+------------------+-------------------------------
- 16384 | OPEN               |                0 | 2025-08-24 07:53:58.524348+00
-(1 row)
-```
-
-It preserves the last lock date of the role.
+  It preserves the last lock date of the role.
