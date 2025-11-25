@@ -1,0 +1,220 @@
+---
+title: "Using the FORALL statement"
+redirects:
+  - /epas/latest/epas_compat_spl/12_working_with_collections/03_using_the_forall_statement/ #generated for docs/epas/reorg-role-use-case-mode
+---
+
+<div id="using_the_forall_statement" class="registered_link"></div>
+
+You can use collections to process DML commands more efficiently by passing all the values to be used for repetitive execution of a `INSERT`, `UPDATE`, `DELETE`, or `MERGE`  command in one pass to the database server. The alternative is to reiteratively invoke the DML command with new values. Specify the DML command to process this way with the `FORALL` statement. In addition, provide one or more collections in the DML command where you want to substitute different values each time the command is executed.
+
+## Syntax 
+
+```sql
+FORALL <index> IN <lower_bound> .. <upper_bound>
+  [SAVE EXCEPTIONS] { <insert_stmt> | <update_stmt> | <delete_stmt> | <merge_stmt> };
+```
+
+`index` is the position in the collection given in the `insert_stmt`, `update_stmt`, `delete_stmt`, or `merge_stmt` DML command that iterates from the integer value given as `lower_bound` up to and including `upper_bound.` 
+
+Optionally, `SAVE EXCEPTIONS` allows a FORALL statement to continue even if any of the DML statements fail. When a DML statement fails, SPL doesn't raise an exception, it saves information about the failure. After the FORALL statement completes, SPL raises a single exception for the FORALL statement. The error information is stored in the collection of records called `SQL%BULK_EXCEPTIONS`, where:
+
+  - `SQL%BULK_EXCEPTIONS(i).ERROR_INDEX` records the nth number of the DML statement that failed.
+  - `SQL%BULK_EXCEPTIONS(i).ERROR_CODE` records the database error code for the failure.
+  - `SQL%BULK_EXCEPTIONS.COUNT` records the total number of the DML statements that failed.
+
+
+## How it works
+
+If an exception occurs during any iteration of the `FORALL` statement, all updates that occurred since the start of the execution of the `FORALL` statement are rolled back. 
+
+!!! Note 
+    This behavior isn't compatible with Oracle databases. Oracle allows explicit use of the `COMMIT` or `ROLLBACK` commands to control whether to commit or roll back updates that occurred prior to the exception.
+
+The `FORALL` statement creates a loop. Each iteration of the loop increments the `index` variable. You typically use the `index` in the loop to select a member of a collection. Control the number of iterations with the `lower_bound .. upper_bound` clause. The loop executes once for each integer between the `lower_bound` and `upper_bound` (inclusive), and the index increments by one for each iteration. 
+
+For example:
+
+`FORALL i IN 2 .. 5`
+
+This expression creates a loop that executes four times. In the first iteration, `index (i)` is set to the value `2`. In the second iteration, the index is set to the value `3`, and so on. The loop executes for the value `5` and then terminates.
+
+## Using FORALL with CREATE
+
+This example creates a table `emp_copy` that's an empty copy of the `emp` table. The example declares a type `emp_tbl` that's an array. Each element in the array is of composite type, composed of the column definitions used to create the table `emp`. The example also creates an index on the `emp_tbl` type.
+
+`t_emp` is an associative array of type `emp_tbl`. The `SELECT` statement uses the `BULK COLLECT INTO` command to populate the `t_emp` array. After the `t_emp` array is populated, the `FORALL` statement iterates through the values `(i)` in the `t_emp` array index and inserts a row for each record into `emp_copy`.
+
+```sql
+CREATE TABLE emp_copy(LIKE emp);
+
+DECLARE
+
+    TYPE emp_tbl IS TABLE OF emp%ROWTYPE INDEX BY BINARY_INTEGER;
+
+    t_emp emp_tbl;
+
+BEGIN
+    SELECT * FROM emp BULK COLLECT INTO t_emp;
+
+    FORALL i IN t_emp.FIRST .. t_emp.LAST
+     INSERT INTO emp_copy VALUES t_emp(i);
+
+END;
+```
+
+## Using FORALL with UPDATE
+
+This example uses a `FORALL` statement to update the salary of three employees:
+
+```sql
+DECLARE
+    TYPE empno_tbl  IS TABLE OF emp.empno%TYPE INDEX BY BINARY_INTEGER;
+    TYPE sal_tbl    IS TABLE OF emp.ename%TYPE INDEX BY BINARY_INTEGER;
+    t_empno         EMPNO_TBL;
+    t_sal           SAL_TBL;
+BEGIN
+    t_empno(1)  := 9001;
+    t_sal(1)    := 3350.00;
+    t_empno(2)  := 9002;
+    t_sal(2)    := 2000.00;
+    t_empno(3)  := 9003;
+    t_sal(3)    := 4100.00;
+    FORALL i IN t_empno.FIRST..t_empno.LAST
+        UPDATE emp SET sal = t_sal(i) WHERE empno = t_empno(i);
+END;
+
+SELECT * FROM emp WHERE empno > 9000;
+__OUTPUT__
+ empno | ename  |   job   | mgr | hiredate |   sal   | comm | deptno
+-------+--------+---------+-----+----------+---------+------+--------
+  9001 | JONES  | ANALYST |     |          | 3350.00 |      |     40
+  9002 | LARSEN | CLERK   |     |          | 2000.00 |      |     40
+  9003 | WILSON | MANAGER |     |          | 4100.00 |      |     40
+(3 rows)
+```
+
+## Using FORALL with DELETE
+
+This example deletes three employees in a `FORALL` statement:
+
+```sql
+DECLARE
+    TYPE empno_tbl  IS TABLE OF emp.empno%TYPE INDEX BY BINARY_INTEGER;
+    t_empno         EMPNO_TBL;
+BEGIN
+    t_empno(1)  := 9001;
+    t_empno(2)  := 9002;
+    t_empno(3)  := 9003;
+    FORALL i IN t_empno.FIRST..t_empno.LAST
+        DELETE FROM emp WHERE empno = t_empno(i);
+END;
+
+SELECT * FROM emp WHERE empno > 9000;
+__OUTPUT__
+ empno | ename | job | mgr | hiredate | sal | comm | deptno
+-------+-------+-----+-----+----------+-----+------+--------
+(0 rows)
+```
+
+## Using FORALL with MERGE
+
+This example merges (inserts and updates) the records of test_table2 using `FORALL` statement:
+
+```sql
+CREATE TABLE test_table1(a int, b int);
+CREATE TABLE test_table2(a int, b int);
+
+INSERT INTO test_table1 SELECT i, i+1 from generate_series(1, 10) as i;
+INSERT INTO test_table2(a) SELECT * from generate_series(1, 5);
+
+SELECT * from test_table2;
+__OUTPUT__
+a  | b 
+---+---
+ 1 |  
+ 2 |  
+ 3 |  
+ 4 |  
+ 5 |  
+(5 rows)
+```
+
+```sql
+DECLARE
+ 	TYPE type1 IS TABLE OF test_table1.a%TYPE INDEX BY BINARY_INTEGER;
+ 	TYPE type2 IS TABLE OF test_table1.b%TYPE INDEX BY BINARY_INTEGER;
+ 	rec1 type1;
+ 	rec2 type2;
+ BEGIN
+ 	SELECT * BULK COLLECT INTO rec1, rec2 from test_table1;
+ 
+ 	FORALL i in rec1.FIRST..rec1.LAST
+ 	MERGE INTO test_table2 tgt USING
+ 	(SELECT rec1(i) a, rec2(i) b from dual) src ON (tgt.a = src.a)
+ 	WHEN MATCHED THEN
+   		UPDATE SET tgt.b = src.b
+ 	WHEN NOT MATCHED THEN
+   		INSERT (a, b) VALUES (src.a, src.b);
+ END;
+
+SELECT * from test_table2;
+__OUTPUT__
+a  | b  
+----+----
+  1 |  2
+  2 |  3
+  3 |  4
+  4 |  5
+  5 |  6
+  6 |  7
+  7 |  8
+  8 |  9
+  9 | 10
+ 10 | 11
+(10 rows)
+```
+
+## Using FORALL with SAVE EXCEPTIONS
+
+This example shows how to use the `SAVE EXCEPTIONS` clause with the `FORALL` statement:
+
+```sql
+CREATE TABLE foo(id NUMBER(6) not null, name VARCHAR2(20));
+INSERT INTO foo values(1, 'Peter');
+```
+
+```sql
+DECLARE  
+  TYPE namelist_t IS TABLE OF VARCHAR2 (5000);  
+  names_with_errors   namelist_t := namelist_t (RPAD ('ABCD', 1000, 'ABC'),'George',RPAD ('ABCD', 3000, 'ABC'),'Max');  
+  ex_dml_errors EXCEPTION;
+  PRAGMA EXCEPTION_INIT(ex_dml_errors, -24381);
+
+BEGIN  
+  FORALL indx IN 1 .. names_with_errors.COUNT SAVE EXCEPTIONS  
+  UPDATE foo SET name = names_with_errors (indx);  
+
+EXCEPTION
+  WHEN ex_dml_errors THEN
+  -- Handling exceptions
+  FOR i IN 1..SQL%BULK_EXCEPTIONS.COUNT LOOP
+  DBMS_OUTPUT.PUT_LINE('SAVE EXCEPTIONS: The Error at ' || SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ||
+                                 ' Error Code ' || SQL%BULK_EXCEPTIONS(i).ERROR_CODE);
+  END LOOP;
+END;
+
+__OUTPUT__
+SAVE EXCEPTIONS: The Error at 1 Error Code -6502
+SAVE EXCEPTIONS: The Error at 3 Error Code -6502
+
+EDB-SPL Procedure successfully completed
+```
+
+```sql
+edb@1924=#select * from foo;
+ id | name 
+----+------
+  1 | Max
+(1 row)
+```
