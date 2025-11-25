@@ -1,0 +1,96 @@
+---
+title: "NLSSORT function"
+---
+
+`NLSSORT` function is used to sort character or a string according to the specified collation.
+
+```sql
+NLSSORT(<inputstring> TEXT [, <'nlsparam'> TEXT])
+```
+
+Where,
+
+`inputstring` is of the TEXT data type.
+
+`nlsparam` is of the TEXT data type. You can provide `nlsparam` in the format `'NLS_SORT=value'`. For example `'NLS_SORT=xdanish'` where `xdanish` is treated as the NLS parameter in the NLS config file and according to which the linguistic requirements for comparison/ordering is handled.
+
+The `<outputstring>` is of the TEXT data type. The return string is in the same character set as the `inputstring`.
+
+`NLSSORT` in EPAS cannot be used as a standalone function call (unlike Oracle's NLSSORT). It is only supported when used within:
+- Comparison conditions
+- BETWEEN clause
+- IN clause
+- ORDER BY clause
+- GROUP BY clause
+- COUNT(DISTINCT) clause
+
+## Examples
+
+Create a table and insert some rows into it:
+
+```sql
+CREATE TABLE test_tab (name VARCHAR(15), id VARCHAR(5));
+INSERT INTO test_tab VALUES ('ä', '1');
+INSERT INTO test_tab VALUES ('Z', '3');
+INSERT INTO test_tab VALUES ('A', '2');
+INSERT INTO test_tab VALUES ('ä', '0');
+```
+
+This example shows NLSSORT function with default mapping of NLS parameter.
+
+```sql
+SELECT * FROM test_tab ORDER BY NLSSORT(name, 'NLS_SORT = xdanish');
+__OUTPUT__
+ name | id 
+------+----
+ A    | 2
+ ä    | 1
+ ä    | 0
+ Z    | 3
+```
+
+This example shows how to add a new mapping of NLS parameter and a collation value in the NLS config file using `edb_nls_cf_insert` function.
+
+```sql
+SELECT edb_nls_cf_insert('xdanish', '"pg_catalog"."kl-GL-x-icu"');
+__OUTPUT__
+ edb_nls_cf_insert 
+-------------------
+ 
+(1 row)
+```
+
+This example shows NLSSORT function after adding a new mapping to the NLS config file.
+
+```sql
+SELECT * FROM test_tab ORDER BY NLSSORT(name, 'NLS_SORT = xdanish');
+__OUTPUT__
+ name | id 
+------+----
+ A    | 2
+ Z    | 3
+ ä    | 1
+ ä    | 0
+(4 rows)
+```
+
+This example shows how to create a view using NLSSORT function where behavior is different in EPAS as compared to Oracle:   
+
+```sql
+CREATE VIEW test_view AS SELECT * FROM test_tab WHERE name BETWEEN NLSSORT('Z', 'NLS_SORT = xdanish') AND NLSSORT('ä', 'NLS_SORT = xdanish') ORDER BY NLSSORT(name, 'NLS_SORT = xdanish');
+__OUTPUT__
+CREATE VIEW
+```
+
+This example shows to read data from the above created view.
+
+```sql
+SELECT * FROM test_view;
+__OUTPUT__
+name | id 
+------+----
+ Z    | 3
+ ä    | 1
+ ä    | 0
+(3 rows)
+```
