@@ -96,6 +96,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [auto.failover](#auto_failover)                               | Y     | Y     | true                                  |                                                                                                                                                                |
 | [auto.reconfigure](#auto_reconfigure)                         | Y     |       | true                                  | This value must be same for all the agents.                                                                                                                     |
 | [auto.rewind](#auto_rewind)                                   | Y     |       | false                                 |                                                                                                                                                                |
+| [auto.basebackup](#auto_basebackup)                           | Y     |       | false                                 |                                                                                                                                                                |
 | [promotable](#promotable)                                     | Y     |       | true                                  |                                                                                                                                                                |
 | [use.replay.tiebreaker](#use_replay_tiebreaker)               | Y     | Y     | true                                  | This value must be same for all the agents.                                                                                                                     |
 | [standby.restart.delay](#standby_restart_delay)               |       |       | 0                                     |                                                                                                                                                                |
@@ -698,20 +699,28 @@ auto.reconfigure=true
     `primary_conninfo` is a space-delimited list of keyword=value pairs.
 
 <div id="auto_rewind" class="registered_link"></div>
+<div id="auto_basebackup" class="registered_link"></div>
 
-When the `auto.rewind` property is set to `true`, the agent will attempt to reconfigure a failed or replaced primary database as a standby, running `pg_rewind` if necessary. Some cases that apply:
+When the `auto.rewind` and/or `auto.basebackup` property is set to `true`, the agent will attempt to reconfigure a failed or replaced primary database as a standby using `pg_rewind` or `pg_basebackup`. Some cases that apply:
 -   A primary database failure: when the agents are notified to reconfigure for the new primary, the original primary agent will check to see if it should rebuild.
 -   An isolated primary node: when the node is reconnected to the cluster, the primary agent will check to see if it has been replaced by a newer primary and if it should rebuild (or resume as the primary if there was not a promotion).
 -   On startup: if the agent sees that there is already a primary database in the cluster, and the local database is not configured to be a standby, it will check to see if it should rebuild.
 
-If the agent sees that it should rebuild, it will collect current database configuration settings, run `pg_rewind` with the `--dry-run` option to see if a rewind is needed, rewind if indicated, and reconfigure the database as a standby before resuming monitoring.
+If the agent sees that it should rebuild, it will collect current database configuration settings and perform the following:
+-   If `auto.rewind` is set to true, the agent will run `pg_rewind` with the `--dry-run` option to see if a rewind is needed, rewind if indicated, and reconfigure the database as a standby before resuming monitoring. If there is an error running `pg_rewind` and `auto.basebackup` is set to true, the agent will rebuild with `pg_basebackup`.
+-   If `auto.rewind` is set to false and `auto.basebackup` is set to true, the agent will use `pg_basebackup` to attempt to rebuild the database and resume monitoring.
+
+!!! Note
+    Use this feature with caution, as it is intended for use cases where it is necessary to automatically bring the failed node back into the cluster, and where the cause of the failure is known and predictable. There may be conditions where EFM is unable to rebuild the failed primary, and manual intervention is still required.
 
 ```ini
-# Set to true to have this agent attempt to rebuild a failed
-# primary database as a standby after failover. The agent
-# will use pg_rewind if necessary to have the database follow
-# the new primary. See the user's guide for more information.
+# Set either or both of these properties to true to have this agent
+# attempt to reconfigure a failed primary database as a standby after
+# failover. If both properties are set to true, the agent will attempt
+# to use pg_rewind first, and then pg_basebackup if the rewind fails.
+# See the user's guide for more information.
 auto.rewind=false
+auto.basebackup=false
 ```
 !!! Note
     Since auto.rewind uses pg_rewind internally, all prerequisites for [pg_rewind](https://www.postgresql.org/docs/current/app-pgrewind.html) should be fulfilled before setting up this parameter. This means, you may whether have to [set wal_log_hints](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-WAL-LOG-HINTS) to `on` or enable  [data_checksums](https://www.postgresql.org/docs/current/checksums.html) manually.
@@ -1039,7 +1048,7 @@ The `release.vip.*` properties can be used to control the timing of when the VIP
 ```ini
 # In certain networks, there can be errors trying to connect to remote databases
 # at the same time the VIP is being released (i.e. on the primary node during a
-# switchover). Set the delete.vip.background property to false to have the agent
+# switchover). Set the release.vip.background property to false to have the agent
 # pause while the VIP is being released. The pre and post wait periods can add
 # time (in seconds) to wait before and after the VIP is released in case there
 # are other network effects that require them.
