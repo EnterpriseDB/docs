@@ -9,7 +9,7 @@ You can set `target_environment` to specify environment variables that
 TPA should set on the target instances during deployment (e.g., to
 specify an HTTPS proxy, as shown below).
 
-```
+```yaml
 cluster_vars:
     target_environment:
         https_proxy: https://proxy.example:8080
