@@ -43,7 +43,6 @@ if [[ "$EDB_PLATFORM_VERSION" == v1.2.* ]]; then
     .parameters.upm-istio-gateway.cookie_aeskey = env(AES_256_KEY) | 
     del(.parameters.upm-beacon-ff-base) |
     .beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL= env(IMAGESET_REGISTRY_URI) |
-    .beaconAgent.provisioning.imagesetDiscoveryContainerRegistryAuthType= env(IMAGESET_AUTHTYPE) |
     .containerRegistryURL = env(CONTAINER_REGISTRY_URI)' values.yaml
 fi
 
