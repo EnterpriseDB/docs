@@ -10,7 +10,7 @@ Use a model cache to run NVIDIA NIM models in environments without internet acce
 This guide walks through a single flow for all cache types — you do not need separate pages per backend or object store.
 
 - Phase 1: Build the model cache (connected environment)
-- Phase 2: Upload the cache to object storage (AWS or GCP)
+- Phase 2: Upload the cache to object storage (AWS, GCP, or Azure)
 - Phase 3: Use the cache in your air‑gapped cluster (UI only)
 
 ## Prerequisites
@@ -54,20 +54,7 @@ nvcr.io/nim/baidu/paddleocr:latest
 ```
 
 ### 2) (Optional) Update default model image URLs in HM
-If HM is connected, update default model image URLs to point to your registry so future clusters pull from it.
-
-```
-access_key=<your HM API key>
-
-# List models; note each model ID
-curl -k -H "x-access-key:${access_key}" \
-  -X GET "https://<your HM Portal URL>/api/v1/ai-models" | jq .
-
-# Patch a model's image URL
-curl -k -H "x-access-key:${access_key}" \
-  -X PATCH "https://<your HM Portal URL>/api/v1/ai-models/<model ID>" \
-  -d '{"imageUrl":"<your-registry>/nim/nvidia/llama-3.2-nemoretriever-300m-embed-v1:latest"}'
-```
+If HM is connected, update default model image URLs to point to your registry so future clusters pull from it. You can find default models under the Models tab in the Asset Library and update the model image URL directly from the UI.
 
 ### 3) Discover compatible profiles
 Profiles are model‑plus‑hardware variants. Use the NIM container to list profiles for your target environment. You can do this directly with Docker on a GPU host:
@@ -222,28 +209,28 @@ gcloud storage cp -r ./model-cache \
   gs://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1
 ```
 
-### Supported object store URI formats
-Hybrid Manager supports the following URI formats for the Model Profiles Path:
+**Azure Blob Storage example**
+For Azure Blob Storage, you have to upload a tar archive file instead of multiple files. This is because the KServe storage initializer loses some files if the file depth exceeds 5.
 
+Below is an example.
 ```
-- s3://<bucket>/<path>
-- gs://<bucket>/<path>
-- hdfs://<namenode-host>:<port>/<path>
-- webhdfs://<namenode-host>:<port>/<path>
-- https://<account>.blob.core.windows.net/<container>/<path> (Azure Blob Storage)
-- https://<hostname>/<path> (generic HTTPS object stores)
+tar -cvf cache.tgz -C model-cache .
+az storage azcopy blob upload \
+  -c <storage-account-container-name> \
+  --account-name <storage-account-name> \
+  -s "cache.tgz" \
+  -d "model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1/cache.tgz"
 ```
 
 ## Phase 3 — Use the cache in an air‑gapped cluster
 Create your model from the HM UI and point it at the cache path on your object store. No Kubernetes YAML is required (this differs from KServe).
 
 ### Steps in HM UI
-1. Go to AI Factory → Models → Create Model
+1. Go to Asset Library → Models
 2. Choose a default model (for example: llama‑3.2‑nemoretriever‑300m‑embed‑v1)
 3. Set “Model Profiles Path on Object Storage” to the path you uploaded in Phase 2, for example:
-  - `s3://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
-  - `gs://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
-4. Select your compute (GPU) and size; then create
+   - `/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
+1. Select your compute (GPU) and size; then create
 
 ## Screenshots
 - Screenshot placeholder: Create Model — Model selection
@@ -273,12 +260,11 @@ Follow these steps to verify the image copy, cache upload, and that your model i
 3. Validate the object store upload
   - S3: `aws s3 ls s3://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1/`
   - GCS: `gcloud storage ls gs://<bucket-name>/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1/`
-  - HDFS: `hdfs dfs -ls /model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
-  - WebHDFS: `curl -sS "http://<namenode-host>:9870/webhdfs/v1/model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1?op=LISTSTATUS" | jq`
+  - Azure Blob Storage: `az storage blob list --account-name <storage-account-name> -c <storage-account-container-name> --prefix model-cache/nim-nvidia-llama-3.2-nemoretriever-300m-embed-v1`
 
 4. Validate in HM UI
   - The model card shows status Ready/Healthy
-  - The “Model Profiles Path on Object Storage” matches your S3/GS/HDFS/WebHDFS/HTTPS path
+  - The “Model Profiles Path on Object Storage” matches your S3/GS/Azure Blob Storage path
 
 5. Run a smoke test against the model endpoint
   From the model details page, copy the endpoint URL and API key. Then, send a minimal embeddings request (for the embeddings model example):
