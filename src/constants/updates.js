@@ -19,10 +19,10 @@ export const updates = [
     moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_27_1_rel_notes/",
   },
   {
-    title: "Trusted Postgres Architect 23.40",
+    title: "Trusted Postgres Architect 23.41",
     icon: IconNames.INSTANCES,
     description:
-      "TPA 23.40 adds support for upgrading EDB Postgres Distributed (PGD) v5 clusters to v6, extends support for configuring PGD-S clusters, improves support for EFM 5.1, along with fixes and enhancements.",
+      "TPA 23.41 introduces security hardening for Patroni, enhances component upgrade flexibility, and adds support for minor version upgrades of EDB Postgres Distributed (PGD) v6 clusters (PGD-X and PGD-S), along with fixes and security enhancements.",
     url: "/tpa/latest/",
     moreUrl: "/tpa/latest/rel_notes/",
   },
