@@ -1,0 +1,148 @@
+---
+title: Sync container images to your registry
+navTitle: Sync container images
+description: Learn how to sync Hybrid Manager container images from EDB Repos 2.0 to your private container registry.
+---
+
+The Hybrid Manager software stack is distributed through the EDB Repos 2.0 registry. Before installing or upgrading Hybrid Manager, you need to sync these container images to your own secure, approved internal registry.
+
+For Red Hat OpenShift deployments, this is typically the OpenShift integrated registry or Red Hat Quay in your environment.
+
+## Why sync images?
+
+The sync process ensures:
+
+- **Security**: Images are hosted in your organization's approved registry
+- **Immutability**: SHA256 digests are preserved across environments
+- **Compliance**: You control where container images are stored
+- **Availability**: Images remain accessible even if external registries are unavailable
+
+## Prerequisites
+
+Before syncing images, ensure you have:
+
+- The Hybrid Manager version you want to install
+- An EDB Repos 2.0 access token with read permissions
+- Access to your destination container registry with push permissions
+- Either `edbctl` or `skopeo` installed on your system
+
+## Option 1: Using edbctl (Recommended)
+
+`edbctl` is the CLI tool for managing Hybrid Manager resources and provides the simplest way to sync images.
+
+### Install edbctl
+
+Before using `edbctl`, you need to install it on your system. See the [edbctl installation guide](../../using_hybrid_manager/edbctl/) for detailed instructions on how to install and configure the CLI tool.
+
+### Sync platform images
+
+Configure the required environment variables and run the sync command:
+
+```bash
+# Configure the HM release version
+export HM_RELEASE=<RELEASE_VERSION>
+
+# Configure the EDB Repos 2.0 access token
+export EDB_TOKEN=<EDB_TOKEN>
+
+# Configure the EDB Repos 2.0 registry source
+export EDB_SOURCE_REGISTRY=pgai-platform
+
+# Run the sync-to-local-registry command
+edbctl image sync-to-local-registry \
+    --destination-registry-uri "<LOCAL_REGISTRY_URI>" \
+    --version "${HM_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${EDB_TOKEN}" \
+    --destination-registry-username "${OPENSHIFT_REGISTRY_USER}" \
+    --destination-registry-password "<LOCAL_REGISTRY_PWD>"
+```
+
+Replace the placeholders:
+- `<RELEASE_VERSION>`: The HM version (e.g., `2025.12`)
+- `<EDB_TOKEN>`: Your EDB Repos 2.0 access token
+- `<LOCAL_REGISTRY_URI>`: Your destination registry URI (e.g., `quay.io/myorg/edbhm` or OpenShift internal registry)
+- `<LOCAL_REGISTRY_USER>`: Username for your destination registry
+- `<LOCAL_REGISTRY_PWD>`: Password or token for your destination registry
+
+### Sync the Operator image
+
+```bash
+# Sync the HM Operator image
+edbctl operator sync-to-local-registry \
+    --destination-registry-uri "<LOCAL_REGISTRY_URI>" \
+    --version "${HM_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${EDB_TOKEN}" \
+    --destination-registry-username "<LOCAL_REGISTRY_USER>" \
+    --destination-registry-password "<LOCAL_REGISTRY_PWD>"
+```
+
+## Option 2: Using skopeo
+
+[Skopeo](https://github.com/containers/skopeo) is an open-source tool for working with container images. You can use it to sync images if you prefer not to use `edbctl`.
+
+### Install skopeo
+
+Follow the [official skopeo installation instructions](https://github.com/containers/skopeo/blob/main/install.md) for your operating system.
+
+### Download the image list
+
+Each Hybrid Manager release provides an artifact containing the list of all required container images:
+
+```bash
+# Configure the HM release version
+export HM_RELEASE=<RELEASE_VERSION>
+
+# Configure the EDB Repos 2.0 access token
+export EDB_TOKEN=<EDB_TOKEN>
+
+# Download the image list artifact
+curl -sLO "https://downloads.enterprisedb.com/${EDB_TOKEN}/pgai-platform/raw/names/${HM_RELEASE}-images.txt/versions/${HM_RELEASE}/images.txt"
+```
+
+### Authenticate to registries
+
+```bash
+# Configure registries
+export EDB_SOURCE_REGISTRY=docker.enterprisedb.com/pgai-platform
+export LOCAL_REGISTRY_URI=<LOCAL_REGISTRY_ADDRESS>
+
+# Login to EDB Repos 2.0 source registry
+skopeo login docker.enterprisedb.com
+
+# Login to destination registry
+skopeo login <LOCAL_REGISTRY_ADDRESS>
+```
+
+### Sync all images
+
+```bash
+# Parse the image list and sync each image
+while read -r image; do
+  skopeo --override-os linux copy \
+    --multi-arch all \
+    docker://$EDB_SOURCE_REGISTRY/${image/:*@/@} \
+    docker://$LOCAL_REGISTRY_URI/${image/:*@/@} \
+    --retry-times 3
+done < images.txt
+```
+
+### Sync the Operator image
+
+```bash
+# Sync the HM Operator image
+skopeo --override-os linux copy \
+    --multi-arch all \
+    docker://${EDB_SOURCE_REGISTRY}/edb-hcp-operator/manager:${HM_RELEASE} \
+    docker://${LOCAL_REGISTRY_URI}/edb-hcp-operator/manager:${HM_RELEASE} \
+    --retry-times 3
+```
+
+!!!note
+The sync process typically takes several minutes to complete depending on your network speed and the number of images in the release.
+!!!
+
+## Next steps
+
+After syncing the container images to your private registry, proceed with the [Hybrid Manager installation](../installing).
