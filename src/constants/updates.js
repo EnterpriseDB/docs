@@ -2,6 +2,15 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Model management with AI Factory",
+    icon: IconNames.BRAIN_CIRCUIT,
+    description:
+      "EDB Postgres® AI Hybrid Manager's AI Factory now provides dedicated management for AI Model serving clusters (KServe) offering centralized deployment, monitoring, governance and secure external access.",
+    url: "/edb-postgres-ai/latest/ai-factory/",
+    moreUrl:
+      "/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_1.3_rel_notes/#genai-workloads-with-ai-factory",
+  },
+  {
     title: "Hybrid Manager 1.3",
     icon: IconNames.MODULE,
     description:
