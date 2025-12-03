@@ -43,7 +43,7 @@ function processRow(currentState, row, nextRow) {
         `<th rowspan="1" colspan="2" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[9]}</th>`,
       );
       currentState.output.push(
-        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[11]}</th>`,
+        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[12]}</th>`,
       );
       currentState.output.push(`</tr>\n`);
       currentState.rowState = 3;
