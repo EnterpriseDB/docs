@@ -1,12 +1,16 @@
 ---
-title: Schema ingestion
+title: Controlling schema ingestion
 navTitle: Schema ingestion
-
+deepToC: true
 ---
+
+The [`beacon-agent.yaml` monitoring template](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/) allows the Agent to ingest all schemas that the migration user has permissions to and contain at least one table.
+
+You can add further configurations to control schema ingestion.
 
 ## Defining a subset of schemas for ingestion
 
-The [`beacon-agent.yaml` monitoring template](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/) allows the Agent to ingest all schemas that the migration user has permissions to and contain at least one table. If you don't want the Agent to ingest all schemas, you can define a subset with the `databases.schema.filter` option.
+ If you don't want the Agent to ingest all schemas, you can define a subset with the `databases.schema.filter` option.
 
 ### Using the schema filter
 
@@ -145,5 +149,50 @@ The Agent excludes the following system schemas by default.
 - XDB
 - XS$NULL
 
-### Configuring the agent to support schema ingestion for several databases
+## Configuring the agent to support schema ingestion for several databases
 
+When you configure the HM agent to ingest schemas from several Oracle databases, you can use the `schema_export_max_workers` parameter of the `beacon-agent.yaml` configuration file to control how many schema export jobs the HM agent runs in parallel.
+
+The `schema_export_max_workers` sets the maximum number of concurrent schema exports the HM agent runs across all configured Oracle databases. Each active worker consumes CPU, memory, and some disk space on the auxiliary machine that runs HM agent, and generates load on the corresponding source database.
+
+```yml
+... # other beacon-agent.yaml configurations
+provider:
+      onprem:
+        runner:
+          enabled: true
+        schema_export_max_workers: 10
+...
+```
+
+Start with the default `schema_export_max_workers: 10` when configuring initial schema ingestion. Then, monitor the HM agent host or auxiliary machine (CPU, memory, disk I/O, network) using your standard system tools or the Grafana dashboards included with the HM console.
+
+If the host is underutilized and you need faster ingestion for multiple databases, increase the value in small steps and observe the impact.
+
+If resource usage is consistently high or causing contention, decrease the value and confirm that the system stabilizes.
+
+### Increasing the number of parallel workers
+
+The default `beacon-agent.yaml` configuration can handle schema ingestion for multiple databases, but if you are performing a bulk migration and want the HM agent to ingest the schemas of more than 10 source databases, we recommend increasing the number of parallel workers. You may have also already started the agent and notice that the databases are taking too long to appear in the **Estate > Migrations** tab.
+
+If the auxiliary machine where you are running the agent has available resources (CPU, memory, and network), you can increase the number of parallel workers used during ingestion to improve performance. You can use Grafana monitoring to look at the current CPU and memory utilization on the HM agent host during schema ingestion.
+
+```yaml
+provider:
+  onprem:
+    schema_export_max_workers: 20
+    # ...
+```
+
+After each change, restart the Agent if it is not running as a service with automatic reload.
+
+### Decreasing the number of parallel workers
+
+If the auxiliary machine where you are running the agent is using up too many resources or you notice spikes in CPU, memory, and disk usage, you can decrease the number of parallel workers used during ingestion to improve performance. This slows down total ingestion time but reduces the peak resource usage on both the HM agent host and the source databases. You can use Grafana monitoring to look at the current CPU and memory utilization on the HM agent host during schema ingestion.
+
+```yaml
+provider:
+  onprem:
+    schema_export_max_workers: 4
+    # ...
+```
