@@ -1,0 +1,116 @@
+# Sync EDB Postgres AI Platform container images into a customer owned registry
+
+The software stack of our EDB PGAI is pushed into EDB Cloudsmith registry to provide artifacts that our customers will be able to use.
+
+A requirement to use our stack will be that customers hosts their own secure and approved internal registry (in case of EKS as a platform to run PGAI that can be an ECR in the same AWS account, or can be another kind of supported container registry) and knowing the EDB PGAI version that we want to install, we can take all the artifacts from Cloudsmith and sync them internally into the local registry before installing or upgrading the software stack with the helm chart.
+
+The sync process needs to preserve the container images SHA256 to ensure images security and immutability across different environments. You can do the sync using `edbctl`, the CLI to manage PGAI resources, or by running a tool like [skopeo](https://github.com/containers/skopeo), that you can install referring to [their official docs](https://github.com/containers/skopeo/blob/main/install.md).
+
+!!! note
+    If the local registry is AWS ECR, since we want all the EDB repositories to stay under a single namespace (see related AWS docs [here](https://docs.aws.amazon.com/AmazonECR/latest/userguide/Repositories.html#repository-concepts)), we would need to create multiple repositories in the registry to allow the image copy to work, because ECR doesn’t support images with multiple slashes in their name to be saved in the same repository.
+
+## Using `edbctl` - Suggested
+
+!!! note
+    `edbctl` is still in development and we don't have yet released binaries, you will need to build it by yourself, see [here](https://github.com/EnterpriseDB/upm-beaconator-cli?tab=readme-ov-file#build-and-run-locally).
+
+```bash
+# building binary
+$ make build
+
+# Configure the EDB PGAI release to be taken
+export EDBPGAI_RELEASE=<RELEASE_VERSION>
+# Configure the EDB Cloudsmith access token
+export CS_EDB_TOKEN=<CS_EDB_TOKEN_REDACTED>
+# Configure the EDB Cloudsmith registry source
+export EDB_SOURCE_REGISTRY=pgai-platform
+# Run the sync-to-local-registry command
+build/edbctl image sync-to-local-registry \
+    --destination-registry-uri "<LOCAL_REGISTRY_URI>" \
+    --version "${EDBPGAI_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${CS_EDB_TOKEN}" \
+    --destination-registry-username "<LOCAL_REGISTRY_USER>" \
+    --destination-registry-password "<LOCAL_REGISTRY_PWD>"
+```
+
+!!! note
+    Starting with EDB PGAI version 1.3.0, syncing the EDB PGAI Operator image to your local registry is a required step.
+
+```bash
+# Sync the EDB PGAI Operator Image to the destination registry:
+build/edbctl operator sync-to-local-registry \
+    --destination-registry-uri "<LOCAL_REGISTRY_URI>" \
+    --version "${EDBPGAI_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${CS_EDB_TOKEN}" \
+    --destination-registry-username "<LOCAL_REGISTRY_USER>" \
+    --destination-registry-password "<LOCAL_REGISTRY_PWD>"
+```
+
+When you run the above command `edbctl image sync-to-local-registry` with a <LOCAL_REGISTRY_URI> that is AWS ECR, the CLI will ask a confirmation before proceed with they sync process and will provide a code snippet with a list of AWS CLI commands that can be used to pre-create all the repositories that ECR requires to successfully complete the sync process.
+
+## Using `skopeo`
+
+Every EDB PGAI release provides an artifact that contains the list of all the container images that are required to install/upgrade the software stack, and can be used to run a sync process to copy over all these container images from the EDB Cloudsmith registry to an internal one.
+
+The following snippet can run on Bash on Linux/MacOS/Windows WSL
+
+```bash
+# Configure the EDB PGAI release to be taken
+export EDBPGAI_RELEASE=<RELEASE_VERSION>
+# Configure the EDB Cloudsmith access token
+export CS_EDB_TOKEN=<CS_EDB_TOKEN_REDACTED>
+# Downloading the image list artifact locally
+curl -sLO "https://downloads.enterprisedb.com/${CS_EDB_TOKEN}/pgai-platform/raw/names/${EDBPGAI_RELEASE}-images.txt/versions/${EDBPGAI_RELEASE}/images.txt"
+# Configure the EDB Cloudsmith registry source
+export EDB_SOURCE_REGISTRY=docker.enterprisedb.com/pgai-platform
+# Configure the local registry destination
+export LOCAL_REGISTRY_URI=<LOCAL_REGISTRY_ADDRESS>
+# skopeo login to the source registry, provide credentials as requested
+skopeo login docker.enterprisedb.com
+# skopeo login to the destination registry, provide credentials as requested
+skopeo login <LOCAL_REGISTRY_ADDRESS>
+# Parsing the image list and syncing every image
+while read -r image; do skopeo --override-os linux copy --multi-arch all docker://$EDB_SOURCE_REGISTRY/${image/:*@/@} docker://$LOCAL_REGISTRY_URI/${image/:*@/@} --retry-times 3; done < images.txt
+```
+
+!!! note
+    Starting with EDB PGAI version 1.3.0, syncing the EDB PGAI Operator image to your local registry is a required step.
+
+```bash
+# Sync the EDB PGAI Operator Image to the destination registry:
+skopeo --override-os linux copy \
+    --multi-arch all \
+    docker://${EDB_SOURCE_REGISTRY}/edb-hcp-operator/manager:${EDBPGAI_RELEASE} \
+    docker://${LOCAL_REGISTRY_URI}/edb-hcp-operator/manager:${EDBPGAI_RELEASE} \
+    --retry-times 3
+```
+
+This is a sample run that shows an output result of the previous commands, using AWS ECR as a destination registry:
+
+```bash
+$ export EDBPGAI_RELEASE=v1.0.0-gm-appl
+$ export CS_EDB_TOKEN=<CS_EDB_TOKEN_REDACTED>
+$ export AWS_ACCOUNT_ID=123456789012 # sample value, replace with the correct one
+$ curl -sLO "https://downloads.enterprisedb.com/${CS_EDB_TOKEN}/pgai-platform/raw/names/${EDBPGAI_RELEASE}-images.txt/versions/${EDBPGAI_RELEASE}/images.txt"
+$ wc -l images.txt # shows how many images are in the release
+132 images.txt
+$ export EDB_SOURCE_REGISTRY=docker.enterprisedb.com/pgai-platform
+$ export LOCAL_REGISTRY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/edbpgai-test-ecr
+$ skopeo login docker.enterprisedb.com
+Username: <REDACTED>
+Password:
+Login Succeeded!
+$ skopeo login ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com -u AWS -p $(aws ecr get-login-password --region us-east-1)
+Login Succeeded!
+# WE CAN IGNORE AWS RepositoryAlreadyExistsException WHILE RUNNING aws ecr create-repository
+$ while read -r image; do aws ecr create-repository --repository-name "${LOCAL_REGISTRY_URI#*/}/${image%%[:@]*}" --no-cli-pager || true; skopeo --override-os linux copy --multi-arch all docker://$EDB_SOURCE_REGISTRY/${image/:*@/@} docker://$LOCAL_REGISTRY_URI/${image/:*@/@} --retry-times 3; done < images.txt
+...the sync process will take quite a few minutes to copy the full set of images...
+# CHECKING RESULTS OF THE IMAGE SYNC
+$ aws ecr describe-repositories --query 'repositories[?starts_with(repositoryName, `edbpgai-test-ecr`)]' --output json | jq '. | length'
+93
+$ cat images.txt | awk -F'[:@]' '{print $1}' | sort -u | wc -l
+93
+# SINGLE IMAGE AND REPOS ARE MATCHING
+```
