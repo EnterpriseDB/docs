@@ -16,7 +16,7 @@ The `UTL_SMTP` package sends emails over the Simple Mail Transfer Protocol (SMTP
 
 | Function/procedure                                                                                                                                                                                                                   | Function or procedure | Return type  | Description                                                                         |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------|--------------|-------------------------------------------------------------------------------------|
-| `AUTH(c IN OUT connection, username IN VARCHAR2, password IN VARCHAR2, schemes IN VARCHAR2 DEFAULT NON_CLEARTEXT_PASSWORD_SCHEMES)`                                                                                                  | Both                  | `Reply`      | Send the `AUTH` command to authenticate with the SMTP server.                       |
+| `AUTH(c IN OUT, username IN, password IN [, schemes IN])`                                                                                                  | Both                  | `Reply`      | Send the `AUTH` command to authenticate with the SMTP server.                       |
 | `CLOSE_DATA(c IN OUT)`                                                                                                                                                                                                               | Both                  | `REPLY`      | End an email message.                                                               |
 | `COMMAND(c IN OUT, cmd [, arg ])`                                                                                                                                                                                                    | Both                  | `REPLY`      | Execute an SMTP command.                                                            |
 | `COMMAND_REPLIES(c IN OUT, cmd [, arg ])`                                                                                                                                                                                            | Function              | `REPLIES`    | Execute an SMTP command where multiple reply lines are expected.                    |
@@ -26,12 +26,12 @@ The `UTL_SMTP` package sends emails over the Simple Mail Transfer Protocol (SMTP
 | `HELP(c IN OUT [, command ])`                                                                                                                                                                                                        | Function              | `REPLIES`    | Send the `HELP` command.                                                            |
 | `MAIL(c IN OUT, sender [, parameters ])`                                                                                                                                                                                             | Both                  | `REPLY`      | Start a mail transaction.                                                           |
 | `NOOP(c IN OUT)`                                                                                                                                                                                                                     | Both                  | `REPLY`      | Send the null command.                                                              |
-| `OPEN_CONNECTION(host IN VARCHAR2(255), port IN INTEGER, tx_timeout IN INTEGER, wallet_path IN VARCHAR2, wallet_password IN VARCHAR2, secure_connection_before_smtp IN BOOLEAN, secure_host IN VARCHAR2, ssl_cert_path IN VARCHAR2)` | Function              | `CONNECTION` | Open a connection.                                                                  |
+| `OPEN_CONNECTION(host IN, port IN, tx_timeout IN, wallet_path IN, wallet_password IN, secure_connection_before_smtp IN, secure_host IN VARCHAR2, ssl_cert_path IN)` | Function              | `CONNECTION` | Open a connection.                                                                  |
 | `OPEN_DATA(c IN OUT)`                                                                                                                                                                                                                | Both                  | `REPLY`      | Send the `DATA` command.                                                            |
 | `QUIT(c IN OUT)`                                                                                                                                                                                                                     | Both                  | `REPLY`      | Terminate the SMTP session and disconnect.                                          |
 | `RCPT(c IN OUT, recipient [, parameters ])`                                                                                                                                                                                          | Both                  | `REPLY`      | Specify the recipient of an email message.                                          |
 | `RSET(c IN OUT)`                                                                                                                                                                                                                     | Both                  | `REPLY`      | Terminate the current mail transaction.                                             |
-| `STARTTLS(c IN OUT connection, secure_host IN VARCHAR2 DEFAULT NULL)`                                                                                                                                                                | Both                  | `REPLY`      | Initiate the STARTTLS command to upgrade the connection to a secure TLS connection. |
+| `STARTTLS(c IN OUT connection[], secure_host IN])`                                                                                                                                                                | Both                  | `REPLY`      | Initiate the STARTTLS command to upgrade the connection to a secure TLS connection. |
 | `VRFY(c IN OUT, recipient)`                                                                                                                                                                                                          | Function              | `REPLY`      | Validate an email address.                                                          |
 | `WRITE_DATA(c IN OUT, data)`                                                                                                                                                                                                         | Procedure             | n/a          | Write a portion of the email message.                                               |
 
@@ -49,10 +49,10 @@ The following table lists the public variables available in the `UTL_SMTP` packa
 The `CONNECTION` record type provides a description of an SMTP connection.
 
 ```sql
-TYPE connection IS RECORD (
-    host            VARCHAR2(255),
-    port            PLS_INTEGER,
-    tx_timeout      PLS_INTEGER
+TYPE connection IS RECORD(
+   host            VARCHAR2(255),
+   port            PLS_INTEGER,
+   tx_timeout      PLS_INTEGER
 );
 ```
 
@@ -63,10 +63,11 @@ TYPE connection IS RECORD (
 The `REPLY` record type provides a description of an SMTP reply line. `REPLIES` is a table of multiple SMTP reply lines.
 
 ```sql
-TYPE reply IS RECORD (
-    code            INTEGER,
-    text            VARCHAR2(508)
-);
+TYPE reply IS RECORD(
+   code  INTEGER,
+   text  VARCHAR2(508)
+); 
+
 TYPE replies IS TABLE OF reply INDEX BY BINARY_INTEGER;
 ```
 
@@ -79,18 +80,19 @@ This subprograms sends the AUTH command to authenticate with the SMTP server. Th
 ```sql
 # Procedure
 AUTH(
-    c IN OUT connection,
-    username IN VARCHAR2,
-    password IN VARCHAR2,
-    schemes IN VARCHAR2 DEFAULT NON_CLEARTEXT_PASSWORD_SCHEMES)
+   c IN OUT  connection,
+   username  IN VARCHAR2,
+   password  IN VARCHAR2,
+   schemes   IN VARCHAR2 DEFAULT NON_CLEARTEXT_PASSWORD_SCHEMES
+);
 
 # Function
-UTL_SMTP.AUTH (
+AUTH(
    c          IN OUT connection,
-   username   IN            VARCHAR2,
-   password   IN            VARCHAR2,
-   schemes    IN            VARCHAR2 DEFAULT NON_CLEARTEXT_PASSWORD_SCHEMES)
- RETURN reply;
+   username   IN VARCHAR2,
+   password   IN VARCHAR2,
+   schemes    IN VARCHAR2 DEFAULT NON_CLEARTEXT_PASSWORD_SCHEMES
+) RETURN reply;
 ```
 
 ### Parameters
@@ -110,6 +112,12 @@ UTL_SMTP.AUTH (
 `schemes`
 
  The authentication schemes to attempt. The default is `NON_CLEARTEXT_PASSWORD_SCHEMES`. Allowed values are `ALL_SCHEMES` and `NON_CLEARTEXT_PASSWORD_SCHEMES`.
+
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 !!! Note
     - `NON_CLEARTEXT_PASSWORD_SCHEMES` supports the CRAM-MD5 authentication schemes which do not transmit passwords in clear text over SMTP.
@@ -131,11 +139,13 @@ This is a single period at the beginning of a line.
 ```sql
 # Procedure
 CLOSE_DATA(
-   c IN OUT CONNECTION );
+   c IN OUT CONNECTION
+);
 
 # Function
 CLOSE_DATA(
-    c IN OUT CONNECTION ) RETURN reply;
+    c IN OUT CONNECTION
+) RETURN reply;
 ```
 
 ### Parameters
@@ -143,6 +153,12 @@ CLOSE_DATA(
 `c`
 
  The SMTP connection to close.
+
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 ---
 
@@ -154,14 +170,16 @@ The `COMMAND` subprograms executes an SMTP command. If you're expecting multiple
 # Procedure
 COMMAND( 
    c IN OUT CONNECTION, 
-   cmd VARCHAR2
-   [, arg VARCHAR2 ]) 
+   cmd VARCHAR2,
+   arg VARCHAR2 DEFAULT NULL
+); 
 
 # Function
 COMMAND( 
    c IN OUT CONNECTION, 
-   cmd VARCHAR2 
-   [, arg VARCHAR2 ]) RETURN reply;
+   cmd VARCHAR2, 
+   arg VARCHAR2 DEFAULT NULL
+) RETURN reply;
 ```
 
 ### Parameters
@@ -191,10 +209,11 @@ COMMAND(
 The `COMMAND_REPLIES` function processes an SMTP command that returns multiple reply lines. Use `COMMAND` if you expect only a single reply line.
 
 ```sql
-COMMAND(
+COMMAND_REPLIES(
    c IN OUT CONNECTION, 
-   cmd VARCHAR2
-   [, <arg> VARCHAR2 ]) RETURN replies;
+   cmd VARCHAR2,
+   arg VARCHAR2 DEFAULT NULL
+) RETURN replies;
 ```
 
 ### Parameters
@@ -223,13 +242,15 @@ The `DATA` subprograms specify the body of the email message. The message is ter
 ```sql
 # Procedure
 DATA(
-   c IN OUT CONNECTION,
-   body VARCHAR2)
+   c    IN OUT CONNECTION,
+   body VARCHAR2
+);
 
 # Function
-DATA(
-    c IN OUT CONNECTION,
-    body VARCHAR2) RETURN reply;
+DATA( 
+    c    IN OUT CONNECTION,
+    body VARCHAR2
+) RETURN reply;
 ```
 
 ### Parameters
@@ -242,6 +263,12 @@ DATA(
 
  Body of the email message to send.
 
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
+
 ---
 
 ## EHLO
@@ -251,13 +278,15 @@ The `EHLO` subprograms performs initial handshaking with the SMTP server after e
 ```sql
 # Procedure
 EHLO(
-   c IN OUT CONNECTION, 
-   domain VARCHAR2)
+   c      IN OUT CONNECTION, 
+   domain VARCHAR2
+);
 
 # Function
 EHLO(
-    c IN OUT CONNECTION, 
-    domain VARCHAR2) RETURN replies;
+   c      IN OUT CONNECTION, 
+   domain VARCHAR2
+) RETURN replies;
 ```
 
 ### Parameters
@@ -269,6 +298,10 @@ EHLO(
 `domain`
 
  Domain name of the sending host.
+
+`replies`
+
+ SMTP reply lines to the command. See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 ---
 
@@ -279,13 +312,15 @@ The `HELO` subprograms performs initial handshaking with the SMTP server after e
 ```sql
 # Procedure
 HELO(
-   c IN OUT CONNECTION, 
-   domain VARCHAR2)
+   c      IN OUT CONNECTION, 
+   domain VARCHAR2
+);
 
 # Function
 HELO(
-    c IN OUT CONNECTION, 
-    domain VARCHAR2) RETURN replies;
+   c      IN OUT CONNECTION, 
+   domain VARCHAR2
+) RETURN reply;
 ```
 
 ### Parameters
@@ -298,6 +333,12 @@ HELO(
 
  Domain name of the sending host.
 
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
+
 ---
 ## HELP
 
@@ -305,8 +346,9 @@ The `HELP` function sends the `HELP` command to the SMTP server.
 
 ```sql
 HELP(
-   c IN OUT CONNECTION 
-   [, command VARCHAR2 ]) RETURN replies;
+   c       IN OUT CONNECTION, 
+   command VARCHAR2 DEFAULT NULL
+) RETURN replies;
 ```
 
 ### Parameters
@@ -331,15 +373,17 @@ The `MAIL` procedure initiates a mail transaction.
 ```sql
 # Procedure
 MAIL(
-   c IN OUT CONNECTION, 
-   sender VARCHAR2 
-   [, parameters VARCHAR2 ])
+   c          IN OUT CONNECTION, 
+   sender     VARCHAR2, 
+   parameters VARCHAR2 DEFAULT NULL
+);
 
 # Function
 MAIL(
-   c IN OUT CONNECTION, 
-   sender VARCHAR2 
-   [, parameters VARCHAR2 ]) RETURN reply;
+   c      IN OUT CONNECTION, 
+   sender VARCHAR2, 
+   parameters VARCHAR2 DEFAULT NULL
+) RETURN reply;
 ```
 
 ### Parameters
@@ -356,6 +400,12 @@ MAIL(
 
  Mail command parameters in the format `key=value` as defined in RFC 1869.
 
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
+
 ---
 
 ## NOOP
@@ -365,11 +415,13 @@ The `NOOP` function/procedure sends the null command to the SMTP server. The `NO
 ```sql
 # Procedure
 NOOP(
-   c IN OUT CONNECTION)
+   c IN OUT CONNECTION
+);
 
 # Function
 NOOP(
-   c IN OUT CONNECTION) RETURN reply;
+   c IN OUT CONNECTION
+) RETURN reply;
 ```
 
 ### Parameters
@@ -380,7 +432,9 @@ NOOP(
 
 `reply`
 
- SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`. See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`. 
+ 
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 ---
 
@@ -397,7 +451,8 @@ OPEN_CONNECTION(
     wallet_password IN VARCHAR2(255) DEFAULT NULL,
     secure_connection_before_smtp IN BOOLEAN DEFAULT FALSE,
     secure_host IN VARCHAR2(255) DEFAULT NULL,
-    ssl_cert_path IN VARCHAR2(255) DEFAULT NULL) RETURN connection
+    ssl_cert_path IN VARCHAR2(255) DEFAULT NULL
+) RETURN connection;
 ```
 
 ### Parameters
@@ -434,6 +489,10 @@ OPEN_CONNECTION(
 
  Path to the SSL certificate.
 
+`connection`
+
+Returns the connection to the SMTP server.
+
 ---
 ## OPEN_DATA
 
@@ -442,11 +501,13 @@ The `OPEN_DATA` subprograms sends the `DATA` command to the SMTP server.
 ```sql
 # Procedure
 OPEN_DATA(
-   c IN OUT CONNECTION)
+   c IN OUT CONNECTION
+);
 
 # Function
-OPEN_DATA (
-   c IN OUT connection) RETURN reply;
+OPEN_DATA(
+   c IN OUT connection
+) RETURN reply;
 ```
 
 ### Parameters
@@ -454,6 +515,12 @@ OPEN_DATA (
 `c`
 
  SMTP connection on which to send the command.
+
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 ---
 
@@ -464,11 +531,13 @@ The `QUIT` subprograms closes the session with an SMTP server.
 ```sql
 # Procedure
 QUIT(
-   c IN OUT CONNECTION)
+   c IN OUT CONNECTION
+);
 
 # Function
 QUIT(
-   c IN OUT CONNECTION) RETURN reply;
+   c IN OUT CONNECTION
+) RETURN reply;
 ```
 
 ### Parameters
@@ -476,6 +545,12 @@ QUIT(
 `c`
 
  SMTP connection to terminate.
+
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 ---
 
@@ -488,13 +563,15 @@ The `RCPT` subprograms provide the email address of the recipient. To schedule m
 RCPT(
    c IN OUT CONNECTION, 
    recipient VARCHAR2 
-   [, <parameters> VARCHAR2 ])
+   parameters VARCHAR2 DEFAULT NULL
+);
 
 # Function
 RCPT(
    c IN OUT CONNECTION, 
-   recipient VARCHAR2 
-   [, <parameters> VARCHAR2 ]) RETURN reply;
+   recipient VARCHAR2, 
+   parameters VARCHAR2 DEFAULT NULL
+) RETURN reply;
 ```
 
 ### Parameters
@@ -511,6 +588,12 @@ RCPT(
 
  Mail command parameters in the format `key=value` as defined in RFC 1869.
 
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
+
 ---
 
 ## RSET
@@ -520,11 +603,13 @@ The `RSET` subprograms terminate the current mail transaction.
 ```sql
 # Procedure
 RSET(
-   c IN OUT CONNECTION)
+   c IN OUT CONNECTION
+);
 
 # Function
 RSET(
-   c IN OUT CONNECTION) RETURN reply;
+   c IN OUT CONNECTION
+) RETURN reply;
 ```
 
 ### Parameters
@@ -533,6 +618,11 @@ RSET(
 
  SMTP connection on which to cancel the mail transaction.
 
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 ---
 
 ## STARTTLS
@@ -542,13 +632,15 @@ These subprograms ensure a secure SMTP connection by sending the STARTTLS comman
 ```sql
 # Procedure
 STARTTLS(
-    c IN OUT connection,
-    secure_host IN VARCHAR2 DEFAULT NULL)
+    c           IN OUT connection,
+    secure_host IN VARCHAR2 DEFAULT NULL
+);
 
 # Function
-STARTTLS (
+STARTTLS(
    c            IN OUT connection,
-   secure_host  IN     VARCHAR2 DEFAULT NULL) RETURN reply;
+   secure_host  IN VARCHAR2 DEFAULT NULL
+) RETURN reply;
 ```
 
 ### Parameters
@@ -561,6 +653,11 @@ SMTP connection on which to send the command.
 
 The host name to be matched against the common name of the SMTP server’s SSL certificate. It can also be a domain name like "*.example.com". If NULL, the SMTP host name is used to connect.
 
+`reply`
+
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`.
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 ---
 
 ## VRFY
@@ -569,8 +666,9 @@ The `VRFY` function validates and verifies the recipient’s email address. If v
 
 ```sql
 VRFY(
-   c IN OUT CONNECTION, 
-   recipient VARCHAR2) RETURN reply;
+   c         IN OUT CONNECTION, 
+   recipient VARCHAR2
+) RETURN reply;
 ```
 
 ### Parameters
@@ -585,7 +683,9 @@ VRFY(
 
 `reply`
 
- SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`. See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
+ SMTP reply to the command. If SMTP returns multiple replies, only the last one is returned in `reply`. 
+
+ See [Reply/Replies](#replyreplies) for a description of `REPLY` and `REPLIES`.
 
 ---
 
@@ -596,7 +696,8 @@ The `WRITE_DATA` procedure adds `VARCHAR2` data to an email message. You can cal
 ```sql
 WRITE_DATA(
     c IN OUT CONNECTION, 
-    data VARCHAR2)
+    data VARCHAR2
+);
 ```
 
 ### Parameters
@@ -647,7 +748,7 @@ EXEC send_mail('asmith@enterprisedb.com','pjones@enterprisedb.com','Holiday
 Party','Are you planning to attend?','smtp.enterprisedb.com');
 ```
 
-This example uses the `OPEN_DATA`, `WRITE_DATA`, and `CLOSE_DATA` procedures instead of the `DATA` procedure.
+This example uses the `OPEN_DATA`, `WRITE_DATA`, `CLOSE_DATA`, `AUTH`, and `STARTTLS` procedures instead of the `DATA` procedure.
 
 ```sql
 CREATE OR REPLACE PROCEDURE send_mail_2 (
