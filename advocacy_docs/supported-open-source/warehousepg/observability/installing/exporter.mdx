@@ -1,0 +1,95 @@
+---
+title: Installing the Exporter 
+navTitle: Install the Exporter
+description: Install the Exporter.
+---
+
+Install the WHPG Exporter and WHPG Collector on your designated host, which can reside inside your WHPG cluster (on the coordinator or standby coordinator) or on a separate host.
+
+## Download and install the Exporter 
+
+1. Download the package from the EDB repository:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpgX-observability-exporter
+    ```
+
+1. Install the Exporter on the designated host:
+
+    <TabContainer syncKey="exporter">
+    <Tab title="RHEL 8, 9">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo dnf install -y whpg-observability-exporter'
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo yum install -y whpg-observability-exporter'
+    ```
+
+    </Tab>
+    </TabContainer>
+
+## Configure the Exporter
+
+Edit the file `/etc/sysconfig/whpg-observability-exporter` and save your changes.
+
+```ini
+# Database Connection String (DSN) for the Warehouse PG instance to monitor.
+WHPG_OBS_DSN="host=localhost port=5433 dbname=dvdrental user=postgres password=postgres sslmode=disable"
+
+# Exporter Listening Port for the endpoints eg - queries
+WHPG_OBS_PORT=9187
+
+# Application Logging Level (e.g., debug, info, warn, error).
+WHPG_OBS_LOG_LEVEL=warn
+# Remote Write Endpoint URL for sending metrics to Prometheus database.
+WHPG_OBS_REMOTE_WRITE_URL="http://localhost:9090/api/v1/write"
+
+# Remote Write Frequency—how often to send metrics to the remote storage.
+WHPG_OBS_REMOTE_WRITE_INTERVAL=15s
+
+# Remote Write Timeout for the connection/request when sending metrics.
+WHPG_OBS_REMOTE_WRITE_TIMEOUT=30s
+```
+
+Ensure that you configure at least the following parameters:
+
+- `WHPG_OBS_DSN`: Your WHPG cluster connection details. The database must be a database with the WHPG Extension installed, and the user must hold the superuser role. This parameter must be the same as `WHPG_OBS_DSN` for the WHPG Collector.
+- `WHPG_OBS_PORT`: The port the Exporter listens for Grafana requests. Default is 9187. Ensure that this port has been successfully exposed.
+- `WHPG_OBS_REMOTE_WRITE_URL`: Your configured host name and port number for the Prometheus endpoint for historic data.
+
+
+## Start the Exporter service
+
+Run the following command to start the Exporter service:
+
+```bash
+sudo systemctl start whpg-observability-exporter
+```
+
+The service runs as the dedicated user `whpg-exporter` and creates its log files under `/var/log/whpg-observability-exporter/`. You can manage this service using systemctl commands. For example:
+
+Check status:
+
+```
+sudo systemctl status whpg-observability-exporter
+```
+
+Enable on boot:
+
+```
+sudo systemctl enable whpg-observability-exporter
+``` 
+
+## Verify the installation
+
+Access the REST endpoint from your browser to confirm the Exporter is running: `http://<exporter_hostname>:<WHPG_OBS_PROM_PORT>/metrics`.
+
+You should see the live SQL metrics that will be consumed by Prometheus and visualized in Grafana.
