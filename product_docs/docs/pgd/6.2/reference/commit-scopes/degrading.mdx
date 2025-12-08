@@ -62,4 +62,32 @@ ALL (left_dc) CAMO DEGRADE ON (timeout=20ms, require_write_lead=true) TO ASYNC
 
 Again, you should set the `timeout` parameter, as the default is `0`. 
 
+## Monitoring degrade events
 
+Use the [bdr.stat_commit_scope](/pgd/latest/reference/tables-views-functions/catalogs-visible/#bdrstat_commit_scope) to track degrade events. Three key metrics provide visibility into the degrade behavior:
+
+- `ndegrades` tracks per-transaction degrade events. It increments each time a backend hits the degrade timeout during commit and successfully degrades that specific transaction. This metric shows the total number of individual transactions that have experienced degradation.
+- `nconfig_degrades` tracks configuration-level state changes to the degraded mode. It increments when the background worker (manager process) switches the commit scope's shared state to degraded, based on node availability checks. This indicates how many times the commit scope configuration itself entered the degraded state, affecting all subsequent transactions until recovered.
+- `last_state_change_time` records the timestamp of the last configuration-level state change (either entering or recovering from the degraded state). Use this metric to identify precisely when the commit scope last transitioned between normal and degraded operation, adding correlation with other system events or outages.
+
+### Example monitoring query
+
+View commit scope statistics including degrade events and the latest configuration-level state change:
+
+```sql
+SELECT
+  commit_scope_name,
+  ndegrades,
+  nconfig_degrades,
+  last_state_change_time,
+  CASE
+    WHEN last_state_change_time IS NULL THEN 'never degraded'
+    WHEN age(now(), last_state_change_time) < interval '5 seconds' THEN 'recently changed'
+    ELSE 'stable for ' || age(now(), last_state_change_time)::text
+  END AS state_change_info
+FROM bdr.stat_commit_scope
+WHERE ndegrades > 0 OR nconfig_degrades > 0
+ORDER BY last_state_change_time DESC NULLS LAST;
+```
+
+These metrics together provide complete visibility into both immediate per-transaction fallback and longer-term state management degrade behavior, along with temporal context for troubleshooting.
