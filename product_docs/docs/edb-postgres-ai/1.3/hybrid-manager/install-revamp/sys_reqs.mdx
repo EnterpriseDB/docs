@@ -1,0 +1,304 @@
+---
+title: System requirements
+navTitle: System requirements
+description: Hardware, software, and external service requirements for a successful Hybrid Manager deployment.
+deepToC: true
+---
+
+**Role:** Infrastructure Engineer / Cloud Administrator
+
+**Outcome:** A validated inventory of compute, storage, and external services ready for configuration.
+
+**Next Step:** [Preparing the Environment](../install/prep)
+
+## Connection to architecture
+
+The requirements listed below for Phase 2 are not all generic; many are direct consequences of the decisions made in **[Phase 1: Planning Architecture](../install/planning)**.
+
+* **Locality decisions** determine your latency requirements between the Control Plane and Data Plane.
+* **Disaster Recovery goals** determine the need for specific Object Storage configurations (for replication).
+* **Activeness (Active/Active)** determines if you need the specialized networking required for Postgres Distributed.
+
+!!! Note
+While this document serves as your comprehensive technical checklist, **EDB Professional Services** are the primary resource for validating complex deployment architectures.
+If your "Target State" from Phase 1 involves multi-region redundancy or high-scale requirements, we recommend clarifying these detailed requirements via a Statement of Work (SoW) before procuring infrastructure.
+!!!
+
+## Deployment readiness checklist
+
+Use this checklist to verify you have all necessary infrastructure components available before beginning the installation. 
+You configure connections to these specific items in **[Phase 2: Preparation](../install/prep)**.
+
+- [ ] **1. Bastion host & CLI tools:** A machine with network access to the cluster to run installation commands.
+- [ ] **2. Kubernetes Cluster:** A supported distribution (EKS, GKE, RKE2, RHOS).
+- [ ] **3. Compute Resources:**
+  - [ ] Control plane nodes
+  - [ ] Data plane nodes
+  - [ ] AI model nodes (Required if using GenAI/AI Factory)
+- [ ] **4. Networking & Access:**
+  - [ ] Local networking (VPC/Subnets)
+  - [ ] Ingress Controller (Load Balancer with external IP capacity)
+  - [ ] DNS Records (Resolvable domain for Portal and Beacons)
+  - [ ] TLS Certificates (or a Certificate Authority plan)
+- [ ] **5. Storage:**
+  - [ ] Block storage (Default StorageClass for databases)
+  - [ ] Object storage (S3-compatible bucket for backups/logs)
+- [ ] **6. Security & Identity:**
+  - [ ] Container Registry (Credentials to pull EDB images)
+  - [ ] Identity Provider (IdP) (OIDC-compliant service for SSO)
+  - [ ] Key Management Service (KMS) (For TDE encryption)
+
+---
+
+## Kubernetes platform verification
+
+Ensure the cluster you provision matches the platform selected in the **[Planning architecture](planning_arch)** phase.
+
+**Supported distributions:**
+* Amazon EKS
+* Google GKE
+* Rancher RKE2
+* Red Hat OpenShift (RHOS)
+
+**Provisioning constraints:**
+* **Dedicated cluster:** The cluster must be dedicated to Hybrid Manager. Multi-tenanting with other workloads is **not supported**.
+* **Relationship:** 1:1 (One HM deployment per One Cluster).
+* **Lifecycle:** You are responsible for the provisioning, upgrading, and scaling of the Kubernetes layer.
+
+---
+
+## Infrastructure resources
+
+### Networking
+
+The network fabric is the foundation of the cluster. 
+It governs communication between the Control Plane and Data Plane, as well as external access to the Portal.
+
+#### 1. Local network requirements
+
+Hybrid Manager is not strictly opinionated about local networking logic. 
+The standard networking capabilities provided by major Cloud Service Providers (AWS, Azure, GCP) are sufficient, provided they offer **low latency and high bandwidth** between availability zones.
+
+* **On-Premises:** Networking should follow best practices regarding switching, link bonding, and link redundancy to ensure high availability.
+* **Protocol:** **IPv4 only**. Kubernetes must be configured for IPv4. IPv6 has not been thoroughly productized for Hybrid Manager; if IPv6 is required, it must be masked behind a Load Balancer so that internal communication remains IPv4.
+* **CIDRs:** Your cluster must be configured with distinct, non-overlapping IP ranges for the Pod Network (`clusterCIDR`) and Service Network (`serviceCIDR`).
+
+**Core Services (DNS & NTP)**
+* **Internal DNS:** The cluster's internal DNS service (typically CoreDNS) must be running and able to resolve both internal cluster services (e.g., `kubernetes.default`) and external internet addresses.
+* **NTP (Time Sync):** Functional NTP is **mandatory**. All nodes must have synchronized clocks. Time drift between nodes can cause severe issues with Postgres replication and leader election.
+
+**Container Network Interface (CNI)**
+A functional CNI is a strict requirement for pod-to-pod networking.
+* **Examples**: Calico, Cilium, Flannel
+* **Context:** Cilium is known to be more efficient at very high numbers of pods. However, because Postgres is the center of Hybrid Manager, extreme pod density is rarely the bottleneck compared to database I/O. Therefore, while extra effort to optimize the stack can be supported, standard CNIs like Calico are fully supported.
+* **Validation:** Verify CNI setup and CIDR assignment: 
+```bash
+    kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR
+    kubectl get svc
+```
+
+#### 2. Ingress controller (Load balancer)
+
+We strongly recommend using a **Load Balancer Controller** to provision external IPs for services.
+
+* **Requirement:** The controller must support **TCP Passthrough** (TCP-only). It does *not* terminate SSL (SSL is terminated by the HM Ingress Gateway).
+* **Configuration:** You must enable the Load Balancer via `values.yaml` defaults or `resourceAnnotations` for specific provider firewall schemes (e.g., `service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing`).
+
+**DNS behavior with Load Balancers**
+* **Portal:** DNS should be manually configured to point to the resulting Load Balancer IP for the `istio-ingress` service. Domain names must be resolvable to a **locally routable IP** so that the Ingress service on Kubernetes can properly route traffic based on the HTTPS Host header.
+* **Postgres:** You do *not* need to manually manage DNS for every database. Postgres DNS records are populated automatically as a function of the Load Balancer Controller updating the status of the Service in the namespace dedicated to that cluster.
+
+#### 3. Firewall & ports (Default LoadBalancer)
+
+Configure your firewall/security groups to allow the following traffic.
+
+| Service | Port | Protocol | Description |
+| :--- | :--- | :--- | :--- |
+| **HM Portal** | 443 | TCP/HTTPS | Main UI access. |
+| **HM Internal API** | 8444 | TCP | Internal API communication. |
+| **Beacon API** | 9443 | gRPC | Agent communication. |
+| **Spire TLS** | 9445 | TCP | Spire Identity Trust. |
+| **Postgres** | 5432 | TCP | Default SQL access. |
+| **Postgres (Pooler)**| 6432 | TCP | PGD Connection Manager access. |
+
+---
+
+#### 4. NodePort alternative (Bare Metal / No LB)
+
+If a Load Balancer is not available, you may use **NodePort** (Ports 30000+).
+* **Dependency:** You must configure `beaconAgent.provisioning.loadBalancersEnabled: false` and define a `nodePortDomain` in your configuration.
+
+**DNS behavior with NodePort**
+Unlike the Load Balancer approach, NodePort requires specific DNS strategies based on the service type:
+
+* **Portal DNS:** The DNS entries for the Control Plane (Portal) should be a **Round-Robin A Record** pointing to the IPs of the **Control Plane nodes** (specifically nodes where the `edbaiplatform.io/control-plane` label is applied).
+* **Postgres DNS (`nodePortDomain`):** This value is used as the base URL for all Postgres instances. It should be a DNS name pointing to the IPs of the **Worker nodes** where the Postgres clusters are running (nodes where `edbaiplatform.io/postgres` is applied).
+
+**Default NodePort Assignments**
+HM components reserve specific ports by default. Ensure these are available on your nodes.
+
+| Variable | NodePort | Description |
+| :--- | :--- | :--- |
+| `ingress_http_node_port` | **32542** | HM Portal (HTTP) |
+| `ingress_https_node_port` | **30288** | HM Portal (HTTPS) |
+| `ingress_grpc_tls_node_port` | **30290** | Beacon gRPC |
+| `ingress_spire_tls_node_port` | **30292** | Spire TLS |
+| `ingress_beacon_spire_tls_node_port` | **30294** | Beacon Spire TLS |
+| `ingress_thanos_query_tls_node_port` | **30296** | Thanos Query (Metrics) |
+| `ingress_fluent_bit_tls_node_port` | **30298** | Fluent-bit (Logs) |
+
+**Postgres NodePorts:**
+Postgres clusters will increment on the port range starting at `30000+`.
+
+---
+
+#### 5. DNS resolution domains
+
+Regardless of your Ingress strategy, you must define the following domains:
+
+* **Portal Domain:** (`global.portal_domain_name`)
+* **Agent Domain:** (`upm-beacon.server_host`)
+* **Migration Domain:** (`transporter-rw-service`)
+---
+
+### Compute (Node requirements)
+
+Ensure your worker nodes meet the minimum sizing for your intended deployment topology (Minimum vs. Fully featured) as defined in the **[Planning Architecture](plannnig_arch)** phase.
+
+Hybrid Manager components require **AMD64/x86-64 nodes**. 
+Mixed-architecture clusters (ARM64 + AMD64) are not supported for HM, even though PostgreSQL itself can run on ARM64.
+
+#### Node roles summary
+
+| Node type | Purpose | Count | Kubernetes nodes | Required label |
+| :--- | :--- | :--- | :--- | :--- |
+| **Control plane** | Runs HM control plane & telemetry. | 3+ | Control or Worker | `edbaiplatform.io/control-plane: "true"` |
+| **Data plane** | Runs Postgres databases. | 0 or 3+ | Worker | `edbaiplatform.io/postgres: "true"` |
+| **AI model (GPU)** | *Optional:* Runs AI/ML workloads. | 0 or 2+ | Worker | `nvidia.com/gpu: "true"` |
+
+Use Node Pools (e.g., AWS NodeGroups, RHOS Machine Sets) to manage resources and apply required labels/taints.
+
+In most cases, HM runs on Kubernetes worker nodes in cloud environments (since you do not have access to managed control nodes&mdash;see EKS control plane access), and can run on control nodes ([see Kubernetes control plane documentation](https://kubernetes.io/docs/concepts/architecture/control-plane-node-communication/)) or worker nodes for on-premises clusters.
+
+#### A. Control plane nodes
+
+Resource requirements for the control plane increase with the number of databases monitored. (Note: The Telemetry stack scales with the monitoring load).
+
+**Sizing guidelines:**
+
+| Resource | Minimum (Up to 10 DBs) | Standard (10–50 DBs) | Large (>50 DBs) |
+| :--- | :--- | :--- | :--- |
+| **CPU** | 8 vCPUs | 16 vCPUs | 16+ vCPUs |
+| **Memory** | 32 GB RAM | 64 GB RAM | 64+ GB RAM |
+| **Disk** | 100 GB SSD | 200 GB SSD | >200 GB SSD |
+| **Quantity** | 3 nodes | 3 nodes | 3+ nodes |
+
+**Required labels & taints:**
+
+To ensure the HM Control Plane runs on dedicated resources, you must apply the following configuration to the Node Pool for each node:
+
+* **Label:** `edbaiplatform.io/control-plane: "true"`
+* **Taint:**
+    * Key: `edbaiplatform.io/control-plane`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+```yaml
+spec:
+    replicas: 3
+    template:
+    spec:
+        metadata:
+        labels:
+            edbaiplatform.io/control-plane: "true"
+        taints:
+        - key: edbaiplatform.io/control-plane
+            value: "true"
+            effect: NoSchedule
+```
+
+#### B. Data plane nodes
+
+The data plane nodes must be sized to host the **PostgreSQL** database clusters provisioned by users.
+* **Sizing:** Depends entirely on expected database workloads, storage requirements, and performance SLAs defined in Phase 1.
+
+**Required labels & taints:**
+
+* **Label:** `edbaiplatform.io/postgres: "true"`
+* **Taint:**
+    * Key: `edbaiplatform.io/postgres`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+```yaml
+# Example Node Pool Specification
+spec:
+    replicas: 3 # Minimum recommended for High Availability
+    template:
+      metadata:
+        labels:
+          edbaiplatform.io/postgres: "true"
+      spec:
+        taints:
+        - key: edbaiplatform.io/postgres
+          value: "true"
+          effect: NoSchedule
+```
+
+#### C. AI model nodes (Optional)
+
+Required only if utilizing GenAI/AI Factory capabilities.
+* **Sizing:** Current recommendations require **Nvidia B200 GPUs** (or equivalent supported hardware).
+
+**Required labels & taints:**
+
+* **Label:** `nvidia.com/gpu: "true"`
+* **Taint:**
+    * Key: `nvidia.com/gpu`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+#### D. Validation of node abstractions
+
+After provisioning your infrastructure, run these commands to verify the nodes are correctly labeled and tainted. This ensures the Hybrid Manager installer can schedule pods correctly.
+
+**1. Validate Control Plane nodes:**
+
+```bash
+# List nodes (Expect 3+)
+kubectl get nodes -l edbaiplatform.io/control-plane="true"
+
+# Verify Taints
+kubectl get nodes -o json | jq '.items[] | select(.metadata.labels["edbaiplatform.io/control-plane"]=="true") | {name: .metadata.name, taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/control-plane")))}'
+```
+
+**2. Validate Data Plane nodes:**
+
+```
+#List nodes
+kubectl get nodes -l edbaiplatform.io/postgres="true"
+
+# Verify Taints
+kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, labels: .metadata.labels["edbaiplatform.io/postgres"], taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/postgres")))}'
+```
+
+
+
+
+
+
+### Storage
+
+Hybrid Manager requires two distinct types of storage:
+
+**1. Block Storage (Database & Logs)**
+
+- **Requirement:** A Kubernetes `StorageClass` that presents persistent, high-performance storage volumes (PVCs).
+- **Usage:** Used for Postgres data directories (PGDATA) and WAL logs.
+- **Snapshots:** The underlying storage provider must support Volume Snapshots for backup capabilities.
+
+**2. Object Storage (Backups & Archives)**
+
+- **Requirement:** An S3-compatible object storage bucket.
+- **Usage:** Unstructured data, Postgres backups (WAL archiving), Parquet files, and Multi-location data replication.
+- **Supported Providers:** AWS S3, Google Cloud Storage, Azure Blob Storage, or on-prem S3-compatible solutions.
