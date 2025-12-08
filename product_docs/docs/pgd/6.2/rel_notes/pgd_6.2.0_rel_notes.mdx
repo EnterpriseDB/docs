@@ -49,6 +49,12 @@ This file location is resolved by checking the <code>--dsn</code> global option,
 </details></td><td></td></tr>
 <tr><td><details><summary>The <code>bdr.prefer_analytics_engine</code> setting now works for Iceberg REST catalogs by using the <code>analytics_write_catalog</code> node group option.</summary><hr/><p>Previously, this setting only applied to PGFS storage locations.</p>
 </details></td><td></td></tr>
+<tr><td><details><summary>Only synchronize relevant PGD role settings.</summary><hr/><p>The role synchronization logic has been refined to only apply role settings from the source node if they are global, or are specifically configured for the PGD database on the source node.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Added statistics for commit scope degrade events.</summary><hr/><p>The <code>bdr.stat_commit_scope</code> view now includes three new metrics to track degrade behavior: <code>ndegrades</code> (counts per-transaction degrade events), <code>nconfig_degrades</code> (tracks configuration-level state changes to degraded mode), and <code>last_state_change_time</code> (records the timestamp of the last state transition between normal and degraded operation).</p>
+</details></td><td>50223</td></tr>
+<tr><td><details><summary>Emit warning message for <code>synchronous_standby_names</code> clash with commit scope.</summary><hr/><p>Added a new sanity check that emits a warning during startup if the PostgreSQL configuration parameter <code>synchronous_standby_names</code> is configured in a way that might clash with a PGD commit scope. This helps administrators quickly identify and correct potential misconfigurations.</p>
+</details></td><td></td></tr>
 <tr><td><details><summary>Added <code>--group filter</code> to <code>pgd nodes list</code> and <code>pgd raft show</code> commands.</summary><hr/><p>The <code>--group</code> filter provides the capability to filter the output by a specified data group when administering a multi-group PGD cluster.</p>
 </details></td><td></td></tr>
 </tbody></table>
@@ -99,6 +105,34 @@ This file location is resolved by checking the <code>--dsn</code> global option,
 <tr><td><details><summary>The <code>ALTER TABLE SET pgd.replicate_to_analytics</code> property can now be applied to individual partitions.</summary><hr/><p>This allows for granular control over which partitions replicate data to analytical targets.</p>
 </details></td><td></td></tr>
 <tr><td>Fixed an issue that caused consensus breakage when a duplicate value was assigned to either the <code>analytics_storage_location</code> or <code>analytics_write_catalog</code> settings.</td><td></td></tr>
+<tr><td><details><summary>Fixed join inconsistency during physical node setup.</summary><hr/><p>Resolved an issue during physical node joins where the last transaction was redundantly included in the physical snapshot. The system now ensures this final transaction is excluded from the snapshot, as it will be correctly received later via logical replication, preventing duplication.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fixed various issues with EPAS role and profile synchronization.</summary><hr/><p>Resolved various synchronization issues affecting the correct replication and management of EDB Postgres Advanced Server (EPAS) roles and profiles across the cluster.</p>
+</details></td><td>52572</td></tr>
+<tr><td><details><summary>Fixed Segmentation fault on <code>bdr.stat_get_activity</code>.</summary><hr/><p>Resolved a bug that caused a segmentation fault when calling <code>bdr.stat_get_activity</code>. This function is used by views such as <code>bdr.stat_workers</code> and <code>bdr_stat_activity</code>.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fixed cleanup of stale LSN records in <code>bdr.node_peer_progress_mapping</code>.</summary><hr/><p>Resolved an issue where stale records from parted or dropped nodes were retained in the <code>bdr.node_peer_progress_mapping</code> table. Proper cleanup is now enforced to prevent these stale records from unnecessarily holding back the group replication slot.</p>
+</details></td><td>50616, 50778, 50856</td></tr>
+<tr><td><details><summary>Fixed spurious walsender timeouts during lengthy transactions.</summary><hr/><p>Resolved an issue where spurious walsender timeouts could occur while the receiver process was flushing a lengthy transaction.</p>
+</details></td><td>52018</td></tr>
+<tr><td><details><summary>Fixed error during join due to altered non-database role settings.</summary><hr/><p>Resolved an issue where the error <code>database with remote_datid 0 not found in remote_databases</code> occurred during the node join process. This failure happened when a role on the upstream source node had been altered to include a setting that was not specific to the database, causing a lookup failure during synchronization.</p>
+</details></td><td>52859</td></tr>
+<tr><td><details><summary>Ensure hard-coded <code>CRDT</code> merge functions are always available.</summary><hr/><p>Resolved an issue where the system incorrectly required built-in, hard-coded <code>CRDT</code> merge functions to be explicitly registered in the <code>bdr.crdt_handlers</code> catalog.</p>
+</details></td><td>52759</td></tr>
+<tr><td><details><summary>Fixed incorrect error during <code>bdr.commit_scope</code> check.</summary><hr/><p>Resolved an issue where the check for the configuration parameter <code>bdr.commit_scop</code>e incorrectly raised an error if the PostgreSQL configuration was reloaded while a transaction was in progress, even when the parameter's value had not actually been modified.</p>
+</details></td><td>51457</td></tr>
+<tr><td><details><summary>Fixed EPAS role and profile replication issues.</summary><hr/><p>Resolved two replication issues related to EPAS roles and profiles:</p>
+<ul>
+<li>Fixed an issue where profile names were incorrectly quoted as string literals instead of identifiers, causing syntax errors when replicating <code>CREATE ROLE</code> or <code>ALTER ROLE</code> commands with the <code>PROFILE</code> clause.</li>
+<li>Corrected a bug where <code>ALTER ROLE</code> commands that did not change passwords incorrectly included the <code>PASSWORD</code> clause, which triggered password reuse policy violations when profiles had <code>PASSWORD_REUSE_TIME</code> or <code>PASSWORD_REUSE_MAX</code> constraints.</li>
+</ul>
+</details></td><td>54909</td></tr>
+<tr><td><details><summary>Fixed consensus timeout errors during initial cluster setup.</summary><hr/><p>Resolved <code>consensus request timed out</code> errors that could occur during BDR cluster initialization. This issue happened when <code>vacuum</code> operations on internal consensus tables interfered with critical group creation processes. The fix now defers vacuum operations until the cluster is properly established.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Implement slot checkpoint mechanism for fast group slot advancement.</summary><hr/><p>Implemented a slot checkpoint system that periodically saves the replication slot state to disk. This mechanism allows the group replication slot to advance quickly without decoding massive amounts of WAL, resolving issues where the manager process would hang for extended periods. Checkpoints are stored as small binary files in <code>$PGDATA/pgd/slot/</code> with CRC32 validation for integrity.</p>
+</details></td><td>54507</td></tr>
+<tr><td><details><summary>Fixed segmentation fault in <code>bdr.local_topology_info()</code>.</summary><hr/><p>Resolved a corner-case bug that could cause a segmentation fault when querying the internal function <code>bdr.local_topology_info()</code>.</p>
+</details></td><td>53568</td></tr>
 </tbody></table>
 
 
