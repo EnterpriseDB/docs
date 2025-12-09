@@ -18,9 +18,9 @@ The examples that follow use these IP addresses:
 -   172.16.161.211 - PEM Web Application 1
 -   172.16.161.212 - PEM Web Application 2
 -   172.16.161.213 - PEM Web Application 3
--   172.16.161.111 - etcd1
--   172.16.161.112 - etcd2
--   172.16.161.113 - etcd3
+-   172.16.161.111 - etcd-node-1
+-   172.16.161.112 - etcd-node-2
+-   172.16.161.113 - etcd-node-3
 
 ## Setting up a Distributed Consensus Store with etcd
 
@@ -36,7 +36,7 @@ On each node:
     dnf --enablerepo=pgdg-rhel9-extras install -y etcd
     ```
 2.  Replace the contents of `/etc/etcd/etcd.conf` with the following, substituting the appropriate values for `<node-ip>` and `node-name`.
-    For example, `172.16.161.111` and `etcd1`.
+    For example, `172.16.161.111` and `etcd-node-1`.
 
     ```ini
     #[Member]
@@ -45,7 +45,7 @@ On each node:
     ETCD_NAME="<node-name>"
     #[Clustering]
     ETCD_INITIAL_ADVERTISE_PEER_URLS="http://<node-ip>:2380"
-    ETCD_INITIAL_CLUSTER="etcd1=http://172.16.161.111:2380,etcd2=http://172.16.161.112:2380,etcd3=http://172.16.161.113:2380"
+    ETCD_INITIAL_CLUSTER="etcd-node-1=http://172.16.161.111:2380,etcd-node-2=http://172.16.161.112:2380,etcd-node-3=http://172.16.161.113:2380"
     ETCD_ADVERTISE_CLIENT_URLS="http://<node-ip>:2379"
     ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-1"
     ETCD_INITIAL_CLUSTER_STATE="new"
@@ -65,6 +65,15 @@ On each node:
     systemctl enable etcd
     systemctl restart etcd
     ```
+
+## Configuring EDB Repos
+
+On all backend and web application nodes, configure EDB Repos.
+Refer to [Getting started with repositories](advocacy_docs/repos/getting_started/index.mdx) for more detail.
+
+```shell
+curl -1sLf  'https://downloads.enterprisedb.com/<token>/<repo>/setup.rpm.sh' | bash
+```
 
 ## Deploying the PEM backend
 
@@ -200,6 +209,8 @@ In the generated file:
 
 1.  Change `postgresql.listen` to `'*:5432'`
 
+1.  Change `postgresql.bin_dir` to `/usr/pgsql-17/bin`. Add this line if it is not present.
+
 1.  Remove the entirety of the `postgresql.pg_hba` section, including the `pg_hba:` key itself.
     If you have created any rules that you wish to keep, you may wish to take a copy for the next step.
 
@@ -333,18 +344,22 @@ On each standby, perform the following steps.
     
     See [Registering a Postgres Server](/pem/latest/registering_database_server/) for more information
 
-1.  Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each standby.
+### Register the standbys as PEM backends
 
-    ```sql
-    SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5432;
-    ```
+Perform the following step on the primary.
 
-    !!! Info
-    In older versions of PEM, the PEM server and its local agent had to have ID 1. 
-    This is no longer the case from PEM 10.1. Instead this SQL flags this server and agent as belonging to a PEM deployment, 
-    which in turn enables important system jobs such as purging expired data when this server is the primary.
-    !!!
+Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each standby.
 
+```sql
+SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5432;
+SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.202' and port=5432;
+```
+
+!!! Info
+In older versions of PEM, the PEM server and its local agent had to have ID 1. 
+This is no longer the case from PEM 10.1. Instead this SQL flags this server and agent as belonging to a PEM deployment, 
+which in turn enables important system jobs such as purging expired data when this server is the primary.
+!!!
 
 ## Deploy the PEM Web Application
 
