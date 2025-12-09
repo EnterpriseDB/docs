@@ -1,0 +1,94 @@
+---
+title: Connection Manager overview
+navTitle: Overview
+description: Overview of the Connection Manager
+---
+
+## About Connection Manager
+
+Connection Manager is a new background worker for EDB Postgres Distributed (PGD) 6.0 that simplifies the process of connection to PGD clusters by providing a single point of entry for client applications. It replaces the PGD 5.x proxy solution with a tightly integrated approach that exposes read-write, read-only, and HTTP status network interfaces in PGD.
+
+PGD 5.9 includes a back-ported version of Connection Manager as an optional feature that is disabled by default in order to allow for seamless upgrades to PGD 6 by having the necessary infrastructure in place.
+
+Connection Manager is fully integrated into PGD and is designed to work seamlessly with the existing PGD architecture. Every PGD data node has a Connection Manager instance that listens for incoming connections and routes them to the appropriate node in the cluster, specifically the current write leader in the cluster. It also provides a read-only interface for applications that only need to read data from the cluster. 
+
+## Using Connection Manager
+
+Connection Manager follows the Postgres server's configuration by default. There are three ports, the read-write port, the read-only port, and the HTTP port. The read-write port is used for write operations, while the read-only port is used for read operations. The HTTP port is used for monitoring and management purposes.
+
+The read-write port is, by default, set to the Postgres port + 1000 (usually 6432).
+The read-only port is set to the Postgres port + 1001 (usually 6433).
+The HTTP port is set to the Postgres port + 1002 (usually 6434).
+
+To use Connection Manager, you need to configure your client applications to connect to the read-write or read-only port of the Connection Manager instance running on the data node. The Connection Manager will then route the connection to the appropriate node in the cluster.
+
+Note that the Connection Manager is not a replacement for a load balancer. It is designed to work in conjunction with a load balancer to provide a complete solution for managing connections to PGD clusters. The Connection Manager provides a simple and efficient way to manage connections to PGD clusters, while the load balancer provides additional features such as load balancing and failover. See [Load Balancing](./load-balancing/) for more information.
+
+### Enabling Connection Manager
+Connection Manager is an optional feature for PGD 5.9 and is disabled by default. To enable it, choose the section below that corresponds to your current configuration: whether or not you have an active PGD Proxy setup.
+
+### Enabling Connection Manager for PGD 5.9 with an active PGD Proxy configuration
+
+Use the following steps to move from PGD Proxy to Connection Manager:
+
+1.  From one of the PGD 5.9 nodes, run the following query to ensure that SCRAM hashes of all user passwords are the same across all nodes:
+
+    ```sql
+    DO $$
+    DECLARE
+        rec RECORD;
+        command TEXT;    password TEXT;
+    BEGIN
+        FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+        LOOP
+            password := rec.rolpassword;
+            command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || quote_literal(password);
+            EXECUTE command;
+        END LOOP;
+    END;
+    $$;
+    SELECT wait_slot_confirm_lsn(NULL, NULL);
+    ```
+   !!!Note
+
+      No new users should be added to 5.9 after executing this. If they are added, run the query again. The above block does not change the passwords, it just ensure SCRAM hashes are same across the cluster on all nodes.
+   !!!
+
+1.  Fence a node in this cluster with `pgd node <node-name> set-option route_fence true` so that it does not become the write leader.
+1.  Set the configuration parameter `bdr.enable_builtin_connection_manager` to `true`:
+
+    ```sql
+    SET bdr.enable_builtin_connection_manager to 'TRUE';
+    ```
+
+1.  Restart the server.
+1.  Stop PGD Proxy running on the server.
+1.  Restart the server. It will start with the Connection Manager running on the default port. If the proxy read and write ports were different, the Connection Manager port read and write ports can be changed to be the same as proxy by `bdr.alter_node_group_option()`.
+1.  Unfence the node.  This node can now accept connections from the user and route to the write leader via Connection Manager.
+1.  Repeat this for each node in the cluster.  This will ensure all nodes are now routing via Connection Manager.
+
+### Enabling Connection Manager for PGD 5.9 with no active PGD Proxy configuration
+
+To enable Connection Manager in an environment with no active PGD Proxy confiruation, log in to any node in the cluster using `psql` to connect to the `bdrdb` database (use the `enterprisedb` user for EPAS), and run:
+
+```sql
+SELECT bdr.alter_node_group_option('dc1', 'enable_raft', 'true');
+SELECT bdr.alter_node_group_option('dc1', 'enable_proxy_routing', 'true');
+```
+
+Set the configuration parameter `bdr.enable_builtin_connection_manager` to `true` and restart the server:
+
+```sql
+SET bdr.enable_builtin_connection_manager to 'TRUE';
+```
+
+You must run the commands for all the subgroups in the cluster where you want Connection Manager enabled.
+
+## Read-Only connections
+
+Connecting a client to the read-only port provided by connection manager restricts that connection to read-only operations in a similar way to using [`SET TRANSACTION READ ONLY`](https://www.postgresql.org/docs/current/sql-set-transaction.html) would, except that it's not possible to change it to read-write. The [`transaction_read_only`](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-TRANSACTION-READ-ONLY) GUC correctly reports `on` in these connections.
+
+## TLS and Authentication
+
+The Connection Manager performs TLS termination and pre-authentication. The configuration for these is taken directly from Postgres - pg_hba.conf and server key configuration are used transparently. See [authentication](authentication/) for more information.
+
