@@ -1,0 +1,93 @@
+---
+title: Degrading commit scope rules
+navTitle: Degrading
+deepToC: true
+redirects:
+  - /pgd/latest/commit-scopes/degrading/ #generated for DOCS-1247-PGD-6.0-Docs
+---
+
+`SYNCHRONOUS COMMIT` and `CAMO` each have the optional capability of degrading the requirements for transactions when particular performance thresholds are crossed. `GROUP COMMIT` cannot degrade, but can abort on timing out.
+
+When a node is applying a transaction and that transaction times out, it can be useful to trigger a process of degrading the requirements of the transaction to be completed, rather than just rolling back. 
+
+`DEGRADE ON` offers a route for gracefully degrading the commit scope rule of a transaction. At its simplest, `DEGRADE ON` takes a timeout and a second set of commit scope operations that the commit scope can gracefully degrade to. 
+
+For instance, after 20ms or 30ms timeout, the requirements for satisfying a commit scope could degrade from `ALL (node_group_name) SYNCHRONOUS COMMIT` to `MAJORITY (node_group_name) SYNCHRONOUS COMMIT`, making the transactions apply more steadily.
+
+You can also require that the write leader be the originator of a transaction in order for the degrade clause to be triggered. This can be helpful in "split brain scenarios" where you have, say, 2 data nodes and a witness node. Supposing there is a network split between the two data nodes and you have connections to both of the data nodes, only one of them will be allowed to degrade, because only one of them will be elected leader through the raft election with the witness node.
+
+## Behavior
+
+There are two parts to how the generalized `DEGRADE` clause behaves as it is applied to transactions. 
+
+Once during the commit, while the commit being processed is waiting for responses that satisfy the commit scope rule, PGD checks for a timeout and, if the timeout has expired, the commit being processed is reconfigured to wait for the commit scope rule in the `DEGRADE` clause. In fact, by this point, the commit scope rule in the `DEGRADE` clause might already be satisfied.
+
+This mechanism alone is insufficient for the intended behavior, as this alone would mean that every transaction—even those that were certain to degrade due to connectivity issues—must wait for the timeout to expire before degraded mode kicks in, which would severely affect performance in such degrading-cluster scenarios.
+
+To avoid this, the PGD manager process also periodically (every 5s) checks the connectivity and apply rate (the one in [bdr.node_replication_rates](/pgd/latest/reference/tables-views-functions/catalogs-visible/#bdrnode_replication_rates)) and if there are commit scopes that would degrade at that point based on the current state of replication, they will be automatically degraded—such that any transaction using that commit scope when processing after that uses the degraded rule instead of waiting for timeout—until the manager process detects that replication is moving swiftly enough again.
+
+## SYNCHRONOUS COMMIT and GROUP COMMIT 
+
+Both `SYNCHRONOUS COMMIT` and `GROUP COMMIT` have `timeout` and `require_write_lead` parameters, with defaults of `0` and `false` respectively. You should probably always set the `timeout`, as the default of `0` causes an instant degrade. You can also require that the write leader be the originator of the transaction in order to switch to degraded mode (again, default is `false`). For `SYNCHRONOUS COMMIT` the `timeout` and `require_write_lead` apply to degrade, and for `GROUP COMMIT` these parameters apply to abort. A `GROUP COMMIT` commit scope cannot degrade and a `SYNCHRONOUS COMMIT` commit scope cannot abort, since it is already committed on the primary prior to waiting for confirmations from other nodes.
+
+`SYNCHRONOUS COMMIT` also has options regarding which rule you can degrade to—which depends on which rule you are degrading from.
+
+First of all, you can degrade to asynchronous operation:
+
+```sql
+ALL (left_dc) SYNCHRONOUS COMMIT DEGRADE ON (timeout=20s) TO ASYNC
+```
+
+You can also degrade to a less restrictive commit group with the same commit scope kind (again as long as the kind is either `SYNCHRONOUS_COMMIT` or `GROUP COMMIT`). For instance, you can degrade as follows:
+
+```sql
+ALL (left_dc) SYNCHRONOUS COMMIT DEGRADE ON (timeout=20s) TO MAJORITY (left_dc) SYNCHRONOUS COMMIT
+```
+
+or as follows:
+
+```sql
+ANY 3 (left_dc) SYNCHRONOUS COMMIT DEGRADE ON (timeout=20s) TO ANY 2 (left_dc) SYNCHRONOUS COMMIT
+```
+
+But you cannot degrade from `SYNCHRONOUS COMMIT` to `GROUP COMMIT`.
+
+## CAMO 
+
+While [CAMO](camo) supports both the same `timeout` and `require_write_lead` parameters (with the same defaults, `0` and `false` respectively), the options are simpler in that you can only degrade to asynchronous operation. 
+
+```sql
+ALL (left_dc) CAMO DEGRADE ON (timeout=20ms, require_write_lead=true) TO ASYNC
+```
+
+Again, you should set the `timeout` parameter, as the default is `0`. 
+
+## Monitoring degrade events
+
+Use the [bdr.stat_commit_scope](/pgd/latest/reference/tables-views-functions/catalogs-visible/#bdrstat_commit_scope) to track degrade events. Three key metrics provide visibility into the degrade behavior:
+
+- `ndegrades` tracks per-transaction degrade events. It increments each time a backend hits the degrade timeout during commit and successfully degrades that specific transaction. This metric shows the total number of individual transactions that have experienced degradation.
+- `nconfig_degrades` tracks configuration-level state changes to the degraded mode. It increments when the background worker (manager process) switches the commit scope's shared state to degraded, based on node availability checks. This indicates how many times the commit scope configuration itself entered the degraded state, affecting all subsequent transactions until recovered.
+- `last_state_change_time` records the timestamp of the last configuration-level state change (either entering or recovering from the degraded state). Use this metric to identify precisely when the commit scope last transitioned between normal and degraded operation, adding correlation with other system events or outages.
+
+### Example monitoring query
+
+View commit scope statistics including degrade events and the latest configuration-level state change:
+
+```sql
+SELECT
+  commit_scope_name,
+  ndegrades,
+  nconfig_degrades,
+  last_state_change_time,
+  CASE
+    WHEN last_state_change_time IS NULL THEN 'never degraded'
+    WHEN age(now(), last_state_change_time) < interval '5 seconds' THEN 'recently changed'
+    ELSE 'stable for ' || age(now(), last_state_change_time)::text
+  END AS state_change_info
+FROM bdr.stat_commit_scope
+WHERE ndegrades > 0 OR nconfig_degrades > 0
+ORDER BY last_state_change_time DESC NULLS LAST;
+```
+
+These metrics together provide complete visibility into both immediate per-transaction fallback and longer-term state management degrade behavior, along with temporal context for troubleshooting.
