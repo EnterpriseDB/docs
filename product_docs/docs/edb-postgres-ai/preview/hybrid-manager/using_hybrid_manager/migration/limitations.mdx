@@ -2,6 +2,7 @@
 title: Known issues, limitations, and notes
 navTitle: Limitations
 description: Review unsupported data types and features.
+deepToC: true
 redirects:
 - /edb-postgres-ai/migration-etl/data-migration-service/limitations
 ---
@@ -136,70 +137,16 @@ UPDATE messages SET tsv = to_tsvector('english', CONCAT(title, ' ', body)) WHERE
 
 ### Additional schemas ingested for EDB Postgres Advanced Server sources
 
-When viewing the list of schemas for a source EDB Postgres Advanced Server database that you registered with the HM agent, you may observe additional schemas that don't directly correspond to schemas you explicitly created. These extra schemas are generated internally by EDB Postgres Advanced Server as part of its Oracle compatibility feature set to represent Oracle PACKAGE objects. This is a known issue that we expect to correct in a future release. In the meantime, you can disregard these generated schemas for migration purposes.
+When viewing the list of schemas for a source EDB Postgres Advanced Server database that you registered with the HM agent, you may observe additional schemas that don't directly correspond to schemas you explicitly created. 
+These extra schemas are generated internally by EDB Postgres Advanced Server as part of its Oracle compatibility feature set to represent Oracle PACKAGE objects. 
+This is a known issue that we expect to correct in a future release. In the meantime, you can disregard these generated schemas for migration purposes.
 
-## HM Migration Portal known issues
+## Other known issues
 
-### Disabling the automatic Migration Portal project creation requires a workaround
+### Data migrations supported without a Load Balancer in RHOS environments only
 
-There is a known issue affecting the internal `beacon-server` service where setting the `autocreate_mp_projects: false` parameter in the ConfigMap doesn't prevent the automatic creation of Migration Portal projects.
+Description: The primary method for exposing Kafka (which is required for data migrations) within Hybrid Manager is via Load Balancers (an exception is the RHOS environment, where a native route is used to expose Kafka). 
+Therefore, in non-RHOS environments where the Load Balancer is disabled, the data migration workflows will not function, as there is no fallback mechanism to support exposing Kafka using NodePort mode.
 
-**Workaround**: To prevent the automatic creation of Migration Portal projects and enforce manual creation, set the parameter `max_automatic_project_creation_bytes` to an extremely low value, for example 1, within the `beacon-server` ConfigMap. This low threshold ensures that all schemas exceed the limit, successfully bypassing the automatic creation process.
-
-1.  Edit the `beacon-server` ConfigMap:
-
-    ```shell
-    kubectl edit configmap beacon-server-config -n upm-beacon
-    ```
-
-1.  Locate the `beacon_server.yaml` block and insert or modify the `max_automatic_project_creation_bytes` section under `server`. Set the value to an extremely low number, like 1, to ensure automatic creation is bypassed:
-
-    ```yaml
-    apiVersion: v1
-    data:
-      beacon_server.yaml: |
-      # [...]
-        server:
-        # [...]
-          migration_portal_configuration:
-            max_automatic_project_creation_bytes: 1
-    ```
-
-1.  Apply the changes by restarting the `beacon_server` deployment:
-
-    ```shell
-    kubectl rollout restart deployment upm-beacon-server -n upm-beacon
-    ```
-
-    !!!warning
-    The `upm-beacon-server` supports all database registration and schema ingestion activities across the entire HM instance using HM agents. Restarting the `upm-beacon-server` will halt all _ongoing_ database registrations and schema ingestions, regardless of the project. Ensure you coordinate this restart with other users.
-    
-    Databases that already appear in the **Estate > Migrations** tab, for which schema ingestions have finished, are not affected by restarts.
-    !!!
-
-1.  You can monitor the status of your restarted service: 
-
-    ```shell
-    kubectl get pods -n upm-beacon
-    ```
-
-!!!note
-There is another currently known issue where the [HM console warning for manual Migration Portal project creation persists](#hm-warning-persists-after-manual-migration-portal-project-creation) after manually creating projects.
-!!!
-
-### HM warning persists after manual Migration Portal project creation
-
-When the automatic creation of a Migration Portal project fails (for example, due to the ingested schemas exceeding the default size limit of 300 MB or a different specified limit), the HM console displays a persistent warning instructing the user to manually create the projects. This warning continues to display in the HM console even after the user has successfully created the necessary Migration Portal projects for their Oracle schemas.
-
-### Automatic Migration Portal project creation fails with invalid `resource_id` characters
-
-The automatic creation of Migration Portal projects fails (with error message **Failed to create**) if the `resource_id` specified for the registered Oracle database contains characters that are invalid.
-
-This failure occurs because the `resource_id` value is used in the construction of the Migration Portal project name, which currently doesn't support special characters like hyphens (-), which prevent project creation.
-
-**Workaround:** To ensure successful automatic creation of Migration Portal projects, the `resource_id` value specified in the HM agent configuration for Oracle databases must conform to the following naming rules:
-
-- It can include alphanumeric characters (A–Z, a–z, 0–9).
-- It can include the underscore (_) character, but it cannot begin with an underscore.
-- It must not start with a number.
-- It must not contain special characters, such as the hyphen (-).
+Workaround: To enable data migration workflows in non-RHOS environments such as RKE, you must configure a Load Balancer. 
+Further improvements are planned in subsequent release to remove this limitation.
