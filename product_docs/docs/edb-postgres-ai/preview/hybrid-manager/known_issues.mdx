@@ -1,10 +1,10 @@
 ---
 title: Known issues
 navTitle: Known issues
-description: Learn about known issues in Hybrid Manager version 1.3.
+description: Learn about known issues in Hybrid Manager's Innovation Releases.
 ---
 
-These are the currently known issues and limitations identified in the Hybrid Manager 1.3 release. Where applicable, we have included workarounds to help you mitigate the impact of these issues. These issues are actively tracked and are planned for resolution in a future release.
+These are the currently known issues and limitations identified in the Hybrid Manager Innovation Releases. Where applicable, we have included workarounds to help you mitigate the impact of these issues. These issues are actively tracked and are planned for resolution in a future release.
 
 ## Multi-DC
 
@@ -13,6 +13,8 @@ These are the currently known issues and limitations identified in the Hybrid Ma
 **Description**: Configurations applied by the multi-DC setup scripts (for cross-cluster communication) do not persist after a Hybrid Manager platform upgrade or operator reconciliation.
 
 **Workaround**: After every Hybrid Manager upgrade or component reversion, the multi-DC setup scripts must be run again to re-apply the necessary configurations.
+
+[UPM-68388]: #
 
 ### Location dropdown list is empty for multi-DC setups
 
@@ -94,6 +96,18 @@ After completing these steps, the reduced image data size should allow the locat
 
 **Workaround**: The user must manually patch the Kubernetes deployment to increase the memory resource limits for the `upm-beacon-agent` pod.
 
+### HM console doesn't handle custom CA issuer
+
+**Description**: The HM console currently doesn't support custom cluster Certificate Authority (CA) issuers. If a custom CA issuer is configured, the public certificate downloaded from the console will not work correctly with the `beacon-agent`, which can lead to connectivity and reporting errors.
+
+**Workaround**: An administrator can verify the status of the custom CA. If the following command returns no output, the `beacon-agent` deployment can proceed without manually providing a root CA certificate, avoiding the issue:
+
+```shell
+kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | base64 -d
+```
+
+[UPM-72544]: #
+
 ## Database cluster engine 
 
 ### Incorrect database name displayed for EDB Postgres Distributed (PGD) clusters
@@ -150,6 +164,12 @@ SELECT bdr.alter_node_group_option('<subgroup name>','enable_routing','true');
 
 **Workaround**: Avoid the best practice of loading data into a single node and then scaling to HA; instead, load data directly into an HA cluster from the start. There is no workaround for restoring a large cluster into an HA configuration.
 
+### EDB Postgres Distributed (PGD) cluster with 2 data groups and 1 witness group not healthy
+
+**Description**: EDB Postgres Distributed (PGD) clusters provisioned with the topology of two data groups and one witness group may fail to reach a healthy state upon creation. This failure is caused by an underlying conflict between the `bdr` extension (used for replication) and the `edb_wait_states` extension. The specific combination of these two extensions in this particular topology prevents the cluster from initializing successfully.
+
+[UPM-73217]: #
+
 ## Backup and recovery 
 
 ### Replica cluster creation fails when using volume snapshot recovery across regions
@@ -163,6 +183,14 @@ SELECT bdr.alter_node_group_option('<subgroup name>','enable_routing','true');
 **Description**: The default setting for `wal.maxParallel` is too restrictive, which slows down WAL archiving during heavy data loads. This can cause a backlog of ready-to-archive WAL files, potentially leading to disk full conditions. This parameter is not yet configurable via the HM console.
 
 **Workaround**: Manually edit the `objectstores.barmancloud.cnpg.io` Kubernetes resource for the specific backup object store and increase the `wal.maxParallel` value (e.g., to 20) to accelerate archiving.
+
+### `transporter-db` disaster decovery (DR) process may fail due to WAL gaps
+
+**Description**: The disaster recovery (DR) process for the internal `transporter-db` service may fail when restoring from the latest available backup. This occurs in low-activity scenarios where a backup has been completed, but no subsequent Write-Ahead Log (WAL) file has been archived immediately following that backup. This gap prevents the restore process from successfully completing a reliable point-in-time recovery.
+
+**Workaround**: To ensure a successful restore, you must select an older backup for restoration, specifically one that has at least one archived WAL file immediately following it. This guarantees the necessary transactional logs are available for the recovery process.
+
+[ET-4092]:#
 
 ## AI Factory and model management
 
@@ -266,6 +294,46 @@ The pods should now proceed to start successfully, using the model profiles you 
 
 **Workaround**: To find the exact model name required for the API call (e.g., `nvidia/llama-3.3-nemotron-super-49b-v1`), query the `/v1/models` API endpoint first.
 
+### Model configuration settings reset after innovation release upgrade
+
+**Description**: After upgrading Hybrid Manager from the `2025.11` to the `2025.12` Innovation Release, the existing model configuration settings are unintentionally reset to empty. This results in a `model_not_found` error, preventing access to AI services and causing issues like Knowledge Bases (KBs) failing to display in the HM console.
+
+**Workaround**: In the HM console, manually re-enter or set your required model configurations to restore functionality.
+
+[GRIP-935]: #
+
+### Error page appears when editing Knowledge Base credentials
+
+**Description**: When editing a Knowledge Base (KB) that was created from a pipeline in the HM console, skipping the username field and immediately navigating to the password field triggers a client-side JavaScript error ("Cannot read properties of null"), which results in an "Unexpected Application Error!" page.
+
+**Workaround**: To prevent the error page from appearing, ensure you fill in the **Username** field immediately after clicking **Edit KB** and before attempting to enter the **Password**.
+
+[GRIP-934]: # 
+
+### Missing aidb_users role on PGD witness node prevents AI functionality
+
+**Description**: The `aidb_users` role (necessary for AI Factory functionality) and its related extension are not being successfully replicated to the witness node of a PGD cluster during cluster initialization. This issue is specific to PGD clusters that utilize a single witness node (as opposed to a witness group) and results in the AI Factory encountering errors due to the missing required role.
+
+**Workaround**: To manually install the necessary role and allow the AI Factory to function, execute the following SQL commands directly on the PGD witness node:
+
+```sql
+begin;
+set local bdr.ddl_replication = off;
+SET LOCAL bdr.commit_scope = 'local';
+create user aidb_users;
+commit;
+```
+
+[UPM-71454]: #
+
+## Analytics and tiered tables
+
+### Updating tiered, partitioned tables fails with PGAA error
+
+**Description**: When attempting to execute an `UPDATE` statement on a large, tiered and partitioned table, the operation fails with the error message: `ERROR: system columns are not supported by PGAA scan`. This issue occurs even when the target partition for the update uses a standard heap access method (i.e., it is not an actively tiered Iceberg table), indicating a conflict in how the Analytics Accelerator (PGAA) processes the partitioned table structure during a modification query.
+
+[BEAC-902]: #
+
 ## HM console and observability
 
 ### Tags for active model clusters are not displayed on the model details screen
@@ -283,3 +351,7 @@ The pods should now proceed to start successfully, using the model profiles you 
 **Description**: Dashboards created by users directly within the Grafana application are not stored in persistent storage. They disappear when the Grafana pods are updated, redeployed, or restarted (e.g., during an EKS auto-update or a Hybrid Manager upgrade).
 
 **Workaround**: Any custom dashboards must be backed up externally by [exporting the dashboard as JSON](https://grafana.com/docs/grafana/latest/dashboards/share-dashboards-panels/#export-a-dashboard-as-json). After an upgrade, they must be manually imported back into Grafana.
+
+## Migrations 
+
+Known issues pertaining to the HM Migration Portal, data migration workflows, and schema ingestion workflows are maintained on a dedicated page within the [Migrating databases](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/migration/) documentation. This allows for focused communication within the relevant section of the documentation. See [Known issues, limitations, and notes](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/migration/limitations/) for a complete list.
