@@ -1,0 +1,593 @@
+---
+title: Preparing the environment
+navTitle: Environment preparation
+description: Learn the steps to prepare your system environment for your Kubernetes cluster for Hybrid Manager.
+deepToC: true
+---
+
+**Role:** Infrastructure Engineer / Cloud Administrator
+
+**Outcome:** A fully staged environment ready for installation. This includes a validated management workstation, synchronized artifacts, a complete inventory of infrastructure and application secrets (covering storage, registry access, and encryption keys), and a finalized `values.yaml` configuration that defines your specific architectural requirements—from core administrative settings to advanced features like GenAI and multi-location logic.
+
+**Next Step:** [Cluster deployment and installation](k8s_install)
+
+---
+
+Before deploying the cluster, you must bridge the gap between your architectural plan and the technical environment. 
+This involves more than just setting up a laptop; you must stage artifacts, secure the environment with keys and certificates, and translate your specific requirements into a deployable configuration file.
+
+Preparing your environment, Phase 3, covers:
+
+1.  **Management workstation:** Installing the required CLI tools (`kubectl`, `helm`, `edbctl`) and verifying network connectivity to the target cluster.
+
+2.  **Artifact management:** Mirroring container images to your local registry and configuring the agent for image discovery.
+
+3.  **Infrastructure secrets:** Creating Kubernetes secrets for **Image Pull** credentials and **Object Storage** access.
+
+4.  **TLS & encryption:** Implementing your chosen TLS strategy (Cert-Manager, Custom CA, Custom cert, vs self-signed) and enabling **KMS** for Transparent Data Encryption (TDE).
+
+5.  **Application secrets:** Staging Fernet keys for the **GenAI** and **Catalogs** stacks, and configuring secrets for the **Migration Portal**.
+
+6.  **Advanced feature Prep:** Defining **Multi-location** logic (SPIRE federation and object storage sync), constructing complex YAML configurations for **Identity Providers**, creating namespaces and secrets for **GenAI** (including CORS policies), and configuring secrets for **Catalogs**.
+
+7.  **Environment settings:** Configuring the internal backup folder and securing the mandatory **User-0** admin account.
+
+8.  **Cluster configuration:** Assembling all the relevant above inputs into the final Helm chart `values.yaml` file.
+
+---
+
+## Prepare the management workstation
+
+> **Optionality:** Required for optimal experience.
+
+The management workstation (or Bastion Host) is the control center for your deployment. 
+It serves as the secure launchpad for deploying the Kubernetes cluster and installing Hybrid Manager.
+
+**Prerequisites:** Before proceeding, ensure your workstation meets the [**Management workstation requirements**](../requirements.mdx#management-workstation-bastion).
+* **Windows Users:** You must use **WSL2** (Windows Subsystem for Linux).
+* **Network:** Ensure Layer 2 connectivity to the target bare metal machines and outbound access to the Container Registry.
+
+---
+
+### Step 1: Install core tooling
+
+You must install the following CLI tools to orchestrate the deployment.
+
+1.  **Install Kubernetes Tools (`kubectl` & `helm`):**
+    Follow the official guides to install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://helm.sh/docs/intro/install/).
+
+2.  **Install `edbctl` (EDB Hybrid Manager CLI):**
+    Run the installation script to download the binary:
+    ```bash
+    curl -sfL [https://get.enterprisedb.com/edbctl/install.sh](https://get.enterprisedb.com/edbctl/install.sh) | sh -
+    ```
+
+3.  **Install utilities:**
+    Ensure `yq` (v4+), `curl`, and `openssl` are installed via your package manager.
+    ```bash
+    # Example for Ubuntu/Debian
+    sudo apt-get update && sudo apt-get install -y curl openssl
+
+    # Example for MacOS
+    brew install yq curl openssl
+    ```
+
+4.  **Install platform CLIs (Environment Dependent):**
+    If you are deploying to a public cloud, install the relevant CLI for authentication.
+    * **AWS:** [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+    * **Google Cloud:** [Install gcloud SDK](https://cloud.google.com/sdk/docs/install)
+    * **OpenShift:** [Install oc CLI](https://docs.openshift.com/container-platform/4.13/cli_reference/openshift_cli/getting-started-cli.html)
+
+---
+
+### Step 2: Verify connectivity
+
+Before proceeding to the configuration phase, validate that your workstation can reach the necessary endpoints.
+
+```bash
+# 1. Verify Internet/Registry access
+curl -I [https://docker.enterprisedb.com/v2/](https://docker.enterprisedb.com/v2/)
+
+# 2. Verify Cloud Identity (if using AWS/GCP)
+aws sts get-caller-identity
+# OR
+gcloud auth list
+
+# 3. Verify Local Tools
+edbctl version
+kubectl version --client
+```
+
+!!! Note
+Ensure your workstation meets the CPU and RAM requirements to host the temporary bootstrap cluster during installation.
+!!!
+
+---
+
+## Sync images to local registry
+
+> **Optionality:** Strongly recommended. Mandatory for Air-gapped / Private Registry environments. 
+
+You are strongly encouraged to sync EDB images to your local registry.
+If your environment cannot access the public EDB repository, you must pull the artifacts and push them to your local private registry using `edbctl`.
+
+* [**Deep Dive: Sync images to local registry**](sync_images.md)
+    * *Guidance: Using `edbctl` to mirror Platform and Operator images.*
+
+---
+
+## Image discovery configuration
+
+> **Optionality:** Required in some cases.
+
+Once images are synced (if applicable), you may need to configure the installer to locate them. 
+This ensures the cluster pulls artifacts from the correct location (local registry vs. public registry).
+
+* [**Deep Dive: Image discovery configuration**](image_discovery)
+    * *Guidance: Configuring registry mirrors and pull policies.*
+
+---
+
+## Core Infrastructure Secrets
+
+Create Kubernetes secrets for any required credentials, such as object storage credentials, database access tokens, or any other sensitive information.
+
+### Image Pull secret
+
+> **Optionality:** Strict requirement
+
+**Dependency:** k8s secret `edb-cred` (defaults to `edb-cred` in `values.yaml`)
+
+Use `edbctl` to create the `ImagePullSecret` namespace and required secrets.
+
+1.  Create the necessary namespaces and pull secrets:
+    ```bash
+    edbctl image-pull-secret create \
+      --username <container registry username> \
+      --password <container registry passowrd> \
+      --registry <local registry URI>
+    ```
+
+2.  When prompted with `Proceed? [y/N]` with the current Kubernetes context, select `y`.
+    You should see output similar to:
+    ```text
+    2025/02/10 10:10:10 Creating Kubernetes Namespaces and ImagePullSecrets with the provided credentials...
+    2025/02/07 15:29:08 Namespaces and ImagePullSecrets creation completed
+    ```
+
+3.  Verify the secret creation:
+    ```bash
+    edbctl image-pull-secret list
+    ```
+    *Output example:*
+    ```text
+    Current Kubernetes context is: <your-KubeContext>
+    Namespace edbpgai-bootstrap: exists, all set!
+      Secret edb-cred: exists, all set!
+    Namespace upm-replicator: exists, all set!
+      Secret edb-cred: exists, all set!
+    ```
+
+#### Spot validation
+
+1. Check that the `edb-cred` secret exists in the target namespace:
+
+```
+kubectl get secret edb-cred -n edbpgai-bootstrap
+```
+
+2. Check that the default service account references the `edb-cred` secret:
+
+```
+kubectl get serviceaccount default -n edbpgai-bootstrap -o yaml | grep edb-cred
+```
+
+
+3. Deploy a test pod (lasso) to validate image pull:
+
+```
+kubectl run lasso \
+  --rm -it \
+  --image=[docker.enterprisedb.com/pgai-platform/lasso:latest](https://docker.enterprisedb.com/pgai-platform/lasso:latest) \
+  --restart=Never \
+  -n edbpgai-bootstrap \
+  --image-pull-policy=Always \
+  -- bash
+```
+
+4. (Optional) Describe the pod to confirm imagePullSecrets are set:
+
+```
+kubectl describe pod lasso -n edbpgai-bootstrap | grep -i imagepull
+```
+
+---
+
+### Object storage secret
+
+> **Optionality:** Strictly required
+
+To implement the [Object Storage requirement](../sys_reqs), you must create a secret named `edb-object-storage` in the `default` namespace.
+
+Select the configuration matching your provider:
+
+#### AWS IAM (EKS or ROSA)
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # the name cannot be changed
+  namespace: default # the namespace cannot be changed
+stringData:
+  auth_type: workloadIdentity
+  aws_region: <AWS_BUCKET_REGION>
+  aws_role_arn: <PRIMARY_IDENTITY_ROLE_ARN>
+  bucket_name: <AWS_BUCKET_NAME>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+#### AWS / Other K8s (Static Credentials)
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  auth_type: credentials
+  aws_region: <AWS_BUCKET_REGION>
+  bucket_name: <AWS_BUCKET_NAME>
+  aws_access_key_id: <AWS_ACCESS_KEY_ID>
+  aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+#### Azure Blob Storage
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  provider: azure
+  subscription_id: <AZURE_SUBSCRIPTION_ID>
+  resource_group_name: <AZURE_RESOURCE_GROUP>
+  storage_account_name: <AZURE_STORAGE_ACCOUNT>
+  storage_account_container_name: <AZURE_STORAGE_CONTAINER>
+  storage_account_key: <AZURE_STORAGE_KEY>
+  region: <AZURE_REGION>
+  client_id: <AZURE_CLIENT_ID>
+  client_secret: <AZURE_CLIENT_SECRET>
+  tenant_id: <AZURE_TENANT_ID>
+```
+
+#### GCP Object Storage
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  provider: gcp
+  location_id: <GCP_BUCKET_REGION>
+  project_id: <GCP_PROJECT_ID>
+  bucket_name: <GCP_BUCKET_NAME>
+  credentials_json_base64: <GCP_CREDENTIAL_BASE64>
+```
+
+#### Other S3 Compatible Storage
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+    auth_type: credentials
+    # Optional: Base64 CA bundle if not using a well-known CA
+    aws_ca_bundle_base64: <CA_BUNDLE_BASE64>
+    aws_endpoint_url_s3: <S3_ENDPOINT_URL>
+    aws_access_key_id: <AWS_ACCESS_KEY_ID>
+    aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+    bucket_name: <S3_BUCKET_NAME>
+    aws_region: <S3_REGION>
+    # Set to true if server-side encryption is disabled on the bucket
+    server_side_encryption_disabled: <true|false>
+```
+
+---
+
+## TLS Kubernetes secrets
+
+You must implement the TLS strategy chosen during the [System Requirements](../sys_reqs) phase, some of which require secrets to be made.
+
+### Option A: Custom cert manager
+
+> **Optionality:** Required for optimal experience.
+
+**No secret creation required.**
+
+* **Use Case:** You have an existing `ClusterIssuer` or `Issuer` (e.g., Let's Encrypt, HashiCorp Vault, or a corporate CA) running in the cluster.
+
+!!! Note
+For this option, you do not need to pass a secret to the Hybrid Manager installer. 
+The existing Issuer already manages its own credentials.
+!!!
+
+#### Dependencies
+
+* Ensure your existing `ClusterIssuer` or `Issuer` is configured and available in the target cluster. 
+* Specify the Issuer name in `values.yaml`.
+
+[**Deep Dive: Set up a custom Cert-Manager Issuer**](https://laughing-waddle-g6ky9qv.pages.github.io/dev/advanced/custom-certificates/#set-up-a-custom-cert-manager-issuer-for-the-hcp-portal)
+
+### Option B: Custom certificate authority (CA)
+
+> **Optionality**: Alternative to custom cert manager.
+
+**Secret creation required.**
+
+* **Use Case:** You want Hybrid Manager to create an Issuer for you, using your corporate CA to sign certificates.
+
+* To use a custom CA, you must set it up yourself [CA](/edb-postgres-ai/1.3/hybrid-manager/install/customization/cert-man/#bring-your-own-private-certificate-authority).
+
+* Create a Kubernetes secret containing your CA signing keypair (cert and key).
+
+#### Dependencies
+
+* Kubernetes secret created for (`<ca_secret_name>`)
+
+* `values.yaml`: `parameters.global.ca_secret_name(<ca_secret_name)`.
+
+### Option C: Custom certificate
+
+> **Optionality:** Alternative to custom cert manager and custom CA.
+
+**Secret creation required.**
+
+#### Dependencies
+
+* Kubernetes secret created for (`<my_portal_certificate>`)`
+
+* `values.yaml: parameter `global.portal_certificate_secret`.
+
+For guidance setting up a custom certificate, [see these instructions](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/#set-up-a-custom-x509-certificate-for-the-hybrid-manager-portal)
+
+### Option D: Self-signed certificates (Default)
+
+> **Optionality:** Alternative to custom cert manager, custom CA and custom certificate.
+
+* **Use Case:** Non-production testing.
+
+The installer automatically generates self-signed certificates.
+
+#### Dependencies
+
+N/A
+
+---
+
+## Advanced feature preparation
+
+Implement the configuration strategies decided upon during the **Planning your architecture** and **Gathering your system requirements** phases.
+
+If your architecture includes the following advanced features, refer to the deep dives below to identify the necessary `values.yaml` flags.
+
+### Multi-location architecture
+
+> **Optionality:** Required for High Availability across zones/regions.
+
+**Action:** Configure SPIRE Federation, sync Object Storage, and wire Beacon Agents.
+
+Deploying Hybrid Manager across multiple locations (Multi-DC) requires significant preparation to ensure the Primary and Secondary clusters can communicate securely. 
+You must establish trust domains, sync storage secrets, and configure the Beacon agent to register the secondary location.
+
+**Preparation Checklist:**
+
+1.  **Network:** Ensure connectivity on ports `8444` (SPIRE) and `9445` (Beacon) between clusters.
+2.  **Storage:** Synchronize the `edb-object-storage` secret across all clusters.
+3.  **Identity:** Configure SPIRE federation to allow cross-cluster trust.
+4.  **Configuration:** Define unique `beacon_location_id` values and trust domains in `values.yaml`.
+
+* [**Deep Dive: Multi-location architecture**](multi_location.md)
+    * *Guidance: Detailed steps for setting up SPIRE federation and cross-DC wiring.*
+
+### Identity providers (IdP)
+
+> **Optionality:** Required for production user management (LDAP/SAML).
+
+**Action:** Construct the `idpConnectors` configuration block.
+
+Configuring an IdP requires constructing a complex array in your `values.yaml`. 
+You must gather specific values from your IdP provider (Okta, Active Directory, etc.) to populate the `portal.authentication.idpConnectors` section.
+
+* [**Deep Dive: Configuring IdPs**](idp_configuration.md)
+    * *Guidance: Detailed YAML examples for LDAP and SAML integration.*
+
+### Enabling GenAI Builder
+
+> **Optionality:** Required for the GenAI stack.
+
+**Action:** Create Namespace, Fernet Secret, and Object Storage Bucket.
+
+Enabling GenAI Builder requires significant environment preparation beyond the Helm chart. 
+You must manually set up encryption keys and a dedicated S3-compatible bucket with specific CORS policies.
+
+**Preparation Checklist:**
+
+1.  **Namespace:** Create the `upm-griptape` namespace.
+2.  **Encryption:** Generate a Fernet key and create the `fernet-secret` inside that namespace.
+3.  **Storage:** Create a dedicated Object Storage bucket (DataLake).
+4.  **Networking:** Apply CORS configuration to the bucket to allow access from the Portal domain.
+
+* [**Deep Dive: Enabling GenAI Builder**](genai_builder.md)
+    * *Guidance: Scripts for generating Fernet keys and CORS JSON configurations.*
+
+### Enabling Catalogs
+
+> **Optionality:** Required for Data Catalogs (Lake House).
+
+**Action:** Create Namespace and Fernet Secret.
+
+Similar to GenAI, the Catalog service requires its own encrypted storage credentials.
+
+**Preparation Checklist:**
+
+1.  **Namespace:** Create the `upm-lakekeeper` namespace.
+2.  **Encryption:** Generate a Fernet key and create the secret in that namespace.
+3.  **Configuration:** Configure the *installation-time* catalogs (Infrastructure/OS images) in `values.yaml`.
+
+* [**Deep Dive: Enabling Catalogs**](catalogs.md)
+
+### Migration Portal secrets
+
+> **Optionality:** Required if using Migration Portal.
+
+**Action:** Create secrets for the data migration pipeline.
+
+Create secrets in namespaces `edb-migration-portal` and `edb-migration-copilot`.
+
+* [**Deep Dive: Customizing Migration Portal secrets**](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/migration_portal_secrets/)
+
+### KMS for TDE
+
+> **Optionality:** Required for Database Encryption.
+
+If you require encryption at rest for your databases (TDE), you must enable the Key Management Service (KMS) provider and create your keys now.
+
+* [**Deep Dive: Enabling KMS for TDE**](#)
+* [**Deep Dive: KMS Support Overview**](#)
+
+---
+
+## Other environment prep
+
+### Internal backup folder
+
+> **Optionality:** Required for HM disaster recovery and mutli-location.
+
+This is a universally unique folder name for the Hybrid Manager backups for disaster recovery and multi-location.
+
+* **Dependency:** `values.yaml` parameter `global.internal_backup_folder`.
+
+### Change mandatory static User-0 password
+
+> **Optionality:** Strict requirement for User-0; password change is required for optimal security.
+
+#### Dependencies
+
+You must configure the following four values under `pgai.portal.authentication.staticPasswords` in your `values.yaml`:
+
+1.  **`userID`**: Must be set to `c5998173-a605-449a-a9a5-4a9c33e26df7`.
+2.  **`username`**: The login username for the admin account.
+3.  **`email`**: The email address associated with the admin account.
+4.  **`hash`**: The bcrypt hash of your desired password.
+
+#### Hash generation
+
+To generate the hash for your new password:
+
+**Option 1:**
+
+```bash
+bcrypt hash of the string "password": $(echo password | htpasswd -BinC 10 admin | cut -d: -f2)
+```
+
+**Option 2:**
+
+```bash
+echo 'password' | htpasswd -BinC 10 admin | cut -d: -f2
+```
+
+---
+
+## Creating the cluster configuration (values.yaml)
+
+You must generate and edit the HM configuration Helm chart file (`values.yaml`). 
+This file defines network settings, node pools, and feature flags.
+
+Below is a template configuration with all of the keys you should have determined up to this point:
+
+```yaml
+system: <Kubernetes>
+bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
+bootstrapImageTag: <Version>
+containerRegistryURL: "<Container Registry Domain>/pgai-platform"
+parameters:
+  global:
+    internal_backup_folder: <twelveCharacterString>
+    portal_domain_name: <Portal Domain>
+    storage_class: <Block Storage>
+    portal_certificate_issuer_kind: <ClusterIssuer>
+    portal_certificate_issuer_name: <my-issuer>
+    trust_domain: <Portal Domain>
+  upm-beacon:
+    beacon_location_id: <Location>
+    server_host: <Agent Domain>
+  transporter-rw-service:
+    domain_name: <Migration Domain>
+  transporter-dp-agent:
+    rw_service_url: https://<Migration Domain>/transporter
+beaconAgent:
+  provisioning:
+    imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+    imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+  transparentDataEncryptionMethods:
+    - <available_encryption_method>
+pgai:
+  portal:
+    authentication:
+      idpConnectors:
+        - config:
+            caData: <base64 encyrption of Certificate Authority from SSO provider>
+            emailAttr: email
+            groupsAttr: groups
+            entityIssuer: https://<Portal Domain>/auth/callback
+            redirectURI: https://<Portal Domain>/auth/callback
+            ssoURL: [https://login.microsoft.com/](https://login.microsoft.com/)<azure service identifier>/saml2
+            usernameAttr: name
+          id: azure
+          name: Azure
+          type: saml
+      staticPasswords:
+        - email: <email>
+          hash: <hashed_password>
+          userID: c5998173-a605-449a-a9a5-4a9c33e26df7
+          username: <email-or-username>
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+```
+
+---
+
+## Validation
+
+Before proceeding to deployment, validate the environment.
+
+* [**Deep Dive: Use kubectl-edb-diagnostic**](https://knowledge.enterprisedb.com/hc/en-us/articles/20574035583260-How-to-use-kubectl-edb-diagnostic-to-collect-Hybrid-Manager-cluster-diagnostics)
+
+### LoadBalancer Validation
+To validate your LoadBalancer controller is working, create a simple service (no deployment required):
+
+```bash
+kubectl create service loadbalancer test-lb --tcp=80:80
+kubectl get svc test-lb
+```
+
+If the LoadBalancer controller is functioning, the `test-lb` service will be assigned an external IP or hostname.
+
+---
+
+### Next steps
+
+Once your management workstation is ready, images are synced, secrets are staged, and the YAML is validated, you are ready to deploy your Kubernetes cluster.
+
+**[Proceed to Phase 4: Cluster Deployment & Installation →]**
