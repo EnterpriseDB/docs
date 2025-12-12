@@ -1,14 +1,20 @@
 ---
 title: Controlling schema ingestion
 navTitle: Schema ingestion
-
+deepToC: true
 ---
 
-The [`beacon-agent.yaml` monitoring template](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/) allows the Agent to ingest all schemas that the migration user has permissions to and contain at least one table. If you don't want the Agent to ingest all schemas, you can define a subset with the `databases.schema.filter` option.
+The [`beacon-agent.yaml` monitoring template](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/) allows the Agent to ingest all schemas that the migration user has permissions to and contain at least one table.
 
-## Using the schema filter
+You can add further configurations to control schema ingestion.
 
-To control which schemas the Agent ingests from your database, add the `filter` parameter within the `databases.schema` configuration block. This allows you to specify a set of schemas to either include or exclude.
+## Defining a subset of schemas for ingestion
+
+ If you don't want the Agent to ingest all schemas, you can define a subset with the `databases.schema.filter` option.
+
+### Using the schema filter
+
+To control which schemas the Agent ingests from your database, add the `filter` parameter within the `databases.schema` configuration block in your `beacong-agent.yaml`. This allows you to specify a set of schemas to either include or exclude.
 
 The filter parameter requires two settings:
 
@@ -19,7 +25,7 @@ The filter parameter requires two settings:
 !!!note 
     The Agent has a default [list of system schemas](#excluded-system-schemas) for both Oracle and Postgres that are automatically excluded from ingestion because they are irrelevant for the database migration. When an `exclude` filter is used, this default list is combined with any additional schemas you specify. For the `include` filter, the Agent will ingest any schemas you explicitly name, including system schemas that would have otherwise been excluded by default.
 
-## Include example
+### Include example
 
 ```yaml
 [...]
@@ -43,7 +49,7 @@ provider:
               - "<tag_names>"
 ```
 
-## Exclude example
+### Exclude example
 
 ```yaml
 [...]
@@ -67,7 +73,7 @@ provider:
              - "<tag_names>"
 ```
 
-## Excluded system schemas
+### Excluded system schemas
 
 The Agent excludes the following system schemas by default.
 
@@ -142,3 +148,31 @@ The Agent excludes the following system schemas by default.
 - WMSYS
 - XDB
 - XS$NULL
+
+## Performing multiple concurrent schema ingestions
+
+When you configure the HM agent to ingest schemas from several Oracle databases, you can use the `schema_export_max_workers` parameter of the `beacon-agent.yaml` configuration file to control how many schema export jobs the HM agent runs in parallel.
+
+The `schema_export_max_workers` sets the maximum number of concurrent schema exports the HM agent runs across all configured Oracle databases. Because active workers consume CPU, memory, and some disk space on the auxiliary machine that runs HM agent, you can use this parameter to tune resource consumption, while speeding up or slowing down the bulk schema ingestion. 
+
+The `schema_export_max_workers` is in the `provider.onprem` section of the `beacon-agent.yaml`:
+
+```yaml
+... # other beacon-agent.yaml configurations
+provider:
+  onprem:
+    runner:
+      enabled: true
+    schema_export_max_workers: 10
+...
+```
+
+### Using the max workers parameter
+
+Start with the default `schema_export_max_workers: 10` when configuring initial schema ingestion. Then, monitor the auxiliary machine running the HM agent (CPU, memory, disk I/O, network), for example, with the [Grafana dashboards](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/monitoring_grafana/grafana_dashboards/) included with the HM console.
+
+If the auxiliary machine is underutilized and you need faster ingestion for multiple databases, or if you notice that the databases are taking too long to appear in the **Estate > Migrations** tab, increase the value and observe the impact.
+
+If resource usage is consistently high or causing contention (for example, you notice spikes in CPU, memory, and disk usage), decrease the value and confirm that the system stabilizes. This slows down total ingestion time but reduces the peak resource usage on the HM agent host.
+
+After each change, restart the Agent if it is not running as a service with automatic reload.
