@@ -21,6 +21,15 @@ Now, the {{name.ln}} and EDB Postgres Distributed for Kubernetes operators and a
 | docker.enterprisedb.com/anything_else       | docker.enterprisedb.com/k8s |
 | quay.io/enterprisedb                       | docker.enterprisedb.com/k8s |
 
+!!! Warning "Critical: Upgrade Failure Prevention"
+    **You MUST update pull secrets BEFORE upgrading the operator.** Failure to do so will result in:
+
+    - Image pull failures during upgrade
+    - Deployment failures
+    - Potential downtime for your PostgreSQL clusters
+
+    Complete all migration steps in this guide before initiating any operator upgrade.
+
 ## Scope of changes
 
 - **Pull secrets.** Because the old system relied on specifying the desired repository by username when authenticating, update the credentials stored in secrets that Kubernetes uses to pull images.
@@ -75,9 +84,18 @@ kubectl create secret -n pgd-operator-system docker-registry edb-pull-secret \
 
 #### OpenShift pull secrets
 
-The relevant pull secrets live in the `openshift-operators` namespace on OpenShift.
+!!! Important "OpenShift Installation Modes"
+    The namespace where you create the pull secret depends on your operator
+    installation mode. Check your installation mode in the OpenShift web console
+    under `Operators → Installed Operators`.
 
-For {{name.ln}} and operand images, you'll need to update `postgresql-operator-pull-secret`:
+##### Cluster-wide installation (All namespaces mode)
+
+For cluster-wide installations, the operator runs in the `openshift-operators`
+namespace. Create the pull secret in this namespace.
+
+For {{name.ln}} and operand images, you'll need to update
+`postgresql-operator-pull-secret`:
 
 ```shell
 oc create secret -n openshift-operators docker-registry postgresql-operator-pull-secret \
@@ -88,7 +106,8 @@ oc create secret -n openshift-operators docker-registry postgresql-operator-pull
   | oc apply -f -
 ```
 
-If you're using the EDB Postgres Distributed for Kubernetes operator, you'll ***also*** need to update  `pgd-operator-pull-secret`:
+If you're using the EDB Postgres Distributed for Kubernetes operator,
+you'll ***also*** need to update `pgd-operator-pull-secret`:
 
 ```shell
 oc create secret -n openshift-operators docker-registry pgd-operator-pull-secret \
@@ -98,6 +117,62 @@ oc create secret -n openshift-operators docker-registry pgd-operator-pull-secret
   --dry-run=client -o=json \
   | oc apply -f -
 ```
+
+##### Namespace-specific installation (A specific namespace mode)
+
+For namespace-specific installations, the operator runs in your chosen namespace
+(for example, `proj-dev`, `my-operators`, etc.). Create the pull secret in the
+**same namespace** where the operator is installed.
+
+First, identify your operator's namespace:
+
+```shell
+# Find the namespace where the operator is running
+oc get subscription cloud-native-postgresql -A \
+  -o jsonpath='{.items[0].metadata.namespace}'
+```
+
+Then create the pull secret in that namespace. Replace `<OPERATOR_NAMESPACE>`
+with your operator's namespace:
+
+```shell
+oc create secret -n <OPERATOR_NAMESPACE> docker-registry postgresql-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+For example, if your operator is installed in the `proj-dev` namespace:
+
+```shell
+oc create secret -n proj-dev docker-registry postgresql-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+If you're using the EDB Postgres Distributed for Kubernetes operator in a
+namespace-specific installation, also update `pgd-operator-pull-secret` in the
+same namespace:
+
+```shell
+oc create secret -n <OPERATOR_NAMESPACE> docker-registry pgd-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+!!! Tip "Verifying pull secret creation"
+    After creating the pull secret, verify it exists:
+    ```shell
+    oc get secret postgresql-operator-pull-secret -n <NAMESPACE>
+    ```
 
 ### Updating Helm values
 
