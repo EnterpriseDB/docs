@@ -2,6 +2,22 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "CloudNativePG Cluster 1.28.0",
+    icon: IconNames.MODULE,
+    description:
+      "EDB CloudNativePG Cluster 1.28.0 introduces comprehensive declarative management for Foreign Data Wrappers, promotes the quorum-based failover feature to stable status, and consolidates EDB container registries along with many fixes and enhancements.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_28_0_rel_notes/",
+  },
+  {
+    title: "EDB Postgres Advanced Server 18.1.0",
+    icon: IconNames.EDB_EPAS,
+    description:
+      "EDB Postgres Advanced Server 18.1.0 is now available, bringing all of the changes from PostgreSQL 18.1 along with enhanced security features and expanded Oracle database compatibility.",
+    url: "/epas/latest/",
+    moreUrl: "/epas/latest/epas_rel_notes/epas18_1_rel_notes/",
+  },
+  {
     title: "Hybrid Manager 1.3",
     icon: IconNames.MODULE,
     description:
