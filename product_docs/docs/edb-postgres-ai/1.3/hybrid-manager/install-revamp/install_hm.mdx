@@ -1,0 +1,159 @@
+---
+title: Install Hybrid Manager
+navTitle: Installing Hybrid Manager
+description: Execute the Helm installation to deploy the Hybrid Manager and verify system readiness.
+deepToC: true
+---
+
+> **Role:** Infrastructure Engineer
+
+**Prerequisites:**
+
+* [Phase 1: Planning your architecture](./planning_arch) (Completed)
+* [Phase 2: Gathering your system requirements](./sys_reqs) (Completed)
+* [Phase 3: Deploy Kubernetes Cluster](../k8s_deploy) (Running and validated)
+* [Phase 4: Environment Preparation](../prepare_environment) (Completed and validated)
+
+**Outcome:** A fully deployed Hybrid Manager (HM) platform, accessible via the web portal.
+
+**Next phase:** [Initial Configuration](../initial_config)
+
+---
+
+With your environment prepared and your configuration validated, you are ready to deploy the Hybrid Manager (HM). 
+
+This phase involves applying the Helm chart (`values.yaml`) to your cluster and monitoring the operator as it bootstraps the platform services.
+
+## Final configuration verification
+
+Before running the install command, perform one final sanity check on the critical values in your `values.yaml`. 
+
+These are the most common causes of deployment failures.
+
+**Open your `values.yaml` and confirm:**
+
+### Global & image settings
+
+* 1. ** `containerRegistryURL`**: Ensure this points to the registry containing your images (e.g., `docker.enterprisedb.com/pgai-platform` or your private mirror).
+* 2. ** `bootstrapImageName`**: Must match the bootstrap image path defined in [Environment Prep](../prepare_environment).
+* 3. ** `bootstrapImageTag`**: Must match the target version you are installing.
+
+### Domain & network parameters
+
+* 4. **`parameters.global.portal_domain_name`**: The FQDN for the Hybrid Manager UI (e.g., `portal.my-company.com`).
+* 5. **`parameters.transporter-rw-service.domain_name`**: The FQDN for the migration service.
+* 6. **`parameters.transporter-dp-agent.rw_service_url`**: The full URL for the data plane agent (e.g., `https://<migration-domain>/transporter`).
+* 7. **`parameters.upm-beacon.server_host`**: The hostname the beacon agent will use to connect back to the control plane.
+* 8. **`beaconAgent.provisioning.nodePortDomain`**: If using NodePort instead of LoadBalancer, ensure this domain is set.
+
+### Security & Authentication
+
+* 9. **`pgai.portal.authentication.staticPasswords`**: You must have the `email`, `hash`, `username`, and `userID` set for the initial admin user ("User-0").
+* 10. **`parameters.upm-istio-gateway.cookie_aeskey`**: Ensure this 16/32-byte key is set for session encryption.
+* 11. **`transporter-data-operator.fips_enabled`**: Set this to **`false`**. (FIPS support is not yet universal for all components).
+
+!!! Note
+Ensure `transporter-data-operator:fips_enabled` is set to `false` unless you have explicitly configured a FIPS-compliant environment.
+!!!
+
+---
+
+## Install Hybrid Manager
+
+Use the following Standard Kubernetes installation flow, unless you are deploying on RHOS and prefer to [install using the EDB Postgres AI Operator from the catalog](#openshift) in the RHOS UI.
+
+### Standard Kubernetes
+
+Use the Helm client to install the Hybrid Manager chart. We use the `--install` flag (or `upgrade --install`) to ensure the command is idempotent.
+
+#### Create namespace
+
+Create a dedicated namespace for the bootstrap operator.
+
+```bash
+kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
+```
+
+#### Run installation
+
+Execute the deployment using the OCI registry path.
+
+* **`[REGISTRY]`:** Use `docker.enterprisedb.com` (Public) or your private registry domain.
+* **`<"VERSION">`:** The target version tag (e.g., `1.3.0`).
+
+```bash
+helm upgrade
+  --namespace edbpgai-bootstrap \
+  --install \
+  --version <"VERSION"> \
+  -f <path>/values.yaml \
+  edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap
+```
+
+---
+
+### OpenShift
+
+If you are deploying on RHOS, you can install the operator directly from the Catalog:
+
+1.  **Adapt Configuration:** Ensure your `values.yaml` is compatible with OpenShift Security Context Constraints (SCC).
+2.  **Install from Catalog:**
+    * Navigate to **Operators > OperatorHub** in the OpenShift Console.
+    * Search for **EDB Postgres AI**.
+    * Follow the on-screen wizard to deploy into the `edbpgai-bootstrap` project.
+
+## Monitor installation progress
+
+Once the Helm command completes, the **Bootstrap Operator** takes over. 
+It interprets your configuration and spins up the HM platform.
+
+### Check Control Plane status
+
+Monitor the custom resource to see the high-level status of the platform.
+
+```bash
+kubectl get hybridcontrolplane edbpgai -o yaml
+```
+
+* **Expected output:** You should see an object named `edbpgai` (or similar).
+* **Status column:** Look for `Running` or `Ready`. If it says `Reconciling`, wait a few moments.
+
+### Check pod health
+
+Verify that all pods in the namespace are coming up healthy.
+
+```bash
+kubectl get pods -n edbpgai-bootstrap
+```
+
+**What to look for:**
+
+* **`edbpgai-operator`:** Must be `Running`.
+* **`edb-portal`:** The web interface.
+* **`edb-beacon`:** The agent handling cluster communication.
+* **`transporter`:** Services related to migration.
+
+!!! Note
+**Troubleshooting:** If pods are stuck in `ImagePullBackOff`, verify your **Image Pull Secret** from [Phase 4](./environment_prep). 
+If they are `Pending`, verify your **Storage Class** availability.
+!!!
+
+---
+
+## Verify Portal access
+
+Once the pods are running, verify that you can access the user interface.
+
+1.  **Open your browser** and navigate to the domain defined in `portal_domain_name` (e.g., `https://portal.my-pgai.com`).
+1.  **Accept the certificate:** If you used a self-signed certificate (or haven't trusted your Custom CA yet), you may see a browser warning. Proceed past it for now.
+1.  **Log In:** Use the **User-0** credentials you defined in `values.yaml` (under `staticPasswords`).
+
+**Success:** You should see the HM landing page.
+
+---
+
+## Next phase
+
+The platform is installed and running. You are now ready to perform the initial post-installation configuration, such as connecting your first self-managed cluster or adding team members.
+
+**[Proceed to Phase 6: Initial Configuration](../initial_config) →**
