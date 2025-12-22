@@ -20,34 +20,20 @@ Use GPU acceleration when creating indexes on large vector columns to significan
 ## Requirements
 
 Before using GPU acceleration, ensure the environment meets these requirements:
-
-- Supported OS: Ubuntu 22.04/24.04, Debian 12, RHEL 9.
+- Supported OS: Ubuntu 24.04, Debian 12, RHEL 9.
 - CPU architecture: x86_64.
-- Supported NVIDIA GPUs: architectures 8.9 and 9.0 (for example, L40, L4, H100, H200, GH200).
-- NVIDIA GPU driver installed and functional.
-- NVIDIA CUDA runtime 12.9 or newer installed.
-- The VectorChord extension available on the system (for the `vchordq` index type). Please see <>
+- Supported NVIDIA GPU architectures: 8.9, 9.0, 10.0, 10.3, 12.0, 12.1 (includes L40S, L40, L20, L4, L2, H200, H100, GH200, B200, B100, GB20x, GB10 and other compatible models).
+- NVIDIA GPU driver version 525 or newer installed and functional.
+- NVIDIA CUDA runtime 12.9 or newer installed (at minimum `libcublas` and `libcudart`).
+- VectorChord extension version 1.0.0 or newer available on the system (for the `vchordq` index type). This package is available in EDB repositories.
 
-See also: general platform support in [Compatibility](./compatibility).
+## Installing the extension
 
-## Enable GPU acceleration
-
-GPU acceleration is disabled by default. Enable it per session or at the server level.
-
-- Per session:
+Create the extension in the Postgres database:
 
 ```sql
-SET aidb.gpu_acceleration = 'enable';
+CREATE EXTENSION pgpu;
 ```
-
-- Persist in the server configuration and reload:
-
-```sql
-ALTER SYSTEM SET aidb.gpu_acceleration = 'enable';
-SELECT pg_reload_conf();
-```
-
-To disable, set the value to `disable` and reload the configuration.
 
 ## Quick start example
 
@@ -77,26 +63,26 @@ CROSS JOIN LATERAL (
 3) Build the GPU‑accelerated index:
 
 ```sql
-SELECT aidb.create_vector_index_on_gpu(
+SELECT pgpu.create_vector_index_on_gpu(
   table_name      => 'public.test_10k_vecs',
   column_name     => 'embedding',
-  cluster_count   => 1000
+  cluster_count   => 10
 );
 ```
 
-When the function completes, the table has a VectorChord `vchordq` index ready for use.
+When the function completes, the table has a VectorChord `vchordq` index ready for use. The centroids that PGPU computed to support building the index are stored in `public.test_10k_vecs_centroids`. Use `\d public.test_10k_vecs` in `psql` to inspect the table and the index settings.
 
 ## Function reference
 
-The `aidb.create_vector_index_on_gpu()` function runs the entire VectorChord index build on the GPU. It is analogous to `CREATE INDEX` for VectorChord.
+The `pgpu.create_vector_index_on_gpu()` function runs the entire VectorChord index build on the GPU. It is analogous to `CREATE INDEX` for VectorChord.
 
 Signature example with all parameters:
 
 ```sql
-SELECT aidb.create_vector_index_on_gpu(
+SELECT pgpu.create_vector_index_on_gpu(
   table_name        => 'public.test_10k_vecs',
   column_name       => 'embedding',
-  cluster_count     => 1000,
+  cluster_count     => 10,
   sampling_factor   => 256,
   kmeans_iterations => 10,
   kmeans_nredo      => 1,
@@ -166,7 +152,7 @@ LIMIT 10;
 
 The plan should indicate an index‑assisted path (for example, Index Scan) rather than a full sequential scan. If needed for testing, temporarily set `SET enable_seqscan = off;` to encourage index usage while validating.
 
-For details on vector distance operators `<->` (L2), `<#>` (inner product), and `<=>` (cosine), see the [Vector Engine](/edb-postgres-ai/latest/ai-factory/vector-engine/) documentation.
+For details on vector distance operators `<->` (L2), `<#>` (inner product), and `<=>` (cosine), see the [Vector Engine](/edb-postgres-ai/1.3/ai-factory/vector-engine/) documentation.
 
 ## Tuning and guidance
 
@@ -176,10 +162,11 @@ For details on vector distance operators `<->` (L2), `<#>` (inner product), and 
 
 ## Troubleshooting
 
-- GPU acceleration not enabled: Ensure `aidb.gpu_acceleration = 'enable'` and reload configuration if set via `ALTER SYSTEM`.
 - No compatible GPU detected: Verify NVIDIA drivers and CUDA runtime installation.
 - Missing VectorChord components: Ensure the VectorChord extension and its index type are installed on the node.
 - Invalid arguments: Confirm the vector column exists, has a fixed dimension, and the table name is fully qualified.
+
+- Debugging: PGPU logs debug info at Postgres debug levels 1 and 2. For more detail, `SET client_min_messages TO debug2;`.
 
 ## Notes and limitations
 
