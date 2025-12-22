@@ -70,9 +70,11 @@ For EDB Remote DBA (RDBA) or Managed Services contracts, a dedicated Bastion is 
 
 * **Operating System:** Linux (AMD64/ARM64) or macOS.
     * *Note:* Windows users must use **WSL2** (Windows Subsystem for Linux).
+
 * **Network Access:**
     * **Kubernetes API:** Must have network connectivity to the Cluster API Server (typically port 6443).
     * **Internet/Registry:** Must be able to reach the Container Registry to pull Helm charts and images.
+
 * **Storage:** Minimal (enough to hold configuration files and certificates).
 
 ### Required tooling inventory
@@ -168,6 +170,8 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR
 kubectl get svc
 ```
 
+---
+
 #### Ingress scenarios
 
 You must choose an ingress strategy that matches your infrastructure capabilities. 
@@ -246,6 +250,8 @@ With a proper load balancer setup, the following are Postgres ports:
 | **5432** | TCP | Default PSQL |
 | **6432** | TCP | PGD Connection Manager PSQL |
 
+---
+
 ##### NodePort alternative
 
 > **Optionality:** Alternative to [Load Balancer controller](#load-balancer-controller).
@@ -260,8 +266,9 @@ If a Load Balancer is not available, you must use a **NodePort** strategy.
 
 If using NodePort for ingress, the following specific ports must use **NodePort**.
 
-* **Context:** HM components expose services on specific NodePort values. You may use NodePort directly, or front these ports with a hardware load balancer.
 * **Constraint:** You must define a `nodePortDomain` (Base DNS name).
+
+* **Context:** HM components expose services on specific NodePort values. You may use NodePort directly, or front these ports with a hardware load balancer.
 
 **Configuration dependencies**
 
@@ -269,6 +276,8 @@ If using NodePort for ingress, the following specific ports must use **NodePort*
 | :--- | :--- | :--- |
 | **Enable LB** | `beaconAgent.provisioning.loadBalancersEnabled` | `false` |
 | **Domain** | `nodePortDomain` | Base DNS domain (e.g., `nodes.myorg.com`). |
+
+---
 
 **Default NodePort assignments**
 
@@ -283,9 +292,13 @@ If using NodePort for ingress, the following specific ports must use **NodePort*
 | `ingress_fluent_bit_tls_node_port` | **30298** | Fluent-bit TLS (inter-cluster logs) |
 | `enable_server_session` | n/a | Enable server stored session ("true" or "false") |
 
+---
+
 **Postgres NodePorts**
 
 Postgres clusters use the `NodePortDomain` and increment on the port, provisioned in the port range `30000+`.
+
+---
 
 #### DNS
 
@@ -296,7 +309,9 @@ You must ensure proper DNS resolution both inside the cluster and for external a
 ##### Internal cluster DNS & NTP
 
 * **CoreDNS:** The cluster's internal DNS service (typically CoreDNS) must be running and able to resolve both internal cluster services (e.g., `kubernetes.default`) and external internet addresses.
+
 * **NTP:** Functional NTP is required to ensure time synchronization across nodes.
+
 * **Container Registry:** Your DNS service must be able to resolve the DNS entries for the container registry (whether local or EDB's).
 
 ##### Configuration dependencies
@@ -312,6 +327,8 @@ These are inputs into your configuration in the HM Helm chart `values.yaml` in t
 | **Migration URL** | `transporter-dp-agent:rw_service_url` | Full URL derived from the domain above: `https://<Migration Domain>/transporter` |
 | **NodePort Base** | `nodePortDomain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
 
+---
+
 In case of NodePort approach, the above DNS entries should be round robin on the compute IP where the control-plane label is applied on the Kubernetes Nodes.
 
 ##### DNS configuration strategy
@@ -321,13 +338,17 @@ Your DNS configuration depends on your Ingress selection.
 *Scenario A: Load Balancer (Recommended)*
 
 * **Dependency:** Ensure `beaconAgent.provisioning.loadBalancersEnabled:` is `true` in the values.yaml`.
+
 * **Portal:** In the case of an optimal Load Balancer controller like AWS ELB or an F5 with DNS capability, manually configure DNS to point to the resulting Load Balancer IP for `istio-ingress`. Domain names must be resolvable to a **locally routable IP** so that the ingress service on Kubernetes can properly route traffic according to the hostname in the HTTPS request.
+
 * **Postgres:** You do *not* need to manually manage DNS for every database. Postgres DNS records are populated automatically as a function of the Load Balancer controller updating the status of the Service in the namespace dedicated to that Postgres cluster.
 
 *Scenario B: NodePort alternative*
 
 * **Prerequisite:** You disabled Load Balancers and defined a `nodePortDomain` in the Ingress section.
+
 * **Portal:** DNS entries should be a **Round Robin A Record** pointing to the compute IPs of the **Control Plane nodes** (nodes labeled `edbaiplatform.io/control-plane`).
+
 * **Postgres:** The `nodePortDomain` value is used as the base URL for all Postgres instances. It should be a **Round Robin DNS record** pointing to the IP addresses of the **Worker nodes** where the Postgres clusters are running.
 
 ---
@@ -347,6 +368,8 @@ Secure communication requires TLS certificates for the Portal and API endpoints.
 | **C. Customer Certificate** | Provide your own pre-generated x.509 cert. | Specific organization-issued cert. |
 | **D. Self-signed** | Installer generates self-signed certs. | **Test/Non-Production only.** |
 
+---
+
 ##### Configuration dependencies by strategy
 
 Once you select a strategy, record the corresponding values:
@@ -355,8 +378,10 @@ Once you select a strategy, record the corresponding values:
 
 | Parameter | YAML Key | Value / Format |
 | :--- | :--- | :--- |
-| **Issuer Kind** | `parameters.global.portal_certificate_issuer_kind` | e.g., `ClusterIssuer` |
-| **Issuer Name** | `portal_certificate_issuer_name` | e.g., `letsencrypt-prod` |
+| **Issuer kind** | `parameters.global.portal_certificate_issuer_kind` | e.g., `ClusterIssuer` |
+| **Issuer name** | `portal_certificate_issuer_name` | e.g., `letsencrypt-prod` |
+
+---
 
 **Option B: Custom CA (BYO CA)**
 
@@ -364,11 +389,15 @@ Once you select a strategy, record the corresponding values:
 | :--- | :--- | :--- |
 | **CA Secret** | `parameters.global.ca_secret_name` | Name of the pre-created K8s Secret. |
 
+---
+
 **Option C: Custom Certificate (BYO Cert)**
 
 | Parameter | YAML Key | Value / Format |
 | :--- | :--- | :--- |
 | **Cert Secret** | `parameters.global.portal_certificate_secret` | Name of the pre-created K8s Secret. |
+
+---
 
 **Option D: Self signed certificates**
 
@@ -376,7 +405,7 @@ Once you select a strategy, record the corresponding values:
 
 N/A, default
 
-> **Deep Dive:** For implementation details on the above strategies, see [Certificate Management](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/).
+> **Deep dive:** For implementation details on the above strategies, see [Certificate Management](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/).
 
 ---
 
@@ -395,6 +424,8 @@ Mixed-architecture clusters (ARM64 + AMD64) are not supported for HM, even thoug
 | **Data plane** | Runs Postgres databases. | 0 or 3+ | Worker | `edbaiplatform.io/postgres: "true"` |
 | **AI model (GPU)** | *Optional:* Runs AI/ML workloads. | 0 or 2+ | Worker | `nvidia.com/gpu: "true"` |
 
+---
+
 Use Node Pools (e.g., AWS NodeGroups, RHOS Machine Sets) to manage resources and apply required labels/taints.
 
 In most cases, HM runs on Kubernetes worker nodes in cloud environments (since you do not have access to managed control nodes&mdash;see EKS control plane access), and can run on control nodes ([see Kubernetes control plane documentation](https://kubernetes.io/docs/concepts/architecture/control-plane-node-communication/)) or worker nodes for on-premises clusters.
@@ -412,9 +443,11 @@ Resource requirements for the control plane increase with the number of database
 | **Disk** | 100 GB SSD | 200 GB SSD | >200 GB SSD |
 | **Quantity** | 3 nodes | 3 nodes | 3+ nodes |
 
+---
+
 **Required labels & taints:**
 
-To ensure the HM Control Plane runs on dedicated resources, you must apply the following configuration to the Node Pool for each node:
+To ensure the HM Control Plane runs on dedicated resources, you must apply the following configuration to the Node Pool for each node before deploy:
 
 * **Label:** `edbaiplatform.io/control-plane: "true"`
 * **Taint:**
@@ -464,9 +497,10 @@ spec:
           effect: NoSchedule
 ```
 
-#### AI model nodes (Optional)
+#### AI model nodes
 
-Required only if utilizing GenAI/AI Factory capabilities.
+> Optionality: Required only if utilizing GenAI/AI Factory capabilities.
+
 * **Sizing:** Current recommendations require **Nvidia B200 GPUs** (or equivalent supported hardware).
 
 **Required labels & taints:**
@@ -476,30 +510,6 @@ Required only if utilizing GenAI/AI Factory capabilities.
     * Key: `nvidia.com/gpu`
     * Value: `"true"`
     * Effect: `NoSchedule`
-
-#### Validation of node abstractions
-
-After provisioning your infrastructure, run these commands to verify the nodes are correctly labeled and tainted. This ensures the Hybrid Manager installer can schedule pods correctly.
-
-**1. Validate Control Plane nodes:**
-
-```bash
-# List nodes (Expect 3+)
-kubectl get nodes -l edbaiplatform.io/control-plane="true"
-
-# Verify Taints
-kubectl get nodes -o json | jq '.items[] | select(.metadata.labels["edbaiplatform.io/control-plane"]=="true") | {name: .metadata.name, taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/control-plane")))}'
-```
-
-**2. Validate Data Plane nodes:**
-
-```
-#List nodes
-kubectl get nodes -l edbaiplatform.io/postgres="true"
-
-# Verify Taints
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, labels: .metadata.labels["edbaiplatform.io/postgres"], taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/postgres")))}'
-```
 
 ### Storage requirements
 

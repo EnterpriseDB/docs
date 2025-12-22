@@ -101,11 +101,9 @@ With your management workstation configured, you are ready to deploy your cluste
 
 ### Select your deployment path
 
-Select the guide below that matches the **Kubernetes Flavor** you selected in Phase 1 or 2 and proceed by deploying according to your system requirements defined in [Gathering your system requirements](./sys_reqs).
+Select the guide below that matches the **Kubernetes flavor** you selected in Phase 1 or 2 and proceed by deploying according to your system requirements defined in [Gathering your system requirements](./sys_reqs).
 
 ### Public cloud providers
-
-[Needs fact checking] #
 
 | Provider | Official documentation | EDB Knowledge Base | Key considerations |
 | :--- | :--- | :--- | :--- |
@@ -120,6 +118,68 @@ Select the guide below that matches the **Kubernetes Flavor** you selected in Ph
 | **Rancher RKE2** | [**RKE2 Quickstart**](https://docs.rke2.io/install/quickstart) | [**HM on RKE2 Guide**](https://knowledge.enterprisedb.com/hc/en-us/articles/24212371387420-Guidance-on-Rancher-for-Hybrid-Manager) | Requires manual setup of Longhorn (or similar) storage and MetalLB for ingress. |
 | **Red Hat OpenShift** | [**Installing OpenShift**](https://docs.openshift.com/container-platform/4.13/installing/index.html) | [**HM on OpenShift Guide**](https://knowledge.enterprisedb.com/hc/en-us/articles/24212799018780-Guidance-on-RHOS-for-Hybrid-Manager) | Requires specific SCC (Security Context Constraints) and Route configuration. |
 
+### Set your node abstractions
+
+#### Control Plane
+
+**Required labels & taints:**
+
+* **Label:** `edbaiplatform.io/control-plane: "true"`
+* **Taint:**
+    * Key: `edbaiplatform.io/control-plane`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+```yaml
+spec:
+    replicas: 3
+    template:
+    spec:
+        metadata:
+        labels:
+            edbaiplatform.io/control-plane: "true"
+        taints:
+        - key: edbaiplatform.io/control-plane
+            value: "true"
+            effect: NoSchedule
+```
+
+#### Data plane
+
+**Required labels & taints:**
+
+* **Label:** `edbaiplatform.io/postgres: "true"`
+* **Taint:**
+    * Key: `edbaiplatform.io/postgres`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+```yaml
+# Example Node Pool Specification
+spec:
+    replicas: 3 # Minimum recommended for High Availability
+    template:
+      metadata:
+        labels:
+          edbaiplatform.io/postgres: "true"
+      spec:
+        taints:
+        - key: edbaiplatform.io/postgres
+          value: "true"
+          effect: NoSchedule
+```
+#### AI model nodes
+
+* **Sizing:** Current recommendations require **Nvidia B200 GPUs** (or equivalent supported hardware).
+
+**Required labels & taints:**
+
+* **Label:** `nvidia.com/gpu: "true"`
+* **Taint:**
+    * Key: `nvidia.com/gpu`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+    
 ---
 
 ## Validate cluster specifications
@@ -132,18 +192,48 @@ Now that you have deployed your cluster, before proceeding:
 
 ### Compute resources
 
-**Source:** [System Requirements > Compute Sizing](./sys_reqs/#compute-node-requirements)
+**Source:** [Gathering your system requirements>Infrastructure resources>Compute (Node requirements)](./sys_reqs/#compute-node-requirements)
 
-* **Node count:** Ensure your node pools match the High Availability profile (example: Production vs. Non-Production) you selected in Phase 2: [Gathering your system requirements](./sys_reqs).
+* **Node count:** Ensure your node pools match what was decided in the previous phases.
 * **Architecture:** Verify that all nodes use the **AMD64 (x86_64)** architecture. *ARM-based nodes are not currently supported for the Control Plane.*
 
+#### Validation of node abstractions
+
+After provisioning your infrastructure, run these commands to verify the nodes are correctly labeled and tainted. This ensures the Hybrid Manager installer can schedule pods correctly.
+
+1. **Validate Control Plane nodes:**
+
+```bash
+kubectl get nodes -l edbaiplatform.io/control-plane="true"
+```
+
+2. **Verify taints**
+
+```
+kubectl get nodes -o json | jq '.items[] | select(.metadata.labels["edbaiplatform.io/control-plane"]=="true") | {name: .metadata.name, taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/control-plane")))}'
+```
+
+3. **Validate Data Plane nodes:**
+
+```
+kubectl get nodes -l edbaiplatform.io/postgres="true"
+```
+
+4. **Verify taints**
+
+```
+kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, labels: .metadata.labels["edbaiplatform.io/postgres"], taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/postgres")))}'
+```
+
 ### Storage configuration
-**Source:** [System Requirements > Storage](./sys_reqs/#storage-requirements)
+
+**Source:** [Gathering your system requirements>Infrastructure resources>Storage requirements](./sys_reqs/#storage-requirements)
 
 * **Storage class:** Ensure the cluster has the [**Storage Class** default](./sys_reqs/#storage-requirements) you identified in Phase 2 for the Control Plane (e.g., `gp2`).
 * **Capability:** If desired, you may establish any number of storage classes for your Data Plane (Postgres workloads), and they are then options to use when provisioning data base clusters using HM. 
 
 ### Networking and ingress
+
 **Source:** [System Requirements > Networking](../requirements#networking)
 
 * **Ingress controller:** Verify that your chosen Ingress mechanism (LoadBalancer or NodePort) is active and exposing the required ports.
