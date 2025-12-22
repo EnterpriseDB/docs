@@ -118,10 +118,7 @@ const products = {
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
   wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
-  "EDB Postgres AI": {
-    name: "EDB Postgres AI",
-    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
-  },
+  apache_age: { name: "Apache AGE", iconName: IconNames.POSTGRESQL },
   "data migration service": {
     name: "EDB Data Migration Service",
     iconName: IconNames.EDB_TRANSPORTER,

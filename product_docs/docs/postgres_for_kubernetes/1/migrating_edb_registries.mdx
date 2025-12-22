@@ -1,0 +1,273 @@
+---
+title: Migrating to the unified private EDB container registry
+navTitle: Registry migration
+description: Migrate a {{name.ln}} system from a previous tier-based registry configuration to EDB's unified container image registry
+---
+
+## What's changing
+
+Previously, EDB published operator and operand images selectively to one of several private repositories: `k8s_standard`, `k8s_enterprise`, `k8s_standard_pgd`, and `k8s_enterprise_pgd`. Your repository was determined by your subscription level and the operators you wanted to use. Also, public registries may have been used for some operand images. In particular, EDB provided numerous images via public repositories hosted on quay.io.
+
+Now, the {{name.ln}} and EDB Postgres Distributed for Kubernetes operators and associated operands are provided in a single repository, `k8s`. If your subscription includes access to a given image, you can pull it from this repository. The old repositories remain available for now, but new images are published to the unified repository. Thus, future operator and operand upgrades will require migrating to the unified repository.
+
+### Summary of changes
+
+| Old repository path                        | New unified repository path |
+|--------------------------------------------|-----------------------------|
+| docker.enterprisedb.com/k8s_enterprise     | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/k8s_standard       | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/k8s_enterprise_pgd | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/k8s_standard_pgd   | docker.enterprisedb.com/k8s |
+| docker.enterprisedb.com/anything_else       | docker.enterprisedb.com/k8s |
+| quay.io/enterprisedb                       | docker.enterprisedb.com/k8s |
+
+!!! Warning "Critical: Upgrade Failure Prevention"
+    **You MUST update pull secrets BEFORE upgrading the operator.** Failure to do so will result in:
+
+    - Image pull failures during upgrade
+    - Deployment failures
+    - Potential downtime for your PostgreSQL clusters
+
+    Complete all migration steps in this guide before initiating any operator upgrade.
+
+## Scope of changes
+
+- **Pull secrets.** Because the old system relied on specifying the desired repository by username when authenticating, update the credentials stored in secrets that Kubernetes uses to pull images.
+- **Helm values.** If you're using Helm charts, update the `image.repository` and `image.imageCredentials.username` values.
+- **Manifest image names.** If you're using custom manifests that specify one of the old repository paths as part of an `imageName` or `images[].image` value, update those as well.
+
+## Migration processes
+
+### Updating credentials
+
+In all cases, begin by updating any stored credentials used by your system.
+
+Collect the following information:
+
+- Your [EDB account token](/repos/getting_started/with_web/get_your_token/)
+- The name of the repository: `k8s`
+- The repository server: `docker.enterprisedb.com`
+
+The instructions that follow assume your token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
+
+#### Pull secrets
+
+If you're working directly with operator manifests, update pull secrets in the relevant namespaces.
+
+For {{name.ln}}, the default namespace is `postgresql-operator-system`. To create or update the pull secret in this namespace, run:
+
+```shell
+kubectl create secret -n postgresql-operator-system docker-registry edb-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | kubectl apply -f -
+```
+
+!!! Tip
+    These examples overwrite existing secrets. If you have additional credentials stored (for example, to authenticate with internal repositories), instead unpack the value and update only the credentials for `.auths["docker.enterprisedb.com"]`, leaving other servers untouched.
+
+For EDB Postgres Distributed for Kubernetes, the default namespace is `pgd-operator-system`. To create or update the pull secret in this namespace, you would run:
+
+```shell
+kubectl create secret -n pgd-operator-system docker-registry edb-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | kubectl apply -f -
+```
+
+!!! Tip
+    If you're using alternative namespaces, adjust these commands as appropriate.
+
+#### OpenShift pull secrets
+
+!!! Important "OpenShift Installation Modes"
+    The namespace where you create the pull secret depends on your operator
+    installation mode. Check your installation mode in the OpenShift web console
+    under `Operators → Installed Operators`.
+
+##### Cluster-wide installation (All namespaces mode)
+
+For cluster-wide installations, the operator runs in the `openshift-operators`
+namespace. Create the pull secret in this namespace.
+
+For {{name.ln}} and operand images, you'll need to update
+`postgresql-operator-pull-secret`:
+
+```shell
+oc create secret -n openshift-operators docker-registry postgresql-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+If you're using the EDB Postgres Distributed for Kubernetes operator,
+you'll ***also*** need to update `pgd-operator-pull-secret`:
+
+```shell
+oc create secret -n openshift-operators docker-registry pgd-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+##### Namespace-specific installation (A specific namespace mode)
+
+For namespace-specific installations, the operator runs in your chosen namespace
+(for example, `proj-dev`, `my-operators`, etc.). Create the pull secret in the
+**same namespace** where the operator is installed.
+
+First, identify your operator's namespace:
+
+```shell
+# Find the namespace where the operator is running
+oc get subscription cloud-native-postgresql -A \
+  -o jsonpath='{.items[0].metadata.namespace}'
+```
+
+Then create the pull secret in that namespace. Replace `<OPERATOR_NAMESPACE>`
+with your operator's namespace:
+
+```shell
+oc create secret -n <OPERATOR_NAMESPACE> docker-registry postgresql-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+For example, if your operator is installed in the `proj-dev` namespace:
+
+```shell
+oc create secret -n proj-dev docker-registry postgresql-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+If you're using the EDB Postgres Distributed for Kubernetes operator in a
+namespace-specific installation, also update `pgd-operator-pull-secret` in the
+same namespace:
+
+```shell
+oc create secret -n <OPERATOR_NAMESPACE> docker-registry pgd-operator-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN} \
+  --dry-run=client -o=json \
+  | oc apply -f -
+```
+
+!!! Tip "Verifying pull secret creation"
+    After creating the pull secret, verify it exists:
+    ```shell
+    oc get secret postgresql-operator-pull-secret -n <NAMESPACE>
+    ```
+
+### Updating Helm values
+
+For your {{name.ln}} Helm releases, you'll need to update override values for both `image.repository` and `image.imageCredentials.username`:
+
+```shell
+helm upgrade --reuse-values \
+  --set image.repository=docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg \
+  --set image.imageCredentials.username=k8s \
+  edb-pg4k \
+  edb/edb-postgres-for-kubernetes
+```
+
+(here, `edb-pg4k` and `edb/edb-postgres-for-kubernetes` are the release and pathname used in other examples; substitute your own values)
+
+For your EDB Postgres Distributed for Kubernetes Helm releases, you'll need to override values for both `global.repository` and `image.imageCredentials.username`:
+
+```shell
+helm upgrade --reuse-values \
+  --set global.repository=docker.enterprisedb.com/k8s \
+  --set image.imageCredentials.username=k8s \
+  edb-pg4k-pgd \
+  edb/edb-postgres-distributed-for-kubernetes
+```
+
+(here, `edb-pg4k-pgd` and `edb/edb-postgres-distributed-for-kubernetes` are the release and pathname used in other examples; substitute your own values)
+
+### Updating image paths in manifests
+
+For operators or operands deployed via custom manifests (including the examples contained within current and past versions of this documentation), you'll need to update these manifests directly to update image references that specify the server and repository name as part of the image name.
+
+Refer to the repository paths under [Summary of changes](#summary-of-changes) for a full list of paths that you'll need to update if found among your manifests.
+
+#### Example: imageName
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: postgresql-extended-cluster
+spec:
+  instances: 3
+  imageName: docker.enterprisedb.com/k8s_enterprise/edb-postgres-extended:18-standard-ubi9
+```
+
+Here is a cluster manifest that deploys three EDB Postgres Extended instances. The image path referenced in `spec.imageName` is out of date and will need to be updated:
+
+```yaml
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended:18-standard-ubi9
+```
+
+Deploy this update in the usual manner (`kubectl apply ...`).
+
+#### Example: ImageCatalog images
+
+Consider this (old, outdated) sample ImageCatalog manifest:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: ImageCatalog
+metadata:
+  name: postgresql
+  namespace: default
+spec:
+  images:
+    - major: 13
+      image: quay.io/enterprisedb/postgresql:13.21
+    - major: 14
+      image: quay.io/enterprisedb/postgresql:14.18
+    - major: 15
+      image: quay.io/enterprisedb/postgresql:15.13
+    - major: 16
+      image: quay.io/enterprisedb/postgresql:16.9
+    - major: 17
+      image: quay.io/enterprisedb/postgresql:17.5
+
+Here is an ImageCatalog manifest that defines a set of images to be referenced elsewhere. The image paths referenced in `spec.images[].image` values are out of date and will need to be updated:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: ImageCatalog
+metadata:
+  name: postgresql
+  namespace: default
+spec:
+  images:
+    - major: 15
+      image: docker.enterprisedb.com/k8s/postgresql:15.14-standard-ubi9
+    - major: 16
+      image: docker.enterprisedb.com/k8s/postgresql:16.10-standard-ubi9
+    - major: 17
+      image: docker.enterprisedb.com/k8s/postgresql:17.6-standard-ubi9
+    - major: 18
+      image: docker.enterprisedb.com/k8s/postgresql:18.1-standard-ubi9
+```
+
+Deploy this update in the usual manner (`kubectl apply ...`).
+

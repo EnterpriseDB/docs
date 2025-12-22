@@ -1,3 +1,7 @@
+#! /usr/bin/env node
+
+// parse data exported from Google Sheets to generate extension compatibility tables
+
 import { promises as fs } from "fs";
 import { join } from "path";
 import { env, exit as _exit, argv as _argv } from "process";
@@ -36,10 +40,10 @@ function processRow(currentState, row, nextRow) {
         `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; vertical-align: middle; border-left: solid 1px; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[6]}</th>`,
       );
       currentState.output.push(
-        `<th rowspan="1" colspan="2" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[9]}</th>`,
+        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[9]}</th>`,
       );
       currentState.output.push(
-        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[11]}</th>`,
+        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[12]}</th>`,
       );
       currentState.output.push(`</tr>\n`);
       currentState.rowState = 3;
@@ -65,16 +69,19 @@ function processRow(currentState, row, nextRow) {
         composeHeading(true, false, true, true, row[9], true),
       );
       currentState.output.push(
-        composeHeading(false, true, true, true, row[10], true),
+        composeHeading(false, false, true, true, row[10], true),
       );
       currentState.output.push(
-        composeHeading(true, false, true, true, row[11], true),
+        composeHeading(false, true, true, true, row[11], true),
       );
       currentState.output.push(
-        composeHeading(false, false, true, true, row[12], true),
+        composeHeading(true, false, true, true, row[12], true),
       );
       currentState.output.push(
-        composeHeading(false, true, true, true, row[13], true),
+        composeHeading(false, false, true, true, row[13], true),
+      );
+      currentState.output.push(
+        composeHeading(false, true, true, true, row[14], true),
       );
 
       currentState.output.push(`</tr>`);
@@ -156,12 +163,12 @@ function composeRow(row, lastRow, currentState) {
     composeCell(true, false, false, true, trimmedName, lastRow, false, url),
   );
   output.push(composeCell(true, true, false, true, row[5], lastRow, true));
-  for (let i = 6; i < 14; i++) {
+  for (let i = 6; i < 15; i++) {
     if (row[i] === true) {
       output.push(
         composeCell(
-          i == 6 || i == 9 || i == 11,
-          i == 13,
+          i == 6 || i == 9 || i == 12,
+          i == 14,
           true,
           true,
           `<span style="color:green">✓</span>`,
@@ -172,8 +179,8 @@ function composeRow(row, lastRow, currentState) {
     } else if (row[i] === false) {
       output.push(
         composeCell(
-          i == 6 || i == 9 || i == 11,
-          i == 13,
+          i == 6 || i == 9 || i == 12,
+          i == 14,
           true,
           true,
           `–`,
@@ -184,8 +191,8 @@ function composeRow(row, lastRow, currentState) {
     } else if (row[i] == "PREVIEW") {
       output.push(
         composeCell(
-          i == 6 || i == 9 || i == 11,
-          i == 13,
+          i == 6 || i == 9 || i == 12,
+          i == 14,
           false,
           true,
           `Preview`,
@@ -196,8 +203,8 @@ function composeRow(row, lastRow, currentState) {
     } else if (row[i].toString().match(/Q[1-4] 20[0-9][0-9]/gm)) {
       output.push(
         composeCell(
-          i == 6 || i == 9 || i == 11,
-          i == 13,
+          i == 6 || i == 9 || i == 12,
+          i == 14,
           false,
           true,
           row[i],
@@ -209,8 +216,8 @@ function composeRow(row, lastRow, currentState) {
       /* Hide n/a from spreadsheet as - (n/a is internal status only) */
       output.push(
         composeCell(
-          i == 6 || i == 9 || i == 11,
-          i == 13,
+          i == 6 || i == 9 || i == 12,
+          i == 14,
           true,
           true,
           `–`,
@@ -228,7 +235,7 @@ function composeRow(row, lastRow, currentState) {
 }
 
 function composeHeadingRow(row) {
-  return `<tr><td rowspan="1" colspan="14" style="font-weight: bold; border-left: 1px solid; border-right: 1px solid; border-top: 1px solid; border-bottom: 1px ridge ; padding: 2px 3px;">${row[0]}</td></tr>\n`;
+  return `<tr><td rowspan="1" colspan="15" style="font-weight: bold; border-left: 1px solid; border-right: 1px solid; border-top: 1px solid; border-bottom: 1px ridge ; padding: 2px 3px;">${row[0]}</td></tr>\n`;
 }
 
 function composeCell(
@@ -345,7 +352,12 @@ async function processExtensions() {
   }
 
   const templateFile = join(argv.source, "index.mdx.in");
-  const templateFileContent = await fs.readFile(templateFile);
+  const templateFileContent = (await fs.readFile(templateFile))
+    .toString()
+    .replace(
+      /^---\n/,
+      "---\n# This file is generated by exsp.js. Do not edit directly.\n# You probably want to edit one of: index.mdx.in, extensiondata.json, extensionrefs.json\n",
+    );
 
   const extensionsFile = join(argv.source, "extensionrefs.json");
   const extensionsContent = await fs.readFile(extensionsFile);

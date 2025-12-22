@@ -70,13 +70,13 @@ Perform the following steps on all backend nodes unless stated otherwise.
     firewall-cmd --reload      
     ```
 
- ## User and access configuration on the primary
+ ### User and access configuration on the primary
 
  Perform the following steps on the primary.
 
 1.  Create a superuser that can login using a password.
     ```shell
-    su - enterprisedb -c psql edb -c 'create role pemserver login superuser password your-password-here;'
+    su - enterprisedb -c "psql edb -c \"CREATE ROLE pemserver LOGIN SUPERUSER PASSWORD 'your-password-here';\""
     ```
 
 1.  Add the following line to the the `pg_hba.conf` file to permit the new user to connect from any of the server IPs.
@@ -106,9 +106,12 @@ Configure the PEM database installation **on the primary backend server only**:
     /usr/edb/efm-5.0/bin/efm_address add4 eth0 172.16.161.245/32
     ```
 2. Run the PEM configuration script, specifying the VIP as the host and option 3 (Database):
+   If you are using PEM 10.3 or later, also specify the agent-server-binding host as localhost.
 
     ```shell
-    /usr/edb/pem/bin/configure-pem-server.sh -t 3 -ho 172.16.161.245
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho 172.16.161.245 \
+                                             --asb-host-name localhost
     ```
     You will be prompted for various additional details. 
     For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
@@ -128,7 +131,7 @@ This ensures you will be able to upgrade PEM from whichever node is the current 
 1.  Create the replication role:
 
     ```shell
-    psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
+    psql -h 172.16.161.200 -p 5444 -U pemserver edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
     ```
 
     Give the password of your choice.
@@ -216,7 +219,7 @@ On each standby, perform the following steps.
     For example:
 
     ```shell
-    export PEM_SERVER_PASSWORD=password
+    export PEM_SERVER_PASSWORD=pemserver-password-here
     /usr/edb/pem/agent/bin/pemworker --register-agent \
                                      --pem-server 172.17.0.12 \
                                      --pem-user pemserver \
@@ -230,7 +233,7 @@ On each standby, perform the following steps.
     Enable and start the PEM agent service:
 
      ```shell
-     systemctl enable --now pem-agent
+     systemctl enable --now pemagent
      ```
      See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
 
@@ -239,7 +242,8 @@ On each standby, perform the following steps.
     but the PEM Agent will use the loopback interface to connect locally.
 
     ```shell
-    export PEM_SERVER_PASSWORD=password
+    export PEM_SERVER_PASSWORD=pemserver-password-here
+    export PEM_MONITORED_SERVER_PASSWORD=pemserver-password-here
     /usr/edb/pem/agent/bin/pemworker --register-server \
                                      --pem-user pemserver \
                                      --server-addr 172.16.161.201 \
@@ -255,7 +259,7 @@ On each standby, perform the following steps.
 1.  Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each.
 
     ```sql
-    SELECT pem.register_pem_server(server_id) FROM pem.server WHERE server='172.16.161.201' and port=5444;
+    SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5444;
     ```
 
     !!! Info
@@ -445,10 +449,10 @@ In case of failover, any of the standbys are promoted as the primary node, and P
 
 Perform the following steps on all web application hosts.
 
-1.  Install the PEM package:
+1.  Install the PEM package and the EPAS client binaries:
 
     ```shell
-    dnf install edb-pem
+    dnf install edb-pem edb-as17-server-client
     ```
 
 1.  Open the following ports on the firewall of all servers:
@@ -477,3 +481,6 @@ Perform the following steps on all web application hosts.
 
 1.  If you chose to synchronize PEM web application user preferences between instances,
     complete the setup now by [configuring each web application instance to use the backend for user settings](user_settings.md#configure-the-pem-web-applications).
+
+1.  If you are using PEM 10.2 or 10.1, log in to the PEM web application, right click the primary server in Object Explorer and navigate to `Properties > PEM Agent`.
+    If the value of **Host** is set to the VIP, change it to `localhost` or `127.0.0.1`.

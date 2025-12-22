@@ -44,40 +44,40 @@ It requires the RedHat OS with version 8 or 9.
 The following entry is added to `cluster_vars` to use the SQL/Protect
 feature of EDB Postgres Advanced Server:
 
-```
-    extra_postgres_extensions: [ 'sql_protect' ]
+```yaml
+extra_postgres_extensions: [ 'sql_protect' ]
 ```
 
 The following entries are added to `cluster_vars` to force clients
 to use SSL authentication:
 
-```
-  hba_force_hostssl: True
-  hba_force_certificate_auth: True
-  hba_cert_authentication_map: sslmap
+```yaml
+hba_force_hostssl: True
+hba_force_certificate_auth: True
+hba_cert_authentication_map: sslmap
 ```
 
 The following entries are added to `cluster_vars` to set GUCs in
 postgresql.conf:
 
-```
-  tcp_keepalives_idle: 10
-  tcp_keepalives_interval: 10
-  tcp_keepalives_count: 10
-  log_destination: "stderr"
-  postgres_log_file_mode: "0600"
+```yaml
+tcp_keepalives_idle: 10
+tcp_keepalives_interval: 10
+tcp_keepalives_count: 10
+log_destination: "stderr"
+postgres_log_file_mode: "0600"
 ```
 
 The following entries are added to `postgres_conf_settings` in
 `cluster_vars` to set GUCs in postgresql.conf:
 
-```
-  edb_audit: "xml"
-  edb_audit_statement: "all"
-  edb_audit_connect: "all"
-  edb_audit_disconnect: "all"
-  statement_timeout: 1000
-  client_min_messages: "ERROR"
+```yaml
+edb_audit: "xml"
+edb_audit_statement: "all"
+edb_audit_connect: "all"
+edb_audit_disconnect: "all"
+statement_timeout: 1000
+client_min_messages: "ERROR"
 ```
 
 ### Deployment differences
@@ -121,34 +121,33 @@ configure`.
 The following entries are added to `cluster_vars` to set GUCs in
 postgresql.conf:
 
-```
-  log_connections: "on"
-  log_disconnections: "on"
+```yaml
+log_connections: "on"
+log_disconnections: "on"
 ```
 
 The following entry is added to `cluster_vars` to enable required
 extensions:
 
-```
-  extra_postgres_extensions: ["passwordcheck", "pgaudit"]
+```yaml
+extra_postgres_extensions: ["passwordcheck", "pgaudit"]
 ```
 
 The following entry is added to `cluster_vars` to set the umask for
 the postgres OS user:
 
-```
-  extra_bash_rc_lines: "umask 0077"
+```yaml
+extra_bash_rc_lines: "umask 0077"
 ```
 
 The following entries are added to `postgres_conf_settings` in
 `cluster_vars` to set GUCs in postgresql.conf:
 
-```
-
-  log_error_verbosity: "verbose"
-  log_line_prefix: "'%m [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h '"
-  log_replication_commands: "on"
-  temp_file_limit: "1GB"
+```yaml
+log_error_verbosity: "verbose"
+log_line_prefix: "'%m [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h '"
+log_replication_commands: "on"
+temp_file_limit: "1GB"
 ```
 
 ### Final checks

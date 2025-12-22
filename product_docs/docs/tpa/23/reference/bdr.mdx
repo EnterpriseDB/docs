@@ -5,9 +5,9 @@ originalFilePath: bdr.md
 
 ---
 
-TPA can install and configure EDB Postgres Distributed (PGD),
-formerly known as BDR (Bi-directional replication) versions 3.7, 4.x,
-and 5.x.
+TPA can install and configure EDB Postgres Distributed (PGD), formerly
+known as BDR (Bi-directional replication) versions 3.7, 4.x, 5.x. and
+6.x.
 
 Access to PGD packages is through EDB's package repositories only.
 You must have a valid EDB subscription token to download the packages.
@@ -33,7 +33,7 @@ and flavour of Postgres in use (e.g., Postgres, Postgres Extended, or
 EPAS).
 
 Set `bdr_version` to determine which major version of PGD to install
-(i.e., 3, 4, 5). Set `bdr_package_version` to determine which exact
+(i.e., 3, 4, 5, 6). Set `bdr_package_version` to determine which exact
 package to install (e.g., '5.0\*' to install the latest 5.0.x).
 
 ## Overview of cluster setup
@@ -191,6 +191,56 @@ If you set `bdr_commit_scopes` explicitly, TPA will create, alter, or
 drop commit scopes as needed to ensure that the database matches the
 configuration. If you do not set it, it will leave existing commit
 scopes alone.
+
+### preferred_first_bdr_primary
+
+This is the name of the instance that TPA will use for PGD-related tasks that only run on a single node.
+This includes executing DDL/DML, which is then propagated to the other PGD nodes by replication.
+It also includes reading data for initializing a new PGD node.
+If not set, or set to an instance which is not usable, TPA will choose an instance arbitrarily from the suitable candidates if any.
+
+The instance selected by TPA is stored in the fact `first_bdr_primary`.
+The list of viable instances is stored in the fact
+`first_bdr_primary_candidates`. Neither of these facts can be set
+from `config.yml`, they are noted here for use in hooks or debugging.
+
+!!!Note
+
+The choice of `preferred_first_bdr_primary` does not influence which 
+nodes are elected as write leaders in the deployed cluster.
+!!!
+
+#### Advanced use of preferred_first_bdr_primary
+
+If you wish to set `preferred_first_bdr_primary` for a single operation,
+you can pass it using the Ansible `-e` option rather than specifying it 
+in `config.yml`. For example:
+
+```shell
+tpaexec deploy . -e preferred_first_bdr_primary=instance_name
+```
+
+This can be useful if you are adding or rebuilding a PGD node and wish
+to ensure that data is clone from a node in the same data centre for
+example.
+
+Similarly, you can set `preferred_first_bdr_primary` as an instance
+variable, with different instances on each node. For example, this
+configuration would mean that if `node1` was rebuilt, the `tpaexec
+deploy` command would prefer `node2` as the source of data with which to
+rebuild it.
+
+```yaml
+instances:
+  - Name: node1
+    ...
+    instance_vars:
+      preferred_first_bdr_primary: node2
+```
+
+If you use this configuration, it should be applied after the node is
+initially deployed; having multiple values of
+`preferred_first_bdr_primary` during a first deploy is not recommended.
 
 ## Miscellaneous notes
 

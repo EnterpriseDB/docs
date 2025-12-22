@@ -13,9 +13,12 @@ const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
   // sort "preview" last, always
-  return versions.sort((a, b) =>
-    a === "preview" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
-  );
+  return versions.sort((a, b) => {
+    if (a === "preview" && b === "preview") return 0;
+    if (a === "preview") return 1;
+    if (b === "preview") return -1;
+    return b.localeCompare(a, undefined, { numeric: true });
+  });
 };
 
 const replacePathVersion = (path, version = "latest") => {
@@ -266,11 +269,19 @@ const computeFrontmatterForTreeNode = (treeNode) => {
 };
 
 const buildProductVersions = (nodes) => {
-  const versionIndex = {};
+  const versionIndex = { __preciseVersions: {} };
 
   nodes.forEach((node) => {
     const { docType, product, version } = node.fields;
     if (docType !== "doc") return;
+
+    const preciseVersion =
+      node.frontmatter?.version || node.frontmatter?.directoryDefaults?.version;
+    if (preciseVersion) {
+      versionIndex.__preciseVersions[product] =
+        versionIndex.__preciseVersions[product] || {};
+      versionIndex.__preciseVersions[product][version] = preciseVersion;
+    }
 
     if (!versionIndex[product]) {
       versionIndex[product] = [version];
@@ -282,6 +293,7 @@ const buildProductVersions = (nodes) => {
   });
 
   for (const product in versionIndex) {
+    if (product === "__preciseVersions") continue;
     versionIndex[product] = sortVersionArray(versionIndex[product]);
   }
 
@@ -568,13 +580,40 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
 
   for (let fromPath of redirects) {
     if (!fromPath) continue;
+    // special handling for unversioned redirects to versioned paths
+    // this is a common pattern for "permalink" redirects that are intended to point to the latest version of a topic
+    // (which will be the behavior when multiple versions share the same redirect)
+    // it may also affect other redirects, but we probably want the same behavior there as well
+    // this behavior has the following conditions:
+    // - there are multiple sources (targets) for this redirect path
+    // - the redirect path is unversioned (first segment is not a product OR second segment is not a version in that product OR 'latest')
+    // - the redirect target path (this node's path) is versioned
+    // - the target path is NOT the latest version of its page
+    // - one of the other target paths IS the latest version of its page
+    // ...in this case, we will skip creating the redirect, and squelch warnings about it later on
+    const splitFromPath = fromPath.split(path.posix.sep);
+    if (
+      node.fields.docType === "doc" &&
+      !isLastVersion &&
+      !(
+        productVersions[splitFromPath[1]] &&
+        productVersions[splitFromPath[1]].includes(splitFromPath[2])
+      ) &&
+      validPaths.get(fromPath)?.some((p) => p.urlpath.includes("/latest/"))
+    ) {
+      const sources = validPaths.get(fromPath);
+      sources.splice(
+        sources.findIndex((s) => s.urlpath === toPath),
+        1,
+      ); // remove this from sources to squelch warnings
+      continue; // silently skip redirect - it'll be added elsewhere for the correct version
+    }
     let effectiveTo = toPath;
     if (fromPath.endsWith(":splat/")) {
       fromPath = fromPath.replace(/\/?:splat\/$/, "/*");
       effectiveTo = effectiveTo.replace(/\/?$/, "/*");
     }
     if (fromPath !== toPath) {
-      const splitFromPath = fromPath.split(path.posix.sep);
       actions.createRedirect({
         fromPath,
         toPath: effectiveTo,
@@ -619,11 +658,20 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     const toIsLatest = isLatest || isLastVersion;
     if (toIsLatest) {
       const fromPathLatest = replacePathVersion(fromPath);
-      // don't create redirects that point to themselves (and ignore wildcards as this is very easy to get pointed back to itself)
+      // don't create synthesized latest redirects...
+      // - that point to themselves
+      // - with wildcards (as this is very easy to get pointed back to itself)
+      // - if the redirect isn't part of the same product (as determined by first path segment AND the second path segment being found in the versions list OR being 'latest')
+      //   (note that this means you can't use a non-existent version in a redirect to force creation of a latest redirect. Not that you should want to. Just use latest all the time)
+      // - if the redirect is a /purl/ redirect (these are special)
       if (
         fromPathLatest !== fromPath &&
         fromPathLatest !== toPath &&
-        !fromPath.endsWith("/*")
+        !fromPath.endsWith("/*") &&
+        splitFromPath[1] === splitToPath[1] &&
+        (splitFromPath[2] === "latest" ||
+          versions.includes(splitFromPath[2])) &&
+        splitFromPath[1] !== "purl"
       ) {
         let value = validPaths.get(fromPathLatest);
         if (!value) validPaths.set(fromPathLatest, (value = []));
@@ -644,17 +692,22 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
   return pathVersions;
 };
 
-const reportRedirectCollisions = (validPaths, reporter, repoUrl) => {
+const reportRedirectCollisions = (
+  validPaths,
+  reporter,
+  repoUrl,
+  productVersions,
+) => {
   let collisionCount = 0,
     sourceCount = 0;
   for (const [urlpath, sources] of validPaths) {
     if (sources.length <= 1) continue;
 
     collisionCount += 1;
-    sourceCount += sources.length;
+    sourceCount += sources.length - 1;
 
     for (const source of sources) {
-      if (source.urlpath === urlpath) continue;
+      if (source.urlPath === urlpath) continue;
       if (isGHBuild) {
         let list = sources
           .filter((s) => s !== source)

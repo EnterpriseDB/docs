@@ -1,0 +1,327 @@
+---
+title: Troubleshooting AI Factory on Hybrid Manager
+navTitle: Troubleshooting
+description: Diagnostic procedures and resolution strategies for common AI Factory issues within Hybrid Manager deployments
+---
+
+## Diagnostic Overview
+
+This guide provides systematic troubleshooting procedures for AI Factory components within Hybrid Manager environments. Issues typically fall into three categories: infrastructure problems, model serving failures, and application-level errors.
+
+## Quick Reference Links
+
+- [Model Serving FAQ](/edb-postgres-ai/current/ai-factory/model/faq/)
+- [GPU Setup Guide](/edb-postgres-ai/current/ai-factory/model/setup-gpu)
+- [InferenceService Creation](/edb-postgres-ai/current/ai-factory/model/create-inferenceservice/)
+- [Gen AI Hub](/edb-postgres-ai/current/ai-factory/gen-ai/)
+
+## Infrastructure Issues
+
+### GPU Resource Problems
+
+#### Symptoms
+- InferenceService pods remain pending
+- "Insufficient nvidia.com/gpu" events
+- Model initialization timeouts
+
+#### Diagnostic Steps
+
+```bash
+# Check GPU node availability
+kubectl get nodes -l nvidia.com/gpu=true
+
+# Verify GPU resource allocation
+kubectl describe node <gpu-node-name> | grep -A 5 "Allocated resources"
+
+# Check GPU driver status
+kubectl logs -n gpu-operator nvidia-driver-daemonset-<pod>
+```
+
+#### Common Resolutions
+
+**Missing GPU Labels**
+Nodes with GPUs must be properly labeled:
+```bash
+kubectl label nodes <node-name> nvidia.com/gpu=true
+```
+
+**GPU Taint Issues**
+Verify taint configuration for dedicated GPU scheduling:
+```bash
+kubectl taint nodes <node-name> nvidia.com/gpu=NoSchedule
+```
+
+**Driver Compatibility**
+Ensure NVIDIA driver version matches CUDA requirements for NIM containers. Check driver logs in the `gpu-operator` namespace for initialization errors.
+
+### Storage Access Failures
+
+#### Symptoms
+- Model download failures
+- "ImagePullBackOff" status
+- Profile cache errors in air-gapped environments
+
+#### Diagnostic Procedures
+
+```bash
+# Check secret configuration
+kubectl get secret nvidia-nim-secrets -n default -o yaml
+
+# Verify image pull secret
+kubectl get secret ngc-cred -n <namespace> -o yaml
+
+# Test registry connectivity
+kubectl run test-pull --image=nvcr.io/nim/nvidia/nvclip:latest --dry-run=client
+```
+
+#### Resolution Strategies
+
+**Registry Authentication**
+Recreate NGC credentials if authentication fails:
+```bash
+kubectl delete secret ngc-cred -n default
+kubectl create secret docker-registry ngc-cred \
+  --docker-server=nvcr.io \
+  --docker-username='$oauthtoken' \
+  --docker-password=<NGC_API_KEY> \
+  -n default
+```
+
+**Air-Gapped Environments**
+Verify profile cache availability in object storage and correct path configuration in model deployment specifications.
+
+## Model Serving Failures
+
+### InferenceService Not Ready
+
+#### Symptoms
+- InferenceService shows "NotReady" status
+- Predictor pods crash or restart
+- Health check failures
+
+#### Investigation Commands
+
+```bash
+# Check InferenceService status
+kubectl get inferenceservice <name> -n <namespace>
+
+# Examine detailed conditions
+kubectl describe inferenceservice <name> -n <namespace>
+
+# Review pod logs
+kubectl logs <predictor-pod> -n <namespace> -c kserve-container
+```
+
+#### Common Causes and Fixes
+
+**Insufficient Memory**
+NIM models require substantial memory. Check pod resource requests:
+```bash
+kubectl describe pod <predictor-pod> -n <namespace> | grep -A 3 "Requests"
+```
+Increase memory allocation in InferenceService specification if necessary.
+
+**Model Loading Timeout**
+Large models may exceed default initialization timeouts. Adjust readiness probe settings in the InferenceService configuration.
+
+**Profile Mismatch**
+Ensure cached profiles match GPU architecture. List compatible profiles and verify cache contents.
+
+### High Inference Latency
+
+#### Symptoms
+- Response times exceed SLA requirements
+- Token generation rates below expectations
+- GPU underutilization
+
+#### Performance Analysis
+
+```bash
+# Monitor GPU utilization
+kubectl exec <predictor-pod> -n <namespace> -- nvidia-smi
+
+# Check request metrics
+kubectl port-forward -n <namespace> svc/<service-name> 9090:9090
+# Access metrics at localhost:9090/metrics
+```
+
+#### Optimization Approaches
+
+**Batch Size Tuning**
+Adjust batch processing parameters in ServingRuntime configuration for improved throughput.
+
+**Replica Scaling**
+Add InferenceService replicas to distribute load:
+```bash
+kubectl scale inferenceservice <name> -n <namespace> --replicas=3
+```
+
+**Resource Allocation**
+Verify GPU memory allocation matches model requirements. Insufficient GPU memory forces CPU fallback, severely impacting performance.
+
+## Gen AI Application Issues
+
+### Knowledge Base Retrieval Failures
+
+#### Symptoms
+- Empty or irrelevant search results
+- Embedding generation errors
+- Vector database connection failures
+
+#### Diagnostic Process
+
+```bash
+# Check embedding model status
+kubectl get inferenceservice <embedding-model> -n <namespace>
+
+# Verify PostgreSQL connectivity
+kubectl exec -it <app-pod> -n <namespace> -- pg_isready -h <postgres-host>
+
+# Review application logs
+kubectl logs <gen-ai-app-pod> -n <namespace>
+```
+
+#### Resolution Steps
+
+**Embedding Model Issues**
+Verify embedding model deployment and endpoint accessibility. Ensure consistent embedding dimensions between indexing and retrieval.
+
+**Database Connectivity**
+Check PostgreSQL service availability and pgvector extension installation. Verify connection credentials in application configuration.
+
+### Assistant Response Errors
+
+#### Symptoms
+- Assistant fails to generate responses
+- Tool invocation failures
+- Thread state inconsistencies
+
+#### Investigation Methods
+
+Access thread logs for detailed execution traces:
+```bash
+# Query thread history (application-specific)
+kubectl exec <app-pod> -n <namespace> -- cat /app/logs/threads.log
+```
+
+#### Common Resolutions
+
+**Model Endpoint Unavailable**
+Verify LLM InferenceService status and endpoint configuration in assistant settings.
+
+**Tool Integration Failures**
+Check external API connectivity and authentication. Verify tool definitions match API specifications.
+
+**Context Window Exceeded**
+Reduce retrieval chunk size or implement context management strategies for large documents.
+
+## Log Analysis
+
+### Log Locations
+
+AI Factory components generate logs at multiple levels:
+
+**System Logs**
+- Kubernetes events: `kubectl get events -n <namespace>`
+- Node logs: `/var/log/messages` or journalctl on GPU nodes
+
+**Application Logs**
+- InferenceService: Predictor pod container logs
+- Gen AI applications: Application pod logs
+- Model Library: HM control plane logs
+
+**Metrics and Monitoring**
+- Prometheus metrics: Available through HM monitoring stack
+- Custom dashboards: Accessible via Grafana in HM console
+
+### Log Aggregation
+
+Configure centralized logging for comprehensive analysis:
+
+```bash
+# Stream logs from multiple components
+kubectl logs -f -l app=inference-service -n <namespace> --all-containers
+
+# Export logs for analysis
+kubectl logs <pod> -n <namespace> --since=1h > diagnostic.log
+```
+
+## Alert Configuration
+
+### Critical Alerts
+
+Configure monitoring alerts for critical conditions:
+
+**GPU Availability**
+Alert when GPU nodes become unavailable or GPU allocation fails.
+
+**Model Health**
+Monitor InferenceService readiness and restart frequency.
+
+**Performance Degradation**
+Track inference latency percentiles and token generation rates.
+
+**Resource Exhaustion**
+Alert on memory pressure, GPU memory saturation, or storage capacity.
+
+### Alert Integration
+
+Integrate alerts with organizational notification systems through HM alert manager configuration.
+
+## Escalation Procedures
+
+### Support Resources
+
+When internal troubleshooting proves insufficient:
+
+1. **Documentation Review**
+- Consult [AI Factory Hub](/edb-postgres-ai/current/ai-factory)
+- Review model-specific documentation
+
+2. **Community Resources**
+- NVIDIA NIM documentation for model-specific issues
+- KServe community for serving infrastructure problems
+
+3. **EDB Support**
+- Collect diagnostic bundles using HM support tools
+- Include relevant logs, configurations, and error messages
+- Reference specific component versions and deployment specifications
+
+### Diagnostic Information Collection
+
+Prepare comprehensive diagnostic information:
+
+```bash
+# Generate support bundle
+kubectl cluster-info dump --output-directory=./cluster-dump
+
+# Collect AI Factory specifics
+kubectl get inferenceservice -A -o yaml > inferenceservices.yaml
+kubectl get pods -A -l serving.kserve.io/inferenceservice -o wide > serving-pods.txt
+kubectl describe nodes -l nvidia.com/gpu=true > gpu-nodes.txt
+```
+
+## Preventive Measures
+
+### Regular Health Checks
+
+Implement proactive monitoring:
+- Weekly GPU driver and operator status verification
+- Daily InferenceService health assessment
+- Continuous performance baseline tracking
+
+### Capacity Planning
+
+Monitor resource trends:
+- GPU utilization patterns
+- Memory consumption growth
+- Storage usage projections
+- Request volume trends
+
+### Update Management
+
+Maintain component currency:
+- Track NVIDIA NIM model updates
+- Monitor security advisories
+- Plan maintenance windows for updates
+- Test updates in non-production environments

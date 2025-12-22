@@ -1,0 +1,213 @@
+---
+title: Troubleshooting your installation
+navTitle: Troubleshooting
+description: Diagnose and resolve common issues encountered during the installation and configuration of the WarehousePG Observability stack.
+---
+## Identifying your issue
+WarehousePG (WHPG) Observability is composed of several components. Understanding what each component does and where it runs is crucial for narrowing down the location of any issue. For a complete understanding of how each component functions within WHPG Observability, refer to the [Architecture](../overview/architecture) section.
+
+| Issue         | Component to check| Reason 
+| ------------- | ------------------ | ------
+| SQL metrics   | - [Exporter's connection to WHPG cluster](#troubleshooting-whpg-exporter) <br /> - [Extension installation and database permissions](#troubleshooting-whpg-collector) | Exporter queries the `observability` schema in every database to retrieve SQL metrics. <br /> The Extension needs to be installed in every database that you require metrics for. 
+| Host metrics  | [Collector service and its connection to Prometheus](#troubleshooting-whpg-collector) | Collector services gather host metrics from all nodes in the WHPG cluster, and the coordinator pushes them to Prometheus.
+| Log data      | [Collector service and its connection to Loki](#troubleshooting-whpg-collector)       | Collector services gather log files from all nodes in the WHPG cluster, and the coordinator pushes them to Loki.
+| Live queries in Grafana | [Grafana's connection to the Exporter endpoint](#troubleshooting-grafana) | Grafana directly queries the Exporter service for real-time database metrics.
+| Historic data in Grafana | - [Exporter's connection to Prometheus (for SQL data)](#troubleshooting-whpg-exporter) <br /> - [Collector's connection to Prometheus (for host data/logs)](#troubleshooting-whpg-collector) <br /> - [Grafana's connection to Prometheus](#troubleshooting-grafana) | Grafana displays historic data that is stored in Prometheus.<br />  Collector and Exporter perform remote writes to the Prometheus instance. 
+
+## Relevant files and locations
+
+!!! Note
+This troubleshooting guide uses the default configured ports for the provided examples. Adjust their values to match your environment if necessary.
+!!!
+
+| File | Location
+| ----- | -------
+| Collector configuration file | `/var/lib/whpg-observability-collector/observability.conf`<br />  on the WHPG coordinator host.
+| Collector log | run `sudo journalctl -u alloy.service -n 50 --no-pager` <br />  on the WHPG coordinator host
+| WHPG logs | `$COORDINATOR_DATA_DIRECTORY/pg_log/` <br />  on the WHPG coordinator host
+| Exporter configuration | `/etc/sysconfig/whpg-observability-exporter` <br />on the Exporter host
+| Exporter log | `/var/log/whpg-observability-exporter/exporter.log` <br />on the Exporter host
+| Prometheus configuration file | `prometheus/prometheus.yaml`
+| Loki configuration file | `loki/loki-config.yaml`
+| Grafana configuration files | `provisioning/datasources/datasource.yaml`<br /> `WHPGClusterDashboard.json` <br /> `WHPGClusterDetails.json` <br /> `WHPGLogDetails.json` <br /> `WHPGQueryDetails.json` <br /> `WHPGRecommendations.json` <br /> `WHPGResourceDetails.json` <br /> `WHPGSegmentDetails.json`
+
+## Troubleshooting WHPG Collector
+
+**Check configuration**
+
+Review the Collector's configuration file `/var/lib/whpg-observability-collector/observability.conf` to ensure the connection details for the database and external services are correct:
+
+- **WHPG database**: Check the value of `WHPG_OBS_DSN` to ensure the connection details (host, port, user, password) for the WHPG database are correct. Ensure that the user configured holds the superuser role.
+- **Loki endpoint**: Verify the value of `LOKI_ENDPOINT` (host name and port). 
+- **Prometheus endpoint**: Confirm that the value of `PROMETHEUS_ENDPOINT`is correct.
+
+**Check connectivity**
+
+Try directly connecting to the WHPG database:
+
+```bash
+psql -h <host> -p <port> -U <user> -d <database>
+```
+
+Check connectivity to Prometheus and Loki:
+
+```bash
+nc -vz <PROMETHEUS_HOST> 9090
+nc -vz <LOKI_HOST> 3100
+```
+
+Check if the Collector can remotely write to Prometheus and Loki:
+
+```bash
+curl -v -X POST http://<PROMETHEUS_HOST>:9090/api/v1/write
+curl -v http://<LOKI_HOST>:3100/ready
+```
+
+Check collector logs by running the following command from the WHPG coordinator:
+
+```bash
+sudo journalctl -u alloy.service -n 50 --no-pager
+```
+
+## Troubleshooting WHPG Exporter
+
+**Check configuration**
+
+Verify that the WHPG Exporter can successfully connect to the required services by checking the following parameters in the Exporter configuration file `/etc/sysconfig/whpg-observability-exporter`:
+
+- **WHPG database connection**: Check the value of `WHPG_OBS_DSN` to ensure the connection details (host, port, user, password) for the WHPG database are correct. Ensure that the user configured holds the superuser role.
+- **Prometheus**: Verify that the target URL in `WHPG_OBS_REMOTE_WRITE_URL` is correct.
+- **Grafana**: Confirm that Grafana can reach the Exporter through the port specified by `WHPG_OBS_PORT`.
+
+**Check connectivity**
+
+Try directly connecting to the database:
+
+```bash
+psql -h <host> -p <port> -U <user> -d <database>`
+```
+
+Check connectivity to Prometheus:
+
+```bash
+nc -vz <PROMETHEUS_HOST> 9090
+```
+
+Check if the Collector can remotely write to Prometheus:
+
+```bash
+curl -v -X POST http://<PROMETHEUS_HOST>:9090/api/v1/write
+```
+
+Verify that the Exporter service is running and exposing metrics by querying its local endpoint directly (bypassing Prometheus and Grafana):
+
+```bash
+curl http://<WHPG_EXPORTER_HOST>:9187/health
+```
+
+Run a specific query to confirm that the Exporter can successfully query the WHPG cluster and return formatted results:
+
+```bash
+curl http://<WHPG_EXPORTER_HOST>:9187/api/v1/query/table_gp_segment_config
+```
+
+Review the Exporter's log files in `/var/log/whpg-observability-exporter/exporter.log` for detailed error messages.
+
+## Troubleshooting Grafana
+
+**Check configuration**
+
+Verify Grafana's data sources in `datasources.yml` and ensure that the URLs specified are correct.
+
+**Check connectivity**
+
+Check that Grafana can read data from Prometheus:
+
+```bash
+curl http://<PROMETHEUS_HOST>:9090/-/ready
+```
+
+Check that Grafana can read logs from Loki:
+
+```bash
+curl http://<LOKI_HOST>:3100/ready
+```
+
+Check that Grafana can query the WHPG database through the WHPG Exporter:
+
+```bash
+curl http://<WHPG_EXPORTER_HOST>:9187/api/v1/query/table_gp_segment_config
+```
+
+## Troubleshooting Prometheus
+
+**Check configuration**
+
+Check if remote write is enabled with the option ['--web.enable-remote-write-receiver'](https://prometheus.io/docs/prometheus/latest/command-line/prometheus/#flags)
+
+**Check connectivity**
+
+Run the following commands from the WHPG coordinator and the WHPG Exporter to verify connectivity to Prometheus:
+
+```bash
+curl http://<PROMETHEUS_HOST>:9090/-/healthy
+```
+
+Run the following command from the WHPG coordinator and WHPG Exporter host to checks if metrics are being received by Prometheus:
+
+```bash
+curl "<PROMETHEUS_HOST>:9090/api/v1/query?query=warehousepg_observability_connected"
+```
+
+Verify if remote write is working:
+
+```bash
+curl -v -X POST <PROMETHEUS_HOST>:9090/api/v1/write
+```
+
+The command returns `204` if remote write is enabled. Otherwise it returns `404`.
+
+## Troubleshooting Docker quickstart installation
+
+Perform the following verification steps to troubleshoot our provided [ready-to run stack](https://github.com/warehouse-pg/warehouse-pg-grafana-dashboards).
+
+**Verify Docker port mappings**: 
+
+Confirm that the external port (left side) is correctly mapped to the internal container port (right side) for each service in  `docker-compose.yaml`:
+
+For Grafana:
+
+```
+ports:
+  - "3000:3000"
+```  
+    
+Loki:
+
+```	
+ports:
+  - "3100:3100"
+```
+
+Prometheus:
+
+```
+ports:
+  - "9090:9090"
+```
+
+**Verify data source URLs**: 
+
+Check the `grafana/provisioning/datasources/datasources.yml` file to ensure the `url` for each data source correctly points to its respective service.
+
+- The value of Prometheus `url` must match Prometheus's `container_name` and external port (left side) of `ports` defined in `docker-compose.yaml`.
+- The value of Loki `url` must match Loki's `container_name` and external port (left side) of `ports` defined in `docker-compose.yaml`.
+- The value of Infinity data source `url` must be defined as `http://<WHPG_EXPORTER_HOST>:9187/api/v1/query`.
+
+**Verify remote write**: Prometheus must be configured with `'--web.enable-remote-write-receiver'` under `command` in `docker-compose.yaml`. 
+
+
+
+
+
+

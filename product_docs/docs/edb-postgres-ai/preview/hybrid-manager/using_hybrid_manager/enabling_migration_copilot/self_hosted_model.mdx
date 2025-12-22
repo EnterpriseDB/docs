@@ -1,0 +1,182 @@
+---
+title: Enabling a self-hosted model for the Migration Portal AI Copilot
+navTitle: Self-hosted model (AI Factory)
+description: Learn how to enable a self-hosted AI Factory model to power the Migration Portal AI Copilot.
+---
+
+You can use a self-hosted AI Factory model to serve the AI Copilot. This example uses NVIDIA NIM to serve the requests and Llama 3 to process it and generate an answer.
+
+- Chat completions: [nvidia/llama-3_3-nemotron-super-49b-v1](https://build.nvidia.com/nvidia/llama-3_3-nemotron-super-49b-v1)
+- Embeddings: [nvidia/llama-3.2-nv-embedqa-1b-v2](https://build.nvidia.com/nvidia/llama-3_2-nv-embedqa-1b-v2)
+
+!!!warning 
+    There are significant safety implications to consider when using self-hosted models with Migration Portal AI Copilot.
+   
+    The models provided by third-party vendors like OpenAI amd Azure OpenAI include content filtering and other safeguards that are designed to reduce the risk of the model responding to, generating, or contributing to unsafe content. When you use self-hosted models, these protections aren't present.
+
+    In addition, because you're hosting the models, you bear responsibility for the risks and potential liability associated with any unsafe behavior.
+
+## Prerequisites
+
+Prepare the resources your environment requires to deploy the Migration Portal AI Copilot with a self-hosted solution:
+
+-   You have administrative access to the HM environment.
+
+-   Your organization has created a [chat completion and a text embeddings model](/edb-postgres-ai/current/ai-factory/pipeline/models/using-with/using-nvidia-nim/using-nim-in-your-environment/) with the HM [AI Factory](/edb-postgres-ai/current/ai-factory/model/deployment/#where-to-start). They have provided the endpoints for each model, which you can set as environment variables.
+
+    ```bash
+    export COMPLETIONS_SVC=llama-3-3-nemotron-super-49b-v1
+    export EMBEDDINGS_SVC=llama-3-2-nv-embedqa-1b-v2
+    
+    export COMPLETIONS_ENDPOINT=$(kubectl get inferenceservice $COMPLETIONS_SVC -o     jsonpath='{.status.url}')
+    export EMBEDDINGS_ENDPOINT=$(kubectl get inferenceservice $EMBEDDINGS_SVC -o     jsonpath='{.status.url}')
+    ```
+
+## Enabling the AI Copilot
+
+1.  Check if the `edb-migration-copilot` namespace exists:
+
+    ```bash
+    kubectl get namespaces edb-migration-copilot
+    ```
+
+    The namespace is created during HM installation. If you're enabling the AI Copilot before installing HM, you must create the namespace in advance.
+
+1.  If the `edb-migration-copilot` namespace doesn't exist yet, create it:
+
+    ```bash
+    kubectl create ns edb-migration-copilot
+    ```
+
+1.  Set the following environment variables to link the secret with the model endpoints:
+
+    ```bash
+    export OPENAI_API_BASE=${COMPLETIONS_ENDPOINT}/v1
+    export OPENAI_EMBEDDINGS_API_BASE=${EMBEDDINGS_ENDPOINT}/v1
+    export OPENAI_API_KEY=<openai api key> # set to a placeholder value like `noop` if models are deployed in a way that no key is required
+    ```
+
+    !!!note
+        The AI Copilot uses OpenAI-compatible APIs to communicate with all models, including self-hosted ones. That's why some configuration parameters contain `openai` in their names, even when you're using a different model to serve queries.
+
+1.  Create the `ai-vendor-secrets` secret and configure it to point at the models' endpoints:
+
+    ```bash
+    kubectl create secret generic ai-vendor-secrets \
+        --namespace=edb-migration-copilot \
+        --type=opaque \
+        --from-literal=AI_VENDOR=NIM \
+        --from-literal=RAGCHEW_OPENAI_API_BASE="${OPENAI_API_BASE}" \
+        --from-literal=RAGCHEW_OPENAI_EMBEDDINGS_API_BASE="$    {OPENAI_EMBEDDINGS_API_BASE}" \
+        --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}"
+    ```
+
+1.  Create a file called `migration-portal-values.yaml` with the following Helm value to override the default AI vendor secrets with the secret created in the previous step.
+
+    ```
+    parameters:
+      edb-migration-copilot:
+        ai_vendor_secrets: ai-vendor-secrets
+    ```
+
+1.  Update the HM installation file to include the AI Copilot configuration. Either update the YAML values you used for installation or run the `helm upgrade` command with the AI Copilot configuration parameters.
+
+    <TabContainer syncKey="installation_config">
+    <Tab title="Helm or operator install">
+    
+    Add this configuration block to either the `values.yaml` file you used to install HM with Helm or to the CRD you used to install HM with the operator.
+    
+    ```yaml
+    [...]
+    parameters:
+      edb-migration-copilot:
+        ai_vendor_secrets: ai-vendor-secrets                    # Allows the default AI vendor secrets to be overridden by the secret created above. This *must* match the name of the above secret.
+        chat_model: nvidia/llama-3.3-nemotron-super-49b-v1      # This must match the model name as listed by `${COMPLETIONS_ENDPOINT}/v1/models`.
+        embeddings_model: nvidia/llama-3.2-nv-embedqa-1b-v2     # This must match the model name as listed by `${EMBEDDINGS_ENDPOINT}/v1/models`.
+        chat_model_profile: llama3                              # Enables prompt rules and other parameters which can help improve the quality of responses from chat completion models of the llama3 family.
+        embeddings_dimension: '"2048"'                          # This must match the size of the vectors generated by the embeddings model.
+        tokenizer: huggingface                                  # Causes tokenizers from the Hugging Face Transformers library to be used for token counting.
+        tokenizer_model: nvidia/llama-3.3-nemotron-super-49b-v1 # Sets the specific tokenizer to use, ensuring it corresponds to a pretrained model on Hugging Face Hub.
+        chat_request_max_tokens: '"1024"'                       # Limits the total number of requested tokens to prevent excessively-verbose responses.
+        default_similarity_limit: '"10"'                        # Limits the number of contextual chunks included in queries to prevent overwhelming the model with input.
+        stream_no_stop_sequence: '"true"'                       # Prevents OpenAI-specific stop sequences being sent to the model. This should always be set when using NIM models in order to avoid duplicated final chunks in response streams.
+    [...]
+    ```
+    
+    </Tab>
+    
+    <Tab title="Helm upgrade">
+    
+    Run the `helm upgrade` command while including the following configuration parameters. Remember to include these parameters each subsequent time you invoke `helm upgrade`. Otherwise, your values will be overridden with defaults.
+    
+    ```bash
+    helm upgrade \
+        -n edbpgai-bootstrap \
+        --install \
+        [...]
+        --set parameters.edb-migration-copilot.ai_vendor_secrets=ai-vendor-secrets \
+        --set parameters.edb-migration-copilot.chat_model=nvidia/llama-3.3-nemotron-super-49b-v1 \
+        --set parameters.edb-migration-copilot.embeddings_model=nvidia/llama-3.2-nv-embedqa-1b-v2 \
+        --set parameters.edb-migration-copilot.chat_model_profile=llama3 \
+        --set parameters.edb-migration-copilot.embeddings_dimension='"2048"' \
+        --set parameters.edb-migration-copilot.tokenizer=huggingface \
+        --set parameters.edb-migration-copilot.tokenizer_model=nvidia/llama-3.3-nemotron-super-49b-v1 \
+        --set parameters.edb-migration-copilot.chat_request_max_tokens='"1024"' \
+        --set parameters.edb-migration-copilot.default_similarity_limit='"10"' \
+        --set parameters.edb-migration-copilot.stream_no_stop_sequence='"true"' \
+       [...]
+    ```
+    
+    </Tab>
+    </TabContainer>
+
+1.  Restart the `edb-migration-copilot` services to trigger a reconciliation of the new values with the system.
+
+    ```bash
+    kubectl rollout restart edb-migration-copilot -n edb-migration-copilot
+    ```
+
+## Additional configuration for air-gapped installations (experimental)
+
+When running in an air-gapped environment, the Migration Portal AI Copilot will fail when it tries to fetch the pretrained tokenizer data from Hugging Face Hub.
+
+Set the following parameter to use a local snapshot of tokenizer data instead:
+
+<TabContainer syncKey="installation_config">
+<Tab title="Helm or operator install">
+
+Include the following `airgapped_mode` parameter to the previously documented configuration block to either the `values.yaml` file you used to install HM with Helm or to the CRD you used to install HM with the operator.
+
+```bash
+[...]
+parameters:
+  edb-migration-copilot:
+    airgapped_mode: '"true"' # Forces a local snapshot of tokenizer data to be used instead of fetching from Hugging Face Hub.
+                             # Only works if `tokenizer` and `tokenizer_model` are set to `huggingface` and
+                             #`nvidia/llama-3.3-nemotron-super-49b-v1` respectively.
+[...]
+```
+
+</Tab>
+    
+<Tab title="Helm upgrade">
+
+Include the following `airgapped_mode` parameter to the previously documented `helm upgrade` command. Remember to include all parameters each subsequent time you invoke `helm upgrade`. Otherwise, your values will be overridden with defaults.
+
+```bash
+helm upgrade \
+    -n edbpgai-bootstrap \
+    --install \
+    [...]
+    --set parameters.edb-migration-copilot.airgapped_mode='"true"' \
+    [...]
+```
+
+</Tab>
+</TabContainer>
+
+Restart the `edb-migration-copilot` services.
+
+!!!important
+    The Migration Portal AI Copilot ships with tokenizer data only for the `nvidia/llama-3.3-nemotron-super-49b-v1` pretrained tokenizer.
+    Using `airgapped_mode: '"true"'` with `tokenizer_model` set to any other model will result in Migration Portal AI Copilot failing.

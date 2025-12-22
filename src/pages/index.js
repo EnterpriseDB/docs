@@ -198,7 +198,7 @@ const Page = () => {
               </BannerCardLink>
 
               <BannerCardLink to="/supported-open-source/warehousepg/">
-                Support for Greenplum Workloads
+                WarehousePG
               </BannerCardLink>
             </BannerSubCard>
 
@@ -475,6 +475,10 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
               EDB Advanced Storage Pack
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/apache_age/">
+              Apache AGE
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pg_tuner">

@@ -1,87 +1,64 @@
 ---
-title: 'EDB private container registries'
+title: 'EDB private container registry'
 originalFilePath: 'src/private_edb_registries.md'
 ---
 
 The images for the *{{name.ln}}* operator, as well as various
-operands, are kept in private container image registries under
+operands, are kept in a private container image registry under
 `docker.enterprisedb.com`.
 
-!!! Important
-    Access to the private registries requires an account with EDB and is
-    reserved to EDB customers with a valid [subscription plan](https://www.enterprisedb.com/products/plans-comparison#selfmanagedenterpriseplan).
-    Credentials will be funneled through your EDB account.
+!!!info Important
+Access to the private registry requires an account with EDB and is
+reserved to EDB customers with a valid [subscription plan](https://www.enterprisedb.com/products/plans-comparison#selfmanagedenterpriseplan).
+Credentials will be funneled through your EDB account.
+!!!
 
-!!! Important
-    There is a bandwidth quota of 10GB/month per registry.
+!!!info Important
+There is a bandwidth quota of 10GB/month per registry.
+!!!
 
-!!! Note
-    When installing the operator and operands from the private registry, the
-    [license keys](license_keys.md) are not needed.
+!!!note
+When installing the operator and operands from the private registry, the
+[license keys](license_keys.md) are not needed.
+!!!
 
-## Which repository to choose?
+## Repository information
 
-{{name.ln}} is available with either of
-"EDB Enterprise Plan" or "EDB Standard Plan".
+<span id="which-repository-to-choose"></span>
 
-Depending on your subscription plan, {{name.ln}}
-will be in one of the following repositories, as described in the table below:
+Collect the following information:
 
-| Plan                  | Repository       |
-| --------------------- | ---------------- |
-| EDB Standard Plan     | `k8s_standard`   |
-| EDB EnterpriseDB Plan | `k8s_enterprise` |
+1.  Your [EDB account token](/repos/getting_started/with_web/get_your_token/)
+2.  The name of the repository, which will be `k8s`
+3.  The repository server, which will be `docker.enterprisedb.com`
 
-The name of the repository shall be used as the *Username* when you try to
-login to the EDB container registry, for example through `docker login` or a
-[`kubernetes.io/dockerconfigjson` pull secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types).
-
-!!! Important
-    Each repository contains all the images you can access with your plan.
-    You don't need to connect to different repositories to access different
-    images, such as operator or operand images.
-
-## How to retrieve the token
-
-In the [repositories page in EDB](https://www.enterprisedb.com/repos-downloads),
-you'll find an *EDB Repos 2.0* section where a `Repo Token` is shown, obscured.
-The same token is also be available in your
-[Account profile](https://www.enterprisedb.com/accounts/profile), labeled
-as `Repos 2.0 token`.
-
-Next to the token you'll find a button to copy the token, and an eye icon
-in case you want to view the content of the token as clear text.
-The token shall be used as the *Password* when you try to access the EDB
-container registry.
+For clarity, the following examples assume your token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
 
 ### Example with `docker login`
 
-You should be able to login via Docker from your terminal. We suggest you
-copy the Repo Token using the `Copy Token` button. The `docker` command below
-will prompt you for a username and a password.
+You can log in via Docker from your terminal. In this context,
 
-As explained above, the username should be the repository you are trying to
-access while the password is the token you just copied.
+-   The server is `docker.enterprisedb.com`
+-   The username is the repository, `k8s`
+-   The password is your EDB account token (stored in `$EDB_SUBSCRIPTION_TOKEN`)
 
 ```sh
-$ docker login docker.enterprisedb.com  
-Username: k8s_enterprise
-Password: 
+docker login docker.enterprisedb.com  \
+  --username k8s \
+  --password "$EDB_SUBSCRIPTION_TOKEN"  
+__OUTPUT__
+WARNING! Using --password via the CLI is insecure. Use --password-stdin.
 Login Succeeded
 ```
 
 ## Operand images
 
 {{name.ln}} supports various PostgreSQL distributions that have
-images available from the same private registries:
+images available from the same private registry:
 
+-   Community PostgreSQL
 -   EDB Postgres Advanced (EPAS)
 -   EDB Postgres Extended (PGE)
-
-!!! Note
-    PostgreSQL images are not available in the private registries, but are
-    readily available on `quay.io/enterprisedb/postgresql` or
-    `ghcr.io/enterprisedb/postgresql`.
 
 These images follow the requirements and the conventions described in the
 ["Container image requirements"](container_images.md)
@@ -89,10 +66,11 @@ page of the {{name.ln}} documentation.
 
 In the table below you can find the image name prefix for each Postgres distribution:
 
-| Postgres distribution        | Image name              | Repositories                     |
-| ---------------------------- | ----------------------- | -------------------------------- |
-| EDB Postgres Extended (PGE)  | `edb-postgres-extended` | `k8s_standard`, `k8s_enterprise` |
-| EDB Postgres Advanced (EPAS) | `edb-postgres-advanced` | `k8s_enterprise`                 |
+| Postgres distribution        | Image name              |
+| ---------------------------- | ----------------------- |
+| Community PostgreSQL         | `postgresql`            |
+| EDB Postgres Extended (PGE)  | `edb-postgres-extended` |
+| EDB Postgres Advanced (EPAS) | `edb-postgres-advanced` |
 
 ## How to deploy clusters with EPAS or PGE operands
 
@@ -110,18 +88,17 @@ You can
 ```sh
 kubectl create secret docker-registry registry-pullsecret \
   -n <CLUSTER-NAMESPACE> --docker-server=docker.enterprisedb.com \
-  --docker-username=<REGISTRY-NAME> \
-  --docker-password=<TOKEN>
+  --docker-username=k8s \
+  --docker-password="$EDB_SUBSCRIPTION_TOKEN"
 ```
 
 As mentioned above, the `docker-username` is the name of your registry, i.e.
-`k8s_standard` or `k8s_enterprise`. The `docker-password` is the token retrieved
-from the [EDB portal](#how-to-retrieve-the-token).
+`k8s`. The `docker-password` is the token retrieved
+from the [EDB portal](/repos/getting_started/with_web/get_your_token/).
 
 Once your pull secret is created, remember to set the `imagePullSecrets` field
 in the cluster manifest in addition to the `imageName`.
-The manifest below will create a cluster running PG Extended from the
-`k8s_enterprise` repository.
+The manifest below will create a cluster running PG Extended.
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -130,7 +107,7 @@ metadata:
   name: postgresql-extended-cluster
 spec:
   instances: 3
-  imageName: docker.enterprisedb.com/k8s_enterprise/edb-postgres-extended:16.2
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended:18.1-standard-ubi9
   imagePullSecrets:
   - name: registry-pullsecret
 
@@ -166,9 +143,9 @@ operator when using the repository from the EDB EnterpriseDB Plan:
 helm upgrade --install edb-pg4k \
   --namespace postgresql-operator-system \
   --create-namespace \
-  --set image.repository=docker.enterprisedb.com/k8s_enterprise/edb-postgres-for-kubernetes \
-  --set image.imageCredentials.username=k8s_enterprise \
-  --set image.imageCredentials.password=<ENTITLEMENT_TOKEN> \
+  --set image.repository=docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg \
+  --set image.imageCredentials.username=k8s \
+  --set image.imageCredentials.password="$EDB_SUBSCRIPTION_TOKEN" \
   --set image.imageCredentials.create=true \
   --set "imagePullSecrets[0].name"=postgresql-operator-pull-secret \
   --set config.data.PULL_SECRET_NAME=postgresql-operator-pull-secret \

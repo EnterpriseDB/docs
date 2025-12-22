@@ -1,0 +1,276 @@
+---
+title: Hybrid Manager Multi-DC deployment guide
+navTitle: Multi-DC deployment
+description: Learn how to set up multiple data-centers (multi-DC) with Hybrid Manager.
+deepToC: true
+---
+
+## Overview
+
+### Why run Hybrid Manager across multiple data centers?
+
+Multi-DC gives you high availability and disaster recovery for Postgres workloads and the Hybrid Manager (HM) control plane (CP):
+
+- Survive a site loss (DR): Keep a warm Secondary site ready. If the Primary DC is unavailable, promote replicas in the Secondary and restore service.
+
+- Minimize downtime (HA): Perform maintenance or migrations on one site while workloads continue on the other.
+
+- Protect data (RPO): Continuous replication to a second DC reduces potential data loss compared to single-site backups only.
+
+- Reduce blast radius: Faults, misconfigurations, or noisy neighbors in one DC don’t take down the other.
+
+- Meet compliance/sovereignty: Keep copies in a specific region or facility while still centralizing control.
+
+- Operate at scale: Split read traffic, stage upgrades, or run blue/green cutovers across DCs.
+
+#### RTO/RPO at a glance
+
+- **RTO (time to restore service)**: Typically minutes, driven by your promotion/cutover runbook and DNS/LB changes.
+
+#### RPO (data loss window):
+
+- Async replication (common across DCs): very low, but not zero (best-effort seconds).
+
+- Sync replication (latency-sensitive): can approach zero data loss, but adds cross-DC latency and requires robust low-latency links.
+
+### What this guide helps you do
+
+- Connect two HM clusters (Primary ↔ Secondary) on the same provider/on-prem family.
+
+- Align object storage (identical edb-object-storage secret) so backups/artifacts are usable in both DCs.
+
+- Wire the Agent (Beacon) so the Primary can register the Secondary as a managed location and provision there (9445/TCP).
+
+- Prepare a Postgres topology with a primary in one DC and replicas in the other; perform manual failover by promoting replicas.
+
+### Current limitations
+
+- Two sites (Primary and Secondary).
+
+- Manual failover: Promote replicas in the Secondary if the Primary is down.
+
+- Same cloud/on-prem family: Cross-CSP multi-DC is not supported.
+
+### Architecture at a glance
+
+- Control plane: Two HM clusters, configured as a hub and spoke; Primary “manages” the Secondary as a Location through Beacon.
+
+- Data nodes: Postgres primary in DC-A, replicas in DC-B (async by default).
+
+- Storage: Shared/consistent object store config across sites for backups/artifacts.
+
+- Telemetry: Thanos/Loki configured to view metrics/logs across sites.
+
+### Who is this for?
+
+This is for teams that need higher resilience than a single DC can provide, and are comfortable running a manual, well-rehearsed failover playbook with clearly defined RTO/RPO targets.
+
+## Prerequisites
+
+### Architecture prereqs
+
+- Two Kubernetes clusters available: Primary and Secondary, with the required infrastructure and secrets configured.
+
+- Network connectivity:
+
+    - 8444/TCP open between clusters (SPIRE bundle endpoint).
+
+    - 9445/TCP from Secondary → Primary (Beacon gRPC).
+
+    - Same provider/on-prem family (no cross-cloud).
+
+- Shared Object Storage.  The Standard HM installation requires each individual HM cluster to have dedicated object storage.  In the case of a multi-DC topology, this object storage is shared between both clusters.  
+
+### Collect the required information
+
+1. Prepare two copies of the HM installation parameters within values files named `primary.yaml` and `secondary.yaml`
+
+1. Domain Names
+
+    Each HM must be configured with a domain name, configured in the values.yaml as portal_domain_name.  This parameter is used by both Primary and Secondary clusters.
+
+    Create these domain names for both Primary and Secondary clusters, and record this information.
+
+## Object storage across locations
+
+HM uses an object store for backups, artifacts, WAL, and internal bundles. 
+**In multi-DC, both clusters must use the same object store configuration**.
+
+### Key requirement
+
+Each cluster must have an identical Kubernetes secret named `edb-object-storage` in the default namespace on both the Primary and Secondary clusters.
+
+## Parameter Uniqueness
+
+Because the two clusters involved in MultiDC are using the same object store, we must ensure that specific parameters are different between the two clusters.
+
+1. `location_id` should be set to a human readable location identifier.  These values must differ between the two clusters.  Any human readable name is sufficient.
+
+1. `internal_backup_folder` must match the regex `^[0-9a-z]{12}$`, and must be unique between Primary and Secondary locations
+
+1. `metrics_storage_prefix` must be unique between primary and secondary locations
+
+1. `logs_storage_prefix` must be unique between primary and secondary locations
+
+## Configure the multi-DC topology.
+
+Each Primary and Secondary cluster must be aware of its own role as well the addresses of each other cluster in the multi-DC group. 
+The following configuration stanza describes the topology and must be present in both the `primary.yaml` and `secondary.yaml` values files.
+
+```
+clusterGroups:
+  role: (secondary|primary|standalone)
+  primary:
+    domainName: <primary portal domain>
+  secondaries:
+    - domainName: <secondary portal domain>
+```
+
+Fill in the missing domainName parameters using the `portal_domain_name` parameter within the `primary.yaml` and `secondary.yaml` files.
+
+Add this stanza to the bottom of `primary.yaml`, and configure the `role` as `primary`.
+
+Similarly, add this stanza to the bottom of the `secondary.yaml` and configure the role as `secondary`.
+
+## Reduced set of components
+
+The HM consists of a number of different components, some of which are not necessary on the Secondary location.  
+While the full set can be installed successfully on the Secondary location, it is recommended to reduce that list by setting the parameter `scenarios` to be `cluster,monitoringLogging`,
+and disabling the UI.
+
+Set the following in the secondary values file, `secondary.yaml`.
+
+```
+scenarios: 'cluster,monitoringLogging'
+disabledComponents: 
+  - upm-ui
+```
+
+1. Validation checklist
+
+    - The `edb-object-storage` secret must be identical (compare .data only).
+
+    - Both clusters can list/write the bucket (quick Pod/Job test).
+
+    - `location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must differ between the Primary and the Secondary.
+
+    - `scenarios` has been set to be `cluster,monitoringLogging`.
+
+    - `disabledComponents` has the `upm-ui` component listed.
+
+## Hybrid Manager installation
+
+Using the values file `primary.yaml` and `secondary.yaml`, install the Hybrid Manager through helm. 
+
+### Validate wiring
+
+1. On Primary: should list the managed Secondary location
+
+    ```bash
+    kubectl get location
+    ```
+
+1. Validate SPIRE federation present on each cluster
+
+    ```bash
+    kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+    /opt/spire/bin/spire-server federation list
+    ```
+
+1. Expected:
+
+- `kubectl get location` shows `managed-<SECONDARY_LOCATION_NAME>` with recent `LASTHEARTBEAT`.
+
+- `federation list` shows 1 relationship (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
+
+### Create the cross-DC Postgres topology
+
+At this point HM can provision into the Secondary location. 
+You still choose and create the actual DB topology.
+
+#### Typical flow
+
+1. From Primary HM, create the Postgres Primary in the Primary DC.
+
+1. From Primary HM, create replica cluster(s) in the Secondary DC (select the managed Secondary location).
+
+1. Confirm replication mode (sync/async) and monitor replication lag meets your SLOs.
+
+1. Ensure backups are writing to the shared object store from both DCs, and test a restore.
+
+#### Operational notes
+
+- DB TLS is separate from SPIRE/Beacon (platform identity). Configure PG TLS per your policy.
+- Verify StorageClasses in each DC meet PG IOPS/latency.
+- Open replication ports between sites.
+
+## Validation (end-to-end)
+
+1. Validate Primary/Secondary cluster relationships
+
+    ```bash
+    kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+    /opt/spire/bin/spire-server federation list
+    ```
+
+1. Validate that the Secondary location is registered (Primary)
+
+    ```bash
+    kubectl get location
+    ```
+
+1. Validate provisioning to Secondary
+
+- From Primary HM, deploy a small test workload to the Secondary location.
+    -  Telemetry (optional)
+        Thanos stores show federated peer; Loki queries return logs tagged from Secondary.
+    - Object storage
+        Both clusters can read/write the bucket; secrets identical.
+
+## Manual failover runbook
+
+#### Manual failover procedure for databases from the Primary location to the Secondary location
+
+1. Quiesce writes to Primary (maintenance mode / LB cutover).
+
+1. Promote replicas in Secondary to Primary (per your HM workflow / scripts).
+
+1. Redirect clients (DNS/LB) to Secondary.
+
+1. Observe: confirm writes succeed; replication role updated.
+
+1. When original Primary returns: re-seed it as a replica of the new Primary; optionally plan a later cutback.
+
+#### Operator tips
+
+- Keep DNS TTL low enough for cutovers.
+- Track downtime to measure RTO.
+- Validate backups post-promotion.
+
+## Troubleshooting
+
+- Problem: **No federation relationships**
+    - Re-generate and cross-apply `ClusterFederatedTrustDomain` CRs.
+    - Confirm 8444/TCP reachability.
+
+- Problem: **Secondary not listed in `kubectl get location`**
+    - Recheck Beacon values on both sides; restart Beacon server/agent.
+    - Confirm 9445/TCP reachability to Primary portal; trust domains correct.
+
+- Problem: **Object store access fails on Secondary**
+    - Re-sync `edb-object-storage`.
+    - For EKS/IRSA: ensure Secondary OIDC is in the role’s trust policy.
+
+- Problem: **Telemetry federation missing**
+    - Reinstall with the correct -l primary|secondary flags and unique prefixes.
+    - Check Thanos `/api/v1/stores` and Loki read API.
+
+- Problem: **Replica lag / connectivity**
+    - Verify network ACLs/SGs, TLS certs, and storage performance.
+
+## Appendix B — Quick daily checks
+
+- `kubectl get location` on Primary shows Secondary Ready.
+- Thanos/Loki federation healthy (if enabled).
+- Object store writes succeed from both DCs.
+- Replication lag within SLOs.

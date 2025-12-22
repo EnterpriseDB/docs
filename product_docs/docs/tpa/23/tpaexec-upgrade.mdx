@@ -11,6 +11,13 @@ your TPA cluster (`tpaexec deploy` will not perform upgrades).
 
 (This command replaces the earlier `tpaexec update-postgres` command.)
 
+!!!Note
+
+TPA does not yet support using the `tpaexec upgrade` command for clusters
+that have shared Barman and/or shared PEM configurations, and will add
+this functionality in a future release.
+!!!
+
 ## Introduction
 
 If you make any changes to config.yml, the way to apply those changes is
@@ -20,17 +27,46 @@ The exception to this rule is that `tpaexec deploy` will refuse to
 install a different version of a package that is already installed.
 Instead, you must use `tpaexec upgrade` to perform software upgrades.
 
-!!!Note "Minor version upgrades only"
+The following components are able to be upgraded for **any** architecture:
 
-**`tpaexec upgrade` does NOT support MAJOR version upgrades of Postgres.**
+-   Postgres
+-   [PgBouncer](reference/pgbouncer/#minor-update-for-pgbouncer-using-tpaexec-upgrade)
+-   [Barman](reference/barman/#minor-update-using-tpaexec-upgrade)
+-   [PG Backup API](reference/pg-backup-api/#minor-update-for-pg-backup-api-using-tpaexec-upgrade)
+-   [PEM](reference/pem/#minor-update-for-pem-using-tpaexec-upgrade)
+    (both server and agent)
 
+The following components are able to be upgraded on **M1** architectures and
+depend on the failover manager used:
+
+-   [EFM](reference/efm/#minor-update-for-efm-using-tpaexec-upgrade)
+-   [Patroni](reference/patroni/#minor-update-for-patroni-using-tpaexec-upgrade)
+-   [etcd](reference/etcd/#minor-update-for-etcd-using-tpaexec-upgrade) (for Patroni)
+-   [repmgr](reference/repmgr/#minor-update-for-repmgr-using-tpaexec-upgrade)
+
+The following components are able to be upgraded on **BDR-Always-ON**/**PGD-Always-ON**
+architectures, depending on the BDR version used:
+
+-   [pgdcli](reference/pgd-cli/#updating-pgd-cli-using-tpaexec-upgrade) (v1 for BDR 4,
+    v5 for PGD5)
+-   [pgd-proxy](reference/pgd-proxy/#updating-pgd-proxy-using-tpaexec-upgrade) (only for PGD5)
+
+!!!Note Minor version upgrades only
+
+**`tpaexec upgrade` does NOT support MAJOR version upgrades of Postgres and most cluster components**
 What TPA can upgrade is dependent on architecture:
 
--   The M1 architecture and all applicable failover managers for M1, `upgrade` will perform minor version upgrades of Postgres only.
--   With PGD architectures, `upgrade` will perform minor version upgrades of Postgres and the BDR extension.
--   With PGD architectures, and only in combination with the `reconfigure` command, `upgrade` can perform major-version upgrades of the BDR extension.
+-   The M1 architecture and all applicable failover managers for M1, `upgrade` can perform minor
+    version upgrades of `Postgres`, the corresponding failover manager (`EFM`, `Patroni` or `repmgr`)
+    and any non-architecture specific components that are selected.
+-   With PGD architectures, `upgrade` will perform minor version upgrades of Postgres and the BDR
+    extension as well as `pgd-cli` and `pgd-proxy` if they are explicitly opted-in.
+-   With PGD architectures, and only in combination with the `reconfigure` command, `upgrade` can
+    perform major-version upgrades of the BDR extension.
 
-Support for upgrading other cluster components is planned for future releases.
+Support for upgrading other cluster components was added in TPA `v23.41.0`
+*Certain components (such as `EFM`) are an exception. Consult the `upgrade` section of each
+component's documentation for further information.*
 !!!
 
 This command will try to perform the upgrade with minimal disruption to
@@ -56,12 +92,118 @@ and write monitoring data to it while the upgrade takes place. The
 performance impact of enabling monitoring is very small and it is
 recommended that it is enabled.
 
+## Component selection
+
+!!!Note
+
+Upgrading components is strictly opt-in
+!!!
+
+By default, `tpaexec upgrade` will update Postgres alone if the `--components` flag is not passed
+
+```shell
+tpaexec upgrade ~/clusters/speedy
+```
+
+To select specific components to update, the `--components` flag takes a comma-separated list
+
+```shell
+tpaexec upgrade ~/clusters/speedy \
+   --components=postgres,pgd-proxy,pgdcli,pgbouncer,pg-backup-api,barman
+```
+
+If all applicable components in the cluster should be updated, `all` can be passed to the flag
+
+```shell
+tpaexec upgrade --components=all
+```
+
+| component         | value                | architecture                       |
+| ----------------- | -------------------- | ---------------------------------- |
+| Barman            | barman               | all                                |
+| PEM               | pem-server,pem-agent | all                                |
+| PgBackupAPI       | pg-backup-api        | all                                |
+| PgBouncer         | pgbouncer            | all                                |
+| EFM               | efm                  | M1 with `failover_manager=efm`     |
+| etcd              | etcd                 | M1 with `failover_manager=patroni` |
+| Patroni           | patroni              | M1 with `failover_manager=patroni` |
+| RepMgr            | repmgr               | M1 with `failover_manager=repmgr`  |
+| PGD Cli           | pgdcli               | BDR-Always-ON, PGD-Always-ON       |
+| PGD-Proxy         | pgd-proxy            | PGD-Always-ON                      |
+| Postgres,EPAS,PGE | postgres             | All                                |
+| All               | all                  | All                                |
+
+## Package version selection
+
+By default, `tpaexec upgrade` will update to the latest
+available versions of the installed packages if you did not explicitly
+specify any package versions (e.g., Postgres, PGD, or pglogical) when
+you created the cluster.
+
+!!!Note Minor upgrade is not strictly enforced
+
+If a desired package version is NOT provided when upgrading, TPA will install the latest available
+package.
+The minor version restriction is NOT strictly enforced during tpaexec upgrade.
+This can result in unwillingly attempting an unsupported major upgrade of a
+component.
+Thus, it is recommended to explicitly select versions for upgrade to ensure compatibility in the
+existing cluster.
+Postgres does not pose this issue since major versions are different packages altogether which stops
+this from happening.
+!!!
+
+If you did select specific versions, for example by using any of the `--xxx-package-version` options
+(e.g., postgres, bdr, pglogical) to [`tpaexec configure`](tpaexec-configure/), or by defining
+`xxx_package_version` variables in config.yml, the upgrade will do nothing because the installed
+packages already satisfies the requested versions.
+
+In this case, you must edit config.yml, update the version settings, and re-run `tpaexec provision`.
+The update will then install the selected version of the packages. You can also update to a specific
+version by specifying versions on the command line as shown below:
+
+```shell
+tpaexec upgrade ~/clusters/speedy -vv      \
+  --components=postgres,pgbouncer          \
+  -e postgres_package_version="16.10*"     \
+  -e pgbouncer_package_version="1.24*"     \
+  -e bdr_package_version="5.9.0*"
+```
+
+Please note that version syntax here depends on your OS distribution and package manager. In
+particular, yum accepts `*xyz*` wildcards, while apt only understands `xyz*` (as in the example
+above).
+
+!!!Note : see limitations of using wildcards in package_version in
+
+[tpaexec-configure](tpaexec-configure/#known-issue-with-wildcard-use).
+!!!
+
+It is your responsibility to ensure that the combination of Postgres, PGD, and pglogical package
+versions that you request are sensible. That is, they should work together, and there should be an
+upgrade path from what you have installed to the new versions.
+
+For PGD clusters, it is a good idea to explicitly specify exact versions for all three components
+(Postgres, PGD, pglogical) rather than rely on the package manager's dependency resolution to select
+the correct dependencies.
+
+We strongly recommend testing the upgrade in a QA environment before running it in production.
+
 ## Configuration
 
-In many cases, minor-version upgrades do not need changes to config.yml.
-Just run `tpaexec upgrade`, and it will upgrade to the latest available
-versions of the installed packages in a graceful way (what exactly that
-means depends on the details of the cluster).
+In certain cases, minor-version upgrades do not need changes to config.yml.
+If no `postgres_package_version` is defined in `config.yml`, when `tpaexec upgrade`
+is run, it will upgrade Postgres to the latest available minor-version in a graceful 
+way (what exactly that means depends on the details of the cluster).
+
+For control over minor-version upgrades of other components, it is recommended
+to ensure a specific `xxx_package_version` is specified in `config.yml` before
+running `tpaexec upgrade` and explicitly opting-in to upgrade specific components
+using the `--components=x,y,z` flag (or `--components=all` to upgrade all, as
+applicable to the cluster). Running `tpaexec upgrade` and opting in to upgrade
+some or all components WITHOUT pinning their `xxx_package_version` in `config.yml`
+could result in a major version upgrade of installed component packages, which
+TPA does not support as it may break compatibility.
 
 Sometimes an upgrade involves additional steps beyond installing new
 packages and restarting services. For example, in order to upgrade from
@@ -84,8 +226,8 @@ unrelated pending changes before you begin the software upgrade process.
 To upgrade from BDR-Always-ON to PGD-Always-ON (that is, from BDR3/4 to
 PGD5), first run `tpaexec reconfigure`:
 
-```bash
-$ tpaexec reconfigure ~/clusters/speedy\
+```shell
+tpaexec reconfigure ~/clusters/speedy\
   --architecture PGD-Always-ON\
   --pgd-proxy-routing local
 ```
@@ -96,14 +238,14 @@ invocation, see [the command's own
 documentation](reference/tpaexec-reconfigure/). After reviewing the
 changes, run `tpaexec upgrade` to perform the upgrade:
 
-```bash
-$ tpaexec upgrade ~/clusters/speedy\
+```shell
+tpaexec upgrade ~/clusters/speedy\
 ```
 
 Or to run the upgrade with proxy monitoring enabled,
 
-```bash
-$ tpaexec upgrade ~/clusters/speedy\
+```shell
+tpaexec upgrade ~/clusters/speedy\
   -e enable_proxy_monitoring=true
 ```
 
@@ -167,31 +309,26 @@ Before you begin, ensure you have met the following requirements:
 
 -   **Co-hosted Proxies:** Your `PGD 5` cluster must be configured with
     co-hosted proxies (where the `pgd-proxy` role is on the same
-    instance as the `bdr` role). Standalone proxy instances are **not
-    supported** by this upgrade path.
+    instance as the `bdr` role). The presence of standalone proxy
+    instances will cause the `switch2cm` command to abort. You must
+    remove standalone proxy instances from your cluster before
+    proceeding with the migration.
 
 ### Stage 1: Migrating to the Built-in Connection Manager
 
 The first stage is to reconfigure your `PGD 5.9+` cluster to switch
 from using the external `pgd-proxy` to the modern, built-in
-`Connection Manager`.
+`Connection Manager`. TPA provides the `tpaexec switch2cm` command to
+automate this migration with minimal downtime.
 
 !!!Note Transitional State Only
 
 This process creates a transitional `PGD 5.9+` cluster state that is
 intended only as an intermediate step before upgrading to `PGD 6`.
-TPA does not currently support using `tpaexec upgrade` on this
-specific `Connection Manager` configuration. A future TPA release
-will fully support lifecycle management of `PGD 5` with
+TPA does not currently support staying in `PGD5.9+` with `Connection Manager`
+enabled or moving to a newer minor version of `PGD5.9+` with this configuration.
+A future TPA release will fully support lifecycle management of `PGD 5` with
 `Connection Manager`.
-!!!
-
-!!!Warning Significant Manual Operations Required
-
-This stage involves significant manual intervention on your live
-cluster to apply the configuration changes. If you are not
-comfortable performing these steps, we recommend waiting for a
-future TPA release that will fully automate this process.
 !!!
 
 #### Step 1.1: Reconfigure for Connection Manager
@@ -209,20 +346,34 @@ restore point.
 For details of its invocation, see [the
 command's own documentation](reference/tpaexec-reconfigure/).
 
-```bash
-$ tpaexec reconfigure ~/clusters/speedy --enable-connection-manager
+```shell
+tpaexec reconfigure ~/clusters/speedy --enable-connection-manager
 ```
 
-#### Step 1.2: Apply the Configuration and Activate Connection Manager
+#### Step 1.2: Switch to Connection Manager
 
-Apply the configuration changes to your live cluster. This is a
-**manual** operational task that involves, adding Postgres configuration
-parameter, stopping the `pgd-proxy` service and restarting `PostgreSQL`
-nodes in a rolling fashion to activate the `Connection Manager`.
+Run the `tpaexec switch2cm` command to perform the migration from
+`pgd-proxy` to the built-in `Connection Manager`. This command
+automatically runs `tpaexec provision` to update the Ansible inventory,
+then switches all nodes with minimal downtime:
 
-For the detailed, step-by-step instructions for this process, please
-follow the official [Connection Manager Migration
-Guide](https://www.enterprisedb.com/docs/pgd/latest/upgrades/manual_overview/#pgd-5---moving-from-pgd-proxy-to-connection-manager).
+```shell
+tpaexec switch2cm ~/clusters/speedy
+```
+
+The `switch2cm` command performs the following operations:
+
+1.  Updates the Ansible inventory with Connection Manager settings
+2.  For each node:
+    -   Fences the node to prevent new connections
+    -   Restarts PostgreSQL to load the Connection Manager configuration
+    -   Stops the `pgd-proxy` service
+    -   Restarts PostgreSQL again to allow Connection Manager to bind ports
+    -   Waits for Connection Manager to start listening
+    -   Unfences the node and verifies connectivity
+
+This process follows the official [EDB Connection Manager Migration
+procedure](https://www.enterprisedb.com/docs/pgd/latest/upgrades/manual_overview/#pgd-5---moving-from-pgd-proxy-to-connection-manager).
 
 ### Stage 1 Complete
 
@@ -255,8 +406,8 @@ version to 6, and removes any obsolete legacy settings.
 **This action only modifies the configuration file; it does not change
 the running state of your database cluster yet.**
 
-```bash
-$ tpaexec reconfigure ~/clusters/speedy --architecture PGD-X
+```shell
+tpaexec reconfigure ~/clusters/speedy --architecture PGD-X
 ```
 
 #### Step 2.2: Perform the Software Upgrade
@@ -265,14 +416,14 @@ After reviewing the final changes in `config.yml`, you can now run the
 standard `tpaexec upgrade` command. This will perform the software
 upgrade on all nodes, bringing your cluster to `PGD 6`.
 
-```bash
-$ tpaexec upgrade ~/clusters/speedy
+```shell
+tpaexec upgrade ~/clusters/speedy
 ```
 
 Or to run the upgrade with proxy monitoring enabled,
 
-```bash
-$ tpaexec upgrade ~/clusters/speedy\
+```shell
+tpaexec upgrade ~/clusters/speedy\
   -e enable_proxy_monitoring=true
 ```
 
@@ -297,35 +448,78 @@ Your cluster is now running `PGD 6` with the `PGD-X` architecture and is
 fully manageable with both `tpaexec deploy` and `tpaexec upgrade` as
 usual.
 
+## PGD-S or PGD-X
+
+When upgrading an existing PGD6 (PGD-S or PGD-X) cluster to the latest available
+software versions, the upgrade process does the following:
+
+1.  Checks that the cluster is healthy and that the nodes are listening
+    on the configured ports.
+2.  Checks that the nodes to be upgraded have their repositories
+    configured and updated, including local repositories.
+3.  Checks that updated packages can be installed
+4.  Upgrade each BDR node in the cluster one at a time:
+
+    **Important:** To ensure high availability, if the write leader is among the
+    nodes being upgraded, it will be the very last node to be upgraded.
+
+    -   Fences the node off so it doesn't accept connections
+    -   Stops postgres
+    -   Updates postgres and PGD packages
+    -   Unfences the node so it can receive connections again
+    -   Checks that the BDR cluster has re-established Raft consensus
+    -   Checks that the upgraded node is listening on the configured ports
+5.  Re-runs the cluster health checks
+6.  Outputs information about the upgraded packages
+
 ## PGD-Always-ON
 
 When upgrading an existing PGD-Always-ON (PGD5) cluster to the latest available
 software versions, the upgrade process does the following:
 
 1.  Checks that all preconditions for upgrading the cluster are
-    met.
-2.  For each instance in the cluster, checks that it has the correct
+    met, including that it is not a shared PEM or shared Barman cluster.
+2.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
+    including that no Barman backup is underway (this stops the WAL-receiver)
+3.  For each instance in the cluster, checks that it has the correct
     repositories configured and that the required postgres packages are
     available in them.
-3.  For each BDR node in the cluster, one at a time:
+4.  Checks that all selected components are able to be updated to the
+    desired version (if a package version is provided)
+5.  For each BDR node in the cluster, one at a time:
     -   Fences the node off to ensure that pgd-proxy doesn't send any
         connections to it.
     -   Stops, updates, and restarts postgres.
     -   Unfences the node so it can receive connections again.
-    -   Updates pgbouncer, pgd-proxy, and pgd-cli, as applicable for this
-        node.
+    -   Updates pgd-proxy and pgd-cli software (if explicitly opted-in)
+6.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
+    agents/PEM server (according to the node's roles)
+7.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
+    (as applicable to the cluster)
 
 ## BDR-Always-ON
 
 For BDR-Always-ON clusters, the upgrade process goes through the cluster instances
 one by one and does the following:
 
-1.  Tell haproxy the server is under maintenance.
-2.  If the instance was the active server, request pgbouncer to reconnect
+1.  Checks that all preconditions for upgrading the cluster are
+    met, including that it is not a shared PEM or shared Barman cluster.
+2.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
+    including that no Barman backup is underway (this stops the WAL-receiver)
+3.  For each instance in the cluster, checks that it has the correct
+    repositories configured and that the required postgres packages are
+    available in them.
+4.  Tell haproxy the server is under maintenance.
+5.  If the instance was the active server, request pgbouncer to reconnect
     and wait for active sessions to be closed.
-3.  Stop Postgres, update packages, and restart Postgres.
-4.  Finally, mark the server as "ready" again to receive requests through
+6.  Stop Postgres, update Postgres, etcd, and pgdcli (if applicable and opted-in) packages and restart
+    Postgres.
+7.  Finally, mark the server as "ready" again to receive requests through
     haproxy.
+8.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
+    agents/PEM server (according to the node's roles)
+9.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
+    (as applicable to the cluster)
 
 PGD logical standby or physical replica instances are updated without
 any haproxy or pgbouncer interaction. Non-Postgres instances in the
@@ -333,27 +527,34 @@ cluster are left alone.
 
 ## M1
 
-!!!Note
-
-The M1 architecture only supports minor version upgrades of Postgres.
-All applicable failover managers for M1 can run minor version upgrades
-of Postgres.
-
-Minor upgrade of other software component will be added in a future release.
-!!!
-
 For M1 clusters, `upgrade` will first update the streaming
 replicas and witness nodes when applicable, then perform a [switchover](tpaexec-switchover/)
 from the primary to one of the upgraded replicas, update the primary, and
 switchover back to the initial primary node.
+
+1.  Checks that all preconditions for upgrading the cluster are
+    met, including that it is not a shared PEM or shared Barman cluster.
+2.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
+    including that no Barman backup is underway (this stops the WAL-receiver)
+3.  For each instance in the cluster, checks that it has the correct
+    repositories configured and that the required postgres packages are
+    available in them.
+4.  Update Postgres on the streaming replicas and witness. nodes (when applicable)
+5.  Perform a [switchover](tpaexec-switchover/) from the primary to one of the upgraded replicas
+6.  Update Postgres on the primary
+7.  Switchover back to the initial primary node.
+8.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
+    agents/PEM server (according to the node's roles)
+9.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
+    (as applicable to the cluster)
 
 ## Controlling the upgrade process
 
 You can control the order in which the cluster's instances are upgraded
 by defining the `update_hosts` variable:
 
-```bash
-$ tpaexec upgrade ~/clusters/speedy \
+```shell
+tpaexec upgrade ~/clusters/speedy \
   -e update_hosts=quirk,keeper,quaver
 ```
 
@@ -368,58 +569,16 @@ installation step.
 
 ## Upgrading a Subset of Nodes
 
-You can perform a rolling upgrade on a subset of instances by setting the `update_hosts` variable. However, support for this feature varies by architecture.
+You can perform a rolling upgrade on a subset of instances by setting the `update_hosts` variable.
+However, support for this feature varies by architecture.
 
--   For the **M1** architecture, this feature is supported in all its upgrade scenarios.
+-   For the **M1** architecture, this feature is fully supported for `repmgr` and `Patroni` managed clusters.
+    `EFM` managed clusters respect the `update_hosts` list for all components *except* EFM. All data nodes
+    will upgrade their EFM version regardless of the nodes specified in `update_hosts` as EFM does not
+    support clusters running different versions across data nodes.
 
 -   For **PGD-Always-ON/BDR-Always-ON**, this is supported **only** during minor version upgrades.
 
 ### Best Practice for PGD-Always-ON/BDR-Always-ON
 
 When performing a minor upgrade on a subset of PGD nodes, it is highly recommended to update the **RAFT leader nodes last**. This strategy avoids potential issues with post-upgrade checks while the cluster is running mixed versions of BDR.
-
-## Package version selection
-
-By default, `tpaexec upgrade` will update to the latest
-available versions of the installed packages if you did not explicitly
-specify any package versions (e.g., Postgres, PGD, or pglogical) when
-you created the cluster.
-
-If you did select specific versions, for example by using any of the
-`--xxx-package-version` options (e.g., postgres, bdr, pglogical) to
-[`tpaexec configure`](tpaexec-configure/), or by defining
-`xxx_package_version` variables in config.yml, the upgrade will do
-nothing because the installed packages already satisfy the requested
-versions.
-
-In this case, you must edit config.yml, remove the version settings, and
-re-run `tpaexec provision`. The update will then install the latest
-available packages. You can still update to a specific version by
-specifying versions on the command line as shown below:
-
-```bash
-$ tpaexec upgrade ~/clusters/speedy -vv         \
-  -e postgres_package_version="2:11.6r2ndq1.6.13*"      \
-  -e pglogical_package_version="2:3.6.11*"              \
-  -e bdr_package_version="2:3.6.11*"
-```
-
-Please note that version syntax here depends on your OS distribution and
-package manager. In particular, yum accepts `*xyz*` wildcards, while
-apt only understands `xyz*` (as in the example above).
-
-Note: see limitations of using wildcards in package_version in
-[tpaexec-configure](tpaexec-configure/#known-issue-with-wildcard-use).
-
-It is your responsibility to ensure that the combination of Postgres,
-PGD, and pglogical package versions that you request are sensible. That
-is, they should work together, and there should be an upgrade path from
-what you have installed to the new versions.
-
-For PGD clusters, it is a good idea to explicitly specify exact versions
-for all three components (Postgres, PGD, pglogical) rather than rely on
-the package manager's dependency resolution to select the correct
-dependencies.
-
-We strongly recommend testing the upgrade in a QA environment before
-running it in production.

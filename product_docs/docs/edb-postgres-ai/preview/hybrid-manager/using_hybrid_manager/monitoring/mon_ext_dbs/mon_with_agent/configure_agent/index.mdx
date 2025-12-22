@@ -1,0 +1,340 @@
+---
+title: Configuring the HM agent
+navTitle: Configure the HM agent
+description: Learn how to configure the agent for monitoring with Hybrid Manager.
+
+---
+
+Configure the Hybrid Manager (HM) agent (deployed as `beacon-agent`) to allow it to connect to HM and fetch monitoring data from the source database.
+
+!!!info
+You can also use the agent to [assess your Oracle database for migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed).
+!!!
+
+## Prerequisites
+
+-  [Install the agent](/tools/agent/installing/).
+
+-  You [created a machine user and access key with the `estate ingester` role](../create_machine_user) assigned to it. 
+Store the access key in an environment variable named `$BEACON_AGENT_ACCESS_KEY` so the HM agent can access it later.
+
+## Obtain Hybrid Manager connection parameters
+
+The HM agent requires specific configuration values that are set during the HM installation. You cannot access these yourself. Contact the administrator or installer of your HM instance to request the following values:
+
+-    **Beacon server hostname**: When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Request the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll have to look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the HM agent.
+
+-    **Root certificate path (if required)**:The HM agent requires a trusted connection to the `beacon_server` service in your HM instance. If the server running the agent doesn't inherently trust the HM's TLS certificate (managed by your organization's security infrastructure), request the administrator or installer of your HM instance to provide the file with the certificate. Store this certificate on the machine running the HM agent. You will need to provide the directory path to this certificate later to configure the HM agent.
+
+See [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) for more information about the `beacon_server` and root certificate.
+
+## Define source database connection parameters 
+
+The DSN is the connection string the HM agent uses to connect to your source database. Set the `databases.dsn` parameter using an environment variable `$DSN` (recommended) or direct URL format.
+
+A DSN string for connections to databases must use this format:
+
+```shell
+DSN="<postgresql/oracle>://<user>:<password>@<host>:<port>/<database_name>"
+```
+
+Where: 
+
+- `<postgresql/oracle>` is the type of database you are registering, either `postgresql` for all types of Postgres databases (EDB Postgres, AWS RDS for PostgreSQL, etc.) or `oracle` for Oracle databases.
+- The `<username>` and `<password>` correspond to the user you granted permissions when preparing the database.
+- `<host>` is the hostname of the instance where your database is running. 
+- `<port>` ist the port number of the database you want to fetch data from.
+- `<database_name>` is the name of the database you want to fetch data from. 
+
+Examples:
+
+<TabContainer syncKey="dsn_examples">
+<Tab title="Postgres (SSL on)">
+
+In most production environments, SSL is enabled to ensure network traffic is encrypted.
+
+To connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL enabled, you would specify:
+
+```shell
+DSN="postgresql://postgres:password@localhost:5432/postgres"
+```
+
+</Tab>
+
+<Tab title="Postgres (SSL off)">
+
+If your Postgres database is configured with SSL disabled, or if you require an unencrypted connection, append `?sslmode=disable` to the DSN string.
+    
+For example, to connect as user `postgres` authenticated with password `password` to a database `postgres` on port `5432` with SSL disabled, you would specify:
+
+```shell
+DSN="postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
+```
+
+</Tab>
+</TabContainer>
+
+!!!note Special characters in passwords
+If your Postgres or Oracle user's password contains special, non-ASCII characters, use the URL-encoded version of the password in the DSN string (or password environment variable). For example, if your password is `pa$$word`, you must encode the `$$` characters as `%24%24`:
+
+```shell
+DSN="postgresql://postgres:pa%24%24word@localhost:5432/postgres?sslmode=disable"
+```
+    
+!!!
+
+If you plan to connect to more than one database with this agent, you can specify multiple such variables, for example `DSN1`, `DSN2`. 
+You can use any name you wish for these variables because they will be referenced by name in the configuration file.
+
+## Prepare a configuration file
+
+1.  Change to the [OS user you previously created](../agent_os_user.mdx) to perform the agent configuration.
+
+1.  Create a configuration directory in your home directory:
+
+    ```shell
+    mkdir ${HOME}/.beacon
+    ```
+
+    If this location isn't convenient, you can also use either:
+
+    - `/etc/beacon`
+    - The directory from which you execute any `beacon-agent` command. 
+    
+    The agent looks for its configuration file starting with `/etc/beacon`, then `${HOME}/.beacon`. As a final fallback, it searches the directory from which it's executed.
+
+2.  Inside this directory, create a new file `beacon_agent.yaml`:
+
+    ```shell
+    touch .beacon/beacon_agent.yaml
+    ```
+
+3.  Copy and paste the following template into the new file. This template is designed to enable all monitoring options, and generate a migration assessment.
+
+    In this template, `$BEACON_AGENT_ACCESS_KEY` and `$DSN` are the environment variables you configured previously. Replace all `< >` placeholders in the template following the [Parameter reference](../configure_agent.mdx#parameter-reference).
+
+    ```yaml
+    ---
+    agent:
+      access_key: $BEACON_AGENT_ACCESS_KEY
+      beacon_server: <beacon_server>:9443
+      project_id: <project_id>
+      providers:
+        - "onprem"
+      settings_providers:
+        - "onprem-settings"
+      schema_providers:
+        - "onprem-schema"
+      root_ca_path: ""
+    general:
+      logging:
+        level: "info"
+      metrics:
+        push:
+          enabled: true
+          debug: true
+          push_endpoint: <beacon_server>:9443
+          root_ca_path: ""
+        usage:
+          company_code: <company_code>
+          output:
+            file:
+              enabled: true
+              path: beacon_usage.json
+            http:
+              enabled: false
+              url: https://pg-usage.enterprisedb.com
+    provider:
+      onprem:
+        runner:
+          enabled: true
+        clusters:
+          - resource_id: <cluster_resource_id>
+            name: "<cluster_name>"
+            manager: "other"
+            nodes: 
+              - resource_id: <node_resource_id>
+                dsn: $DSN
+                disable_host_association: false
+                tags: 
+                  - "<tags>"
+                settings:
+                  enabled: true
+                metrics:
+                  disabled: false
+                  stats:
+                    enabled: true
+                    wait_states:
+                      enabled: true
+                      buckets_count: 5
+                      bucket_duration: 1m
+                      bucket_offset: 1s
+                    recommendations:
+                      enabled: true
+                      interval: 1m
+                    query_texts:
+                      enabled: true
+                      scraping_interval: 2m
+                      scraping_offset: 1s
+                      eviction_interval: 30m
+                      cache_items_max: 200
+                    query_stats:
+                      enabled: true
+                      buckets_count: 2
+                      bucket_duration: 1m0s
+        host:
+          metrics:
+            disabled: false
+          resource_id: <host_id>
+    dispatcher:
+      enabled: true
+      mode: standalone
+      location_id: <location_id>
+    ```
+
+1.  Save the file. 
+
+You have now configured the HM agent, you can proceed to running it or configuring it to run as a service.
+
+## Recommendations for setting environment variables
+
+Although it's possible to set all parameters directly in the config file, we recommend handling sensitive data, such as `$BEACON_AGENT_ACCESS_KEY` or `$DSN` as environment variables managed through a secrets manager. This strategy prevents sensitive credentials from being stored in plaintext configuration files. If you use environment variables, you must ensure they are available to the agent while it is running.
+
+Consult your organization's IT department on the safest approach for production environments.
+
+For short-lived migrations, or testing and demo purposes, you can use the `export` command in an active terminal session.
+
+## Test the agent locally
+
+To perform an initial test of the agent, you can configure it to send the data—usually sent to Hybrid Manager—to your terminal (standard output) instead. This helps you quickly verify whether the agent can successfully collect data from the source database and lets you preview the gathered information.
+
+You can run the agent in standard output mode by modifying the `beacon_agent.yaml` file and setting `agent.beacon_server` to `"stdout"`:
+
+```yaml
+agent:
+    beacon_server: "stdout"
+```
+
+Next, run the agent in this mode:
+
+```shell
+beacon-agent
+```
+
+See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
+
+The output is similar to this:
+
+```
+{"level":"debug","data":"$BEACON_AGENT_ACCESS_KEY","time":"2024-05-08T18:40:34Z","message":"expanding environment variable in configuration"}
+{"level":"info","path":"/healthz","time":1715193634,"msg":"serving liveness probe"}
+{"level":"info","path":"/readyz","time":1715193634,"msg":"serving readiness probe"}
+{"level":"info","version":"v1.51.0-snapshot8986075626.97.1.166215e","time":1715193634,"msg":"starting beacon agent"}
+{"level":"info","spiffe_enabled":false,"time":1715193634,"msg":"configuring tls"}
+{"level":"info","server":"stdout","time":1715193634,"msg":"connecting to beacon service"}
+{"level":"info","address":":8081","time":1715193634,"msg":"starting probe server"}
+{"level":"info","target":"stdout","time":1715193634,"msg":"connected to beacon server"}
+{"level":"info","time":1715193634,"msg":"verifying connection to beacon server"}
+{"level":"info","project":"echo","time":1715193634,"msg":"verified connection to beacon server"}
+{"level":"info","interval":"10m0s","time":1715193634,"msg":"loading feature flags periodically"}
+{"level":"info","time":1715193634,"msg":"fetching feature flags"}
+{"level":"info","feature_flags":{"echo_flag":"test","second_flag":false},"time":1715193634,"msg":"loaded feature flags"}
+{"level":"info","id":"onprem","time":1715193634,"msg":"starting provider"}
+{"level":"info","disable_partitioning":false,"batch_size":100,"interval":"10s","time":1715193634,"msg":"starting batch exporter"}
+{"level":"info","provider_id":"onprem","time":1715193634,"msg":"registering ingestion worker in pool"}
+{"level":"info","provider":"onprem","time":1715193634,"msg":"starting provider worker"}
+{"level":"info","ingestions":[{"version":"v0.1.0","type":"onprem/host","id":"ip-10-0-128-121","metadata":{"Data":{"OnPremHostMetadata":{"hostname":"ip-10-0-128-121","operating_system":"linux","platform":"ubuntu","platform_family":"debian","platform_version":"22.04","cpu_limit":1}}}}],"time":1715193934,"msg":"sending ingestions via log client (not actually sending)"}
+{"level":"info","successful_ingestions":1,"failed_ingestions":0,"time":1715193934,"msg":"exported ingestions"}
+```
+
+!!!Note
+The message in the second-to-last line of the log confirms that you're viewing the gathered data that's being output to stdout.
+!!!
+
+Next, set the `agent.beacon_server` value to again point to the host URL:
+
+```yaml
+agent:
+    beacon_server: <beacon_server>:9443
+```
+
+## Validate the configuration file
+
+Next, you can validate whether the agent can connect to the Hybrid Manager using the specified credentials by making a test connection to the Hybrid Manager and printing a summary of your configuration.
+
+```shell
+beacon-agent --config 
+```
+
+See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
+
+-  If the connection succeeds, a summary of the connection details is printed. 
+-  If the output shows an error, you must resolve it before proceeding.
+
+-  If the **Connectivity** check fails with a message like `failed to verify certificate x509...`, this likely means that the system on which you're running the agent doesn't trust the certificate used to sign the server certificate. This is likely a symptom of an issue with root certificate distribution. Raise this issue with the team that manages your infrastructure.
+
+    If you have a copy of the root certificate, you can provide the path to the root certificate by setting `agent.root_ca_path` and `general.metrics.push.root_ca_path`. After setting these parameters, rerun `beacon-agent --config` to check whether the issue is resolved.
+
+-  If the **Connectivity** check fails with a message like `connection reset by peer`, this generally means the agent can't reach the specified `<beacon-server>` because the URL is incorrect or there's a firewall preventing connection.
+
+The agent is now configured, and you can [run the agent](../run_agent.mdx) or [configure the agent to run as a service](../run_as_service.mdx). Once your agent is running, consider [configuring usage reporting](usage_reporting.mdx).
+
+## Parameter reference
+
+These settings are relevant to the agent's configuration.
+
+| YAML agent settings                   | Placeholder                | Guidelines                                                                                                                                                                                                                                                                                                                                         |
+|---------------------------------------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `agent.access_key`                    | `$BEACON_AGENT_ACCESS_KEY` | Access key you obtained from the HM console when you [created a machine user with the `estate ingester` role](../create_machine_user.mdx). After creating the key, you can store it as the environment variable `$BEACON_AGENT_ACCESS_KEY` for usage with the HM agent.                                                                            |
+| `agent.beacon_server`                 | `<beacon_server>:9443`     | Host URL that allows the agent to connect to the correct service endpoint. Obtain the host URL of your beacon server from an administrator, the port is fixed as 9443. See [Administrative tasks](../admin_tasks.mdx) for more information.                                                                                                        |
+| `agent.project_id`                    | `<project_id>`             | To obtain your project’s ID, go to the HM console, select **Projects**, and select your project. Your browser displays a URL like `https://portal.example.com/projects/prj_5Wuqyl5JtpvxjiYC/clusters`. The project ID is the identifier starting with “prj\_” in the URL of that page. In this example: `prj_5Wuqyl5JtpvxjiYC`.                    |
+| `agent.providers`                     | N/A                        | Set to `- "onprem"`.                                                                                                                                                                                                                                                                                                                               |
+| `agent.settings_providers`            | N/A                        | Set to `- "onprem-settings"` to enable recommendations for Postgres configurations.                                                                                                                                                                                                                                                                |
+| `agent.schema_providers`              | N/A                        | Set to `- "onprem-schema"` to enable schema ingestion and migration assessment capabilities. Remove this section if you don't want to allow schema information to be collected.                                                                                                                                                                    |
+| `agent.root_ca_path`                  | N/A                        | Set to `""` if your organization has configured the machine where HM agent runs to trust HM's TLS certificate. Otherwise, obtain the root certificate from an administrator and store it locally. Then, set this value to the path where you stored it. See [Administrative tasks](../admin_tasks.mdx) for more information.                       |
+| `general.logging.level`               | N/A                        | Set to `"info"` or `"trace"` to obtain logging information. Start with `"info"` and only use `"trace"` if required, as it is extremelly verbose.                                                                                                                                                                                                   |
+| `general.metrics.push.[...]`          | N/A                        | Enables pushing metrics to the HM console. The `push_endpoint` is the same as `agent.beacon_server`. The `root_ca_path` is the same as `agent.root_ca_path`.                                                                                                                                                                                       |
+| `general.metrics.usage.[...]`         | N/A                        | Enables storing usage data (and reporting usage data, [if enabled](usage_reporting)). Your `company_code` can be found on the [EDB Support Portal](https://techsupport.enterprisedb.com/company).                                                                                                                                                  |
+| `provider.onprem.check_databases_DSN` | N/A                        | Enables verifying all DSN connections and reports any errors to the terminal by indicating the source of the error with the resource ID during runtime. The check is performed when the HM agent runs without any [CLI subcommands/options](/tools/agent/agent_ref/), or when it runs with the `--config` subcommand. The default is set to false. |
+| `dispatcher.location_id`              | `<location_id>`            | A unique identifier used by the Hybrid Manager for this agent/location. Consider setting this to the same value as `provider.onprem.host.resource_id` for convenience.                                                                                                                                                                             |
+
+These settings are relevant to the database configuration.
+
+| YAML database settings                    | Placeholder             | Guidelines                                                                                                                                                                                                                                                                                                                                                                      |
+|-------------------------------------------|-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `clusters.resource_id`                    | `<cluster_resource_id>` | Assign a unique identifier to your database cluster. Encase in double quotes. <br /> You must begin identifiers with an alphanumeric character (`A-Z, a-z, 0-9`); in between you may also include hyphens (`-`), underscores (`_`) and periods (`.`). You must not use any other characters. <br /> Example: `An_I.D.-1`                                              |
+| `clusters.name`                           | `"<instance_name>"`     | Assign a unique name to your database cluster.                                                                                                                                                                                                                                                                                                                                  |
+| `clusters.manager`                        | `"other"`               | Collects statistics for cluster manager. Possible values are `"patroni"`, `"repmgr"`, `"efm"`, `"other"`. For self-managed instances, set to `"other"`.                                                                                                                                                                                                                         |
+| `clusters.nodes.resource_id`              | `<node_resource_id>`    | Assign a unique identifier to your database node. Single-node instances require a single entry here. Multi-node instances require an entry per node. Encase in double quotes. Reuse the same id when configuring the DMS agent for migrations. This consistency is essential for the DMS to correctly correlate the resource across both the HM agent and DMS agent components. <br /> You must begin identifiers with an alphanumeric character (`A-Z, a-z, 0-9`); in between you may also include hyphens (`-`), underscores (`_`) and periods (`.`). You must not use any other characters. <br /> Example: `An_I.D.-1` |
+| `clusters.nodes.dsn`                      | N/A                     | Connection string or DSN that provides access to your remote database. <br/> The DSN must follow the format: `<database_type>://<user>:<password>@<host>:<port>/<database_name>`. <br/> The `database_type` can be postgresql or oracle.                                                                                                                                        |
+| `clusters.nodes.disable_host_association` | N/A                     | Set to `true` to prevent this database being associated with the host on which the agent is running. For example, if the agent is running on a different server.                                                                                                                                                                                                                |
+| `clusters.nodes.tags`                     | N/A                     | Assign tags for resource labeling. Encase in double quotes and introduce each tag with a dash.                                                                                                                                                                                                                                                                                  |
+| `clusters.nodes.settings.enabled`         | N/A                     | Set to `true` to enable collecting database configuration data.                                                                                                                                                                                                                                                                                                                 |
+| `clusters.nodes.metrics.[...]`            | N/A                     | Controls [which types of metrics](fine_tune_monitoring) the agent ingests, and how they are ingested.                                                                                                                                                                                                                                                                           |
+
+These settings are relevant to host data. 
+
+| YAML database settings  | Placeholder | Guidelines                                                                                                                                                                                                                                              |
+|-------------------------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `host.metrics.disabled` | N/A         | Set to `true` to disable the collection of host metrics from the host on which the agent is located. For example, when the agent host is not the same as the database cluster host.                                                                     |
+| `host.resource_id`      | `<host_id>` | Assign an identifier to the host on which the agent is running, by default this will be populated by the hostname detected during setup. This will link your host machine to an identifier. Encase in double quotes. Must be unique within the project. |
+
+Settings related to schema ingestion:
+
+| YAML database schema settings               | Placeholder/Value      | Guidelines                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|---------------------------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `provider.onprem.schema_export_max_workers` | N/A                    | Maximum number of workers the HM agent starts in parallel to extract schema from the source database server(s). You can control CPU, memory and disk space usage by the HM agent witht this parameter. See [Performing multiple concurrent schema ingestions](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/schema_ingestion/#performing-multiple-concurrent-schema-ingestions) for more information. The default is set to 10. |
+| `clusters.nodes.schema.enabled`             | N/A                    | Set to `true` to enable schema ingestion for the database. Set to `false` to disable it.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `clusters.nodes.schema.poll_interval`       | N/A                    | Defines how frequently the agent checks for schema changes. Provide a value in seconds or minutes (for example, 15 s or 1 m).                                                                                                                                                                                                                                                                                                                                                                         |
+| `clusters.nodes.schema.filter`              | N/A                    | Use this block to specify which schemas to include or exclude from ingestion. It contains the `mode` and `names` parameters.                                                                                                                                                                                                                                                                                                                                                                         |
+| `clusters.nodes.schema.filter.mode`         | `include` or `exclude` | Specifies the filtering behavior. Use `include` to only ingest listed schemas, or `exclude` to ingest all schemas except those listed.                                                                                                                                                                                                                                                                                                                                                               |
+| `clusters.nodes.schema.filter.names`        | `<schema_name>`        | A list of strings representing the names of the schemas to be filtered. This list works in conjunction with the mode setting.                                                                                                                                                                                                                                                                                                                                                                        |
+
+## Related topics
+
+-   [Fine-tuning monitoring data collection](fine_tune_monitoring/) ► Learn how to customize the monitoring features and enable/disable a subset of them. 
+-   [Configuring multiple databases](multiple_dbs/) ► Learn how to use the same agent config file to connect and fetch data from more than one database.
+-   [Enabling usage reporting in Hybrid Manager](usage_reporting/) ► Learn how to complement monitoring efforts by providing EDB with basic insights into product usage.
+-   [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) ► Learn how an HM instance's administrator can obtain the values for the root certificate and `beacon_server`.
+-   [Use the agent to assess your Oracle database for migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed) ► Use the HM agent to asses Oracle databases and extract schema for conversion with the Migration Portal. 
+-   [Perform multiple concurrent schema ingestions](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/schema_ingestion/#performing-multiple-concurrent-schema-ingestions) ► Adjust the HM agent configuration to tune HM agent's resource utilization and support the ingestion of a large number of databases.

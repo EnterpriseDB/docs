@@ -2,6 +2,47 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.28.0",
+    icon: IconNames.MODULE,
+    description:
+      "EDB Postgres® AI for CloudNativePG™ Cluster 1.28.0 introduces comprehensive declarative management for Foreign Data Wrappers, promotes the quorum-based failover feature to stable status, and consolidates EDB container registries along with many fixes and enhancements.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_28_0_rel_notes/",
+  },
+  {
+    title: "EDB Postgres Advanced Server 18.1.0",
+    icon: IconNames.EDB_EPAS,
+    description:
+      "EDB Postgres Advanced Server 18.1.0 is now available, bringing all of the changes from PostgreSQL 18.1 along with enhanced security features and expanded Oracle database compatibility.",
+    url: "/epas/latest/",
+    moreUrl: "/epas/latest/epas_rel_notes/epas18_1_rel_notes/",
+  },
+  {
+    title: "Hybrid Manager 1.3",
+    icon: IconNames.MODULE,
+    description:
+      "The latest release of EDB Postgres® AI Hybrid Manager brings enhanced DR & resiliency, unified observability, platform stability & flexibility, data-sovereign AI for migration, expanded AI Factory performance, and secure AI model access.",
+    url: "/edb-postgres-ai/latest/hybrid-manager/",
+    moreUrl:
+      "/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_1.3_rel_notes/",
+  },
+  {
+    title: "CloudNativePG Cluster 1.27.1",
+    icon: IconNames.KUBERNETES,
+    description:
+      "EDB CloudNativePG Cluster 1.27.1 adopts the new format of container images and image catalog artifacts, updates the default PostgreSQL version to 18, and adds a CHECKPOINT step before PostgreSQL shutdowns.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_27_1_rel_notes/",
+  },
+  {
+    title: "Trusted Postgres Architect 23.41",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.41 introduces security hardening for Patroni, enhances component upgrade flexibility, and adds support for minor version upgrades of EDB Postgres Distributed (PGD) v6 clusters (PGD-X and PGD-S), along with fixes and security enhancements.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/",
+  },
+  {
     title: "CloudNativePG Cluster 1.27.0",
     icon: IconNames.KUBERNETES,
     description:

@@ -1,0 +1,273 @@
+---
+title: stages
+navTitle: BaseRagStage
+
+---
+
+-   `__all__ = ['BaseRagStage', 'QueryRagStage', 'ResponseRagStage', 'RetrievalRagStage']` <small>module-attribute</small>  <span id="griptape.engines.rag.stages.__all__"></span> 
+
+<span id="griptape.engines.rag.stages.BaseRagStage"></span>
+
+Bases:
+ [`FuturesExecutorMixin`](../../../mixins/futures_executor_mixin.mdx#griptape.mixins.futures_executor_mixin.FuturesExecutorMixin "FuturesExecutorMixin (griptape.mixins.futures_executor_mixin.FuturesExecutorMixin)")
+, <span title="abc.ABC">ABC</span>
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;base_rag_stage.py</code></summary>
+
+```python
+@define(kw_only=True)
+class BaseRagStage(FuturesExecutorMixin, ABC):
+    @abstractmethod
+    def run(self, context: RagContext) -> RagContext: ...
+
+    @property
+    @abstractmethod
+    def modules(self) -> Sequence[BaseRagModule]: ...
+```
+
+</details>
+
+-   `modules` <small>abstractmethod</small> <small>property</small>  <span id="griptape.engines.rag.stages.BaseRagStage.modules"></span> 
+
+<span id="griptape.engines.rag.stages.BaseRagStage.run"></span>
+
+### run(context)abstractmethod
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;base_rag_stage.py</code></summary>
+
+```python
+@abstractmethod
+def run(self, context: RagContext) -> RagContext: ...
+```
+
+</details>
+
+<span id="griptape.engines.rag.stages.QueryRagStage"></span>
+
+## QueryRagStage
+
+Bases:
+ [`BaseRagStage`](./#griptape.engines.rag.stages.BaseRagStage "BaseRagStage (griptape.engines.rag.stages.BaseRagStage)")
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;query_rag_stage.py</code></summary>
+
+```python
+@define(kw_only=True)
+class QueryRagStage(BaseRagStage):
+    query_modules: list[BaseQueryRagModule] = field()
+
+    @property
+    def modules(self) -> Sequence[BaseRagModule]:
+        return self.query_modules
+
+    def run(self, context: RagContext) -> RagContext:
+        logging.info("QueryRagStage: running %s query generation modules sequentially", len(self.query_modules))
+
+        [qm.run(context) for qm in self.query_modules]
+
+        return context
+```
+
+</details>
+
+-   `modules` <small>property</small>  <span id="griptape.engines.rag.stages.QueryRagStage.modules"></span> 
+
+-   `query_modules = field()` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.stages.QueryRagStage.query_modules"></span> 
+
+<span id="griptape.engines.rag.stages.QueryRagStage.run"></span>
+
+### run(context)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;query_rag_stage.py</code></summary>
+
+```python
+def run(self, context: RagContext) -> RagContext:
+    logging.info("QueryRagStage: running %s query generation modules sequentially", len(self.query_modules))
+
+    [qm.run(context) for qm in self.query_modules]
+
+    return context
+```
+
+</details>
+
+<span id="griptape.engines.rag.stages.ResponseRagStage"></span>
+
+## ResponseRagStage
+
+Bases:
+ [`BaseRagStage`](./#griptape.engines.rag.stages.BaseRagStage "BaseRagStage (griptape.engines.rag.stages.BaseRagStage)")
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;response_rag_stage.py</code></summary>
+
+```python
+@define(kw_only=True)
+class ResponseRagStage(BaseRagStage):
+    response_modules: list[BaseResponseRagModule] = field()
+
+    @property
+    def modules(self) -> list[BaseRagModule]:
+        ms = []
+
+        ms.extend(self.response_modules)
+
+        return ms
+
+    def run(self, context: RagContext) -> RagContext:
+        logging.info("ResponseRagStage: running %s retrieval modules in parallel", len(self.response_modules))
+
+        with self.create_futures_executor() as futures_executor:
+            results = utils.execute_futures_list(
+                [futures_executor.submit(with_contextvars(r.run), context) for r in self.response_modules]
+            )
+
+        context.outputs = results
+
+        return context
+```
+
+</details>
+
+-   `modules` <small>property</small>  <span id="griptape.engines.rag.stages.ResponseRagStage.modules"></span> 
+
+-   `response_modules = field()` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.stages.ResponseRagStage.response_modules"></span> 
+
+<span id="griptape.engines.rag.stages.ResponseRagStage.run"></span>
+
+### run(context)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;response_rag_stage.py</code></summary>
+
+```python
+def run(self, context: RagContext) -> RagContext:
+    logging.info("ResponseRagStage: running %s retrieval modules in parallel", len(self.response_modules))
+
+    with self.create_futures_executor() as futures_executor:
+        results = utils.execute_futures_list(
+            [futures_executor.submit(with_contextvars(r.run), context) for r in self.response_modules]
+        )
+
+    context.outputs = results
+
+    return context
+```
+
+</details>
+
+<span id="griptape.engines.rag.stages.RetrievalRagStage"></span>
+
+## RetrievalRagStage
+
+Bases:
+ [`BaseRagStage`](./#griptape.engines.rag.stages.BaseRagStage "BaseRagStage (griptape.engines.rag.stages.BaseRagStage)")
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;retrieval_rag_stage.py</code></summary>
+
+```python
+@define(kw_only=True)
+class RetrievalRagStage(BaseRagStage):
+    retrieval_modules: list[BaseRetrievalRagModule] = field()
+    rerank_module: Optional[BaseRerankRagModule] = field(default=None)
+    max_chunks: Optional[int] = field(default=None)
+
+    @property
+    def modules(self) -> list[BaseRagModule]:
+        ms = []
+
+        ms.extend(self.retrieval_modules)
+
+        if self.rerank_module is not None:
+            ms.append(self.rerank_module)
+
+        return ms
+
+    def run(self, context: RagContext) -> RagContext:
+        logging.info("RetrievalRagStage: running %s retrieval modules in parallel", len(self.retrieval_modules))
+
+        with self.create_futures_executor() as futures_executor:
+            results = utils.execute_futures_list(
+                [futures_executor.submit(with_contextvars(r.run), context) for r in self.retrieval_modules]
+            )
+
+        # flatten the list of lists
+        results = list(itertools.chain.from_iterable(results))
+
+        # deduplicate the list
+        chunks_before_dedup = len(results)
+        results = list({str(c.value): c for c in results}.values())
+        chunks_after_dedup = len(results)
+
+        logging.info(
+            "RetrievalRagStage: deduplicated %s chunks (%s - %s)",
+            chunks_before_dedup - chunks_after_dedup,
+            chunks_before_dedup,
+            chunks_after_dedup,
+        )
+
+        context.text_chunks = [a for a in results if isinstance(a, TextArtifact)]
+
+        if self.rerank_module:
+            logging.info("RetrievalRagStage: running rerank module on %s chunks", chunks_after_dedup)
+
+            context.text_chunks = [a for a in self.rerank_module.run(context) if isinstance(a, TextArtifact)]
+
+        if self.max_chunks:
+            context.text_chunks = context.text_chunks[: self.max_chunks]
+
+        return context
+```
+
+</details>
+
+-   `max_chunks = field(default=None)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.stages.RetrievalRagStage.max_chunks"></span> 
+
+-   `modules` <small>property</small>  <span id="griptape.engines.rag.stages.RetrievalRagStage.modules"></span> 
+
+-   `rerank_module = field(default=None)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.stages.RetrievalRagStage.rerank_module"></span> 
+
+-   `retrieval_modules = field()` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.rag.stages.RetrievalRagStage.retrieval_modules"></span> 
+
+<span id="griptape.engines.rag.stages.RetrievalRagStage.run"></span>
+
+### run(context)
+
+<details><summary>Source Code in <code>griptape&#47;engines&#47;rag&#47;stages&#47;retrieval_rag_stage.py</code></summary>
+
+```python
+def run(self, context: RagContext) -> RagContext:
+    logging.info("RetrievalRagStage: running %s retrieval modules in parallel", len(self.retrieval_modules))
+
+    with self.create_futures_executor() as futures_executor:
+        results = utils.execute_futures_list(
+            [futures_executor.submit(with_contextvars(r.run), context) for r in self.retrieval_modules]
+        )
+
+    # flatten the list of lists
+    results = list(itertools.chain.from_iterable(results))
+
+    # deduplicate the list
+    chunks_before_dedup = len(results)
+    results = list({str(c.value): c for c in results}.values())
+    chunks_after_dedup = len(results)
+
+    logging.info(
+        "RetrievalRagStage: deduplicated %s chunks (%s - %s)",
+        chunks_before_dedup - chunks_after_dedup,
+        chunks_before_dedup,
+        chunks_after_dedup,
+    )
+
+    context.text_chunks = [a for a in results if isinstance(a, TextArtifact)]
+
+    if self.rerank_module:
+        logging.info("RetrievalRagStage: running rerank module on %s chunks", chunks_after_dedup)
+
+        context.text_chunks = [a for a in self.rerank_module.run(context) if isinstance(a, TextArtifact)]
+
+    if self.max_chunks:
+        context.text_chunks = context.text_chunks[: self.max_chunks]
+
+    return context
+```
+
+</details>

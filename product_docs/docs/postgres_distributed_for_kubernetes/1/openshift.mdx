@@ -6,7 +6,7 @@ originalFilePath: 'src/openshift.md'
 EDB Postgres Distributed for Kubernetes is a certified operator that can be
 installed on OpenShift using a web interface.
 
-## Ensuring access to EDB private registry
+## Ensuring access to the EDB private registry
 
 !!! Important
     You need access to the private EDB repository where both the operator
@@ -25,29 +25,34 @@ two pull secrets in the `openshift-operators` namespace:
 -   `postgresql-operator-pull-secret` for the EDB Postgres
     for Kubernetes operator images
 
-You can create each secret using the `oc create` command by replacing `<REGISTRY-NAME>`
-and `<TOKEN>` with their respective value.
+You can create each secret using the `oc create` command by replacing `<TOKEN>` with
+the repository token for your EDB account, as explained in
+[Get your token](/repos/getting_started/with_web/get_your_token/).
 
 ```sh
 oc create secret docker-registry pgd-operator-pull-secret \
-  -n openshift-operators --docker-server=docker.enterprisedb.com \
-  --docker-username=<REGISTRY-NAME> \
-  --docker-password=<TOKEN>
+  -n openshift-operators \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password="<TOKEN>"
 
 oc create secret docker-registry postgresql-operator-pull-secret \
-  -n openshift-operators --docker-server=docker.enterprisedb.com \
-  --docker-username=<REGISTRY-NAME> \
-  --docker-password=<TOKEN>
+  -n openshift-operators \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password="<TOKEN>"
 ```
 
-Where:
-
--   `<REGISTRY-NAME>` is the name of the repository, as explained in
-    [Which repository to choose?](private_edb_registries.md#which-repository-to-choose).
--   `<TOKEN>` is the repository token for your EDB account, as explained in
-    [How to retrieve the token](private_edb_registries.md#how-to-retrieve-the-token).
+!!! Note
+    For pg4k-pgd operator v1.1.3 and earlier
+    (certified against the legacy k8s_enterprise_pgd repository),
+    you must create the `pgd-operator-pull-secret` image-pull secret using
+    `k8s_enterprise_pgd` as the registry username.
 
 ## Installing the operator
+
+!!! Warning CRITICAL WARNING: UPGRADING OPERATORS
+    OpenShift users, or any customer attempting an operator upgrade, MUST configure the new unified repository pull secret (docker.enterprisedb.com/k8s) before running the upgrade. If the old, deprecated repository path is still in use during the upgrade process, image pull failure will occur, leading to deployment failure and potential downtime. Follow the [Central Migration Guide](/postgres_for_kubernetes/latest/migrating_edb_registries) first.
 
 The EDB Postgres Distributed for Kubernetes operator can be found in the Red
 Hat OperatorHub directly from your OpenShift dashboard.
@@ -145,303 +150,10 @@ region-c   0                1                   PGDGroup - Healthy              
 
 To deploy PGD in multiple OpenShift clusters in multiple regions,
 you must first establish a way for the PGD groups to communicate with each other.
-You can achieve this by deploying a network connectivity application like
-[Submariner](https://submariner.io/getting-started/quickstart/openshift/)
-or any other network connectivity utilities.
+
 Configuring the connectivity is outside the scope of this documentation.
 However, once you've established connectivity between the OpenShift clusters,
 you can deploy PGD groups synced with one another.
-
-!!!Note
-If you are using Submariner, when running `subctl deploy-broker`, the command exits before the broker is fully deployed. Wait for all OVS pods to become healthy before joining clusters to the broker.
-!!!
-
-!!!Note
-If you are using Submariner, PGD will need connectivity between all `-node` and `-group` services for each PGD group. This means that for each `-node` and `-group` service that PGD creates you will need to run `subctl export service <NAME>-node` and `subctl export service <NAME>-group` or you will need to pre-create the `ServiceExport` CR's. You may need to run the export command more than once as PGD will wait for a node to become resolvable before creating the next node's service.
-!!!
-
-!!! Warning
-    This example assumes you're deploying three PGD groups, one in each OpenShift
-    cluster, and that you established connectivity between the OpenShift clusters
-    using Submariner.
-
-Similar to the
-[single-cluster example](#using-pgd-in-a-single-openshift-cluster-in-a-single-region),
-this example creates two data PGD groups and one witness group.
-In contrast to that example, each group lives in a different OpenShift cluster.
-
-In addition to basic connectivity between the OpenShift clusters,
-you need to ensure that each OpenShift cluster contains a certificate authority
-that's trusted by the other OpenShift clusters.
-This condition is required for the PGD groups to communicate with each other.
-
-The OpenShift clusters can all use
-the same certificate authority, or each cluster can have its own certificate
-authority. Either way, you need to ensure that each OpenShift cluster's
-certificates trust the other OpenShift clusters' certificate authorities.
-
-This example uses a self-signed certificate
-that has a single certificate authority used for all certificates
-on all the OpenShift clusters.
-
-The example refers to the OpenShift clusters as `OpenShift Cluster A`,
-`OpenShift Cluster B`, and `OpenShift Cluster C`. In OpenShift,
-an installation of the EDB Postgres Distributed for Kubernetes operator
-from OperatorHub includes an installation of the cert-manager operator.
-We recommend creating and managing certificates with cert-manager.
-
-1.  Create a namespace to hold `OpenShift Cluster A`, and in it
-    also create the needed objects for a self-signed certificate.
-    Assuming that the PGD operator and the cert-manager are installed,
-    you create a
-    [self-signed certificate `Issuer`](https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml)
-    in that namespace.
-
-```sh
-oc create ns pgd-group
-oc apply -n pgd-group -f \
-  https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml
-```
-
-2.  After a few moments, cert-manager creates the issuers and certificates.
-    There are also now two secrets in the `pgd-group` namespace:
-    `server-ca-key-pair` and `client-ca-key-pair`. These secrets contain
-    the certificates and private keys for the server and client certificate authorities.
-    You need to copy these secrets to the other OpenShift clusters before applying
-    the `issuer-selfsigned.yaml` manifest. You can use the
-    `oc get secret` command to get the contents of the secrets:
-
-```sh
-oc get secret server-ca-key-pair -n pgd-group -o yaml > server-ca-key-pair.yaml
-oc get secret client-ca-key-pair -n pgd-group -o yaml > client-ca-key-pair.yaml
-```
-
-3.  After removing the content specific to `OpenShift Cluster A`
-    from these secrets (such as uid, resourceVersion, and timestamp), you can switch
-    context to `OpenShift Cluster B`. Then create the namespace, create the
-    secrets in it, and only then apply the `issuer-selfsigned.yaml` file:
-
-```sh
-oc create ns pgd-group
-oc apply -n pgd-group -f server-ca-key-pair.yaml
-oc apply -n pgd-group -f client-ca-key-pair.yaml
-oc apply -n pgd-group -f \
-  https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml
-```
-
-4.  You can switch context to `OpenShift Cluster C` and repeat
-    the same process followed for Cluster B:
-
-```sh
-oc create ns pgd-group
-oc apply -n pgd-group -f server-ca-key-pair.yaml
-oc apply -n pgd-group -f client-ca-key-pair.yaml
-oc apply -n pgd-group -f \
-  https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml
-```
-
-5.  On `OpenShift Cluster A`, you can create your first PGD group,
-    called `region-a`. The YAML manifest for the PGD group is:
-
-```yaml
-apiVersion: pgd.k8s.enterprisedb.io/v1beta1
-kind: PGDGroup
-metadata:
-  name: region-a
-spec:
-  instances: 2
-  proxyInstances: 2
-  witnessInstances: 1
-  pgd:
-    parentGroup:
-      name: world
-      create: true
-  cnp:
-    storage:
-      size: 1Gi
-  connectivity:
-    dns:
-      domain: "pgd-group.svc.clusterset.local"
-      additional:
-        - domain: alternate.domain
-        - domain: my.domain
-          hostSuffix: -dc1
-    tls:
-      mode: verify-ca
-      clientCert:
-        caCertSecret: client-ca-key-pair
-        certManager:
-          spec:
-            issuerRef:
-              name: client-ca-issuer
-              kind: Issuer
-              group: cert-manager.io
-      serverCert:
-        caCertSecret: server-ca-key-pair
-        certManager:
-          spec:
-            issuerRef:
-              name: server-ca-issuer
-              kind: Issuer
-              group: cert-manager.io
-```
-
-6.  Apply the `region-a` PGD group YAML:
-
-```sh
-oc apply -f region-a.yaml -n pgd-group
-```
-
-7.  You can now switch context to `OpenShift Cluster B` and
-     create the second PGD group. The YAML for the PGD group in Cluster B
-     is as follows. The group is configured to physical join `region-a`
-    group through `spec.pgd.groupJoinMethod`. In `spec.pgd.discovery` section,
-    we list all the node services from group `region-a`, The bootstrap job of PGD operator
-    will find proper connectable data node as the join candidate.
-
-```yaml
-apiVersion: pgd.k8s.enterprisedb.io/v1beta1
-kind: PGDGroup
-metadata:
-  name: region-b
-spec:
-  instances: 2
-  proxyInstances: 2
-  witnessInstances: 1
-  pgd:
-    parentGroup:
-      name: world
-    discovery:
-      - host: region-a-1-node.pgd-group.svc.clusterset.local
-      - host: region-a-2-node.pgd-group.svc.clusterset.local
-      - host: region-a-3-node.pgd-group.svc.clusterset.local
-    groupJoinMethod: physical
-  cnp:
-    storage:
-      size: 1Gi
-  connectivity:
-    dns:
-      domain: "pgd-group.svc.clusterset.local"
-    tls:
-      mode: verify-ca
-      clientCert:
-        caCertSecret: client-ca-key-pair
-        certManager:
-          spec:
-            issuerRef:
-              name: client-ca-issuer
-              kind: Issuer
-              group: cert-manager.io
-      serverCert:
-        caCertSecret: server-ca-key-pair
-        certManager:
-          spec:
-            issuerRef:
-              name: server-ca-issuer
-              kind: Issuer
-              group: cert-manager.io
-```
-
-!!! Important
-    The format of the hostnames in the `discovery` section differs from the single-cluster
-    example. That's because Submariner is being used to connect the OpenShift clusters,
-    and Submariner uses the `<service>.<ns>.svc.clusterset.local` domain
-    to route traffic between the OpenShift clusters.
-    `region-a-group` is the name of the service to be created
-    for the PGD group named `region-a`. And `region-a-1-node` is the name of service
-    to be created for PGD node `region-a-1`.
-
-8.  Apply the `region-b` PGD group YAML:
-
-```sh
-oc apply -f region-b.yaml -n pgd-group
-```
-
-9.  You can switch context to `OpenShift Cluster C` and create the third PGD group.
-    The YAML for the PGD group is:
-
-```yaml
-apiVersion: pgd.k8s.enterprisedb.io/v1beta1
-kind: PGDGroup
-metadata:
-  name: region-c
-spec:
-  instances: 2
-  proxyInstances: 2
-  witnessInstances: 1
-  pgd:
-    parentGroup:
-      name: world
-    discovery:
-      - host: region-a-1-node.pgd-group.svc.clusterset.local
-      - host: region-a-2-node.pgd-group.svc.clusterset.local
-      - host: region-a-3-node.pgd-group.svc.clusterset.local
-    groupJoinMethod: physical
-  cnp:
-    storage:
-      size: 1Gi
-  connectivity:
-    dns:
-      domain: "pgd-group.svc.clusterset.local"
-    tls:
-      mode: verify-ca
-      clientCert:
-        caCertSecret: client-ca-key-pair
-        certManager:
-          spec:
-            issuerRef:
-              name: client-ca-issuer
-              kind: Issuer
-              group: cert-manager.io
-      serverCert:
-        caCertSecret: server-ca-key-pair
-        certManager:
-          spec:
-            issuerRef:
-              name: server-ca-issuer
-              kind: Issuer
-              group: cert-manager.io
-```
-
-10. Apply the `region-c` PGD group YAML:
-
-```sh
-oc apply -f region-c.yaml -n pgd-group
-```
-
-Now you can switch context back to `OpenShift Cluster A`
-and check the status of the PGD group there:
-
-```sh
-oc get pgdgroup region-a -n pgd-group
-```
-
-The PGD group is in the phase
-`PGD - Waiting for node discovery`.
-
-After creating the PGD groups in each OpenShift cluster,
-which in turn creates the services for each node, you
-need to expose the services to the other OpenShift clusters.
-You can do this in various ways.
-
-If you're using
-Submariner, you can do it using the
-[`subctl`](https://submariner.io/operations/deployment/subctl/)
-command. Run the `subctl export service` command
-for each service in the
-`pgd-group` namespace that has a `-group` or `-node` suffix.
-You can do this by running the following bash `for` loop on each cluster:
-
-```sh
-for service in $(oc get svc -n pgd-group --no-headers -o custom-columns="NAME:.metadata.name" | grep -E '(-group|-node)$'); do
-  subctl export service $service -n pgd-group
-done
-```
-
-After a few minutes, the status shows that the PGD group is healthy.
-Once each PGD group is healthy, you can write to the `app` database
-in either of the two data nodes: `region-a` or `region-b`.
-The data is replicated to the other data node.
 
 ## Channel
 
