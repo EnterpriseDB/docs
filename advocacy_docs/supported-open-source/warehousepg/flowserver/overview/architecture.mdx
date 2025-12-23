@@ -4,50 +4,51 @@ navTitle: Architecture
 description: Understand the architechure of FlowServer for WarehousePG and its main components
 ---
 
-Introduce the architechure.
+The Flow Server ecosystem consists of three primary components that work together to manage data movement.
 
 ![architechure](../images/architecture.png)
 
-## Flowserver
+### Flowserver
 
-FlowServer: main utility which starts an instance used for handling the request from the FlowCLI and manages the job to fetch data from Kafka/RabbitMQ and load it into WHPG with transformations.
-FlowServer is a streaming data processing server that supports various data sources. It can be configured to read from sources like Kafka or RabbitMQ and write to a WareHousePG database. 
-The server supports different data formats such as JSON, Avro, and CSV, and allows for flexible task management and scheduling options.
-The server can be started with a configuration file that specifies the server settings, data sources, and target database configurations.
-Prometheus: Configuration options for the Prometheus metrics endpoint.
+FlowServer is a gRPC-based streaming engine that serves as a central hub for high-speed ETL tasks, receiving data from clients and managing connections to the WarehousePG cluster. Running on any host with cluster connectivity, it handles FlowCLI requests to fetch data from Kafka or RabbitMQ and load it into WarehousePG. The server supports JSON, Avro, and CSV formats via configuration files that define database settings and Prometheus metrics. During execution, it submits transactions to the coordinator and uses the gpfdist protocol to write data directly into segments via external tables.
 
-The FlowServer service instance submits each load request transaction to the WHPG cluster coordinator instance. FlowServer uses the gpfdist protocol to store data in external tables that it creates or reuses.
+### FlowCLI
 
-The flow server can run on any host which could connect to whpg cluster, for example a standalone ETL server or the standby coordinator host.
+A dedicated command-line interface used to submit, start, stop, and monitor load jobs. It features optimized subcommands for managing job progress and resetting stream offsets. You can run the FlowCLI commands from any host with connectivity to the WHPG cluster.
 
-## FlowCLI
+### Formatter extension
 
-A command tool. It provides many subcommands to submit and control the flow server jobs.
-The flowcli is a command line interface for managing the WareHousePG streaming server jobs. It allows users to submit, start, stop, and monitor jobs.
-The subcommands of flowcli is similar with gpsscli subcommands, but we optimize some of them.
+A specialized database extension installed on the WarehousePG segments that handles the high-speed formatting and writing of data directly into the segments.
 
-The flow cli can run any host which could connect to the server
-
-## Formatter extension
-
-Formatter extension: database extension that runs on each segment. It formats the raw data into the the specific column type of target table.
 
 ## How FlowServer works
 
-Flowserver workflow is a multi-stage transformation on loading data, includes filtering raw data, expression in config file, UDF, etc
+A typical sequence of events for performing an ETL task using FlowServer follows:
 
-**Prepare**
+- A user initiates one or more ETL load jobs via a client application (Kafka or RabbitMQ).
+- Flowcli uses the gRPC protocol to submit and start data load jobs to a running FlowServer service instance.
+- The FlowServer service instance submits each load request transaction to the WHPG cluster coordinator instance. FlowServer uses the `gpfdist` protocol to store data in external tables that it creates or reuses.
+- The FlowServer service instance writes the data delivered from the client directly into the segments of the WHPG cluster.
 
-Prepare SQL, filter data.
+Once the job is started, FlowServer executes the four-stage transformation in real-time.
 
-**Formatter**
+## The multi-stage transformation
 
-Avro, json, csv. 
+Flow Server processes data through a four-stage pipeline to ensure quality and compatibility:
 
-Converts to external table.
+- **Prepare**: FlowServer generates the SQL for external tables and filters out irrelevant raw data at the source.
 
-**Transform**
+- **Format**: FlowServer converts incoming raw data from formats like JSON, CSV, or Avro into a structure compatible with database external tables.
 
-Expression  UDF Mapping.
+- **Transform**: FlowServer applies the mapping, expressions, and User Defined Functions (UDFs) defined in your configuration file to align data with your target schema.
 
-Write into target table.
+- **Load**: FlowServer uses the `gpfdist` protocol to write the processed data directly into the WHPG segments, completing the transformation into the final target table.
+
+
+
+
+
+
+
+
+
