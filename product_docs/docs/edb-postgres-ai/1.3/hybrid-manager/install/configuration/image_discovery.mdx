@@ -1,0 +1,158 @@
+---
+title: Configuring image discovery
+navTitle: Image Discovery
+description: Configure the Beacon Agent to automatically discover and register available Postgres container images from your private registry.
+---
+
+**Role:** Infrastructure Engineer
+
+**Prerequisites:**
+* [**Sync Images**](../sync_images) (Completed) - You must have a private registry populated with EDB images.
+* **Registry Compliance:** Your registry must be [OCI compliant](https://github.com/opencontainers/distribution-spec).
+* **Permissions:** Access to configure IAM roles (AWS/GCP) or Registry Access Control (On-Prem).
+
+---
+
+## Overview
+
+**Image discovery** is a background process running within the **Beacon Agent**. 
+It connects to your private container registry, scans for available Postgres versions (tags), and registers them in the Hybrid Manager (HM).
+
+Image discovery ensures that when you sync new database versions to your registry, they automatically become available for your users to provision without manual intervention.
+
+## Configure Helm Chart
+
+To enable this feature, you must update your `values.yaml` to tell the Beacon where to look.
+
+### Required changes
+
+1.  **Enable Discovery:** Set `beaconAgent.provisioning.imageDiscovery` to `true`.
+2.  **Set Registry URL:** Set `beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` to the URI of your synced private registry.
+3.  **TLS Verification (Optional):** If your registry uses self-signed certificates, set `imagesetDiscoveryAllowInsecureRegistry` to `true`.
+
+```yaml
+beaconAgent:
+  provisioning:
+    imageDiscovery: true
+    imagesetDiscoveryContainerRegistryURL: "<your-private-registry-uri>"
+    # Set to true only for self-signed/internal CA scenarios
+    imagesetDiscoveryAllowInsecureRegistry: false 
+```
+
+---
+
+## Configure registry permissions
+
+The Beacon Agent requires specific permissions to scan your registry. 
+
+It must be able to:
+
+* List repositories
+* List tags
+* Read tag manifests
+
+Select your platform below to configure the necessary permissions.
+
+### Generic / On-Premises (RKE2/OpenShift)
+
+If you are using a standard OCI registry (like Harbor, Quay, or Artifactory), ensure the username/password you provided in the [**Image Pull Secret*](/edb-postgres-ai/latest/hybrid-manager/install-revamp/environment_prep/#image-pull-secret)* has `read` and `list` permissions on the target repositories.
+
+Refer to your registry's documentation (examples: [Quay.io Permissions](https://quay.io/)) to configure the service account.
+
+### AWS Elastic Container Registry (ECR)
+
+When running on EKS with ECR, **EKS Managed Identity** is the required authentication method.
+
+You must create an IAM role with the `AmazonEC2ContainerRegistryReadOnly` policy and associate it with the Beacon's service account.
+
+**Run this script to configure the IAM Role and Pod Identity:**
+
+```bash
+# Configuration Variables
+EKS_CLUSTER_NAME="<eks_cluster_name>"
+EKS_CLUSTER_REGION="<eks_cluster_region>"
+IMAGE_DISCOVERY_IAM_ROLE_NAME="<iam_role_name>"
+
+# 1. Create Trust Policy
+cat <<EOF > ./image-discovery-trust.json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowEksAuthToAssumeRoleForPodIdentity",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "pods.eks.amazonaws.com"
+            },
+            "Action": [
+                "sts:AssumeRole",
+                "sts:TagSession"
+            ]
+        }
+    ]
+}
+EOF
+
+# 2. Create Role & Attach Policy
+aws iam create-role --role-name "${IMAGE_DISCOVERY_IAM_ROLE_NAME}" \
+    --assume-role-policy-document file://image-discovery-trust.json
+
+aws iam attach-role-policy --role-name "${IMAGE_DISCOVERY_IAM_ROLE_NAME}" \
+    --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+# 3. Associate with EKS Service Account
+IMAGE_DISCOVERY_IAM_ROLE_ARN=$(aws iam get-role --role-name ${IMAGE_DISCOVERY_IAM_ROLE_NAME} | jq -r '.Role.Arn')
+
+aws eks create-pod-identity-association --cluster-name "${EKS_CLUSTER_NAME}" \
+    --namespace upm-beacon \
+    --service-account upm-beacon-agent-k8s \
+    --role-arn "${IMAGE_DISCOVERY_IAM_ROLE_ARN}" \
+    --region "${EKS_CLUSTER_REGION}"
+```
+
+### Google Artifact Registry (GAR)
+
+When running on GKE, the Service Account used by the Beacon must have permissions to list projects and read artifacts.
+
+**Required Roles:**
+* `roles/artifactregistry.reader` (to read images)
+* `roles/browser` (specifically `resourcemanager.projects.list` to find repositories)
+
+**Run this script to apply the IAM bindings:**
+
+```bash
+# Replace with your Project ID and Service Account Name
+PROJECT_ID="<your-project-id>"
+SERVICE_ACCOUNT_EMAIL="<service-account-name>@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Grant Reader Role
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+    --role="roles/artifactregistry.reader"
+
+# Grant Browser Role (Required for discovery)
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+    --role="roles/browser"
+```
+
+---
+
+## Configure Kubernetes Secret
+
+The final step is ensuring the Helm chart knows which Kubernetes Secret contains the credentials (if not using Cloud Identity).
+
+In your `values.yaml`, confirm the `image_discovery_secret_name`. 
+
+By default, this is set to `edb-cred`.
+
+```yaml
+parameters:
+  upm-beacon:
+    image_discovery_secret_name: "edb-cred"
+```
+
+**Verification:**
+
+After applying these changes via `helm upgrade`, check the logs of the **Beacon Agent** pod. 
+You should see messages indicating that it is scanning the registry and discovering image tags.
