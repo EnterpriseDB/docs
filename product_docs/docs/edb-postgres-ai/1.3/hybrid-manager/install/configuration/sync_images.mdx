@@ -1,0 +1,112 @@
+---
+title: Syncing images to a local private registry
+navTitle: Sync images
+description: Mirror EDB Postgres AI container images to your internal registry for security and reliability.
+deepToc: true
+---
+
+## Sync EDB Postgres AI Platform container images to a local private registry
+
+**Related installation phase:** [Phase 4: Preparing the Environment](../environment_prep)
+
+### Prerequisites
+
+* [**`edbctl` CLI tool**](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/edbctl/) installed and configured.
+
+* A valid **EDB Repos 2.0 Token**.
+
+* Write access to your target local private registry (examples: AWS ECR, Google Artifact Registry, Harbor).
+
+---
+
+Hosting images internally ensures:
+
+* **Security & compliance:** You control the scanning and approval of artifacts.
+
+* **Reliability:** Your deployment is not dependent on external internet connectivity or third-party uptime.
+
+* **Performance:** Lower latency for cluster nodes pulling images.
+
+This process uses the `edbctl` tool to copy artifacts from EDB Repos 2.0 to your private registry while preserving SHA256 digests.
+
+The software stack of HM is pushed into EDB Repos 2.0 registry to provide artifacts for you to use in your local private registry: customer-managed internal registry for RHOS or Rancher RKE2 on-premises scenarios, or a self-managed registry on your cloud service provider (CSP) registry [AWS Elastic Container Registry](https://aws.amazon.com/ecr/) (ECR), [Google Cloud Artifact Registry](https://cloud.google.com/artifact-registry/docs) (GAR), or [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry) (ACR) for HM on CSP scenarios.
+
+Before you begin, ensure you have a secure, approved private registry ready to host the container images. 
+
+You need the registry's URI, along with a username and password (or token) that has write access. 
+Additionally, confirm the specific version of EDB Postgres AI you intend to install.
+
+Using these credentials, the sync process copies all necessary artifacts from EDB Repos 2.0 directly into your local private registry, ensuring they are available for your Helm chart installation or upgrade.
+
+### Configure sync variables
+
+**Required Information:**
+* **Release Version:** The tag of Hybrid Manager (HM) you intend to install (example:`v1.3.0`).
+* **EDB Token:** Your access token for `docker.enterprisedb.com`.
+* **Local Registry:** The URI and credentials for your organization's registry.
+
+1. Define the EDB release version
+
+   ```bash
+   export EDBPGAI_RELEASE=<EDB-pgai-release-version>
+   ```
+
+1. Define EDB credentials (Source)
+
+   ```
+   export CS_EDB_TOKEN=<your-edb-repos-token>
+   export EDB_SOURCE_REGISTRY=pgai-platform
+   ```
+
+1. Define private registry credentials (Destination)
+
+   ```
+   export LOCAL_REGISTRY_URI=<your_local_container_registry_uri>
+   export LOCAL_REGISTRY_USER=<your_local_registry_user>
+   export LOCAL_REGISTRY_PWD=<your_local_registry_password>
+   ```
+
+!!! Note 
+**Cloud Registries:** If you are using AWS ECR, Google Artifact Registry, or Azure ACR, ensure your local environment is authenticated (e.g., via `aws ecr get-login-password`) and that your `LOCAL_REGISTRY_PWD` reflects a valid token.
+!!!
+
+### Sync platform images
+
+Execute the following command to sync the core platform images (examples: Portal, Beacon, Transporter).
+
+```bash
+edbctl image sync-to-local-registry \
+    --destination-registry-uri "${LOCAL_REGISTRY_URI}" \
+    --version "${EDBPGAI_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${CS_EDB_TOKEN}" \
+    --destination-registry-username "${LOCAL_REGISTRY_USER}" \
+    --destination-registry-password "${LOCAL_REGISTRY_PWD}"
+```
+
+### Sync Operator image
+
+The Hybrid Manager Bootstrap Operator is packaged separately. 
+You must run a second sync command to mirror it.
+
+```bash
+edbctl operator sync-to-local-registry \
+    --destination-registry-uri "${LOCAL_REGISTRY_URI}" \
+    --version "${EDBPGAI_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${CS_EDB_TOKEN}" \
+    --destination-registry-username "${LOCAL_REGISTRY_USER}" \
+    --destination-registry-password "${LOCAL_REGISTRY_PWD}"
+```
+
+### Update configuration
+
+Once the sync is complete, you must configure the Helm chart to use your private registry.
+
+Open your `values.yaml` file and update the `containerRegistryURL` to point to your internal URI.
+
+### Next steps
+
+With your images synced and your `values.yaml` updated, you are ready to proceed with the installation.
+
+**Return to [Phase 4: Preparing your Environment](../environment_prep) or [Phase 5: Installing Hybrid Manager](../hm_install).**
