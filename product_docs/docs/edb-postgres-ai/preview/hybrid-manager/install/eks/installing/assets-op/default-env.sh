@@ -1,5 +1,5 @@
 # exports for EKS
-export EDB_PLATFORM_VERSION="v1.2.0"
+export EDB_PLATFORM_VERSION="v2025.12.0"
 export CONTAINER_REGISTRY_URI="docker.enterprisedb.com/pgai-platform"
 export IMAGESET_REGISTRY_URI=$CONTAINER_REGISTRY_URI
 export IMAGESET_AUTHTYPE="token"
