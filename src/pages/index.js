@@ -198,7 +198,7 @@ const Page = () => {
               </BannerCardLink>
 
               <BannerCardLink to="/supported-open-source/warehousepg/">
-                Support for Greenplum Workloads
+                WarehousePG
               </BannerCardLink>
             </BannerSubCard>
 

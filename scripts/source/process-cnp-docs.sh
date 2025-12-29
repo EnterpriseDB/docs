@@ -88,7 +88,12 @@ cd $SOURCE_CHECKOUT
 
 git fetch --tags
 
-LATEST_TAG=`git tag | sort -V -r | head -n 1`
+if [ -z $3 ]
+then 
+  LATEST_TAG=`git tag | sort -V -r | head -n 1`
+else
+  LATEST_TAG="$3"
+fi
 CURRENT_TAG=`git describe --exact-match --tags || echo "$LATEST_TAG-next"`
 CURRENT_TAG_INDEX=`git tag | sort -V -r | grep -nx $CURRENT_TAG | cut -d : -f 1 || echo 0`
 PREVIOUS_TAGS=`git tag | sort -V -r | head -n $(($CURRENT_TAG_INDEX+30)) | tail -n 30`
@@ -109,6 +114,12 @@ then
 fi 
 
 echo "Applying diff between $PREVIOUS_TAG and $CURRENT_TAG, including local changes since $PREVIOUS_COMMIT_DESC" 
+if [ $CURRENT_TAG == $LATEST_TAG ]
+then
+  echo "$CURRENT_TAG is the latest tag"
+else
+  echo "$CURRENT_TAG is NOT the latest tag ($LATEST_TAG)"
+fi
 set -e
 
 # create a temporary worktree to avoid messing up source repo (for local work; CI doesn't care)
