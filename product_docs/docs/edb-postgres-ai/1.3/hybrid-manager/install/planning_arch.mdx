@@ -1,17 +1,38 @@
 ---
 title: Planning your architecture
-navTitle: Architecture
+navTitle: Planning architecture
 description: Plan and document your Hybrid Manager platform architecture.
 deepToC: true
 ---
 
+## Overview
+
+---
+
 > **Role:** CTO / Architect / Lead Engineer
 
-**Outcome:** 
+---
 
-*An Architectural Decision Record (ADR) defining the topology, locality, and redundancy model. (at minimum: architecture diagrams with notes)*
+### Prerequisites
+
+* *The business goals your architecture needs to enable (examples: bugdet constraints, desired uptime, desired latency)*
+
+### Outcomes 
+
+* *An Architectural Decision Record (ADR) defining the topology, locality, and redundancy model of your Hybrid Manager (HM) architecture. (at minimum: architecture diagrams with notes)*
+
+* *Initial inputs for the HM Helm chart configuration file: `values.yaml`.*
+
+---
+
+!!! Note
+You, as the customer, ultimately own your deployment architecture.
+While EDB's Sales Engineering, Professional Services, Support Team, or documentation can be consulted, the final architectural decisions rest with your team.
+!!!
 
 **Next phase:** Phase 2: [Gathering your system requirements](./sys_reqs)
+
+---
 
 ## Architectural discovery
 
@@ -29,7 +50,7 @@ This guide should be viewed from two perspectives:
 
 ---
 
-### 1. Locality: Where will HM live?
+### Locality: Where will HM live?
 
 Understanding the physical or logical locations of your database and dependent applications is crucial for determining the necessary architecture.
 
@@ -47,7 +68,7 @@ Understanding the physical or logical locations of your database and dependent a
 
 ---
 
-### 2. Disaster recovery (hot/cold)
+### Disaster recovery (hot/cold)
 
 Disaster recovery (DR) ensures business continuity across different locations.
 
@@ -62,7 +83,7 @@ Disaster recovery (DR) ensures business continuity across different locations.
 
 ---
 
-### 3. Activeness (Active/Passive vs. Active/Active)
+### Activeness (Active/Passive vs. Active/Active)
 
 Activeness describes how your distributed locations are utilized for critical workloads.
 
@@ -85,7 +106,7 @@ These topics naturally follow the discussion of Activeness and help complete the
     
 ---
 
-### 4. Lifecycle operations
+### Lifecycle operations
 
 Understanding your operations practices helps determine the complexity of the Kubernetes environment required to manage the database service.
 
@@ -126,6 +147,22 @@ This reference architecture represents the ultimate goal for achieving the highe
 
 ![HM reference architecture](../images/HCP_reference_architectures-reference.svg)
 
+#### Diagram legend
+
+The legend defines the colors and logical groupings used in the architecture diagram:
+
+* **Locality:** The highest-level physical or logical grouping, such as a physical data center or a geographical region (e.g., "City 1" and "Data Center 1").  
+* **Kubernetes Cluster:** The complete Kubernetes environment—including all CP and worker nodes—hosting the entire platform.  
+* **EDB HM:** The logical boundary for the core HM components. This is typically implemented as a dedicated Kubernetes namespace (e.g., control-plane).  
+* **Compute Machine:** The virtual machines (e.g., vm01, vm02, vm03) that serve as the Kubernetes worker nodes, providing the CPU, memory, and storage for the cluster.  
+* **Infrastructure Abstraction:** This critical layer represents Kubernetes-native resources that abstract underlying physical or virtual infrastructure. These resources must be provided by the Kubernetes cluster's environment.  
+  * **Example 1: type: LoadBalancer**: This is a Kubernetes Service type that requests an external load balancer. In public cloud environments (like AWS, GCP, Azure), this is automatically provisioned as a managed service. In on-premises or bare-metal deployments, you must provide a solution (like MetalLB) to fulfill these LoadBalancer requests.  
+  * **Example 2: StorageClass**: This resource abstracts the "Block Storage" and "Object Storage" requirements. It maps Kubernetes storage requests (Persistent Volume Claims) to actual, provisioned storage hardware or software (like local-pv, Ceph, vSphere, or cloud-based disks).
+
+!!! Note
+This legend applies to reference architectures A-E.
+!!!
+
 ---
 
 ### B. Minimum Control Plane
@@ -139,18 +176,6 @@ This is fully functional for:
 * GenAI (limited capabilities due to lack of managed Postgres instances).
 
 ![HM minimum](../images/HCP_reference_architectures-minimum.svg)
-
-#### Diagram legend
-
-The legend defines the colors and logical groupings used in the architecture diagram:
-
-* **Locality:** The highest-level physical or logical grouping, such as a physical data center or a geographical region (e.g., "City 1" and "Data Center 1").  
-* **Kubernetes Cluster:** The complete Kubernetes environment—including all CP and worker nodes—hosting the entire platform.  
-* **EDB HM:** The logical boundary for the core HM components. This is typically implemented as a dedicated Kubernetes namespace (e.g., control-plane).  
-* **Compute Machine:** The virtual machines (e.g., vm01, vm02, vm03) that serve as the Kubernetes worker nodes, providing the CPU, memory, and storage for the cluster.  
-* **Infrastructure Abstraction:** This critical layer represents Kubernetes-native resources that abstract underlying physical or virtual infrastructure. These resources must be provided by the Kubernetes cluster's environment.  
-  * **Example 1: type: LoadBalancer**: This is a Kubernetes Service type that requests an external load balancer. In public cloud environments (like AWS, GCP, Azure), this is automatically provisioned as a managed service. In on-premises or bare-metal deployments, you must provide a solution (like MetalLB) to fulfill these LoadBalancer requests.  
-  * **Example 2: StorageClass**: This resource abstracts the "Block Storage" and "Object Storage" requirements. It maps Kubernetes storage requests (Persistent Volume Claims) to actual, provisioned storage hardware or software (like local-pv, Ceph, vSphere, or cloud-based disks).
 
 #### Internal architecture: HM Control Plane
 
@@ -174,22 +199,22 @@ HM is composed of several core microservices running within the Kubernetes clust
 
 The architecture diagrams above reference several external components. While you will verify the specific hardware/software requirements for these in **[Phase 2: System Requirements](../requirements)**, you must account for their connectivity in your architectural design.
 
-* **Identity Provider (IdP):** Required for user authentication. The architecture relies on OIDC (LDAP/SAML) for all human access.
+* **Identity provider (IdP):** Required for user authentication. The architecture relies on OIDC (LDAP/SAML) for all human access.
 * **Key Management Service (KMS):** (Optional) Required only if your security policy demands Transparent Data Encryption (TDE).
 * **Object Storage:** Required for system resilience. It hosts backups, logs, and facilitates data replication for Multi-Location topologies.
 * **Block Storage:** Required for database performance. Your storage architecture must provide persistent volumes (PVCs) for the Postgres data layer.
-* **Local Network:** The fabric connecting the CP to Data Plane. Latency here drives your Locality decisions.
+* **Local network:** The fabric connecting the CP to Data Plane. Latency here drives your Locality decisions.
 * **Container Registry:** The source of truth for application images. For air-gapped designs, this represents your local synchronized registry.
 
 ### C. HM Data Plane (Postgres lifecycle orchestration)
 
 Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual database workloads reside.
 
-* Postgres Clusters: The actual database instances (Primary and Standbys).
+* Postgres clusters: The actual database instances (Primary and Standbys).
 
 * Extensions: PostGIS, PGVector, and other database extensions.
 
-* Backup Agents: Local tools (like Barman) managing WAL archiving to your Object Storage.
+* Backup agents: Local tools (like Barman) managing WAL archiving to your Object Storage.
 
 ![HM Data Plane](../images/HCP_reference_architectures-dbaas.svg)
 
@@ -211,14 +236,14 @@ The multi-location capability is a DBaaS offering following a hub and spoke mode
 
 ---
 
-## Mapping architecture to configuration
+## Impact on configuration
 
 The decisions made during this discovery process directly determine the root parameters of your installation configuration.
 
 While you do not need to create the file yet, your **Architecture Decision Record** should specify the values for these keys. 
 The **SRE/Admin** uses these specs to build the `values.yaml` file in **[Phase 3: Preparing the Environment](environment_prep)**.
 
-### Configuration implications
+### Configuration details
 
 | Architecture decision | Config parameter (`values.yaml`) | Example value |
 | :--- | :--- | :--- |
@@ -228,7 +253,7 @@ The **SRE/Admin** uses these specs to build the `values.yaml` file in **[Phase 3
 
 ---
 
-#### Impact on configuration
+### Impact on configuration file
 
 Here is how your decisions map to the final configuration file structure of the HM Helm chart `values.yaml` you create in Phase 3:
 
@@ -249,6 +274,6 @@ beaconAgent:
 
 ## Next phase
 
-Your architecture is defined and ideally recorded in an ADR.
+Your architecture is defined and ideally recorded in an ADR for reference.
 
 **Proceed to [Gathering system requirements] (Phase 2) to verify that your infrastructure can match your designs in your ADR. →**
