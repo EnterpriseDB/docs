@@ -1,0 +1,662 @@
+---
+title: The Klio Server
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.10/klio_server.md
+sidebar_position: 5
+editTarget: originalFilePath
+
+---
+
+The Klio server is a central component of the Klio backup solution. It is
+defined as the `Server` custom resource in Kubernetes, which creates a
+StatefulSet running the Klio server application.
+
+The Klio server is composed of three main containers:
+
+-   `base`: Manages full and incremental backups using Kopia.
+-   `wal`: Receives the stream of PostgreSQL Write-Ahead Logs (WAL).
+-   `nats`: Provides a work queue using NATS JetStream for async WAL processing.
+
+An additional init container, `init`, is responsible for initializing the
+Kopia repository and setting up the necessary configuration.
+
+The base backups and WAL files are stored in multiple PersistentVolume attached
+to the Klio server pod in the `/data/base` and `/data/wal` directories, respectively.
+
+An additional cache defined by a PersistentVolume is used for the Kopia cache. This cache allows Kopia to
+quickly browse repository contents without having to download from the storage
+location.
+
+The work queue is backed by NATS JetStream with file storage on a separate PersistentVolume mounted at `/queue`.
+When a WAL file is received, the server publishes a notification to the queue, enabling asynchronous processing
+of WAL files by consumers.
+
+## Setting up a new Klio server
+
+Setting up a Klio server involves creating a `Server` resource along with the
+required Kubernetes secrets and certificates.
+
+### Prerequisites
+
+Before setting up a Klio server, ensure you have:
+
+-   A Kubernetes cluster with the Klio operator installed
+-   `kubectl` configured to access your cluster
+-   [cert-manager](https://cert-manager.io/) installed for certificate
+    management (recommended)
+-   Enough storage resources for the data and cache PersistentVolumeClaims
+-   Enough storage resources for the queue PersistentVolumeClaim
+
+### Required Components
+
+A Klio server setup requires the following components:
+
+1.  **Server Resource**: The main `Server` custom resource
+2.  **TLS Certificate**: For secure communication
+3.  **Encryption Password**: For encrypting backup data at rest
+4.  **CA Certificate**: For client authentication via mTLS
+5.  **Admin User Credentials**: Optional admin user for Kopia operations
+6.  **Storage**: PersistentVolumeClaims for data, cache, and queue
+
+### Step-by-step setup
+
+#### 1. Create the Encryption Password Secret
+
+The encryption password is used to encrypt backup data at rest:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-server-encryption
+  namespace: default
+type: Opaque
+data:
+  password: "bXktc2VjdXJlLXBhc3N3b3Jk" # my-secure-password
+```
+
+Apply the secret:
+
+```bash
+kubectl apply -f encryption-secret.yaml
+```
+
+!!!tip
+
+Use a strong, randomly generated password. This password is critical for
+data security and recovery.
+!!!
+
+#### 2. Create CA Certificate
+
+Using cert-manager, a CA certificate can be created by using the following
+Certificate resource:
+
+```yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: default
+spec:
+  selfSigned: { }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: server-sample-ca
+spec:
+  commonName: server-sample-ca
+  secretName: server-sample-ca
+
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+
+  isCA: true
+  usages:
+    - cert sign
+
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+```
+
+Apply the CA configuration with:
+
+```
+kubectl apply -f ca-configuration.yaml
+```
+
+In the previous example, the CA to be used for authentication is signed by a
+self-signed issuer. This doesn't pose any security issue as this CA is only
+used internally and trust is established through configuration.
+
+The primary concern is the relationship between the client and the certificates
+signed by the CA.
+
+!!!info
+
+The usage of a self-signed CA is not required by the Klio server. If your
+PKI infrastructure already includes a CA for this scope, that CA can be used
+for the Klio server, too.
+!!!
+
+#### 3. (Optional) Create Admin User Credentials
+
+If you need admin access to the underlying Kopia server web interface
+(mostly for debugging purposes), define the secret as follows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-server-adm
+  namespace: default
+type: kubernetes.io/basic-auth
+data:
+  username: "YWRtaW4=" # admin
+  password: "YWRtaW4tcGFzc3dvcmQ=" # admin-password
+```
+
+Apply the secret:
+
+```bash
+kubectl apply -f admin-credentials.yaml
+```
+
+#### 4. Create TLS Certificate
+
+Using cert-manager, create a self-signed certificate (for development) or use
+your organization's certificate issuer:
+
+```yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: default
+spec:
+  selfSigned: { }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-server-cert
+  namespace: default
+spec:
+  secretName: my-server-tls
+  commonName: my-server
+  dnsNames:
+    - my-server
+    - my-server.default
+    - my-server.default.svc
+    - my-server.default.svc.cluster.local
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+  isCA: false
+  usages:
+    - server auth
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+```
+
+Apply the certificate configuration:
+
+```bash
+kubectl apply -f tls-certificate.yaml
+```
+
+!!!info
+
+For production environments, use certificates signed by your organization's Certificate Authority (CA) or a trusted public CA instead of self-signed certificates.
+!!!
+
+#### 5. Create the Server Resource
+
+Now create the main `Server` resource:
+
+<!-- x-release-please-start-version -->
+
+```yaml
+apiVersion: klio.enterprisedb.io/v1alpha1
+kind: Server
+metadata:
+  name: my-server
+  namespace: default
+spec:
+  # Container image for the Klio server
+  image: ghcr.io/enterprisedb/klio:v0.0.10
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []  # Add image pull secrets if needed
+
+  # TLS configuration
+  tlsSecretName: my-server-tls
+
+  # Client authentication configuration
+  caSecretName: server-sample-ca
+
+  # Encryption password reference
+  password:
+    name: my-server-encryption
+    key: password
+
+  # Optional: Admin user for Kopia operations
+  baseConfiguration:
+    adminUser:
+      name: my-server-adm
+
+  # Cache storage configuration
+  cacheConfiguration:
+    pvcTemplate:
+      storageClassName: standard  # Adjust to your storage class (use 'kubectl get storageclass' to see available options)
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi  # Adjust based on your needs
+
+  # Data storage pvcTemplate (for backups and WAL)
+  dataConfiguration:
+    pvcTemplate:
+      storageClassName: standard  # Adjust to your storage class (use 'kubectl get storageclass' to see available options)
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 100Gi  # Adjust based on your backup needs
+
+  # Queue storage configuration (for NATS work queue)
+  queueConfiguration:
+    pvcTemplate:
+      storageClassName: standard  # Adjust to your storage class
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi  # Adjust based on queue volume needs
+
+  # Optional: Resource requirements
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+```
+
+<!-- x-release-please-end -->
+
+Apply the Server resource:
+
+```bash
+kubectl apply -f klio-server.yaml
+```
+
+#### 6. Verify the Server is Running
+
+Check the status of your Klio server:
+
+```bash
+# Check the Server resource status
+kubectl get server my-server -n default
+
+# Check the StatefulSet
+kubectl get statefulset my-server-klio -n default
+
+# Check the Pod
+kubectl get pods -l klio.enterprisedb.io/klio-server=my-server -n default
+
+# View logs
+kubectl logs -l klio.enterprisedb.io/klio-server=my-server -n default -f
+```
+
+The server should create a StatefulSet with a pod named `my-server-klio-0`.
+
+## Advanced Configuration
+
+The `.spec.template` field allows you to customize the Klio server's pod
+template. You can add additional containers, volumes, or modify existing
+settings.
+
+!!!warning Advanced Users Only
+
+The `.spec.template` field is primarily designed for advanced configurations.
+While powerful, improper modifications can affect server functionality.
+Always test changes in a non-production environment first.
+!!!
+
+!!!note
+
+The `containers` field within `.spec.template.spec` is mandatory but will be
+merged with the default Klio server containers `base` and `wal`. If you do not
+need to add containers or modify the default ones, you must still include an
+empty list.
+!!!
+
+### Node Affinity and Tolerations
+
+To dedicate specific nodes for Klio workloads (e.g., for performance isolation
+or to separate backup workloads from application workloads), you can use the
+`template` field to define affinity and toleration rules.
+
+```yaml
+spec:
+  template:
+    spec:
+      # Mandatory field; merged with default containers
+      containers: []
+      tolerations:
+        # Allow scheduling on nodes tainted for Klio
+        - key: node-role.kubernetes.io/klio
+          operator: Exists
+          effect: NoSchedule
+      affinity:
+        # Require nodes labeled for Klio
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/klio
+                    operator: Exists
+```
+
+See [Reserving Nodes for Klio Workloads](architectures.mdx#reserving-nodes-for-klio-workloads)
+for details on node tainting.
+
+### Monitoring
+
+Refer to the [OpenTelemetry](opentelemetry.mdx#klio-server-with-opentelemetry)
+documentation for setting up monitoring and telemetry for the Klio server.
+
+## Encryption
+
+Klio implements encryption at rest for both base backups and WAL files to
+ensure data security throughout the backup lifecycle.
+
+### Base Backups Encryption
+
+Base backups are encrypted by Kopia using the encryption password provided in
+the `password` secret reference. Kopia handles encryption transparently.
+
+The encryption password is set during repository initialization and is required
+for all subsequent backup and restore operations.
+
+!!!warning Critical
+
+Store the encryption password securely. Loss of this password means permanent
+loss of access to all backup data. There is no password recovery mechanism.
+!!!
+
+### WAL Files Encryption
+
+WAL files are encrypted using a master key derivation system with authenticated
+encryption. The encryption process works as follows:
+
+1.  **Master Key Generation**: A 32-byte master key is derived from the encryption
+    password using PBKDF2
+2.  **Key Enveloping**: The master key itself is encrypted using AES-256-GCM with a
+    password-derived encryption key to protect the key at rest
+3.  **Per-File Encryption**: Each WAL file is compressed and then encrypted using
+    the master key with authenticated encryption before being stored
+
+WAL files are first compressed using Snappy S2 compression, then encrypted to ensure both space
+efficiency and security.
+
+The same encryption password used for base backups encrypts the WAL files,
+ensuring a unified security model across all backup artifacts.
+
+### Encryption Password Rotation
+
+Currently, encryption password rotation is not supported. To change the
+encryption password, you would need to:
+
+1.  Create a new Klio server with a new encryption password
+2.  Perform new base backups to the new server
+3.  Migrate to using the new server
+
+!!!tip
+
+Choose a strong encryption password from the start. Use a password manager or
+key management system to generate and store a cryptographically secure password
+(recommended: 32+ random characters).
+!!!
+
+### Encryption in Transit
+
+In addition to encryption at rest, Klio protects both base backups and WAL files
+during transmission using TLS (Transport Layer Security).
+
+All communication between a Klio client and the Klio server is secured
+with TLS:
+
+-   **Base Backup Traffic**: Kopia client connections to the base backup server
+    are encrypted using TLS, protecting backup data as it transfers to the Klio
+    server
+-   **WAL Streaming**: PostgreSQL instances streaming WAL files to the Klio server
+    use gRPC over TLS, ensuring WAL data is encrypted during transmission
+
+The TLS certificate is configured via the `.spec.tlsSecretName` field in the
+Server resource, which references a Kubernetes secret containing the TLS
+certificate and private key. This provides end-to-end encryption, ensuring that
+backup data is protected both at rest and in transit.
+
+## Authentication
+
+Klio uses mTLS Authentication for securing access to both the base backup server
+and the WAL streaming server. Authentication is handled by verify the client
+certificates against the CA certificate which has been created when configuring
+the Klio server.
+
+### Creating a client-side certificate
+
+To create a client-side certificate, you need a issuer that will sign all the
+certificates with a CA known by the Klio server. Supposing that such a issuer is
+called `server-sample-ca` and available in the current namespace, you can create
+a client certificate with the following Certificate object:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: client-sample-tls
+spec:
+  secretName: client-sample-tls
+  commonName: klio@cluster-1
+
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+
+  isCA: false
+  usages:
+    - client auth
+
+  issuerRef:
+    name: server-sample-ca
+    kind: Issuer
+    group: cert-manager.io
+```
+
+If used the example proposed in the [server configuration documentation
+page](#2-create-ca-certificate), the issuer can be created with:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: server-sample-ca
+spec:
+  ca:
+    secretName: server-sample-ca
+```
+
+### Admin User (Optional)
+
+The optional admin user (`.spec.baseConfiguration.adminUser`) provides access to
+the Kopia web interface for administrative and debugging purposes. This is
+separate from the regular user authentication:
+
+```yaml
+spec:
+  baseConfiguration:
+    adminUser:
+      name: my-server-adm  # Reference to kubernetes.io/basic-auth secret
+```
+
+The admin user secret must be of type `kubernetes.io/basic-auth`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-server-adm
+type: kubernetes.io/basic-auth
+data:
+  username: <base64-encoded-username>
+  password: <base64-encoded-password>
+```
+
+!!!info
+
+The admin user is primarily intended for debugging and should be used sparingly
+in production environments. Regular backup and restore operations use mTLS
+certificates.
+!!!
+
+## Access Control Lists (ACLs)
+
+Klio automatically configures Kopia's Access Control Lists (ACLs) during server
+startup to provide fine-grained access control to backup snapshots. This
+automation eliminates the need for manual ACL configuration.
+
+### Automatic ACL Configuration
+
+When the Klio server starts, it automatically:
+
+1.  **Enables ACL support** in the Kopia repository
+2.  **Creates a read-only user** (`snapshot_reader@klio`) with READ access to all snapshots
+3.  **Configures the API server** to use the read-only user for backup catalog queries
+
+This automation ensures that the Klio API server (used for backup observability
+and catalog browsing) operates with minimal privileges, following the principle
+of least privilege.
+
+### How ACLs Work
+
+Kopia's ACL system controls access to repository resources based on:
+
+-   **User identity**: The authenticated username
+-   **Resource type**: What is being accessed (e.g., snapshots, policies)
+-   **Access level**: READ, APPEND, or FULL access
+
+The automated ACL configuration creates the following rule:
+
+```
+User: snapshot_reader@klio
+Access: READ
+Target: type=snapshot (all snapshots in the repository)
+```
+
+This allows the API server to:
+
+-   List all available backups
+-   Read backup metadata and manifests
+-   Browse backup catalogs
+-   Provide observability into the backup state
+
+However, the read-only user **cannot**:
+
+-   Create new snapshots
+-   Modify existing snapshots
+-   Delete backups
+-   Change repository configuration
+-   Modify ACL rules
+
+### User Configuration
+
+From the authentication point-of-view, the `snapshot_reader@klio` user is not
+special, and to use it you need a corresponding Secret containing a certificate
+to be used for authentication.
+
+Cert-manager can create such a secret with the following Certificate definition:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: client-sample-tls
+spec:
+  secretName: client-sample-tls
+  commonName: snapshot_reader@klio
+
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+
+  isCA: false
+  usages:
+    - client auth
+
+  issuerRef:
+    name: server-sample-ca
+    kind: Issuer
+    group: cert-manager.io
+```
+
+### API Server Integration
+
+The Klio API server deployment is automatically configured to use the
+`snapshot_reader@klio` user for all Kopia operations. This happens through
+environment variable configuration in the API server deployment:
+
+```yaml
+- name: CLIENT_BASE_CLIENT_CERT_PATH
+  value: /client-certs/tls.crt
+- name: CLIENT_BASE_CLIENT_KEY_PATH
+  value: /client-certs/tls.key
+```
+
+No manual configuration is required - the API server will automatically use the
+restricted read-only access for all backup catalog queries.
+
+### Benefits
+
+The automated ACL configuration provides several benefits:
+
+1.  **Security**: API server operates with minimal privileges
+2.  **Simplicity**: No manual ACL commands required during setup
+3.  **Consistency**: ACL configuration is standardized across all deployments
+4.  **Separation of Concerns**: Read operations (API server) are isolated from
+    write operations (backup/restore processes)
+
+### Idempotency
+
+The ACL automation is idempotent - if ACLs are already enabled or the user
+already exists, the startup process will detect this and continue without
+error. This allows for safe server restarts and upgrades.
+
+### Troubleshooting ACLs
+
+If you encounter ACL-related issues, check the Klio server logs:
+
+```bash
+kubectl logs my-server-klio-0 -n default -c base
+```
+
+Look for log entries related to ACL enablement:
+
+-   `"ACLs enabled"`: ACLs were successfully enabled
+-   `"ACLs already enabled"`: ACLs were previously enabled (normal on restart)
+-   `"User snapshot_reader added to ACLs"`: Read-only user was successfully configured
+-   `"failed to execute ACLs enablement"`: An error occurred during ACL setup
+
+!!!note
+
+ACL configuration happens during server startup, before the Kopia server process
+begins accepting connections. Any ACL errors will appear early in the container
+logs.
+!!!
