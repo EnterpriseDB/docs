@@ -1,0 +1,263 @@
+---
+title: WAL Player
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.10/walplayer.md
+sidebar_position: 80
+editTarget: originalFilePath
+
+---
+
+The WAL Player is a command-line tool designed to benchmark the performance of
+your Klio servers by simulating PostgreSQL Write-Ahead Log (WAL) file streaming
+workloads. It is an essential tool for ensuring your Klio servers can handle
+your production workloads efficiently. Use it regularly to validate performance
+and capacity planning decisions.
+
+## Overview
+
+WAL Player provides two main commands:
+
+-   **`generate`** - Creates synthetic WAL files for testing
+-   **`play`** - Sends WAL files to a Klio server and measures performance
+
+This tool is essential for:
+
+-   Performance testing and benchmarking Klio servers
+-   Validating server capacity under different workloads
+-   Measuring throughput and latency characteristics
+-   Load testing before production deployment
+
+## Prerequisites
+
+-   Klio binary installed and accessible
+-   A running Klio server to test against
+-   Sufficient disk space for generating test WAL files
+
+## Commands
+
+### `klio wal-player generate`
+
+Generates synthetic WAL files for testing purposes.
+
+#### Usage
+
+```bash
+klio wal-player generate [output-directory] [flags]
+```
+
+#### Parameters
+
+-   `output-directory` - Directory where WAL files will be created (defaults to
+    current directory)
+
+#### Flags
+
+-   `--wal-size` - Size of each WAL file in MB (default: 16)
+-   `--length` - Number of WAL files to generate (required)
+
+#### Examples
+
+```bash
+# Generate 10 WAL files of 16MB each in the current directory
+klio wal-player generate --length 10
+
+# Generate 50 WAL files of 32MB each in a specific directory
+klio wal-player generate /tmp/test-wals --wal-size 32 --length 50
+```
+
+### `klio wal-player play`
+
+Sends WAL files to a Klio server and measures performance metrics.
+
+#### Usage
+
+```bash
+klio wal-player play [directory] [flags]
+```
+
+#### Parameters
+
+-   `directory` - Directory containing WAL files to send (required). This
+    directory should contain PostgreSQL WAL files in the standard format (e.g.,
+    `000000010000000000000001`). It also supports files compressed with gzip,
+    provided they have the `.gz` extension.
+
+#### Flags
+
+-   `--jobs, -j` - Number of parallel jobs for concurrent uploads (default: 1).
+    Can be used to simulate multiple Klio clients sending data simultaneously.
+-   `--block-size` - Block size in KB for streaming (default: 2048). This controls
+    how much data is sent in each request.
+
+#### Configuration
+
+The play command requires client configuration to connect to your Klio server.
+This can be provided via:
+
+-   Configuration file
+-   Environment variables
+-   Command-line flags
+
+Example configuration:
+
+```yaml
+# klio-config.yaml
+client:
+  wal:
+    address: localhost:52000
+    cluster_name: walplayer
+    server_cert_path: "/path/to/server.crt"
+    username: klio
+    password: password
+```
+
+#### Examples
+
+```bash
+# Send WAL files using single connection
+klio wal-player play ./test-wals
+
+# Send WAL files using 4 workers for parallel uploads
+klio wal-player play ./test-wals --jobs 4
+
+# Benchmark with different block sizes
+klio wal-player play ./test-wals --jobs 2 --block-size 1024
+```
+
+## Performance Metrics
+
+The `play` command outputs detailed performance metrics in JSON format for each
+WAL file:
+
+```json
+{
+  "walFullPath": "/path/to/000000010000000000000001",
+  "startTime": "2025-01-15T10:30:00Z",
+  "endTime": "2025-01-15T10:30:02Z",
+  "elapsedTime": "7651680",
+  "error": ""
+}
+```
+
+### Metrics Explained
+
+-   **`walFullPath`** - Full path to the WAL file that was sent
+-   **`startTime`** - When the upload started
+-   **`endTime`** - When the upload completed
+-   **`elapsedTime`** - Total time taken for the upload in nanoseconds
+-   **`error`** - Error message if the upload failed (empty on success)
+
+## Benchmarking Workflow
+
+### 1. Generate Test Data
+
+First, create WAL files that represent your expected workload:
+
+```bash
+# For high-throughput testing (many small files)
+klio wal-player generate ./benchmark-high-throughput --wal-size 16 --length 1000
+
+# For high-bandwidth testing (fewer large files)
+klio wal-player generate ./benchmark-high-bandwidth --wal-size 256 --length 100
+```
+
+### 2. Single Connection Baseline
+
+Test with a single connection to establish baseline performance:
+
+```bash
+klio wal-player play ./benchmark-high-throughput --jobs 1 > baseline-results.json
+```
+
+### 3. Scale Testing
+
+Test with increasing concurrency to find optimal parallelism:
+
+```bash
+# Test with different job counts
+for jobs in 1 2 4 8 16; do
+  echo "Testing with $jobs jobs..."
+  klio wal-player play ./benchmark-high-throughput --jobs $jobs > results-$jobs-jobs.json
+done
+```
+
+### 4. Analyze Results
+
+Parse the JSON output to calculate performance metrics:
+
+```bash
+# Calculate total throughput
+jq -s '[.[] | select(.error == "")] | length' results.json
+
+
+# Calculate average upload time
+jq -s '[.[] | select(.error == "") | .elapsedTime | tonumber] | add / length' results.json
+
+# Find failed uploads
+jq -s '.[] | select(.error != "")' results.json
+```
+
+## Performance Optimization Tips
+
+### Client-Side Optimization
+
+1.  **Parallel Jobs**: Start with 2-4 jobs and increase until performance
+    plateaus
+2.  **Block Size**: Adjust based on network characteristics:
+    -   Higher latency networks: Use larger block sizes (4096KB+)
+    -   Lower latency networks: Use smaller block sizes (512-1024KB)
+3.  **WAL File Size**: Match your production WAL segment size
+
+### Server-Side Considerations
+
+1.  **Resource Monitoring**: Monitor CPU, memory, and disk I/O on the Klio server
+2.  **Network Bandwidth**: Ensure sufficient bandwidth between client and server
+3.  **Storage Performance**: Verify storage can handle the write throughput
+
+## Example Benchmark Script
+
+Here's a complete benchmarking script:
+
+```bash
+#!/bin/bash
+set -e
+
+# Configuration
+WAL_DIR="./benchmark-wals"
+RESULTS_DIR="./benchmark-results"
+WAL_SIZE=16
+WAL_COUNT=500
+BLOCK_SIZE=2048
+
+# Clean up previous runs
+rm -rf "$WAL_DIR" "$RESULTS_DIR"
+mkdir -p "$WAL_DIR" "$RESULTS_DIR"
+
+# Generate test WAL files
+echo "Generating $WAL_COUNT WAL files of ${WAL_SIZE}MB each..."
+klio wal-player generate "$WAL_DIR" --wal-size "$WAL_SIZE" --length "$WAL_COUNT"
+
+# Test different concurrency levels
+for jobs in 1 2 4 8 16; do
+  echo "Testing with $jobs parallel jobs..."
+  
+  start_time=$(date +%s)
+  /home/fcanovai/prj/cloud-native/klio/core/dist/klio_linux_amd64_v1/klio wal-player play "$WAL_DIR" --config /home/fcanovai/.klio-client.yaml --jobs ${jobs} --block-size ${BLOCK_SIZE} > "$RESULTS_DIR/results-$jobs-jobs.json" 2> "$RESULTS_DIR/error-$jobs-jobs.log"
+  end_time=$(date +%s)
+  
+  # Calculate summary statistics
+  total_time=$((end_time - start_time))
+  successful_uploads=$(jq -s '[.[] | select(.error == "")] | length' "$RESULTS_DIR/results-$jobs-jobs.json")
+  failed_uploads=$(jq -s '[.[] | select(.error != "")] | length' "$RESULTS_DIR/results-$jobs-jobs.json")
+  avg_upload_time=$(jq -s '[.[] | select(.error == "") | .elapsedTime | tonumber] | add / length' "$RESULTS_DIR/results-$jobs-jobs.json")
+  
+  echo "  Total time: ${total_time}s"
+  echo "  Successful uploads: $successful_uploads"
+  echo "  Failed uploads: $failed_uploads"
+  echo "  Throughput: $(echo "scale=2; $successful_uploads / $total_time" | bc) WAL/s"
+  echo "  Avg WAL upload time: $(echo "scale=6; $avg_upload_time" / 1000000 | bc) millis"
+  echo
+done
+
+echo "Benchmark complete! Results saved in $RESULTS_DIR"
+```
