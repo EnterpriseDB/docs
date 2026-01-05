@@ -1,0 +1,314 @@
+---
+title: Backup and Restore
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.10/backup_and_restore.md
+sidebar_position: 7
+editTarget: originalFilePath
+
+---
+
+This guide explains how to take backups of PostgreSQL clusters managed by
+CloudNativePG and restore them using Klio.
+
+## Overview
+
+Klio follows PostgreSQL's native physical backup and recovery mechanisms,
+leveraging CloudNativePG's backup and restore capabilities through its
+[`Backup` resource](https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-Backup)
+and
+[`ScheduledBackup` resource](https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ScheduledBackup).
+
+A working **online backup** is composed of:
+
+-   A **physical base backup**: A filesystem copy of the PostgreSQL data directory.
+-   A set of **WAL (Write-Ahead Log) files**: Continuous logs of all changes made
+    to the database during the entire period of the base backup.
+
+!!!important
+
+It is recommended to periodically test backup restores to ensure correct
+recovery procedures.
+!!!
+
+!!!warning
+
+The Klio MVP does not currently verify the presence of all required WAL files
+for a given backup. This limitation will be resolved before the GA release.
+!!!
+
+## Prerequisites
+
+Before performing backup and restore operations, ensure you have:
+
+-   A running [Klio server](klio_server.mdx) with proper configuration
+-   A PostgreSQL cluster configured with the [Klio plugin](plugin_configuration.mdx)
+
+## Taking a Backup
+
+With the Klio plugin configured, you can take on-demand backups using
+CloudNativePG's [`Backup` resource](https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-Backup)
+or the [Kubectl plugin](https://cloudnative-pg.io/documentation/current/kubectl-plugin/#requesting-a-new-physical-backup)
+for CNPG.
+
+### Create a Backup
+
+You can trigger a new backup by creating a `Backup` resource.
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: my-cluster-backup-20251027
+  namespace: default
+spec:
+  method: plugin
+  target: primary
+  cluster:
+    name: my-cluster
+  pluginConfiguration:
+    name: klio.enterprisedb.io
+```
+
+Apply the manifest:
+
+```bash
+kubectl apply -f backup.yaml
+```
+
+Alternatively, you can request a backup directly using the
+ [`kubectl cnpg` plugin](https://cloudnative-pg.io/documentation/current/kubectl-plugin/#requesting-a-new-physical-backup):
+
+```bash
+kubectl cnpg backup my-cluster \
+  --method plugin \
+  --plugin-name klio.enterprisedb.io \
+  --backup-target primary
+```
+
+If you don’t specify the `--backup-name` option, the `cnpg backup` command
+automatically generates one using the format `<CLUSTER_NAME>-<YYYYMMDDhhmmss>`,
+which is suitable in most cases.
+
+For a complete list of available options, run:
+
+```bash
+kubectl cnpg backup --help
+```
+
+### Monitor Backup Progress
+
+Check the backup status:
+
+```bash
+# Watch the backup status
+kubectl get backup my-cluster-backup-20251027 -w
+
+# Get detailed backup information
+kubectl describe backup my-cluster-backup-20251027
+```
+
+A successful backup will show:
+
+```
+NAME                          AGE   CLUSTER      METHOD   PHASE       ERROR
+my-cluster-backup-20251027    2m    my-cluster   plugin   Completed
+```
+
+### Scheduled Backups
+
+You can schedule automatic backups using CloudNativePG's
+[`ScheduledBackup` resource](https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ScheduledBackup).
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: my-cluster-daily-backup
+  namespace: default
+spec:
+  # Cron schedule: daily at 2:00 AM
+  schedule: "0 0 2 * * *"
+  method: plugin
+  target: primary
+  cluster:
+    name: my-cluster
+  pluginConfiguration:
+    name: klio.enterprisedb.io
+```
+
+Apply the scheduled backup:
+
+```bash
+kubectl apply -f scheduled-backup.yaml
+```
+
+## Backup Retention and Maintenance
+
+Klio automatically manages backup retention based on the
+[retention policy](plugin_configuration.mdx#retention-policies) defined in the
+`PluginConfiguration` referred by the `Cluster`.
+
+!!!important
+
+Deleting a `Backup` resource through `kubectl` only removes the Kubernetes
+object. The actual backup data in the Klio server may be retained according to
+the retention policy.
+!!!
+
+## Finding Your backupID for Recovery
+
+To restore a specific backup, you need its backupID, otherwise Klio will
+choose the latest one autonomously.
+You can list all available, completed Backup resources using kubectl:
+
+```bash
+kubectl get backups -n <your-namespace>
+```
+
+Once you identify the backup you want to use, you can identify its backupID
+
+```bash
+kubectl get backup <backup_name> -n <your-namespace> -o jsonpath='{.status.backupId}'
+```
+
+## Restoring from a Backup
+
+Klio supports restoring PostgreSQL clusters from backups using CloudNativePG's
+recovery mechanism. Unlike traditional in-place recovery, Klio follows
+CloudNativePG's approach of **bootstrapping a new cluster** from a backup,
+which ensures data integrity and allows for flexible recovery scenarios.
+
+### How Recovery Works
+
+Klio integrates with CloudNativePG's recovery process by performing the
+following actions during a restore:
+
+1.  **Restores the base backup**: Copies the physical backup data to the new
+    cluster's data directory. Uses `klio restore` command under the hood.
+2.  **Restores WAL files**: Klio is configured to retrieve the WAL files from
+    required for the PostgreSQL recovery as needed.
+    Uses `klio get-wal` command under the hood.
+
+The execution of these commands is driven by CloudNativePG's recovery
+mechanism, which ensures that the PostgreSQL server starts correctly after
+the restore.
+
+A restored cluster operates independently of the original cluster. By default,
+it will **not** perform backups unless you explicitly configure the Klio plugin
+for backup operations in the new cluster's specification.
+
+### Full Restore
+
+To restore from a backup, create a new `Cluster` resource with a
+`bootstrap.recovery` section that references the Klio plugin:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: my-restored-cluster
+  namespace: default
+spec:
+  instances: 3
+
+  # Bootstrap from a Klio backup
+  bootstrap:
+    recovery:
+      source: source
+      # OPTIONAL: Specify the backup to restore from
+      backupID: my-cluster-backup-YYYYMMDDHHMMSS
+
+  # Reference the Klio plugin configuration
+  externalClusters:
+    - name: source
+      plugin:
+        name: klio.enterprisedb.io
+        parameters:
+          pluginConfigurationRef: my-restore-config
+
+  storage:
+    size: 10Gi
+```
+
+!!!note
+
+Klio will choose the latest backup available in case the `backupID` field is omitted.
+!!!
+
+Create a corresponding `PluginConfiguration` that specifies which backup to restore:
+
+```yaml
+apiVersion: klio.enterprisedb.io/v1alpha1
+kind: PluginConfiguration
+metadata:
+  name: my-restore-config
+  namespace: default
+spec:
+  # Connection details
+  serverAddress: klio-server.default
+  clientSecretName: my-client-credentials
+  serverSecretName: klio-server-tls
+
+  # Optional: specify the original cluster name if different
+  clusterName: my-cluster
+```
+
+The client credentials secret (`my-client-credentials`) should contain the
+necessary authentication information to access the Klio server, as described
+in the [Klio plugin configuration guide](plugin_configuration.mdx#client-credentials-secret).
+
+!!!note
+
+The `clusterName` field in the `PluginConfiguration` and the `commonName`
+of the certificate should match the name of the **original cluster** that
+was backed up, not the name of the new restored cluster.
+!!!
+
+Apply both resources:
+
+```bash
+kubectl apply -f restore-config.yaml
+kubectl apply -f restored-cluster.yaml
+```
+
+### Point-in-Time Recovery (PITR)
+
+Klio supports Point-in-Time Recovery, allowing you to restore your database
+to a specific moment in time rather than the latest available state. This is
+useful for recovering from accidental data deletion or corruption.
+
+The process involves specifying a recovery target in the `Cluster` resource.
+The available recovery targets are described in the
+[CloudNativePG documentation](https://cloudnative-pg.io/documentation/current/recovery/#recovery-targets).
+
+#### Example: recover to a `targetTime`
+
+Restore to a specific timestamp:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: my-pitr-cluster
+spec:
+  bootstrap:
+    recovery:
+      source: source
+      # Recover to a specific point in time
+      recoveryTarget:
+        targetTime: "2025-11-06 15:00:00.0000+00"
+  # other cluster spec fields...
+```
+
+!!!important
+
+The target of a point in time recovery must fall between the time the base
+backup was completed and the time of the latest transaction recorded in the
+available WAL files.
+!!!
+
+!!!note
+
+During the Point in Time Recovery, Klio will automatically choose the right
+backup if not specified with the `backupID` field.
+!!!
