@@ -39,8 +39,6 @@ if [[ "$EDB_PLATFORM_VERSION" == v1.2.* ]]; then
     .spec.globalParameters.portal_domain_name = env(PORTAL_DOMAIN_NAME) |
     .spec.globalParameters.storage_class = env(STORAGE_CLASS) |
     .spec.componentsParameters.transporter-data-operator.fips_enabled = (env(TRANSPORTER_FIPS_ENABLED)|tostring) |
-    .spec.componentsParameters.transporter-rw-service.domain_name = env(TRANSPORTER_RW_SERVICE_DOMAIN_NAME) |
-    .spec.componentsParameters.transporter-dp-agent.rw_service_url= "https://"+env(TRANSPORTER_RW_SERVICE_DOMAIN_NAME)+"/transporter" |
     .spec.componentsParameters.upm-beacon.server_host= env(BEACON_SERVICE_DOMAIN_NAME) |
     .spec.pgai.portal.authentication.staticPasswords[0].email=env(AUTHENTICATION_EMAIL) |
     .spec.pgai.portal.authentication.staticPasswords[0].hash=env(AUTHENTICATION_PASSWORD_HASH) |

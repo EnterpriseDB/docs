@@ -58,8 +58,6 @@ fi
 
 yq -i '.system = env(EDB_TARGET_PLATFORM) |
 .parameters.global.portal_domain_name = env(PORTAL_DOMAIN_NAME) |
-.parameters.transporter-rw-service.domain_name = env(TRANSPORTER_RW_SERVICE_DOMAIN_NAME) |
-.parameters.transporter-dp-agent.rw_service_url= "https://"+env(TRANSPORTER_RW_SERVICE_DOMAIN_NAME)+"/transporter" |
 .parameters.upm-beacon.server_host= env(BEACON_SERVICE_DOMAIN_NAME) |
 .pgai.portal.authentication.staticPasswords[0].email=env(AUTHENTICATION_EMAIL) |
 .pgai.portal.authentication.staticPasswords[0].hash=env(AUTHENTICATION_PASSWORD_HASH) |
