@@ -38,6 +38,7 @@ if [[ "$EDB_PLATFORM_VERSION" == v1.2.* ]]; then
     .spec.componentsParameters.upm-istio-gateway.cookie_aeskey = env(AES_256_KEY) | 
     .spec.globalParameters.portal_domain_name = env(PORTAL_DOMAIN_NAME) |
     .spec.globalParameters.storage_class = env(STORAGE_CLASS) |
+    .spec.globalParameters.global.dms_domain_name = env(DMS_DOMAIN_NAME) |
     .spec.componentsParameters.transporter-data-operator.fips_enabled = (env(TRANSPORTER_FIPS_ENABLED)|tostring) |
     .spec.componentsParameters.upm-beacon.server_host= env(BEACON_SERVICE_DOMAIN_NAME) |
     .spec.pgai.portal.authentication.staticPasswords[0].email=env(AUTHENTICATION_EMAIL) |

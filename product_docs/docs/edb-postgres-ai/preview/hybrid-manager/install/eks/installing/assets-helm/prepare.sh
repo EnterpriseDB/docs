@@ -58,6 +58,7 @@ fi
 
 yq -i '.system = env(EDB_TARGET_PLATFORM) |
 .parameters.global.portal_domain_name = env(PORTAL_DOMAIN_NAME) |
+.parameters.global.dms_domain_name = env(DMS_DOMAIN_NAME) |
 .parameters.upm-beacon.server_host= env(BEACON_SERVICE_DOMAIN_NAME) |
 .pgai.portal.authentication.staticPasswords[0].email=env(AUTHENTICATION_EMAIL) |
 .pgai.portal.authentication.staticPasswords[0].hash=env(AUTHENTICATION_PASSWORD_HASH) |
