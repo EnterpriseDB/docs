@@ -234,9 +234,13 @@ async function main() {
   }
 
   for (const product in productVersions) {
-    productVersions[product] = productVersions[product].sort((a, b) =>
-      b.localeCompare(a, undefined, { numeric: true }),
-    );
+    // sort "preview" last, always
+    productVersions[product] = productVersions[product].sort((a, b) => {
+      if (a === "preview" && b === "preview") return 0;
+      if (a === "preview") return 1;
+      if (b === "preview") return -1;
+      return b.localeCompare(a, undefined, { numeric: true });
+    });    
   }
 
   // post-process redirects
