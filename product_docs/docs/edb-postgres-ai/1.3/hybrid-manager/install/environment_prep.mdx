@@ -21,11 +21,9 @@ deepToC: true
 
 ### Outcomes
 
-* *A Kubernetes cluster configured with necessary secrets (TLS, Auth, Storage)*
+* *A Kubernetes cluster configured with necessary secrets (TLS, Auth, Storage, other necessary secrets)*
 
-* *Synchronized container images*
-
-* *Any chosen advanced features configured*
+* *Any chosen advanced features configured (IDP, multi-location, KMS for TDE)*
 
 * *A finalized and validated `values.yaml` configuration file ready for Hybrid Manager (HM) installation*
 
@@ -47,45 +45,32 @@ This involves establishing administrative access through a remote management wor
 
 Preparing your environment, Phase 3, covers:
 
-*  **Managing artifacts:** 
+*  **Creating necessary infrastructure secrets and implementing TLS:**
 
-    * [Syncing container images to your local private registry](#sync-images-to-local-registry) 
-    * [Configuring the agent for image discovery](#configure-image-discovery) if necessary.
-
----
-
-*  **Creating infrastructure secrets:** 
-
-    * [Creating Kubernetes secrets for **Image Pull** credentials](#create-image-pull-secret) 
-    * [**Object Storage** access](#create-object-storage-secret).
+   * [Creating Kubernetes secrets for **Image Pull** credentials](#create-image-pull-secret) 
+   * [**Object Storage** access](#create-object-storage-secret).
+   * [Implementing your chosen TLS strategy](#implement-tls) (choose one)
+     * [(A) self-managed Cert-Manager issuer](#option-a-custom-cert-manager-issuer)
+     * [(B) custom CA](#option-b-custom-certificate-authority-ca)
+     * [(C) custom certificate](#option-c-custom-certificate)
+     * [(D) self-signed default](#option-d-self-signed-certificates-default)
 
 ---
 
-*  **Securing the platform** 
-    
-    * [Implementing your chosen TLS strategy](#implement-tls) (choose one)
+* **Creating other necessary secrets**
 
-      * [(A) self-managed Cert-Manager issuer](#option-a-custom-cert-manager-issuer)
-      * [(B) custom CA](#option-b-custom-certificate-authority-ca)
-      * [(C) custom certificate](#option-c-custom-certificate)
-      * [(D) self-signed default](#option-d-self-signed-certificates-default)
-      
-    * [Implementing **KMS** for Transparent Data Encryption (TDE)](#implementing-kms-for-tde).
-    * [Customizing secrets for the **Migration Portal**](#configuring-migration-portal-secrets).
+  * [Creating **GenAI Builder** secret](#enabling-genai-builder) (requires Fernet secret)
+  * [Creating **Catalog** secret](#enabling-catalogs) (requires Fernet secret)
+  * [Customizing secrets for the **Migration Portal**](#configuring-migration-portal-secrets).
 
 ---
 
-*  **Enabling applications:** 
-
-    * [Enabling **GenAI Builder**](#enabling-genai-builder) (requires Fernet secret)
-    * [Enabling data catalogs](#enabling-catalogs) (requires Fernet secret)
-
----
 
 *  **Configuring advanced features:** 
 
     * [Defining **Multi-location** logic (SPIRE federation and object storage sync)](#configuring-multi-location-architecture)
     * [Constructing complex YAML configurations for your **Identity Provider**](#configuring-identity-providers-idp).
+    * [Implementing **KMS** for Transparent Data Encryption (TDE)](#implementing-kms-for-tde).
 
 ---
 
@@ -105,34 +90,22 @@ Preparing your environment, Phase 3, covers:
 
 ---
 
-## Managing artifacts
+## Creating necessary secrets
 
-### Sync images to local registry
 
-You are strongly encouraged to sync EDB images to your local registry.
-
-If your environment cannot access the public EDB repository, you must pull the artifacts and push them to your local private registry using `edbctl`.
-
-* [**SOP: Sync images to local registry**](sync_images.md)
-    * *Guidance: Using `edbctl` to mirror Platform and Operator images.*
-
----
-
-### Configure image discovery
-
-Once images are synced, you may need to configure the installer to locate them. 
-This ensures the cluster pulls artifacts from the correct location (local registry vs. public registry).
-
-* [**SOP: Image discovery configuration**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/image_discovery/)
-    * *Guidance: Configuring registry mirrors and pull policies.*
-
----
-
-## Creating infrastructure secrets
+!!! Warning
+The following are not optional configurations.
+These preparatory steps **must be completed** in order to successfully complete your installation.
+This configuration does not require you utilize the associated feature; it only prepares a secure implementation in case it's needed.
+!!!
 
 Create Kubernetes secrets for any required credentials, such as object storage credentials, database access tokens, or any other sensitive information.
 
 ### Create Image Pull secret
+
+!!! Warning
+It is necessary to create an Image Pul secret for HM to install successfully.
+!!!
 
 #### Dependencies
 
@@ -185,7 +158,6 @@ Use `edbctl` to create the `ImagePullSecret` namespace and required secrets.
    kubectl get serviceaccount default -n edbpgai-bootstrap -o yaml | grep edb-cred
    ```
 
-
 1. Deploy a test pod (lasso) to validate image pull:
 
    ```bash
@@ -208,7 +180,9 @@ kubectl describe pod lasso -n edbpgai-bootstrap | grep -i imagepull
 
 ### Create Object Storage secret
 
-> **Optionality:** Strictly required
+!!! Warning
+It is necessary to create an Object Storage secret for HM to install successfully.
+!!!
 
 To implement the [object storage requirement](../sys_reqs), you must create a secret named `edb-object-storage` in the `default` namespace.
 
@@ -309,7 +283,55 @@ stringData:
 
 ---
 
-## Securing the platform
+### Creating GenAI Builder secret
+
+!!! Warning
+It is necessary to create a GenAI Builder secret for HM to install successfully.
+!!!
+
+Even if you are not planning to use GenAI Builder, creating a secret is a necessary step.
+
+You must manually set up encryption keys and a dedicated S3-compatible bucket with specific CORS policies.
+
+**Preparation checklist:**
+
+1.  **Namespace:** Create the `upm-griptape` namespace.
+1.  **Encryption:** Generate a Fernet key and create the `fernet-secret` inside that namespace.
+1.  **Storage:** Create a dedicated Object Storage bucket (DataLake).
+1.  **Networking:** Apply CORS configuration to the bucket to allow access from the Portal domain.
+
+* [**SOP: Enabling GenAI Builder**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/genai_secret/)
+    * *Guidance: Scripts for generating Fernet keys and CORS JSON configurations.*
+
+---
+
+### Creating Catalog secret
+
+!!! Warning
+It is necessary to create a Catalog secret for HM to install successfully.
+!!!
+
+Similar to GenAI, even if not using the Catalog service, it is required to create encrypted storage credentials.
+
+**Preparation checklist:**
+
+1.  **Namespace:** Create the `upm-lakekeeper` namespace.
+1.  **Encryption:** Generate a Fernet key and create the secret in that namespace.
+1.  **Configuration:** Configure the *installation-time* catalogs (Infrastructure/OS images) in `values.yaml`.
+
+* [**SOP: Enabling data catalogs**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/data_catalog_secret/)
+   * *Guidance: Commands for creating the confounding key, namespace, and secret.*
+
+---
+
+### Customizing Migration Portal secrets
+
+Create secrets in namespaces `edb-migration-portal` and `edb-migration-copilot`.
+
+* [**SOP: Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/migration_portal_secrets/)
+   * *Guidance: Commands for creating custom secrets for using Migration Portal.*
+
+---
 
 ### Implement TLS
 
@@ -374,66 +396,6 @@ N/A
 
 ---
 
-### Implementing KMS for TDE
-
-If you require encryption at rest for your databases (TDE), you should enable the Key Management Service (KMS) provider and create your keys now.
-
-* [**SOP: Adding KMS support**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/adding_kms_support/)
-
-Depending on the KMS you are using, refer to the guides below to identify the necessary `values.yaml` flags and create the keys.
-
-* [HashiCorp Vault](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/hashicorp/)
-* [AWS Key Management Service (KMS)](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/aws_kms/)
-* [Google Cloud Key Management Service (Cloud KMS)](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/google_cloud_kms/)
-
-Implement the configuration strategies decided upon during the **Planning your architecture** and **Gathering your system requirements** phases.
-
----
-
-### Customizing Migration Portal secrets
-
-Create secrets in namespaces `edb-migration-portal` and `edb-migration-copilot`.
-
-* [**SOP: Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/migration_portal_secrets/)
-   * *Guidance: Commands for creating custom secrets for using Migration Portal.*
-
----
-
-## Enabling applications
-
-### Enabling GenAI Builder
-
-Enabling GenAI Builder requires significant environment preparation beyond the Helm chart.
-
-You must manually set up encryption keys and a dedicated S3-compatible bucket with specific CORS policies.
-
-**Preparation checklist:**
-
-1.  **Namespace:** Create the `upm-griptape` namespace.
-1.  **Encryption:** Generate a Fernet key and create the `fernet-secret` inside that namespace.
-1.  **Storage:** Create a dedicated Object Storage bucket (DataLake).
-1.  **Networking:** Apply CORS configuration to the bucket to allow access from the Portal domain.
-
-* [**SOP: Enabling GenAI Builder**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/genai_secret/)
-    * *Guidance: Scripts for generating Fernet keys and CORS JSON configurations.*
-
----
-
-### Enabling Catalogs
-
-Similar to GenAI, the Catalog service requires its own encrypted storage credentials.
-
-**Preparation checklist:**
-
-1.  **Namespace:** Create the `upm-lakekeeper` namespace.
-1.  **Encryption:** Generate a Fernet key and create the secret in that namespace.
-1.  **Configuration:** Configure the *installation-time* catalogs (Infrastructure/OS images) in `values.yaml`.
-
-* [**SOP: Enabling data catalogs**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/data_catalog_secret/)
-   * *Guidance: Commands for creating the confounding key, namespace, and secret.*
-
----
-
 ## Configuring advanced features
 
 ### Configuring multi-location architecture
@@ -464,6 +426,20 @@ You must gather specific values from your IdP provider (Okta, Active Directory, 
     * *Guidance: Detailed YAML examples for LDAP and SAML integration.*
 
 ---
+
+### Implementing KMS for TDE
+
+If you require encryption at rest for your databases (TDE), you should enable the Key Management Service (KMS) provider and create your keys now.
+
+* [**SOP: Adding KMS support**](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/adding_kms_support/)
+
+Depending on the KMS you are using, refer to the guides below to identify the necessary `values.yaml` flags and create the keys.
+
+* [HashiCorp Vault](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/hashicorp/)
+* [AWS Key Management Service (KMS)](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/aws_kms/)
+* [Google Cloud Key Management Service (Cloud KMS)](/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/google_cloud_kms/)
+
+Implement the configuration strategies decided upon during the **Planning your architecture** and **Gathering your system requirements** phases.
 
 ## Completing environmental preparation
 
