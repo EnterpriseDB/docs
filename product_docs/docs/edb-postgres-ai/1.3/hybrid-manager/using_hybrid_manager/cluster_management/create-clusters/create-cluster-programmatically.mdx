@@ -1,0 +1,234 @@
+---
+title: Creating a cluster programmatically
+navTitle: Creating clusters programmatically
+description: Create a cluster from the command line using the API
+redirects:
+  - /edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/create-cluster-programatically/
+---
+
+By automating Postgres cluster creation you can streamline reproducible builds.
+
+Use Bash scripts and the Hybrid Manager API to automate Postgres cluster creation for reproducible builds. Check all configurations into source control to track changes and maintain documentation.
+
+## Create a machine user
+
+1. Go to the dropdown menu in the upper-right corner of the HM console.
+2. Select **User management** from the dropdown menu.
+3. Select **Add new user** in the upper-right corner.
+4. In the pop-up window that shows **Add new user**, enter the name and tick off the checkbox **Create access key**.
+6. Fill in the field **Expires in**.
+7. In the pop-up window, select **Add user**.
+8. Copy the access key from the pop-up window.
+9. Select **Key stored safely**.
+
+## Give the machine user permissions
+
+!!! note
+To set the machine user permissions correctly, select the target project you want to create the Postgres clusters in from the left navigation bar.
+!!!
+
+1. In the upper-left corner, select **Projects** and navigate to your project.
+2. In the left navigation bar, select **Users**.
+3. In the search bar, look for the machine user you created.
+4. Select the pencil (edit) icon on the right-hand side of **Machine user**.
+5. Select **Assign Roles**.
+6. Under **Assign project roles**, tick off the checkbox **Project owner**.
+7. Select **Submit**.
+
+## Create an env.sh file
+
+You can simplify wiriting shell scripts by adding the project ID to the `env.sh` file and the API host.
+
+Add the copied access key in a file named `env.sh`:
+
+```
+export HCP_ACCESS_KEY="baak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export HCP_API_ACCESS_KEY=${HCP_ACCESS_KEY}
+export HCP_PROJECT_ID=prj_xxxxxxxxxxxxxx
+export HCP_API_HOST="https://portal-uat-eks.aws.hcp.enterprisedb.network"
+```
+
+
+## Locate a Docker image with AIDB and PGFS
+To get a list of locations and the Docker images available at the locations, create and run the script called `01-get-locations.sh`. You'll see the following content:
+
+```
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+# list locations
+
+source env.sh
+
+curl \
+  --insecure \
+  --header "Content-Type: Application/JSON" \
+  --header "x-access-key: ${HCP_API_ACCESS_KEY}" \
+  --request GET \
+  ${HCP_API_HOST}/api/v1/projects/${HCP_PROJECT_ID}/locations \
+  | jq
+```
+
+
+Run the following script:
+
+```
+./01-get-locations.sh > locations.json
+```
+
+
+Examine `locations.json` and look for any image listed under `pgExtensions`, `aidb` and `pgfs`.
+
+## Create a Postgres cluster
+
+Create a file named `create-psr-cluster.json` which includes the image names you have retrieved from the previous step:
+
+```
+{
+  "projectId": "${HCP_PROJECT_ID}",
+  "psr": {
+    "clusterName": "small-ai-api-001",
+    "password": "111111111111",
+    "locationId": "managed-devspatcher",
+    "clusterData": {
+      "instances": 1,
+      "resourceRequest": {
+        "memory": "2Gi",
+        "cpu": "2"
+      },
+      "storageConfiguration": {
+        "primaryStorage": {
+          "size": "4",
+          "storageClass": "hcp-aws-gp3"
+        },
+        "walStorage": {
+          "size": "4",
+          "storageClass": "hcp-aws-gp3"
+        }
+      },
+      "image": {
+        "url": "upmdev.azurecr.io/postgresql:17.6-2510160831",
+        "digest": "sha256:6bda61e6d75c3b9d6a886c547d789c46b88ed807ae28d8d06fa1510a0cc5afae"
+      },
+      "networkAccessType": "NetworkAccessTypePublic"
+    }
+  }
+}
+```
+Write a shell script called `02-create-psr-cluster.sh` to use `create-psr-cluster.json` and create a cluster:
+
+```
+#!/bin/bash
+
+set -e
+set -o pipefail
+set -u
+
+source env.sh
+
+cat create-psr-cluster.json | envsubst > /tmp/create-psr-cluster.json
+
+curl \
+  --insecure \
+  --header "Content-Type: Application/JSON" \
+  --header "x-access-key: ${HCP_API_ACCESS_KEY}" \
+  --data-binary "@/tmp/create-psr-cluster.json" \
+  --request POST \
+  ${HCP_API_HOST}/api/v1/projects/${HCP_PROJECT_ID}/clusters
+```
+
+Run the shell script:
+
+```
+./02-create-psr-cluster.sh | tee ./psr-cluster.json
+```
+
+You can check the progress of the cluster creation in the HM console.
+
+## Create the AIDB and PGFS extensions in the new cluster
+You can add the functionality of AIDB and PGFS to your programmatically created clusters as extensions.
+
+### Configure env.sh to include PostgreSQL authentication credentials
+
+Add the following to your `env.sh` file. For example:
+
+```
+export PGPASSWORD=your_postgresql_password
+export PGUSER=edb_admin
+export PGHOST=your-postgresql-hostname
+export PGPORT=5432
+export PGDATABASE=edb_admin
+export PGSSLMODE=require
+```
+
+### Create cluster extensions
+
+Create a bash file called `03-create-ai-extensions.sh` with the following content:
+
+```
+#!/bin/bash
+
+set -e
+set -o pipefail
+set -u
+
+source env.sh
+
+psql -X <<EOF
+create extension aidb cascade;
+create extension pgfs cascade;
+EOF
+
+```
+
+Run the script:
+
+```
+$ chmod +x 03-create-ai-extensions.sh
+$ ./03-create-ai-extensions.sh
+```
+
+## Cluster verification
+
+After verifying the cluster creation via the HM console, you can get your new cluster via the API to verify its settings.
+Getting clusters in JSON format also helps specifying the required JSON fields and can serve as a blueprint for automated cluster creation, avoiding to look up each setting field individually.
+
+!!! note
+ Create-cluster JSON and Get-cluster JSON are two different functionalities that can contain different information.
+!!!
+
+
+Create a file called `get-existing-cluster.sh` that includes the following:
+
+```
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+source env.sh
+
+HCP_PG_CLUSTER_ID=p-fj3ki6e0x0
+
+curl \
+  --insecure \
+  --header "Content-Type: Application/JSON" \
+  --header "x-access-key: ${HCP_API_ACCESS_KEY}" \
+  --request GET \
+  ${HCP_API_HOST}/api/v1/projects/${HCP_PROJECT_ID}/clusters/${HCP_PG_CLUSTER_ID} \
+  | jq
+```
+Where `HCP_PG_CLUSTER_ID` specifies your cluster ID.
+
+Save the content of the cluster into a JSON file:
+
+```
+./get-existing-cluster.sh > existing-cluster.json
+```
+!!! note
+Check the [API documentation](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/using_the_api/) for more details on the required fields, the naming convention, and JSON structure for cluster creation.
+!!!
