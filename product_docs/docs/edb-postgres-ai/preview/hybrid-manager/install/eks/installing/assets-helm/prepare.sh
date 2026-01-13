@@ -59,6 +59,9 @@ fi
 yq -i '.system = env(EDB_TARGET_PLATFORM) |
 .parameters.global.portal_domain_name = env(PORTAL_DOMAIN_NAME) |
 .parameters.global.dms_domain_name = env(DMS_DOMAIN_NAME) |
+.parameters.global.load_balancer_provider = env(LOAD_BALANCER_PROVIDER) |
+.parameters.global.load_balancer_mode = env(LOAD_BALANCER_MODE) |
+.parameters.global.node_port_domain = env(NODE_PORT_DOMAIN) |
 .parameters.upm-beacon.server_host= env(BEACON_SERVICE_DOMAIN_NAME) |
 .pgai.portal.authentication.staticPasswords[0].email=env(AUTHENTICATION_EMAIL) |
 .pgai.portal.authentication.staticPasswords[0].hash=env(AUTHENTICATION_PASSWORD_HASH) |

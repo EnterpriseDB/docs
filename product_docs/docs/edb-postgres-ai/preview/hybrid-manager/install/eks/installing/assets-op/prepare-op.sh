@@ -39,6 +39,9 @@ if [[ "$EDB_PLATFORM_VERSION" == v1.2.* ]]; then
     .spec.globalParameters.portal_domain_name = env(PORTAL_DOMAIN_NAME) |
     .spec.globalParameters.storage_class = env(STORAGE_CLASS) |
     .spec.globalParameters.global.dms_domain_name = env(DMS_DOMAIN_NAME) |
+    .spec.globalParameters.global.load_balancer_provider = env(LOAD_BALANCER_PROVIDER) |
+    .spec.globalParameters.global.load_balancer_mode = env(LOAD_BALANCER_MODE) |
+    .spec.globalParameters.global.node_port_domain = env(NODE_PORT_DOMAIN) |
     .spec.componentsParameters.transporter-data-operator.fips_enabled = (env(TRANSPORTER_FIPS_ENABLED)|tostring) |
     .spec.componentsParameters.upm-beacon.server_host= env(BEACON_SERVICE_DOMAIN_NAME) |
     .spec.pgai.portal.authentication.staticPasswords[0].email=env(AUTHENTICATION_EMAIL) |

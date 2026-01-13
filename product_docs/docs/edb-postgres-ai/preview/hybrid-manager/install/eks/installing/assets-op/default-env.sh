@@ -11,6 +11,9 @@ export AUTHENTICATION_USER="owner@mycompany.com"
 export LOCATION_NAME="default-location"
 export STORAGE_CLASS="gp2"
 export TRANSPORTER_FIPS_ENABLED=false
+export LOAD_BALANCER_PROVIDER="aws"
+export LOAD_BALANCER_MODE=public
+export NODE_PORT_DOMAIN="nodeportdomain.example.com"
 
 # Set a password hash for the user or pass a password to have it hashed for you.
 # If you pass a password, you will need to remove it from your history.
