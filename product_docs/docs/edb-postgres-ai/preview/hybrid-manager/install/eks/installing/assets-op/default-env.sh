@@ -4,13 +4,16 @@ export CONTAINER_REGISTRY_URI="docker.enterprisedb.com/pgai-platform"
 export IMAGESET_REGISTRY_URI=$CONTAINER_REGISTRY_URI
 export IMAGESET_AUTHTYPE="token"
 export PORTAL_DOMAIN_NAME="portal.foo.network"
-export TRANSPORTER_RW_SERVICE_DOMAIN_NAME="transporter.foo.network"
+export DMS_DOMAIN_NAME="dms.foo.network"
 export BEACON_SERVICE_DOMAIN_NAME="beacon.foo.network"
 export AUTHENTICATION_EMAIL="owner@mycompany.com"
 export AUTHENTICATION_USER="owner@mycompany.com"
 export LOCATION_NAME="default-location"
 export STORAGE_CLASS="gp2"
 export TRANSPORTER_FIPS_ENABLED=false
+export LOAD_BALANCER_PROVIDER="aws"
+export LOAD_BALANCER_MODE=public
+export NODE_PORT_DOMAIN="nodeportdomain.example.com"
 
 # Set a password hash for the user or pass a password to have it hashed for you.
 # If you pass a password, you will need to remove it from your history.
