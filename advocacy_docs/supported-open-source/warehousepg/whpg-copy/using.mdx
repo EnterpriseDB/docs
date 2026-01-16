@@ -4,17 +4,103 @@ navTitle: Using
 description: Learn how to use the different features provided by WarehousePG Copy.
 ---
 
-WarehousePG Copy provides different functionalities.
+The `whpg-copy` utility provides a high-performance method for migrating data between a source and a destination WarehousePG (WHPG) cluster. 
 
-## Copy
+1. Make sure you meet the [prerequisites](#prerequisites).
+1. [Diagnose connectivity between the clusters](#diagnosing-connectivity-between-clusters).
+1. [Choose your configuration settings](#choosing-your-configuration-settings).
+1. [Run the copy command](#running-the-copy-command).
+1. [Verify the copy operation](#verifying-the-copy-operation).
 
-Copy all relations from `src_db` to `dst_db` using `append` mode (default):
+## Prerequisites
+
+- You must install the identical version of the whpg-copy utility on every host across both the source and destination clusters. 
+- The specific host where you run the `whpg-copy` command must have network access to the WHPG coordinators of both the source and destination clusters.
+- The database user defined in your connection strings must have sufficient privileges to 
+    - Read all data and metadata from the source cluster. 
+    - Write data and execute DDL commands on the destination cluster.
+- While passwords can be specified in the connection string, `whpg-copy` currently does not currently provide full support for password authentication. To ensure stability, we recommend to use a `.pgpass` file or configure trust-based authentication (via `pg_hba.conf`) for the duration of the copy. 
+
+## Diagnosing connectivity between clusters
+
+Before initiating a transfer, you must verify that the network is ready. Because `whpg-copy` transfers data directly from the source segments to the destination segments, the destination hosts must be reachable from the source hosts.
+Use the `whpg-copy diagnose` command to identify blocked connections or routing issues:
+
+```bash
+whpg-copy diagnose \
+    --src-url <src_url> \
+    --dst-url <dst_url> \
+    --port-range <min_port>-<max_port>
+```
+
+The `--port-range` parameter defines the range of ports on the destination segment hosts that must be open to receive incoming connections from the source segment hosts.
+
+While a host may contain multiple segments,` whpg-copy` only requires a single available port per physical host. The utility automatically scans your specified range sequentially and binds to the first available port it encounters on each destination machine.
+
+If the diagnosis fails, it will report which specific segments or connections are blocked, allowing you to troubleshoot firewall or routing issues.
+
+
+## Choosing your configuration settings
+
+`whpg-copy` supports both direct command-line arguments and TOML-based configuration files.
+
+- Command Line: Ideal for simple tasks or one-off copies.
+- TOML File: Recommended for complex setups, reusable pipelines, or when using options available only via TOML. Use `--config-file <PATH>` or `-c <PATH>` to load.
+
+Note Command-line arguments take precedence over settings defined in a TOML file.
+
+To quickly create a configuration file with all available options, run:
+
+```bash
+whpg-copy config-example > my_config.toml
+```
+
+For a full list of parameters, see [whpg-copy copy](reference/vhpg-copy-utility#copy) and [whpg-copy configuration file](reference/config_file).
+
+## Running the copy command
+
+Initiate the transfer by running the `whpg-copy copy` command:
+
+Using command-line flags:
+
+```bash
+whpg-copy copy \
+    --src-url postgres://gpadmin@mdw_src:5432/src_db \
+    --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+    --include-table s1.table1 \
+    --include-table s2.table2
+```
+
+Using a TOML configuration file:
+
+```bash
+whpg-copy copy --config-file my_whpg_copy.toml
+```
+
+## Verifying the copy operation
+
+Upon completion, `whpg-copy` generates detailed reports in the log directory (default: `~/gpAdminLogs`).
+
+- Success report: `wc_success.<APP_ID>.txt`: Lists successfully copied tables and the total data volume transferred.
+- Retry configuration file: `wc_failed_retry.<APP_ID>.toml`: Generated if any tasks fail. Contains a pre-filled TOML configuration for retrying the failed tables.
+
+You can retry the copy operation by running:
+
+If a copy operation has failed, retry the operation using the generated configuration file:
+
+```bash
+whpg-copy copy -c wc_failed_retry.<APP_ID>.toml.
+```
+
+## Examples
+
+Copy all relations from `src_db` to `dst_db` using append mode:
 
 ```bash
 whpg-copy copy --src-url postgres://gpadmin@mdw_src:5432/src_db --dst-url postgres://gpadmin@mdw_dst:5432/dst_db
 ```
 
-Copy `s1.table1` and `s2.table2` only to the destination cluster:
+Copy the tables `s1.table1` and `s2.table2` to the destination cluster:
 
 ```bash
 whpg-copy copy \
@@ -27,242 +113,16 @@ whpg-copy copy \
 Copy all tables whose names begin with "to_copy" by using a configuration file:
 
 ```bash
-# Create a config file named my_whpg_copy.toml
-cat <<EOF > my_whpg_copy.toml
-src_url = "postgres://gpadmin@mdw_src:5432/src_db"
-dst_url = "postgres://gpadmin@mdw_dst:5432/dst_db"
-
-[[mapping_rules]]
-src_table = "to_copy.*"
-EOF
-
-# Run the copy command
 whpg-copy copy --config-file my_whpg_copy.toml
 ```
 
-
-## Diagnose Connectivity
-
-The `diagnose` command is a utility to verify network readiness before starting a copy operation. Since `whpg-copy` transfers data directly between segments, it requires specific network ports to be open from the destination cluster segments to the source cluster segments.
-
-Use `--port-range` to specify the range of ports that will be used during the copy. `whpg-copy` will only need one port on each host (but not segment) to listen on. It will try to use the port in the range one by one until it finds an available port.
-
-`diagnose` sub-command can be used to check before starting the real copy operation:
+Where the file `my_whpg_copy.toml` contains:
 
 ```
-whpg-copy diagnose --src-url <src_url> --dst-url <dst_url> --port-range <min_port>-<max_port>
-```
-
-If the diagnosis fails, it will report which specific segments or connections are blocked, allowing you to troubleshoot firewall or routing issues.
-
-## Connection Config
-
-The connection to the databases can be configured via command-line arguments or a configuration file.
-
-*   `--src-url <URL>` / `-s <URL>`: Connection string for the source database.
-    *   Format: `postgres://[user[:password]@]host[:port][/dbname]
-*   `--dst-url <URL>` / `-d <URL>`: Connection string for the destination database.
-*   `--src-db <DB_NAME>`: Overrides the database name specified in `--src-url`.
-*   `--dst-db <DB_NAME>`: Overrides the database name specified in `--dst-url`.
-
-## Choose relations to be copied
-
-You can selectively include or exclude tables. If no options are provided, all user tables in the source database are candidates for copying.
-
-*   `--include-table <TABLE>` / `-i <TABLE>`: Specifies a table to include. Can be used multiple times.
-    *   Format: `schema.table`
-    *   To handle special characters or case-sensitivity, quote the identifiers: `'"Schema"."Table"'`.
-*   `--exclude-table <TABLE>` / `-e <TABLE>`: Specifies a table to exclude. Can be used multiple times. Uses the same format as include.
-*   **Regex & Mapping Rules:** For more complex selection (e.g., using regular expressions) or renaming tables during the copy, use the configuration file's [Mapping Rules](#mapping-rules) section.
-
-## Copying Options
-
-Customize the data transfer behavior with these options:
-
-*   `--target-mode <MODE>`: Determines how to handle existing tables on the destination.
-    *   `append` (Default): Inserts data into existing tables.
-    *   `truncate`: Truncates the destination table before copying.
-    *   `skip-existing`: Skips the copy operation if the table already exists.
-*   `--compression <BOOL>`: Enables or disables ZSTD compression during data transfer. Default is `true`.
-*   `--through-partition-leaves <BOOL>` / `-p <BOOL>`: If `true` (default), copies data directly between leaf partitions in parallel. If `false`, data goes through the specified root/intermediate partition table.
-*   `--validate-method <METHOD>`: Validation to perform after copying.
-    *   `none` (Default): No validation.
-    *   `count`: Compares row counts.
-    *   `checksum`: Calculates and compares data hashes (more resource-intensive).
-*   `--dry-run`: If set, performs a trial run without modifying data on the destination.
-*   `--timeout <SECONDS>`: Connection timeout in seconds. Default is `0` (infinite).
-
-## Copy Config File
-
-You can use a TOML file to specify configuration options, which is useful for complex setups or reusable configurations. Use `--config-file <PATH>` or `-c <PATH>` to load it.
-
-**Note:** Command-line arguments override settings in the configuration file. If an option is specified in both the file and the command line, the command-line value takes precedence.
-
-You can generate a template configuration file using the `config-example` command:
-
-```bash
-whpg-copy config-example > my_config.toml
-```
-
-Example `config.toml` content:
-
-```toml
-# ==============================================================================
-# whpg-copy Configuration Example
-# ==============================================================================
-
-# Source database connection URL.
-# Supports standard PostgreSQL connection strings.
-src_url = "postgres://gpadmin:@10.0.0.1:5432/source_db"
-
-# Destination database connection URL.
-dst_url = "postgres://gpadmin:@10.0.0.2:5432/target_db"
-
-# Tables to include in the copy operation. To have uppercase letters or other
-# special characters in schema or table names, follow PostgreSQL's qualified
-# identifier rules to quote them.
-# Default: None
-include_table = [
-    "public.users",
-    "\"Inventory\".\"StockItems\""
-]
-
-# Tables to exclude.
-# Default: None
-exclude_table = [
-    "public.temp_cache",
-    "sales.test_data"
-]
-
-# Enable compression during data transfer to reduce network bandwidth usage.
-# Recommended for transfers over WAN or slow networks.
-# Default: true
-compression = true
-
-# Copy partitioned tables through their leaf partitions in parallel.
-# Disable this to enforce data goes through the root partition table or
-# intermediate partition table.
-# Default: true
-through_partition_leaves = true
-
-# How to handle existing tables on the destination:
-# "append"        : Insert data into existing tables.
-# "truncate"      : Clear the destination table before copying.
-# "skip-existing" : Do not copy if the table already exists.
-# Default: append
-target_mode = "append"
-
-# Validation method to perform after copying data:
-# "none"     : No validation.
-# "count"    : Compare row counts between source and destination.
-# "checksum" : Calculate and compare data hashes.
-# Default: none
-validate_method = "count"
-
-# Number of parallel workers to run.
-# Default: 4
-workers = 4
-
-# Listening port range on the destination for data transferring. Those
-# ports need to be enabled to be accessed from the source segments.
-# whpg-copy will try to start listening on the port one by one from
-# the range. At least one port is required in the range.
-port_range = "60000-60001"
-
-# Define rules to rename schemas or tables during the copy process.
-# Each rule requires at least a source pattern.
-#
-# public.sales -> new_schema.sales
+src_url = "postgres://gpadmin@mdw_src:5432/src_db"
+dst_url = "postgres://gpadmin@mdw_dst:5432/dst_db"
 [[mapping_rules]]
-src_table= "sales"
-dst_schema = "new_schema"
-# old_schema.raw_logs -> new_schema.processed_logs
-[[mapping_rules]]
-src_schema = "old_schema"
-src_table = "raw_logs"
-dst_schema = "new_schema"
-dst_table = "processed_logs"
-[[mapping_rules]]
-src_schema = "old_schema(\\d+)"
-dst_schema = "new_schema${1}"
-src_table = "old_table(\\d+)"
-dst_table = "new_table${1}"
-
-# Run the operation without actually changing any data on the destination.
-dry_run = false
+src_table = "to_copy.*"
 ```
 
-### Mapping Rules
 
-Mapping rules allow for powerful renaming and selection logic using regular expressions (Regex). You can define multiple `[[mapping_rules]]` blocks in your configuration file.
-
-*   `src_schema`, `src_table`: **Regex patterns** to match source objects.
-    *   The pattern is treated as a standard Rust regular expression.
-    *   It is automatically anchored by `^` and `$` unless you provide them explicitly. This means `src_table = "users"` matches *exactly* the table "users", not "super_users".
-    *   To match partial strings, use wildcards like `.*`. Example: `src_table = "log_.*"` matches "log_2023", "log_access", etc.
-
-*   `dst_schema`, `dst_table`: **Replacement strings** for destination objects.
-    *   These fields support **Capture Groups**. If your source pattern contains groups in parentheses `()`, you can reference them in the destination using `${1}`, `${2}`, etc.
-
-*   `sql`: **Custom SQL query** to use for extracting data from the source table.
-    *   Instead of copying the entire table, `whpg-copy` will execute this SQL and copy its result.
-    *   Supports placeholders: `${src_schema}` and `${src_table}` which are automatically replaced with the escaped source schema and table names.
-    *   This is useful for filtering data, joining with other tables, or performing transformations during the copy.
-
-> **Note:** If a table is renamed (i.e., destination schema or table name differs from the source), `whpg-copy` currently **cannot** automatically create the table on the destination. You must ensure the destination table exists before running the copy.
-
-**Examples:**
-
-1.  **Copy to a table with different name:**
-    ```toml
-    [[mapping_rules]]
-    src_schema = "public"
-    src_table = "users"
-    dst_table = "customers"
-    # Result: public.users -> public.customers
-    ```
-
-2.  **Copy tables to a different schema:**
-    ```toml
-    [[mapping_rules]]
-    src_schema = "legacy"
-    src_table = ".*"        # Match all tables in 'legacy' schema
-    dst_schema = "archived"
-    # Result: legacy.t1 -> archived.t1, legacy.t2 -> archived.t2
-    ```
-
-3.  **Copy using Capture Groups:**
-    ```toml
-    [[mapping_rules]]
-    src_table = "data_(\d+)_(\d+)"
-    dst_table = "record_${1}_v${2}"
-    # Result: data_2023_01 -> record_2023_v01
-    ```
-
-4.  **Copy filtered data using a custom SQL:**
-    ```toml
-    [[mapping_rules]]
-    src_table = "orders"
-    sql = "SELECT * FROM ${src_schema}.${src_table} WHERE order_date >= '2024-01-01'"
-    # Result: Only copies orders from 2024 onwards.
-    ```
-
-## Copy Report
-
-After execution, `whpg-copy` generates reports in the log directory (default: `~/gpAdminLogs` or a temp directory).
-
-*   **Success Report:** `wc_success.<APP_ID>.txt`
-    *   Lists successfully copied tables and the amount of data transferred.
-*   **Retry Config:** `wc_failed_retry.<APP_ID>.toml`
-    *   Generated if any tasks fail.
-    *   Contains a TOML configuration pre-filled with `mapping_rules` for the failed tables.
-    *   **To Retry:** Run `whpg-copy copy -c wc_failed_retry.<APP_ID>.toml`.
-
-## Configuring Parallel Workers
-
-*   `--workers <NUM>`: Specifies the number of concurrent worker tasks. Default is `4`.
-*   **`+` / `-`**: Increase or decrease the number of parallel workers dynamically during the copy process.
-
-## Limitations
-
-*   **Views and Materialized Views:** `whpg-copy` supports the creation of both regular views and materialized views on the destination cluster. However, it does not perform a refresh of materialized views after the copy operation. You must manually execute `REFRESH MATERIALIZED VIEW` on the destination if you need the data to be up-to-date.
