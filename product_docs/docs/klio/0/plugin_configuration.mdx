@@ -1,7 +1,7 @@
 ---
 title: The Klio Plugin
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.10/plugin_configuration.md
+  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.11/plugin_configuration.md
 sidebar_position: 6
 editTarget: originalFilePath
 
@@ -61,7 +61,8 @@ The client credentials must be stored in a Kubernetes Secret of type
 `kubernetes.io/tls`, containing a secret to be presented to the Klio server.
 
 This secret can be generated with cert-manager by following the [documentation
-in the Klio server page](klio_server.mdx#creating-a-client-side-certificate).
+in the Klio server page](klio_server.mdx#creating-a-client-side-certificate),
+or be provided by the user.
 
 ### Server Address
 
@@ -136,7 +137,9 @@ customize the plugin's behavior.
 
 ### Retention policies
 
-Define how long backups should be retained by configuring the retention policy:
+Define how long backups should be retained by configuring retention policies
+for Tier 1 and Tier 2 storage. Retention policies can be configured
+independently for each tier:
 
 ```yaml
 apiVersion: klio.enterprisedb.io/v1alpha1
@@ -147,13 +150,22 @@ spec:
   serverAddress: klio-server.default
   clientSecretName: klio-client-credentials
   serverSecretName: klio-server-tls
-  retention:
-    keepLatest: 5
-    keepHourly: 12
-    keepDaily: 7
-    keepWeekly: 4
-    keepMonthly: 6
-    keepAnnual: 2
+  tier1:
+    retention:
+      keepLatest: 5
+      keepHourly: 12
+      keepDaily: 7
+      keepWeekly: 4
+      keepMonthly: 6
+      keepAnnual: 2
+  tier2:
+    enableBackup: true
+    enableRecovery: true
+    retention:
+      keepLatest: 10
+      keepDaily: 30
+      keepMonthly: 12
+      keepAnnual: 5
 ```
 
 Except for `keepLatest`, each option defines how many backups to retain
@@ -195,33 +207,39 @@ spec:
 This can be useful working with backups from different clusters, for example
 when restoring clusters or configuring replica clusters.
 
-### Tier 2 restore
+### Tier 2 configuration
 
-To enable restore from Tier 2 storage, set the `tier2` field to `true`:
+Tier 2 provides secondary storage (typically object storage like S3) for
+long-term backup retention and disaster recovery. Configure Tier 2 using the
+`tier2` section:
 
 ```yaml
 spec:
-  tier2: true
+  tier2:
+    enableBackup: true
+    enableRecovery: true
+    retention:
+      keepDaily: 30
+      keepMonthly: 12
 ```
 
-When enabled, Klio will look for backups in both Tier 1 and Tier 2. If a backup
-is available in both tiers, Tier 1 takes precedence as restore from it will be
-faster.
+#### Options
+
+-   **`enableBackup`**: When set to `true`, backups and WAL files are
+    automatically synchronized to Tier 2 storage after being stored in Tier 1.
+    This ensures your backups are available in long-term storage.
+
+-   **`enableRecovery`**: When set to `true`, Klio will look for backups and
+    WAL files in both Tier 1 and Tier 2 during restore operations. If a backup
+    is available in both tiers, Tier 1 takes precedence as restore from it will
+    be faster.
+
+-   **`retention`**: Configure a separate retention policy for Tier 2.
+    Typically, you would configure longer retention periods for Tier 2 since
+    object storage is more cost-effective for long-term storage.
 
 See the [Architecture documentation](architectures.mdx#tier-2-secondary-storage-object-storage)
 for more details on Tier 2 storage.
-
-### Restore configuration
-
-When performing a restore, you can specify which backup to use:
-
-```yaml
-spec:
-  backupId: backup-YYYYMMDDHHMMSS
-```
-
-You can find the backup ID in the `Backup` resources status, or through the
-Klio API server.
 
 ### Observability
 
@@ -285,19 +303,23 @@ spec:
 The containers you define serve as the base for the Klio sidecars, with the
 following merge behavior:
 
-1.  **Your container is the base**: When you define a container (e.g., `klio-plugin`),
-    your specification serves as the starting point
+1.  **Your container is the base**: When you define a container
+    (e.g., `klio-plugin`), your specification serves as the starting point
 2.  **Klio enforces required values**: Klio sets its essential configuration:
     -   Container `name` (klio-plugin, klio-wal, or klio-restore)
     -   Container `args` (the command arguments needed for operation)
     -   `CONTAINER_NAME` environment variable
-3.  **Your customizations are preserved**: All other fields you define remain intact
+3.  **Your customizations are preserved**: All other fields you define remain
+    intact
 4.  **Template defaults fill gaps**: For fields you don't specify, Klio applies
     sensible defaults (image, security context, standard volume mounts, etc.)
 
-**Important**: Klio's required values (name, args, CONTAINER_NAME env var) will
+!!!important
+
+Klio's required values (name, args, `CONTAINER_NAME` env var) will
 always override any conflicting values you set. All other customizations are
 respected.
+!!!
 
 ### Available sidecar containers
 
@@ -344,11 +366,3 @@ spec:
           memory: "128Mi"
           cpu: "250m"
 ```
-
-!!!warning
-
-Be careful when customizing containers. While your customizations serve as the
-base, Klio will override certain critical values (name, args, CONTAINER_NAME env var)
-that are required for proper operation. Avoid setting these fields as they will be
-replaced. Always test changes in a non-production environment first.
-!!!
