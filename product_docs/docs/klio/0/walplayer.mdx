@@ -1,7 +1,7 @@
 ---
 title: WAL Player
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.10/walplayer.md
+  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.11/walplayer.md
 sidebar_position: 80
 editTarget: originalFilePath
 
@@ -107,8 +107,8 @@ client:
     address: localhost:52000
     cluster_name: walplayer
     server_cert_path: "/path/to/server.crt"
-    username: klio
-    password: password
+    client_cert_path: "/path/to/client/tls.crt"
+    client_key_path: "/path/to/client/tls.key"
 ```
 
 #### Examples
@@ -147,117 +147,193 @@ WAL file:
 -   **`elapsedTime`** - Total time taken for the upload in nanoseconds
 -   **`error`** - Error message if the upload failed (empty on success)
 
-## Benchmarking Workflow
+## Benchmarking Example
 
-### 1. Generate Test Data
+The following Kubernetes Job definition demonstrates how to use
+the WAL Player to benchmark a Klio server. This example covers generating
+WAL files and then playing them back to the server.
 
-First, create WAL files that represent your expected workload:
+<!-- x-release-please-start-version -->
 
-```bash
-# For high-throughput testing (many small files)
-klio wal-player generate ./benchmark-high-throughput --wal-size 16 --length 1000
-
-# For high-bandwidth testing (fewer large files)
-klio wal-player generate ./benchmark-high-bandwidth --wal-size 256 --length 100
+```yaml
+---
+# PVC for storing generated WAL files
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: walplayer-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi # Enough space to hold the generated amount of WAL files
+---
+# Client certificate for authenticating with the Klio server
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: walplayer-client-cert
+spec:
+  commonName: klio@walplayer
+  secretName: walplayer-client-cert
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  isCA: false
+  usages:
+    - client auth
+  issuerRef:
+    name: server-sample-ca
+    kind: Issuer
+    group: cert-manager.io
+---
+# ConfigMap with klio client configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: walplayer-config
+data:
+  # Address your klio server
+  klio-config.yaml: |
+    client:
+      wal:
+        address: server-sample.default:52000
+        cluster_name: walplayer
+        server_cert_path: /certs/server/ca.crt
+        client_cert_path: /certs/client/tls.crt
+        client_key_path: /certs/client/tls.key
+---
+# Job to generate and play WAL files
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: walplayer-benchmark
+spec:
+  template:
+    metadata:
+      labels:
+        app: walplayer
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # Generate synthetic WAL files
+        - name: generate-wals
+          image: docker.enterprisedb.com/k8s/klio:v0.0.11
+          imagePullPolicy: Always
+          command:
+            - /usr/bin/klio
+            - wal-player
+            - generate
+            - /data
+            - --wal-size=16
+            - --length=100
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        # Play WAL files to the Klio server
+        - name: play-wals
+          image: docker.enterprisedb.com/k8s/klio:v0.0.11
+          imagePullPolicy: Always
+          command:
+            - /usr/bin/klio
+            - wal-player
+            - play
+            - /data
+            - --config=/config/klio-config.yaml
+            - --jobs=4
+            - --block-size=2048
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: server-cert
+              mountPath: /certs/server
+              readOnly: true
+            - name: client-cert
+              mountPath: /certs/client
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: walplayer-data
+        - name: config
+          configMap:
+            name: walplayer-config
+        - name: server-cert
+          secret:
+            secretName: server-sample-tls
+        - name: client-cert
+          secret:
+            secretName: walplayer-client-cert
 ```
 
-### 2. Single Connection Baseline
+<!-- x-release-please-end -->
 
-Test with a single connection to establish baseline performance:
+### Customizing the Benchmark
+
+You can adjust the following parameters to simulate different workload scenarios:
+
+#### WAL Generation Parameters
+
+Modify the `generate-wals` init container to create different test workloads:
+
+-   Many small files:
+
+    ```yaml
+    - --wal-size=16
+    - --length=1000
+    ```
+
+-   Less large files:
+
+    ```yaml
+    - --wal-size=256
+    - --length=100
+    ```
+
+Match actual production for better results.
+
+#### WAL Playback Parameters
+
+Modify the `play-wals` container to test different upload patterns:
+
+-   **Jobs** (`--jobs`): Number of parallel upload workers
+    -   Start with `--jobs=1` to establish baseline performance
+    -   Increase to `--jobs=2`, `--jobs=4`, `--jobs=8` to find optimal concurrency
+    -   Performance typically plateaus at some point
+-   **Block Size** (`--block-size`): Size of each streaming chunk in KB
+    -   Default is `--block-size=2048`
+    -   Maximum is 8192
+
+### Analyzing Results
+
+View the job logs to see the JSON performance metrics:
 
 ```bash
-klio wal-player play ./benchmark-high-throughput --jobs 1 > baseline-results.json
+kubectl logs job/walplayer-benchmark -c play-wals
 ```
 
-### 3. Scale Testing
-
-Test with increasing concurrency to find optimal parallelism:
+You can analyze the output using `jq`:
 
 ```bash
-# Test with different job counts
-for jobs in 1 2 4 8 16; do
-  echo "Testing with $jobs jobs..."
-  klio wal-player play ./benchmark-high-throughput --jobs $jobs > results-$jobs-jobs.json
-done
-```
+# Get all results
+kubectl logs job/walplayer-benchmark -c play-wals > results.json
 
-### 4. Analyze Results
-
-Parse the JSON output to calculate performance metrics:
-
-```bash
-# Calculate total throughput
+# Calculate total successful uploads
 jq -s '[.[] | select(.error == "")] | length' results.json
 
-
-# Calculate average upload time
+# Calculate average upload time (in nanoseconds)
 jq -s '[.[] | select(.error == "") | .elapsedTime | tonumber] | add / length' results.json
 
-# Find failed uploads
-jq -s '.[] | select(.error != "")' results.json
+# Find any failed uploads
+jq -s '.[] | select(has("error") and .error != "")' results.json
 ```
 
 ## Performance Optimization Tips
 
-### Client-Side Optimization
-
-1.  **Parallel Jobs**: Start with 2-4 jobs and increase until performance
-    plateaus
-2.  **Block Size**: Adjust based on network characteristics:
-    -   Higher latency networks: Use larger block sizes (4096KB+)
-    -   Lower latency networks: Use smaller block sizes (512-1024KB)
-3.  **WAL File Size**: Match your production WAL segment size
-
-### Server-Side Considerations
-
 1.  **Resource Monitoring**: Monitor CPU, memory, and disk I/O on the Klio server
 2.  **Network Bandwidth**: Ensure sufficient bandwidth between client and server
 3.  **Storage Performance**: Verify storage can handle the write throughput
-
-## Example Benchmark Script
-
-Here's a complete benchmarking script:
-
-```bash
-#!/bin/bash
-set -e
-
-# Configuration
-WAL_DIR="./benchmark-wals"
-RESULTS_DIR="./benchmark-results"
-WAL_SIZE=16
-WAL_COUNT=500
-BLOCK_SIZE=2048
-
-# Clean up previous runs
-rm -rf "$WAL_DIR" "$RESULTS_DIR"
-mkdir -p "$WAL_DIR" "$RESULTS_DIR"
-
-# Generate test WAL files
-echo "Generating $WAL_COUNT WAL files of ${WAL_SIZE}MB each..."
-klio wal-player generate "$WAL_DIR" --wal-size "$WAL_SIZE" --length "$WAL_COUNT"
-
-# Test different concurrency levels
-for jobs in 1 2 4 8 16; do
-  echo "Testing with $jobs parallel jobs..."
-  
-  start_time=$(date +%s)
-  /home/fcanovai/prj/cloud-native/klio/core/dist/klio_linux_amd64_v1/klio wal-player play "$WAL_DIR" --config /home/fcanovai/.klio-client.yaml --jobs ${jobs} --block-size ${BLOCK_SIZE} > "$RESULTS_DIR/results-$jobs-jobs.json" 2> "$RESULTS_DIR/error-$jobs-jobs.log"
-  end_time=$(date +%s)
-  
-  # Calculate summary statistics
-  total_time=$((end_time - start_time))
-  successful_uploads=$(jq -s '[.[] | select(.error == "")] | length' "$RESULTS_DIR/results-$jobs-jobs.json")
-  failed_uploads=$(jq -s '[.[] | select(.error != "")] | length' "$RESULTS_DIR/results-$jobs-jobs.json")
-  avg_upload_time=$(jq -s '[.[] | select(.error == "") | .elapsedTime | tonumber] | add / length' "$RESULTS_DIR/results-$jobs-jobs.json")
-  
-  echo "  Total time: ${total_time}s"
-  echo "  Successful uploads: $successful_uploads"
-  echo "  Failed uploads: $failed_uploads"
-  echo "  Throughput: $(echo "scale=2; $successful_uploads / $total_time" | bc) WAL/s"
-  echo "  Avg WAL upload time: $(echo "scale=6; $avg_upload_time" / 1000000 | bc) millis"
-  echo
-done
-
-echo "Benchmark complete! Results saved in $RESULTS_DIR"
-```
