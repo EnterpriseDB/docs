@@ -24,7 +24,8 @@ Before installing the Klio Operator, ensure you have:
 -   **Helm** – see the [Helm installation guide](https://helm.sh/docs/intro/install/)
 -   **Kubernetes** cluster with appropriate permissions
 -   **Credentials** to access the registry hosting the Helm chart, the Klio operator
-    image, and the Klio operand image.
+    image, and the Klio operand image. For the EDB registry, your username will be `k8s`
+    and your password will be [your EDB Repos 2.0 token](https://www.enterprisedb.com/docs/repos/getting_started/with_web/get_your_token/).
 -   **CloudNativePG Operator** already installed in your Kubernetes cluster.
     See the [CloudNativePG installation guide](https://cloudnative-pg.io/documentation/current/installation_upgrade/).
 -   **cert-manager** (optional, but strongly recommended for managing TLS certificates).
@@ -34,15 +35,27 @@ Before installing the Klio Operator, ensure you have:
 
 ## Installation
 
+For simplicity, the instructions below assume you've put the following values into environment variables:
+
+- `$USERNAME` - will be `k8s` for the EDB registry.
+- `$TOKEN` - will be your [EDB Repos 2.0 token](https://www.enterprisedb.com/docs/repos/getting_started/with_web/get_your_token/).
+- `$NAMESPACE` - will be the namespace where you installed CNPG (`cnpg-system` is the default namespace for CNPG installations).
+
+Example:
+
+```sh
+export USERNAME=k8s
+export TOKEN=your-edb-token
+export NAMESPACE=cnpg-system
+```
+
 ### Step 1: Registry Authentication
 
 First, authenticate with the EDB registry where the Helm chart is hosted:
 
 ```sh
-helm registry login docker.enterprisedb.com -u <USERNAME> -p <TOKEN>
+helm registry login docker.enterprisedb.com -u "${USERNAME}" -p "${TOKEN}"
 ```
-
-Replace `<USERNAME>`, and `<TOKEN>` with the required credentials.
 
 ### Step 2: Create an Image Pull Secret
 
@@ -52,9 +65,9 @@ the registry:
 ```sh
 kubectl create secret docker-registry klio-registry-secret \
   --docker-server=docker.enterprisedb.com \
-  --docker-username=<USERNAME> \
-  --docker-password=<TOKEN> \
-  --namespace <NAMESPACE>
+  "--docker-username=${USERNAME}" \
+  "--docker-password=${TOKEN}" \
+  "--namespace "${NAMESPACE}"
 ```
 
 !!!info Namespace Selection
@@ -72,7 +85,7 @@ Deploy the Klio Operator to your cluster:
 ```sh
 helm install klio-operator oci://docker.enterprisedb.com/k8s/klio-operator-chart \
   --version 0.0.11 \
-  --namespace <NAMESPACE> \
+  --namespace "${NAMESPACE}" \
   --set controllerManager.manager.image.pullSecrets[0].name=klio-registry-secret
 ```
 
@@ -83,14 +96,14 @@ helm install klio-operator oci://docker.enterprisedb.com/k8s/klio-operator-chart
 After installation, verify that the Klio Operator is running:
 
 ```sh
-kubectl get pods -n <NAMESPACE> -l app.kubernetes.io/name=klio
+kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=klio
 ```
 
 You should see the operator pod in a `Running` state. Check the logs to ensure
 there are no errors:
 
 ```sh
-kubectl logs -n <NAMESPACE> deployment/klio-controller-manager -f
+kubectl logs -n "${NAMESPACE}" deployment/klio-controller-manager -f
 ```
 
 Verify that the Custom Resource Definitions (CRDs) were created:
@@ -148,8 +161,10 @@ To upgrade the Klio Operator to a newer version:
 ```sh
 helm upgrade klio-operator oci://docker.enterprisedb.com/k8s/klio-operator-chart \
   --version <NEW_VERSION> \
-  --namespace <NAMESPACE>
+  --namespace "${NAMESPACE}"
 ```
+
+...where `<NEW_VERSION>` is the version you're upgrading to.
 
 When upgrading, you can control how Helm handles values from the previous
 installation. Please refer to the [Helm upgrade documentation](https://helm.sh/docs/helm/helm_upgrade/)
@@ -167,7 +182,7 @@ specific upgrade instructions.
 To uninstall the Klio Operator:
 
 ```sh
-helm uninstall klio-operator --namespace <NAMESPACE>
+helm uninstall klio-operator --namespace "${NAMESPACE}"
 ```
 
 !!!warning Data Preservation
