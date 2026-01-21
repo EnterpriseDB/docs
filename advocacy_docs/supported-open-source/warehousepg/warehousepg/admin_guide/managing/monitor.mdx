@@ -1,0 +1,780 @@
+---
+title: Monitoring a WarehousePG cluster
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/docs/7x/admin_guide/managing/monitor.md
+editTarget: originalFilePath
+
+---
+
+* * *
+
+You can monitor a WarehousePG cluster using a variety of tools included with the system or available as add-ons.
+
+Observing the WarehousePG cluster day-to-day performance helps administrators understand the system behavior, plan workflow, and troubleshoot problems. This chapter discusses tools for monitoring database performance and activity.
+
+Also, be sure to review [Recommended Monitoring and Maintenance Tasks](../monitoring) for monitoring activities you can script to quickly detect problems in the system.
+
+**Parent topic:** [Managing a WarehousePG cluster](./)
+
+<a id="topic3"></a>
+
+## Monitoring System State
+
+As a WarehousePG administrator, you must monitor the system for problem events such as a segment going down or running out of disk space on a segment host. The following topics describe how to monitor the health of a WarehousePG cluster and examine certain state information for a WarehousePG cluster.
+
+-   [Checking System State](#topic12)
+-   [Checking Disk Space Usage](#topic15)
+-   [Checking for Data Distribution Skew](#topic20)
+-   [Checking for and Terminating Overflowed Backends](#overflowed_backends)
+-   [Viewing Metadata Information about Database Objects](#topic24)
+-   [Viewing Session Memory Usage Information](#topic_slt_ddv_1q)
+-   [Viewing and Logging Per-Process Memory Usage Information](#topic_memcontext)
+-   [Viewing Query Workfile Usage Information](#topic27)
+
+<a id="topic12"></a>
+
+## Checking System State
+
+A WarehousePG cluster is comprised of multiple PostgreSQL instances (the coordinator and segments) spanning multiple machines. To monitor a WarehousePG cluster, you need to know information about the system as a whole, as well as status information of the individual instances. The `gpstate` utility provides status information about a WarehousePG cluster.
+
+<a id="topic13"></a>
+
+### Viewing Coordinator and Segment Status and Configuration
+
+The default `gpstate` action is to check segment instances and show a brief status of the valid and failed segments. For example, to see a quick status of your WarehousePG cluster:
+
+```
+$ gpstate
+
+```
+
+To see more detailed information about your WarehousePG cluster configuration, use `gpstate` with the `-s` option:
+
+```
+$ gpstate -s
+
+```
+
+<a id="topic14"></a>
+
+### Viewing Your Mirroring Configuration and Status
+
+If you are using mirroring for data redundancy, you may want to see the list of mirror segment instances in the system, their current synchronization status, and the mirror to primary mapping. For example, to see the mirror segments in the system and their status:
+
+```
+$ gpstate -m 
+
+```
+
+To see the primary to mirror segment mappings:
+
+```
+$ gpstate -c
+
+```
+
+To see the status of the standby coordinator mirror:
+
+```
+$ gpstate -f
+
+```
+
+<a id="topic15"></a>
+
+## Checking Disk Space Usage
+
+A database administrator's most important monitoring task is to make sure the file systems where the coordinator and segment data directories reside do not grow to more than 70 percent full. A filled data disk will not result in data corruption, but it may prevent normal database activity from continuing. If the disk grows too full, it can cause the database server to shut down.
+
+You can use the `gp_disk_free` external table in the `gp_toolkit` administrative schema to check for remaining free space (in kilobytes) on the segment host file systems. For example:
+
+```
+=# SELECT * FROM gp_toolkit.gp_disk_free 
+   ORDER BY dfsegment;
+
+```
+
+<a id="topic16"></a>
+
+### Checking Sizing of Distributed Databases and Tables
+
+The `gp_toolkit` administrative schema contains several views that you can use to determine the disk space usage for a distributed WarehousePG database, schema, table, or index.
+
+For a list of the available sizing views for checking database object sizes and disk space, see the *WarehousePG Reference Guide*.
+
+<a id="topic17"></a>
+
+#### Viewing Disk Space Usage for a Database
+
+To see the total size of a database (in bytes), use the *gp_size_of_database* view in the *gp_toolkit* administrative schema. For example:
+
+```
+=> SELECT * FROM gp_toolkit.gp_size_of_database 
+   ORDER BY sodddatname;
+
+```
+
+<a id="topic18"></a>
+
+#### Viewing Disk Space Usage for a Table
+
+The *gp_toolkit* administrative schema contains several views for checking the size of a table. The table sizing views list the table by object ID (not by name). To check the size of a table by name, you must look up the relation name (`relname`) in the *pg_class* table. For example:
+
+```
+=> SELECT relname AS name, sotdsize AS size, sotdtoastsize 
+   AS toast, sotdadditionalsize AS other 
+   FROM gp_toolkit.gp_size_of_table_disk as sotd, pg_class 
+   WHERE sotd.sotdoid=pg_class.oid ORDER BY relname;
+
+```
+
+For a list of the available table sizing views, see the *WarehousePG Reference Guide*.
+
+<a id="topic19"></a>
+
+#### Viewing Disk Space Usage for Indexes
+
+The *gp_toolkit* administrative schema contains a number of views for checking index sizes. To see the total size of all index(es) on a table, use the *gp_size_of_all_table_indexes* view. To see the size of a particular index, use the *gp_size_of_index* view. The index sizing views list tables and indexes by object ID (not by name). To check the size of an index by name, you must look up the relation name (`relname`) in the *pg_class* table. For example:
+
+```
+=> SELECT soisize, relname as indexname
+   FROM pg_class, gp_toolkit.gp_size_of_index
+   WHERE pg_class.oid=gp_size_of_index.soioid 
+   AND pg_class.relkind='i';
+
+```
+
+<a id="topic20"></a>
+
+## Checking for Data Distribution Skew
+
+All tables in WarehousePG are distributed, meaning their data is divided across all of the segments in the system. Unevenly distributed data may diminish query processing performance. A table's distribution policy, set at table creation time, determines how the table's rows are distributed. For information about choosing the table distribution policy, see the following topics:
+
+-   [Viewing a Table's Distribution Key](#topic21)
+-   [Viewing Data Distribution](#topic22)
+-   [Checking for Query Processing Skew](#topic23)
+
+The *gp_toolkit* administrative schema also contains a number of views for checking data distribution skew on a table. For information about how to check for uneven data distribution, see the *WarehousePG Reference Guide*.
+
+<a id="topic21"></a>
+
+### Viewing a Table's Distribution Key
+
+To see the columns used as the data distribution key for a table, you can use the `\d+` meta-command in `psql` to examine the definition of a table. For example:
+
+```
+=# `\d+ sales
+`                Table "retail.sales"
+ Column      |     Type     | Modifiers | Description
+-------------+--------------+-----------+-------------
+ sale_id     | integer      |           |
+ amt         | float        |           |
+ date        | date         |           |
+Has OIDs: no
+Distributed by: (sale_id)
+
+```
+
+When you create a *replicated* table, WarehousePG stores all rows in the table on every segment. Replicated tables have no distribution key. Where the `\d+` meta-command reports the distribution key for a normally distributed table, it shows `Distributed Replicated` for a replicated table.
+
+<a id="topic22"></a>
+
+### Viewing Data Distribution
+
+To see the data distribution of a table's rows (the number of rows on each segment), you can run a query such as:
+
+```
+=# SELECT gp_segment_id, count(*) 
+   FROM <table_name> GROUP BY gp_segment_id;
+
+```
+
+A table is considered to have a balanced distribution if all segments have roughly the same number of rows.
+
+> **Note** If you run this query on a replicated table, it fails because WarehousePG does not permit user queries to reference the system column `gp_segment_id` (or the system columns `ctid`, `cmin`, `cmax`, `xmin`, and `xmax`) in replicated tables. Because every segment has all of the tables' rows, replicated tables are evenly distributed by definition.
+
+<a id="topic23"></a>
+
+### Checking for Query Processing Skew
+
+When a query is being processed, all segments should have equal workloads to ensure the best possible performance. If you identify a poorly-performing query, you may need to investigate further using the `EXPLAIN` command. For information about using the `EXPLAIN` command and query profiling, see [Query Profiling](../query/topics/query-profiling.mdx).
+
+Query processing workload can be skewed if the table's data distribution policy and the query predicates are not well matched. To check for processing skew, you can run a query such as:
+
+```
+=# SELECT gp_segment_id, count(*) FROM <table_name>
+   WHERE <column>='<value>' GROUP BY gp_segment_id;
+
+```
+
+This will show the number of rows returned by segment for the given `WHERE` predicate.
+
+As noted in [Viewing Data Distribution](#topic22), this query will fail if you run it on a replicated table because you cannot reference the `gp_segment_id` system column in a query on a replicated table.
+
+<a id="avoidskew"></a>
+
+#### Avoiding an Extreme Skew Warning
+
+You may receive the following warning message while running a query that performs a hash join operation:
+
+`Extreme skew in the innerside of Hashjoin`
+
+This occurs when the input to a hash join operator is skewed. It does not prevent the query from completing successfully. You can follow these steps to avoid skew in the plan:
+
+1.  Ensure that all fact tables are analyzed.
+2.  Verify that any populated temporary table used by the query is analyzed.
+3.  View the `EXPLAIN ANALYZE` plan for the query and look for the following:
+    -   If there are scans with multi-column filters that are producing more rows than estimated, then set the `gp_selectivity_damping_factor` server configuration parameter to 2 or higher and retest the query.
+    -   If the skew occurs while joining a single fact table that is relatively small (less than 5000 rows), set the `gp_segments_for_planner` server configuration parameter to 1 and retest the query.
+4.  Check whether the filters applied in the query match distribution keys of the base tables. If the filters and distribution keys are the same, consider redistributing some of the base tables with different distribution keys.
+5.  Check the cardinality of the join keys. If they have low cardinality, try to rewrite the query with different joining columns or additional filters on the tables to reduce the number of rows. These changes could change the query semantics.
+
+<a id="overflowed_backends"></a>
+
+## Checking for and Terminating Overflowed Backends
+
+Subtransaction overflow arises when a WarehousePG backend creates more than 64 subtransactions, resulting in a high lookup cost for visibility checks. This slows query performance, but even more so when it occurs in combination with long-running transactions, which result in still more lookups. Terminating suboverflowed backends and/or backends with long-running transactions can help prevent and alleviate performance problems. 
+
+WarehousePG includes a view -- `gp_suboverflowed_backend` -- that is run over a user-defined function to help users query for suboverflowed backends. Users can use segment id and process id information reported in the view to terminate the offending backends, thereby preventing degradation of performance.
+
+<a id="check_backends"></a>
+
+### Steps
+
+Follow these steps below to identify and terminate overflowed backends.
+
+1.  Select all from the view:
+
+    ```
+    select * from gp_suboverflowed_backend`;
+    ```
+
+     This returns output similar to the following:
+
+    ```
+    segid |   pids    
+    -------+-----------
+    -1 | 
+     0 | {1731513}
+     1 | {1731514}
+     2 | {1731515}
+    (4 rows)
+    ```
+
+2.  Connect to the database in utility mode and query `pg_stat_activity` to return the session id for the process id in the output for a segment. For example: 
+
+    ```
+    select sess_id from pg_stat_activity where pid=1731513;
+    ```
+
+    ```
+    sess_id 
+    ---------
+      10
+    (1 row)
+    ```
+
+3.  Terminate the session, which will terminate all associated backends on all segments:
+
+    ```
+    select pg_terminate_backend(pid) from pg_stat_activity where sess_id=10;
+    ```
+
+4.  Verify that there are no more suboverflowed backends:
+
+    ```
+    select * from gp_suboverflowed_backend`;
+    ```
+
+    ```
+    segid |   pids    
+    -------+-----------
+    -1 | 
+     0 |
+     1 | 
+     2 | 
+    (4 rows)
+    ```
+
+<a id="topic24"></a>
+
+## Viewing Metadata Information about Database Objects
+
+WarehousePG tracks various metadata information in its system catalogs about the objects stored in a database, such as tables, views, indexes and so on, as well as global objects such as roles and tablespaces.
+
+<a id="topic25"></a>
+
+### Viewing the Last Operation Performed
+
+You can use the system views *pg_stat_operations* and *pg_stat_partition_operations* to look up actions performed on an object, such as a table. For example, to see the actions performed on a table, such as when it was created and when it was last vacuumed and analyzed:
+
+```
+=> SELECT schemaname as schema, objname as table, 
+   usename as role, actionname as action, 
+   subtype as type, statime as time 
+   FROM pg_stat_operations 
+   WHERE objname='cust';
+ schema | table | role | action  | type  | time
+--------+-------+------+---------+-------+--------------------------
+  sales | cust  | main | CREATE  | TABLE | 2016-02-09 18:10:07.867977-08
+  sales | cust  | main | VACUUM  |       | 2016-02-10 13:32:39.068219-08
+  sales | cust  | main | ANALYZE |       | 2016-02-25 16:07:01.157168-08
+(3 rows)
+
+```
+
+<a id="topic26"></a>
+
+### Viewing the Definition of an Object
+
+To see the definition of an object, such as a table or view, you can use the `\d+` meta-command when working in `psql`. For example, to see the definition of a table:
+
+```
+=> \d+ <mytable>
+
+```
+
+<a id="topic_slt_ddv_1q"></a>
+
+## Viewing Session Memory Usage Information
+
+You can create and use the *session_level_memory_consumption* view that provides information about the current memory utilization for sessions that are running queries on WarehousePG. The view contains session information and information such as the database that the session is connected to, the query that the session is currently running, and memory consumed by the session processes.
+
+-   [Creating the session_level_memory_consumption View](#topic_nby_j1b_dq)
+-   [The session_level_memory_consumption View](#topic7)
+
+<a id="topic_nby_j1b_dq"></a>
+
+### Creating the session_level_memory_consumption View
+
+To create the *session_state.session_level_memory_consumption* view in a WarehousePG, run the script `CREATE EXTENSION gp_internal_tools;` once for each database. For example, to install the view in the database `testdb`, use this command:
+
+```
+$ psql -d testdb -c "CREATE EXTENSION gp_internal_tools;"
+```
+
+<a id="topic7"></a>
+
+### The session_level_memory_consumption View
+
+The *session_state.session_level_memory_consumption* view provides information about memory consumption and idle time for sessions that are running SQL queries.
+
+When resource queue-based resource management is active, the column `is_runaway` indicates whether WarehousePG considers the session a runaway session based on the vmem memory consumption of the session's queries. Under the resource queue-based resource management scheme, WarehousePG considers the session a runaway when the queries consume an excessive amount of memory. The WarehousePG server configuration parameter `runaway_detector_activation_percent` governs the conditions under which WarehousePG considers a session a runaway session.
+
+The `is_runaway`, `runaway_vmem_mb`, and `runaway_command_cnt` columns are not applicable when resource group-based resource management is active.
+
+| column                | type        | references | description                                                                                                             |
+| --------------------- | ----------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `datname`             | name        |            | Name of the database that the session is connected to.                                                                  |
+| `sess_id`             | integer     |            | Session ID.                                                                                                             |
+| `usename`             | name        |            | Name of the session user.                                                                                               |
+| `query`               | text        |            | Current SQL query that the session is running.                                                                          |
+| `segid`               | integer     |            | Segment ID.                                                                                                             |
+| `vmem_mb`             | integer     |            | Total vmem memory usage for the session in MB.                                                                          |
+| `is_runaway`          | boolean     |            | Session is marked as runaway on the segment.                                                                            |
+| `qe_count`            | integer     |            | Number of query processes for the session.                                                                              |
+| `active_qe_count`     | integer     |            | Number of active query processes for the session.                                                                       |
+| `dirty_qe_count`      | integer     |            | Number of query processes that have not yet released their memory. The value is `-1` for sessions that are not running. |
+| `runaway_vmem_mb`     | integer     |            | Amount of vmem memory that the session was consuming when it was marked as a runaway session.                           |
+| `runaway_command_cnt` | integer     |            | Command count for the session when it was marked as a runaway session.                                                  |
+| `idle_start`          | timestamptz |            | The last time a query process in this session became idle.                                                              |
+
+<a id="topic_memcontext"></a>
+
+## Viewing and Logging Per-Process Memory Usage Information
+
+WarehousePG allocates all memory within memory contexts. Memory contexts provide a convenient way to manage allocations made in different places that need to live for differing amounts of time. Destroying a context releases all of the memory that was allocated in it.
+
+Tracking the amount of memory used by a server process or a long-running query can help detect the source of a potential out-of-memory condition. WarehousePG provides a system view and administration functions that you can use for this purpose.
+
+<a id="topic_memcontext_view"></a>
+
+### About the pg_backend_memory_contexts View
+
+To display the memory usage of all active memory contexts in the server process attached to the current session, use the [pg_backend_memory_contexts](../../ref_guide/system_catalogs/catalog_ref-views.mdx#pg_backend_memory_contexts) system view. This view is restricted to superusers, but access may be granted to other roles.
+
+```sql
+SELECT * FROM pg_backend_memory_contexts;
+```
+
+<a id="topic_memcontext_func"></a>
+
+### About the Memory Context Admin Functions
+
+You can use the system administration function `pg_log_backend_memory_contexts()` to instruct WarehousePG to dump the memory usage of other sessions running on the coordinator host into the server log. Execution of this function is restricted to superusers only, and cannot be granted to other roles.
+
+The signature of `pg_log_backend_memory_contexts()` function follows:
+
+```pre
+pg_log_backend_memory_contexts( pid integer )
+```
+
+where `pid` identifies the process whose memory contexts you want dumped.
+
+`pg_log_backend_memory_contexts()` returns `true` when memory context logging is successfully activated for the process on the local host. When logging is activated, WarehousePG writes one message to the log for each memory context at the `LOG` message level. The log messages appear in the server log based on the log configuration set; refer to [Error Reporting and Logging](https://www.postgresql.org/docs/12/runtime-config-logging.html) in the PostgreSQL documentation for more information. *The memory context log messages are not sent to the client*.
+
+Memory context logging functions that dump memory usage across all WarehousePG segments, or dump usage for a specific segment are named `gp_log_backend_memory_contexts()`.
+
+`gp_log_backend_memory_contexts()` has two signatures:
+
+```pre
+gp_log_backend_memory_contexts( sess_id integer )
+gp_log_backend_memory_contexts( sess_id integer, contentId integer )
+```
+
+where `sess_id` is the WarehousePG identifier assigned to the session (typically obtained from the `pg_stat_activity` view), and `contentID` in the second signature identifies the segment instance of interest.
+
+When you invoke `gp_log_backend_memory_contexts()` on the WarehousePG coordinator host, it invokes `pg_log_backend_memory_contexts()` on the individual segments, which in turn triggers a memory usage dump to each segment log. The functions return an integer identifying the number of segments on which memory context logging was successfully activated.
+
+<a id="topic_memcontext_samplelog"></a>
+
+### Sample Log Messages
+
+The command:
+
+```sql
+SELECT pg_log_backend_memory_contexts( pg_backend_pid() );
+```
+
+triggered the dumping of the following (subset of) memory context messages to the local server log file:
+
+```pre
+2023-03-23 16:45:57.228512 UTC,"gpadmin","testdb",p16389,th-557447104,"[local]",,2023-03-23 15:57:32 UTC,0,,cmd10,seg-1,,,,sx1,"LOG","00000","logging memory contexts of PID 16389",,,,,,"SELECT pg_log_backend_memory_contexts(pg_backend_pid());",0,,"mcxt.c",1278,
+2023-03-23 16:45:57.229275 UTC,"gpadmin","testdb",p16389,th-557447104,"[local]",,2023-03-23 15:57:32 UTC,0,,cmd10,seg-1,,,,sx1,"LOG","00000","level: 0; TopMemoryContext: 108384 total in 6 blocks; 23248 free (21 chunks); 85136 used",,,,,,,0,,"mcxt.c",884,
+2023-03-23 16:45:57.229822 UTC,"gpadmin","testdb",p16389,th-557447104,"[local]",,2023-03-23 15:57:32 UTC,0,,cmd10,seg-1,,,,sx1,"LOG","00000","level: 1; pgstat TabStatusArray lookup hash table: 8192 total in 1 blocks; 1416 free (0 chunks); 6776 used",,,,,,,0,,"mcxt.c",884,
+2023-03-23 16:45:57.230387 UTC,"gpadmin","testdb",p16389,th-557447104,"[local]",,2023-03-23 15:57:32 UTC,0,,cmd10,seg-1,,,,sx1,"LOG","00000","level: 1; TopTransactionContext: 8192 total in 1 blocks; 7576 free (1 chunks); 616 used",,,,,,,0,,"mcxt.c",884,
+2023-03-23 16:45:57.230961 UTC,"gpadmin","testdb",p16389,th-557447104,"[local]",,2023-03-23 15:57:32 UTC,0,,cmd10,seg-1,,,,sx1,"LOG","00000","level: 1; TableSpace cache: 8192 total in 1 blocks; 2056 free (0 chunks); 6136 used",,,,,,,0,,"mcxt.c",884,
+```
+
+<a id="topic27"></a>
+
+## Viewing Query Workfile Usage Information
+
+The WarehousePG administrative schema *gp_toolkit* contains views that display information about WarehousePG workfiles. WarehousePG creates workfiles on disk if it does not have sufficient memory to run the query in memory. This information can be used for troubleshooting and tuning queries. The information in the views can also be used to specify the values for the WarehousePG configuration parameters `gp_workfile_limit_per_query` and `gp_workfile_limit_per_segment`.
+
+These are the views in the schema *gp_toolkit*:
+
+-   The gp_workfile_entries view contains one row for each operator using disk space for workfiles on a segment at the current time.
+-   The gp_workfile_usage_per_query view contains one row for each query using disk space for workfiles on a segment at the current time.
+-   The gp_workfile_usage_per_segment view contains one row for each segment. Each row displays the total amount of disk space used for workfiles on the segment at the current time.
+
+For information about using *gp_toolkit*, see [Using gp_toolkit](#topic31).
+
+<a id="topic28"></a>
+
+## Viewing the Database Server Log Files
+
+Every database instance in WarehousePG (coordinator and segments) runs a PostgreSQL database server with its own server log file. Log files are created in the `log` directory of the coordinator and each segment data directory.
+
+<a id="topic29"></a>
+
+### Log File Format
+
+The server log files are written in comma-separated values (CSV) format. Some log entries will not have values for all log fields. For example, only log entries associated with a query worker process will have the `slice_id` populated. You can identify related log entries of a particular query by the query's session identifier (`gp_session_id`) and command identifier (`gp_command_count`).
+
+The following fields are written to the log:
+
+| Number | Field Name         | Data Type                | Description                                                                                                                             |
+| ------ | ------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | event_time         | timestamp with time zone | Time that the log entry was written to the log                                                                                          |
+| 2      | user_name          | varchar(100)             | The database user name                                                                                                                  |
+| 3      | database_name      | varchar(100)             | The database name                                                                                                                       |
+| 4      | process_id         | varchar(10)              | The system process ID (prefixed with "p")                                                                                               |
+| 5      | thread_id          | varchar(50)              | The thread count (prefixed with "th")                                                                                                   |
+| 6      | remote_host        | varchar(100)             | On the coordinator, the hostname/address of the client machine. On the segment, the hostname/address of the coordinator.                |
+| 7      | remote_port        | varchar(10)              | The segment or coordinator port number                                                                                                  |
+| 8      | session_start_time | timestamp with time zone | Time session connection was opened                                                                                                      |
+| 9      | transaction_id     | int                      | Top-level transaction ID on the coordinator. This ID is the parent of any subtransactions.                                              |
+| 10     | gp_session_id      | text                     | Session identifier number (prefixed with "con")                                                                                         |
+| 11     | gp_command_count   | text                     | The command number within a session (prefixed with "cmd")                                                                               |
+| 12     | gp_segment         | text                     | The segment content identifier (prefixed with "seg" for primaries or "mir" for mirrors). The coordinator always has a content ID of -1. |
+| 13     | slice_id           | text                     | The slice ID (portion of the query plan being executed)                                                                                 |
+| 14     | distr_tranx_id     | text                     | Distributed transaction ID                                                                                                              |
+| 15     | local_tranx_id     | text                     | Local transaction ID                                                                                                                    |
+| 16     | sub_tranx_id       | text                     | Subtransaction ID                                                                                                                       |
+| 17     | event_severity     | varchar(10)              | Values include: LOG, ERROR, FATAL, PANIC, DEBUG1, DEBUG2                                                                                |
+| 18     | sql_state_code     | varchar(10)              | SQL state code associated with the log message                                                                                          |
+| 19     | event_message      | text                     | Log or error message text                                                                                                               |
+| 20     | event_detail       | text                     | Detail message text associated with an error or warning message                                                                         |
+| 21     | event_hint         | text                     | Hint message text associated with an error or warning message                                                                           |
+| 22     | internal_query     | text                     | The internally-generated query text                                                                                                     |
+| 23     | internal_query_pos | int                      | The cursor index into the internally-generated query text                                                                               |
+| 24     | event_context      | text                     | The context in which this message gets generated                                                                                        |
+| 25     | debug_query_string | text                     | User-supplied query string with full detail for debugging. This string can be modified for internal use.                                |
+| 26     | error_cursor_pos   | int                      | The cursor index into the query string                                                                                                  |
+| 27     | func_name          | text                     | The function in which this message is generated                                                                                         |
+| 28     | file_name          | text                     | The internal code file where the message originated                                                                                     |
+| 29     | file_line          | int                      | The line of the code file where the message originated                                                                                  |
+| 30     | stack_trace        | text                     | Stack trace text associated with this message                                                                                           |
+
+<a id="topic30"></a>
+
+### Searching the WarehousePG Server Log Files
+
+WarehousePG provides a utility called `gplogfilter` can search through a WarehousePG log file for entries matching the specified criteria. By default, this utility searches through the WarehousePG coordinator log file in the default logging location. For example, to display the last three lines of each of the log files under the coordinator directory:
+
+```
+$ gplogfilter -n 3
+
+```
+
+To search through all segment log files simultaneously, run `gplogfilter` through the `gpssh` utility. For example, to display the last three lines of each segment log file:
+
+```
+$ gpssh -f seg_host_file
+
+```
+
+```
+=> source /usr/local/greenplum-db/greenplum_path.sh
+=> gplogfilter -n 3 /gpdata/gp*/log/gpdb*.log
+```
+
+<a id="topic31"></a>
+
+## Using gp_toolkit
+
+Use the WarehousePG administrative schema *gp_toolkit* to query the system catalogs, log files, and operating environment for system status information. The `gp_toolkit` schema contains several views you can access using SQL commands. The *gp_toolkit* schema is accessible to all database users. Some objects require superuser permissions. Use a command similar to the following to add the *gp_toolkit* schema to your schema search path:
+
+```
+=> ALTER ROLE myrole SET search_path TO myschema,gp_toolkit;
+```
+
+For a description of the available administrative schema views and their usages, see the *WarehousePG Reference Guide*.
+
+<a id="topic_pyh_sqg_kp"></a>
+
+## SQL Standard Error Codes
+
+The following table lists all the defined error codes. Some are not used, but are defined by the SQL standard. The error classes are also shown. For each error class there is a standard error code having the last three characters 000. This code is used only for error conditions that fall within the class but do not have any more-specific code assigned.
+
+The PL/pgSQL condition name for each error code is the same as the phrase shown in the table, with underscores substituted for spaces. For example, code 22012, DIVISION BY ZERO, has condition name DIVISION_BY_ZERO. Condition names can be written in either upper or lower case.
+
+> **Note** PL/pgSQL does not recognize warning, as opposed to error, condition names; those are classes 00, 01, and 02.
+
+| Error Code                                                                 | Meaning                                              | Constant                                             |
+| -------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| **Class 00**— Successful Completion                                        |                                                      |                                                      |
+| 00000                                                                      | SUCCESSFUL COMPLETION                                | successful_completion                                |
+| Class 01 — Warning                                                         |                                                      |                                                      |
+| 01000                                                                      | WARNING                                              | warning                                              |
+| 0100C                                                                      | DYNAMIC RESULT SETS RETURNED                         | dynamic_result_sets_returned                         |
+| 01008                                                                      | IMPLICIT ZERO BIT PADDING                            | implicit_zero_bit_padding                            |
+| 01003                                                                      | NULL VALUE ELIMINATED IN SET FUNCTION                | null_value_eliminated_in_set_function                |
+| 01007                                                                      | PRIVILEGE NOT GRANTED                                | privilege_not_granted                                |
+| 01006                                                                      | PRIVILEGE NOT REVOKED                                | privilege_not_revoked                                |
+| 01004                                                                      | STRING DATA RIGHT TRUNCATION                         | string_data_right_truncation                         |
+| 01P01                                                                      | DEPRECATED FEATURE                                   | deprecated_feature                                   |
+| **Class 02** — No Data (this is also a warning class per the SQL standard) |                                                      |                                                      |
+| 02000                                                                      | NO DATA                                              | no_data                                              |
+| 02001                                                                      | NO ADDITIONAL DYNAMIC RESULT SETS RETURNED           | no_additional_dynamic_result_sets_returned           |
+| **Class 03** — SQL Statement Not Yet Complete                              |                                                      |                                                      |
+| 03000                                                                      | SQL STATEMENT NOT YET COMPLETE                       | sql_statement_not_yet_complete                       |
+| **Class 08** — Connection Exception                                        |                                                      |                                                      |
+| 08000                                                                      | CONNECTION EXCEPTION                                 | connection_exception                                 |
+| 08003                                                                      | CONNECTION DOES NOT EXIST                            | connection_does_not_exist                            |
+| 08006                                                                      | CONNECTION FAILURE                                   | connection_failure                                   |
+| 08001                                                                      | SQLCLIENT UNABLE TO ESTABLISH SQLCONNECTION          | sqlclient_unable_to_establish_sqlconnection          |
+| 08004                                                                      | SQLSERVER REJECTED ESTABLISHMENT OF SQLCONNECTION    | sqlserver_rejected_establishment_of_sqlconnection    |
+| 08007                                                                      | TRANSACTION RESOLUTION UNKNOWN                       | transaction_resolution_unknown                       |
+| 08P01                                                                      | PROTOCOL VIOLATION                                   | protocol_violation                                   |
+| **Class 09** — Triggered Action Exception                                  |                                                      |                                                      |
+| 09000                                                                      | TRIGGERED ACTION EXCEPTION                           | triggered_action_exception                           |
+| **Class 0A** — Feature Not Supported                                       |                                                      |                                                      |
+| 0A000                                                                      | FEATURE NOT SUPPORTED                                | feature_not_supported                                |
+| **Class 0B** — Invalid Transaction Initiation                              |                                                      |                                                      |
+| 0B000                                                                      | INVALID TRANSACTION INITIATION                       | invalid_transaction_initiation                       |
+| **Class 0F** — Locator Exception                                           |                                                      |                                                      |
+| 0F000                                                                      | LOCATOR EXCEPTION                                    | locator_exception                                    |
+| 0F001                                                                      | INVALID LOCATOR SPECIFICATION                        | invalid_locator_specification                        |
+| **Class 0L** — Invalid Grantor                                             |                                                      |                                                      |
+| 0L000                                                                      | INVALID GRANTOR                                      | invalid_grantor                                      |
+| 0LP01                                                                      | INVALID GRANT OPERATION                              | invalid_grant_operation                              |
+| **Class 0P** — Invalid Role Specification                                  |                                                      |                                                      |
+| 0P000                                                                      | INVALID ROLE SPECIFICATION                           | invalid_role_specification                           |
+| **Class 21** — Cardinality Violation                                       |                                                      |                                                      |
+| 21000                                                                      | CARDINALITY VIOLATION                                | cardinality_violation                                |
+| **Class 22** — Data Exception                                              |                                                      |                                                      |
+| 22000                                                                      | DATA EXCEPTION                                       | data_exception                                       |
+| 2202E                                                                      | ARRAY SUBSCRIPT ERROR                                | array_subscript_error                                |
+| 22021                                                                      | CHARACTER NOT IN REPERTOIRE                          | character_not_in_repertoire                          |
+| 22008                                                                      | DATETIME FIELD OVERFLOW                              | datetime_field_overflow                              |
+| 22012                                                                      | DIVISION BY ZERO                                     | division_by_zero                                     |
+| 22005                                                                      | ERROR IN ASSIGNMENT                                  | error_in_assignment                                  |
+| 2200B                                                                      | ESCAPE CHARACTER CONFLICT                            | escape_character_conflict                            |
+| 22022                                                                      | INDICATOR OVERFLOW                                   | indicator_overflow                                   |
+| 22015                                                                      | INTERVAL FIELD OVERFLOW                              | interval_field_overflow                              |
+| 2201E                                                                      | INVALID ARGUMENT FOR LOGARITHM                       | invalid_argument_for_logarithm                       |
+| 2201F                                                                      | INVALID ARGUMENT FOR POWER FUNCTION                  | invalid_argument_for_power_function                  |
+| 2201G                                                                      | INVALID ARGUMENT FOR WIDTH BUCKET FUNCTION           | invalid_argument_for_width_bucket_function           |
+| 22018                                                                      | INVALID CHARACTER VALUE FOR CAST                     | invalid_character_value_for_cast                     |
+| 22007                                                                      | INVALID DATETIME FORMAT                              | invalid_datetime_format                              |
+| 22019                                                                      | INVALID ESCAPE CHARACTER                             | invalid_escape_character                             |
+| 2200D                                                                      | INVALID ESCAPE OCTET                                 | invalid_escape_octet                                 |
+| 22025                                                                      | INVALID ESCAPE SEQUENCE                              | invalid_escape_sequence                              |
+| 22P06                                                                      | NONSTANDARD USE OF ESCAPE CHARACTER                  | nonstandard_use_of_escape_character                  |
+| 22010                                                                      | INVALID INDICATOR PARAMETER VALUE                    | invalid_indicator_parameter_value                    |
+| 22020                                                                      | INVALID LIMIT VALUE                                  | invalid_limit_value                                  |
+| 22023                                                                      | INVALID PARAMETER VALUE                              | invalid_parameter_value                              |
+| 2201B                                                                      | INVALID REGULAR EXPRESSION                           | invalid_regular_expression                           |
+| 22009                                                                      | INVALID TIME ZONE DISPLACEMENT VALUE                 | invalid_time_zone_displacement_value                 |
+| 2200C                                                                      | INVALID USE OF ESCAPE CHARACTER                      | invalid_use_of_escape_character                      |
+| 2200G                                                                      | MOST SPECIFIC TYPE MISMATCH                          | most_specific_type_mismatch                          |
+| 22004                                                                      | NULL VALUE NOT ALLOWED                               | null_value_not_allowed                               |
+| 22002                                                                      | NULL VALUE NO INDICATOR PARAMETER                    | null_value_no_indicator_parameter                    |
+| 22003                                                                      | NUMERIC VALUE OUT OF RANGE                           | numeric_value_out_of_range                           |
+| 22026                                                                      | STRING DATA LENGTH MISMATCH                          | string_data_length_mismatch                          |
+| 22001                                                                      | STRING DATA RIGHT TRUNCATION                         | string_data_right_truncation                         |
+| 22011                                                                      | SUBSTRING ERROR                                      | substring_error                                      |
+| 22027                                                                      | TRIM ERROR                                           | trim_error                                           |
+| 22024                                                                      | UNTERMINATED C STRING                                | unterminated_c_string                                |
+| 2200F                                                                      | ZERO LENGTH CHARACTER STRING                         | zero_length_character_string                         |
+| 22P01                                                                      | FLOATING POINT EXCEPTION                             | floating_point_exception                             |
+| 22P02                                                                      | INVALID TEXT REPRESENTATION                          | invalid_text_representation                          |
+| 22P03                                                                      | INVALID BINARY REPRESENTATION                        | invalid_binary_representation                        |
+| 22P04                                                                      | BAD COPY FILE FORMAT                                 | bad_copy_file_format                                 |
+| 22P05                                                                      | UNTRANSLATABLE CHARACTER                             | untranslatable_character                             |
+| **Class 23** — Integrity Constraint Violation                              |                                                      |                                                      |
+| 23000                                                                      | INTEGRITY CONSTRAINT VIOLATION                       | integrity_constraint_violation                       |
+| 23001                                                                      | RESTRICT VIOLATION                                   | restrict_violation                                   |
+| 23502                                                                      | NOT NULL VIOLATION                                   | not_null_violation                                   |
+| 23503                                                                      | FOREIGN KEY VIOLATION                                | foreign_key_violation                                |
+| 23505                                                                      | UNIQUE VIOLATION                                     | unique_violation                                     |
+| 23514                                                                      | CHECK VIOLATION                                      | check_violation                                      |
+| **Class 24** — Invalid Cursor State                                        |                                                      |                                                      |
+| 24000                                                                      | INVALID CURSOR STATE                                 | invalid_cursor_state                                 |
+| **Class 25** — Invalid Transaction State                                   |                                                      |                                                      |
+| 25000                                                                      | INVALID TRANSACTION STATE                            | invalid_transaction_state                            |
+| 25001                                                                      | ACTIVE SQL TRANSACTION                               | active_sql_transaction                               |
+| 25002                                                                      | BRANCH TRANSACTION ALREADY ACTIVE                    | branch_transaction_already_active                    |
+| 25008                                                                      | HELD CURSOR REQUIRES SAME ISOLATION LEVEL            | held_cursor_requires_same_isolation_level            |
+| 25003                                                                      | INAPPROPRIATE ACCESS MODE FOR BRANCH TRANSACTION     | inappropriate_access_mode_for_branch_transaction     |
+| 25004                                                                      | INAPPROPRIATE ISOLATION LEVEL FOR BRANCH TRANSACTION | inappropriate_isolation_level_for_branch_transaction |
+| 25005                                                                      | NO ACTIVE SQL TRANSACTION FOR BRANCH TRANSACTION     | no_active_sql_transaction_for_branch_transaction     |
+| 25006                                                                      | READ ONLY SQL TRANSACTION                            | read_only_sql_transaction                            |
+| 25007                                                                      | SCHEMA AND DATA STATEMENT MIXING NOT SUPPORTED       | schema_and_data_statement_mixing_not_supported       |
+| 25P01                                                                      | NO ACTIVE SQL TRANSACTION                            | no_active_sql_transaction                            |
+| 25P02                                                                      | IN FAILED SQL TRANSACTION                            | in_failed_sql_transaction                            |
+| **Class 26** — Invalid SQL Statement Name                                  |                                                      |                                                      |
+| 26000                                                                      | INVALID SQL STATEMENT NAME                           | invalid_sql_statement_name                           |
+| **Class 27** — Triggered Data Change Violation                             |                                                      |                                                      |
+| 27000                                                                      | TRIGGERED DATA CHANGE VIOLATION                      | triggered_data_change_violation                      |
+| **Class 28** — Invalid Authorization Specification                         |                                                      |                                                      |
+| 28000                                                                      | INVALID AUTHORIZATION SPECIFICATION                  | invalid_authorization_specification                  |
+| **Class 2B** — Dependent Privilege Descriptors Still Exist                 |                                                      |                                                      |
+| 2B000                                                                      | DEPENDENT PRIVILEGE DESCRIPTORS STILL EXIST          | dependent_privilege_descriptors_still_exist          |
+| 2BP01                                                                      | DEPENDENT OBJECTS STILL EXIST                        | dependent_objects_still_exist                        |
+| **Class 2D** — Invalid Transaction Termination                             |                                                      |                                                      |
+| 2D000                                                                      | INVALID TRANSACTION TERMINATION                      | invalid_transaction_termination                      |
+| **Class 2F** — SQL Routine Exception                                       |                                                      |                                                      |
+| 2F000                                                                      | SQL ROUTINE EXCEPTION                                | sql_routine_exception                                |
+| 2F005                                                                      | FUNCTION EXECUTED NO RETURN STATEMENT                | function_executed_no_return_statement                |
+| 2F002                                                                      | MODIFYING SQL DATA NOT PERMITTED                     | modifying_sql_data_not_permitted                     |
+| 2F003                                                                      | PROHIBITED SQL STATEMENT ATTEMPTED                   | prohibited_sql_statement_attempted                   |
+| 2F004                                                                      | READING SQL DATA NOT PERMITTED                       | reading_sql_data_not_permitted                       |
+| **Class 34** — Invalid Cursor Name                                         |                                                      |                                                      |
+| 34000                                                                      | INVALID CURSOR NAME                                  | invalid_cursor_name                                  |
+| **Class 38** — External Routine Exception                                  |                                                      |                                                      |
+| 38000                                                                      | EXTERNAL ROUTINE EXCEPTION                           | external_routine_exception                           |
+| 38001                                                                      | CONTAINING SQL NOT PERMITTED                         | containing_sql_not_permitted                         |
+| 38002                                                                      | MODIFYING SQL DATA NOT PERMITTED                     | modifying_sql_data_not_permitted                     |
+| 38003                                                                      | PROHIBITED SQL STATEMENT ATTEMPTED                   | prohibited_sql_statement_attempted                   |
+| 38004                                                                      | READING SQL DATA NOT PERMITTED                       | reading_sql_data_not_permitted                       |
+| **Class 39** — External Routine Invocation Exception                       |                                                      |                                                      |
+| 39000                                                                      | EXTERNAL ROUTINE INVOCATION EXCEPTION                | external_routine_invocation_exception                |
+| 39001                                                                      | INVALID SQLSTATE RETURNED                            | invalid_sqlstate_returned                            |
+| 39004                                                                      | NULL VALUE NOT ALLOWED                               | null_value_not_allowed                               |
+| 39P01                                                                      | TRIGGER PROTOCOL VIOLATED                            | trigger_protocol_violated                            |
+| 39P02                                                                      | SRF PROTOCOL VIOLATED                                | srf_protocol_violated                                |
+| **Class 3B** — Savepoint Exception                                         |                                                      |                                                      |
+| 3B000                                                                      | SAVEPOINT EXCEPTION                                  | savepoint_exception                                  |
+| 3B001                                                                      | INVALID SAVEPOINT SPECIFICATION                      | invalid_savepoint_specification                      |
+| **Class 3D** — Invalid Catalog Name                                        |                                                      |                                                      |
+| 3D000                                                                      | INVALID CATALOG NAME                                 | invalid_catalog_name                                 |
+| **Class 3F** — Invalid Schema Name                                         |                                                      |                                                      |
+| 3F000                                                                      | INVALID SCHEMA NAME                                  | invalid_schema_name                                  |
+| **Class 40** — Transaction Rollback                                        |                                                      |                                                      |
+| 40000                                                                      | TRANSACTION ROLLBACK                                 | transaction_rollback                                 |
+| 40002                                                                      | TRANSACTION INTEGRITY CONSTRAINT VIOLATION           | transaction_integrity_constraint_violation           |
+| 40001                                                                      | SERIALIZATION FAILURE                                | serialization_failure                                |
+| 40003                                                                      | STATEMENT COMPLETION UNKNOWN                         | statement_completion_unknown                         |
+| 40P01                                                                      | DEADLOCK DETECTED                                    | deadlock_detected                                    |
+| **Class 42** — Syntax Error or Access Rule Violation                       |                                                      |                                                      |
+| 42000                                                                      | SYNTAX ERROR OR ACCESS RULE VIOLATION                | syntax_error_or_access_rule_violation                |
+| 42601                                                                      | SYNTAX ERROR                                         | syntax_error                                         |
+| 42501                                                                      | INSUFFICIENT PRIVILEGE                               | insufficient_privilege                               |
+| 42846                                                                      | CANNOT COERCE                                        | cannot_coerce                                        |
+| 42803                                                                      | GROUPING ERROR                                       | grouping_error                                       |
+| 42830                                                                      | INVALID FOREIGN KEY                                  | invalid_foreign_key                                  |
+| 42602                                                                      | INVALID NAME                                         | invalid_name                                         |
+| 42622                                                                      | NAME TOO LONG                                        | name_too_long                                        |
+| 42939                                                                      | RESERVED NAME                                        | reserved_name                                        |
+| 42804                                                                      | DATATYPE MISMATCH                                    | datatype_mismatch                                    |
+| 42P18                                                                      | INDETERMINATE DATATYPE                               | indeterminate_datatype                               |
+| 42809                                                                      | WRONG OBJECT TYPE                                    | wrong_object_type                                    |
+| 42703                                                                      | UNDEFINED COLUMN                                     | undefined_column                                     |
+| 42883                                                                      | UNDEFINED FUNCTION                                   | undefined_function                                   |
+| 42P01                                                                      | UNDEFINED TABLE                                      | undefined_table                                      |
+| 42P02                                                                      | UNDEFINED PARAMETER                                  | undefined_parameter                                  |
+| 42704                                                                      | UNDEFINED OBJECT                                     | undefined_object                                     |
+| 42701                                                                      | DUPLICATE COLUMN                                     | duplicate_column                                     |
+| 42P03                                                                      | DUPLICATE CURSOR                                     | duplicate_cursor                                     |
+| 42P04                                                                      | DUPLICATE DATABASE                                   | duplicate_database                                   |
+| 42723                                                                      | DUPLICATE FUNCTION                                   | duplicate_function                                   |
+| 42P05                                                                      | DUPLICATE PREPARED STATEMENT                         | duplicate_prepared_statement                         |
+| 42P06                                                                      | DUPLICATE SCHEMA                                     | duplicate_schema                                     |
+| 42P07                                                                      | DUPLICATE TABLE                                      | duplicate_table                                      |
+| 42712                                                                      | DUPLICATE ALIAS                                      | duplicate_alias                                      |
+| 42710                                                                      | DUPLICATE OBJECT                                     | duplicate_object                                     |
+| 42702                                                                      | AMBIGUOUS COLUMN                                     | ambiguous_column                                     |
+| 42725                                                                      | AMBIGUOUS FUNCTION                                   | ambiguous_function                                   |
+| 42P08                                                                      | AMBIGUOUS PARAMETER                                  | ambiguous_parameter                                  |
+| 42P09                                                                      | AMBIGUOUS ALIAS                                      | ambiguous_alias                                      |
+| 42P10                                                                      | INVALID COLUMN REFERENCE                             | invalid_column_reference                             |
+| 42611                                                                      | INVALID COLUMN DEFINITION                            | invalid_column_definition                            |
+| 42P11                                                                      | INVALID CURSOR DEFINITION                            | invalid_cursor_definition                            |
+| 42P12                                                                      | INVALID DATABASE DEFINITION                          | invalid_database_definition                          |
+| 42P13                                                                      | INVALID FUNCTION DEFINITION                          | invalid_function_definition                          |
+| 42P14                                                                      | INVALID PREPARED STATEMENT DEFINITION                | invalid_prepared_statement_definition                |
+| 42P15                                                                      | INVALID SCHEMA DEFINITION                            | invalid_schema_definition                            |
+| 42P16                                                                      | INVALID TABLE DEFINITION                             | invalid_table_definition                             |
+| 42P17                                                                      | INVALID OBJECT DEFINITION                            | invalid_object_definition                            |
+| **Class 44** — WITH CHECK OPTION Violation                                 |                                                      |                                                      |
+| 44000                                                                      | WITH CHECK OPTION VIOLATION                          | with_check_option_violation                          |
+| **Class 53** — Insufficient Resources                                      |                                                      |                                                      |
+| 53000                                                                      | INSUFFICIENT RESOURCES                               | insufficient_resources                               |
+| 53100                                                                      | DISK FULL                                            | disk_full                                            |
+| 53200                                                                      | OUT OF MEMORY                                        | out_of_memory                                        |
+| 53300                                                                      | TOO MANY CONNECTIONS                                 | too_many_connections                                 |
+| **Class 54** — Program Limit Exceeded                                      |                                                      |                                                      |
+| 54000                                                                      | PROGRAM LIMIT EXCEEDED                               | program_limit_exceeded                               |
+| 54001                                                                      | STATEMENT TOO COMPLEX                                | statement_too_complex                                |
+| 54011                                                                      | TOO MANY COLUMNS                                     | too_many_columns                                     |
+| 54023                                                                      | TOO MANY ARGUMENTS                                   | too_many_arguments                                   |
+| **Class 55** — Object Not In Prerequisite State                            |                                                      |                                                      |
+| 55000                                                                      | OBJECT NOT IN PREREQUISITE STATE                     | object_not_in_prerequisite_state                     |
+| 55006                                                                      | OBJECT IN USE                                        | object_in_use                                        |
+| 55P02                                                                      | CANT CHANGE RUNTIME PARAM                            | cant_change_runtime_param                            |
+| 55P03                                                                      | LOCK NOT AVAILABLE                                   | lock_not_available                                   |
+| **Class 57** — Operator Intervention                                       |                                                      |                                                      |
+| 57000                                                                      | OPERATOR INTERVENTION                                | operator_intervention                                |
+| 57014                                                                      | QUERY CANCELED                                       | query_canceled                                       |
+| 57P01                                                                      | ADMIN SHUTDOWN                                       | admin_shutdown                                       |
+| 57P02                                                                      | CRASH SHUTDOWN                                       | crash_shutdown                                       |
+| 57P03                                                                      | CANNOT CONNECT NOW                                   | cannot_connect_now                                   |
+| **Class 58** — System Error (errors external to WarehousePG )              |                                                      |                                                      |
+| 58030                                                                      | IO ERROR                                             | io_error                                             |
+| 58P01                                                                      | UNDEFINED FILE                                       | undefined_file                                       |
+| 58P02                                                                      | DUPLICATE FILE                                       | duplicate_file                                       |
+| Class F0 — Configuration File Error                                        |                                                      |                                                      |
+| F0000                                                                      | CONFIG FILE ERROR                                    | config_file_error                                    |
+| F0001                                                                      | LOCK FILE EXISTS                                     | lock_file_exists                                     |
+| **Class P0** — PL/pgSQL Error                                              |                                                      |                                                      |
+| P0000                                                                      | PLPGSQL ERROR                                        | plpgsql_error                                        |
+| P0001                                                                      | RAISE EXCEPTION                                      | raise_exception                                      |
+| P0002                                                                      | NO DATA FOUND                                        | no_data_found                                        |
+| P0003                                                                      | TOO MANY ROWS                                        | too_many_rows                                        |
+| **Class XX** — Internal Error                                              |                                                      |                                                      |
+| XX000                                                                      | INTERNAL ERROR                                       | internal_error                                       |
+| XX001                                                                      | DATA CORRUPTED                                       | data_corrupted                                       |
+| XX002                                                                      | INDEX CORRUPTED                                      | index_corrupted                                      |
