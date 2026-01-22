@@ -1,25 +1,25 @@
 ---
 title: GPU acceleration with NVIDIA RAPIDS
 navTitle: GPU acceleration with NVIDIA RAPIDS
-description: Understand how Understand how PGAA leverages NVIDIA RAPIDS and Spark to offload analytical workloads to GPUs.
+description: Understand how PGAA leverages NVIDIA RAPIDS and Spark to offload analytical workloads to GPUs.
 ---
 
-Handle massive analytical workloads by offloading query execution to a parallelized, GPU-accelerated Spark environment. This architecture overcomes the limitation where sequential processing becomes a bottleneck for multi-terabyte datasets.
+Integrate the Postgres Analytics Accelerator (PGAA) with Apache Spark to transform PostgreSQL into a high-performance platform that overcomes the CPU bottlenecks of multi-terabyte datasets. This architecture uses Spark’s distributed framework to parallelize workloads, while NVIDIA RAPIDS adds a layer of GPU acceleration for massive scale.
 
 <p align="center">
   <img src="images/rapids_arch.svg" width="500" />
 </p>
 
-The Postgres Analytics Accelerator (PGAA) acts as the bridge between transactional PostgreSQL and the high-performance GPU cluster.
-- **Intentional hand-off:** You control the workflow by explicitly selecting the execution engine. PGAA packages the query and routes it to a specialized Spark Connect endpoint.
-- **Vectorized execution:** Unlike row-based CPUs, GPUs process data in large columnar batches. The RAPIDS Accelerator plugin intercepts the Spark query plan, replacing standard CPU operations with GPU-optimized kernels.
-- **Transparent reliability:** If a query contains operations not supported by the GPU, the system automatically triggers a transparent fallback to the CPU, ensuring the query completes with maximum possible efficiency.
 
-Integrating NVIDIA RAPIDS into your PGAA workflow delivers massive gains in speed and operational efficiency:
-- **100x faster performance:** Complete complex analytical workloads 50–100 times faster than standard PostgreSQL tables.
-- **Scaling ROI:** While Spark provides the initial boost at 100GB, RAPIDS becomes the primary driver at 3TB+, as the performance gap widens with larger datasets.
-- **Zero indexing:** Achieve peak performance with minimal configuration. Unlike standard Postgres, PGAA requires no manual index creation or constant tuning.
+Offloading query execution to Apache Spark via PGAA provides immediate architectural advantages:
+- **Intentional hand-off:** You maintain full control by explicitly selecting the execution engine; PGAA then packages the SQL query and routes it to a specialized Spark Connect endpoint.
+- **Distributed processing:** By moving workloads to a Spark cluster, you leverage distributed computing power to handle massive datasets that would otherwise bottleneck a single database instance.
+- **Zero indexing:** Achieve peak analytical performance without the need for manual index creation or constant maintenance, significantly reducing operational overhead.
 
+While Spark handles the initial distribution of data, integrating NVIDIA RAPIDS provides the hardware acceleration necessary for massive scale:
+- **Massively parallel performance:** Leveraging thousands of GPU cores to process columnar data batches simultaneously, RAPIDS provides a much higher degree of parallelism that completes complex analytical workloads 50–100 times faster than standard PostgreSQL transactional tables.
+- **Scaling ROI:** The performance advantage grows with your data; while Spark provides a boost at 100GB, RAPIDS becomes the primary driver at 3TB and beyond, as the hardware efficiency gap widens with larger datasets.
+- **Transparent reliability:** The system ensures query completion via automatic fallback. If a specific operation is not supported by the GPU, it seamlessly shifts back to the CPU to ensure maximum efficiency without user intervention.
 
 !!! Note
   Currently, GPU acceleration with Apache Spark is currently optmized for read-only queries on Parquet files.
@@ -48,11 +48,6 @@ The configuration of PGAA with NVIDIA RAPIDS consists of the following steps:
 
   ```
   org.apache.spark:spark-connect_2.12:3.5.7,\
-  io.delta:delta-spark_2.12:3.0.0,\
-  org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.2,\
-  org.apache.iceberg:iceberg-gcp-bundle:1.9.2,\
-  org.apache.iceberg:iceberg-aws-bundle:1.9.2,\
-  org.apache.iceberg:iceberg-azure-bundle:1.9.2,\
   org.apache.hadoop:hadoop-aws:3.3.4,\
   org.apache.hadoop:hadoop-azure:3.3.6,\
   org.apache.hadoop:hadoop-azure-datalake:3.3.6,\
@@ -84,34 +79,14 @@ To utilize GPU acceleration, NVIDIA RAPIDS must be correctly installed and activ
 1. Apply Spark configuration settings. The following are the essential parameters required:
 
   ```
-  spark.plugins=com.nvidia.spark.SQLPlugin
-  spark.rapids.sql.enabled
-  spark.executor.resource.gpu.amount
-  spark.task.resource.gpu.amount
-  spark.executor.extraClassPath
-  ```
-
-  The following example sets the essential parameters and others:
-
-  ```
+  --conf "spark.rapids.sql.enabled=true"
   --conf "spark.rapids.filecache.enabled=true"
   --conf "spark.executor.resource.gpu.amount=1"
-  --conf "spark.task.resource.gpu.amount=0.0625"
-  --conf "spark.scheduler.minRegisteredResourcesRatio=1.0"
-  --conf "spark.locality.wait=0s"
-  --conf "spark.sql.files.maxPartitionBytes=2GB"
-  --conf "spark.rapids.shuffle.multiThreaded.reader.threads=32"
-  --conf "spark.rapids.shuffle.multiThreaded.writer.threads=32"
-  --conf "spark.rapids.sql.multiThreadedRead.numThreads=32"
   --conf "spark.plugins=com.nvidia.spark.SQLPlugin"
-  --conf "spark.rapids.memory.host.spillStorageSize=16g"
-  --conf "spark.rapids.memory.pinnedPool.size=8g"
-  --conf "spark.rapids.sql.concurrentGpuTasks=3"
-  --conf "spark.rapids.sql.enabled=true"
   --conf "spark.shuffle.manager=com.nvidia.spark.rapids.spark356.RapidsShuffleManager"
   ```
 
-  See [RAPIDS Accelerator for Apache Spark Configuration](https://nvidia.github.io/spark-rapids/docs/configs.html) from the NVIDIA documentation for a full list of parameters, and [RAPIDS Accelerator for Apache Spark Tuning Guide](https://docs.nvidia.com/spark-rapids/user-guide/23.12/tuning-guide.html) for tuning.
+  See [RAPIDS Accelerator for Apache Spark Configuration](https://nvidia.github.io/spark-rapids/docs/configs.html) from the NVIDIA documentation for a full list of parameters, and [RAPIDS Accelerator for Apache Spark Tuning Guide](https://docs.nvidia.com/spark-rapids/user-guide/latest/tuning-guide.html) for tuning.
 
 1. If deploying Spark via Docker, modify your `docker-compose.yaml` to grant Spark containers access to the GPUs:
 
