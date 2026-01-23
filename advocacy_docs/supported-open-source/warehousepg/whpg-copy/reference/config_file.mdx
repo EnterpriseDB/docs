@@ -4,12 +4,9 @@ navTitle: whpg-copy configuration file
 description: The complete reference to the WarehousePG Copy command.
 ---
 
-WareHousePG Copy configuration file.
+WarehousePG Copy TOML-based configuration file reference.
 
-You can generate a sample configuration file using `whpg-copy config-example`.
-
-This section describes each of the parameters that you can edit and assign in the whpg-copy configuration file. 
-
+You can generate a sample configuration file using the [whpg-copy config-example](whpg-copy-utility#config-example) command.
 
 ```yaml
 # ==============================================================================
@@ -90,62 +87,56 @@ dry_run = false
 
 **src_url**
 
-Source database connection URL. Supports standard PostgreSQL connection strings (`postgres://gpadmin:@10.0.0.1:5432/source_db"`). 
+Connection string for the source database. Supports standard PostgreSQL connection strings. It follows the format `postgres://[user[:password]@]host[:port][/dbname]`.
 
 **dst_url**
 
-Destination database connection URL. (`"postgres://gpadmin:@10.0.0.2:5432/target_db"`).
-
+Connection string for the destination database. It follows the format `postgres://[user[:password]@]host[:port][/dbname]`
 
 **include_table**
 
-Specifies tables to include in the copy operation. To have uppercase letters or other special characters in schema or table names, follow PostgreSQL's qualified identifier rules to quote them (default is None) (`["schema1.table1", "schema2.table2"]`).
+Specifies tables to include. Use the format `schema.table` to specify the relations. If you are using special characters, follow PostgreSQL's qualified identifier rules to quote them.
 
 **exclude_table**
 
-Specifies tables to exclude (Default: None). (`[ "schema3.table3", "schema4.table4"]`).
+Specifies tables to exclude. Uses the same format as `include-table`.
 
 **compression** 
 
-Enables compression during data transfer to reduce network bandwidth usage. Recommended for transfers over WAN or slow networks (Default: true).
+Enables or disables ZSTD compression during data transfer.Recommended for transfers over WAN or slow networks Default is `true`.
 
 **through_partition_leaves**
 
-Copy partitioned tables through their leaf partitions in parallel. Disable this to enforce data goes through the root partition table or intermediate partition table. Default: true.
-
+If `true` (default), copies data directly between leaf partitions in parallel. If `false`, data goes through the specified root/intermediate partition table.
 
 **target_mode**
 
-Defines how to handle existing tables on the destination (default is append). The supported values are:
-- **append**: Insert data into existing tables.
-- **truncate**: Clear the destination table before copying.
-- **skip-existing** : Do not copy if the table already exists.
+Determines how to handle existing tables on the destination. The supported options are:
+- **append**: (Default) Inserts data into existing tables.
+- **truncate**: Truncates the destination table before copying.
+- **skip-existing** : Skips the copy operation if the table already exists.
 
 **validate_method**
 
-Validation method to perform after copying data (default is none). The supported values are:
-- **none**: No validation.
-- **count**: Compare row counts between source and destination.
-- **checksum**: Calculate and compare data hashes.
+Validation to perform after copying. The supported options are:
+- **none**: (Default) No validation.
+- **count**: Compares row counts.
+- **checksum**: Calculates and compares data hashes.
 
 **workers**
 
-Number of parallel workers to run. Default is 4.
+Specifies the number of concurrent worker tasks. Default is 4.
 
 **port_range**
 
-Listening port range on the destination for data transferring. Those ports need to be enabled to be accessed from the source segments. whpg-copy will try to start listening on the port one by one from the range. At least one port is required in the range.
+Defines the ports on the destination cluster used to receive data from the source segments. `whpg-copy` scans this range sequentially and binds to the first available port it finds. You must specify at least one port and ensure the entire range is accessible from the source segment hosts.
 
 **mapping_rules**
 
-Mapping rules allow for powerful renaming and selection logic using regular expressions (Regex). You can define multiple [[mapping_rules]] blocks in your configuration file.
+Mapping rules allow for powerful renaming and selection logic using regular expressions (Regex). You can define multiple `[[mapping_rules]]` blocks in your configuration file. The supported options are:
 
-Define rules to rename schemas or tables during the copy process. Each rule requires at least a source pattern. Mapping rules provide powerful logic for selecting, renaming, and transforming your data during a copy operation. Mapping rules allow for powerful renaming and selection logic using regular expressions. 
-
-You can use regular expressions (Regex) to match source objects and define how they should appear at the destination. You can define multiple `mapping_rules` blocks in your configuration file. 
-
-- **src_schema**, **scr_table**: These fields use standard Rust regular expression patterns to match your source objects. Patterns are automatically anchored (wrapped in `^` and `$`). For example, `src_table = "users"` matches only the table `"users"`, not `"super_users"`. To match multiple tables, use the `.*` wildcard.
-- **dst_schema**, **dst_table**: Use these fields to define the destination objects. These fields support Capture Groups. If your source pattern contains groups in parentheses `()`, you can reference them in the destination using `${1}`, `${2}`, etc.  
+- **src_schema**, **scr_table**: Define the source objects. These fields use standard Rust regular expression patterns to match your source objects. Patterns are automatically anchored (wrapped in `^` and `$`). For example, `src_table = "users"` matches only the table `"users"`, not `"super_users"`. To match multiple tables, use the `.*` wildcard.
+- **dst_schema**, **dst_table**: Define the destination objects. These fields support Regex's Capture Groups. If your source pattern contains groups in parentheses `()`, you can reference them in the destination using `${1}`, `${2}`, etcetera.  
 - **sql**: Custom SQL query to use for extracting data from the source table. Instead of copying the entire table, `whpg-copy` will execute this SQL and copy its result. Supports placeholders: `${src_schema}` and `${src_table}`, the utility will automatically replace them with the escaped source objects. This is ideal for joining tables, masking sensitive data, or changing data types on the fly.
 
 !!! Note
@@ -154,48 +145,49 @@ You can use regular expressions (Regex) to match source objects and define how t
 
 **dry_run**
 
-Run the operation without actually changing any data on the destination (default is false).
+Run the operation without changing any data on the destination (default is `false`).
 
 ## Examples
 
-Copy the table `public.users` to a table named `public.customers`:
+- Copy the table `public.users` to a table named `public.customers`:
 
-```
-[[mapping_rules]]
-src_schema = "public"
-src_table = "users"
-dst_table = "customers"
-```
+    ```
+    [[mapping_rules]]
+    src_schema = "public"
+    src_table = "users"
+    dst_table = "customers"
+    ```
 
-Copy all tables in schema `legacy` to the schema `archived`:
+- Copy all tables in schema `legacy` to the schema `archived`:
 
-```
-[[mapping_rules]]
-src_schema = "legacy"
-src_table = ".*"        # Match all tables in 'legacy' schema
-dst_schema = "archived"
-```
+    ```
+    [[mapping_rules]]
+    src_schema = "legacy"
+    src_table = ".*"        # Match all tables in 'legacy' schema
+    dst_schema = "archived"
+    ```
 
-Copy using Capture Groups to dynamically rename tables during the copy operation. 
+- Copy using Capture Groups to dynamically rename tables during the copy operation. 
 
-By using parentheses `()` in your source pattern, you can "save" parts of the table name and "paste" them into the new name.
+    By using parentheses `()` in your `src_table` pattern, you can "save" parts of the table name and "paste" them into the new name.
 
-```
-[[mapping_rules]]
-src_table = "data_(\\d+)_(\\d+)"
-dst_table = "record_${1}_v${2}"
-```
+    ```
+    [[mapping_rules]]
+    src_table = "data_(\\d+)_(\\d+)"
+    dst_table = "record_${1}_v${2}"
+    ```
 
-The Source Pattern looks for tables starting with `data_`, followed by two groups of digits.
-The Destination Template defines how the new table should be named using the saved groups.
+    The `src_table` pattern looks for tables starting with `data_`, followed by two groups of digits.
+    
+    The `dst_table` template defines how the new table should be named using the saved groups.
 
-Result: a table name `data_2023_01` will be copied as `record_2023_v01.`
+    As a result, a table named `data_2023_01` will be copied as `record_2023_v01`.
 
 
-Use a custom SQL so that only orders from 2024 onwards are copied:
+- Use a custom SQL only to copy orders from 2024 onwards:
 
-```
-[[mapping_rules]]
-src_table = "orders"
-sql = "SELECT * FROM ${src_schema}.${src_table} WHERE order_date >= '2024-01-01'"
-```
+    ```
+    [[mapping_rules]]
+    src_table = "orders"
+    sql = "SELECT * FROM ${src_schema}.${src_table} WHERE order_date >= '2024-01-01'"
+    ```

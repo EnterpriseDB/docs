@@ -1,25 +1,28 @@
 ---
-title: Using WarehousePG Copy
-navTitle: Using
-description: Learn how to use the different features provided by WarehousePG Copy.
+title: Migrating data between WarehousePG clusters with WarehousePG Copy
+navTitle: Migrating data between clusters
+description: Learn how to migrate database data between source and destination WarehousePG clusters.
 ---
 
-The `whpg-copy` utility provides a high-performance method for migrating data between a source and a destination WarehousePG (WHPG) cluster. 
+WarehousePG Copy provides a high-performance method for migrating data between source and destination WarehousePG (WHPG) clusters, utilizing parallelized data transfers to maximize throughput.
 
-1. Make sure you meet the [prerequisites](#prerequisites).
-1. [Diagnose connectivity between the clusters](#diagnosing-connectivity-between-clusters).
+You can migrate the data between clusters of the same version or from a  WarehousePG 6.x cluster to a WarehousePG 7.x cluster. However, downward migration from version 7.x to 6.x is not supported.
+
+Follow these steps to perform a successful migration:
+1. Meet the [prerequisites](#prerequisites).
+1. [Diagnose connectivity between clusters](#diagnosing-connectivity-between-clusters).
 1. [Choose your configuration settings](#choosing-your-configuration-settings).
 1. [Run the copy command](#running-the-copy-command).
 1. [Verify the copy operation](#verifying-the-copy-operation).
 
 ## Prerequisites
 
-- You must install the identical version of the whpg-copy utility on every host across both the source and destination clusters. 
+- You must install the identical version of the `whpg-copy` utility on every host across both the source and destination clusters. 
 - The specific host where you run the `whpg-copy` command must have network access to the WHPG coordinators of both the source and destination clusters.
-- The database user defined in your connection strings must have sufficient privileges to 
+- The database user defined in your connection strings must have sufficient privileges to: 
     - Read all data and metadata from the source cluster. 
     - Write data and execute DDL commands on the destination cluster.
-- While passwords can be specified in the connection string, `whpg-copy` currently does not currently provide full support for password authentication. To ensure stability, we recommend to use a `.pgpass` file or configure trust-based authentication (via `pg_hba.conf`) for the duration of the copy. 
+- While you can specify a password in the connection string, `whpg-copy` currently does not provide full support for password authentication. To ensure stability, we recommend to use a `.pgpass` file or configure trust-based authentication (via `pg_hba.conf`) for the duration of the copy. 
 
 ## Diagnosing connectivity between clusters
 
@@ -42,12 +45,10 @@ If the diagnosis fails, it will report which specific segments or connections ar
 
 ## Choosing your configuration settings
 
-`whpg-copy` supports both direct command-line arguments and TOML-based configuration files.
+You can specify your configuration settings both with direct command-line arguments and with a TOML-based configuration file. Command line is more suited for simple tasks or one-off copies. Use a TOML configuration file for complex setups, reusable pipelines, or when using options available only via the configuration file. 
 
-- Command Line: Ideal for simple tasks or one-off copies.
-- TOML File: Recommended for complex setups, reusable pipelines, or when using options available only via TOML. Use `--config-file <PATH>` or `-c <PATH>` to load.
-
-Note Command-line arguments take precedence over settings defined in a TOML file.
+!!! Note 
+    Command-line arguments take precedence over settings defined in a TOML file.
 
 To quickly create a configuration file with all available options, run:
 
@@ -55,13 +56,13 @@ To quickly create a configuration file with all available options, run:
 whpg-copy config-example > my_config.toml
 ```
 
-For a full list of parameters, see [whpg-copy copy](reference/vhpg-copy-utility#copy) and [whpg-copy configuration file](reference/config_file).
+For a full list of parameters, see [whpg-copy copy](reference/whpg-copy-utility#copy) and [whpg-copy configuration file](reference/config_file).
 
 ## Running the copy command
 
 Initiate the transfer by running the `whpg-copy copy` command:
 
-Using command-line flags:
+Using command-line arguments:
 
 ```bash
 whpg-copy copy \
@@ -84,7 +85,7 @@ Upon completion, `whpg-copy` generates detailed reports in the log directory (de
 - Success report: `wc_success.<APP_ID>.txt`: Lists successfully copied tables and the total data volume transferred.
 - Retry configuration file: `wc_failed_retry.<APP_ID>.toml`: Generated if any tasks fail. Contains a pre-filled TOML configuration for retrying the failed tables.
 
-You can retry the copy operation by running:
+Where `<APP_ID>` is a unique identifier for the copy session.
 
 If a copy operation has failed, retry the operation using the generated configuration file:
 
@@ -94,35 +95,35 @@ whpg-copy copy -c wc_failed_retry.<APP_ID>.toml.
 
 ## Examples
 
-Copy all relations from `src_db` to `dst_db` using append mode:
+- Copy all relations from `src_db` to `dst_db` using append mode:
 
-```bash
-whpg-copy copy --src-url postgres://gpadmin@mdw_src:5432/src_db --dst-url postgres://gpadmin@mdw_dst:5432/dst_db
-```
+    ```bash
+    whpg-copy copy --src-url postgres://gpadmin@mdw_src:5432/src_db --dst-url postgres://gpadmin@mdw_dst:5432/dst_db
+    ```
 
-Copy the tables `s1.table1` and `s2.table2` to the destination cluster:
+- Copy the tables `s1.table1` and `s2.table2` to the destination cluster:
 
-```bash
-whpg-copy copy \
-    --src-url postgres://gpadmin@mdw_src:5432/src_db \
-    --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
-    --include-table s1.table1 \
-    --include-table s2.table2
-```
+    ```bash
+    whpg-copy copy \
+        --src-url postgres://gpadmin@mdw_src:5432/src_db \
+        --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+        --include-table s1.table1 \
+        --include-table s2.table2
+    ```
 
-Copy all tables whose names begin with "to_copy" by using a configuration file:
+- Copy all tables whose names begin with `to_copy` by using a configuration file:
 
-```bash
-whpg-copy copy --config-file my_whpg_copy.toml
-```
+    ```bash
+    whpg-copy copy --config-file my_whpg_copy.toml
+    ```
 
-Where the file `my_whpg_copy.toml` contains:
+    Where the file `my_whpg_copy.toml` contains:
 
-```
-src_url = "postgres://gpadmin@mdw_src:5432/src_db"
-dst_url = "postgres://gpadmin@mdw_dst:5432/dst_db"
-[[mapping_rules]]
-src_table = "to_copy.*"
-```
+    ```
+    src_url = "postgres://gpadmin@mdw_src:5432/src_db"
+    dst_url = "postgres://gpadmin@mdw_dst:5432/dst_db"
+    [[mapping_rules]]
+    src_table = "to_copy.*"
+    ```
 
 
