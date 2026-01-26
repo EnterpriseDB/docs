@@ -1,0 +1,299 @@
+---
+title: user_profile 
+navTitle: user_profile
+description: Learn about the user_profile extension for WarehousePG.
+directoryDefaults:  
+  displayBanner: ""  
+---
+
+WarehousePG (WHPG) allows database superusers to manage password policies and account security via the `user_profile` extension. 
+
+## Downloading, installing, and loading the extension
+
+You must install the extension on each host in your WarehousePG cluster.
+
+1. Configure your package manager to use the EDB repository for WHPG:
+ 
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    ```
+
+1. Create a file `all_hosts` on your WHPG coordinator, which lists all hosts in the WHPG cluster. For example:
+
+    ```ini
+    cdw
+    scdw
+    sdw1
+    sdw2
+    sdw3
+    ```
+
+1. From the coordinator, use the `gpssh` utility to install the packages from the coordinator onto every other host in the cluster:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo dnf install -y edb-whpg<whpg_major_version>-user_profile'
+    ```
+
+    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo yum install -y edb-whpg<whpg_major_version>-user_profile'
+    ```
+
+    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+    </Tab>
+    </TabContainer>
+
+You must load the `user_profile` extension as a shared library before you can use it within your databases.
+
+1. Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+1. Use the output of the previous command to enable `user_profile`, along any other shared libraries, and restart WHPG:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>,user_profile'
+    gpstop -ar
+    ```
+
+1. Create the extension in your database:
+
+    ```sql
+    CREATE EXTENSION user_profile;
+    ```
+
+1. Initialize the profile storage by running the following command as a superuser:
+
+    ```sql
+    SELECT up_init();
+    ```
+
+## Understanding the user_profile parameters
+
+A profile is a set of security attributes applied to a group of roles to enforce authentication rules such as password complexity, expiration, and lockout policies.
+
+Each profile defines password management policies designed to strengthen authentication security. These profiles allow you to:
+- Track failed login attempts.
+- Lock accounts automatically after a specified threshold of failures.
+- Enforce password expiration and grace periods for renewals.
+- Define complexity requirements to ensure strong credentials.
+- Restric password reuse to prevent credential cycling.
+
+After creating a profile, you can associate it with one or more user roles. When a user initiates a connection, the WarehousePG (WHPG) server acts as the enforcement engine, applying the specific security rules defined in the profile associated with that user's login role.
+
+Although a single WHPG cluster can support multiple profiles, these profiles are cluster-wide resources. This means a profile is shared by all databases within the cluster; a user accessing different databases under the same cluster will always be subject to the same profile constraints.
+
+To update your security requirements, you only need to modify the profile. The WHPG server will then automatically apply those updated standards to every user associated with that profile across the entire cluster.
+
+By default, WHPG creates a system profile named `default`. When a new role is created, the server automatically assigns it to the `default` profile unless an alternative is explicitly specified. Upon installing the `user_profile` extension, all existing roles are retroactively assigned to the `default` profile to ensure immediate coverage. The `default` profile is a mandatory system component and cannot be deleted.
+
+Each profile consists of several parameters that govern how passwords and logins are handled:
+
+| Parameter Name            | Description                                                                                                                                                                    | Supported values 
+| ------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------
+| `FAILED_LOGIN_ATTEMPTS`   | The maximum number of failed login attempts permitted before the server locks the account for the duration defined by `PASSWORD_LOCK_TIME`. | `INTEGER` > 0, or `UNLIMITED` (no lockout threshold).
+| `PASSWORD_LOCK_TIME`      | The number of days an account remains locked after exceeding `FAILED_LOGIN_ATTEMPTS`.                                           | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (requires superuser unlock).
+| `PASSWORD_LIFE_TIME`      | The password's validity period in days. If used with `PASSWORD_GRACE_TIME`, the user can still connect during the grace period but must change their password before executing commands. | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no expiration).
+| `PASSWORD_GRACE_TIME`     | The  grace period in days starting after password expiration. During this time, users can connect but are restricted from executing commands until the password is updated.  | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (infinite grace period).
+| `PASSWORD_REUSE_TIME`     | The minimum number of days that must pass before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_MAX`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse. | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no time restriction).
+| `PASSWORD_REUSE_MAX`      | The number of password changes required before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_TIME`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse. | `INTEGER` >= 0, or `UNLIMITED` (no count restriction)..
+| `PASSWORD_MINIMUM_LENGTH` | The minimum character count required for a password. | `INTEGER` >= 1, or `UNLIMITED` (no length check).
+| `PASSWORD_REQUIRE_UPPER`  | Enforces the inclusion of at least one uppercase character in the password string. | `TRUE` (required) or `FALSE` (optional).
+| `PASSWORD_REQUIRE_LOWER`  | Enforces the inclusion of at least one lowercase character in the password string. | `TRUE` (required) or `FALSE` (optional).
+| `PASSWORD_REQUIRE_NUMBER` | Enforces the inclusion of at least one numeric character (0-9) in the password string.  | `TRUE` (required) or `FALSE` (optional).
+| `PASSWORD_SPECIAL_CHARS`  | Defines a set of special characters; the password must contain at least one character from this specified string.  | A string of characters, or '' (empty string) for no restriction.
+
+The `default` profile initially has all parameters set to `UNLIMITED` or `FALSE`.
+
+## Creating a new profile
+
+Use the `up_create_profile()` User Defined Function (UDF) to create a new profile:
+
+```
+up_create_profile( <profile_name>
+       [<param1>, <value1>, <param2>, <value2> ... ]);
+```
+
+Where: 
+
+- `profile_name` specifies the name of the profile.
+- `parameter` specifies the attribute limited by the profile.
+- `value` specifies the parameter limit.
+
+### Examples
+
+The following command creates a profile named `acctg`. The profile specifies that if a user doesn't authenticate with the correct password in five attempts, the account is locked for one day:
+
+```sql
+SELECT up_create_profile('acctg',
+        'FAILED_LOGIN_ATTEMPTS', '5',
+        'PASSWORD_LOCK_TIME', '1');
+```
+
+The following command creates a profile named `sales`. The profile specifies that a user must change their password every 90 days:
+
+```sql
+SELECT up_create_profile('sales',
+        'PASSWORD_LIFE_TIME', '90',
+        'PASSWORD_GRACE_TIME', '3');
+```
+
+The following command creates a profile named `accts`. The profile specifies that a user can't reuse a password within `180` days of the last use of the password and must change their password at least five times before reusing the password:
+
+```sql
+SELECT up_create_profile('accts',
+        'PASSWORD_REUSE_TIME', '180',
+        'PASSWORD_REUSE_MAX', '5');
+```
+
+The following command creates a profile named `resources`. When a user associated with this profile wants to change the password, the password must contain at least one number character and one special character:
+
+```sql
+SELECT up_create_profile('resource',
+        'PASSWORD_REQUIRE_NUMBER', 'TRUE',
+        'PASSWORD_SPECIAL_CHARS', '!@#$%^&*');
+```
+
+## Altering a profile
+
+Use the `up_alter_profile()` UDF to modify a user profile:
+
+```
+up_alter_profile( <profile_name>
+       [<param1>, <value1>, <param2>, <value2> ... ]);
+```
+
+Where:
+
+- `profile_name` specifies the name of the profile.
+- `parameter` specifies the attribute limited by the profile. Use `name` to rename the profile.
+- `value` specifies the parameter limit.
+
+A database superuser can use the `up_alter_profile()` UDF to modify the values specified by the `default` profile. 
+
+### Examples
+
+The following command modifies a profile named `acctg_profile` to specify that if a user doesn't successfully authenticate whitin three attempts, the account is locked for one day.
+
+```sql
+SELECT up_alter_profile('acctg_profile',
+        'FAILED_LOGIN_ATTEMPTS', '3',
+        'PASSWORD_LOCK_TIME', '1');
+```
+
+The following command changes the name of `acctg_profile` to `payables_profile`:
+
+```sql
+SELECT up_alter_profile('acctg_profile', 'name', 'payables_profile');
+```
+
+## Inspecting a profile
+
+Use the `up_show_profile()` UDF to list one or all profiles:
+
+```
+up_show_profile( [profile_name] );
+```
+
+Where:
+
+- `profile_name` specifies the name of the profile. `NULL` lists all profiles.
+
+## Dropping a profile
+
+Use the `up_drop_profile()` UDF to drop a profile:
+
+```
+up_drop_profile(<profile_name>);
+```
+
+Where:
+
+- `profile_name` specifies the name of the profile being dropped.
+
+You cannot drop a profile if there are one or more users associated with it.
+
+### Examples
+
+The following command drops a profile named `acctg_profile`:
+
+```sql
+SELECT up_drop_profile('acctg_profile');
+```
+
+## Associating a profile with an existing role
+
+Use the `up_alter_role_profile()` UDF to associate a profile with an existing role:
+
+```
+up_alter_role_profile(<role_name|role_id>, <profile_name>);
+```
+
+Where:
+
+- `role_id` or `role_name` specify the role to associate the profile with.
+- `profile_name` specifies the name of the profile.
+
+Only a database superuser can use the `up_alter_role_profile()` UDF.
+
+Each login role can have only one profile. To discover the profile that's currently associated with a login role, use the `up_show_role_info()` UDF:
+
+```
+up_show_role_info([role_name|role_id])
+```
+
+Where:
+
+- `role_id` or `role_name` specify the specific role to show (use `NULL` to show all roles).
+
+### Examples
+
+The following command associates a profile named `acctg` with a user named `john`:
+
+```sql
+SELECT up_alter_role_profile('john', 'acctg');
+```
+
+## Locking and unlocking a role
+
+A database superuser can use the `up_lock()` and `up_unlock()` UDFs to lock or unlock a role:
+
+```
+up_lock(<role_name|role_id>)
+up_unlock(<role_name|role_id>)
+```
+
+Where:
+
+- `role_name` or `role_id` specifies the role to be locked or unlocked.
+
+Use `up_lock()` to immediately lock a user role. Once locked, a role’s `LOGIN` functionality is disabled. The role remains in this locked state until a superuser restores access using the `ACCOUNT UNLOCK` clause of the `ALTER ROLE` statement (or uses the `up_unlock()` UDF).
+
+Use the `up_unlock()` clause to unlock a role that was locked by `up_lock()`, or a role that was locked through the profile `FAILED_LOGIN_ATTEMPTS` setting.
+
+
+### Examples
+
+The following command locks a role named `john`. The account remains locked until the account is unlocked by calling `up_unlock()`.
+
+```
+SELECT up_lock('john');
+```
+
+The following command unlocks a role named `john`:
+
+```
+SELECT up_unlock('john');
+```
