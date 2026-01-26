@@ -1,12 +1,23 @@
 ---
-title: "Architecture overview"
-navTitle: Architecture overview
-description: An overview of EDB Postgres Distributed's basic architecture, including groups, multiple masters, mesh topology, logical replication, connection management, and high availability.
-deepToC: true
+title: Architecture
+navTitle: Architecture
+description: An overview of EDB Postgres Distributed architecture.
+indexCards: simple
 redirects:
   - bdr
-  - /pgd/latest/overview/basic-architecture/ #generated for DOCS-1247-PGD-6.0-Docs
-  - /pgd/latest/reference/overview/basic-architecture/ #generated for DOCS-3034
+  - /pgd/latest/overview/ #generated for DOCS-1247-PGD-6.0-Docs
+  - /pgd/latest/reference/overview/ #generated for DOCS-3034
+  - /pgd/latest/overview/basic-architecture/
+  - /pgd/latest/essential-how-to/architectures/*
+  - /pgd/latest/expanded-how-to/architectures/*
+
+navigation:
+  - architecture-and-performance
+  - standard
+  - near-far
+  - always-on
+  - multi-location
+  - geo-distributed
 ---
 
 EDB Postgres Distributed (PGD) is a distributed database solution that extends PostgreSQL's capabilities, enabling highly available and fault-tolerant database deployments across multiple nodes. 
@@ -21,13 +32,16 @@ This can be more efficient depending on your architectural needs. However, Conne
 
 At the highest level, PGD comprises two main components: Bi-Directional Replication (BDR) and Connection Manager. 
 BDR is a Postgres extension that enables a multi-master replication mesh between different BDR-enabled Postgres instances/nodes. 
-[Connection Manager](../connection-manager) sends requests to the write leader—ensuring a lower risk of conflicts (stronger consistency) between nodes.
+[Connection Manager](/pgd/latest/connection-manager) sends requests to the write leader—ensuring a lower risk of conflicts (stronger consistency) between nodes.
 
-![Diagram showing 3 application nodes and 3 PGD nodes. Traffic is being directed from each of the PGD nodes by the connection manatger to the write leader node.](./images/1x3-cluster.svg)
+The below diagram shows 3 application nodes and 3 PGD nodes. Traffic is being directed from each of the PGD nodes by the Connection Manager to the write leader node.
+
+<p align="center">
+  <img src="../images/1x3-cluster.svg" width="500" />
 
 Changes are replicated directly, row-by-row between all nodes. 
 [Logical replication](/pgd/latest/terminology/#logical-replication) in PGD is asynchronous by default, so only eventual consistency is guaranteed (within seconds usually). 
-However, [commit scope](/pgd/latest/reference/commit-scopes/commit-scopes) options offer immediate consistency and durability guarantees via [CAMO](/pgd/latest/reference/commit-scopes/camo/), [group](/pgd/latest/reference/commit-scopes/group-commit) and [synchronous](/pgd/latest/reference/commit-scopes/synchronous_commit) commits.
+However, [commit scope](/pgd/latest/commit-scopes/commit-scopes) options offer immediate consistency and durability guarantees via [CAMO](/pgd/latest/commit-scopes/camo/), [group](/pgd/latest/commit-scopes/group-commit) and [synchronous](/pgd/latest/commit-scopes/synchronous_commit) commits.
 
 The Raft algorithm provides a mechanism for electing leaders (both Raft leader and write leader), deciding which nodes to add or subtract from the cluster. It generally ensures that the distributed system remains consistent and fault tolerant, even in the face of node failures.
 
@@ -37,30 +51,30 @@ PGD comprises several key architectural elements that work together to provide i
 
   - **PGD nodes**: These are individual Postgres instances that store and manage data. They are the basic building blocks of a PGD cluster.
  
-  - **Groups**:  By default, all nodes are also members of a [top-level group](../node_management/groups_and_subgroups/#groups) with its own Raft leader but without a write leader. PGD nodes can be further organized into [subgroups](../node_management/groups_and_subgroups/#sub-groups), which enhance manageability and high availability. Each group can contain multiple nodes, allowing for redundancy and failover within the group. Groups facilitate organized replication and data consistency among nodes within the same group and across different groups. Each group has its own write leader.
+  - **Groups**:  By default, all nodes are also members of a [top-level group](/pgd/latest/node_management/groups_and_subgroups/#groups) with its own Raft leader but without a write leader. PGD nodes can be further organized into [subgroups](/pgd/latest/node_management/groups_and_subgroups/#sub-groups), which enhance manageability and high availability. Each group can contain multiple nodes, allowing for redundancy and failover within the group. Groups facilitate organized replication and data consistency among nodes within the same group and across different groups. Each group has its own write leader.
 
-  - **Replication mechanisms**: PGD's replication mechanisms include BDR for efficient replication across nodes, enabling multi-master replication. BDR supports asynchronous replication by default but can be configured for varying levels of synchronicity, such as [Group Commit](../commit-scopes/group-commit) or [Synchronous Commit](../commit-scopes/synchronous_commit), to enhance data durability.
+  - **Replication mechanisms**: PGD's replication mechanisms include BDR for efficient replication across nodes, enabling multi-master replication. BDR supports asynchronous replication by default but can be configured for varying levels of synchronicity, such as [Group Commit](/pgd/latest/commit-scopes/group-commit) or [Synchronous Commit](/pgd/latest/commit-scopes/synchronous_commit), to enhance data durability.
 
   - **Monitoring tools**: To monitor performance, health, and usage with PGD, you can use its [built-in command-line interface](/pgd/latest/reference/cli) (CLI), which offers several useful commands. For example: 
     - The [`pgd nodes list`](/pgd/latest/reference/cli/command_ref/nodes/list/) command provides a summary of all nodes in the cluster, including their state and status. 
     - The [`pgd cluster show --health`](/pgd/latest/reference/cli/command_ref/cluster/show/#options) command checks the health of the cluster, reporting on node accessibility, replication slot health, and other critical metrics. 
     - The [`pgd events show`](/pgd/latest/reference/cli/command_ref/events/show/) command lists significant events like background worker errors and node membership changes, which helps in tracking the operational status and issues within the cluster. 
 
-    Furthermore, the BDR extension allows for monitoring your cluster using SQL using the [`bdr.monitor`](../security/pgd-predefined-roles/#bdr_monitor) role.
+    Furthermore, the BDR extension allows for monitoring your cluster using SQL using the [`bdr.monitor`](/pgd/latest/security/pgd-predefined-roles/#bdr_monitor) role.
 
 ### Node types
 
 All nodes in PGD are effectively data nodes. They vary only in their purpose in the cluster. 
 
-  - **[Data nodes](/pgd/latest/reference/nodes/overview#data-nodes)**: Store and manage data, handle read and write operations, and participate in replication.
+  - **[Data nodes](/pgd/latest/nodes/overview#data-nodes)**: Store and manage data, handle read and write operations, and participate in replication.
 
 There are then three types of nodes which, although built like a data node, have a specific purpose. These are:
 
-  - **[Subscriber-only nodes](/pgd/latest/reference/nodes/subscriber_only/)**: Subscribe to changes from data nodes for read-only purposes. Used in reporting or analytics.
+  - **[Subscriber-only nodes](/pgd/latest/nodes/subscriber_only/)**: Subscribe to changes from data nodes for read-only purposes. Used in reporting or analytics.
 
-  - **[Witness nodes](/pgd/latest/reference/nodes/witness_nodes/)**: Participate in the consensus process without storing data, aiding in achieving quorum and maintaining high availability.
+  - **[Witness nodes](/pgd/latest/nodes/witness_nodes/)**: Participate in the consensus process without storing data, aiding in achieving quorum and maintaining high availability.
 
-  - **[Logical standby nodes](/pgd/latest/reference/nodes/logical_standby_nodes/)**: Act as standby nodes that can be promoted to data nodes if needed, ensuring high availability and disaster recovery.
+  - **[Logical standby nodes](/pgd/latest/nodes/logical_standby_nodes/)**: Act as standby nodes that can be promoted to data nodes if needed, ensuring high availability and disaster recovery.
 
 ### Node roles
 
@@ -84,10 +98,21 @@ PGD allows for selective replication, enabling users to replicate only a subset 
 
 With commit scopes, PGD also provides configurable durability. Accordingly, durability can be increased from the default asynchronous behavior and tuned using various configurable commit scopes: 
 
-- **[Synchronous Commit](/pgd/latest/reference/commit-scopes/synchronous_commit.mdx)**: Works a lot like PostgreSQL’s synchronous_commit option in its underlying operation. Requires writing to at least one other node at COMMIT time but can be tuned to require all nodes.
+- **[Synchronous Commit](/pgd/latest/commit-scopes/synchronous_commit.mdx)**: Works a lot like PostgreSQL’s synchronous_commit option in its underlying operation. Requires writing to at least one other node at COMMIT time but can be tuned to require all nodes.
 
-- **[CAMO](/pgd/latest/reference/commit-scopes/camo.mdx)** (Commit At Most Once): Works by tracking each transaction with a unique ID and using a pair of nodes to confirm the transaction's outcome, ensuring the application knows whether to retry the transaction or not.
+- **[CAMO](/pgd/latest/commit-scopes/camo.mdx)** (Commit At Most Once): Works by tracking each transaction with a unique ID and using a pair of nodes to confirm the transaction's outcome, ensuring the application knows whether to retry the transaction or not.
 
-- **[Group Commit](/pgd/latest/reference/commit-scopes/group-commit.mdx)**: An experimental commit scope, the goal of which is to protect against data loss in case of single-node failures of temporary outages by requiring more than one PGD node to successfully confirm a transaction at COMMIT time.
+- **[Group Commit](/pgd/latest/commit-scopes/group-commit.mdx)**: An experimental commit scope, the goal of which is to protect against data loss in case of single-node failures of temporary outages by requiring more than one PGD node to successfully confirm a transaction at COMMIT time.
 
-- **[Lag Control](/pgd/latest/reference/commit-scopes/lag-control.mdx)**: If replication is running outside of set limits (taking too long for another node to be replicated to), a delay is injected into the node that originally received the transaction, slowing things down until other nodes have caught up.
+- **[Lag Control](/pgd/latest/commit-scopes/lag-control.mdx)**: If replication is running outside of set limits (taking too long for another node to be replicated to), a delay is injected into the node that originally received the transaction, slowing things down until other nodes have caught up.
+
+
+## Architecture types
+
+You can deploy a cluster in a wide range of architectures, including:
+
+- [Standard/One-location](standard): A single PGD cluster with three nodes in the same data center or availability zone.
+- [Near/far](near-far): Designed for a single location that needs to be reasonably highly available and needs to be able to recover from a disaster. It does this by having a two-data-node cluster in the primary location and a single data node in a secondary location.
+- [Always-on](always-on): A single PGD cluster with two or more groups in the same data center or availability zone. This architecture is designed for high availability and disaster recovery, ensuring that the database remains operational even if one group fails. Only available for PGD Expanded.
+- [Multi-location](multi-location): A single PGD cluster with two or more groups in different data centers or availability zones.  Only available for PGD Expanded.
+- [Geo-distributed](geo-distributed): A single PGD cluster with two or more groups in different regions, like a multi-location architecture but with higher latency and potential network partitioning issues. Only available for PGD Expanded.
