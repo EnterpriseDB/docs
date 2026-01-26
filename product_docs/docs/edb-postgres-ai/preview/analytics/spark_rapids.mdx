@@ -30,7 +30,7 @@ When you use Spark as the execution engine for PGAA, you get scale-out distribut
 
 The core architecture consists of a PostgreSQL server with the PGAA extension, an Apache Spark cluster configured with NVIDIA RAPIDS, and compatible object storage containing Parquet-formatted data.
 
-To implement this environment, you can leverage existing infrastructure, perform a manual installation, or use our [ready-to-run] Docker Compose stack to quickly deploy all necessary components. This stack includes pre-configured examples optimized for the NVIDIA Brev platform, allowing you to easily deploy self-serve GPU instances in the cloud. If compatible GPUs are detected, NVIDIA RAPIDS will automatically provide hardware acceleration; otherwise, the system transparently falls back to CPU-based processing.
+To implement this environment, you can leverage existing infrastructure, perform a manual installation, or use our ready-to-run Docker Compose stack to quickly deploy all necessary components. This stack includes pre-configured examples optimized for the NVIDIA Brev platform, allowing you to easily deploy self-serve GPU instances in the cloud. If compatible GPUs are detected, NVIDIA RAPIDS will automatically provide hardware acceleration; otherwise, the system transparently falls back to CPU-based processing.
 
 The configuration of PGAA with NVIDIA RAPIDS consists of the following steps:
 
@@ -116,12 +116,26 @@ To utilize GPU acceleration, NVIDIA RAPIDS must be correctly installed and activ
   );
   ```
 
-1. Create a table using the `PGAA` access method. Specify the storage location created in the previous step, the path to either a single Parquet file or a directory containing multiple Parquet files, and the format (currently Parquet). For example:
+1. Create tables using the `PGAA` access method. Specify the storage location created in the previous step, the path to either a single Parquet file or a directory containing multiple Parquet files, and the format (currently Parquet). For example:
 
-  ```sql
-  CREATE TABLE public.supplier () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_10/customer', pgaa.format = 'parquet');
   ```
+  CREATE TABLE public.customer () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/customer', pgaa.format = 'parquet');
+  CREATE TABLE public.lineitem () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/lineitem', pgaa.format = 'parquet');
+  CREATE TABLE public.nation () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/nation', pgaa.format = 'parquet');
+  CREATE TABLE public.orders () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/orders', pgaa.format = 'parquet');
+  CREATE TABLE public.part () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/part', pgaa.format = 'parquet');
+  CREATE TABLE public.partsupp () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/partsupp', pgaa.format = 'parquet');
+  CREATE TABLE public.region () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/region', pgaa.format = 'parquet');
+  CREATE TABLE public.supplier () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/supplier', pgaa.format = 'parquet') ;
+  ```    
 
   If you specify a directory containing multiple Parquet files, PGAA automatically unions all files into a single file for processing.
 
@@ -146,7 +160,47 @@ To utilize GPU acceleration, NVIDIA RAPIDS must be correctly installed and activ
 
 ### Running analytical queries
 
-Execute queries against your defined tables to offload analytical workloads to Spark.
+
+Run heavy analytical queries against your defined tables to verify that they are successfully leveraging GPU acceleration.
+
+The query is offloaded to the Spark cluster, and if NVIDIA RAPIDS is active, the join and aggregation operations are performed in parallel across thousands of GPU cores.
+
+The following example runs a complex query that identifies customer revenue impact by filtering for returned items within a specific quarterly window. This involves a four-way join and large-scale aggregations that would typically bottleneck a standard relational engine:
+
+```sql
+SELECT
+    c_custkey,
+    c_name,
+    sum(l_extendedprice * (1 - l_discount)) AS revenue,
+    c_acctbal,
+    n_name,
+    c_address,
+    c_phone,
+    c_comment
+FROM
+    customer,
+    orders,
+    lineitem,
+    nation
+WHERE
+    c_custkey = o_custkey
+    AND l_orderkey = o_orderkey
+    AND o_orderdate >= CAST('1993-10-01' AS date)
+    AND o_orderdate < CAST('1994-01-01' AS date)
+    AND l_returnflag = 'R'
+    AND c_nationkey = n_nationkey
+GROUP BY
+    c_custkey,
+    c_name,
+    c_acctbal,
+    c_phone,
+    n_name,
+    c_address,
+    c_comment
+ORDER BY
+    revenue DESC
+LIMIT 20;
+```
 
 To confirm that NVIDIA RAPIDS is actively accelerating your queries, monitor the execution plan through the Spark Connect UI:
 
