@@ -1,0 +1,314 @@
+---
+title: Configure PGD data tiering
+navTitle: Configure PGD data tiering
+description: Step-by-step guide to configure PGD data tiering.
+---
+
+Manage the data lifecycle of your Advanced High Availability or Distributed High Availability cluster (PGD) by moving Postgres data to object storage using three different available methods. Configure PGD data tiering either through the Hybrid Manager (HM) console or manually from your PGD cluster command line.
+
+## Prerequisites
+
+- Active HM instance version HM 2025.11 and later versions.
+- Provisioned PGD cluster version 6.1 or later with PGFS extension and PGAA extension version 1.4.0 or later.
+- Catalog service (optional): HM-managed Lakekeeper or external REST-compatible catalog.
+- Object storage: S3-compatible with credentials.
+- User permissions: the database user must have `CREATE`/`ALTER`/`EXECUTE` privileges for the PGD and PGAA functions.
+- Lakehouse Cluster (recommended) for querying offloaded data.
+
+!!! Note 
+    To check versions, run `SELECT bdr.bdr_version();` for PGD and `SELECT pgaa.pgaa_version();` for the PGAA extension.
+
+## Initial configuration
+
+Configure your PGD cluster to point to object storage for analytics or to an external catalog to write metadata to if you are using one. 
+
+<TabContainer syncKey="intro">
+<Tab title="HM console">
+
+When you deploy your PGD cluster, HM automatically provisions a write catalog replication target as the default write location within your configured object storage at provisioning time.
+
+Enable statistics for the node group disks in order to view the impact of tiered storage:
+
+1. Find your PGD cluster in the HM console and select **Quick Actions**.
+1. Select **Edit Cluster**.
+1. Navigate to **Data Groups** and select your data group.
+1. Select **Edit**, then **DB configuration**.
+1. Find the configuration parameter `edb.collect_table_statistics` and change its value to `all`.
+1. **Save** the changes.
+
+</Tab>
+
+<Tab title="psql">
+
+Configure the default write location for your PGD cluster, which can either be a storage location, or a write catalog replication target.
+
+1. **Option 1**: Point to storage.
+
+      Create a storage location using the PGFS extension. See [Creating a storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) for details.
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgfs.create_storage_location(
+        'storage_location_name',
+        'protocol://your-bucket-name/path/',
+        '{"region": "region-name"}',
+        '{"access_key_id": "...", "secret_access_key": "..."}'
+      );
+      ```
+
+      Point PGD to the defined storage location:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_storage_location', 'storage_location_name');
+      ```
+
+1. **Option 2**: Point to a catalog.
+      Configure a connection to an external catalog:
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgaa.add_catalog(
+          'write-catalog-name',
+          'iceberg-rest',
+          '{
+            "url": "https://your-catalog-rest-endpoint.com",
+            "token": "YOUR_AUTH_TOKEN",
+           }'
+        )
+      );
+      ```
+
+      Set the catalog as the analytics write destination:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_write_catalog', 'write-catalog-name');
+      ```
+
+</Tab>
+</TabContainer>
+
+### Convert to Tiered table
+
+Configure an existing heap table to use tiered tables.
+
+<TabContainer syncKey="TT">
+<Tab title="HM console">
+
+Configure a tiered table:
+
+1. Find your non-partitioned heap table in the **Tables** tab.
+1. Select **Convert to Tiered Table**.
+1. Enter the following information:
+
+    - **Partition Column** must be a `DATE` or `TIMESTAMP` for `RANGE` partitioning. It must also be included in the primary key.
+    - **Initial Lower Bound** sets chronological starting point for the first partition.
+    - **Analytics Offload Period**: is the threshold age beyond which the data moves into "cold" storage. 
+    - **Partition Increment**: refers to the time interval in between partitions.
+    - **Minimum Advance Partitions**: establishes the minimum count of partitions that the system must proactively create and maintain ahead of the current date.
+    - **Maximum Advance Partitions**: sets the number of partitions to create if the number of partitions falls below the value of **Minimum Advance Partitions**.
+    - **Enable real-time analytics replication** triggers replication for data newer than **Analytics Offload Period** ("hot" data).
+
+!!! Note 
+    Tables with sequences or foreign key constraints are not supported with tiered tables. Drop the sequence or constraint before converting to tiered table, then recreate it after conversion.
+
+1. Once the process completes, the table **Type** changes from **Heap** to **Tiered**.
+1. Expand the table to view the individual partitions: their **Type** shows as **Heap** or **HTAP** (if you enabled real-time analytics replication) for the "hot" tier, and **Iceberg** or **Delta** for the "cold" tier.  
+1. Compare the table values for **Disk Rows**, **Object Storage Rows**, **Disk Size**, and **Object Storage Size**.
+
+</Tab>
+
+<Tab title="psql">
+
+Find your non-partitioned heap table and use the `pgaa.convert_to_tiered_table` function to convert it to a tiered table:
+
+```sql
+CALL pgaa.convert_to_tiered_table(
+    'public.transactional_table',
+    range_partition_column := 'your_timestamp_column',
+    partition_increment := '1 year', 
+    analytics_offload_period := '1 year',
+    initial_lower_bound := '2010-01-01',
+    enable_replication := true 
+);
+```
+
+Where:
+- `relation` is the name of the table. This function uses Autopartition to configure the table data into partitions. 
+- `range_partition_column` specifies the column to partition by. It must be `DATE` or `TIMESTAMP`, and it must also be included in the primary key.
+- `initial_lower_bound` specifies the chronological starting point for the first partition.
+- `partition_increment` defines the time interval in between partitions.
+- `analytics_offload_period` defines the age threshold that automatically triggers the migration of all older partitions to object storage, marking the data as "cold".
+- `enable_replication` When set to `FALSE`, the table's data is only offloaded once partitions exceed the "cold" data threshold, If set to `TRUE`, it triggers immediate real-time replication.
+- `minimum_advance_partitions` establishes the minimum count of partitions that the system must proactively create and maintain ahead of the current date.
+
+
+This function converts the heap table into a tiered table and initiates the automated process to offload partitions older than `analytics_offload_period` to the configured object storage. If you set `enable_replication` to true, it will also convert the non-offloaded partitions into HTAP tables and replicate them to object storage. 
+
+!!! Note 
+    Tables with sequences or foreign key constraints are not supported with tiered tables. Drop the sequence or constraint before converting to tiered table, then recreate it after conversion.
+
+</Tab>
+</TabContainer>
+
+### Enable Replication
+
+Configure an existing heap table to stream data to object storage.
+
+<TabContainer syncKey="replication">
+<Tab title="HM console">
+
+To enable replication:
+1. Find your table in the **Tables** tab. Your table must have a primary key.
+1. Select **Actions** then **Enable Replication**.
+1. Confirm the operation and select **Enable Replication**.
+1. The table **Type** changes from **Heap** to **HTAP** and **Replication** shows as **Enabled**.
+1. Compare the table values for **Disk Rows**, **Object Storage Rows**, **Disk Size**, and **Object Storage Size**.
+
+To disable replication:
+1. Find your table in the **Tables** tab.
+1. Select **Actions** then **Disable Replication**.
+1. Confirm the operation and select **Disable Replication**.
+1. The table **Type** changes from **HTAP** to **Heap** and **Replication** shows as **Disabled**.
+1. Compare the table values for **Disk Rows**, **Object Storage Rows**, **Disk Size**, and **Object Storage Size**.
+
+</Tab>
+
+<Tab title="psql">
+
+Use the `pgaa.enable_analytics_replication` function to enable continuos replication of a heap table. Note that your table must have a primary key.
+
+```sql
+CALL pgaa.enable_analytics_replication('public.transactional_table');
+```
+
+The function converts the heap table to an analytical HTAP table and starts the logical replication worker.
+
+To disable replication:
+
+```sql
+CALL pgaa.disable_analytics_replication('public.transactional_table');
+```
+
+The function stops the analytics replication worker process from capturing and streaming any further DML changes to the external object storage. The table is no longer contributing data to the analytics platform, though the data that was already offloaded remains in object storage.
+
+</Tab>
+</TabContainer>
+
+### Offload Table
+
+Move the contents of an existing HTAP table to "cold" storage, truncate the local copy, and stop replication.
+
+<TabContainer syncKey="offload">
+<Tab title="HM console">
+
+To offload the table:
+1. Find your HTAP table in the **Tables** tab.
+1. Select **Actions** then **Offload Table**.
+1. Confirm the operation and select **Offload Table**.
+1. The table **Type** changes from **HTAP** to **Iceberg** or **Delta** and **Replication** shows as **Disabled**.
+1. Compare the table values for **Disk Rows**, **Object Storage Rows**, **Disk Size**, and **Object Storage Size**.
+
+To restore the table:
+1. Find your Iceberg or Delta table in the **Tables** tab.
+1. Select **Actions** then **Restore Table**.
+1. Confirm the operation and select **Restore Table**.
+1. The table **Type** changes from  **Iceberg** or **Delta** to **Heap** and **Replication** shows as **Disabled**.
+1. Compare the table values for **Disk Rows**, **Object Storage Rows**, **Disk Size**, and **Object Storage Size**.
+
+</Tab>
+
+<Tab title="psql">
+
+Use the `pgaa.convert_to_analytics` function to convert a synchronized HTAP table into a "cold", pure-analytics table and remove the data from local disk.
+
+```sql
+CALL pgaa.convert_to_analytics('public.transactional_table');
+```
+
+The function removes the local data and redefines the table's access method to point solely to the external Iceberg or Delta files.
+
+To restore the table use the `pgaa.restore_from_analytics` function to bring the data stored in the external analytics tier back into the Postgres transactional storage as a heap table.
+
+```sql
+CALL pgaa.restore_from_analytics('public.transactional_table');
+```
+
+The function checks the table's configuration, identifies its external Iceberg/Delta path in object storage, and rewrites the data back into the table's local storage structure. Once the data is locally present, the function sets the table's access method back to the local transactional endpoint again.
+
+</Tab>
+</TabContainer>
+
+## Other operations
+
+**Trigger compaction**
+
+Perform compaction to improve the performance and storage efficiency of your external analytics tables residing in object storage.
+
+<TabContainer syncKey="compaction">
+<Tab title="HM console">
+
+1. Find your HTAP or Iceberg or Delta table in the **Tables** tab.
+1. Select **Actions** then **Trigger Compaction**.
+1. Confirm the operation and select **Trigger Compaction**.
+1. Observe the new value of **Object Storage Size** for the table.
+
+</Tab>
+
+<Tab title="psql">
+
+Use the function `pgaa.execute_compaction` to trigger the compaction job.
+
+```sql
+CALL pgaa.execute_compaction ('public.transactional_table');
+```
+
+</Tab>
+</TabContainer>
+
+**Read tables from an external catalog**
+
+Attach as many external catalogs as desired to access table data offloaded to object storage by other PGD clusters.
+
+<TabContainer syncKey="catalog">
+<Tab title="HM console">
+
+1. Select your cluster and navigate to **Catalogs**, then select **Add Catalog**.
+1. Find the catalog you want to attach by typing the cluster ID of the origin PGD cluster, select the catalog, and select **Add Managed Catalog**.
+1. Locate the newly added catalog under **Catalogs**, select **Actions**, **Import**, and confirm.
+1. This operation imports the metadata of all the tables available in this catalog. You may select **Sync** to continously synchronize with the source catalog.
+1. Examine the newly imported external tables under the **Tables** section, listed as **Iceberg** tables.
+1. You may restore these tables to your local Postgres storage by selecting the **Restore** option.
+
+</Tab>
+
+<Tab title="psql">
+
+1. Register the external catalog's connection details:
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgaa.add_catalog(
+          'read-catalog-name',
+          'iceberg-rest',
+          '{
+            "url": "https://your-catalog-rest-endpoint.com",
+            "token": "YOUR_READ_ONLY_TOKEN",
+           }'
+        )
+      );
+      ```
+1. Attach the catalog to the session:
+
+      ```sql
+      SELECT pgaa.attach_catalog('read-catalog-name');
+      ```
+
+1. Once attached, find and query the tables in the external object storage. Use a three-part naming convention: `catalog_name`.`schema_name`.`table_name`.
+
+      ```sql
+      SELECT * FROM pgaa.catalog_tables('read-catalog-name');
+      SELECT COUNT(*) FROM read-catalog-name.schema_name.table_name;
+      ```
+
+</Tab>
+</TabContainer>
