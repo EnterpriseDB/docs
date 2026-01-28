@@ -1,21 +1,27 @@
 ---
-title: Hybrid Manager Multi-DC deployment guide
+title: Deploy Hybrid Manager across multiple data centers
 navTitle: Multi-DC deployment
-description: Learn how to set up multiple data-centers (multi-DC) with Hybrid Manager.
+description: Learn how to set up multiple data centers (multi-DC) with Hybrid Manager.
 deepToC: true
 ---
 
 ## Overview
 
-### Why run Hybrid Manager across multiple data centers?
+### Why run Hybrid Manager (HM) across multiple data centers (DCs)?
 
-Multi-DC gives you high availability and disaster recovery for Postgres workloads and the Hybrid Manager (HM) control plane (CP):
+Deploying HM across multiple data centers gives you high availability and disaster recovery for Postgres workloads and the Hybrid Manager control plane (CP):
 
 - Survive a site loss (DR): Keep a warm Secondary site ready. If the Primary DC is unavailable, promote replicas in the Secondary and restore service.
+  
+  [I think this is wrong, multi-dc is about being able to deploy a database across regions, not having "a second HM" as a backup in another location]: #
 
 - Minimize downtime (HA): Perform maintenance or migrations on one site while workloads continue on the other.
 
+  [Clarify to say that this could be more about workload isolation, e.g. migration workloads on one geography and AI workload in another one]: #
+
 - Protect data (RPO): Continuous replication to a second DC reduces potential data loss compared to single-site backups only.
+
+ [Clarify that this is the case for multi-node PG clusters]:#
 
 - Reduce blast radius: Faults, misconfigurations, or noisy neighbors in one DC don’t take down the other.
 
@@ -35,29 +41,31 @@ Multi-DC gives you high availability and disaster recovery for Postgres workload
 
 ### What this guide helps you do
 
-- Connect two HM clusters (Primary ↔ Secondary) on the same provider/on-prem family.
+- Connect two or more HM clusters (Primary, Secondary A, Secondary B) on the same provider/on-prem family. 
+  [I guess these must be deployed to different regions?]:#
 
-- Align object storage (identical edb-object-storage secret) so backups/artifacts are usable in both DCs.
+- Align object storage (identical `edb-object-storage` secret) so backups/artifacts are usable in all DCs.
 
 - Wire the Agent (Beacon) so the Primary can register the Secondary as a managed location and provision there (9445/TCP).
+  [Agent/Beacon, what is this?]: #
 
-- Prepare a Postgres topology with a primary in one DC and replicas in the other; perform manual failover by promoting replicas.
+- Prepare a Postgres topology with a primary in one DC and replicas in the other(s); perform manual failover by promoting replicas.
 
 ### Current limitations
 
-- Two sites (Primary and Secondary).
+- Up to three sites (Primary and Secondaries).
 
-- Manual failover: Promote replicas in the Secondary if the Primary is down.
+- Manual failover: Promote replicas in one of the Secondaries if the Primary is down.
 
 - Same cloud/on-prem family: Cross-CSP multi-DC is not supported.
 
 ### Architecture at a glance
 
-- Control plane: Two HM clusters, configured as a hub and spoke; Primary “manages” the Secondary as a Location through Beacon.
+- Control plane: Two or three Kubernetes clusters, each with an instance of HM, configured as a hub and spokes; Primary “manages” the Secondaries as a Location through Beacon.
 
-- Data nodes: Postgres primary in DC-A, replicas in DC-B (async by default).
+- Data nodes: Postgres primary in DC-A, replicas in DC-B (async by default), and if configured in DC-C.
 
-- Storage: Shared/consistent object store config across sites for backups/artifacts.
+- Storage: Shared/consistent object store configured across sites for backups/artifacts.
 
 - Telemetry: Thanos/Loki configured to view metrics/logs across sites.
 
@@ -69,53 +77,53 @@ This is for teams that need higher resilience than a single DC can provide, and 
 
 ### Architecture prereqs
 
-- Two Kubernetes clusters available: Primary and Secondary, with the required infrastructure and secrets configured.
+- Two or three Kubernetes clusters available: Primary and Secondaries, with the required infrastructure and secrets configured.
 
 - Network connectivity:
 
     - 8444/TCP open between clusters (SPIRE bundle endpoint).
 
-    - 9445/TCP from Secondary → Primary (Beacon gRPC).
+    - 9445/TCP from Secondaries → Primary (Beacon gRPC).
 
     - Same provider/on-prem family (no cross-cloud).
 
-- Shared Object Storage.  The Standard HM installation requires each individual HM cluster to have dedicated object storage.  In the case of a multi-DC topology, this object storage is shared between both clusters.  
+- Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC topology, this object storage is shared between all clusters.
 
 ### Collect the required information
 
-1. Prepare two copies of the HM installation parameters within values files named `primary.yaml` and `secondary.yaml`
+1. Prepare two (or three) copies of the HM installation configuration file (`values.yaml`) named `primary.yaml`, `secondaryA.yaml`, `secondaryB.yaml`.
 
-1. Domain Names
+1. Domain names:
 
-    Each HM must be configured with a domain name, configured in the values.yaml as portal_domain_name.  This parameter is used by both Primary and Secondary clusters.
+   Each HM must be configured with a dedicated domain name, set in the installation configuration file (`primary.yaml`, `secondaryA.yaml`, `secondaryB.yaml`) as `portal_domain_name`. This parameter is used by both Primary and Secondaries.
 
-    Create these domain names for both Primary and Secondary clusters, and record this information.
+   Create these domain names for the Primary and Secondary clusters (Secondary A and B, if you have 3 data centers), and record this information.
 
 ## Object storage across locations
 
 HM uses an object store for backups, artifacts, WAL, and internal bundles. 
-**In multi-DC, both clusters must use the same object store configuration**.
+**In multi-DC, all HM installations must use the same object store configuration**.
 
 ### Key requirement
 
-Each cluster must have an identical Kubernetes secret named `edb-object-storage` in the default namespace on both the Primary and Secondary clusters.
+All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the default namespace on the Primary and Secondary cluster (Secondary A and B, if you have 3 data centers).
 
-## Parameter Uniqueness
+## Parameter uniqueness
 
-Because the two clusters involved in MultiDC are using the same object store, we must ensure that specific parameters are different between the two clusters.
+Because the two or three clusters involved in this multi-data-center deployment are using the same object store, we must ensure that specific parameters are different between all clusters.
 
-1. `location_id` should be set to a human readable location identifier.  These values must differ between the two clusters.  Any human readable name is sufficient.
+1. `location_id` should be set to a human readable location identifier. These values must differ between the clusters. Any human readable name is sufficient.
 
-1. `internal_backup_folder` must match the regex `^[0-9a-z]{12}$`, and must be unique between Primary and Secondary locations
+1. `internal_backup_folder` must match the regex `^[0-9a-z]{12}$`, and must be unique between the Primary and the Secondary locations (Secondary A and B, if you have 3 data centers).
 
-1. `metrics_storage_prefix` must be unique between primary and secondary locations
+1. `metrics_storage_prefix` must be unique between Primary and Secondary locations (Secondary A and B, if you have 3 data centers).
 
-1. `logs_storage_prefix` must be unique between primary and secondary locations
+1. `logs_storage_prefix` must be unique between primary and secondary locations (Secondary A and B, if you have 3 data centers).
 
-## Configure the multi-DC topology.
+## Configure the multi-DC topology
 
-Each Primary and Secondary cluster must be aware of its own role as well the addresses of each other cluster in the multi-DC group. 
-The following configuration stanza describes the topology and must be present in both the `primary.yaml` and `secondary.yaml` values files.
+Each Primary and Secondary cluster (Secondary A and B, if you have 3 data centers) must be aware of its own role as well the addresses of the other clusters in the multi-DC group. 
+The following configuration stanza describes the topology and must be present in the `primary.yaml`, `secondaryA.yaml`, and if required, `secondaryB.yaml` values files.
 
 ```
 clusterGroups:
@@ -126,11 +134,11 @@ clusterGroups:
     - domainName: <secondary portal domain>
 ```
 
-Fill in the missing domainName parameters using the `portal_domain_name` parameter within the `primary.yaml` and `secondary.yaml` files.
+Fill in the missing domainName parameters using the `portal_domain_name` parameter within the `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` files.
 
 Add this stanza to the bottom of `primary.yaml`, and configure the `role` as `primary`.
 
-Similarly, add this stanza to the bottom of the `secondary.yaml` and configure the role as `secondary`.
+Similarly, add this stanza to the bottom of the `secondaryA.yaml` and `secondaryB.yaml` files and configure the role as `secondary`.
 
 ## Reduced set of components
 
