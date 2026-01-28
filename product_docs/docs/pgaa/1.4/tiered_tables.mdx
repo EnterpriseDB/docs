@@ -1,0 +1,233 @@
+---
+title: Tiered Tables With Analytics Accelerator
+navTitle: Tiered Tables
+description: Understanding how Tiered Tables enable cost-efficient data lifecycle management through automated offloading to object storage
+---
+
+
+## What are Tiered Tables
+
+Tiered Tables automatically manage data lifecycle by moving historical partitions from expensive transactional storage to cost-effective object storage while maintaining transparent query access across all data. This capability combines EDB Postgres Distributed (PGD) partitioning with Analytics Accelerator (PGAA) lakehouse integration to optimize both performance and cost for growing datasets.
+
+This page is part of the Analytics Hub. For full navigation, visit: [Analytics Hub](/pgaa/current/) — [Concepts](/pgaa/current/analytics-concepts) — [How-Tos](/pgaa/current/#how-tos-runbook-aligned)
+
+The system distinguishes between "hot" data requiring transactional performance and "cold" data accessed primarily for analytical or compliance purposes. Hot data remains in PostgreSQL for optimal OLTP performance while cold data moves to Apache Iceberg® or Delta Lake formats in object storage, reducing transactional database size by 70-90% for typical time-series workloads.
+
+## Who Benefits from Tiered Tables
+
+**Database Administrators** implement tiered storage to control database growth without sacrificing data accessibility. They maintain lean, performant transactional systems while ensuring regulatory compliance through complete data retention.
+
+**Financial Services Teams** use tiering for transaction histories that must be retained for 7-10 years per regulatory requirements but are rarely accessed after initial settlement periods.
+
+**IoT Platform Operators** manage sensor data that arrives continuously but loses operational relevance after days or weeks, transitioning naturally to analytical workloads.
+
+**Retail Organizations** tier order histories where recent orders require real-time access for customer service while historical data serves trend analysis and forecasting.
+
+## How Tiered Tables Work
+
+### Basic Configuration
+
+Enable tiered storage on a time‑partitioned table using BDR AutoPartition, then configure analytics offload once partitions exist. This mirrors the runbook flow.
+
+Create a partitioned table and initialize AutoPartition (no offload yet):
+
+```sql
+-- Create a time-partitioned table
+CREATE TABLE partitioned_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+) PARTITION BY RANGE(inserted_at);
+
+-- Create yearly partitions (no offload yet)
+SELECT bdr.autopartition (
+  relation := 'partitioned_table',
+  partition_increment := '1 year',
+  partition_initial_lowerbound := '2010-01-01 00:00:00',
+  managed_locally := TRUE
+);
+
+-- Wait for partitions to be created across nodes
+SELECT bdr.autopartition_wait_for_partitions_on_all_nodes('partitioned_table'::regclass, CURRENT_TIMESTAMP::text);
+```
+
+Populate data and then enable offload for cold partitions:
+
+```sql
+-- Insert sample data
+INSERT INTO partitioned_table (
+  SELECT
+    g,
+    '2010-01-01 00:00:00'::timestamp + INTERVAL '1 second' *
+      (EXTRACT (EPOCH FROM (CURRENT_TIMESTAMP - '2010-01-01 00:00:00'::timestamp)) / 1000000 * g),
+    g * 0.001,
+    encode(sha256(g::text::bytea), 'hex')
+  FROM generate_series(1, 1000000) g
+);
+
+-- Reconfigure AutoPartition to offload partitions older than 1 year
+SELECT bdr.autopartition (
+  relation := 'partitioned_table',
+  partition_increment := '1 year',
+  partition_initial_lowerbound := '2010-01-01 00:00:00',
+  managed_locally := TRUE,
+  analytics_offload_period := '1 year'
+);
+```
+
+### Offload Patterns
+
+AutoPartition handles time‑based tiering automatically. For manual/no‑catalog offload of a whole table, use analytics replication:
+
+```sql
+-- Example: offload an entire transactional table (no catalog)
+CREATE TABLE transactional_table (
+  key BIGINT,
+  inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  revenue DOUBLE PRECISION,
+  comment TEXT,
+  PRIMARY KEY (key, inserted_at)
+);
+
+-- Enable replication to analytics storage
+ALTER TABLE transactional_table SET (pgd.replicate_to_analytics = TRUE);
+
+-- Optionally convert to PGAA to read directly from Iceberg
+ALTER TABLE transactional_table
+SET ACCESS METHOD PGAA,
+SET (
+  pgaa.auto_truncate = 'true',
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table'
+);
+```
+
+Partial offload can be achieved by splitting data into a separate table and offloading only that table:
+
+```sql
+BEGIN;
+CREATE TABLE transactional_table_before_2020 AS
+  SELECT * FROM transactional_table
+  WHERE inserted_at < '2020-01-01';
+DELETE FROM transactional_table WHERE inserted_at < '2020-01-01';
+COMMIT;
+
+ALTER TABLE transactional_table_before_2020 ADD PRIMARY KEY (key, inserted_at);
+ALTER TABLE transactional_table_before_2020 SET (pgd.replicate_to_analytics = TRUE);
+
+-- (Optional) convert to PGAA for direct Iceberg reads
+ALTER TABLE transactional_table_before_2020
+SET ACCESS METHOD PGAA,
+SET (
+  pgaa.auto_truncate = 'true',
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'appliance-bucket',
+  pgaa.path = 'public.transactional_table_before_2020'
+);
+```
+
+### Restore Operations
+
+Switch a table back to transactional storage and disable analytics replication:
+
+```sql
+ALTER TABLE transactional_table
+  SET ACCESS METHOD heap,
+  SET (pgd.replicate_to_analytics = FALSE);
+```
+
+## Architecture Overview
+
+### Storage Tiers
+
+The architecture implements three distinct storage tiers optimized for different access patterns:
+
+**Hot Tier (PostgreSQL)** stores current operational data requiring sub-millisecond latency and full transactional capabilities. This tier typically contains days to months of recent data depending on workload characteristics.
+
+**Cold Tier (Object Storage)** holds historical data in columnar formats optimized for analytical queries. Data remains fully queryable but with higher latency acceptable for compliance and analytical use cases.
+
+
+### Query Processing
+
+Tiered Tables leverage PostgreSQL's partition-wise query planning to optimize cross-tier queries. The planner analyzes predicates to determine which partitions require access, automatically pruning irrelevant hot and cold partitions.
+
+When queries span tiers, the system executes parallel subqueries against each storage layer. Hot tier queries execute through standard PostgreSQL processing while cold tier queries utilize Analytics Accelerator's vectorized engine. Results merge transparently, presenting unified datasets to applications.
+
+Time-based predicates prove particularly efficient as they naturally align with partition boundaries. A query for last quarter's data might access one hot partition and two cold partitions, each processed optimally for its storage characteristics.
+
+### Metadata Management
+
+The system maintains comprehensive metadata tracking partition locations, offload timestamps, and storage statistics. This metadata enables intelligent query routing and provides visibility into storage utilization.
+
+PGD tracks partition lifecycle states including active, offloading, offloaded, and restoring. State transitions occur atomically, ensuring consistent visibility across cluster nodes. Failed offload operations automatically retry or rollback, maintaining data integrity.
+
+Storage statistics track size reduction achieved through offloading, helping quantify cost savings. Compression ratios typically range from 3:1 to 10:1 depending on data characteristics and chosen columnar format.
+
+## Performance Characteristics
+
+### Hot Tier Optimization
+
+Removing historical data from transactional storage delivers immediate performance benefits. Smaller tables mean more efficient indexes, faster vacuum operations, and improved cache hit rates. Organizations typically observe 20-40% improvement in transactional query performance after implementing tiering.
+
+The reduced dataset size particularly benefits backup and recovery operations. Smaller databases backup faster, require less storage, and restore more quickly during disaster recovery scenarios.
+
+### Cold Tier Performance
+
+Analytical queries against cold data leverage columnar storage optimizations including compression, dictionary encoding, and vectorized processing. While individual row lookups perform slower than PostgreSQL, analytical aggregations often execute faster due to columnar efficiency.
+
+Partition merging addresses metadata overhead when dealing with thousands of historical partitions. Multiple daily partitions can merge into monthly or yearly partitions in object storage, reducing metadata operations while preserving query capabilities.
+
+### Cross-Tier Queries
+
+Queries spanning hot and cold tiers exhibit performance characteristics based on data distribution. Queries primarily accessing hot data with minimal cold data filtering maintain near-PostgreSQL performance. Analytical queries aggregating years of cold data with recent hot data benefit from parallel processing across tiers.
+
+The system implements intelligent caching for frequently accessed cold partitions. Metadata caching eliminates repeated discovery operations while data caching stores commonly accessed Parquet files locally.
+
+## Common Implementation Patterns
+
+### Regulatory Compliance
+
+Financial services organizations implement tiering to meet regulatory retention requirements cost-effectively. For example, transaction data can remain in PostgreSQL for 90 days supporting operational queries, then automatically offload to Iceberg for 7-year retention.
+
+The implementation maintains complete audit trails with timestamp tracking for all tier transitions. Compliance queries access historical data transparently, generating reports spanning entire retention periods without manual data assembly.
+
+### Time-Series Analytics
+
+IoT platforms receiving millions of sensor readings daily implement aggressive tiering policies. Raw sensor data older than 7 days offloads to object storage while aggregated metrics remain in PostgreSQL indefinitely.
+
+This pattern optimizes for common query patterns where operational dashboards display recent raw data while historical analytics work with aggregated summaries. The tiering boundary aligns with natural access patterns, minimizing cross-tier queries.
+
+### Seasonal Business Cycles
+
+Retail organizations with strong seasonal patterns implement dynamic tiering policies. Order data from peak seasons remains hot longer to support extended return periods and customer service needs.
+
+Off-season data aggressively offloads after 30 days while peak season data retains 90-day hot retention. This adaptive approach balances storage costs with business requirements throughout the year.
+
+## Operational Considerations
+
+### Monitoring Requirements
+
+Effective tiering requires monitoring partition growth rates, offload success rates, and query patterns across tiers. Dashboards track storage utilization trends, identifying tables benefiting from tiering and validating cost savings.
+
+Query performance monitoring distinguishes between tier-local and cross-tier queries. Increasing cross-tier query frequency might indicate need for adjusted retention policies or materialized views bridging tiers.
+
+### Capacity Planning
+
+Tiered architectures require capacity planning for both storage tiers. Hot tier capacity depends on data ingestion rates and retention periods. Cold tier capacity grows continuously but at predictable rates based on offload policies.
+
+Network bandwidth between tiers affects offload and restore operations. Organizations typically schedule offload operations during maintenance windows to minimize impact on production workloads.
+
+### Maintenance Operations
+
+Regular maintenance includes partition merging in cold storage, orphan file cleanup, and metadata optimization. These operations typically run as scheduled jobs during low-activity periods.
+
+Backup strategies must account for tiered data distribution. Hot tier backups occur frequently for operational recovery while cold tier backups might rely on object storage durability guarantees.
+
+### Reversibility Guarantees
+
+All offload operations support reversal through restore operations. This reversibility provides confidence when implementing tiering strategies, knowing that operational requirements changes can be accommodated.
+
+The system maintains offload history enabling point-in-time restoration. Organizations can restore data as it existed at specific dates, supporting scenarios where historical data temporarily requires transactional access.
