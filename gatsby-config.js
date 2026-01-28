@@ -56,6 +56,7 @@ const sourceToPluginConfig = {
     name: "edb-postgres-ai",
     path: "product_docs/docs/edb-postgres-ai",
   },
+  pgaa: { name: "pgaa", path: "product_docs/docs/pgaa" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },

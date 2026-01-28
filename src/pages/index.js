@@ -183,15 +183,15 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Analytics Accelerator"
-              to="/edb-postgres-ai/latest/analytics"
+              to="/pgaa/latest/"
             >
-              <BannerCardLink to="/edb-postgres-ai/latest/analytics/lakehouse/">
+              <BannerCardLink to="/pgaa/latest/lakehouse/">
                 Analytics Engine
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
               </BannerCardLink>
 
-              <BannerCardLink to="/edb-postgres-ai/latest/analytics/quick_start/">
+              <BannerCardLink to="/pgaa/latest/quick_start/">
                 Managed Lakehouse
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>

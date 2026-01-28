@@ -29,6 +29,12 @@ const products = {
     abbreviation: "EPAS",
     iconName: IconNames.EDB_EPAS,
   },
+  pgaa: {
+    name: "EDB Postgres AI Analytics Accelerator",
+    shortName: "Analytics Accelerator",
+    abbreviation: "PGAA",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     shortName: "EDB Postgres Distributed",
