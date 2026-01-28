@@ -1,0 +1,223 @@
+---
+title: Checking the cluster
+navTitle: Checking the cluster
+description: Verify that your PGD cluster is correctly installed and configured.
+deepToC: true
+---
+
+## Checking the cluster
+
+
+With the cluster up and running, it's worthwhile to run some basic checks to see how effectively it's replicating.
+
+The following example shows one quick way to do this, but you must ensure that any testing you perform is appropriate for your use case.
+
+On any of the installed and configured nodes, log in and run `psql` to connect to the database. If you are using EDB Postgres Advanced Server, use the `enterprisedb` user, otherwise use `postgres`:
+
+```bash
+sudo -iu postgres psql pgddb
+```
+
+This command connects you *directly* to the database on host-1/node-1.
+
+### Quick test
+
+* **Preparation**
+  * Ensure the cluster is ready:  
+    * Log in to the database on host-1/node-1. 
+    * Run `select bdr.wait_slot_confirm_lsn(NULL, NULL);`.  
+    * When the query returns, the cluster is ready.  
+
+
+* **Create data**
+  The simplest way to test that the cluster is replicating is to log in to one node, create a table, and populate it.
+   * On node-1, create a table:
+      ```sql
+      CREATE TABLE quicktest ( id SERIAL PRIMARY KEY, value INT ); 
+      ```
+   * On node-1, populate the table:
+     ```sql
+     INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
+     ```
+   * On node-1, monitor performance:
+     ```sql
+     select * from bdr.node_replication_rates;
+     ```
+   * On node-1, get a sum of the value column (for checking):
+     ```sql
+     select COUNT(*),SUM(value) from quicktest;
+     ```
+* **Check data**
+   * Log in to node-2.
+      Log in to the database on host-2/node-2.
+    * On node-2, get a sum of the value column (for checking):
+      ```sql
+      select COUNT(*),SUM(value) from quicktest;
+      ```
+   * Compare with the result from node-1.
+   * Log in to node-3. 
+      Log in to the database on host-3/node-3.
+    * On node-3, get a sum of the value column (for checking):
+      ```sql
+      select COUNT(*),SUM(value) from quicktest;
+      ```
+   * Compare with the result from node-1 and node-2.
+
+## Worked example
+
+### Preparation
+
+Log in to host-1's Postgres server.
+
+```shell
+ssh admin@host-1
+sudo -iu postgres psql "host=host-1 port=5432 username=postgres dbname=pgddb"
+```
+
+This is your connection to PGD's node-1.
+
+#### Ensure the cluster is ready
+
+To ensure that the cluster is ready to go, run: 
+
+```sql
+select bdr.wait_slot_confirm_lsn(NULL, NULL)
+```
+
+This query blocks while the cluster is busy initializing and returns when the cluster is ready.
+
+In another window, log in to host-2's Postgres server:
+
+```shell
+ssh admin@host-2
+sudo -iu postgres psql "host=host-2 port=5432 username=postgres dbname=pgddb"
+```
+
+### Create data
+
+#### On node-1, create a table
+
+Run:
+
+```sql
+CREATE TABLE quicktest ( id SERIAL PRIMARY KEY, value INT ); 
+```
+
+#### On node-1, populate the table
+
+```sql
+INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
+```
+
+This command generates a table of 10000 rows of random values.
+
+#### On node-1, monitor performance
+
+As soon as possible, run:
+
+```sql
+select * from bdr.node_replication_rates;
+```
+
+The command shows statistics about how quickly that data was replicated to the other two nodes:
+
+```console
+pgddb=# select * from bdr.node_replication_rates;
+__OUTPUT__
+ peer_node_id | target_name | sent_lsn  | replay_lsn | replay_lag | replay_lag_bytes | replay_lag_size | apply_rate | catchup_interv
+al
+--------------+-------------+-----------+------------+------------+------------------+-----------------+------------+---------------
+---
+   1954860017 | node-3  | 0/DDAA908 | 0/DDAA908  | 00:00:00   |                0 | 0 bytes         |      13682 | 00:00:00
+   2299992455 | node-2    | 0/DDAA908 | 0/DDAA908  | 00:00:00   |                0 | 0 bytes         |      13763 | 00:00:00
+(2 rows)
+```
+
+And it's already replicated.
+
+#### On node-1 get a checksum
+
+Run:
+
+```sql
+select COUNT(*),SUM(value) from quicktest;
+```
+
+This command gets some values from the generated data:
+
+```sql
+pgddb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
+ count  |    sum
+--------+-----------
+ 100000 | 498884606
+(1 row)
+```
+
+### Check data
+
+#### Log in to host-2's Postgres server
+
+```shell
+ssh admin@host-2
+sudo -iu postgres psql "host=host-2 port=5432 username=postgres dbname=pgddb"
+```
+
+This is your connection to PGD's node-2.
+
+#### On node-2, get a checksum
+
+Run:
+
+```sql
+select COUNT(*),SUM(value) from quicktest;
+```
+
+This command gets node-2's values for the generated data:
+
+```sql
+pgddb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
+ count  |    sum
+--------+-----------
+ 100000 | 498884606
+(1 row)
+```
+
+#### Compare with the result from node-one
+
+The values are identical.
+
+You can repeat the process with node-3 or generate new data on any node and see it replicate to the other nodes.
+
+#### Log in to host-3's Postgres server
+
+```shell
+ssh admin@host-3
+sudo -iu enterprisedb psql pgddb
+```
+
+This is your connection to PGD's node-3.
+
+#### On node-3, get a checksum
+
+Run:
+
+```sql
+select COUNT(*),SUM(value) from quicktest;
+```
+
+This command gets node-3's values for the generated data:
+
+```sql
+pgddb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
+ count  |    sum
+--------+-----------
+ 100000 | 498884606
+(1 row)
+```
+
+#### Compare with the result from node-one and node-two
+
+The values are identical.

@@ -1,0 +1,185 @@
+---
+title: whpg_fdw 
+navTitle: whpg_fdw
+description: Learn about the whpg_fdw extension for WarehousePG.
+directoryDefaults:  
+  displayBanner: ""  
+---
+
+The WarehousePG (WHPG) `whpg_fdw` extension is a Foreign Data Wrapper (FDW) that you can use to run federated queries between two WarehousePG clusters. It allows you to query data stored in a remote WarehousePG database as if it were part of your local database.
+
+The `whpg_fdw` extension is based on the [PostgreSQL Foreign Data Wrapper](https://www.postgresql.org/docs/12/postgres-fdw.html) framework, leveraging its capabilities to connect and interact with remote WarehousePG databases seamlessly.
+
+## Downloading, installing, and loading the extension
+
+You must install the extension on each host in your local WarehousePG cluster.
+
+1. Configure your package manager to use the EDB repository for WHPG:
+ 
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    ```
+
+1. Create a file `all_hosts` on your WHPG coordinator, which lists all hosts in the WHPG cluster. For example:
+
+    ```ini
+    cdw
+    scdw
+    sdw1
+    sdw2
+    sdw3
+    ```
+
+1. From the coordinator, use the `gpssh` utility to install the packages from the coordinator onto every other host in the cluster:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo dnf install -y edb-whpg<whpg_major_version>-whpg_fdw'
+    ```
+
+    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo yum install -y edb-whpg<whpg_major_version>-whpg_fdw'
+    ```
+
+    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+    </Tab>
+    </TabContainer>
+
+1. Create the extension by connecting to a database on your WHPG cluster and running:
+
+    ```SQL
+    CREATE EXTENSION whpg_fdw;
+    ```
+
+## Using the extension
+
+Perform the following tasks to access data that resides in a remote WHPG cluster with `whpg_fdw`:
+
+1. [Create a foreign server](#creating-a-foreign-server) to represent each remote WHPG database to which you want to connect.
+1. [Create a user mapping](#creating-a-user-mapping) for the local WHPG database user that you want to allow to access each server.
+1. [Create a foreign table](#creating-a-foreign-table) for each remote WHPG table that you want to access, or import a foreign schema.
+1. [Import a foreign schema](#importing-a-foreign-schema) to import multiple foreign tables from the remote database at once.
+1. [Construct and run queries](#constructing-and-running-queries).
+
+### Creating a foreign server
+
+To access a remote WarehousePG database, you must first create a foreign server which specifies the connection details of the remote database. You provide these connection parameters in the `OPTIONS` clause of the `CREATE SERVER` command. A `whpg_fdw` foreign server accepts the same options as a `postgres_fdw` foreign server. Refer to the [postgres_fdw](https://www.postgresql.org/docs/current/postgres-fdw.html#POSTGRES-FDW-OPTIONS) documentation for more details.
+
+`whpg_fdw` also supports the following additional options when creating a foreign server:
+
+- `mpp_execute`: Determines where the foreign scan is executed. The default value is `coordinator`, which means that the foreign scan runs only on the remote coordinator. Set it to `all segments` instead, to leverage the fulll Massively Parallel Processing (MPP) power of WarehousePG. This enables parallel execution across all remote segments.
+- `num_segments`: Defines the number of segments in the remote cluster. This option is required only when `mpp_execute` is set to `all segments`. The default value is the total number of segments in the local WarehousePG cluster. If the local and remote clusters have different number of segments, you must manually set this value to ensure proper data distribution.
+- `fetch_size`: Specifies the number of rows retrieved from the remote segments during each round trip. The default value is 100.
+
+The following is an example of creating a `whpg_fdw` foreign server:
+
+```SQL
+CREATE SERVER remote_whpg
+FOREIGN DATA WRAPPER whpg_fdw
+OPTIONS (host 'remote_host', port '5432', dbname 'remote_db',
+         mpp_execute 'all segments', num_segments '4', fetch_size '200');
+```
+
+### Creating a user mapping
+
+To allow your local database roles to access the remote server, you must define a user mapping that maps a local role to the credentials on the remote WarehousePG database. This follows the standard PostgreSQL Foreign Data Wrapper (FDW) syntax through the `CREATE USER MAPPING` command.
+
+User mappings that you create can include the following `OPTIONS`:
+
+- `user`: Specifies the name of the remote WarehousePG database user to connect as. The remote user must have the right permissions to access the required tables of the remote database.
+- `password`: Specifies the password for the user. Only a superuser can connect to the remote WarehousePG database without a password.
+
+The following is an example of creating a user mapping:
+
+```SQL
+CREATE USER MAPPING FOR local_user
+SERVER remote_whpg
+OPTIONS (user 'remote_user', password 'remote_password');
+```
+
+### Creating a foreign table
+
+Use the `CREATE FOREIGN TABLE` command to create a foreign table that represents the remote table in your local WarehousePG database.
+
+The column data types that you specify when you create the foreign table must exactly match those in the referenced remote table. We recommend that the columns are declared with exactly the same collations, if applicable, as the referenced columns of the remote table. Because `whpg_fdw` matches foreign table columns to the remote table by name, not position, you can create a foreign table with fewer columns, or with a different column order, than the underlying remote table.
+
+Foreign tables include the following `OPTIONS`:
+
+- `schema_name`: Specifies the name of the schema in which the remote WarehousePG table resides.
+- `table_name`: Specifies the name of the remote WarehousePG database.
+
+`whpg_fdw` also supports the following additional options when creating a foreign table:
+
+- `mpp_execute`: Determines where the foreign scan is executed. The default value is the one set for the foreign server. Set this parameter to override the one specified by the foreign server creation.
+- `fetch_size`: Specifies the number of rows retrieved from the remote segments during each round trip. The default value is the one set for the foreign server. Set this parameter to override the one specified by the foreign server creation.
+
+The following is an example of creating a foreign table:
+
+```SQL
+CREATE FOREIGN TABLE remote_table (id INT, name TEXT, age INT)
+SERVER remote_whpg
+OPTIONS (schema_name 'public', table_name 'employees');
+```
+
+### Importing a foreign schema
+
+With WarehousePG 7, you can also use the `IMPORT FOREIGN SCHEMA` command to import multiple foreign tables from the remote database at once. `whpg_fdw` supports the same options for the `IMPORT FOREIGN SCHEMA` command as [`postgres_fdw`](https://www.postgresql.org/docs/current/postgres-fdw.html#POSTGRES-FDW-OPTIONS).
+
+The following is an example of importing a foreign schema:
+
+```SQL
+IMPORT FOREIGN SCHEMA public
+FROM SERVER remote_whpg
+INTO local_schema;
+```
+
+This command creates foreign tables in the `local_schema` schema in the local database for all tables in the `public` schema in the remote database.
+
+### Constructing and running queries
+
+Query the foreign tables using the same SQL commands as you would to query local tables. The `whpg_fdw` handles the communication with the remote WarehousePG database and retrieves the data.
+
+```SQL
+SELECT * FROM remote_table WHERE age > 30;
+```
+
+`whpg_fdw` minimizes the data transfer between the local and remote databases by pushing down filters and projections to the remote side whenever possible. See [About predicate pushdown](#about-predicate-pushdown) for details. Run the `EXPLAIN VERBOSE` command to see the query plan and verify the clauses being pushed down.
+
+```SQL
+EXPLAIN VERBOSE SELECT * FROM remote_table WHERE age > 30;
+```
+
+By default, all foreign tables created using `whpg_fdw` are updatable. You can modify this behavior by setting the `updatable` option to `false` for the foreign table or server.
+
+!!! Note
+    `whpg_fdw` only supports `INSERT` operations on foreign tables. `UPDATE` and `DELETE` operations are not supported.
+
+
+## About predicate pushdown
+
+`whpg_fdw` for WarehousePG 7 supports predicate pushdown, which minimizes the amount of data transferred between the WarehousePG clusters by sending a query filter condition to the remote WarehousePG server where it is applied there. 
+
+The following operations are supported for pushdown:
+
+- `SELECT` with column projection
+- `SELECT` with `WHERE` clause (filter pushdown)
+- `JOIN` operations
+- `LIMIT` and `OFFSET` clauses
+- `ORDER BY` clause
+- Aggregation functions (`MAX`, `COUNT`, `AVG`, etc.)
+
+## Limitations
+
+- The `UPDATE` and `DELETE` operations on foreign tables are not supported.
+- Pushdown for grouping sets and window aggregation is not supported.
+- Triggers on foreign tables are not supported.

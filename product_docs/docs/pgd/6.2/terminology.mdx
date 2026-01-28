@@ -1,9 +1,14 @@
 ---
-title: Terminology
-description: Terminology associated with EDB Postgres Distributed that you might be unfamiliar with.
+title: Postgres Distributed terminology
+navTitle: Terminology
+description: The concepts behind EDB Postgres Distributed (PGD) and how they work in practice.
+redirects:
+  - /pgd/latest/testingandtuning/ #generated for DOCS-1247-PGD-6.0-Docs
+  - /pgd/latest/reference/testing-tuning/ #generated for DOCS-3034
+  - /pgd/latest/concepts/* 
 ---
 
-This terminology list includes terms associated with EDB Postgres Distributed that you might be unfamiliar with.
+This terminology list includes terms associated with EDB Postgres Distributed (PGD) that you might be unfamiliar with.
 
 #### Asynchronous replication
 
@@ -11,7 +16,7 @@ A type of replication that copies data to other PGD cluster members after the tr
 
 #### Commit scopes
 
-Rules for managing how transactions are committed between the nodes and groups of a PGD cluster. Used to configure [synchronous replication](#synchronous-replication), [Group Commit](#group-commit), [CAMO](#camo-or-commit-at-most-once), [Eager](#eager), Lag Control, and other PGD features.
+Rules for managing how transactions are committed between the nodes and groups of a PGD cluster. Used to configure [synchronous replication](#synchronous-replication), [Group Commit](#group-commit), [CAMO](#camo-or-commit-at-most-once), [Eager](#eager), [Lag control](#lag-control), and other PGD features.
 
 #### CAMO or commit-at-most-once
 
@@ -19,7 +24,13 @@ High-value transactions in some applications require that the application succes
 
 #### Conflicts
 
-As data is replicated across the nodes of a PGD cluster, there might be occasions when changes from one source clash with changes from another source. This is a conflict and can be handled with conflict resolution. (Conflict resolution is a set of rules that decide which source is correct or preferred.) Conflicts can also be avoided with conflict-free data types.
+As data is replicated across the nodes of a PGD cluster, there might be occasions when changes from one source clash with changes from another source. This is a conflict and can be handled with conflict resolution. Conflict resolution is a set of rules that decide which source is correct or preferred. Conflicts can also be avoided with conflict-free data types.
+
+#### Connection Manager
+
+To ensure that clients can connect to the right nodes in the distributed cluster, PGD provides a connection management system that allows clients to connect to the appropriate nodes based on their needs.
+
+This system is designed to ensure that clients can access the data they need while maintaining the performance and availability of the cluster. Unlike Proxy systems, this connection management system is built into the database instance itself, allowing for more efficient and reliable connections.
 
 #### Consensus
 
@@ -36,6 +47,10 @@ The subset of SQL commands that deal with defining and managing the structure of
 #### DML (data manipulation language)
 
 The subset of SQL commands that deal with manipulating the data held in a database. DML statements can create, modify, and delete rows in tables in the database. Common DML commands are INSERT, UPDATE, and DELETE. 
+
+#### Durability
+
+Durability guarantees that once a transaction is committed, it remains committed even in the event of a system failure. PGD manages this through [Commit scopes](#commit-scopes).
 
 #### Eager
 
@@ -57,9 +72,17 @@ A synchronous commit mode that requires more than one PGD node to successfully r
 
 A distributed computing model where all replicas are updated synchronously and simultaneously. This model ensures that all reads after a write completes will see the same value on all nodes. The downside of this approach is its negative impact on performance.
 
+#### Lag Control
+
+Lag Control is a throttling mechanism used to ensure that secondary nodes do not fall too far behind the primary. If a node’s replication delay exceeds a set threshold, PGD automatically throttles the ingestion on the origin node to allow the rest of the cluster to catch up.
+
 #### Logical replication
 
 A more efficient method of replicating changes in the database. While physical streaming replication duplicates the originating database’s disk blocks, logical replication instead takes the changes made, independent of the underlying physical storage format, and publishes them to all systems that subscribed to see the changes. Each subscriber then applies the changes locally. Logical replication can't support most DDL commands.
+
+#### Logical standby node
+
+Logical standby nodes are used to provide a read-only replica of the data in the cluster. They are similar to subscriber-only nodes, but they are designed to be more flexible and can be used in a wider range of scenarios.
 
 #### Node
 
@@ -70,6 +93,10 @@ Typically, for high availability, each node runs on separate physical hardware, 
 #### Node groups
 
 PGD nodes in PGD clusters can be organized into groups to reflect the logical operation of the cluster. For example, the data nodes in a particular physical location can be part of a dedicated node group for the location.
+
+Each group uses the [Raft consensus](#consensus) algorithm to elect a leader; in data-specific groups, this leader acts as the write leader, which handles all incoming write operations to maintain consistency.
+
+Groups manage data replication, with a "top-level" group representing the entire cluster and serving as the parent to all other sub-groups.
 
 #### PGD cluster
 
@@ -114,7 +141,10 @@ When changes are updated at all participating nodes at the same time, typically 
 
 #### Subscriber-only nodes
 
-A PGD cluster is based around bidirectional replication. But in some use cases, such as needing a read-only server, bidirectional replication isn't needed. A subscriber-only node is used in this case. It subscribes only to changes in the database to keep itself up to date and provide correct results to any run directly on the node. This feature can be used to enable horizontal read scalability in a PGD cluster.
+A PGD cluster is based around bidirectional replication. But in some use cases, such as needing a read-only server, bidirectional replication isn't needed. A subscriber-only node is used in this case. It subscribes only to changes in the database to keep itself up to date and provide correct results to any run directly on the node. This feature can be used to enable horizontal read scalability in a PGD cluster. They can be configured in two ways:
+
+- Within a data group: These nodes act as read-only replicas alongside standard data nodes. While they provide local access to data, they do not benefit from specific replication optimizations.
+- Within a subscriber-only group: This configuration lacks a write leader. All nodes are strictly read-only, allowing PGD to apply optional optimizations that streamline the replication process.
 
 #### Two-phase commit (2PC)
 

@@ -1,0 +1,162 @@
+---
+title: Implementing TLS certificates
+navTitle: Implementing TLS
+description: Learn how create custom certificates and manage certificates for securing the Hybrid Manager Portal with TLS. 
+deepToC: true
+---
+
+## Set up a custom x.509 certificate for the Hybrid Manager Portal
+
+You can change the self-signed x.509 certificate used by the Hybrid Manager (HM) Portal with your own.
+
+To import your own certificate you need to create a Kubernetes secret containing the server certificate and the private key.
+
+### Generate the certificate
+
+Generate the base64 encoded string of your certificate (example: `my-certificate.crt`) and private key (example: `my-certificate.key`).
+
+```bash
+cat my-certificate.crt | base64
+cat my-certificate.key | base64
+```
+
+### Create the yaml file
+
+Create a file (example: `my-secret.yaml`) with the following content and replace `<base64 encoded string>` with the values generated in the previous step.
+
+```yaml
+apiVersion: v1
+data:
+  tls.crt: <base64 encoded string>
+  tls.key: <base64 encoded string>
+kind: Secret
+metadata:
+  name: my-portal-certificate
+  namespace: default
+  annotations:
+    replicator.v1.mittwald.de/replicate-to: 'istio-system'
+type: kubernetes.io/tls
+```
+
+### Apply the secret in your Kubernetes cluster
+
+```bash
+kubectl apply -n default -f ./my-secret.yaml
+```
+
+### Edit the Helm chart
+
+Edit your Helm values.yaml file by adding the input variable `portal_certificate_secret` under `parameters.global`, setting its value to the name of the secret you have just created.
+
+For example:
+
+```yaml
+parameters:
+  global:
+    portal_certificate_secret: "my-portal-certificate"
+```
+
+### Update the Helm chart
+
+Run the Helm `upgrade` command to apply the changes on HM:
+
+```bash
+helm upgrade \
+    -n edbpgai-bootstrap \
+    --install \
+    --f my-values.yaml
+```
+
+!!! Warning
+Make sure you always provide the set of input variables you have used to install the Helm Chart.
+If in a subsequent execution of the Helm upgrade command you don't specify one of the custom inputs, its value is going to be set to its default.
+!!!
+
+For more information on how the secret can be formatted, consult [Istio documentation](https://istio.io/latest/docs/reference/config/networking/gateway/#ServerTLSSettings-credential_name).
+
+## Set up a custom cert-manager issuer for the HM Portal
+
+The HM Portal's certificate can also be generated and managed using one of the x.509 issuers supported by HM's internal cert-manager, e.g. The ACME Issuer for Let's Encrypt certificates.
+
+You can follow the documentation of the issuer of your choice directly from the cert-manager website to set it up.
+
+!!! Note
+We suggest to set up a ClusterIssuer rather than an Issuer. If you prefer to set up an Issuer, you need to create it in the istio-system namespace.
+!!!
+
+Once the ClusterIssuer is configured you can pass its name to HM by updating your `values.yaml` and run the Helm `upgrade` again.
+
+The section that you need to edit in your `values.yaml` is:
+
+```
+parameters:
+  global:
+    portal_certificate_issuer_kind: "ClusterIssuer" # Valid values are Issuer and ClusterIssuer
+    portal_certificate_issuer_name: "my-issuer" # Your Issuer name
+```
+
+Finally, run the Helm upgrade command to apply the changes on HM:
+
+
+```bash
+helm upgrade \
+    -n edbpgai-bootstrap \
+    --install \
+    --f my-values.yaml
+```
+
+If you want to take advantage of this feature, make sure you don't set `parameters.global.portal_certificate_secret`.
+
+!!! Warning
+Make sure you always provide the set of input variables you have used to install the Helm Chart. If in a subsequent execution of the Helm upgrade command you don't specify one of the custom inputs, its value is going to be set to its default.
+!!!
+
+## Bring your own private certificate authority
+
+By default, all the certificates used by HM are signed by an internal certificate authority (CA) powered by cert-manager. 
+The CA is created at install time. 
+
+If you prefer to use your own Private CA, follow the steps in this section. Otherwise, you can skip this section.
+
+!!! Note
+To successfully use this method you must have access to the CA private key.
+!!!
+
+Create one CA secret if it doesn't exist.
+
+```yaml
+apiVersion: v1
+data:
+  ca.crt: <base64 encoded string> # real ca crt provided by customers
+  tls.crt: <base64 encoded string> # real tls crt provided by customers
+  tls.key: <base64 encoded string> # real tls key provided by customers
+kind: Secret
+metadata:
+  name: my-custom-ca
+  namespace: default
+  annotations:
+    replicator.v1.mittwald.de/replicate-to: 'cert-manager'
+type: kubernetes.io/tls
+```
+
+!!! Warning
+You can change my-custom-ca to a name of your choosing, except `global-ca-secret`. 
+Remember to be consistent with the name you have chosen when running the following commands.
+!!!
+
+You can run an helm upgrade to set the new CA, either by passing it via your values.yaml:
+
+```
+parameters:
+  global:
+    ca_secret_name: my-custom-ca
+Or using the --set CLI argument:
+
+```bash
+helm upgrade \
+    -n edbpgai-bootstrap \
+    --install \
+    ...
+    --set parameters.global.ca_secret_name="my-custom-ca" \
+    ...
+```

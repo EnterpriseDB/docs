@@ -1,0 +1,285 @@
+---
+title: Deploying your Kubernetes cluster
+navTitle: Deploying Kubernetes
+description: Provision and validate the Kubernetes infrastructure required to host Hybrid Manager.
+deepToC: true
+---
+
+## Overview
+
+> **Role focus:** Kubernetes engineer / CSP Administrator
+
+### Prerequisites:
+
+* [Phase 1: Planning your architecture](./planning_arch) (Completed)
+* [Phase 2: Gathering your system requirements](./sys_reqs) (Completed)
+
+### Outcomes
+
+* *A running, reachable Kubernetes cluster that meets all compute, storage, and networking requirements for Hybrid Manager (HM).*
+
+!!! Note
+EDB support context:** Customers own the installation and lifecycle operation of their Kubernetes cluster. 
+Professional Services can be engaged via a Statement of Work (SoW), and Support can offer assistance through knowledge base articles.
+!!!
+
+**Next phase:** Phase 4: [Preparing your environment](./environment_prep)
+
+### Start the provisioning process
+
+With your system requirements defined, you are ready to provision the infrastructure. 
+This phase covers deploying the base Kubernetes cluster that hosts the Hybrid Manager (HM) platform.
+
+HM is largely platform-agnostic, supporting major cloud providers and on-premises distributions. 
+For platform-specific variabilities, 
+
+## Set up your management workstation
+
+Provision and configure your management workstation (Bastion or other) as planned in [Gathering your System requirements](./sys_reqs) the previous phase.
+
+### Install core tooling
+
+You must install the following CLI tools to orchestrate the deployment.
+
+1.  **Install Kubernetes Tools (`kubectl` & `helm`):**
+    Follow the official guides to install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://helm.sh/docs/intro/install/).
+
+2.  **Install `edbctl` (EDB Hybrid Manager CLI):**
+    Run the installation script to download the binary:
+    ```bash
+    curl -sfL [https://get.enterprisedb.com/edbctl/install.sh](https://get.enterprisedb.com/edbctl/install.sh) | sh -
+    ```
+
+3.  **Install utilities:**
+
+    Ensure `yq` (v4+), `curl`, and `openssl` are installed via your package manager.
+    ```bash
+    # Example for Ubuntu/Debian
+    sudo apt-get update && sudo apt-get install -y curl openssl
+
+    # Example for MacOS
+    brew install yq curl openssl
+    ```
+
+4.  **Install platform CLIs (Environment dependent):**
+
+    If you are deploying to a public cloud, install the relevant CLI for authentication.
+    * **AWS:** [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+    * **Google Cloud:** [Install gcloud SDK](https://cloud.google.com/sdk/docs/install)
+    * **OpenShift:** [Install oc CLI](https://docs.openshift.com/container-platform/4.13/cli_reference/openshift_cli/getting-started-cli.html)
+
+### Verify connectivity
+
+Before proceeding to the configuration phase, validate that your workstation can reach the necessary endpoints.
+
+1.  **Verify Internet/Registry access**
+
+    ```bash
+    curl -I [https://docker.enterprisedb.com/v2/](https://docker.enterprisedb.com/v2/)
+    ```
+
+1.  **Verify Cloud Identity (if using AWS/GCP)**
+
+    for AWS:
+    
+    ```
+    aws sts get-caller-identity
+    ```
+    
+    or for GCP:
+    
+    ```
+    gcloud auth list
+    ```
+    
+1.  **Verify local tools**
+
+    ```
+    edbctl version
+    kubectl version --client
+    ```
+    
+!!! Note
+Ensure your workstation meets the CPU and RAM requirements to host the temporary bootstrap cluster during installation.
+!!!
+
+## Deploy your Kubernetes cluster
+
+With your management workstation configured, you are ready to deploy your cluster according to the relevant specifications defined in the previous Phase.
+
+### Select your deployment path
+
+Select the guide below that matches the **Kubernetes flavor** you selected in Phase 1 or 2 and proceed by deploying according to your system requirements defined in [Gathering your system requirements](./sys_reqs).
+
+### Public cloud providers
+
+| Provider | Official documentation | EDB Knowledge Base | Key considerations |
+| :--- | :--- | :--- | :--- |
+| **AWS (EKS)** | [**Creating an EKS cluster**](https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html) | [**HM on EKS Guide**](https://knowledge.enterprisedb.com/hc/en-us/articles/24212491501468-Guidance-on-AWS-for-Hybrid-Manager) | Requires IAM OIDC provider, EBS CSI driver, and LoadBalancer Controller. |
+| **Google Cloud (GKE)** | [**Creating a regional cluster**](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-a-regional-cluster) | [**HM on GKE Guide**](https://knowledge.enterprisedb.com/hc/en-us/articles/24212699192732-Guidance-on-GCP-for-Hybrid-Manager) | Requires Workload Identity enabled and specific VPC firewall rules. |
+| **Azure (AKS)** | [**Deploy an AKS cluster**](https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal) | [**HM on AKS Guide**](https://knowledge.enterprisedb.com/...) | Requires Managed Identity and Azure CNI networking. |
+
+### Private cloud and on-premises
+
+| Distribution | Official documentation | EDB Knowledge Base | Key considerations |
+| :--- | :--- | :--- | :--- |
+| **Rancher RKE2** | [**RKE2 Quickstart**](https://docs.rke2.io/install/quickstart) | [**HM on RKE2 Guide**](https://knowledge.enterprisedb.com/hc/en-us/articles/24212371387420-Guidance-on-Rancher-for-Hybrid-Manager) | Requires manual setup of Longhorn (or similar) storage and MetalLB for ingress. |
+| **Red Hat OpenShift** | [**Installing OpenShift**](https://docs.openshift.com/container-platform/4.13/installing/index.html) | [**HM on OpenShift Guide**](https://knowledge.enterprisedb.com/hc/en-us/articles/24212799018780-Guidance-on-RHOS-for-Hybrid-Manager) | Requires specific SCC (Security Context Constraints) and Route configuration. |
+
+### Set your node abstractions
+
+#### Control Plane
+
+**Required labels & taints:**
+
+* **Label:** `edbaiplatform.io/control-plane: "true"`
+* **Taint:**
+    * Key: `edbaiplatform.io/control-plane`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+```yaml
+spec:
+    replicas: 3
+    template:
+    spec:
+        metadata:
+        labels:
+            edbaiplatform.io/control-plane: "true"
+        taints:
+        - key: edbaiplatform.io/control-plane
+            value: "true"
+            effect: NoSchedule
+```
+
+#### Data plane
+
+**Required labels & taints:**
+
+* **Label:** `edbaiplatform.io/postgres: "true"`
+* **Taint:**
+    * Key: `edbaiplatform.io/postgres`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+
+```yaml
+# Example Node Pool Specification
+spec:
+    replicas: 3 # Minimum recommended for High Availability
+    template:
+      metadata:
+        labels:
+          edbaiplatform.io/postgres: "true"
+      spec:
+        taints:
+        - key: edbaiplatform.io/postgres
+          value: "true"
+          effect: NoSchedule
+```
+#### AI model nodes
+
+* **Sizing:** Current recommendations require **Nvidia B200 GPUs** (or equivalent supported hardware).
+
+**Required labels & taints:**
+
+* **Label:** `nvidia.com/gpu: "true"`
+* **Taint:**
+    * Key: `nvidia.com/gpu`
+    * Value: `"true"`
+    * Effect: `NoSchedule`
+    
+## Validate cluster specifications
+
+Now that you have deployed your cluster, before proceeding:
+
+1. Confirm that your [management workstation](#set-up-your-management-workstation) can reach all relavent endpoints for configuration in the next phase: [Preparing your environment](./environment_prep).
+
+1. Confirm that your deployed cluster matches the relevant specifications you defined in [Phase 2: Gathering your system requirements](./sys_reqs):
+
+### Compute resources
+
+**Source:** [Gathering your system requirements>Compute (Node requirements)](./sys_reqs/#3-compute-node-requirements)
+
+* **Node count:** Ensure your node pools match what was decided in the previous phases.
+* **Architecture:** Verify that all nodes use the **AMD64 (x86_64)** architecture. *ARM-based nodes are not currently supported for the Control Plane.*
+
+#### Validation of node abstractions
+
+After provisioning your infrastructure, run these commands to verify the nodes are correctly labeled and tainted. This ensures the Hybrid Manager installer can schedule pods correctly.
+
+1. **Validate Control Plane nodes:**
+
+    ```bash
+    kubectl get nodes -l edbaiplatform.io/control-plane="true"
+    ```
+
+1. **Verify taints**
+
+    ```
+    kubectl get nodes -o json | jq '.items[] | select(.metadata.labels["edbaiplatform.io/control-plane"]=="true") | {name: .metadata.name, taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/control-plane")))}'
+    ```
+
+1. **Validate Data Plane nodes:**
+
+    ```
+    kubectl get nodes -l edbaiplatform.io/postgres="true"
+    ```
+
+1. **Verify taints**
+
+    ```
+    kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, labels: .metadata.labels["edbaiplatform.io/postgres"], taints: (.spec.taints // [] | map(select(.key=="edbaiplatform.io/postgres")))}'
+    ```
+
+### Block storage configuration
+
+**Source:** [Gathering your system requirements>6. Block storage (Database & logs)](./sys_reqs/#6-block-storage-database--logs)
+
+* **Storage class:** Ensure the cluster has the [**Storage Class** default](./sys_reqs/#6-block-storage-database--logs) you identified in Phase 2 for the Control Plane (e.g., `gp2`).
+* **Capability:** If desired, you may establish any number of storage classes for your Data Plane (Postgres workloads), and they are then options to use when provisioning data base clusters using HM. 
+
+### Ingress
+
+**Source:** [Gathering your system requirements>5. Ingress](./sys_reqs/#5-ingress)
+
+* **Ingress controller:** Verify that your chosen Ingress mechanism (LoadBalancer or NodePort) is active and exposing the required ports.
+
+* **DNS:** Ensure CoreDNS (or equivalent) is healthy and resolving internal service names.
+
+## Post-deployment validation
+
+Once your cluster is `Active` or `Ready`, perform these quick checks to ensure it is ready for the **Preparing your environment** phase.
+
+### Verify API Access
+
+From your [management workstation](#set-up-your-management-workstation), ensure you can reach the API server.
+
+```bash
+kubectl cluster-info
+```
+* **Success:** Returns the Kubernetes control plane URL.
+
+### Verify Storage Capability
+Confirm a valid storage class is present and set to (default).
+
+```bash
+kubectl get sc
+```
+* **Success:** Output lists a class (e.g., `gp3`) with `(default)` in the name.
+
+### Verify Identity (Cloud Only)
+If you are on EKS/GKE/AKS, verify that your current IAM identity has administrative rights.
+
+```bash
+kubectl auth can-i create secrets --all-namespaces
+```
+* **Success:** Output is `yes`.
+
+## Next phase
+
+Your infrastructure is provisioned. 
+You can now connect to this cluster. 
+
+Next sync images to your local registry, stage your secrets, configure TLS, set up any relevant advanced features, and apply the HM configuration file: `values.yaml`.
+
+**[Proceed to Phase 4: Preparing your environment](./environment_prep) →**
