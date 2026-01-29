@@ -9,25 +9,19 @@ deepToC: true
 
 ### Why run Hybrid Manager (HM) across multiple data centers (DCs)?
 
-Deploying HM across multiple data centers gives you high availability and disaster recovery for Postgres workloads and the Hybrid Manager control plane (CP):
+Deploying HM across multiple data centers gives you high availability and disaster recovery for Postgres workloads:
 
-- Survive a site loss (DR): Keep a warm Secondary site ready. If the Primary DC is unavailable, promote replicas in the Secondary and restore service.
-  
-  [I think this is wrong, multi-dc is about being able to deploy a database across regions, not having "a second HM" as a backup in another location]: #
+- Survive a database loss (DR) &mdash; Keep one or two warm Secondary databases ready. If the Primary data center is unavailable, promote replicas in the Secondary location and restore services.
 
-- Minimize downtime (HA): Perform maintenance or migrations on one site while workloads continue on the other.
+- Minimize downtime (HA) &mdash; Perform maintenance or lifecycle operations on one database while workloads continue on the other.
 
-  [Clarify to say that this could be more about workload isolation, e.g. migration workloads on one geography and AI workload in another one]: #
+- Protect data (RPO) &mdash; Continuous replication to a second data center reduces potential data loss compared to single-site backups only.
 
-- Protect data (RPO): Continuous replication to a second DC reduces potential data loss compared to single-site backups only.
+- Reduce blast radius &mdash; Faults, misconfigurations, or noisy neighbors in one data center don’t take down the other.
 
- [Clarify that this is the case for multi-node PG clusters]:#
+- Meet compliance/sovereignty &mdash; Keep copies in a specific region or facility while still centralizing control.
 
-- Reduce blast radius: Faults, misconfigurations, or noisy neighbors in one DC don’t take down the other.
-
-- Meet compliance/sovereignty: Keep copies in a specific region or facility while still centralizing control.
-
-- Operate at scale: Split read traffic, stage upgrades, or run blue/green cutovers across DCs.
+- Operate at scale &mdash; Split read traffic, stage upgrades, or run blue/green cutovers across data centers.
 
 #### RTO/RPO at a glance
 
@@ -35,43 +29,41 @@ Deploying HM across multiple data centers gives you high availability and disast
 
 #### RPO (data loss window):
 
-- Async replication (common across DCs): very low, but not zero (best-effort seconds).
+- Async replication (common across data centers): very low, but not zero (best-effort seconds).
 
-- Sync replication (latency-sensitive): can approach zero data loss, but adds cross-DC latency and requires robust low-latency links.
+- Sync replication (latency-sensitive): can approach zero data loss, but adds cross-data-center latency and requires robust low-latency links.
 
 ### What this guide helps you do
 
-- Connect two or more HM clusters (Primary, Secondary A, Secondary B) on the same provider/on-prem family. 
-  [I guess these must be deployed to different regions?]:#
+- Connect two or more HM clusters (HM installations) on the same provider/on-prem family. These can be on different geographical regions. For example, you can have a Primary and one Secondary, or a Primary and two Secondaries. 
 
-- Align object storage (identical `edb-object-storage` secret) so backups/artifacts are usable in all DCs.
+- Align object storage (identical `edb-object-storage` secret), so backups/artifacts are usable in all data centers.
 
-- Wire the Agent (Beacon) so the Primary can register the Secondary as a managed location and provision there (9445/TCP).
-  [Agent/Beacon, what is this?]: #
+- Wire the HM-internal agent (Beacon, or `upm-beacon-agent`) so the Primary can register the Secondary locations as managed locations and provision there (9445/TCP).
 
-- Prepare a Postgres topology with a primary in one DC and replicas in the other(s); perform manual failover by promoting replicas.
+- Prepare a Postgres topology with a primary in one data center and replicas in the other(s); perform manual failover by promoting replicas.
 
 ### Current limitations
 
-- Up to three sites (Primary and Secondaries).
+- Up to three locations (Primary and one Secondary, or a Primary and two Secondaries).
 
-- Manual failover: Promote replicas in one of the Secondaries if the Primary is down.
+- Manual failover: Promote replicas in one of the Secondary locations if the Primary is down.
 
 - Same cloud/on-prem family: Cross-CSP multi-DC is not supported.
 
 ### Architecture at a glance
 
-- Control plane: Two or three Kubernetes clusters, each with an instance of HM, configured as a hub and spokes; Primary “manages” the Secondaries as a Location through Beacon.
+- Control plane: Two or three Kubernetes clusters, each with an instance of HM, configured as a hub and spokes; Primary “manages” the Secondaries as a location through an HM-internal agent (Beacon).
 
-- Data nodes: Postgres primary in DC-A, replicas in DC-B (async by default), and if configured in DC-C.
+- Data nodes: Postgres primary in DC-A, replicas in DC-B (async by default), and, if configured, in DC-C.
 
 - Storage: Shared/consistent object store configured across sites for backups/artifacts.
 
-- Telemetry: Thanos/Loki configured to view metrics/logs across sites.
+- Observability: Thanos/Loki configured to view metrics/logs across sites.
 
 ### Who is this for?
 
-This is for teams that need higher resilience than a single DC can provide, and are comfortable running a manual, well-rehearsed failover playbook with clearly defined RTO/RPO targets.
+This is for teams that need higher resilience than a single data center can provide, and are comfortable running a manual, well-rehearsed failover playbook with clearly defined RTO/RPO targets.
 
 ## Prerequisites
 
@@ -87,17 +79,17 @@ This is for teams that need higher resilience than a single DC can provide, and 
 
     - Same provider/on-prem family (no cross-cloud).
 
-- Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC topology, this object storage is shared between all clusters.
+- Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC deployment, this object storage is shared between all clusters.
 
 ### Collect the required information
 
-1. Prepare two (or three) copies of the HM installation configuration file (`values.yaml`) named `primary.yaml`, `secondaryA.yaml`, `secondaryB.yaml`.
+1. Prepare two (or three) copies of the HM installation configuration file (`values.yaml`). Name them `primary.yaml`, `secondary.yaml` if you are deploying in two locations, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` of you are deploying in three locations.
 
 1. Domain names:
 
-   Each HM must be configured with a dedicated domain name, set in the installation configuration file (`primary.yaml`, `secondaryA.yaml`, `secondaryB.yaml`) as `portal_domain_name`. This parameter is used by both Primary and Secondaries.
+   Each HM installation must be configured with a dedicated domain name, set in the HM installation configuration file as `portal_domain_name`. This parameter is used by the Primary and Secondaries.
 
-   Create these domain names for the Primary and Secondary clusters (Secondary A and B, if you have 3 data centers), and record this information.
+   Create these domain names for the each of the HM installations (two or three installations, depending on your configuration), and record this information.
 
 ## Object storage across locations
 
@@ -106,95 +98,94 @@ HM uses an object store for backups, artifacts, WAL, and internal bundles.
 
 ### Key requirement
 
-All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the default namespace on the Primary and Secondary cluster (Secondary A and B, if you have 3 data centers).
+All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the default namespace. Store this secret in the Primary and Secondary if you are running on two locations. Store this secret in the Primary, Secondary A and Secondary B, if you have three data centers.
 
 ## Parameter uniqueness
 
 Because the two or three clusters involved in this multi-data-center deployment are using the same object store, we must ensure that specific parameters are different between all clusters.
 
-1. `location_id` should be set to a human readable location identifier. These values must differ between the clusters. Any human readable name is sufficient.
-
-1. `internal_backup_folder` must match the regex `^[0-9a-z]{12}$`, and must be unique between the Primary and the Secondary locations (Secondary A and B, if you have 3 data centers).
-
-1. `metrics_storage_prefix` must be unique between Primary and Secondary locations (Secondary A and B, if you have 3 data centers).
-
-1. `logs_storage_prefix` must be unique between primary and secondary locations (Secondary A and B, if you have 3 data centers).
+| Parameter                | Requirement                                                         | Why it matters                                                                                  |
+|--------------------------|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `location_id`            | Must be unique per location.                                        | Human-readable location identifier. Identifies the specific location in the HM console and API. |
+| `internal_backup_folder` | Must be unique per location AND match the format: `^[0-9a-z]{12}$`. | Separates database backups so that a restore doesn't pull the wrong data.                       |
+| `metrics_storage_prefix` | Must be unique per location.                                        | Ensures observability data from each site is stored in its own directory.                       |
+| `logs_storage_prefix`    | Must be unique per location.                                        | Prevents logs from different locations from overwriting each other in shared storage.           |
 
 ## Configure the multi-DC topology
 
-Each Primary and Secondary cluster (Secondary A and B, if you have 3 data centers) must be aware of its own role as well the addresses of the other clusters in the multi-DC group. 
-The following configuration stanza describes the topology and must be present in the `primary.yaml`, `secondaryA.yaml`, and if required, `secondaryB.yaml` values files.
+Primary and Secondary locations must be aware of its own role as well the addresses of the other clusters in the multi-DC group. The following configuration stanza describes the topology and must be present in each of the HM installation configuration files. 
 
-```
+In a two-location setup, you must make sure this stanza is properly set in both `primary.yaml`, and `secondary.yaml` files. In a three-location setup, it must be set in all three `primary.yaml`, `secondaryA.yaml`, and `secondaryB.yaml` files.
+
+```yaml
 clusterGroups:
   role: (secondary|primary|standalone)
   primary:
     domainName: <primary portal domain>
   secondaries:
     - domainName: <secondary portal domain>
+    # add an additional domainName entry here for a three-location setup
 ```
 
-Fill in the missing domainName parameters using the `portal_domain_name` parameter within the `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` files.
+Fill in the missing domainName parameters using the `portal_domain_name` parameter you previously set in each HM installation configuration file.
 
 Add this stanza to the bottom of `primary.yaml`, and configure the `role` as `primary`.
 
-Similarly, add this stanza to the bottom of the `secondaryA.yaml` and `secondaryB.yaml` files and configure the role as `secondary`.
+Similarly, add this stanza to the bottom of the `secondary.yaml` file (or `secondaryA.yaml` and `secondaryB.yaml` files) and configure the role as `secondary`.
 
 ## Reduced set of components
 
-The HM consists of a number of different components, some of which are not necessary on the Secondary location.  
-While the full set can be installed successfully on the Secondary location, it is recommended to reduce that list by setting the parameter `scenarios` to be just `core`,
-and disabling the UI.
+The HM consists of a number of different components, some of which are not necessary on the Secondary locations. While the full set can be installed successfully on Secondary locations, we recommende to reduce that list by setting the parameter `scenarios` to be just `core`,
+and disabling the HM console (UI).
 
-Set the following in the secondary values file, `secondary.yaml`.
+Add the following parameters in the secondary values file, `secondary.yaml` (or `secondaryA.yaml` and `secondaryB.yaml`).
 
-```
+```yaml
 scenarios: 'core'
 disabledComponents: 
   - upm-ui
 ```
 
-1. Validation checklist
+1. Validation checklist:
 
-    - The `edb-object-storage` secret must be identical (compare .data only).
+   - The `edb-object-storage` secret must be identical across all locations (compare .data only).
 
-    - Both clusters can list/write the bucket (quick Pod/Job test).
+   - All locations can list/write the bucket (quick Pod/Job test).
 
-    - `location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must differ between the Primary and the Secondary.
+   - `location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must be unique per location.
 
-    - `scenarios` has been set to be `core`.
+   - `scenarios` has been set to be `core` for Secondary locations.
 
-    - `disabledComponents` has the `upm-ui` component listed.
+   - `disabledComponents` has the `upm-ui` component listed for Secondary locations.
 
 ## Hybrid Manager installation
 
-Using the values file `primary.yaml` and `secondary.yaml`, install the Hybrid Manager through helm. 
+Using the HM installation configuration files `primary.yaml` and `secondary.yaml` (or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager through helm. 
 
 ### Validate wiring
 
-1. On Primary: should list the managed Secondary location
+1. On the Primary, list the managed Secondary locations:
 
-    ```bash
-    kubectl get location
-    ```
+   ```bash
+   kubectl get location
+   ```
 
-1. Validate SPIRE federation present on each cluster
+   You should see all locations as `managed-<SECONDARY_LOCATION_NAME>` with recent `LASTHEARTBEAT`.
 
-    ```bash
-    kubectl -n spire-system exec svc/spire-server -c spire-server -- \
-    /opt/spire/bin/spire-server federation list
-    ```
+1. Validate that SPIRE federation is present on all locations:
 
-1. Expected:
+   ```bash
+   kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+   /opt/spire/bin/spire-server federation list
+   ```
+   
+   You should see a `federation list` showing 1 relationship (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
 
-- `kubectl get location` shows `managed-<SECONDARY_LOCATION_NAME>` with recent `LASTHEARTBEAT`.
-
-- `federation list` shows 1 relationship (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
+   [probably here we should see 2 relationships in a three-location setup?]: #
 
 ### Create the cross-DC Postgres topology
 
-At this point HM can provision into the Secondary location. 
-You still choose and create the actual DB topology.
+HM can now provision into the Secondary locations, but you must still choose and create the actual database topology.
 
 #### Typical flow
 
