@@ -49,11 +49,11 @@ The configuration of PGAA with NVIDIA RAPIDS consists of the following steps:
 - **Spark Connect**: A running [Spark Connect](https://spark.apache.org/docs/3.5.7/api/python/getting_started/quickstart_connect.html) server configured with the following dependencies:
 
   ```
-  org.apache.spark:spark-connect_2.12:3.5.7,\
-  org.apache.hadoop:hadoop-aws:3.3.4,\
-  org.apache.hadoop:hadoop-azure:3.3.6,\
-  org.apache.hadoop:hadoop-azure-datalake:3.3.6,\
-  com.microsoft.azure:azure-storage:8.6.6
+  org.apache.spark:spark-connect_2.12:3.5.6,\
+  io.delta:delta-spark_2.12:3.3.1,\
+  org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.6.1,\
+  org.apache.iceberg:iceberg-aws-bundle:1.6.1,\
+  org.apache.hadoop:hadoop-aws:3.3.4
   ```
 
 - **NVIDIA RAPIDS**: Version 2025.10 or above installed on your Spark cluster. See [Enabling RAPIDS](#enabling-nvidia-rapids) for details. 
@@ -111,30 +111,28 @@ To utilize GPU acceleration, NVIDIA RAPIDS must be correctly installed and activ
   ```sql
   SELECT pgfs.create_storage_location(
   'biganimal-sample-data',
-  's3://beacon-analytics-demo-data-us-west-2-prod',
-  '{"skip_signature": "true", "region": "us-west-2"}'
+  's3://beacon-analytics-demo-data-us-east-1-prod',
+  '{"skip_signature": "true", "region": "us-east-1"}'
   );
   ```
 
 1. Create tables using the `PGAA` access method. Specify the storage location created in the previous step, the path to either a single Parquet file or a directory containing multiple Parquet files, and the format (currently Parquet). For example:
 
-  ```
-  CREATE TABLE public.customer () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/customer', pgaa.format = 'parquet');
-  CREATE TABLE public.lineitem () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/lineitem', pgaa.format = 'parquet');
-  CREATE TABLE public.nation () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/nation', pgaa.format = 'parquet');
-  CREATE TABLE public.orders () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/orders', pgaa.format = 'parquet');
-  CREATE TABLE public.part () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/part', pgaa.format = 'parquet');
-  CREATE TABLE public.partsupp () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/partsupp', pgaa.format = 'parquet');
-  CREATE TABLE public.region () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/region', pgaa.format = 'parquet');
-  CREATE TABLE public.supplier () USING PGAA
-      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpch_sf_100/supplier', pgaa.format = 'parquet') ;
+  ```sql
+  CREATE TABLE public.customer_address () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/customer_address', pgaa.format = 'parquet');
+  CREATE TABLE public.customer_demographics () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/customer_demographics', pgaa.format = 'parquet');
+  CREATE TABLE public.date_dim () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/date_dim', pgaa.format = 'parquet');
+  CREATE TABLE public.warehouse () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/warehouse', pgaa.format = 'parquet');
+  CREATE TABLE public.ship_mode () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/ship_mode', pgaa.format = 'parquet');
+  CREATE TABLE public.store_returns () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/store_returns', pgaa.format = 'parquet');
+  CREATE TABLE public.store () USING PGAA
+      WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/store', pgaa.format = 'parquet');
   ```    
 
   If you specify a directory containing multiple Parquet files, PGAA automatically unions all files into a single table for processing.
@@ -160,46 +158,35 @@ To utilize GPU acceleration, NVIDIA RAPIDS must be correctly installed and activ
 
 ### Running analytical queries
 
-
 Run heavy analytical queries against your defined tables to verify that they are successfully leveraging GPU acceleration.
 
 The query is offloaded to the Spark cluster, and if NVIDIA RAPIDS is active, the join and aggregation operations are performed in parallel across thousands of GPU cores.
 
-The following example runs a complex query that identifies customer revenue impact by filtering for returned items within a specific quarterly window. This involves a four-way join and large-scale aggregations that would typically bottleneck a standard relational engine:
+The following example runs a TPC-DS inspired analytical query that identifies "high-return" customers by comparing their total store returns against the regional average. This involves complex Common Table Expressions (CTEs), correlated subqueries, and multi-stage aggregations—precisely the type of CPU-intensive workload that PGAA accelerates through vectorized execution:
 
 ```sql
-SELECT
-    c_custkey,
-    c_name,
-    sum(l_extendedprice * (1 - l_discount)) AS revenue,
-    c_acctbal,
-    n_name,
-    c_address,
-    c_phone,
-    c_comment
-FROM
-    customer,
-    orders,
-    lineitem,
-    nation
-WHERE
-    c_custkey = o_custkey
-    AND l_orderkey = o_orderkey
-    AND o_orderdate >= CAST('1993-10-01' AS date)
-    AND o_orderdate < CAST('1994-01-01' AS date)
-    AND l_returnflag = 'R'
-    AND c_nationkey = n_nationkey
-GROUP BY
-    c_custkey,
-    c_name,
-    c_acctbal,
-    c_phone,
-    n_name,
-    c_address,
-    c_comment
-ORDER BY
-    revenue DESC
-LIMIT 20;
+WITH customer_total_return AS (
+    SELECT 
+        sr_customer_sk AS ctr_customer_sk,
+        sr_store_sk AS ctr_store_sk,
+        SUM(sr_return_amt) AS ctr_total_return
+    FROM store_returns, date_dim
+    WHERE sr_returned_date_sk = d_date_sk 
+      AND d_year = 2000
+    GROUP BY sr_customer_sk, sr_store_sk
+)
+SELECT c_customer_id
+FROM customer_total_return ctr1, store, customer
+WHERE ctr1.ctr_total_return > (
+    SELECT AVG(ctr_total_return) * 1.2
+    FROM customer_total_return ctr2
+    WHERE ctr1.ctr_store_sk = ctr2.ctr_store_sk
+)
+AND s_store_sk = ctr1.ctr_store_sk
+AND s_state = 'TN'
+AND ctr1.ctr_customer_sk = c_customer_sk
+ORDER BY c_customer_id
+LIMIT 100;
 ```
 
 To confirm that NVIDIA RAPIDS is actively accelerating your queries, monitor the execution plan through the Spark Connect UI:
