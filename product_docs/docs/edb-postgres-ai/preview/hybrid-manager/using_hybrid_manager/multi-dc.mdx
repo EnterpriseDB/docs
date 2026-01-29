@@ -35,7 +35,11 @@ Deploying HM across multiple data centers gives you high availability and disast
 
 ### What this guide helps you do
 
-- Connect two or more HM clusters (HM installations) on the same provider/on-prem family. These can be on different geographical regions. For example, you can have a Primary and one Secondary, or a Primary and two Secondaries. 
+To be able to deploy Postgres databases into multiple data centers, you first must deploy HM installations into two or three different geographical locations or regions. You then link these installations to each other, so you can manage them from a single HM console. This guides help you:
+
+- Create all HM installation configuration files, and deploy them.
+
+- Connect two or more HM installations (HM Kubernetes clusters) on the same provider/on-prem family. These can be on different geographical regions. For example, you can have a Primary and one Secondary, or a Primary and two Secondaries. 
 
 - Align object storage (identical `edb-object-storage` secret), so backups/artifacts are usable in all data centers.
 
@@ -183,19 +187,17 @@ Using the HM installation configuration files `primary.yaml` and `secondary.yaml
 
    [probably here we should see 2 relationships in a three-location setup?]: #
 
-### Create the cross-DC Postgres topology
+### Create a Postgres database cluster across different data centers
 
-HM can now provision into the Secondary locations, but you must still choose and create the actual database topology.
+HM can now provision into the Secondary locations, but you must still choose and create the actual database topology. In the HM console, create a database cluster and make sure to select different locations for each database node. 
 
-#### Typical flow
+For single-node and high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the **Replicas**/**Locations** tab to add replica database clusters in other locations. 
 
-1. From Primary HM, create the Postgres Primary in the Primary DC.
+For advanced high availability and distributed high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the **Data Groups** tab > **Choose Location** option to distribute the cluster nodes across locations.
 
-1. From Primary HM, create replica cluster(s) in the Secondary DC (select the managed Secondary location).
+[Confirm replication mode (sync/async) and monitor replication lag meets your SLOs.]: #
 
-1. Confirm replication mode (sync/async) and monitor replication lag meets your SLOs.
-
-1. Ensure backups are writing to the shared object store from both DCs, and test a restore.
+Ensure backups are writing to the shared object store from both data centers, and test a restore.
 
 #### Operational notes
 
@@ -205,40 +207,42 @@ HM can now provision into the Secondary locations, but you must still choose and
 
 ## Validation (end-to-end)
 
-1. Validate Primary/Secondary cluster relationships
+On the Primary location, perform the following checks to validate the multi-DC setup:
+
+1. Validate Primary/Secondary cluster relationships:
 
     ```bash
     kubectl -n spire-system exec svc/spire-server -c spire-server -- \
     /opt/spire/bin/spire-server federation list
     ```
 
-1. Validate that the Secondary location is registered (Primary)
+1. Validate that the Secondary locations are registered:
 
     ```bash
     kubectl get location
     ```
 
-1. Validate provisioning to Secondary
+1. Validate provisioning to secondary works:
 
-- From Primary HM, deploy a small test workload to the Secondary location.
-    -  Telemetry (optional)
+   - From the Primary, deploy a small test workload to a Secondary location.
+     -  Telemetry (optional)
         Thanos stores show federated peer; Loki queries return logs tagged from Secondary.
-    - Object storage
-        Both clusters can read/write the bucket; secrets identical.
+     -  Object storage
+        Both clusters can read/write the bucket; secrets are identical.
 
-## Manual failover runbook
+## Manual failover
 
-#### Manual failover procedure for databases from the Primary location to the Secondary location
+### Manual failover procedure for databases from the Primary location to a Secondary location
 
-1. Quiesce writes to Primary (maintenance mode / LB cutover).
+1. Suspend writes to the Primary location (maintenance mode/LB cutover).
 
-1. Promote replicas in Secondary to Primary (per your HM workflow / scripts).
+1. Promote a replicas in a Secondary location to Primary (using the HM console or your scripts).
 
-1. Redirect clients (DNS/LB) to Secondary.
+1. Redirect clients (DNS/LB) to the Secondary location.
 
-1. Observe: confirm writes succeed; replication role updated.
+1. Observe: confirm that writes succeed; and the replication role is updated.
 
-1. When original Primary returns: re-seed it as a replica of the new Primary; optionally plan a later cutback.
+1. When original the primary location returns: re-seed it as a replica of the new Primary; optionally plan a later cutback.
 
 #### Operator tips
 
