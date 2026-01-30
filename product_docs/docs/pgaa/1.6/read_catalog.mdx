@@ -1,0 +1,122 @@
+---
+title: Reading tables in object storage with catalog
+navTitle: Reading tables in object storage
+description: How to read from tables in object storage using Analytics Accelerator.
+---
+
+Work with Catalogs
+- Catalog types: iceberg-rest, iceberg-s3tables
+- Adding catalogs: pgaa.add_catalog()
+- Updating catalogs: pgaa.update_catalog()
+- Deleting catalogs: pgaa.delete_catalog()
+- Listing catalogs: pgaa.list_catalogs()
+- Testing connectivity: pgaa.test_catalog()
+
+Import and Sync Catalog Tables
+- One-time import: pgaa.import_catalog()
+- Continuous sync: pgaa.attach_catalog() / pgaa.detach_catalog()
+- Sync intervals and stale thresholds
+- Handling schema changes
+
+Create Catalog-Managed Tables
+- Using pgaa.managed_by, pgaa.catalog_namespace, pgaa.catalog_table
+- Schema inference from catalog
+
+
+Use PGAA (Postgres Analytics Accelerator) with an Iceberg Catalog to move beyond direct file-path access and instead use a centralized metadata service (like Lakekeeper or a REST-based Iceberg catalog). This allows for better governance, multi-node access, and interoperability with other engines like Spark.
+
+Using a catalog involves three main phases: Adding the catalog, Attaching/Importing its contents, and Managing tables through it.
+
+Catalog types:
+
+- `iceberg-rest`: Iceberg REST catalog (Lakekeeper, Snowflake Polaris, Tabular)
+- `iceberg-s3tables`: AWS S3 Tables --> supported?
+
+How to:
+
+### Add the Catalog Connection
+
+First, you must define the connection to your external Iceberg catalog. PGAA supports iceberg-rest (standard for Lakekeeper and most modern Iceberg services).
+
+```
+SELECT pgaa.add_catalog(
+    'my_iceberg_catalog',     -- Local name for the catalog
+    'iceberg-rest',           -- Catalog type
+    '{ 
+        "url": "https://your-catalog-endpoint:8080", 
+        "token": "your-secret-token", 
+        "warehouse": "your-warehouse-id" 
+    }'
+);
+```
+
+Connect Analytics Accelerator to an Iceberg catalog to discover and query existing tables:
+
+```sql
+-- Add Iceberg catalog
+SELECT pgaa.add_catalog(
+  'data_lake',
+  'iceberg-rest',
+  '{"url": "https://catalog.company.com",
+    "warehouse": "analytics",
+    "token": "auth_token"}'
+);
+```
+
+### Attach and Import the Catalog
+
+Once added, you need to "attach" it to your current database session and "import" the table definitions so Postgres can see them as local schemas/tables.
+
+Attach: Synchronizes the catalog definition across your PGD cluster nodes.
+
+```sql
+SELECT bdr.replicate_ddl_command($$ 
+    SELECT pgaa.attach_catalog('my_iceberg_catalog') 
+$$);
+```
+
+Import: Automatically creates local "foreign-like" tables for every table found in the catalog.
+
+```sql
+SELECT pgaa.import_catalog('my_iceberg_catalog');
+```
+
+After this step, you can run \dt in psql to see the newly discovered tables.
+
+```sql
+SELECT pgaa.attach_catalog('data_lake');
+
+-- Query Iceberg tables directly
+SELECT * FROM data_lake.sales.transactions
+WHERE transaction_date >= '2024-01-01';
+```
+
+3. Use Catalog-Managed Tables
+There are two ways to interact with data once the catalog is linked:
+
+A. Querying Existing Data
+If the catalog already has tables (e.g., created by Spark), you can simply query the imported tables directly:
+
+```sql
+-- Assuming the catalog has a namespace 'sales' and table 'orders'
+SELECT * FROM sales.orders WHERE order_date > '2024-01-01' LIMIT 10;
+```
+
+B. Creating New Managed Tables
+You can create a table that PGAA will automatically register in the catalog:
+
+```sql
+CREATE TABLE managed_sales_data (
+    id BIGINT,
+    sale_date TIMESTAMP,
+    amount NUMERIC
+) 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'my_iceberg_catalog',
+    pgaa.catalog_namespace = 'public',
+    pgaa.catalog_table = 'managed_sales_data'
+);
+```
+

@@ -69,3 +69,65 @@ SELECT pgaa.pgaa_version();
 
 Once installed, you can [Configure a storage location](storage_location) to grant PGAA access to your data lake.
 
+Examples:
+
+Point to parquet files:
+
+```sql
+CREATE TABLE public.customer_address () USING PGAA
+    WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/customer_address', pgaa.format = 'parquet');
+```
+
+
+Create external table over Iceberg data:
+
+```sql
+CREATE TABLE sales_history () USING PGAA
+WITH (
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'lakehouse_storage',
+  pgaa.path = 'warehouse/sales.db/transactions'
+);
+```
+
+
+## Run queries
+
+Query seamlessly across storage tiers:
+
+```sql
+SELECT
+  DATE_TRUNC('month', sale_date) as month,
+  SUM(amount) as revenue
+FROM sales_history
+WHERE sale_date >= '2024-01-01'
+GROUP BY 1;
+```
+```
+
+### Unified OLTP + OLAP Architecture
+
+Combine operational and analytical workloads in a single platform:
+
+```sql
+-- Hot data in PostgreSQL
+CREATE TABLE sales_current (
+  sale_id BIGINT PRIMARY KEY,
+  sale_date DATE,
+  amount DECIMAL(10,2)
+);
+
+-- Cold data in lakehouse
+CREATE TABLE sales_archive () USING PGAA
+WITH (
+  pgaa.format = 'iceberg',
+  pgaa.managed_by = 'lakehouse_catalog',
+  pgaa.catalog_table = 'sales_historical'
+);
+
+-- Unified view across tiers
+CREATE VIEW sales_complete AS
+SELECT * FROM sales_current
+UNION ALL
+SELECT * FROM sales_archive;
+```
