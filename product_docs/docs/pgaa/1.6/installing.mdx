@@ -13,8 +13,10 @@ Install the EDB Analytics Accelerator (PGAA) extension on your PostgreSQL cluste
 
 1. Download the package from the EDB repository:
 
+```
 export EDB_SUBSCRIPTION_TOKEN=<your-token>
 curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/standard/setup.rpm.sh" | sudo -E bash
+```
 
 <TabContainer syncKey="platform">
 
@@ -24,7 +26,7 @@ curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/standard
 sudo apt install -y postgresql-<version>-pgaa
 ```
 
-Where <version> is your PostgreSQL version.
+Where `<version>` is your PostgreSQL version.
 
 </Tab>
 
@@ -34,7 +36,7 @@ Where <version> is your PostgreSQL version.
 sudo dnf install -y postgresql-<version>-pgaa
 ```
 
-Where <version> is your PostgreSQL version.
+Where `<version>` is your PostgreSQL version.
 
 </Tab>
 
@@ -57,6 +59,12 @@ Verify that the extension have been install and their version:
 
 ## Configuring a storage location
 
+- Creating PGFS storage locations
+- Supported backends: AWS S3, Azure Blob/ADLS Gen2, GCS, local filesystem
+- Authentication: IAM roles, static credentials, environment variables
+- Public vs private buckets
+- Testing storage access: `pgaa.test_storage_location()`
+
 Define a storage location in your PostgreSQL database that points to the bucket containing your analytical data. See [PGFS storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) for function reference.
 
 ```sql
@@ -77,6 +85,71 @@ SELECT pgfs.create_storage_location(
 );
 ```
 
+Create tables using the `PGAA` access method, and specifying:
+- pgaa.storage_location
+- pgaa.path
+- pgaa.format 
 
-Create tables using the `PGAA` access method. 
 
+Examples:
+
+Point to parquet files:
+
+```sql
+CREATE TABLE public.customer_address () USING PGAA
+    WITH (pgaa.storage_location = 'biganimal-sample-data', pgaa.path = 'tpcds_sf_10/customer_address', pgaa.format = 'parquet');
+```
+
+
+Create external table over Iceberg data:
+
+```sql
+CREATE TABLE sales_history () USING PGAA
+WITH (
+  pgaa.format = 'iceberg',
+  pgaa.storage_location = 'lakehouse_storage',
+  pgaa.path = 'warehouse/sales.db/transactions'
+);
+```
+
+
+## Run queries
+
+Query seamlessly across storage tiers:
+
+```sql
+SELECT
+  DATE_TRUNC('month', sale_date) as month,
+  SUM(amount) as revenue
+FROM sales_history
+WHERE sale_date >= '2024-01-01'
+GROUP BY 1;
+```
+```
+
+### Unified OLTP + OLAP Architecture
+
+Combine operational and analytical workloads in a single platform:
+
+```sql
+-- Hot data in PostgreSQL
+CREATE TABLE sales_current (
+  sale_id BIGINT PRIMARY KEY,
+  sale_date DATE,
+  amount DECIMAL(10,2)
+);
+
+-- Cold data in lakehouse
+CREATE TABLE sales_archive () USING PGAA
+WITH (
+  pgaa.format = 'iceberg',
+  pgaa.managed_by = 'lakehouse_catalog',
+  pgaa.catalog_table = 'sales_historical'
+);
+
+-- Unified view across tiers
+CREATE VIEW sales_complete AS
+SELECT * FROM sales_current
+UNION ALL
+SELECT * FROM sales_archive;
+```
