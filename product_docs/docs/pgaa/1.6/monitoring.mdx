@@ -8,3 +8,97 @@ Monitor Analytics Tables
 - Listing tables: pgaa.list_analytics_tables()
 - Table sizes: pgaa.lakehouse_table_stats()
 - Version info: pgaa.pgaa_version()
+
+Use analytics functions to understand storage utilization and performance characteristics of your analytical tables.
+
+## Listing tables with `pgaa.list_analytics_tables()`
+
+This function acts as a centralized "Directory" or "Registry." While standard \dt shows you all tables in your database, this function filters specifically for tables that are being managed or accelerated by PGAA.
+
+```sql
+SELECT * FROM pgaa.list_analytics_tables();
+```
+
+Why it’s useful: In a complex environment, you might have hundreds of standard Postgres tables and only a handful of S3-backed ones. This function returns:
+- Table Schema & Name: Exactly which tables are "Lakehouse" tables.
+- Storage Location: Which S3/GCS bucket the table is pointing to.
+- Path: The specific folder or prefix within that bucket.
+- Format: Whether the table is configured for Iceberg, Delta, or Parquet.
+
+
+## Analyzing storage with `pgaa.lakehouse_table_stats()`
+
+Storage statistics provide insights into compression ratios, file organization, and query performance characteristics that inform optimization decisions. These metrics support capacity planning and performance tuning for analytics workloads.
+
+The `pgaa.lakehouse_table_stats()` function is the best way to verify what is happening "under the hood" after you've mapped an S3 table. It reveals the metadata PGAA has gathered, such as the number of files, the total size, and the underlying storage format.
+
+Pass the name of your table (as a regclass or string) to the function:
+
+For Delta Lake tables:
+
+```sql
+SELECT * FROM pgaa.lakehouse_table_stats('lineitem'::regclass);
+```
+
+For Iceberg tables:
+
+```sql
+SELECT * FROM pgaa.lakehouse_table_stats('iceberg_data'::regclass);
+```
+
+When you run this, you'll get a row of data with several key columns:
+
+- num_files: The total count of Parquet files that make up your table.
+- total_size_bytes: The total footprint of the data in object storage.
+- format: Confirms if it's being read as iceberg, delta, or parquet.
+- table_type: Usually identifies it as a "Lakehouse" table.
+
+Why this is useful:
+
+- I/O Troubleshooting: If a query is slow, check num_files. If you have 10,000 tiny files, the query will be slow due to "small file syndrome."
+- Verification: If total_size_bytes is 0, it means your pgaa.path or storage_location is likely pointed at the wrong directory, even if the table creation didn't fail.
+- Cost Estimation: Since S3 charges for data transfer/requests, this gives you a quick look at exactly how much data Postgres is "looking at" when it scans that table.
+
+If you just created the table and haven't run a single query yet, the stats might be empty or incomplete. Run a quick SELECT count(*) FROM your_table; first to force PGAA to initialize the metadata cache.
+
+
+## Verifying your version with `pgaa.pgaa_version()`
+
+This is your "Compatibility Check." Because PGAA is under rapid development, certain features (like specific Iceberg versions or performance patches) are version-dependent.
+
+```sql
+SELECT * FROM pgaa.pgaa_version();
+```
+
+To round out your toolkit, here is the breakdown for the two remaining essential utility functions in PGAA.
+
+1. pgaa.list_analytics_tables()
+This function acts as a centralized "Directory" or "Registry." While standard \dt shows you all tables in your database, this function filters specifically for tables that are being managed or accelerated by PGAA.
+
+How to use it:
+
+SQL
+SELECT * FROM pgaa.list_analytics_tables();
+Why it’s useful: In a complex environment, you might have hundreds of standard Postgres tables and only a handful of S3-backed ones. This function returns:
+
+Table Schema & Name: Exactly which tables are "Lakehouse" tables.
+
+Storage Location: Which S3/GCS bucket the table is pointing to.
+
+Path: The specific folder or prefix within that bucket.
+
+Format: Whether the table is configured for Iceberg, Delta, or Parquet.
+
+2. pgaa.pgaa_version()
+This is your "Compatibility Check." Because PGAA is under rapid development, certain features (like specific Iceberg versions or performance patches) are version-dependent.
+
+How to use it:
+
+SQL
+SELECT * FROM pgaa.pgaa_version();
+What it tells you: It returns the specific version of the PGAA extension currently loaded into memory. This is different from SELECT version();, which only shows the version of the Postgres engine itself.
+
+Why it’s useful:
+- Troubleshooting: If you're following documentation and a parameter isn't working, this helps you verify if you're on a version that supports it.
+- Engine Sync: It confirms that the Postgres extension version matches the underlying Seafowl engine version, ensuring there are no API mismatches between the "Postgres side" and the "Vectorized side."
+

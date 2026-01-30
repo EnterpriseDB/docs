@@ -185,7 +185,7 @@ const Page = () => {
               headingText="Analytics Accelerator"
               to="/pgaa/latest/"
             >
-              <BannerCardLink to="/pgaa/latest/lakehouse/">
+              <BannerCardLink to="/pgaa/latest/">
                 Analytics Engine
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>

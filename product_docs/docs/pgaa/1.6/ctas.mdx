@@ -4,6 +4,13 @@ navTitle: Creating tables from queries
 description: How to create tables from queries using Analytics Accelerator.
 ---
 
+Standalone PGAA without PGD supports:
+write to Iceberg / Delta Lake using CREATE TABLE AS statements (full table rewrite)
+
+Required permissions:
+- Database level
+- Storage-Level Permissions Unlike "Read-Only" mode (which only needs List and Get), CTAS requires "Write" and "Management" rights to handle the metadata files.
+
 
 PGAA supports `CREATE TABLE AS` which dumps the result of a query into analytics.
 
@@ -11,3 +18,43 @@ Create Tables from Queries (CTAS)
 - CREATE TABLE ... USING PGAA WITH (...) AS (...)
 - Supported options
 - Known limitations
+
+You can use CREATE TABLE AS (CTAS) to write directly to object storage. It is often the fastest way to "offload" a local Postgres table into your data lake in one shot.
+
+When you use CTAS with PGAA, Postgres creates the table structure, initializes the S3 metadata, and streams the results of your query into Parquet files all in a single transaction.
+
+To do this, you use the standard CREATE TABLE ... AS syntax but append the USING PGAA clause and the necessary storage parameters in the WITH block.
+
+```sql
+CREATE TABLE s3_export_table 
+USING PGAA 
+WITH (
+    pgaa.storage_location = 'your_s3_storage_location',
+    pgaa.path = 'path/in/s3/iceberg_data',
+    pgaa.format = 'iceberg'
+) AS 
+SELECT * FROM local_source_table;
+```
+
+```sql
+CREATE TABLE delta_export_test 
+USING PGAA 
+WITH (
+    pgaa.storage_location = 'your_s3_storage',
+    pgaa.path = 'exports/delta_test_data',
+    pgaa.format = 'delta'
+) AS 
+SELECT * FROM customer_address LIMIT 100;
+```
+
+
+Why use CTAS over INSERT?
+- Speed: CTAS is highly optimized for bulk creation. It bypasses some of the overhead of row-by-row consistency checks because it knows it is building the table from scratch.
+- Schema Discovery: You don't have to define the columns manually. Postgres looks at the SELECT statement and automatically maps the types (e.g., a Postgres TEXT becomes an Iceberg string).
+- One-Step Workflow: It’s a "fire and forget" command—perfect for creating a snapshot of your operational data for analysts to query in the lake.
+- Convert Transactional Table to Analytics-Only: Transform the transactional table to use analytics storage directly while discarding local data.
+
+Important Limitations to Remember
+- Read-Only Formats: You cannot use CTAS for Delta Lake or raw Parquet paths in the current version of PGAA; these formats are treated as read-only. This only works if pgaa.format = 'iceberg'.
+- No Overwrites: If a folder already exists at that S3 pgaa.path, the command will likely fail to prevent you from accidentally corrupting existing data. You usually need to point to a fresh, empty path.
+- Standalone Risks: Just like with INSERT, without a catalog (no PGD), there is no locking mechanism. If two people run CTAS to the exact same path, the metadata will break.

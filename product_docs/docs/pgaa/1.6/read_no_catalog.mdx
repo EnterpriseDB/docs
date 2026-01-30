@@ -4,18 +4,136 @@ navTitle: Reading tables in object storage
 description: How to read from tables in object storage using Analytics Accelerator.
 ---
 
+Supported object storage:  local FS, S3, GCP, Azure
+
+Apache Iceberg® is an open table format for large analytic datasets stored in object storage. Provides schema evolution, time travel, and interoperability with many analytics engines (Spark, Trino, Flink, and Postgres).
+
+Apache Iceberg® is an open table format that brings database-like reliability to data lakes built on object storage. Unlike traditional file-based approaches, Iceberg provides ACID transactions, schema evolution, and time travel capabilities while maintaining compatibility with standard formats like Parquet and ORC. Analytics Accelerator (PGAA) leverages Iceberg to enable PostgreSQL queries against petabyte-scale data lakes without moving data from object storage.
+
+ceberg implements a three-layer metadata architecture that enables its advanced capabilities while maintaining performance at scale.
+
+- Metadata Files track the current table state including schema, partitioning, and snapshot history. Each table modification creates a new metadata file, preserving previous versions for time travel.
+- Manifest Lists organize collections of data files with statistics for partition pruning. Analytics Accelerator uses these statistics to eliminate unnecessary file scanning before query execution begins.
+- Manifest Files contain column-level statistics for individual data files. These statistics enable predicate pushdown, allowing Analytics Accelerator to skip files that cannot contain matching rows.
 
 
-Read Delta Lake Tables:
+Delta Lake is an open table format and storage layer that adds ACID transactions and reliability to data lakes. Built on Parquet files with a _delta_log transaction log.
 
-- Creating tables with USING PGAA
-- Required options: pgaa.storage_location, pgaa.path
-- Schema inference
-- Example queries
+Delta Lake serves as a foundational table format within Analytics Accelerator (PGAA)'s lakehouse architecture, providing ACID transactions and time travel capabilities for large-scale analytical workloads. The integration enables PostgreSQL to directly query Delta Lake tables stored in object storage systems, eliminating the traditional ETL pipeline between operational databases and analytical systems.
 
-Read Iceberg Tables (Without Catalog)
-- Setting `pgaa.format = 'iceberg'`
-- Standalone Iceberg table access
-- Schema inference
+PGAA implements native Delta Lake reading capabilities, allowing you to leverage existing Delta Lake investments without data migration, while providing PostgreSQL's familiar SQL interface for analytical queries.
+
+PGAA translates PostgreSQL queries into optimized operations against Delta Lake's Parquet files and transaction logs. Query processing occurs within the Analytics Engine, which implements columnar data optimization specifically designed for Delta Lake's storage format. This separation delivers significant query performance improvements compared to traditional row-based processing while maintaining full SQL compatibility.
+
+Delta Lake structures data as Parquet files with an accompanying transaction log stored in the `_delta_log` directory. This transaction log maintains a complete history of all table modifications, enabling point-in-time queries and audit capabilities essential for regulatory compliance.
+
+When using PGAA without a catalog, Postgres is doing the "engine" work.
+- When you point PGAA at an Iceberg path, it looks for the metadata.json.
+- When you point it at a Delta path, it looks for the _delta_log/ folder.
+
+
+## Read-Only Analytics: Access Existing Data
+
+Iceberg format specification enables access to Apache Iceberg® tables with full metadata support including schema evolution, partition management, and time travel capabilities.
+
+
+### Define the storage location
+
+You must tell Postgres where your bucket is and provide the necessary credentials.
+
+For a public bucket (e.g., demo data):
+
+```sql
+SELECT pgfs.create_storage_location(
+    'my_lake_data', 
+    's3://your-bucket-name/path', 
+    '{"aws_skip_signature": "true"}'
+);
+```
+
+For a private bucket (requires credentials):
+
+```sql
+SELECT pgfs.create_storage_location(
+    'my_lake_data', 
+    's3://your-bucket-name/path', 
+    '{"aws_region": "us-east-1", "aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+);
+```
+
+### Map the Table to Postgres
+
+Create a table using the PGAA access method.
+
+For Iceberg Format:
+
+```sql
+CREATE TABLE iceberg_data () 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.storage_location = 'my_lake_data',
+    pgaa.path = 'path/to/iceberg_table'
+);
+```
+
+For Delta Lake Format:
+
+```sql
+CREATE TABLE delta_data () 
+USING PGAA 
+WITH (
+    pgaa.format = 'delta',
+    pgaa.storage_location = 'my_lake_data',
+    pgaa.path = 'path/to/delta_table'
+);
+```
+
+Note: You can leave the column definitions empty (`()`) because PGAA will automatically discover the schema from the Iceberg/Delta metadata files when you first query the table.
+
+
+### Query and Verify Acceleration
+
+Once the table is created, you can query it with standard SQL. To verify that PGAA’s vectorized engine is actually handling the work, use `EXPLAIN`.
+
+```sql
+EXPLAIN (COSTS OFF) SELECT count(*), region FROM iceberg_data GROUP BY region;
+```
+
+What to look for in the output: If the engine is active, you will see a node called Custom Scan (`pgaa_scan`) or Foreign Scan on pgaa. This confirms the query has been offloaded to the vectorized accelerator rather than being processed by the standard Postgres executor.
+
+
+## Limitations: schema interference
+
+
+Schema evolution is the intentional, controlled change of a data structure over time. It allows you to add, rename, or drop columns in your S3/Object Storage files without rewriting the entire dataset. 
+
+Table formats like Iceberg and Delta Lake are designed to handle this gracefully. The metadata files (metadata.json for Iceberg or the _delta_log for Delta) track these changes across different versions of the table.
+
+When an external engine (like PostgreSQL/PGAA) attempts to read that evolved data using an outdated "map", schema interference occurs. 
+
+Schema Interference refers to the conflict between the column definitions stored in the PostgreSQL system catalog (pg_attribute) and the actual schema defined in the Delta/Iceberg metadata files in S3.
+
+When you create a table USING PGAA, Postgres acts as a wrapper. If the two schemas don't match, the "interference" can lead to query failures or silent data omission.
+
+- Postgres Catalog: Stores the schema you defined (or was discovered) when you ran CREATE TABLE.
+- Object Storage Metadata: The _delta_log (Delta) or metadata.json (Iceberg) files that track the current state of the data.
+
+Schema interference happens when the S3 files evolve, but the Postgres table definition remains static.
+
+Common Interference Scenarios:
+- Column Order Mismatch: If a process outside of Postgres rewrites the Iceberg table and changes the physical order of columns, Postgres might try to map "Column A" to data that is now "Column B" if it is relying on positional mapping rather than name-based mapping.
+- Type Conflict: if an external process changes a column type in the Delta Lake, Postgres will return a "Type Mismatch" error  during the scan because the data cannot fit into the Postgres-defined slot.
+- The "Phantom Column" (Schema Evolution): If you add a new column to S3, Postgres `SELECT *` won't show it because the column isn't in the Postgres `pg_attribute` table, but because However, because PGAA is "Read-Only" in this mode, it cannot automatically update the Postgres system catalog to add that column for you.
+
+How to Resolve Interference:
+
+Without an Iceberg Catalog, you have to manually break the interference:
+
+- Re-Discovery: The most common fix is to drop, recreate the table, and run a query against it to refresh the schema discovery.
+- Explicit Mapping: Instead of using empty parentheses (), explicitly define the columns in your CREATE TABLE statement to match the S3 files exactly.
+- ALTER TABLE ?
+
+In a "no-catalog" setup, Postgres is schema-on-read. Interference is the "friction" caused when the read-time schema in Postgres falls out of sync with the write-time schema in the data lake.
 
 
