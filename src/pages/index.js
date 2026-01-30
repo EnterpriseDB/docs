@@ -222,6 +222,9 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/model/serving/">
                 Model Serving
               </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/preview/ai-factory/langflow/">
+                Langflow
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
