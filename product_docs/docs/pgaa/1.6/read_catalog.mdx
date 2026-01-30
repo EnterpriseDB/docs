@@ -4,6 +4,8 @@ navTitle: Reading tables in object storage
 description: How to read from tables in object storage using Analytics Accelerator.
 ---
 
+
+
 Work with Catalogs
 - Catalog types: iceberg-rest, iceberg-s3tables
 - Adding catalogs: pgaa.add_catalog()
@@ -21,6 +23,92 @@ Import and Sync Catalog Tables
 Create Catalog-Managed Tables
 - Using pgaa.managed_by, pgaa.catalog_namespace, pgaa.catalog_table
 - Schema inference from catalog
+
+
+Analytics Accelerator supports multiple Iceberg catalog implementations, each suited to different operational requirements.
+- REST catalogs: REST catalogs provide vendor-neutral integration through HTTP protocols. AWS Glue, Tabular, and custom implementations expose Iceberg tables through standardized REST APIs. (Lakekeeper, Snowflake Polaris, Tabular)
+- AWS S3 Tables: Native integration with AWS S3 Tables provides serverless Iceberg catalog functionality:
+
+
+There are two primary ways to manage the metadata of your object store tables:
+
+- No-catalog offload: The metadata is stored alongside the data files and managed directly by the object storage file system. Postgres uses the `PGFS` extension to connect directly to the object storage.
+- Catalog-managed offload: This method decouples the data from the metadata. The metadata is stored and managed by a centralized service, such as Iceberg REST, creating a universal registry that allows Postgres and other tools (like Spark or Trino) to query the same data lake tables. When you offload data, the system writes the Parquet files to object storage, but registers the table's metadata in the external catalog. You may also read tables managed by an external catalog by attaching them to your data group.
+
+
+Use an external Iceberg catalog to avoid schema interference:
+- Without a Catalog: You have to manually update Postgres every time the schema evolves (manually resolving interference).
+- With a Catalog: PGAA talks to the catalog, notices the schema has evolved, and automatically updates the Postgres definition. Evolution happens, but interference is eliminated.
+
+
+How the Catalog Solves problems with schema interference:
+- Schema Discovery: When you use pgaa.attach_catalog(), Postgres doesn't just copy the column names once; it creates a dynamic link. If a Spark job adds a column to S3, the Catalog knows instantly.
+- Version Pinning: Catalogs track specific Schema IDs. If a column is renamed from cust_id to customer_id, the catalog understands it's the same physical data. Postgres sees the update through the catalog rather than crashing because a file changed.
+- Centralized Truth: You no longer have "two masters." The Catalog becomes the single source of truth for both the writer (e.g., Spark) and the reader (PGAA).
+
+
+Use Postgres Analytics Accelerator (PGAA) with an Apache Iceberg catalog. 
+
+## Configure the Catalog Connection
+
+You must first register the external Iceberg catalog with your Postgres instance. This creates the metadata link needed for PGAA to communicate with the Iceberg REST service.
+
+```sql
+SELECT pgaa.add_catalog(
+    'iceberg_catalog',    -- Local name for the catalog
+    'iceberg-rest',       -- Type of catalog (most common)
+    '{ 
+        "url": "https://your-catalog-endpoint:8080", 
+        "token": "your-auth-token", 
+        "warehouse": "your-warehouse-name"
+    }'
+);
+```
+
+## Synchronize the Catalog (Attach & Import)
+
+Attach the configuration to the current database state and "import" the remote table definitions into your Postgres schema.
+
+```sql
+SELECT pgaa.attach_catalog('iceberg_catalog');
+```
+
+Import the metadata: This scans the Iceberg catalog and creates corresponding table definitions in Postgres.
+
+```sql
+SELECT pgaa.import_catalog('iceberg_catalog');
+```
+
+## Querying Existing Catalog tables
+
+Once imported, the tables in the Iceberg catalog are accessible just like standard tables. If your catalog has a namespace called `analytics_db` and a table called `web_logs`, you can query them immediately:
+
+```sql
+SELECT event_type, COUNT(*) 
+FROM analytics_db.web_logs 
+WHERE event_date > '2025-12-01' 
+GROUP BY event_type;
+```
+
+## Creating Managed Tables via Catalog
+
+If you want to create a new table from Postgres that is automatically registered in your Iceberg catalog, use the `USING PGAA` syntax with catalog parameters:
+
+```sql
+CREATE TABLE historical_sales (
+    order_id BIGINT,
+    customer_id INT,
+    amount NUMERIC,
+    sale_date DATE
+) 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'iceberg_catalog',
+    pgaa.catalog_namespace = 'public',
+    pgaa.catalog_table = 'historical_sales'
+);
+```
 
 
 Use PGAA (Postgres Analytics Accelerator) with an Iceberg Catalog to move beyond direct file-path access and instead use a centralized metadata service (like Lakekeeper or a REST-based Iceberg catalog). This allows for better governance, multi-node access, and interoperability with other engines like Spark.
