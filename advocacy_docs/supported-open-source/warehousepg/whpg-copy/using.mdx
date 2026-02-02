@@ -1,0 +1,129 @@
+---
+title: Migrating data between WarehousePG clusters with WarehousePG Copy
+navTitle: Migrating data between clusters
+description: Learn how to migrate database data between source and destination WarehousePG clusters.
+---
+
+WarehousePG Copy provides a high-performance method for migrating data between source and destination WarehousePG (WHPG) clusters, utilizing parallelized data transfers to maximize throughput.
+
+You can migrate the data between clusters of the same version or from a  WarehousePG 6.x cluster to a WarehousePG 7.x cluster. However, downward migration from version 7.x to 6.x is not supported.
+
+Follow these steps to perform a successful migration:
+1. Meet the [prerequisites](#prerequisites).
+1. [Diagnose connectivity between clusters](#diagnosing-connectivity-between-clusters).
+1. [Choose your configuration settings](#choosing-your-configuration-settings).
+1. [Run the copy command](#running-the-copy-command).
+1. [Verify the copy operation](#verifying-the-copy-operation).
+
+## Prerequisites
+
+- You must install the identical version of the `whpg-copy` utility on every host across both the source and destination clusters. 
+- The specific host where you run the `whpg-copy` command must have network access to the WHPG coordinators of both the source and destination clusters.
+- The database user defined in your connection strings must have sufficient privileges to: 
+    - Read all data and metadata from the source cluster. 
+    - Write data and execute DDL commands on the destination cluster.
+- WarehousePG Copy currently does support password authentication via the `wgpg-copy` command or the configuration file. Configure authentication through a [password file](https://www.postgresql.org/docs/12/libpq-pgpass.html) and use `.pgpass` or the `PGPASSFILE` environment variable to set a password.
+
+## Diagnosing connectivity between clusters
+
+Before initiating a transfer, you must verify that the network is ready. Because `whpg-copy` transfers data directly from the source segments to the destination segments, the destination hosts must be reachable from the source hosts.
+Use the `whpg-copy diagnose` command to identify blocked connections or routing issues:
+
+```bash
+whpg-copy diagnose \
+    --src-url <src_url> \
+    --dst-url <dst_url> \
+    --port-range <min_port>-<max_port>
+```
+
+The `--port-range` parameter defines the range of ports on the destination segment hosts that must be open to receive incoming connections from the source segment hosts.
+
+While a host may contain multiple segments, `whpg-copy` only requires a single available port per physical host. The utility automatically scans your specified range sequentially and binds to the first available port it encounters on each destination machine.
+
+If the diagnosis fails, it will report which specific segments or connections are blocked, allowing you to troubleshoot firewall or routing issues.
+
+
+## Choosing your configuration settings
+
+You can specify your configuration settings both with direct command-line arguments and with a TOML-based configuration file. Command line is more suited for simple tasks or one-off copies. Use a TOML configuration file for complex setups, reusable pipelines, or when using options available only via the configuration file. 
+
+!!! Note 
+    Command-line arguments take precedence over settings defined in a TOML file.
+
+To quickly create a configuration file with all available options, run:
+
+```bash
+whpg-copy config-example > my_config.toml
+```
+
+For a full list of parameters, see [whpg-copy copy](reference/whpg-copy-utility#copy) and [whpg-copy configuration file](reference/config_file).
+
+## Running the copy command
+
+Initiate the transfer by running the `whpg-copy copy` command:
+
+Using command-line arguments:
+
+```bash
+whpg-copy copy \
+    --src-url postgres://gpadmin@mdw_src:5432/src_db \
+    --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+    --include-table s1.table1 \
+    --include-table s2.table2
+```
+
+Using a TOML configuration file:
+
+```bash
+whpg-copy copy --config-file my_whpg_copy.toml
+```
+
+## Verifying the copy operation
+
+Upon completion, `whpg-copy` generates detailed reports in the log directory (default: `~/gpAdminLogs`).
+
+- Success report `wc_success.<APP_ID>.txt` &mdash; Lists successfully copied tables and the total data volume transferred.
+- Retry configuration file `wc_failed_retry.<APP_ID>.toml` &mdash; Generated if any tasks fail. Contains a pre-filled TOML configuration for retrying the failed tables.
+
+Where `<APP_ID>` is a unique identifier for the copy session.
+
+If a copy operation has failed, retry the operation using the generated configuration file:
+
+```bash
+whpg-copy copy -c wc_failed_retry.<APP_ID>.toml
+```
+
+## Examples
+
+- Copy all relations from `src_db` to `dst_db` using append mode:
+
+    ```bash
+    whpg-copy copy --src-url postgres://gpadmin@mdw_src:5432/src_db --dst-url postgres://gpadmin@mdw_dst:5432/dst_db
+    ```
+
+- Copy the tables `s1.table1` and `s2.table2` to the destination cluster:
+
+    ```bash
+    whpg-copy copy \
+        --src-url postgres://gpadmin@mdw_src:5432/src_db \
+        --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+        --include-table s1.table1 \
+        --include-table s2.table2
+    ```
+
+- Copy all tables whose names begin with `to_copy` by using a configuration file:
+
+    ```bash
+    whpg-copy copy --config-file my_whpg_copy.toml
+    ```
+
+    Where the file `my_whpg_copy.toml` contains:
+
+    ```
+    src_url = "postgres://gpadmin@mdw_src:5432/src_db"
+    dst_url = "postgres://gpadmin@mdw_dst:5432/dst_db"
+    [[mapping_rules]]
+    src_table = "to_copy.*"
+    ```
+
+

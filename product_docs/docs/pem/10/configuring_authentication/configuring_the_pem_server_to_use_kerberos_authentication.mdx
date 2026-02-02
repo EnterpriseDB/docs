@@ -1,0 +1,221 @@
+---
+title: "Configuring the PEM server to use Kerberos authentication"
+navTitle: "Kerberos authentication on Linux"
+description: "Learn how to configure Postgres Enterprise Manager (PEM) to use Kerberos authentication on Linux."
+# This file is moved from pem_inst_guide_linux/04_installing_postgres_enterprise_manager
+redirects:
+- /pem/latest/pem_inst_guide_linux/04_installing_postgres_enterprise_manager/06_configuring_the_pem_server_to_use_kerberos_authentication/
+- /pem/latest/pem_online_help/01_toc_pem_getting_started/12_kerberos_authentication/ 
+- /pem/latest/considerations/authentication_options/configuring_the_pem_server_to_use_kerberos_authentication/
+
+---
+
+You can configure Kerberos authentication for the PEM server. The Kerberos server works with hostnames and not with IP addresses. To use single sign-on in PEM server using Kerberos authentication, configure the following machines with hostnames using the DNS (realm). 
+
+- Kerberos server
+- PEM server (PEM web server and PEM backend database server)
+- Client machine
+
+For example, if the realm on Kerberos server is `edbpem.org`, then you can set the Kerberos server hostname to `Krb5server.edbpem.org`, the PEM server hostname to `pem.edbpem.org`, and the client's hostname to `pg12.edbpem.org`. The convention is to use the DNS domain name as the name of the realm.
+
+## 1. Install Kerberos, the PEM server, and the PEM backend database
+
+Install Kerberos on the machine that functions as the authentication server. Install the PEM server on a separate machine. For more information, see [Installing the PEM server](../installing/).
+
+Install the PEM backend database (Postgres/EDB Postgres Advanced Server) on the same machine as the PEM server or on a different one. For more information, see the installation steps on [EDB Docs website](https://www.enterprisedb.com/docs).
+
+## 2. Add principals on Kerberos server
+
+Add the principals for the PEM web application deployed under an Apache web server (HTTPD/Apache2) and the PEM backend database server (PostgreSQL/EDB Postgres Advanced Server).
+
+```shell
+$ sudo kadmin.local -q "addprinc -randkey HTTP/<HOSTNAME_OF_PEM_SERVER>"
+$ sudo kadmin.local -q "addprinc -randkey postgres/<HOSTNAME_OF_PEM_SERVER>"
+```
+
+`HOSTNAME_OF_PEM_SERVER` must contain the realm of the Kerberos server. For example, you can specify `pemdb.edbpem.org` as the hostname of PEM server, with `edbpem.org` as the realm.
+
+!!! Note
+    If the PEM web application and the PEM backend database server are on different machines, then hostname is different for each one.
+
+## 3. Extract key tables from Kerberos server
+
+Extract the key tables from Kerberos for the PEM web application and the PEM backend database server:
+
+```shell
+sudo kadmin.local "ktadd -k <NAME_OF_PEM_WEB_FILE>.keytab HTTP/<HOSTNAME_OF_PEM_SERVER>"
+sudo kadmin.local "ktadd -k <NAME_OF_PEM_DB_FILE>.keytab postgres/<HOSTNAME_OF_PEM_SERVER>"
+```
+
+Copy the key tables from the Kerberos server to the PEM server:
+
+```shell
+scp <NAME_OF_PEM_WEB_FILE>.keytab <OS_USERNAME_ON_PEM_SERVER>@<HOSTNAME_OF_PEM_SERVER>:/tmp
+scp <NAME_OF_PEM_DB_FILE>.keytab <OS_USERNAME_ON_PEM_SERVER>@<HOSTNAME_OF_PEM_SERVER>:/tmp
+```
+
+On the PEM server, move the key tables to the required location and change ownership:
+
+```shell
+mv /tmp/<NAME_OF_PEM_WEB_FILE>.keytab <PEM_INSTALLATION_DIRECTORY>/share
+chown pem <PEM_INSTALLATION_DIRECTORY>/share/<NAME_OF_PEM_WEB_FILE>.keytab
+```
+
+```shell
+mv /tmp/<NAME_OF_PEM_DB_FILE>.keytab <DATA_DIRECTORY_OF_POSTGRES>/
+chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/<NAME_OF_PEM_DB_FILE>.keytab
+```
+
+Where: 
+
+-   `NAME_OF_PEM_WEB_FILE` is the name specified for the key table for the PEM web application.
+-   `NAME_OF_PEM_DB_FILE` is the name specified for the key table for the PEM backend database server.
+-   `OS_USERNAME_ON_PEM_SERVER` is the name of the operating system user on the PEM server.
+-   `DATA_DIRECTORY_OF_POSTGRES` is the path of the data directory of the installed Postgres database (PostgreSQL/EDB Postgres Advanced Server).
+
+## 4. Configure the PEM backend database server
+
+Add the key table location in the `postgresql.conf` file:
+
+```shell
+krb_server_keyfile='FILE:/<DATA_DIRECTORY_OF_POSTGRES>/<NAME_OF_PEM_DB_FILE>.keytab'
+```
+
+Where:
+
+-   `NAME_OF_PEM_DB_FILE` is the name specified for the key table for the PEM backend database server.
+
+-   `DATA_DIRECTORY_OF_POSTGRES` is the path of the data directory of the installed Postgres database (PostgreSQL/EDB Postgres Advanced Server).
+
+Edit the `krb5.conf` file:
+
+```shell
+$ sudo vim /etc/krb5.conf
+[libdefaults]
+ default_realm = EDBPEM.ORG
+Forwardable = True
+
+[domain_realm]
+.edbpem.org = EDBPEM.ORG
+edbpem.org = EDBPEM.ORG
+
+[realms]
+EDBPEM.ORG = {
+   kdc = krb5server.edbpem.org
+   admin_server = krb5server.edbpem.org
+}
+```
+
+Restart the database server to reflect the changes:
+
+```shell
+systemctl restart <POSTGRES_SERVICE_NAME>
+```
+
+`POSTGRES_SERVICE_NAME` is the service name of the Postgres (PostgreSQL/EDB Postgres Advanced Server) database, for example, `postgresql-13` for PostgreSQL 13 database on a `RHEL` or Rocky Linux platform.
+
+## 5. Obtain and view the initial ticket
+
+The kinit utility obtains and caches Kerberos tickets. You typically use this utility to obtain the ticket-granting ticket, entering a password to decrypt the credential from the key distribution center (KDC). The ticket-granting ticket is then stored in your credential cache.
+
+You can view the details of the ticket using the klist utility.
+
+!!! Note
+    Install the Kerberos client on the PEM server and the client machine before using kinit and klist.
+
+```shell
+$ kinit <USERNAME@REALM>
+$ klist 
+```
+
+These commands display the principal along with the Kerberos ticket.
+
+!!! Note
+    The `USERNAME@REALM` specified here must be a database user having the pem_admin role and CONNECT privilege on the `pem` database.
+
+## 6. Configure the PEM server
+
+Run the PEM configure script on the PEM server to use Kerberos authentication:
+
+    ```shell
+    $ sudo PEM_APP_HOST=<HOSTNAME_OF_PEM_SERVER> PEM_KRB_KTNAME=<PEM_INSTALLATION_DIRECTORY/share/<NAME_OF_PEM_WEB_FILE>.keytab <PEM_INSTALLATION_DIRECTORY>/bin/configure-pem-server.sh
+    ```
+
+Configure `PEM_DB_HOST` in the `config_setup.py` file. Check that the value of `PEM_AUTH_METHOD` is set to `'kerberos'`.
+
+    ```shell
+    $ sudo vim <PEM_INSTALLATION_DIRECTORY>/share/web/config_setup.py
+    PEM_DB_HOST=`<HOSTNAME_OF_PEM_SERVER>`
+    ```
+
+Configure the host in the `.install-config` file: 
+
+    ```shell
+    $ sudo vim <PEM_INSTALLATION_DIRECTORY>/share/.install-config
+    HOST=`<HOSTNAME_OF_PEM_SERVER>`
+    ```
+
+If the PEM server uses Kerberos authentication:
+
+-   All the monitored servers default to use the same authentication. To override the default, in the `config_local.py` file, add the parameter `ALLOW_DATABASE_CONNECTION_WITHOUT_KERBEROS` and set it to `True`.
+
+-   All the authenticated user principals are appended with the realm (USERNAME@REALM) and passed as the database user name by default. To override the default, in the `config_local.py` file, add the parameter `PEM_USER_KRB_INCLUDE_REALM` and set it to `False`.
+
+-   Restart the Apache server:
+
+    ```shell
+    sudo systemctl restart <SERVICE_NAME>
+    ```
+
+-   Edit the entries at the top of `pg_hba.conf` to use the gss authentication method, and reload the database server:
+
+    ```shell
+    host  pem       +pem_user    <ip_of_pem_server>/32   gss
+    host  postgres  +pem_user    <ip_of_pem_server>/32   gss
+    ```
+
+    ```shell
+    systemctl reload <POSTGRES_SERVICE_NAME>
+    ```
+
+    `POSTGRES_SERVICE_NAME` is the service name of the Postgres (PostgreSQL/EDB Postgres Advanced Server) database, for example, `postgresql-13` for PostgreSQL 13 database on a `RHEL` or Rocky Linux platforms.
+
+!!! Note
+    If you're using PostgreSQL or EDB Postgres Advanced Server 12 or later, you can specify the connection type as `hostgssenc` to allow only gss-encrypted connections.
+
+
+## 7. Browser settings
+
+Configure the browser on the client machine to access the PEM web client to use Spnego/Kerberos.
+
+For Mozilla Firefox:
+
+1.   Open the low-level Firefox configuration page by loading the `about:config` page.
+1.   In the search box, enter `network.negotiate-auth.trusted-uris`.
+1.   Double-click the `network.negotiate-auth.trusted-uris` preference and enter the hostname or the domain of the web server that's protected by Kerberos HTTP SPNEGO. Separate multiple domains and hostnames with commas.
+1.   In the search box, enter `network.negotiate-auth.delegation-uris`.
+1.   Double-click the `network.negotiate-auth.delegation-uris` preference and enter the hostname or the domain of the web server that's protected by Kerberos HTTP SPNEGO. Separate multiple domains and hostnames with commas.
+1.   Select **OK**.
+
+For Google Chrome on Linux or MacOS:
+
+-   Add the `--auth-server-whitelist` parameter to the `google-chrome` command. For example, to run Chrome from a Linux prompt, use this `google-chrome` command:
+
+    ```ini
+    google-chrome --auth-server-whitelist = "hostname/domain"
+    ```
+
+-   After configuring the PEM server, you can access the PEM web interface in your browser. Navigate to:
+
+    ```shell
+    https://<ip_address_of_PEM_server>:8443/pem
+    ```
+
+!!! Note
+    You might see the following error while connecting to your Postgres cluster:
+
+    `psql -h hostname template1`
+    `psql: GSSAPI continuation error: Unspecified GSS failure. Minor code may provide more information`
+    `GSSAPI continuation error: Key version is not available`
+
+    Add encryption types to the keytab using ktutil or by re-creating the Postgres keytab with all crypto systems from AD.

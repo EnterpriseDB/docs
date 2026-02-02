@@ -1,0 +1,122 @@
+---
+title: Working with SQL and the PGD cluster
+navTitle: Working with SQL
+description: "Working with SQL and the PGD cluster"
+redirects:
+  - /pgd/latest/get-started/first-steps/working-with-sql/
+---
+
+The first step in working with your PGD cluster is to connect to it using SQL. You can do this using the `psql` command-line interface or any other SQL client that supports PostgreSQL.
+
+The `psql` command is already installed and configured, if you are using the Docker Compose setup of the Quickstart kit. That means all you have to do is get a shell on one of the hosts so you can start working with it. You can sign into the `host-1` container to run commands within the cluster.
+
+```bash
+docker compose exec host-1 bash
+```
+
+This will give you a shell inside the `host-1` container where you can run PGD and SQL commands against the PGD cluster.
+
+
+
+## Connecting within the PGD Cluster
+
+With PGD Essential, unless you are performing maintenance tasks, you will usually connect to the cluster using the connection manager, which is running on TCP port 6432 of all the hosts in the cluster.
+
+You can connect to the write leader node in the cluster using the following command:
+
+```bash
+psql -h <host> -p 6432 -U <username> <database>
+```
+
+As we have a new cluster running with no users (apart from the `postgres` superuser) and one replicated database (`pgddb`), you can connect to the cluster using the following command:
+
+```bash
+psql -h host-1 -p 6432 -U postgres pgddb
+```
+
+This connects to the connection manager running on the `host-1` container on port 6432, which is then routed to the write leader node in the cluster. You can replace `host-1` with the name of any host in the cluster, as they all run the connection manager.
+
+If we run the following command, we can see which node we are connected to in the cluster:
+
+```sql
+select node_name from bdr.local_node_summary;
+__OUTPUT__
+ node_name
+-----------
+ node-1
+```
+
+Which doesn't surprise us, as we connected to the `host-1` container, which is running the `node-1` node in the cluster.
+
+If we exit `psql`, and reconnect with:
+
+```bash
+psql -h host-2 -p 6432 -U postgres pgddb
+```
+
+We can see that we are now connected to the `node-1` node in the cluster:
+
+```sql
+select node_name from bdr.local_node_summary;
+ node_name
+-----------
+ node-1
+```
+
+That's the connection manager routing us to the write leader node in the cluster, which is `node-1`. To confirm this, we can run:
+
+```sql
+\! pgd group group-1 show --summary
+__OUTPUT__
+ Group Property    | Value
+-------------------+---------
+ Group Name        | group-1
+ Parent Group Name | pgd
+ Group Type        | data
+ Write Leader      | node-1
+ Commit Scope      |
+```
+
+(You can use the `\!` command in `psql` to run shell commands directly from within the `psql` session.)
+
+## Working with SQL
+
+Now that you are connected to the cluster, you can start working with SQL commands. You can create tables, insert data, and run queries just like you would in a regular PostgreSQL database.
+
+For example, you can create a table and insert some data:
+
+```sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    email VARCHAR(100) UNIQUE
+);
+INSERT INTO users (name, email) VALUES
+('Alice', 'alice@example.com'),
+('Bob', 'bob@example.com');
+```
+
+You can then query the data:
+
+```sql
+SELECT * FROM users;
+__OUTPUT__
+ id |  name  |        email
+----+--------+---------------------
+  2 | Alice  |      alice@example.com
+  3 | Bob    |      bob@example.com     
+(2 rows)    
+```
+
+You can also run more complex queries, join tables, and use all the features of PostgreSQL. It's not withing the scope of this guide to cover all SQL commands, but you can refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql.html) for more information on SQL syntax and commands.
+
+## Differences with PGD
+
+What is important is that those SQL commands are replicated across the cluster. PGD has taken care of the replication for you. For example, that `serial` key has automatically been converted to a globally unique key across the cluster, so you can insert data on any node in the cluster and it will be replicated to all other nodes. For PGD Essential, this is less important as you are required to connect to the write leader, but with PGD Expanded, you can connect to any node in the cluster and run SQL commands, and this automatic change enables you to do that without worrying about conflicts or duplicates. With PGD Essential you are future proofed and can easily move to PGD Expanded later, with no changes to your SQL commands or application code.
+
+## Next Steps
+
+Now that you have connected to your PGD cluster and run some SQL commands, you can explore the following topics:
+
+- [Loading Data into your PGD Cluster](loading-data) to learn how to import data from external sources.
+- [Using PGD CLI](using-cli) to manage your PGD cluster from the command line.

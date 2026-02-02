@@ -1,0 +1,86 @@
+---
+title: Standard PGD architecture
+navTitle: Standard architecture
+description: Learn about the PGD standard architecture.
+---
+
+Using core PGD capabilites, the standard architecture configures the three nodes in a multi-master replication configuration. That is, each node operates as a master node and logically replicates its data to the other nodes. While PGD is capable of handling conflicts between data changes on nodes, the standard architecture uses PGD's integrated connection manager to ensure that all writes are directed to a single node, the write leader. Conflicts are avoided by allowing that singular leader to handle all updates to the data. Changes are then replicated to the other nodes in the cluster.
+
+If the write leader fails, the remaining nodes in the cluster will elect a new write leader, and the connection managers in those nodes then failover to send writes to the new leader. When the failed node comes back online, it rejoins the cluster and begins replicating data from the new write leader.
+
+The standard architecture was created to be easy to deploy and manage, based on user experience. Unlike other high availability solutions, moving to a more complex architecture is simple and straightforward, and then add new data groups to the cluster as needed.
+
+## Manually deploying PGD standard architecture
+
+Manually deploying the PGD standard architecture is a straightforward process. This architecture is designed for a single location that needs to be highly available and can recover from a disaster. It does this by having three data nodes in a multi-master replication configuration, with one node acting as the write leader.
+
+## PGD configuration
+
+Install PGD on each of the three nodes using the instructions in the install guide. Specifically:
+
+* [Configure repositories](/pgd/latest/essential-how-to/install/02-configure-repositories/) to enable installation of the PGD packages.
+* [Install PGD and Postgres](/pgd/latest/essential-how-to/install/03-installing-database-and-pgd/) to install the PGD packages.
+* [Configure the PGD cluster](/pgd/latest/essential-how-to/install/04-configuring-cluster/) to configure the PGD cluster.
+
+## Worked example
+
+This example  create a three-node RHEL cluster with EDB Postgres Extended Server, using the PGD Standard architecture and the following parameters:
+
+* The first node is called `node1` and is located on `host-1`.
+* The second node is called `node2` and is located on `host-2`.
+* The third node is called `node3` and is located on `host-3`.
+* the cluster name is `pgd` (the default name).
+* The group name is `group1`.
+* The Postgres version is `17`.
+* The Postgres data directory is `/var/lib/edb-pge/17/main/`.
+* The Postgres executable files are in `/usr/edb/pge17/bin/`.
+* The Postgres database user is `postgres`.
+* The Postgres database port is `5432`.
+* The Postgres database name is `pgddb`.
+
+### For the first node
+
+This is the common setup for all three nodes, installing the software:
+
+```bash
+export EDB_SUBSCRIPTION_TOKEN=XXXXXXXXXXXXXX
+export EDB_SUBSCRIPTION_PLAN=enterprise
+export EDB_REPO_TYPE=rpm
+curl -1sSLf " https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.$EDB_REPO_TYPE.sh" | sudo -E bash
+export PG_VERSION=17
+export PGD_EDITION=essential
+export EDB_PACKAGES="edb-as$PG_VERSION-server edb-pgd6-$PGD_EDITION-epas$PG_VERSION"
+sudo dnf install -y $EDB_PACKAGES
+```
+
+On the first node, the following command creates the cluster and the group. It also creates the data directory and initializes the database.
+
+```bash
+sudo su - postgres
+export PATH=$PATH:/usr/edb/pge17/bin/
+pgd node node1 setup "host=host-1 user=postgres port=5432 dbname=pgddb" --pgdata /var/lib/edb-pge/17/main/ --group-name group1 --cluster-name pgd --create-group --initial-node-count 3
+```
+
+### For the second node
+
+Repeat the software installation steps on the second node.
+
+Then run the following command to initialize the node and join the cluster and group:
+
+```bash
+sudo su - postgres
+export PATH=$PATH:/usr/edb/pge17/bin/
+pgd node node2 setup "host=host-2 user=postgres port=5432 dbname=pgddb" --pgdata /var/lib/edb-pge/17/main/ --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb"
+```
+
+### For the third node
+
+Repeat the software installation steps on the third node.
+
+The command to initialize the node and join the cluster and group is similar to the second node but with a different host and node name:
+
+```bash
+sudo su - postgres
+export PATH=$PATH:/usr/edb/pge17/bin/
+pgd node node3 setup "host=host-3 user=postgres port=5432 dbname=pgddb" --pgdata /var/lib/edb-pge/17/main/ --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb"
+```

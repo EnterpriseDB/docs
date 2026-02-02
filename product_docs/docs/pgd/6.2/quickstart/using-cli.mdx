@@ -1,0 +1,453 @@
+---
+title: Using PGD CLI
+navTitle: Using PGD CLI
+redirects:
+  - /pgd/latest/get-started/first-steps/using-cli/
+---
+
+PGD CLI is a command-line interface for managing and monitoring your EDB Postgres Distributed (PGD) clusters. It provides a set of commands to perform various operations on the cluster, such as creating nodes, joining nodes, and managing replication.
+
+It's already installed and configured if you are using the [Quickstart Docker Compose kit](/pgd/latest/quickstart/first-cluster).
+
+Log into the first host in your PGD cluster:
+
+```shell
+docker compose exec host-1 bash
+```
+
+and check the version of PGD CLI:
+
+```sql
+pgd --version
+__OUTPUT__
+pgd-cli version {{version.full}}.0
+```
+
+!!! note
+You can also run any of the following commands from outside the containers, using the `docker compose exec` command to run them in the context of the first host in your PGD cluster:
+
+```shell
+docker compose exec host-1 pgd <command>
+```
+
+And you can run the `pgd` command from any host in the cluster, as they all have the PGD CLI installed and configured.
+!!!
+
+## Getting started with PGD CLI
+
+Start by viewing the cluster's overall status with the `pgd cluster show` command:
+
+```shell
+pgd cluster show
+__OUTPUT__
+# Summary
+ Group Name | Parent Group | Group Type | Node Name | Node Kind
+------------+--------------+------------+-----------+-----------
+ group-1    | pgd          | data       | node-1    | data
+ group-1    | pgd          | data       | node-2    | data
+ group-1    | pgd          | data       | node-3    | data
+ pgd        |              | global     |           |
+
+# Health
+ Check             | Status | Details
+-------------------+--------+-------------------------------------------------
+ Connections       | Ok     | All BDR nodes are accessible
+ Raft              | Ok     | Raft Consensus is working correctly
+ Replication Slots | Ok     | All PGD replication slots are working correctly
+ Clock Skew        | Ok     | Clock drift is within permissible limit
+ Versions          | Ok     | All nodes are running the same PGD version
+
+# Clock Drift
+ Reference Node | Node Name | Clock Drift
+----------------+-----------+-------------
+ node-3         | node-2    | *
+ node-3         | node-1    | *
+ ```
+
+This command provides a summary of the cluster, its nodes, and their health status. It also shows the clock drift between nodes, which is important for replication consistency.
+
+You can also view the status of individual nodes using the `pgd node show` command:
+
+```shell
+pgd node node-1 show
+__OUTPUT__
+# Summary
+ Node Property   | Value
+-----------------+------------
+ Node Name       | node-1
+ Group Name      | group-1
+ Node Kind       | data
+ Join State      | ACTIVE
+ Node Status     | Up
+ Node ID         | 4153941939
+ Snowflake SeqID | 1
+ Database        | pgddb
+
+# Options
+ Option Name    | Option Value
+----------------+--------------------------------------------------
+ route_dsn      | port=5432 dbname=pgddb host=host-1 user=postgres
+ route_fence    | false
+ route_priority | -1
+ route_reads    | true
+ route_writes   | true
+ ```
+
+ The structure of the pgd CLI commands is hierarchical, with commands grouped by functionality. You can view the available commands and their descriptions by running:
+
+```shell
+pgd --help
+__OUTPUT__
+Manages PGD clusters
+
+Usage: pgd [OPTIONS] <COMMAND>
+
+Commands:
+  cluster       Cluster-level commands
+  group         Group related commands
+  groups        Groups listing commands
+  node          Node related commands
+  nodes         Nodes listing commands
+  events        Event log commands
+  replication   Replication related commands
+  raft          Raft related commands
+  commit-scope  Commit scope management commands
+  assess        PGD compatibility assessment of Postgres server
+  completion    Generate the autocompletion script for pgd for the specified shell
+
+Options:
+  -V, --version  Print version
+
+Global Options:
+  -f, --config-file <CONFIG_FILE>  Sets the configuration file path
+      --dsn <DSN>                  Sets the PostgreSQL connection string e.g. "host=localhost port=6000 user=postgres dbname=postgres" [env: PGD_CLI_DSN=]
+  -o, --output <OUTPUT_FORMAT>     Sets the output format for tables [env: PGD_CLI_OUTPUT=] [default: psql] [possible values: json, psql, modern, markdown, simple]
+      --debug                      Print debug messages, useful while troubleshooting [env: PGD_CLI_DEBUG=]
+  -h, --help                       Print help
+```
+
+Commands such as `group`, `node` take a group or a node name as their next argument, followed by a specific command. Commands such as `cluster`, `groups`, and `nodes` do not require a group or node name, as they operate at the cluster level or list all groups or nodes.
+
+You can also get help for a specific command by running:
+
+```shell
+pgd <COMMAND> --help
+```
+
+## Viewing cluster status
+
+To view the overall status of your PGD cluster, we have already used the `pgd cluster show` command. This shows all the cluster information. To see just the health status of the cluster, you can use the `--health` option:
+
+```shell
+pgd cluster show --health
+__OUTPUT__
+ Check             | Status | Details
+-------------------+--------+-------------------------------------------------
+ Connections       | Ok     | All BDR nodes are accessible
+ Raft              | Ok     | Raft Consensus is working correctly
+ Replication Slots | Ok     | All PGD replication slots are working correctly
+ Clock Skew        | Ok     | Clock drift is within permissible limit
+ Versions          | Ok     | All nodes are running the same PGD version
+ ```
+
+Or if you want to see the summary status only, you can use the `--summary` option:
+
+```shell
+pgd cluster show --summary
+__OUTPUT__
+ Group Name | Parent Group | Group Type | Node Name | Node Kind
+------------+--------------+------------+-----------+-----------
+ group-1    | pgd          | data       | node-1    | data
+ group-1    | pgd          | data       | node-2    | data
+ group-1    | pgd          | data       | node-3    | data
+ pgd        |              | global     |           |
+ ```
+
+## Viewing groups and group status
+
+To view the status of all groups in the cluster, you can use the `pgd groups list` command:
+
+```shell
+pgd groups list
+__OUTPUT__
+ Group Name | Parent Group Name | Group Type | Nodes
+------------+-------------------+------------+-------
+ group-1    | pgd               | data       | 3
+ pgd        |                   | global     | 0
+```
+
+Now we can see the top level group `pgd` and the data group `group-1` with 3 nodes in it. All nodes are a member of the top-level group which coordinates all activity across the cluster. 
+The data group `group-1` is a group of three data nodes which are replicating data between themselves, routing incoming queries within the group to the write leader node in the group.
+
+We can dig deeper into the group details using the `pgd group show` command:
+
+```shell
+pgd group group-1 show
+__OUTPUT__
+# Summary
+ Group Property    | Value
+-------------------+---------
+ Group Name        | group-1
+ Parent Group Name | pgd
+ Group Type        | data
+ Write Leader      | node-1
+ Commit Scope      |
+
+# Nodes
+ Node Name | Node Kind | Join State | Node Status
+-----------+-----------+------------+-------------
+ node-1    | data      | ACTIVE     | Up
+ node-2    | data      | ACTIVE     | Up
+ node-3    | data      | ACTIVE     | Up
+
+# Options
+ Option Name                       | Option Value
+-----------------------------------+----------------------
+ analytics_storage_location        |  (inherited)
+ apply_delay                       | 00:00:00 (inherited)
+ check_constraints                 | true (inherited)
+ default_commit_scope              |  (inherited)
+ enable_raft                       | true
+ enable_routing                    | true
+ enable_wal_decoder                | false (inherited)
+ http_port                         |  (inherited)
+ location                          |
+ num_writers                       | -1 (inherited)
+ read_only_consensus_timeout       |  (inherited)
+ read_only_max_client_connections  |  (inherited)
+ read_only_max_server_connections  |  (inherited)
+ read_only_port                    |  (inherited)
+ read_write_consensus_timeout      |  (inherited)
+ read_write_max_client_connections |  (inherited)
+ read_write_max_server_connections |  (inherited)
+ read_write_port                   |  (inherited)
+ route_reader_max_lag              | -1
+ route_writer_max_lag              | -1
+ route_writer_wait_flush           | false
+ streaming_mode                    | default (inherited)
+ use_https                         | true
+ ```
+
+This command provides a summary of the group, its nodes, and their status. It also shows the group options, such as whether routing is enabled, the HTTP port for monitoring, and other configuration settings.
+
+Like the cluster command, you can also use the `--summary` options to view just the summary of the group:
+
+```shell
+pgd group group-1 show --summary
+__OUTPUT__
+ Group Property    | Value
+-------------------+---------
+ Group Name        | group-1
+ Parent Group Name | pgd
+ Group Type        | data
+ Write Leader      | node-1
+ Commit Scope      |
+```
+
+Now we can see the group is a child of the top-level group `pgd`, it is a data group, and the write leader node in the group is `node-1`. There are no commit scopes set for this group, which means it is using the default commit scope.
+
+The `--nodes` option can be used to view the nodes in the group:
+
+```shell
+pgd group group-1 show --nodes
+__OUTPUT__
+ Node Name | Node Kind | Join State | Node Status
+-----------+-----------+------------+-------------
+ node-1    | data      | ACTIVE     | Up
+ node-2    | data      | ACTIVE     | Up
+ node-3    | data      | ACTIVE     | Up
+```
+
+And, similarly, you can use the `--options` option to view the group options:
+
+```shell
+pgd group group-1 show --options
+__OUTPUT__
+ Option Name                       | Option Value
+-----------------------------------+----------------------
+ analytics_storage_location        |  (inherited)
+ apply_delay                       | 00:00:00 (inherited)
+ check_constraints                 | true (inherited)
+ default_commit_scope              |  (inherited)
+ enable_raft                       | true
+ enable_routing                    | true
+ enable_wal_decoder                | false (inherited)
+ http_port                         |  (inherited)
+ location                          |
+ num_writers                       | -1 (inherited)
+ read_only_consensus_timeout       |  (inherited)
+ read_only_max_client_connections  |  (inherited)
+ read_only_max_server_connections  |  (inherited)
+ read_only_port                    |  (inherited)
+ read_write_consensus_timeout      |  (inherited)
+ read_write_max_client_connections |  (inherited)
+ read_write_max_server_connections |  (inherited)
+ read_write_port                   |  (inherited)
+ route_reader_max_lag              | -1
+ route_writer_max_lag              | -1
+ route_writer_wait_flush           | false
+ streaming_mode                    | default (inherited)
+ use_https                         | true
+```
+
+As you can see, many of the options are inherited from the parent group, which is the top-level group `pgd`. The `enable_raft` and `enable_routing` options are set to `true`, which means that the group is using Raft consensus for replication and routing queries (that are made through the connection manager port) to the write leader node.
+
+Let's take a look at the parent group `pgd` using the `pgd group pgd show` command:
+
+```shell
+pgd group pgd show
+__OUTPUT__
+# Summary
+ Group Property    | Value
+-------------------+--------
+ Group Name        | pgd
+ Parent Group Name |
+ Group Type        | global
+ Write Leader      |
+ Commit Scope      |
+```
+
+This shows that the top-level group `pgd` is a global group, which means it is not a data group and does not have any data nodes of its own. In this case, it is just userd to coordinate the activity of the data groups in the cluster. It does not have a write leader, as it does not have any data nodes.
+
+The next part of the output shows the nodes in the group, which is empty:
+
+```console
+# Nodes
+ Node Name | Node Kind | Join State | Node Status
+-----------+-----------+------------+-------------
+```
+
+The options for the `pgd` group are shown next:
+
+```console
+# Options
+ Option Name                       | Option Value
+-----------------------------------+--------------
+ analytics_storage_location        |
+ apply_delay                       | 00:00:00
+ check_constraints                 | true
+ default_commit_scope              |
+ enable_raft                       | true
+ enable_routing                    | false
+ enable_wal_decoder                | false
+ http_port                         |
+ location                          |
+ num_writers                       | -1
+ read_only_consensus_timeout       |
+ read_only_max_client_connections  |
+ read_only_max_server_connections  |
+ read_only_port                    |
+ read_write_consensus_timeout      |
+ read_write_max_client_connections |
+ read_write_max_server_connections |
+ read_write_port                   |
+ route_reader_max_lag              | -1
+ route_writer_max_lag              | -1
+ route_writer_wait_flush           | false
+ streaming_mode                    | default
+ use_https                         | true
+```
+
+These are the options for the top-level group `pgd`. This is where `group-1` inherits its options from. 
+Here though, the `enable_routing` option is set to `false`, which means that the top-level group does not route queries to any data nodes, because it does not have any data nodes of its own. 
+The `enable_raft` option is set to `true`, which means that the top-level group uses Raft consensus to coordinate management of the cluster. 
+
+Where options are not set, the default values are used, such as the `apply_delay` option which is set to `00:00:00`, meaning there is no delay in applying changes to the cluster.
+
+## Viewing nodes and node status
+
+To view the status of all nodes in the cluster, you can use the `pgd nodes list` command:
+
+```shell
+pgd nodes list
+__OUTPUT__
+ Node Name | Group Name | Node Kind | Join State | Node Status
+------------+------------+-----------+------------+-------------
+ node-1    | group-1    | data      | ACTIVE     | Up
+ node-2    | group-1    | data      | ACTIVE     | Up
+ node-3    | group-1    | data      | ACTIVE     | Up
+```
+
+You can also view the status of a specific node using the `pgd node show` command:
+
+```shell
+pgd node node-1 show
+__OUTPUT__
+# Summary
+ Node Property   | Value
+-----------------+------------
+ Node Name       | node-1
+ Group Name      | group-1
+ Node Kind       | data
+ Join State      | ACTIVE
+ Node Status     | Up
+ Node ID         | 4153941939
+ Snowflake SeqID | 1
+ Database        | pgddb
+
+# Options
+ Option Name    | Option Value
+----------------+--------------------------------------------------
+ route_dsn      | port=5432 dbname=pgddb host=host-1 user=postgres
+ route_fence    | false
+ route_priority | -1
+ route_reads    | true
+ route_writes   | true
+```
+
+Here we can see more about the node itself. We can see the node's name and group it belongs to, that it is a data node, that it is actively joined to the group and that it is up and running. The node ID is a unique identifier for the node, and the Snowflake SeqID is used for ordering events in the cluster. Finally, we can see that its database is `pgddb`, which is the default database created in the Quickstart Docker Compose kit.
+
+The options for the node are shown next, and these are specific to this particular node:
+
+- `route_dsn` is the connection string for the node, which is used by the connection manager to route queries to this node.
+- `route_fence` is set to `false`, which means that the node does not have a fence set up to prevent routing queries to it.
+- `route_priority` is set to `-1`, which means that the node does not have a specific priority for routing queries.
+- `route_reads` and `route_writes` are both set to `true`, which means that the node can handle both read and write queries.
+
+These are used by the connection manager when routing queries to the node. They are also how you can control which nodes are active, without taking them down. Setting `route_fence` to `true` will prevent the connection manager from routing queries to this node, while still allowing it to be part of the cluster and replicate data.
+
+## Setting node options
+
+You can set options for a node using the `pgd node set` command. For example, to set the `route_fence` option to `true` for the `node-1`, you can run:
+
+```shell
+pgd node node-1 set-option route_fence true
+```
+
+If we now try and connect to the `node-1`'s connection manager:
+
+```shell
+psql -h host-1 -p 6432
+```
+
+We get a connection. But it is not routed to the `node-1` node, as it is fenced off from routing queries. Instead, it is routed to the current write leader in the group, which is `node-2`:
+
+```sql
+select node_name from bdr.local_node_summary;
+ node_name
+ -----------
+ node-2
+(1 row)
+```
+
+If we exit and undo the fencing by running:
+
+```shell
+pgd node node-1 set-option route_fence false
+```
+
+We can now connect to the `node-1` node's connection manager again:
+
+```shell
+psql -h host-1 -p 6432
+```
+And we can see that we are now connected to the `node-1` node:
+
+```sql
+select node_name from bdr.local_node_summary;
+ node_name
+ -----------
+ node-1
+(1 row)
+```
+

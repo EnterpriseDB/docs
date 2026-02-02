@@ -2,6 +2,15 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EDB Postgres® AI for CloudNativePG™ Global Cluster 1.2.0",
+    icon: IconNames.MODULE,
+    description:
+      "PG4K-PGD 1.2.0 brings physical remote join discovery, PGD group cleanup phases, and support for EDB Postgres® AI for CloudNativePG™ Cluster operator 1.28.0.",
+    url: "/postgres_distributed_for_kubernetes/latest/",
+    moreUrl:
+      "/postgres_distributed_for_kubernetes/latest/rel_notes/1_2_0_rel_notes/",
+  },
+  {
     title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.28.0",
     icon: IconNames.MODULE,
     description:
