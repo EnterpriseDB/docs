@@ -14,13 +14,34 @@ The `whpg_fdw` extension is based on the [PostgreSQL Foreign Data Wrapper](https
 
 You must install the extension on each host in your local WarehousePG cluster.
 
-1. Configure your package manager to use the EDB repository for WHPG:
- 
+1. From the coordinator, download the package from the EDB repository:
+
+    <TabContainer syncKey="download">
+    <Tab title="RHEL 8, 9">
+
     ```bash
     export EDB_SUBSCRIPTION_TOKEN=<your-token>
     export EDB_REPO=gpsupp
     curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-<whpg_major_version>-whpg_fdw
     ```
+
+    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+    
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo yumdownloader edb-<whpg_major_version>-whpg_fdw
+    ```
+
+    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+    </Tab>
+    </TabContainer>
 
 1. Create a file `all_hosts` on your WHPG coordinator, which lists all hosts in the WHPG cluster. For example:
 
@@ -32,25 +53,27 @@ You must install the extension on each host in your local WarehousePG cluster.
     sdw3
     ```
 
-1. From the coordinator, use the `gpssh` utility to install the packages from the coordinator onto every other host in the cluster:
+1. From the coordinator, use the `gpsync` utility to transfer the package to all hosts in the cluster and then use use the `gpssh` utility to install the package:
 
     <TabContainer syncKey="install">
     <Tab title="RHEL 8, 9">
 
     ```bash 
-    gpssh -f all_hosts -e 'sudo dnf install -y edb-whpg<whpg_major_version>-whpg_fdw'
+    gpsync -f all_hosts <whpg_fdw-package-name> =:/tmp
+    gpssh -f all_hosts -e 'sudo dnf install -y /tmp/<whpg_fdw-package-name>'
     ```
-
-    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+    
+    Where `<whpg_fdw-package-name>` is the name of the package file you downloaded.
 
     </Tab>
     <Tab title="RHEL 7">
 
     ```bash 
-    gpssh -f all_hosts -e 'sudo yum install -y edb-whpg<whpg_major_version>-whpg_fdw'
+    gpsync -f all_hosts <whpg_fdw-package-name> =:/tmp
+    gpssh -f all_hosts -e 'sudo yum install -y /tmp/<whpg_fdw-package-name>'
     ```
 
-    Where `<whpg_major_version>` is your WHPG version (6 or 7).
+    Where `<whpg_fdw-package-name>` is the name of the package file you downloaded.
 
     </Tab>
     </TabContainer>
@@ -168,6 +191,9 @@ By default, all foreign tables created using `whpg_fdw` are updatable. You can m
 ## About predicate pushdown
 
 `whpg_fdw` for WarehousePG 7 supports predicate pushdown, which minimizes the amount of data transferred between the WarehousePG clusters by sending a query filter condition to the remote WarehousePG server where it is applied there. 
+
+!!! Note 
+    Predicate pushdown is only supported when using Postgres Planner and is not currently supported with ORCA Optimizer.
 
 The following operations are supported for pushdown:
 
