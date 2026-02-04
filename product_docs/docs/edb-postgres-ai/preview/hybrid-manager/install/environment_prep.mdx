@@ -1,0 +1,581 @@
+---
+title: Preparing your environment
+navTitle: Preparing environment
+description: 'Step through preparing your environment for Hybrid Manager installation, including: syncing images to your local registry, configuring secrets, setting up any advanced features, and completing your `values.yaml` configuration file .'
+deepToC: true
+---
+
+## Overview 
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+### Prerequisites
+
+* [Phase 1: Planning your architecture](./planning_arch) (Completed)
+* [Phase 2: Gathering your system requirements](./sys_reqs) (Completed)
+* [Phase 3: Deploying your Kubernetes cluster](./k8s_install) (Completed & Running)
+
+### Outcomes
+
+* *A Kubernetes cluster configured with necessary secrets (TLS, Auth, Storage, other necessary secrets)*
+
+* *Any chosen advanced features configured (IDP, multi-location, KMS for TDE)*
+
+* *A finalized and validated `values.yaml` configuration file ready for Hybrid Manager (HM) installation*
+
+!!! Note
+**EDB Support Context:** Final preparation for Hybrid Manager is primarily the **customer's responsibility** (except for [Sovereign Systems](/edb-postgres-ai/current/hybrid-manager/system/)), as is the cluster's lifecycle operation. **Professional Services** can be engaged via a Statement of Work (SoW), and **Support** can offer assistance through knowledge base articles.
+!!!
+
+**Next phase:** Phase 5: [Install Hybrid Manager](./install_hm)
+
+### Phase 4 guide
+
+Now that your Kubernetes cluster is running, you must prepare it for the HM platform.
+
+This involves establishing administrative access through a remote management workstation, staging required artifacts and secrets into the cluster, and translating your architectural decisions into the final configuration file.
+
+Preparing your environment, Phase 4, covers:
+
+*  **Creating necessary infrastructure secrets and implementing TLS:**
+
+   * [Creating Kubernetes secrets for **Image Pull** credentials](#create-image-pull-secret) 
+   * [**Object Storage** access](#create-object-storage-secret).
+   * [Implementing your chosen TLS strategy](#implement-tls) (chosen in [Phase 2: Gathering your system requirements](./sys_reqs))
+     * [(A) self-managed Cert-Manager issuer](#option-a-custom-cert-manager-issuer)
+     * [(B) custom CA](#option-b-custom-certificate-authority-ca)
+     * [(C) custom certificate](#option-c-custom-certificate)
+     * [(D) self-signed default](#option-d-self-signed-certificates-default)
+
+* **Creating other necessary secrets**
+
+  * [Creating **GenAI Builder** secret](#creating-genai-builder-secret) (requires Fernet secret)
+  * [Creating **Catalog** secret](#creating-catalog-secret) (requires Fernet secret)
+  * [Customizing secrets for the **Migration Portal**](#creating-catalog-secret).
+
+*  **Configuring advanced features:** 
+
+  * [Defining **Multi-location** logic (SPIRE federation and object storage sync)](#configuring-multi-location-architecture)
+  * [Constructing complex YAML configurations for your **Identity Provider**](#configuring-identity-providers-idp).
+  * [Implementing **KMS** for Transparent Data Encryption (TDE)](#implementing-kms-for-tde).
+
+*  [**Completing environment preparation:**](/edb-postgres-ai/current/hybrid-manager/install/environment_prep/#completing-environmental-preparation)
+
+   * Configuring the internal backup folder and securing the mandatory **User-0** admin account.
+
+*  [**Finalizing the cluster configuration (`values.yaml`):**](#finalizing-the-cluster-configuration-valuesyaml) 
+    * Assembling all the relevant above inputs into the final Helm chart `values.yaml` file.
+
+*  [**Validating the configuration file and runtime:**](#validating-the-configuration-file-and-runtime)
+   * Validating the `values.yaml` file and runtime environment, so that they are ready for HM installation.
+
+## Creating necessary secrets
+
+
+!!! Warning
+The following are not optional configurations.
+These preparatory steps **must be completed** in order to successfully complete your installation.
+This configurations do not require you utilize the associated features; it only prepares a secure implementation in case it's needed.
+!!!
+
+Create Kubernetes secrets for any required credentials, such as object storage credentials, database access tokens, or any other sensitive information.
+
+### Create Image Pull secret
+
+!!! Warning
+It is necessary to create an Image Pul secret for HM to install successfully.
+!!!
+
+#### Dependencies
+
+* k8s secret `edb-cred` (defaults to `edb-cred` in `values.yaml`)
+
+Use `edbctl` to create the `ImagePullSecret` namespace and required secrets.
+
+1.  Create the necessary namespaces and pull secrets:
+
+    ```bash
+    edbctl image-pull-secret create \
+      --username <container registry username> \
+      --password <container registry passowrd> \
+      --registry <local registry URI>
+    ```
+
+1.  When prompted with `Proceed? [y/N]` with the current Kubernetes context, select `y`.
+
+    You should see output similar to:
+    ```bash
+    2025/02/10 10:10:10 Creating Kubernetes Namespaces and ImagePullSecrets with the provided credentials...
+    2025/02/07 15:29:08 Namespaces and ImagePullSecrets creation completed
+    ```
+
+1.  Verify the secret creation:
+
+    ```bash
+    edbctl image-pull-secret list
+    ```
+    *Output example:*
+    ```text
+    Current Kubernetes context is: <your-KubeContext>
+    Namespace edbpgai-bootstrap: exists, all set!
+      Secret edb-cred: exists, all set!
+    Namespace upm-replicator: exists, all set!
+      Secret edb-cred: exists, all set!
+    ```
+
+#### Spot validation
+
+1. Check that the `edb-cred` secret exists in the target namespace:
+
+   ```
+   kubectl get secret edb-cred -n edbpgai-bootstrap
+   ```
+
+1. Check that the default service account references the `edb-cred` secret:
+
+   ```
+   kubectl get serviceaccount default -n edbpgai-bootstrap -o yaml | grep edb-cred
+   ```
+
+1. Deploy a test pod (lasso) to validate image pull:
+
+   ```bash
+   kubectl run lasso \
+     --rm -it \
+     --image=[docker.enterprisedb.com/pgai-platform/lasso:latest](https://docker.enterprisedb.com/pgai-platform/lasso:latest) \
+     --restart=Never \
+     -n edbpgai-bootstrap \
+     --image-pull-policy=Always \
+     -- bash
+   ```
+
+1. (Optional) Describe the pod to confirm imagePullSecrets are set:
+
+```
+kubectl describe pod lasso -n edbpgai-bootstrap | grep -i imagepull
+```
+
+### Create Object Storage secret
+
+!!! Warning
+It is necessary to create an Object Storage secret for HM to install successfully.
+Your object storage must be dedicated entirely to the Hybrid Manager. 
+Any prior data existing in your object storage interferes with the successful operation of the HM. 
+Similarly, if HM is removed and reinstalled, then the object storage must be emptied prior to beginning the new installation.
+!!!
+
+To implement the [object storage requirement](./sys_reqs), you must create a secret named `edb-object-storage` in the `default` namespace.
+
+Select the configuration matching your provider:
+
+#### AWS IAM (EKS or ROSA)
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # the name cannot be changed
+  namespace: default # the namespace cannot be changed
+stringData:
+  auth_type: workloadIdentity
+  aws_region: <AWS_BUCKET_REGION>
+  aws_role_arn: <PRIMARY_IDENTITY_ROLE_ARN>
+  bucket_name: <AWS_BUCKET_NAME>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+#### AWS / Other K8s (Static Credentials)
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  auth_type: credentials
+  aws_region: <AWS_BUCKET_REGION>
+  bucket_name: <AWS_BUCKET_NAME>
+  aws_access_key_id: <AWS_ACCESS_KEY_ID>
+  aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+#### Azure Blob Storage
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  provider: azure
+  subscription_id: <AZURE_SUBSCRIPTION_ID>
+  resource_group_name: <AZURE_RESOURCE_GROUP>
+  storage_account_name: <AZURE_STORAGE_ACCOUNT>
+  storage_account_container_name: <AZURE_STORAGE_CONTAINER>
+  storage_account_key: <AZURE_STORAGE_KEY>
+  region: <AZURE_REGION>
+  client_id: <AZURE_CLIENT_ID>
+  client_secret: <AZURE_CLIENT_SECRET>
+  tenant_id: <AZURE_TENANT_ID>
+```
+
+#### GCP Object Storage
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  provider: gcp
+  location_id: <GCP_BUCKET_REGION>
+  project_id: <GCP_PROJECT_ID>
+  bucket_name: <GCP_BUCKET_NAME>
+  credentials_json_base64: <GCP_CREDENTIAL_BASE64>
+```
+
+#### Other S3 Compatible Storage
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+    auth_type: credentials
+    # Optional: Base64 CA bundle if not using a well-known CA
+    aws_ca_bundle_base64: <CA_BUNDLE_BASE64>
+    aws_endpoint_url_s3: <S3_ENDPOINT_URL>
+    aws_access_key_id: <AWS_ACCESS_KEY_ID>
+    aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+    bucket_name: <S3_BUCKET_NAME>
+    aws_region: <S3_REGION>
+    # Set to true if server-side encryption is disabled on the bucket
+    server_side_encryption_disabled: <true|false>
+```
+
+## Creating other necessary secrets
+
+!!! Warning
+The following are not optional configurations.
+These preparatory steps **must be completed** in order to successfully complete your installation.
+This configuration does not require you utilize the associated feature; it only prepares a secure implementation in case it's needed.
+!!!
+
+There are other secrets that must be created for the HM installation to be successful.
+
+### Creating GenAI Builder secret
+
+!!! Warning
+It is necessary to create a GenAI Builder secret for HM to install successfully.
+!!!
+
+Even if you are not planning to use GenAI Builder, creating a secret is a necessary step.
+
+You must manually set up encryption keys and a dedicated S3-compatible bucket with specific CORS policies.
+
+**Preparation checklist:**
+
+1.  **Namespace:** Create the `upm-griptape` namespace.
+1.  **Encryption:** Generate a Fernet key and create the `fernet-secret` inside that namespace.
+1.  **Storage:** Create a dedicated Object Storage bucket (DataLake).
+1.  **Networking:** Apply CORS configuration to the bucket to allow access from the Portal domain.
+
+* [**SOP: Enabling GenAI Builder**](/edb-postgres-ai/current/hybrid-manager/install/configuration/genai_secret/)
+    * *Guidance: Scripts for generating Fernet keys and CORS JSON configurations.*
+
+### Creating Catalog secret
+
+!!! Warning
+It is necessary to create a Catalog secret for HM to install successfully.
+!!!
+
+Similar to GenAI, even if not using the Catalog service, it is required to create encrypted storage credentials.
+
+**Preparation checklist:**
+
+1.  **Namespace:** Create the `upm-lakekeeper` namespace.
+1.  **Encryption:** Generate a Fernet key and create the secret in that namespace.
+1.  **Configuration:** Configure the *installation-time* catalogs (Infrastructure/OS images) in `values.yaml`.
+
+* [**SOP: Enabling data catalogs**](/edb-postgres-ai/current/hybrid-manager/install/configuration/data_catalog_secret/)
+   * *Guidance: Commands for creating the confounding key, namespace, and secret.*
+
+### Customizing Migration Portal secrets
+
+!!! Warning
+It is necessary to customize your Migration Portal secrets for HM to install successfully.
+!!!
+
+Create secrets in namespaces `edb-migration-portal` and `edb-migration-copilot`.
+
+* [**SOP: Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/current/hybrid-manager/install/configuration/migration_portal_secrets/)
+   * *Guidance: Commands for creating custom secrets for using Migration Portal.*
+
+### Implement TLS
+
+You must implement the TLS strategy chosen during the [Gathering your system requirements](./sys_reqs) phase, some of which require secrets to be created.
+
+#### Option A: Custom cert-manager issuer
+
+* **Use case:** You have an existing `ClusterIssuer` or `Issuer` (e.g., Let's Encrypt, HashiCorp Vault, or a corporate CA) running in the cluster.
+
+!!! Note
+For this option, you do not need to pass a secret to HM. 
+The existing Issuer already manages its own credentials.
+!!!
+
+##### Dependencies
+
+* Ensure your existing `ClusterIssuer` or `Issuer` is configured and available in the target cluster.
+
+* Specify the issuer name and kind in `values.yaml`:
+  * `parameters.global.portal_certificate_issuer_kind:<ClusterIssuer or Issuer>`
+  * `portal_certificate_issuer_name:<my_issuer>`
+
+* **SOP: [Set up a custom cert-manager issuer for the HM Portal](/edb-postgres-ai/current/hybrid-manager/install/customization/cert-man/#set-up-a-custom-cert-manager-issuer-for-the-hm-portal)**
+
+---
+
+#### Option B: Custom certificate authority (CA)
+
+* **Use case:** You want HM to create an cert-manager issuer for you and use your own corporate CA to sign certificates.
+
+##### Dependencies
+
+* Set up your own custom CA.
+
+* Create a Kubernetes secret for `<ca_secret_name>` containing your CA signing keypair (cert and key).
+
+* Specify the `<ca_secret_name>` in the `values.yaml`: `parameters.global.ca_secret_name:(<ca_secret_name)`.
+
+* **SOP: [Bring your own private certificate authority](/edb-postgres-ai/1.3/hybrid-manager/install/configuration/cert-man/#bring-your-own-private-certificate-authority).**
+
+---
+
+#### Option C: Custom certificate
+
+**Use case:** You have your own x.509 certificate and would like to change it out for the default self-signed HM certificate
+
+##### Dependencies
+
+* Create a Kubernetes secret for `<my_portal_certificate>` including an export of the entire certificate chain in the public certificate file and the unencrypted private key.
+
+* Specify the `<my_portal_certificate>` in the  `values.yaml`: `parameters.global.portal_certificate_secret:<my_portal_certificate>`.
+
+* **SOP: [Set up a custom x.509 certificate for the Hybrid Manager Portal](/edb-postgres-ai/current/hybrid-manager/install/customization/cert-man/#set-up-a-custom-x509-certificate-for-the-hybrid-manager-portal)**
+  
+---
+
+#### Option D: Self-signed certificates (Default)
+
+* **Use case:** Non-production testing.
+
+HM automatically generates self-signed certificates by **default**.
+
+##### Dependencies
+
+N/A
+
+## Configuring advanced features
+
+### Configuring multi-location architecture
+
+Deploying HM across multiple locations (multi-DC) requires significant preparation to ensure the primary and secondary clusters can communicate securely.
+
+You must establish trust domains, sync storage secrets, and configure the Beacon agent to register the secondary location.
+
+**Preparation checklist:**
+
+1.  **Network:** Ensure connectivity on ports `8444` (SPIRE) and `9445` (Beacon) between clusters.
+1.  **Storage:** Synchronize the `edb-object-storage` secret across all clusters.
+1.  **Identity:** Configure SPIRE federation to allow cross-cluster trust.
+1.  **Configuration:** Define unique `beacon_location_id` values and trust domains in `values.yaml`.
+
+* [**SOP: Configuring multiple data centers for Hybrid Manager**](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi-dc/)
+    * *Guidance: Detailed steps for setting up SPIRE federation and cross-DC wiring.*
+
+### Configuring identity providers (IdP)
+
+**Action:** Construct the `idpConnectors` configuration block.
+
+Configuring an IdP requires constructing a complex array in your `values.yaml`.
+
+You must gather specific values from your IdP provider (Okta, Active Directory, etc.) to populate the `portal.authentication.idpConnectors` section.
+
+* [**SOP: Configuring your own identity provider**](/edb-postgres-ai/current/hybrid-manager/install/configuration/byo_idp/)
+    * *Guidance: Detailed YAML examples for LDAP and SAML integration.*
+
+### Implementing KMS for TDE
+
+If you require encryption at rest for your databases (TDE), you should enable the Key Management Service (KMS) provider and create your keys now.
+
+* [**SOP: Adding KMS support**](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/adding_kms_support/)
+
+Depending on the KMS you are using, refer to the guides below to identify the necessary `values.yaml` flags and create the keys.
+
+* [HashiCorp Vault](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/hashicorp/)
+* [AWS Key Management Service (KMS)](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/aws_kms/)
+* [Google Cloud Key Management Service (Cloud KMS)](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/google_cloud_kms/)
+
+Implement the configuration strategies decided upon during the [**Phase 1: Planning your architecture**](./planning_arch) and [**Gathering your system requirements**](./sys_reqs) phases.
+
+## Completing environmental preparation
+
+### Set up an internal backup folder
+
+This is a universally unique folder name for the HM backups for disaster recovery and multi-location.
+
+#### Dependencies
+
+* `values.yaml` parameter `global.internal_backup_folder`.
+
+### Change mandatory static User-0 password
+
+#### Dependencies
+
+You must configure the following four values under `pgai.portal.authentication.staticPasswords` in your `values.yaml`:
+
+1.  **`userID`**: Must be set to `c5998173-a605-449a-a9a5-4a9c33e26df7`.
+1.  **`username`**: The login username for the admin account.
+1.  **`email`**: The email address associated with the admin account.
+1.  **`hash`**: The bcrypt hash of your desired password.
+
+##### Use a hash for your new password
+
+To generate the hash for your new password:
+
+**Option 1:**
+
+```bash
+bcrypt hash of the string "password": $(echo password | htpasswd -BinC 10 admin | cut -d: -f2)
+```
+
+---
+
+**Option 2:**
+
+```bash
+echo 'password' | htpasswd -BinC 10 admin | cut -d: -f2
+```
+
+## Finalizing the cluster configuration (`values.yaml`)
+
+You now construct (or update if you have previously created) the final `values.yaml` file. 
+
+This file references your **system requirements** (Storage, Network, etc), **environment settings**, and the **feature configurations** you just prepared.
+
+Below is a template configuration with all of the keys you should have determined for a successful HM install:
+
+```yaml
+system: <Kubernetes>
+bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
+bootstrapImageTag: <Version>
+containerRegistryURL: "<Container Registry Domain>/pgai-platform"
+parameters:
+  global:
+    internal_backup_folder: <twelveCharacterString>
+    portal_domain_name: <Portal Domain>
+    storage_class: <Block Storage>
+    portal_certificate_issuer_kind: <ClusterIssuer>
+    portal_certificate_issuer_name: <my-issuer>
+    trust_domain: <Portal Domain>
+  upm-beacon:
+    beacon_location_id: <Location>
+    server_host: <Agent Domain>
+  transporter-rw-service:
+    domain_name: <Migration Domain>
+  transporter-dp-agent:
+    rw_service_url: https://<Migration Domain>/transporter
+beaconAgent:
+  provisioning:
+    imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+    imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+  transparentDataEncryptionMethods:
+    - <available_encryption_method>
+pgai:
+  portal:
+    authentication:
+      idpConnectors:
+        - config:
+            caData: <base64 encyrption of Certificate Authority from SSO provider>
+            emailAttr: email
+            groupsAttr: groups
+            entityIssuer: https://<Portal Domain>/auth/callback
+            redirectURI: https://<Portal Domain>/auth/callback
+            ssoURL: [https://login.microsoft.com/](https://login.microsoft.com/)<azure service identifier>/saml2
+            usernameAttr: name
+          id: azure
+          name: Azure
+          type: saml
+      staticPasswords:
+        - email: <email>
+          hash: <hashed_password>
+          userID: c5998173-a605-449a-a9a5-4a9c33e26df7
+          username: <email-or-username>
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+```
+
+## Validating the configuration file and runtime
+
+Before proceeding to deployment, validate both your configuration file and the runtime environment.
+
+### Validate configuration syntax
+
+Ensure your `values.yaml` is valid and can be processed by Helm.
+
+Replace `<your-registry-url>` with the registry you defined in `values.yaml` (e.g., `docker.enterprisedb.com` or your internal Harbor/Artifactory).
+
+```bash
+helm template edb-pgai oci://<your-registry-url>/pgai-platform/edb-pgai \
+  --values values.yaml \
+  --version <target-version> > /dev/null
+```
+
+If this command completes without error, your YAML syntax is valid.
+
+### Validate secrets
+
+Ensure the secrets referenced in your configuration exist in the cluster.
+
+```bash
+kubectl get secrets -n default
+```
+
+**Check for:** `edb-object-storage`, `edb-cred`, and your TLS secrets
+
+### Validate LoadBalancer
+
+Verify that your cluster can provision an external load balancer service (required for ingress).
+
+```bash
+kubectl create service loadbalancer test-lb --tcp=80:80
+kubectl get svc test-lb
+```
+
+* **Success:** If the load balancer controller is functioning, the test-lb service will be assigned an external IP or hostname.
+* **Cleanup:** `kubectl delete svc test-lb`
+
+### Run diagnostic tooling
+
+For a comprehensive check of the cluster's readiness, use the diagnostic plugin.
+
+* [**SOP: Use kubectl-edb-diagnostic**](https://knowledge.enterprisedb.com/hc/en-us/articles/20574035583260-How-to-use-kubectl-edb-diagnostic-to-collect-Hybrid-Manager-cluster-diagnostics).
+
+## Next phase
+
+Now that your management workstation is ready, images are synced, secrets are created, advanced features are configured, `values.yaml` is finalized, and then that YAML is validated, you are ready to install HM.
+
+**[Proceed to Phase 5: Installing Hybrid Manager →](./install_hm)**
