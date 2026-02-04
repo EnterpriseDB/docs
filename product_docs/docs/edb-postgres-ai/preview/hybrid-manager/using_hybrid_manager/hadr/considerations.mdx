@@ -1,0 +1,76 @@
+---
+title: Considerations and backup requirements 
+navTitle: Considerations and backup requirements
+description: Learn more about what to expect about best practices for HA/DR with Hybrid Manager.
+---
+
+Disaster can affect Hybrid Manager (HM) and make it unusable. For example, unavailability of the CSP region for an EKS-based appliance or an outage in a datacenter that makes a hardware appliance unusable can occur. A disaster recovery (DR) option allows you to restore your databases at the point-in-time from your available backups.  
+
+HM backups are handled with [Velero](https://velero.io/).
+
+There are two possible scenarios for recovering HM:
+
+-   **Restore HM to original location**: You have two data centers (DC1, DC2), and HM runs in DC1. You need to restore HM from object storage to DC1.  
+
+-   **Restore HM to alternative location**:  You have two data centers (DC1, DC2), and HM runs in DC1. You need to restore HM from object storage to DC2.
+
+## Disaster recovery (DR) scope
+
+You can use the DR procedure to restore:
+
+-   The Postgres clusters that you created with HM.
+-   For HM environments with [multi-DC enabled](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/multi-dc/), you can restore the custom managed storage locations as you defined them in the associated s3-compatible storage area.
+
+!!! note
+    The DR procedures don't cover the migration components. However, you can apply the DR procedure to restore the original databases of HM-internal `transporter-db` and `migration-db` services.
+
+## RTO and RPO
+
+The ability to do any restore, the associated recovery time objective (RTO), and recovery point objective (RPO) depend on the frequency and size of the backups.
+
+As those factors have significant variation depending on the criticality assigned to the environment and the nature of your data, you don't know RTO and RPO values in advance. We recommend that you properly prepare the environment and perform periodic disaster recovery exercises to ensure your RTO and RPO requirements can be met.
+
+## Backup readiness
+
+Each appliance has a linked s3-compatible storage that stores:
+
+-   Internal backups (HM appliance data)
+-   Postgres backups (Postgres database backups)
+
+You can also define custom storage locations in the same bucket to be used in the platform.
+
+All of this data needs to be available after a disaster. Depending on the criticality of the data and the level of disaster that you want to be able to recover from, you’ll need to replicate this data outside of the CSP region or physical datacenter where the appliance resides.
+
+!!! tip
+    When using an AWS S3 bucket, you can achieve replication by using [cross-region replication](https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html#crr-scenario).
+
+Postgres databases use continuous backup by default, so you can restore them at any point in time. They are limited only by backup lifecycle policies.
+
+Critical appliance data, such as the definition of the Postgres clusters, is stored as Kubernetes objects and included in the Velero backup. By default, this backup happens daily at 23:00, as defined by the default schedule `velero-backup-kube-state`.
+
+If your RPO requires more frequent backups, you can define a new backup schedule.
+
+!!! Danger
+    Do not modify the default schedule, as it may be overwritten by an appliance software update.
+
+The following example shows a custom schedule to back up the needed resources each hour:
+
+```yaml
+apiVersion: velero.io/v1  
+kind: Schedule  
+metadata:  
+  name: custom-velero-backup-kube-state  
+  namespace: velero  
+spec:  
+  schedule: 0 \* \* \* \*  
+  skipImmediately: false  
+  template:  
+    includedNamespaces:  
+    \- '\*'  
+    includedResources:  
+    \- storagelocations.biganimal.enterprisedb.com  
+    \- clusterwrappers.beacon.enterprisedb.com  
+    \- backupwrappers.beacon.enterprisedb.com  
+    snapshotVolumes: false  
+    ttl: 168h
+```
