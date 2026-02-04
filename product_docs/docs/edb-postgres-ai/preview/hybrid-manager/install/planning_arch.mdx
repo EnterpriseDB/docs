@@ -1,0 +1,251 @@
+---
+title: Planning your architecture
+navTitle: Planning architecture
+description: Plan and document your Hybrid Manager platform architecture.
+deepToC: true
+---
+
+## Overview
+
+> **Role:** CTO / Architect / Lead Engineer
+
+### Prerequisites
+
+* *A list of the business goals that your architecture plan should enable (examples: bugdet constraints, desired uptime, desired latency)*
+
+### Outcomes 
+
+* *An Architectural Decision Record (ADR) defining the topology, locality, and redundancy model of your Hybrid Manager (HM) architecture. (at minimum: architecture diagrams with notes)*
+
+* *Initial inputs for the HM Helm chart configuration file: `values.yaml`.*
+
+!!! Note
+You, as the customer, ultimately own your deployment architecture.
+While EDB's Sales Engineering, Professional Services, Support Team, or documentation can be consulted, the final architectural decisions rest with your team.
+!!!
+
+**Next phase:** Phase 2: [Gathering your system requirements](./sys_reqs)
+
+## Architectural discovery
+
+The goal of architectural discovery is to navigate and then document the necessary decisions to successfully deploy Hybrid Manager (HM). 
+These decisions form the blueprint for **[Gathering your system requirements](sys_reqs)** (Phase 2) and **[Preparing your environment](environment_prep)** (Phase 3).
+
+The accompanying questions cover a broad set of considerations extending beyond just the database layer. 
+This guide should be viewed from two perspectives:
+
+* **Current state:** Where are your existing database and application workloads today?
+
+* **Target state:** Where do you intend to deploy HM immmediately, and where do you plan to expand over the next 1-2 years?
+
+> **Recommendation:** Acquiring and reviewing diagrams of your current and target state is the most efficient way to complete this phase.
+
+### Locality: Where will HM live?
+
+Understanding the physical or logical locations of your database and dependent applications is crucial for determining the necessary architecture.
+
+* **Questions to answer:**
+    * Where is the current database solution located in terms of **cloud regions (CSP)** or **physical data centers (on-premises)**?
+
+    * Where are the dependent application workloads for these databases located?
+
+    * Are there **upstream layers of dependency**, and where are those located?
+
+* **Analysis:**
+    * Locality determines the initial scope of the deployment (e.g., single cloud region vs. multi-region).
+    * If you plan to span multiple regions, clouds, or hybrid cloud environments, **Postgres Distributed** is likely the appropriate database service recommendation.
+    * The locality of upstream applications is key to minimizing network latency.
+
+### Disaster recovery (hot/cold)
+
+Disaster recovery (DR) ensures business continuity across different locations.
+
+* **Questions to answer:**
+    * How is disaster recovery&mdash;as a subset of business continuity&mdash;accomplished across these locations, or is there an **additional location assigned specifically as disaster recovery**?
+    * Is there an **additional location assigned specifically as DR**?
+    * How is DR capability **validated**, and how often?
+
+* **Analysis:**
+    * Having a dedicated secondary location indicates a strong architectural requirement.
+    * If no formal DR practice exists, the HM DBaaS far-away replica solution may provide new capabilities.
+
+### Activeness (Active/Passive vs. Active/Active)
+
+Activeness describes how your distributed locations are utilized for critical workloads.
+
+* **Questions to answer:**
+    * If you have multiple locations, how does the critical dependent workload utilize these systems?
+    * Is one location active and the other passive for transaction processing (OLTP)?
+    * Is one location active for OLTP, and the other active for analytical processing (OLAP/BI)?
+
+* **Analysis:**
+    * If your target state requires simultaneous writes to multiple database instances (i.e., true **active/active** across locations), **Postgres Distributed** is the required solution due to its multi-writer capability..
+    * Understanding whether a location is passively waiting (cold standby) or actively running (hot standby) helps define resource requirements and recovery time objectives (RTO).
+    * **Business continuity:** The architectural choices around active/passive, active/active, and standby models must balance the organization's tolerance for downtime/data loss against the cost of maintaining redundant systems.
+
+These topics naturally follow the discussion of Activeness and help complete the picture of your application ecosystem.
+
+* Ingress traffic routing in terms of the consuming application.
+* Replication at various application layers.
+* Caching layers (and their location relative to the database).
+* Session demands (e.g., is session replication handled at the application layer?).
+    
+### Lifecycle operations
+
+Understanding your operations practices helps determine the complexity of the Kubernetes environment required to manage the database service.
+
+* **Questions to answer:**
+    * Do you utilize life cycle operations patterns such as **Blue/Green** or **Canary**?
+    * How do you handle **DML/DDL updates** (data and schema) vs. **engine upgrades** (major versions)?
+    * What **pre-production environments** (staging, development, testing) are required?
+
+* **Analysis:**
+    * Practices like Blue/Green deployment align well with the zero-downtime features offered by EDB's database solutions.
+    * The number of pre-production environments directly influences the total cluster count and resource sizing defined in **[Gathering your system requirements](sys_reqs)**.
+
+## Supported platforms
+
+HM and Kubernetes have a 1:1 relationship—each HM deployment requires its own dedicated Kubernetes cluster.
+The Kubernetes cluster must be dedicated to HM in its current version; sharing with other workloads is not supported.
+
+* **Amazon EKS** (Elastic Kubernetes Service)
+* **Google GKE** (Google Kubernetes Engine)
+* **Rancher RKE2** (Rancher Kubernetes Engine)
+* **Red Hat OpenShift** (RHOS)
+
+!!! Note
+The customer is responsible for the full life cycle management of the Kubernetes cluster: provisioning, deploying, upgrading, and scaling.
+!!!
+
+## HM distributed reference architecture
+
+The HM distributed reference architecture represents the ultimate goal for achieving the highest levels of scale and fastest SLAs. 
+It typically spans multiple data centers.
+
+![HM reference architecture](../images/HCP_reference_architectures-reference.svg)
+
+### Diagram legend reference
+
+The legend defines the colors and logical groupings used in the architecture diagram:
+
+* **Locality:** The highest-level physical or logical grouping, such as a physical data center or a geographical region (e.g., "City 1" and "Data Center 1").  
+* **Kubernetes Cluster:** The complete Kubernetes environment—including all CP and worker nodes—hosting the entire platform.  
+* **EDB HM:** The logical boundary for the core HM components. This is typically implemented as a dedicated Kubernetes namespace (e.g., control-plane).  
+* **Compute Machine:** The virtual machines (e.g., vm01, vm02, vm03) that serve as the Kubernetes worker nodes, providing the CPU, memory, and storage for the cluster.  
+* **Infrastructure Abstraction:** This critical layer represents Kubernetes-native resources that abstract underlying physical or virtual infrastructure. These resources must be provided by the Kubernetes cluster's environment.  
+  * **Example 1: type: LoadBalancer**: This is a Kubernetes Service type that requests an external load balancer. In public cloud environments (like AWS, GCP, Azure), this is automatically provisioned as a managed service. In on-premises or bare-metal deployments, you must provide a solution (like MetalLB) to fulfill these LoadBalancer requests.  
+  * **Example 2: StorageClass**: This resource abstracts the "Block Storage" and "Object Storage" requirements. It maps Kubernetes storage requests (Persistent Volume Claims) to actual, provisioned storage hardware or software (like local-pv, Ceph, vSphere, or cloud-based disks).
+
+## Deployment architectures
+
+Use reference architectures A-D below as reference models to decide which topology matches your "[Target state](#architectural-discovery)."
+
+!!! Note
+This legend above also applies to reference architectures A-D below.
+!!!
+
+### A. Minimum Control Plane
+
+The minimum install colocates the HM control plane (CP) on the Kubernetes control nodes.
+
+This is fully functional for:
+
+* Centralizing a view of your Postgres/Oracle Estate.
+* Database migration capabilities.
+* GenAI (limited capabilities due to lack of managed Postgres instances).
+
+![HM minimum](../images/HCP_reference_architectures-minimum.svg)
+
+#### Internal architecture: HM Control Plane
+
+HM is composed of several core microservices running within the Kubernetes cluster. Understanding these components is helpful for planning resource allocation and security boundaries.
+
+* **GenAI:** Provides the AI/ML capabilities. If enabled, this component dictates the need for GPU-enabled worker nodes in your **[system requirements](./sys_reqs)**.
+  * *See:* [GenAI in HM](/edb-postgres-ai/latest/ai-factory/gen-ai/)
+* **Postgres life cycle operations:** The orchestration engine that manages deployment, scaling, and updates of the databases.
+  * *See:* [Cluster Management](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/)
+* **Telemetry:** Collects metrics and logs. This service requires outbound network access to report health status.
+  * *See:* [Monitoring with Hybrid Manager](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/)
+* **Database Migration Assistant:** Facilitates the movement of data from external sources into the platform.
+  * *See:* [Migrating databases with Hybrid Manager](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/)
+* **Estate:** Manages the inventory of resources creating using the HM DBAAS internal system as well as external databases.
+  * *See:* [Enable monitoring>On external database clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/#on-external-database-clusters)
+* **Federation:** Manages secure communication and authorization across multiple HM instances in a Multi-Location topology.
+  * *See:* [Configuring multiple data centers for Hybrid Manager](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi-dc/)
+
+#### Architectural dependencies
+
+The architecture diagrams above reference several external components. While you verify the specific hardware/software requirements for these in **[Phase 2: Gathering your system requirements](./sys_reqs)**, you must account for their connectivity in your architectural design.
+
+* **Identity provider (IdP):** Required for user authentication. The architecture relies on OIDC (LDAP/SAML) for all human access.
+* **Key Management Service (KMS):** (Optional) Required only if your security policy demands Transparent Data Encryption (TDE).
+* **Object Storage:** Required for system resilience. It hosts backups, logs, and facilitates data replication for Multi-Location topologies.
+* **Block Storage:** Required for database performance. Your storage architecture must provide persistent volumes (PVCs) for the Postgres data layer.
+* **Local network:** The fabric connecting the CP to Data Plane. Latency here drives your Locality decisions.
+* **Container Registry:** The source of truth for application images. For air-gapped designs, this represents your local synchronized registry.
+
+### B. HM Data Plane (Postgres life cycle orchestration)
+
+Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual database workloads reside.
+
+* Postgres clusters: The actual database instances (Primary and Standbys).
+
+* Extensions: PostGIS, PGVector, and other database extensions.
+
+* Backup agents: Local tools (like Barman) managing WAL archiving to your Object Storage.
+
+![HM Data Plane](../images/HCP_reference_architectures-dbaas.svg)
+
+### C. Fully featured deployment
+
+This view shows a fully capable HM deployment, including resources like GPU acceleration for AI workloads.
+
+![HM fully featured](../images/HCP_reference_architectures-full-featured.svg)
+
+### D. Multi-Location (Hub and spoke)
+
+The multi-location capability is a DBaaS offering following a hub and spoke model.
+
+1.  As a DBaaS offering, secondary HMs have a reduced capability set compared to the primary.
+2.  The primary HM controls the Secondary.
+3.  Connectivity is established using load-balanced endpoints&mdash;not a network mesh service, like Submariner for example.
+
+![HM multi-location](../images/HCP_reference_architectures-multi-location.svg)
+
+## Impact on configuration
+
+The decisions made during this discovery process directly determine the some of the root parameters of your installation configuration.
+
+While you do not need to create the file yet, your **Architecture Decision Record** should specify the values for these keys. 
+The **SRE/Admin** builds on these inputs, either recording them or continuing/beginning the configuration file in [Phase 2: Gathering your system requirements](/edb-postgres-ai/current/hybrid-manager/install/sys_reqs/) and/or uses these specs to build the configuration file, `values.yaml` in **[Phase 3: Preparing your Environment](environment_prep)**.
+
+### Configuration details
+
+| Architecture decision | Config parameter (`values.yaml`) | Example value |
+| :--- | :--- | :--- |
+| **Kubernetes Platform** | `system` | `aks`, `eks`, `gke`, `rhos` |
+| **Target location** | `parameters.upm-beacon.beacon_location_id` | `aws-us-east-1` |
+| **Provisioning mode** | `beaconAgent.provisioning.provider` | `azure`, `aws`, or `gcp` |
+
+### Impact on configuration file
+
+Here is how your decisions map to the final configuration file structure of the HM Helm chart `values.yaml` you create in Phase 3:
+
+```yaml
+system: <Kubernetes_Flavor> # e.g., rhos, rke2, aks, eks, gke
+bootstrapImageName: [https://docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap-](https://docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap-)<Kubernetes_Flavor>
+bootstrapImageTag: <Version>
+parameters:
+  upm-beacon:
+    beacon_location_id: <Deployment_Location_Name> # Identified in Phase 1: a simple string which will be a hint in the UI to identify this location.
+beaconAgent:
+    provisioning:
+        provider: <Provider_Name> # Azure, AWS, GCP
+        openshift: <Boolean_Value> # Defaults to `false`, set to true if deploying on RHOS
+```
+
+## Next phase
+
+Your architecture is defined and ideally recorded in an ADR for reference.
+
+**Proceed to [Phase 2: Gathering your system requirements →](./sys_reqs) to verify that your infrastructure can match your design in your ADR.**

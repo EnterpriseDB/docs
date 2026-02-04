@@ -1,0 +1,107 @@
+---
+title: Optimizing service mesh memory
+navTitle: Service mesh memory
+description: Configure Istio memory limits for optimal performance based on your Postgres cluster workload.
+---
+
+Hybrid Manager uses Istio as its service mesh to manage network traffic between Postgres clusters and other components. As the number of managed Postgres clusters grows, Istio's memory requirements increase. You can adjust the memory limits for Istio to optimize performance based on your expected workload.
+
+## Understanding Istio memory requirements
+
+The memory requirements for Istio depend on several factors:
+
+- **Number of Postgres clusters**: More clusters require more memory for service discovery and routing
+- **Cluster architecture**: Complex architectures (such as PGD clusters with multiple data groups) require more memory than simple standalone clusters
+- **Network traffic**: Higher network activity increases memory usage
+
+By default, Hybrid Manager configures Istio with conservative memory limits. As your environment grows, you may need to adjust these limits to prevent performance degradation or out-of-memory errors.
+
+## Recommended memory limits
+
+The following table shows the recommended memory limits based on the number of Postgres clusters you plan to manage:
+
+| Number of Postgres Clusters | Recommended Memory Limit |
+|-------------------------------|--------------------------|
+| up to 10-20 clusters          | 512Mi                    |
+| up to 30-40 clusters          | 1Gi                      |
+| up to 60-70 clusters          | 1.5Gi                    |
+| scale more if you need        | > 1.5Gi                  |
+
+!!! Note
+These recommendations are guidelines. Your actual requirements may vary depending on your cluster architectures and network traffic patterns. Monitor Istio's memory usage and adjust accordingly.
+!!!
+
+## Configuring Istio memory limits
+
+You can configure the Istio memory limits by setting the `upm-istio` parameters in your Helm chart `values.yaml` file.
+
+### Edit the Helm chart
+
+Edit your Helm values.yaml file by updating the `parameters.upm-istio` section. Add or modify the `memory_limit` and `cpu_limit` values:
+
+```yaml
+parameters:
+  upm-istio:
+    # Memory limit recommendations:
+    # - 512Mi for 10-20 Postgres clusters
+    # - 1Gi for 30-40 Postgres clusters
+    # - 1.5Gi for 60-70 Postgres clusters
+    # Adjust based on your expected load and architecture
+    memory_limit: "512Mi"
+    cpu_limit: "500m"
+```
+
+!!! Tip
+Start with the recommended values for your expected cluster count. If you plan to scale beyond 70 clusters, increase the memory limit proportionally (for example, add approximately 512Mi per additional 30 clusters).
+!!!
+
+### Update the Helm chart
+
+Run the Helm `upgrade` command to apply the changes to Hybrid Manager:
+
+```bash
+helm upgrade \
+    -n edbpgai-bootstrap \
+    --install \
+    -f values.yaml \
+    edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap
+```
+
+!!! Warning
+Make sure you always provide the complete set of input variables you used to install the Helm chart. If you don't specify one of the custom inputs in a subsequent execution of the Helm upgrade command, its value is set to the default.
+!!!
+
+## Monitoring Istio memory usage
+
+After adjusting the memory limits, monitor Istio's performance to ensure the configuration is appropriate for your workload.
+
+### Using Grafana dashboards
+
+Monitor Istio memory usage through the Grafana dashboards available in Hybrid Manager's Launchpad:
+
+1. From the Hybrid Manager portal, open the user menu and select **Launchpad**.
+2. On the **Grafana** card, select **View service**.
+3. Navigate to **Dashboards** > **Kubernetes**.
+4. Select the **Kubernetes / Compute Resources / Workload** dashboard.
+5. Filter by:
+   - **namespace**: `istio-system`
+   - **workload**: `istiod` (for the Istio control plane)
+
+Monitor the **Memory Usage** panel to see if usage is consistently approaching your configured limits. If it is, consider increasing the `memory_limit` value.
+
+### Check for memory-related issues
+
+If Istio is experiencing memory pressure, you might see the following symptoms:
+
+- Pods restarting frequently
+- OOMKilled (Out of Memory Killed) events in pod descriptions
+- Slow response times for Postgres cluster operations
+
+To check pod status and events:
+
+```bash
+kubectl get pods -n istio-system
+kubectl describe pod <pod-name> -n istio-system
+```
+
+Look for events mentioning `OOMKilled` or memory-related errors in the output.
