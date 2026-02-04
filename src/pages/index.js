@@ -435,7 +435,7 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
-            <BannerWideLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager/migration/">
+            <BannerWideLink to="/edb-postgres-ai/hybrid-manager/latest/using_hybrid_manager/migration/">
               Data Migration Service
             </BannerWideLink>
 
