@@ -1,16 +1,21 @@
 ---
 title: Functions 
 navTitle: Functions
-description: Reference for the functions provided by the PGAA and PGFS extensions
+description: Reference for the functions provided by the PGAA extension.
 ---
 
-The reference section is a list of PGAA and PGFS functions available with Analytics Accelerator.
-
-## PGFS functions
+The reference section is a list functions available with Analytics Accelerator.
 
 Refer to [PGFS functions for Pipelines](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions) for details.
 
-## PGAA functions
+- SQL functions
+  - Catalog functions
+  - Table functions
+  - Spark functions
+  - Background task functions
+
+
+## Table functions
 
 ### pgaa.list_tables
 
@@ -73,142 +78,12 @@ SELECT * FROM pgaa.lakehouse_table_stats();
 | `total_size`           | `BIGINT` | The total size in bytes of all versions of the table.  
 
 
-### pgaa.convert_to_tiered_table
 
-Converts a heap table into a tiered table and initiates the automated process to offload older partitions to the configured object storage. 
+## Catalog functions
 
-**Synopsis**
+### pgaa.add_catalog
 
-```sql
-CALL pgaa.convert_to_tiered_table(
-    'relation_name'::regclass,
-    range_partition_column := 'your_timestamp_column',
-    partition_increment := '1 year', 
-    analytics_offload_period := '1 year',
-    initial_lower_bound := '2010-01-01',
-    enable_replication := true 
-);
-```
-
-**Parameters**
-
-| Column                 | Type     | Description                                           
-| ---------------------- | -------- | ----------------------------------------------------- 
-| `relation` | `REGCLASS` | The name of the table.
-| `range_partition_column` | `TEXT`| The column to partition by. It must be `DATE` or `TIMESTAMP`, and it must also be included in the primary key.
-| `initial_lower_bound` | `TEXT` | The chronological starting point for the first partition.
-| `partition_increment` | `INTERVAL`| The time interval in between partitions.
-| `analytics_offload_period`  | `INTERVAL`| The age threshold that automatically triggers the migration of all older partitions to object storage, marking the data as "cold".
-| `enable_replication` | `BOOLEAN` | When set to `FALSE`, the table's data is only offloaded once partitions exceed the "cold" data threshold. If set to `TRUE`, it triggers immediate real-time replication.
-| `minimum_advance_partitions` | `INTEGER` | Minimum number of future partitions that the system must proactively create ahead of the current date.
-
-**Returns**
-
-None.
-
-## pgaa.enable_analytics_replication
-
-Enables replication for a heap table to continuously stream data to object storage, setting up the table as an HTAP table.
-
-**Synopsis**
-
-```sql
-CALL pgaa.enable_analytics_replication(`relation_name`);
-```
-
-**Parameters**
-
-| Column                 | Type     | Description                                           
-| ---------------------- | -------- | ----------------------------------------------------- 
-| `relation` | `REGCLASS` | The name of the heap table.
-
-**Returns**
-
-None.
-
-## pgaa.disable_analytics_replication
-
-Disables continuous replication on an HTAP table, returning it to a standard heap table state.
-
-**Synopsis**
-
-```sql
-CALL pgaa.disable_analytics_replication(`relation_name`);
-```
-
-**Parameters**
-
-| Column                 | Type     | Description                                           
-| ---------------------- | -------- | ----------------------------------------------------- 
-| `relation` | `REGCLASS` | The name of the HTAP table.
-
-**Returns**
-
-None.
-
-## pgaa.convert_to_analytics
-
-Converts a synchronized HTAP table into a "cold", pure-analytics table and removes the data from local disk.
-
-**Synopsis**
-
-```sql
-CALL pgaa.convert_to_analytics(`relation_name`);
-```
-
-**Parameters**
-
-| Column                 | Type     | Description                                           
-| ---------------------- | -------- | ----------------------------------------------------- 
-| `relation` | `REGCLASS` | The name of the HTAP table.
-
-**Returns**
-
-None.
-
-## pgaa.restore_from_analytics
-
-Restores a complete table from object storage (a PGAA table) back into the PGD cluster, materializing it as a standard HEAP table for transactional access. You can also restore a table that originated from a different PGD cluster.
-
-**Synopsis**
-
-```sql
-CALL pgaa.restore_from_analytics(`relation_name`);
-```
-
-**Parameters**
-
-| Column                 | Type     | Description                                           
-| ---------------------- | -------- | ----------------------------------------------------- 
-| `relation` | `REGCLASS` | The name of the PGAA table.
-
-**Returns**
-
-None.
-
-## pgaa.execute_compaction
-
-Performs compaction to improve the performance and storage efficiency of a PGAA table.
-
-**Synopsis**
-
-```sql
-CALL pgaa.execute_compaction(`relation_name`);
-```
-
-**Parameters**
-
-| Column                 | Type     | Description                                           
-| ---------------------- | -------- | ----------------------------------------------------- 
-| `relation` | `REGCLASS` | The name of the PGAA table.
-
-**Returns**
-
-None.
-
-## pgaa.add_catalog
-
-Registers a new external catalog service (like an Iceberg REST Catalog) within the PGD cluster's metadata, enabling catalog-managed offload for metadata decoupling.
+Registers a new external catalog service (like an Iceberg REST Catalog) within your Postgres instance.
 
 **Synopsis**
 
@@ -225,38 +100,70 @@ SELECT pgaa.add_catalog(
 | Column                 | Type     | Description                                           
 | ---------------------- | -------- | ----------------------------------------------------- 
 | `catalog_name` | `TEXT` | The unique name to assign to the external catalog configuration.
-| `catalog_type` | `TEXT` | The type of catalog service. Currently only `iceberg-rest` is supported.
+| `catalog_type` | `TEXT` | The type of catalog service. Supported options are `iceberg-rest` (Iceberg REST catalog), and `iceberg-s3tables` (AWS S3 Tables).
 | `catalog_options` | `JSON` | A JSON object containing the catalog service options.
 
-The following is an example of a JSON object for `catalog_options`:
+Depending on which storage you use, your JSON file for the `catalog_options` must specify different options.
 
-```json
-{
-"url": "https://edbhcp.example.com/api/iceberg/prj_9MxU4B6KjXS3FcVW",
-"token": "<<< censored >>>",
-"warehouse": "1d729496-8a8c-11f0-967c-833da882bb39",
-"warehouse_name": "prj_9MxU4B6KjXS3FcVW-catalog-RmDmVm",
-"danger_accept_invalid_certs": "true"
-}
-```
+- For REST catalogs
 
-Some Iceberg REST Catalog providers, like Snowflake Open Catalog, might expect different parameters. PGAA supports OAuth tokens, for example:
+    ```json
+    {
+    "url": "https://your-catalog-endpoint.com",
+    "warehouse_name": "your_warehouse_name",
+    "warehouse": "your_warehouse_id",
+    "token": "your_secret_auth_token"
+    "danger_accept_invalid_certs": "false"
+    }
+    ```
 
-```json
-{
-"oauth2.grant_type": "client_credentials",
-"oauth2.client_id": "oauth-client-id",
-"oauth2.client_secret": "oauth-client-secret",
-"oauth2.token_uri": "https://EXAMPLE-polaristest.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens",
-"oauth2.scope": "PRINCIPAL_ROLE:read_only"
-}
-```
+    Where:
+
+    - `url`: The base HTTP(S) endpoint of the REST catalog service.
+    - `warehouse_name`: A human-readable alternative to the warehouse ID, supported by some REST providers for easier configuration.
+    - `warehouse`: The unique identifier for the specific warehouse within the catalog service.
+    - `danger_accept_invalid_certs`: If set to `true`, Postgres skips SSL certificate validation. Use this only for internal testing or with self-signed certificates; never use it for sensitive public connections.
+
+    Some Iceberg REST Catalog providers, like Snowflake Open Catalog, might expect different parameters. Specify the following OAuth options:
+
+    ```json
+    {
+    "oauth2.grant_type": "client_credentials",
+    "oauth2.client_id": "oauth-client-id",
+    "oauth2.client_secret": "oauth-client-secret",
+    "oauth2.token_uri": "https://EXAMPLE-polaristest.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens",
+    "oauth2.scope": "PRINCIPAL_ROLE:read_only"
+    }
+    ```
+
+    Where:
+
+    - `oauth2.grant_type`: Specifies the OAuth2 flow. The most common value for service-to-service communication is `client_credentials`.
+    - `oauth2.client_id`: The unique identifier for your application registered with the identity provider.
+    - `oauth2.client_secret`: The secret key used to authenticate the client ID.
+    - `oauth2.token_uri`: The full HTTP(S) endpoint where PGAA sends the credentials to request an access token.
+    - `oauth2.scope`: (Optional) A space-delimited list of permissions or resources the client is requesting access to.
+
+
+- For AWS S3 Tables: 
+
+    ```json
+    {
+    "arn": "arn:aws:s3tables:us-east-1:1234567890:bucket/my-bucket",
+    "region": "us-east-1"
+    }
+    ```
+
+    Where:
+
+    - `arn`: Specifies the Amazon Resource Name (ARN), the unique identifier for your S3 Table bucket.
+    - `region`: Specifies the physical AWS data center location where your S3 Table bucket resides.
 
 **Returns**
 
 None.
 
-## pgaa.attach_catalog
+### pgaa.attach_catalog
 
 Makes an already registered external catalog (using `pgaa.add_catalog`) available for querying within the current PostgreSQL session.
 
@@ -273,6 +180,45 @@ SELECT pgaa.attach_catalog(
 | Column                 | Type     | Description                                           
 | ---------------------- | -------- | ----------------------------------------------------- 
 | `catalog_name` | `TEXT` | The unique name of the external catalog that was previously registered by `pgaa.add_catalog`.
+
+**Returns**
+
+None.
+
+
+Add:
+- `pgaa.update_catalog()`: Updates and validates catalog options for an existing catalog.
+- `pgaa.delete_catalog()`: Deletes a catalog from the database.
+- `pgaa.list_catalogs()`: Returns detailed information about all registered catalogs.
+- `pgaa.list_catalog_tables()`: Lists all tables in a catalog, allowing you to explore its contents and testing connectivity without importing or attaching tables.
+- `pgaa.test_catalog()`: Tests connectivity to a catalog.
+
+
+
+         List of functions
+ Schema |        Name         |             Result data type             |                      Argument data types                      | Type | Volatility | Parallel |  Owner   | Security | Access privileges | Language | Internal name |                                                                                                                     Description                                                                                                                      
+--------+---------------------+------------------------------------------+---------------------------------------------------------------+------+------------+----------+----------+----------+-------------------+----------+---------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ pgaa   | drop_catalog_tables | TABLE(schema_name text, table_name text) | catalog_name character varying, cascade boolean DEFAULT false | func | volatile   | unsafe   | postgres | invoker  |                   | plpgsql  |               | Drop all PGAA tables that are managed by the specified catalog. This function will drop the local PGAA tables and views managed by the catalog, including any dependent objects if cascade is true. It does not affect tables in the catalog itself.
+(1 row)
+
+
+## Spark functions
+
+### pgaa.execute_compaction
+
+Performs compaction to improve the performance and storage efficiency of a PGAA table.
+
+**Synopsis**
+
+```sql
+CALL pgaa.execute_compaction(`relation_name`);
+```
+
+**Parameters**
+
+| Column                 | Type     | Description                                           
+| ---------------------- | -------- | ----------------------------------------------------- 
+| `relation` | `REGCLASS` | The name of the PGAA table.
 
 **Returns**
 
