@@ -4,32 +4,80 @@ navTitle: HA/DR recovery
 description: Learn about high availability and disaster recovery (HA/DR) with Hybrid Manager.
 ---
 
-
-The DR procedure is defined as the series of manual steps that you need to take from the deployment of a new appliance to the moment that it’s possible to restore your Postgres clusters using the normal restore procedure.
+The DR procedure is defined as the series of manual steps that you need to take from the deployment of a new HM instance to the manual recovery of your Postgres clusters using the restore procedure.
 
 !!! Warning
-    The procedure is based on the 1.0 release of the appliance and is subject to constant change as the feature set changes. You must constantly test and update it for it to remain valid.
+    You must constantly test and update your DR procedure for it to remain valid.
 
-### 1. Confirm availability of backups
+## Before you start
 
-The first step ensures the backups of the unavailable appliance (aka “old backups”) are reachable from the new appliance.
+Before starting the DR procedure, ensure you have made yourself familiar with:
 
-You can achieve this in multiple ways:
+- [Planning and best practices](./hadr)
+- [Considerations and backup requirements](./considerations)
 
--   Using a replicated bucket as the s3-compatible linked bucket for the new appliance, so the old backups are directly available to the new appliance.
--   Copying the backups of the damaged appliance to the linked storage of the new appliance. You must copy the following items:  
-    -   Internal EDB backups folder, with the format `edb-internal-backups/\<random-string\>`  
-    -   The Postgres clusters backups folder `customer-pg-backups`  
-    -   Any folder corresponding to a defined custom storage location
+## Prerequisites 
 
-!!! Note
-    The internal backups folder defined for the new appliance will be different from the older one, as it will have a different `\<random-string\>`.
+- A new HM instance deployed and running. It must be running the same version as the old one.
+- [Install the Velero CLI](https://velero.io/docs/v1.3.0/velero-install/).
 
-### 2. Preparation steps
+## 1. Make backups available for the new HM instance
 
-#### Define a recovery backup storage location for Velero
+The first step ensures the backups of the unavailable HM instance (“old backups”) are reachable from the new HM instance by copying the backups of the damaged HM instance to the linked storage of the new HM instance. 
 
-Once you have backups available, you can define a new storage location for Velero so you can restore resources from the damaged appliance backups. This is a read-only location to prevent overwriting or removing those backups.
+1.  Obtain the name of the old and new buckets, the ID of the old backup, and the region of the new attached bucket and put them into environment variables:
+
+    ```bash
+    1.  Set environment variables for the old bucket and the new bucket linked to the new HM instance:
+
+    ```bash
+    export OLD_BUCKET=<old_bucket>
+    export OLD_BACKUP_ID=<old_environment_internal_backup_id>
+    export NEW_BUCKET=<new_bucket>
+    export NEW_REGION=<region_of_the_new_bucket>
+    ```
+
+    <details><summary>Example</summary> 
+
+    This is an example for setting the environment variables for an HM instance deployed on EKS:
+    
+    export OLD_BUCKET=eks-1105143903-2511-edb-postgres
+    export OLD_BACKUP_ID=a7462dbc7106
+    export NEW_BUCKET=eks-1105155418-2511-edb-postgres
+    export NEW_REGION=eu-west-3
+    ```bash
+
+    </details> 
+
+    <br/>
+
+1.  Copy the data from the old bucket to the new bucket by copying the following files from one storage bucket to another:
+
+    - **Internal EDB backups folder** &mdash; The internal backups folder in the old bucket `edb-internal-backups/\<random-string\>` is different in the new HM instance, as it will have a different `\<random-string\>`.  
+    - **Postgres clusters backups folder** &mdash; `customer-pg-backups`  
+    - **Folder corresponding to any defined custom storage locations** &mdash;
+
+
+    ```bash
+    aws s3 cp s3://$OLD_BUCKET/edb-internal-backups/$OLD_BACKUP_ID s3://$NEW_BUCKET/edb-internal-backups/$OLD_BACKUP_ID --recursive --region $NEW_REGION
+    ```
+
+    If you have custom storage locations defined, copy them as well:
+
+    ```bash
+    aws s3 cp s3://$OLD_BUCKET/<custom-location-path> s3://$NEW_BUCKET/<custom-location-path> --recursive --region $NEW_REGION
+    ```
+
+    Repeat this step for each custom storage location defined in the old HM instance.
+
+
+## 2. Preparation steps
+
+### Define a recovery backup storage location for Velero
+
+Once you have backups available, you can define a new storage location for Velero so you can restore resources from the damaged HM instance backups. This is a read-only location to prevent overwriting or removing those backups.
+
+
 
 To define a new storage location, use the following Kubernetes manifest:
 
@@ -58,7 +106,7 @@ spec:
 
 Confirm it using the `velero get backup-locations` command. It must show as `Available`.  If the status is not `Available`, check the Velero pod logs for permission errors on the s3 bucket.
 
-#### Choosing a Velero backup for recovery
+### Choosing a Velero backup for recovery
 
 Once the old internal Velero backups are available in the recovery storage location, you can list them with the following command:
 
@@ -78,17 +126,17 @@ velero-backup-kube-state-**20241216154403**   Completed   0        0          20
 !!! Note
     The timestamp value is referred to as the *recovery date* in the instructions that follow.
 
-#### Additional requirements
+### Additional requirements
 
 The following requirements apply to the recovery procedure:
 
--   The new appliance must be running the same version of the Postgres AI software deployment as the old one.
--   The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old appliance are available in the new one. `Locations` is currently an internal resource created during install and isn't available in the console. `managed-devspatcher` is the default value.
--   Container images used to build the clusters in the old appliance are available to the new one.
+-   The new HM instance must be running the same version of the Postgres AI software deployment as the old one.
+-   The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old HM instance are available in the new one. `Locations` is currently an internal resource created during install and isn't available in the console. `managed-devspatcher` is the default value.
+-   Container images used to build the clusters in the old HM instance are available to the new one.
 
-### 3. Recovery steps
+## 3. Recovery steps
 
-#### Restore EDB internal databases (`app-db` and `beacon-db`)
+### Restore EDB internal databases (`app-db` and `beacon-db`)
 
 Once the old backups are available, you can restore the EDB internal databases. For each internal database:
 
@@ -138,7 +186,7 @@ Once the old backups are available, you can restore the EDB internal databases. 
 
 At this point, the portal on the new cluster is available again.
 
-#### Configure the Velero plugin
+### Configure the Velero plugin
 
 The plugin helps restore the Kubernetes resources in a correct state, so only the custom managed storage locations are restored. The Postgres clusters resources are restored as deleted, so you can later restore data as desired.
 
@@ -159,11 +207,11 @@ data:
   \# configure a date corresponding to the velero backup date. Note the format\!  
   drDate: "\<recovery date in YYYY–MM-DDTHH:MM:SSZ format\>”  
   \# old and new buckets for internal custom storage locations  
-  oldBucket: \<old-appliance-bucket-name\>  
-  newBucket: \<new-appliance-bucket-name\>
+  oldBucket: \<old-HM instance-bucket-name\>  
+  newBucket: \<new-HM instance-bucket-name\>
 ```
 
-#### Restore the custom managed storage locations
+### Restore the custom managed storage locations
 
 Configure and apply the following Velero restore resource manifest:
 
@@ -184,7 +232,7 @@ spec:
       biganimal.enterprisedb.io/reserved-by-biganimal: "false"
 ```
 
-#### Restore the cluster wrappers
+### Restore the cluster wrappers
 
 Configure and apply the following Velero restore resource manifest:
 
@@ -204,7 +252,7 @@ spec:
     \- clusterwrappers.beacon.enterprisedb.com
 ```
 
-#### Restore the backup wrappers
+### Restore the backup wrappers
 
 Configure and apply the following Velero restore resource manifest:
 
