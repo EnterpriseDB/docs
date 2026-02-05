@@ -2,62 +2,125 @@
 title: Creating tables from queries
 navTitle: Creating tables from queries
 description: How to create tables from queries using Analytics Accelerator.
+deepToC: true
 ---
 
-Standalone PGAA without PGD supports:
-write to Iceberg / Delta Lake using CREATE TABLE AS statements (full table rewrite)
+The Postgres Analytics Accelerator (PGAA) supports writing directly to your data lake using the `CREATE TABLE AS SELECT` (CTAS) syntax. This enables you to transform Postgres data and save it into high-performance columnar formats like Iceberg or Delta Lake on cloud storage.
 
-CTAS is the only supported way to write to object storage without PGD.
+Because PGAA integrates with the PostgreSQL query executor, the source data for a CTAS operation can reside in any location accessible to your instance. This enables several advanced workflows:
+- **Exporting:** Move data from a standard local Postgres table into your data lake to archive historical data.
+- **Transforming:** Read from one object storage location, perform a join or aggregation, and write the result back to a different cloud directory.
+- **Federated joins:** Join a local relational table with a remote object storage table and write the combined result back to the cloud.
 
-Required permissions:
-- Database level
-- Storage-Level Permissions Unlike "Read-Only" mode (which only needs List and Get), CTAS requires "Write" and "Management" rights to handle the metadata files.
+By using the  `PGAA` access method, you can stream the result set of any query directly to a specified storage location—including AWS S3 (and S3-compatible APIs), Google Cloud Storage (GCS), Azure Blob Storage (ADLS Gen2), and local filesystems, or directly into an integrated Iceberg catalog.
 
+You can perform a CTAS operation using either a standalone storage location or an integrated Iceberg catalog.
 
-PGAA supports `CREATE TABLE AS` which dumps the result of a query into analytics.
+## Using a standalone storage location
 
-Create Tables from Queries (CTAS)
-- CREATE TABLE ... USING PGAA WITH (...) AS (...)
-- Supported options
-- Known limitations (eg query runs on PG)
+This method is ideal for one-off exports or ad-hoc data movement. PGAA handles the conversion from Postgres rows to the target format, generates the necessary metadata or transaction logs (such as the Iceberg manifest or Delta transaction log), and commits the results in a single atomic operation.
 
+Provisioning a table in object storage via CTAS requires a two-step process: first, you establish a physical connection to the remote storage environment via a storage location, and then you execute the SQL command that maps your query results to that location.
 
-You can use CREATE TABLE AS (CTAS) to write directly to object storage. It is often the fastest way to "offload" a local Postgres table into your data lake in one shot.
+### Creating a storage location
 
-When you use CTAS with PGAA, Postgres creates the table structure, initializes the S3 metadata, and streams the results of your query into Parquet files all in a single transaction.
+To write to object storage, you must [create a PGFS storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location). This defines the target bucket and provides the necessary credentials. For example:
 
-To do this, you use the standard CREATE TABLE ... AS syntax but append the USING PGAA clause and the necessary storage parameters in the WITH block.
+```sql
+SELECT pgfs.create_storage_location(
+    'my_lake_data', 
+    's3://your-bucket-name/path', 
+    '{"aws_region": "us-east-1", "aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+);
+```
+
+!!! Note
+    The credentials associated with your storage location must have both read and write permissions for the destination bucket. You can verify this by running the following function, which returns `NULL` if successful:
+
+    ```sql
+    SELECT pgaa.test_storage_location ('my_lake_data', true);
+    ```
+
+### Creating the CTAS table
+
+Create a table with the `USING PGAA` and `AS` clauses that exports its result set directly to a structured table format in object storage. For example:
 
 ```sql
 CREATE TABLE s3_export_table 
 USING PGAA 
 WITH (
-    pgaa.storage_location = 'your_s3_storage_location',
+    pgaa.storage_location = 'my_lake_data',
     pgaa.path = 'path/in/s3/iceberg_data',
     pgaa.format = 'iceberg'
 ) AS 
 SELECT * FROM local_source_table;
 ```
 
+Where:
+
+- `pgaa.format`: Specifies the destination table format. Supported values are 'iceberg' and 'delta'.
+- `pgaa.storage_location`: The name of the storage location defined in the previous step.
+- `pgaa.path`: The destination directory. PGAA creates the metadata and log directories automatically within this path.
+
+## Using an Iceberg catalog
+
+If you have integrated an Iceberg catalog, you can write to it by specifying the catalog name. In this mode, the catalog automatically manages the storage paths and table versioning for you.
+
+Writing to a table in object storage via CTAS and using an Iceberg catalog requires two steps: first, configure a catalog connection, and then execute the SQL command that maps your query results via that catalog.
+
+### Configuring a catalog connection
+
+Use the function `pgaa.add_catalog()` to register an external Iceberg catalog with your Postgres instance. For example:
+
 ```sql
-CREATE TABLE delta_export_test 
-USING PGAA 
-WITH (
-    pgaa.storage_location = 'your_s3_storage',
-    pgaa.path = 'exports/delta_test_data',
-    pgaa.format = 'delta'
-) AS 
-SELECT * FROM customer_address LIMIT 100;
+SELECT pgaa.add_catalog(
+    'my_iceberg_catalog',    
+    'iceberg-rest',           
+    '{ 
+        "url": "https://your-catalog-endpoint.com",
+        "warehouse_name": "your_warehouse_name",
+        "warehouse": "your_warehouse_id",
+        "token": "your_secret_auth_token"
+        "danger_accept_invalid_certs": "false"
+    }'
+);
 ```
 
+See [Adding a catalog connection](catalog/#adding-a-catalog-connection) for a full list of configuration options.
 
-Why use CTAS over INSERT?
-- Speed: CTAS is highly optimized for bulk creation. It bypasses some of the overhead of row-by-row consistency checks because it knows it is building the table from scratch.
-- Schema Discovery: You don't have to define the columns manually. Postgres looks at the SELECT statement and automatically maps the types (e.g., a Postgres TEXT becomes an Iceberg string).
-- One-Step Workflow: It’s a "fire and forget" command—perfect for creating a snapshot of your operational data for analysts to query in the lake.
-- Convert Transactional Table to Analytics-Only: Transform the transactional table to use analytics storage directly while discarding local data.
+!!! Note
+    You must have write permissions on your catalog. You can verify this by running the following function, which returns `NULL` if successful:
 
-Important Limitations to Remember
-- Read-Only Formats: You cannot use CTAS for Delta Lake or raw Parquet paths in the current version of PGAA; these formats are treated as read-only. This only works if pgaa.format = 'iceberg'.
-- No Overwrites: If a folder already exists at that S3 pgaa.path, the command will likely fail to prevent you from accidentally corrupting existing data. You usually need to point to a fresh, empty path.
-- Standalone Risks: Just like with INSERT, without a catalog (no PGD), there is no locking mechanism. If two people run CTAS to the exact same path, the metadata will break.
+    ```sql
+    SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := TRUE);
+    ```
+
+### Creating the catalog-managed CTAS table
+
+Create a table with the `USING PGAA` and `AS` clauses that exports its result set directly to a configured Iceberg catalog. For example:
+
+```sql
+CREATE TABLE export_local_transactions 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'my_iceberg_catalog',
+    pgaa.catalog_namespace = 'public',
+    pgaa.catalog_table = 'managed_sales_data'
+) AS
+SELECT * FROM local_transactions;
+```
+
+Where:
+
+- `pgaa.format`: Sets the destination table format (`iceberg`).
+- `pgaa.managed_by`: Specifies your external Iceberg catalog.
+- `pgaa.catalog_namespace`: Defines the namespace where the table will reside within your Iceberg catalog.
+- `pgaa.catalog_table`: Specifies the name of the table to be created in your data lake.
+
+## Limitations of CTAS
+
+While CTAS is a powerful tool for data movement and transformation, it operates under a specific execution model with the following constraints:
+- **Engine dependency:** When executing a CTAS operation, the source (inner) query does not utilize DirectScan. Instead, the data retrieval is processed by the standard PostgreSQL engine via CompatScan. Consequently, complex joins or aggregations within the `SELECT` phase will not benefit from the full vectorized acceleration provided by the Seafowl engine.
+- **No automatic overwrites:** To prevent accidental data loss, the command will fail by default if data already exists at the specified `pgaa.path`. If you intend to replace the existing data, you must explicitly set the `pgaa.purge_data_if_exists` parameter to true in the `WITH` clause of your CTAS statement.
+- **Write-once:** CTAS is an atomic, write-once operation. To modify the data, you must drop the table and recreate it at a new path.

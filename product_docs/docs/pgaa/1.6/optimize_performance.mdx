@@ -2,13 +2,59 @@
 title: Optimizing query performance
 navTitle: Optimizing query performance
 description: How to optimize query performance using Analytics Accelerator.
+redirects:
+- /edb-postgres-ai/latest/analytics/reference/directscan/
 ---
 
-Optimize query performance:
+The Postgres Analytics Accelerator (PGAA) achieves its speed by offloading heavy analytical processing—like filters, aggregations, and joins—to a vectorized execution engine for maximum performance. 
 
-- Understanding DirectScan vs CompatScan
-- Using EXPLAIN to verify offload
-- Join pushdown (pgaa.enable_join_pushdown)
-- GroupBy pushdown (pgaa.enable_groupby_pushdown)
-- Troubleshooting DirectScan failures
-- pgaa.direct_scan_fail_behavior options
+## Understanding scan types
+
+When you query a PGAA table, the system chooses between two execution paths:
+- **DirectScan:** The vectorized engine reads data directly from object storage, applies filters and aggregations at the source, and returns only the final result to Postgres.
+- **CompatScan:** If the vectorized engine cannot handle a specific SQL feature or expression, the raw data is streamed into the standard Postgres executor. This is significantly slower as it bypasses vectorized acceleration.
+
+To verify that your query is being optimized, use the `EXPLAIN` command for your queries, and look for the `SeafowlDirectScan` node in the output.
+
+```sql
+ SeafowlDirectScan: Logical Plan
+   Limit:  skip=0, fetch=10
+     Projection:  store_sales.ss_sold_date_sk, store_sales.ss_sold_time_sk, store_sales.ss_item_sk, store_sales.ss_customer_sk, store_sales.ss_cdemo_sk, store_sales.ss_hdemo_sk, store_sales.ss_addr_sk, store_sales.ss_store_sk, store_sales.ss_promo_sk, store_sales.ss_ticket_number, store_sales.ss_quantity, store_sales.ss_wholesale_cost, store_sales.ss_list_price, store_sales.ss_sales_price, store_sales.ss_ext_discount_amt, store_sales.ss_ext_sales_price, store_sales.ss_ext_wholesale_cost, store_sales.ss_ext_list_price, store_sales.ss_ext_tax, store_sales.ss_coupon_amt, store_sales.ss_net_paid, store_sales.ss_net_paid_inc_tax, store_sales.ss_net_profit
+       TableScan:  store_sales
+(4 rows)
+```
+
+If you see a Foreign Scan or standard Seq Scan instead, the query has fallen back to the Postgres executor. (CompatScan???)
+
+To get the best results, ensure that the engine is performing a DirectScan. ---> how to do this?
+
+
+## Optimizing CompatScan
+
+Even when a query falls back to CompatScan, you can maintain high performance by ensuring specific operations are still offloaded to the remote engine. These parameters are enabled by default:
+
+The GUCS ensure that even if a query is too complex for a full DirectScan, the system still tries to offload the heaviest lifting (joins and aggregations) during a CompatScan.
+
+- pgaa.enable_join_pushdown: When in CompatScan, the system will attempt to push joins down to the remote executor engine rather than joining the data locally in Postgres. (Default: on)
+
+- pgaa.enable_groupby_pushdown: When in CompatScan, the system will attempt to push GROUP BY operations and aggregations (like SUM or COUNT) down to the remote executor engine. (Default: on)
+
+
+## Managing DirectScan failures
+
+If a query contains a function or data type that the vectorized engine doesn't support, it will fail to perform a SeafowlDirectScan. You can manage this behavior using the `pgaa.direct_scan_fail_behavior` setting.
+
+You can control how the system reacts when a query cannot be offloaded to a SeafowlDirectScan by using the pgaa.direct_scan_fail_behavior setting.
+
+- ignore	Automatically switches to CompatScan without notification.	Ensures queries finish, even if slower.
+- warn	Switches to CompatScan but logs a warning in Postgres.	Useful for monitoring production logs for unoptimized queries.
+- error	Stops the query and returns a detailed error message.	Best for development to identify exactly why a query isn't offloading.
+
+
+If you encounter a fallback, it is typically due to:
+- Unsupported Types: Using Postgres-specific types like JSONB, UUID, or INET.
+- Complex Functions: Certain User Defined Functions (UDFs) or complex window functions.
+- Collation Mismatches: Using specific Postgres collations that the engine cannot replicate at the storage layer.
+
+To investigate, set the behavior to error and re-run your EXPLAIN to see the specific reason for the rejection.
+
