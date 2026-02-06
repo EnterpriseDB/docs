@@ -19,16 +19,18 @@ Before starting the DR procedure, ensure you have made yourself familiar with:
 ## Prerequisites 
 
 - A new HM instance deployed and running. It must be running the same version as the old one.
+
+  - If you have configured [multi-DC](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/multi-dc/) in your old HM instance, ensure the same locations (`locations.beacon.enterprisedb.com` custom resource) are available in the new one. `locations` is currently an internal resource created during install and isn't available in the HM console. `managed-devspatcher` is the default value.
+
+  - The container images used to build the clusters in the old HM instance are available to the new one.
+
 - [Install the Velero CLI](https://velero.io/docs/v1.3.0/velero-install/).
 
-## 1. Make backups available for the new HM instance
+## 1. Make backups available in the new HM instance
 
 The first step ensures the backups of the unavailable HM instance (“old backups”) are reachable from the new HM instance by copying the backups of the damaged HM instance to the linked storage of the new HM instance. 
 
-1.  Obtain the name of the old and new buckets, the ID of the old backup, and the region of the new attached bucket and put them into environment variables:
-
-    ```bash
-    1.  Set environment variables for the old bucket and the new bucket linked to the new HM instance:
+1.  Obtain the name of the old and new buckets, the ID of the old backup, and the region of the new attached bucket and store these parameters in environment variables:
 
     ```bash
     export OLD_BUCKET=<old_bucket>
@@ -37,104 +39,210 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     export NEW_REGION=<region_of_the_new_bucket>
     ```
 
-    <details><summary>Example</summary> 
+    <details><summary>How do I obtain the old bucket values?</summary> 
 
-    This is an example for setting the environment variables for an HM instance deployed on EKS:
+    To obtain the old bucket values: 
     
-    export OLD_BUCKET=eks-1105143903-2511-edb-postgres
-    export OLD_BACKUP_ID=a7462dbc7106
-    export NEW_BUCKET=eks-1105155418-2511-edb-postgres
-    export NEW_REGION=eu-west-3
-    ```bash
+    1. Go to the console/dashboard of your CSP > buckets. 
+    1. Find and select the bucket linked to the backups of your old HM instance.
+    1. Browse through to the `edb-internal-backups` folder. Inside that folder you will find a subfolder with the backup ID, e.g. 4be7a1c8c9f0.
 
     </details> 
 
     <br/>
 
-1.  Copy the data from the old bucket to the new bucket by copying the following files from one storage bucket to another:
+    <details><summary>EKS Example</summary> 
 
-    - **Internal EDB backups folder** &mdash; The internal backups folder in the old bucket `edb-internal-backups/\<random-string\>` is different in the new HM instance, as it will have a different `\<random-string\>`.  
-    - **Postgres clusters backups folder** &mdash; `customer-pg-backups`  
-    - **Folder corresponding to any defined custom storage locations** &mdash;
-
-
+    This is an example for setting the environment variables for an HM instance deployed on EKS:
+    
     ```bash
-    aws s3 cp s3://$OLD_BUCKET/edb-internal-backups/$OLD_BACKUP_ID s3://$NEW_BUCKET/edb-internal-backups/$OLD_BACKUP_ID --recursive --region $NEW_REGION
+    export OLD_BUCKET=eks-1105143903-2511-edb-postgres
+    export OLD_BACKUP_ID=a7462dbc7106
+    export NEW_BUCKET=eks-1105155418-2511-edb-postgres
+    export NEW_REGION=eu-west-3
     ```
 
-    If you have custom storage locations defined, copy them as well:
+    </details> 
 
-    ```bash
-    aws s3 cp s3://$OLD_BUCKET/<custom-location-path> s3://$NEW_BUCKET/<custom-location-path> --recursive --region $NEW_REGION
+    <br/>
+
+1.  To copy the data from the old bucket to the new bucket, you first need to locate and note the names of the source and target folders. You need to copy the following folders and their content:
+
+    - **Internal EDB backups folder** &mdash; The internal backups folder in the old bucket `edb-internal-backups/\<random-string\>` is different in the new HM instance, as it will have a different `\<random-string\>`.
+
+    - **Postgres clusters backups folder** &mdash; `customer-pg-backups`.
+
+    - **Folder corresponding to any defined custom storage locations** &mdash; if you have custom storage locations defined in the old HM instance, copy the corresponding folders as well.
+
+1.  Copy the old backups to the new bucket using your preferred tools. Here are some examples using cloud service provider CLIs to move data between buckets:
+
+    <TabContainer syncKey="CSP">
+    <Tab title="AWS">
+
+    ```shell
+    aws s3 cp --recursive s3://${OLD_BUCKET}/edb-internal-backups/${OLD_BACKUP_ID} s3://${NEW_BUCKET}/edb-internal-backups
+    aws s3 cp --recursive s3://${OLD_BUCKET}/customer-pg-backups s3://${NEW_BUCKET}/customer-pg-backups
     ```
 
-    Repeat this step for each custom storage location defined in the old HM instance.
+    </Tab>
+
+    <Tab title="GCP">
+
+    ```shell
+    gsutil -m cp -r gs://${OLD_BUCKET}/edb-internal-backups/${OLD_BACKUP_ID} gs://${NEW_BUCKET}/edb-internal-backups
+    gsutil -m cp -r gs://${OLD_BUCKET}/customer-pg-backups gs://${NEW_BUCKET}/customer-pg-backups
+    ```
+
+    </Tab>
+    </TabContainer>
+
+    [I read that gsutil is being deprecated, can we have the gcloud commands for this?]: # 
+    
+    [Also, in these examples we don't specify how to move the custom storage locations, should we add that as an optional step?]: #
+
+1.  Load the backups you just copied to your new HM instance by creating a new custom resource definition and applying it to the new HM instance:
+
+    <TabContainer syncKey="CSP">
+    <Tab title="AWS">
+
+    ```yaml
+    kubectl apply -f - <<EOF
+    apiVersion: velero.io/v1
+    kind: BackupStorageLocation
+    metadata:
+      annotations:
+        appliance.enterprisedb.com/s3-prefixes: edb-internal-backups/velero
+      labels:
+        appliance.enterprisedb.com/storage-credentials: bound
+      name: recovery
+      namespace: velero
+    spec:
+      accessMode: ReadOnly
+      config:
+        insecureSkipTLSVerify: "false"
+        region: ${NEW_REGION}
+        s3ForcePathStyle: "true"
+      default: false
+      objectStorage:
+        bucket: ${NEW_BUCKET}
+        prefix: edb-internal-backups/velero
+      provider: aws
+    EOF
+    ```
+
+    </Tab>
+
+    <Tab title="GCP">
+
+    ```yaml
+    kubectl apply -f - <<EOF
+    apiVersion: velero.io/v1
+    kind: BackupStorageLocation
+    metadata:
+      annotations:
+        appliance.enterprisedb.com/s3-prefixes: edb-internal-backups/velero
+      labels:
+        appliance.enterprisedb.com/storage-credentials: bound
+      name: recovery
+      namespace: velero
+    spec:
+      accessMode: ReadOnly
+      credential:
+        key: gcp
+        name: gcs-credentials
+      default: false
+      objectStorage:
+        bucket: ${NEW_BUCKET}
+        prefix: edb-internal-backups/velero
+      provider: gcp
+    EOF
+    kubectl apply -f - <<EOF
+    apiVersion: velero.io/v1
+    kind: BackupStorageLocation
+    metadata:
+      annotations:
+        appliance.enterprisedb.com/s3-prefixes: edb-internal-backups/velero
+      labels:
+        appliance.enterprisedb.com/storage-credentials: bound
+      name: recovery
+      namespace: velero
+    spec:
+      accessMode: ReadOnly
+      credential:
+        key: gcp
+        name: gcs-credentials
+      default: false
+      objectStorage:
+        bucket: ${NEW_BUCKET}
+        prefix: edb-internal-backups/velero
+      provider: gcp
+    EOF
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Confirm that the new storage location is available:
+
+    ```shell
+    velero get backup-locations
+    ```
+    If the status is not `Available`, check the Velero pod logs for permission errors on the s3 bucket.
+
+1.  Confirm that the backups are available as well: 
+
+    ```shell
+    velero get backups --selector velero.io/storage-location=recovery
+    ```
+
+1.  Choose the backup you want to restore from. You can have multiple backups available, so choose the one that best suits your needs, e.g. the most recent backup before the disaster happened. Note the Velero backup name, as well as the date and time (UTC), as both are required for a restore, for example: 
+
+    ```bash
+    NAME                                      STATUS      ERRORS   WARNINGS   CREATED                         EXPIRES   STORAGE LOCATION   SELECTOR  
+    velero-backup-kube-state-**20241216154403**   Completed   0        0          2024-12-16 16:44:03 \+0100 CET   5d        recovery           \<none\>
+    ```
+
+    !!! Note
+        The timestamp value is referred to as the *recovery date* in the instructions that follow.
+
+1.  (Optional) If you were using HM to manage AI workloads, e.g. with the GenAI Builder, also copy the object store files and CORS configuration from the old bucket to the new one:
+
+    ```shell
+    export OLD_BUCKET_DATALAKE=<old bucket>
+    export NEW_BUCKET_DATALAKE=<new bucket>
+    ```
+
+    <TabContainer syncKey="CSP">
+    <Tab title="AWS">
+
+    ```shell
+    # Copy data lake objects from old bucket to new bucket
+    aws s3 cp --recursive s3://${OLD_BUCKET_DATALAKE}/ s3://${NEW_BUCKET_DATALAKE}/
+    # Copy CORS configuration from old bucket to new bucket
+    aws s3api get-bucket-cors --bucket ${OLD_BUCKET_DATALAKE} --output json > cors-config.json
+    aws s3api put-bucket-cors --bucket ${NEW_BUCKET_DATALAKE} --cors-configuration file://cors-config.json
+    ```
+
+    </Tab>
+
+    <Tab title="GCP">
+
+    ```shell
+    # Copy data lake objects from old bucket to new bucket
+    gsutil -m cp -r gs://${OLD_BUCKET_DATALAKE}/ gs://${NEW_BUCKET_DATALAKE}/
+    # Copy CORS configuration from old bucket to new bucket
+    gsutil cors get gs://${OLD_BUCKET_DATALAKE} > cors-config.json
+    gsutil cors set cors-config.json gs://${NEW_BUCKET_DATALAKE}
+    ```
+
+    [same here with gsutil being deprecated, can we have the gcloud commands for this?]: #
+
+    </Tab>
+    </TabContainer>
+
+## 2. Recovery steps
 
 
-## 2. Preparation steps
-
-### Define a recovery backup storage location for Velero
-
-Once you have backups available, you can define a new storage location for Velero so you can restore resources from the damaged HM instance backups. This is a read-only location to prevent overwriting or removing those backups.
-
-
-
-To define a new storage location, use the following Kubernetes manifest:
-
-```yaml
-apiVersion: velero.io/v1  
-kind: BackupStorageLocation  
-metadata:  
-  annotations:  
-    appliance.enterprisedb.com/s3-prefixes: edb-internal-backups/\<old-backups-ramdom-string\>/velero  
-  labels:  
-    appliance.enterprisedb.com/s3-credentials: bound  
-  name: recovery  
-  namespace: velero  
-spec:  
-  accessMode: ReadOnly  
-  config:  
-    insecureSkipTLSVerify: "false"  
-    region: \<region-of-attached-bucket\>  
-    s3ForcePathStyle: "true"  
-  default: false  
-  objectStorage:  
-    bucket: \<linked-bucket-name\>  
-    prefix: edb-internal-backups/\<old-backups-random-string\>/velero  
-  provider: aws
-```
-
-Confirm it using the `velero get backup-locations` command. It must show as `Available`.  If the status is not `Available`, check the Velero pod logs for permission errors on the s3 bucket.
-
-### Choosing a Velero backup for recovery
-
-Once the old internal Velero backups are available in the recovery storage location, you can list them with the following command:
-
-```bash
-velero get backups \--selector velero.io/storage-location=recovery
-```
-
-Typically, you choose the latest available completed backup to recover from. Note the Velero backup name, as well as the date and time (UTC), as both are required for a restore.
-
-Example:
-
-```bash
-NAME                                      STATUS      ERRORS   WARNINGS   CREATED                         EXPIRES   STORAGE LOCATION   SELECTOR  
-velero-backup-kube-state-**20241216154403**   Completed   0        0          2024-12-16 16:44:03 \+0100 CET   5d        recovery           \<none\>
-```
-
-!!! Note
-    The timestamp value is referred to as the *recovery date* in the instructions that follow.
-
-### Additional requirements
-
-The following requirements apply to the recovery procedure:
-
--   The new HM instance must be running the same version of the Postgres AI software deployment as the old one.
--   The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old HM instance are available in the new one. `Locations` is currently an internal resource created during install and isn't available in the console. `managed-devspatcher` is the default value.
--   Container images used to build the clusters in the old HM instance are available to the new one.
-
-## 3. Recovery steps
 
 ### Restore EDB internal databases (`app-db` and `beacon-db`)
 
