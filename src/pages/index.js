@@ -385,7 +385,7 @@ const Page = () => {
               EDB Postgres Distributed (PGD)
             </BannerWideLink>
 
-            <BannerWideLink to="/repmgr/latest">
+            <BannerWideLink to="/supported-open-source/repmgr/">
               Replication Manager (repmgr)
             </BannerWideLink>
             <BannerWideLink to="/supported-open-source/patroni/">
