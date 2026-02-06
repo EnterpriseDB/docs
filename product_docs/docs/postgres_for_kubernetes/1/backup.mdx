@@ -5,52 +5,22 @@ originalFilePath: 'src/backup.md'
 
 
 
-!!!info
-This section covers **physical backups** in PostgreSQL.
-While PostgreSQL also supports logical backups using the `pg_dump` utility,
-these are **not suitable for business continuity** and are **not managed** by
-{{name.ln}}. If you still wish to use `pg_dump`, refer to the
-[*Troubleshooting / Emergency backup* section](troubleshooting.md#emergency-backup)
-for guidance.
-!!!
-
-!!!info Important
-Starting with version 1.26, native backup and recovery capabilities are
-being **progressively phased out** of the core operator and moved to official
-CNP-I plugins. This transition aligns with {{name.ln}}' shift towards a
-**backup-agnostic architecture**, enabled by its extensible
-interface—**CNP-I**—which standardizes the management of **WAL archiving**,
-**physical base backups**, and corresponding **recovery processes**.
-!!!
-
-{{name.ln}} currently supports **physical backups of PostgreSQL clusters** in
-two main ways:
-
--   **Via [CNPG-I](https://github.com/cloudnative-pg/cnpg-i/) plugins**: the
-    {{name.ln}} Community officially supports the [**Barman Cloud Plugin**](https://cloudnative-pg.io/plugin-barman-cloud/)
-    for integration with object storage services.
-
--   **Natively**, with support for:
-
-    -   [Object storage via Barman Cloud](backup_barmanobjectstore.md)
-        *(although deprecated from 1.26 in favor of the Barman Cloud Plugin)*
-    -   [Kubernetes Volume Snapshots](backup_volumesnapshot.md), if
-        supported by the underlying storage class
-
-Before selecting a backup strategy with {{name.ln}}, it's important to
-familiarize yourself with the foundational concepts covered in the ["Main Concepts"](#main-concepts)
-section. These include WAL archiving, hot and cold backups, performing backups
-from a standby, and more.
-
-## Main Concepts
-
 PostgreSQL natively provides first class backup and recovery capabilities based
 on file system level (physical) copy. These have been successfully used for
 more than 15 years in mission critical production databases, helping
 organizations all over the world achieve their disaster recovery goals with
 Postgres.
 
-In {{name.ln}}, the backup infrastructure for each PostgreSQL cluster is made
+!!!note
+There's another way to backup databases in PostgreSQL, through the
+`pg_dump` utility - which relies on logical backups instead of physical ones.
+However, logical backups are not suitable for business continuity use cases
+and as such are not covered by {{name.ln}} (yet, at least).
+If you want to use the `pg_dump` utility, let yourself be inspired by the
+["Troubleshooting / Emergency backup" section](troubleshooting.md#emergency-backup).
+!!!
+
+In EDB Postgres for Kubernetes, the backup infrastructure for each PostgreSQL cluster is made
 up of the following resources:
 
 -   **WAL archive**: a location containing the WAL files (transactional logs)
@@ -62,7 +32,32 @@ CNP-I provides a generic and extensible interface for managing WAL archiving
 (both archive and restore operations), as well as the base backup and
 corresponding restore processes.
 
-### WAL archive
+On the other hand, EDB Postgres for Kubernetes supports two ways to store physical base backups:
+
+-   on [object stores](backup_barmanobjectstore.md), as tarballs - optionally
+    compressed
+-   on [Kubernetes Volume Snapshots](backup_volumesnapshot.md), if supported by
+    the underlying storage class
+
+!!!info Important
+Before choosing your backup strategy with {{name.ln}}, it is important that
+you take some time to familiarize with some basic concepts, like WAL archive,
+hot and cold backups.
+!!!
+
+!!!info Important
+Please refer to the official Kubernetes documentation for a list of all
+the supported [Container Storage Interface (CSI) drivers](https://kubernetes-csi.github.io/docs/drivers.html)
+that provide snapshotting capabilities.
+!!!
+
+!!!info
+Starting with version 1.25, {{name.ln}} includes experimental support for
+backup and recovery using plugins, such as the
+[Barman Cloud plugin](https://github.com/cloudnative-pg/plugin-barman-cloud).
+!!!
+
+## WAL archive
 
 The WAL archive in PostgreSQL is at the heart of **continuous backup**, and it
 is fundamental for the following reasons:
@@ -93,8 +88,8 @@ recovery, even across regions.
 
 !!!info Important
 Our recommendation is to always setup the WAL archive in production.
-There are known use cases — normally involving staging and development
-environments — where none of the above benefits are needed and the WAL
+There are known use cases - normally involving staging and development
+environments - where none of the above benefits are needed and the WAL
 archive is not necessary. RPO in this case can be any value, such as
 24 hours (daily backups) or infinite (no backup at all).
 !!!
@@ -139,10 +134,17 @@ solutions to grow.
 
 Backups to an object store (e.g. AWS S3, Azure Blob, GCS):
 
--   Always require WAL archiving
--   Support hot backups only
--   Do not support incremental or differential copies
--   Support retention policies
+-   availability of a viable object store solution in your Kubernetes cluster
+-   availability of a trusted storage class that supports volume snapshots
+-   size of the database: with object stores, the larger your database, the
+    longer backup and, most importantly, recovery procedures take (the latter
+    impacts [RTO](before_you_start.md#postgresql-terminology)); in presence of Very Large Databases
+    (VLDB), the general advice is to rely on Volume Snapshots as, thanks to
+    copy-on-write, they provide faster recovery
+-   data mobility and possibility to store or relay backup files on a
+    secondary location in a different region, or any subsequent one
+-   other factors, mostly based on the confidence and familiarity with the
+    underlying storage solutions
 
 ### Volume Snapshots
 
@@ -213,9 +215,10 @@ in the API reference.
 
 ### Cron Schedule
 
-The `schedule` field defines **when** the backup should occur, using a
-*six-field cron expression* that includes seconds. This format follows the
-[Go `cron` package specification](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format).
+!!!warning
+Beware that this format accepts also the `seconds` field, and it is
+different from the `crontab` format in Unix/Linux systems.
+!!!
 
 !!!warning
 This format differs from the traditional Unix/Linux `crontab`—it includes a
@@ -244,8 +247,17 @@ since seconds are not supported.
 ### Backup Frequency and RTO
 
 !!!tip Hint
-The frequency of your backups directly impacts your **Recovery Time Objective**
-([RTO](before_you_start.md#postgresql-terminology)).
+Backup frequency might impact your recovery time objective ([RTO](before_you_start.md#postgresql-terminology)) after a
+disaster which requires a full or Point-In-Time recovery operation. Our
+advice is that you regularly test your backups by recovering them, and then
+measuring the time it takes to recover from scratch so that you can refine
+your RTO predictability. Recovery time is influenced by the size of the
+base backup and the amount of WAL files that need to be fetched from the archive
+and replayed during recovery (remember that WAL archiving is what enables
+continuous backup in PostgreSQL!).
+Based on our experience, a weekly base backup is more than enough for most
+cases - while it is extremely rare to schedule backups more frequently than once
+a day.
 !!!
 
 To optimize your disaster recovery strategy based on continuous backup:
@@ -258,16 +270,25 @@ To optimize your disaster recovery strategy based on continuous backup:
 In most cases, a **weekly base backup** is sufficient. It is rare to schedule
 full backups more frequently than once per day.
 
-### Immediate Backup
+!!!note
+`.spec.backupOwnerReference` indicates which ownerReference should be put inside
+the created backup resources.
 
-To trigger a backup immediately when the `ScheduledBackup` is created:
+-   *none:* no owner reference for created backup objects (same behavior as before the field was introduced)
+-   *self:* sets the Scheduled backup object as owner of the backup
+-   *cluster:* set the cluster as owner of the backup
+!!!
 
 ```yaml
 spec:
   immediate: true
 ```
 
-\### Pause Scheduled Backups
+!!!info
+For a full list of available options, see the
+[`BackupSpec`](pg4k.v1.md#backupspec) in the
+API reference.
+!!!
 
 To temporarily stop scheduled backups from running:
 
@@ -361,7 +382,11 @@ Status:
   Stopped At:        2020-10-26T13:57:44Z
 ```
 
-* * *
+!!!info Important
+This feature will not backup the secrets for the superuser and the
+application user. The secrets are supposed to be backed up as part of
+the standard backup procedures for the Kubernetes cluster.
+!!!
 
 !!!info Important
 On-demand backups do **not** include Kubernetes secrets for the PostgreSQL
@@ -387,10 +412,17 @@ Specify the method using the `.spec.method` field (defaults to
 If your cluster is configured to support volume snapshots, you can enable
 scheduled snapshot backups like this:
 
-```yaml
-spec:
-  method: volumeSnapshot
-```
+!!!info
+Although the standby might not always be up to date with the primary,
+in the time continuum from the first available backup to the last
+archived WAL this is normally irrelevant. The base backup indeed
+represents the starting point from which to begin a recovery operation,
+including PITR. Similarly to what happens with
+[`pg_basebackup`](https://www.postgresql.org/docs/current/app-pgbasebackup.html),
+when backing up from an online standby we do not force a switch of the WAL on the
+primary. This might produce unexpected results in the short term (before
+`archive_timeout` kicks in) in deployments with low write activity.
+!!!
 
 To use the Barman Cloud Plugin as the backup method, set `method: plugin` and
 configure the plugin accordingly. You can find an example in the
@@ -455,10 +487,11 @@ spec:
 ```
 
 !!!warning
-Be cautious when using `primary` as the target for **cold backups using
-volume snapshots**, as this will require shutting down the primary instance
-temporarily—interrupting all write operations. The same caution applies to
-single-instance clusters, even if you haven't explicitly set the target.
+Beware of setting the target to primary when performing a cold backup
+with volume snapshots, as this will shut down the primary for
+the time needed to take the snapshot, impacting write operations.
+This also applies to taking a cold backup in a single-instance cluster, even
+if you did not explicitly set the primary as the target.
 !!!
 
 ### Overriding the Cluster-Wide Target
