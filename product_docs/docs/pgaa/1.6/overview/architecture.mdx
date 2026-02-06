@@ -6,237 +6,43 @@ redirects:
 - /edb-postgres-ai/latest/analytics/architecture/
 ---
 
-Architecture:
-
-- Components: pgaa extension, Seafowl query engine, PGFS storage abstraction
-- Arrow Flight RPC communication
-- Executor engines: Seafowl (default, DataFusion-based) vs Spark Connect
-- DirectScan vs CompatScan
-
+This architecture page provides a high-level technical overview of how the Analytics Accelerator (PGAA) bridges the gap between transactional PostgreSQL and the modern data lake.
 
 ## Architecture Overview
-
-Analytics Accelerator extends PostgreSQL's capabilities to create a unified platform for transactional and analytical workloads. The architecture combines operational PostgreSQL databases with lakehouse storage patterns, enabling organizations to query data across multiple storage tiers without complex ETL pipelines or data duplication.
-
-The system operates on three fundamental principles: separation of compute and storage for elastic scaling, transparent query access across hot and cold data tiers, and compatibility with open table formats for ecosystem interoperability. These principles enable cost-effective analytics at petabyte scale while maintaining PostgreSQL's familiar SQL interface and operational characteristics.
+The EDB Analytics Accelerator extends PostgreSQL's capabilities to create a unified platform for transactional (OLTP) and analytical (OLAP) workloads. The system operates on three fundamental principles: separation of compute and storage for elastic scaling, transparent query access across hot and cold data tiers, and native compatibility with open table formats.
 
 ## Core Components
 
-### EDB Postgres Distributed Foundation
+### Postgres Analytics Accelerator (PGAA)
 
-EDB Postgres Distributed (PGD) provides the transactional foundation with built-in high availability, horizontal scaling, and automated data lifecycle management. PGD nodes handle operational workloads with full ACID compliance while AutoPartition manages time-based partitioning strategies essential for data tiering.
+The PGAA extension is the "brain" of the system. It hooks into the PostgreSQL query planner to identify queries that can be offloaded to the analytical engine. It manages the metadata for analytical tables and coordinates communication between the Postgres process and the query executors.
 
-The distributed architecture ensures zero downtime during maintenance operations and provides geographic distribution for disaster recovery. Write operations maintain consistency through multi-master replication while read operations scale horizontally across available nodes.
+### Seafowl query engine
 
-### Lakehouse Query Engine
+Seafowl is the default, DataFusion-based query engine for PGAA, utilizing a stateless architecture that allows lakehouse nodes to scale compute up or down dynamically without the overhead of local data storage or movement. As a vectorized execution engine designed specifically for analytical workloads, it maximizes CPU cache efficiency by processing data in columnar batches rather than the traditional row-by-row approach used by standard PostgreSQL.
 
-Dedicated Lakehouse nodes execute analytical queries against data in object storage. These stateless compute nodes leverage Apache Datafusion®'s vectorized execution engine to process columnar data formats efficiently. The separation from transactional nodes ensures analytical workloads don't impact operational performance.
+### PGFS storage abstraction
 
-The query engine implements sophisticated optimizations including partition pruning, predicate pushdown, and adaptive query execution. These optimizations reduce data scanning by orders of magnitude, enabling interactive query performance on massive datasets.
+The Postgres File System (PGFS) acts as a unified abstraction layer for object storage, enabling PostgreSQL to interact seamlessly with AWS S3, GCS, and Azure Blob Storage while masking the complexities of individual cloud provider protocols. It optimizes performance and reliability by managing secure authentication through IAM roles and HMAC keys, ensuring network resilience with automated retries and connection pooling, and reducing metadata overhead by caching remote file locations and schemas.
 
-### Storage Abstraction Layer
+## Communication and execution
 
-PostgreSQL File System (PGFS) provides unified access to diverse storage backends including AWS S3, Azure Blob Storage, Google Cloud Storage, and on-premises object stores. This abstraction handles authentication, network resilience, and performance optimization transparently.
+The PostgreSQL instance communicates with the Seafowl engine using Apache Arrow Flight. This is a high-performance RPC framework designed for large-scale data transfer. By using Arrow, PGAA can move columnar data between the database and the query engine with minimal serialization overhead.
 
-The storage layer supports multiple simultaneous storage locations, enabling queries that span cloud providers or combine cloud and on-premises data. Intelligent caching reduces metadata operations and improves query latency for frequently accessed data.
+While Seafowl is the default executor for high-speed SQL, PGAA also supports Spark Connect. This allows organizations to leverage Apache Spark for extremely complex ETL transformations while still accessing the data through the familiar PostgreSQL wire protocol.
 
-### Table Format Integration
 
-Native support for Apache Iceberg® and Delta Lake enables interoperability with the broader data ecosystem. Analytics Accelerator (PGAA) reads table metadata to understand schema, partitioning, and file locations without manual configuration.
+## Query execution modes
 
-For Iceberg, the system supports complete functionality including schema evolution, hidden partitioning, and time travel queries. Delta Lake support focuses on read operations, providing access to existing Spark-based data lakes. Both formats maintain compatibility with external tools ensuring data remains accessible across multiple compute engines.
+When a query is executed against an analytics table, PGAA automatically selects the most efficient scanning mode based on the query structure and the location of the data:
 
-## Architectural Layers
+**DirectScan**: The query is offloaded entirely to the Seafowl engine. Seafowl reads the remote files directly from object storage, processes all logic (filtering, aggregations, and joins), and returns only the final result set to PostgreSQL. This mode provides maximum performance by utilizing vectorized execution at the source.
 
-### Ingestion and Transaction Layer
+**CompatScan**: This mode is used when a query requires features not yet supported by the vectorized engine or when joining remote lakehouse data with local PostgreSQL tables. In this scenario, Seafowl performs initial filtering and projection on the remote data, then streams those optimized results back to PostgreSQL to complete the final join or complex processing locally.
 
-Applications write data to PostgreSQL or PGD clusters using standard database connections. This layer handles real-time transactions, maintains referential integrity, and ensures data consistency through ACID guarantees.
 
-Streaming ingestion systems deliver continuous data flows while batch loads handle periodic updates. The transaction layer maintains operational performance regardless of historical data volume through intelligent partitioning and tiering strategies.
 
-### Storage and Metadata Layer
 
-Data resides in object storage using open table formats that provide structure and governance. Parquet files store actual data while metadata tracks schemas, partitions, and file locations. This separation enables schema evolution and time travel without data rewriting.
 
-Optional catalog services provide centralized metadata management for multi-engine environments. Catalogs enable consistent table discovery, coordinate concurrent modifications, and maintain audit trails across different compute engines.
 
-### Query and Transformation Layer
 
-Multiple query engines access the same underlying data based on workload requirements. Analytics Accelerator handles interactive SQL queries, Apache Spark processes complex transformations, and machine learning platforms read training data directly.
-
-Query coordination ensures consistency when multiple engines operate concurrently. Transaction isolation prevents conflicts while snapshot semantics provide repeatable read guarantees essential for analytical accuracy.
-
-### Access and Integration Layer
-
-Standard PostgreSQL wire protocol ensures compatibility with existing tools and applications. Business intelligence platforms, data science notebooks, and custom applications connect without specialized drivers or modifications.
-
-REST APIs enable programmatic access for automation and integration scenarios. These APIs support catalog management, monitoring, and administrative operations essential for production deployments.
-
-## Data Flow Patterns
-
-### Operational to Analytical Pipeline
-
-Data begins its lifecycle in PostgreSQL supporting transactional operations. As data ages and access patterns shift from operational to analytical, Tiered Tables automatically migrate partitions to object storage. This migration occurs transparently with no application changes required.
-
-Recent data remains in PostgreSQL for sub-millisecond query latency while historical data moves to cost-effective object storage. Queries automatically span both tiers, providing complete visibility across all data regardless of storage location.
-
-### Direct Lakehouse Access
-
-Organizations with existing data lakes connect Analytics Accelerator directly to Iceberg or Delta Lake tables. This pattern eliminates data movement, enabling immediate analytical capabilities on existing investments.
-
-The system discovers table schemas automatically, translates PostgreSQL SQL to appropriate operations, and returns results through standard database protocols. This approach proves particularly valuable during migrations or when integrating with established data platforms.
-
-### Multi-Engine Collaboration
-
-Different engines process data based on their strengths while sharing common storage. Spark handles complex ETL transformations writing results as Iceberg tables. Analytics Accelerator queries these tables for interactive analysis. Machine learning platforms read the same data for model training.
-
-This collaborative approach eliminates data duplication and ensures consistency across analytical workflows. Changes made by one engine become immediately visible to others through shared metadata and snapshot isolation.
-
-## Performance Architecture
-
-### Query Optimization Pipeline
-
-The optimizer analyzes queries to identify optimization opportunities specific to lakehouse workloads. Partition pruning eliminates irrelevant data before query execution begins. Predicate pushdown moves filters to the storage layer minimizing data transfer.
-
-Cost-based optimization considers network latency, data locality, and format characteristics when generating execution plans. The optimizer adapts strategies based on actual data distribution discovered during execution.
-
-### Caching Hierarchy
-
-Multiple caching layers optimize repeated access patterns. Metadata caching stores table schemas, partition information, and file locations. Data caching retains frequently accessed Parquet files in local storage. Query result caching serves identical queries without recomputation.
-
-Cache invalidation respects table format versioning ensuring consistency despite underlying changes. Adaptive cache management prioritizes retention based on access frequency, query cost, and available resources.
-
-### Parallel Execution
-
-Queries parallelize across multiple dimensions for maximum throughput. Partition-level parallelism processes independent partitions simultaneously. File-level parallelism reads multiple files within partitions concurrently. Column-level parallelism leverages vectorized execution for columnar operations.
-
-The execution framework dynamically adjusts parallelism based on available resources and query characteristics. This adaptation prevents resource exhaustion while maximizing hardware utilization.
-
-## High Availability and Resilience
-
-### Transactional Tier Availability
-
-PGD provides continuous availability through multi-master replication. Node failures trigger automatic failover with zero data loss. Geographic distribution enables disaster recovery with configurable recovery objectives.
-
-Maintenance operations including upgrades and schema changes occur without downtime through rolling deployment strategies. The system maintains full functionality during partial failures ensuring business continuity.
-
-### Analytical Tier Availability
-
-Stateless Lakehouse nodes provide availability through redundancy rather than replication. Load balancers distribute queries across available nodes with automatic failure detection and rerouting.
-
-Object storage durability guarantees ensure data availability independent of compute failures. Multiple availability zones and cross-region replication provide additional resilience for critical datasets.
-
-### Catalog Resilience
-
-Catalog services implement their own availability strategies based on chosen implementation. REST catalogs leverage HTTP load balancing and backend redundancy. AWS S3 Tables provides serverless availability through managed infrastructure.
-
-Catalog unavailability affects table discovery but not query execution for known tables. The architecture gracefully degrades maintaining core functionality during catalog maintenance or failures.
-
-## Security Architecture
-
-### Access Control Framework
-
-PostgreSQL role-based access control extends to lakehouse resources. Table and column-level permissions apply transparently regardless of storage location. Row-level security policies filter data dynamically based on user context.
-
-Integration with enterprise authentication systems provides single sign-on capabilities. LDAP, Active Directory, and OAuth implementations ensure consistent identity management across the platform.
-
-### Encryption Strategy
-
-Comprehensive encryption protects data throughout its lifecycle. Transport Layer Security encrypts data in motion between clients, compute nodes, and storage. Server-side encryption protects data at rest using cloud provider or customer-managed keys.
-
-Column-level encryption provides additional protection for sensitive fields. Encrypted columns remain queryable through specialized indexes while maintaining security compliance.
-
-### Audit and Compliance
-
-Detailed audit logging tracks all data access for compliance requirements. Query logs capture user, timestamp, and accessed objects. Storage access logs record all object operations. Authentication logs track login attempts and privilege changes.
-
-Compliance frameworks including GDPR, HIPAA, and PCI DSS guide security implementations. Data residency controls ensure geographic compliance while retention policies automate data lifecycle management.
-
-## Deployment Patterns
-
-### Managed Service Deployment
-
-Hybrid Manager provides fully managed Analytics Accelerator deployment with automated provisioning, scaling, and maintenance. The platform handles infrastructure management, security updates, and performance optimization.
-
-### Self-Managed Deployment
-
-Self-managed deployments provide complete control over infrastructure and configuration. Organizations deploy on-premises, in private clouds, or using infrastructure-as-code approaches.
-
-Kubernetes operators simplify deployment and lifecycle management. Helm charts provide templated configurations for common scenarios. Terraform modules enable infrastructure automation across cloud providers.
-
-### Hybrid Deployment
-
-Hybrid patterns combine managed control planes with self-managed data planes. This approach balances operational simplicity with data sovereignty requirements common in regulated industries.
-
-The managed control plane handles orchestration, monitoring, and metadata management. Self-managed data planes maintain data within organizational boundaries while leveraging platform capabilities.
-
-
-
-
-
-
-
-## How EDB implements analytics across products
-
-### Hybrid Manager (HM)
-
-Hybrid Manager acts as the control plane:
-
--   Provision and manage **Lakehouse clusters**
--   Configure and monitor **Tiered Tables**
--   Manage **storage locations**, **catalog connections**, and **compute nodes**
-
-### EDB Postgres Advanced Server / Extended Server
-
-EDB Postgres Advanced Server adds:
-
--   Improved parallel query capabilities
--   Advanced SQL features helpful for analytics
--   Native support for PGAA features
-
-### EDB Postgres Distributed (PGD)
-
-PGD provides the foundation for:
-
--   High-availability transactional workloads
--   Data tiering and offloading (Tiered Tables)
--   Scalable architectures that integrate with Lakehouse clusters
-
-
-
-From Lakehouse page:
-
-
-## Architecture Components
-
-### Stateless Lakehouse Nodes
-
-Lakehouse nodes provide dedicated computational resources for analytical workloads without storing data locally. This stateless design enables elastic scaling based on query demand rather than data volume.
-
-Each node runs the full PostgreSQL stack enhanced with Analytics Accelerator extensions. The familiar PostgreSQL interface ensures compatibility with existing tools and applications while the underlying vectorized engine delivers performance optimized for analytical queries.
-
-Nodes automatically coordinate through shared metadata, enabling parallel query execution across multiple instances. Load balancers distribute queries across available nodes, providing both high availability and horizontal scalability.
-
-### Vectorized Query Engine
-
-Apache Datafusion® powers the vectorized execution engine, processing columnar data in batches rather than row-by-row. This approach maximizes CPU cache utilization and enables SIMD optimizations that dramatically accelerate analytical operations.
-
-The engine automatically pushes filters and projections to the storage layer, minimizing data transfer. Partition pruning eliminates entire data files from consideration before reading begins. These optimizations combine to deliver query performance approaching specialized analytical databases while maintaining PostgreSQL compatibility.
-
-Adaptive query execution adjusts processing strategies based on actual data characteristics discovered during execution. Initial statistics guide planning, but the engine dynamically optimizes join orders and aggregation strategies as queries progress.
-
-### Storage Abstraction Layer
-
-PostgreSQL File System (PGFS) provides unified access to diverse object storage systems. This abstraction layer handles authentication, protocol differences, and performance optimizations transparently.
-
-The system supports multiple storage backends simultaneously, enabling queries that span cloud providers or combine cloud and on-premises storage. Intelligent caching reduces repeated metadata operations while respecting consistency requirements of underlying table formats.
-
-Connection pooling and retry logic handle transient network issues common in cloud environments. The storage layer automatically adjusts request patterns based on observed latency and throughput characteristics.
-
-### Table Format Integration
-
-Native support for Apache Iceberg® and Delta Lake enables interoperability with the broader data ecosystem. Analytics Accelerator reads table metadata to understand schema, partitioning, and file locations without requiring manual configuration.
-
-For Iceberg tables, the system supports the complete feature set including schema evolution, hidden partitioning, and time travel queries. Catalog integration enables automatic table discovery and metadata synchronization across multiple compute engines.
-
-Delta Lake support currently focuses on read operations, providing access to existing data lake investments. The transaction log parsing occurs transparently, presenting Delta tables as standard PostgreSQL relations.

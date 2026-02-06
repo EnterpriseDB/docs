@@ -1,60 +1,121 @@
 ---
-title: Optimizing query performance
-navTitle: Optimizing query performance
-description: How to optimize query performance using Analytics Accelerator.
+title: Optimizing performance
+navTitle: Optimizing performance
+description: How to optimize performance using Analytics Accelerator.
+deepToC: true
 redirects:
 - /edb-postgres-ai/latest/analytics/reference/directscan/
 ---
 
-The Postgres Analytics Accelerator (PGAA) achieves its speed by offloading heavy analytical processing—like filters, aggregations, and joins—to a vectorized execution engine for maximum performance. 
+To achieve the best results with the Postgres Analytics Accelerator (PGAA), performance optimization should be approached from two angles: query execution (ensuring the engine uses the fastest path) and storage maintenance (ensuring data is organized for speed).
 
-## Understanding scan types
+## Optimizing query execution
 
-When you query a PGAA table, the system chooses between two execution paths:
-- **DirectScan:** The vectorized engine reads data directly from object storage, applies filters and aggregations at the source, and returns only the final result to Postgres.
-- **CompatScan:** If the vectorized engine cannot handle a specific SQL feature or expression, the raw data is streamed into the standard Postgres executor. This is significantly slower as it bypasses vectorized acceleration.
+The Postgres Analytics Accelerator (PGAA) achieves its high performance by offloading analytical workloads to Seafowl, a vectorized execution engine for maximum performance.
 
-To verify that your query is being optimized, use the `EXPLAIN` command for your queries, and look for the `SeafowlDirectScan` node in the output.
+### Understanding scan types
+
+When you query an analytical table, Seafowl manages the data retrieval and processing via two distinct execution paths:
+
+**DirectScan:** Seafowl reads data directly from object storage, applies all filters and aggregations at the source, and returns only the final result to PostgreSQL. This maximizes performance by fully utilizing vectorized acceleration and minimizing data movement.
+
+**CompatScan**: If a query contains SQL features or custom functions that Seafowl cannot process alone, the system falls back to a hybrid mode. In this scenario, Seafowl still acts as the data source—streaming data from object storage and performing basic filtering—while PostgreSQL acts as the orchestrator for final complex processing. 
+
+In CompatScan, the workload is divided:
+- Seafowl reads files and handles authorized pushdowns (like joins or group-bys).
+- PostgreSQL receives the optimized stream from Seafowl to execute specialized functions, final sorting, or complex logic that the vectorized engine doesn't yet support.
+
+While DirectScan is the goal for maximum speed, CompatScan serves as a reliable fallback, ensuring full PostgreSQL feature compatibility at the cost of some performance.
+
+
+### Analyzing your query plan
+
+To verify how PGAA is executing your query, use the `EXPLAIN` command. The output will reveal which engine is doing the heavy lifting:
+
+- **DirectScan:** Look for the `SeafowlDirectScan` node. This indicates that Seafowl is handling the entire operation (filtering, joining, and aggregating) and returning only the final result to PostgreSQL.
+- **CompatScan:** If you see a Foreign Scan, the query is running in "hybrid" mode. While PostgreSQL orchestrates the final execution to ensure full feature compatibility, the remote engine can still accelerate parts of the query if pushdown settings are enabled.
+
+### Managing DirectScan failures
+
+If your query falls back to the slower CompatScan path, follow these steps to troubleshoot:
+
+1. Ensure that DirectScan is permitted in your current session:
+
+    ```sql
+    SHOW pgaa.enable_direct_scan;
+    -- If off, enable it:
+    SET pgaa.enable_direct_scan=on;
+    ```
+2. Force Error reporting: Change the failure behavior You can to reveal the cause of the fallback:
+
+    ```sql
+    SET pgaa.direct_scan_fail_behavior = 'error';
+    ```
+
+   PostgreSQL will throw an explicit error identifying the incompatible SQL syntax or data type.
+
+3. If the query is complex, try removing clauses one by one to isolate the specific "compatibility trigger" forcing the hybrid mode.
+
+
+### Optimizing CompatScan
+
+Even in hybrid mode, you can maintain high performance by offloading resource-intensive operations. The following settings are enabled by default and act as a performance safety net:
+
+**pgaa.enable_join_pushdown** Authorizes the system to attempt to offload joins to the remote executor (Seafowl or Spark). By joining data where it resides, you avoid pulling massive raw datasets into PostgreSQL memory, significantly reducing network traffic.
+
+**pgaa.enable_groupby_pushdown** Authorizes the offloading of aggregations (`SUM`, `COUNT`, `AVG`) and `GROUP BY` clauses. Aggregating 1 billion rows into 10 groups at the source reduces data transfer by several orders of magnitude, saving both bandwidth and PostgreSQL CPU.
+
+## Performing table maintenance
+
+Analytical performance is heavily impacted by the "small file problem," where frequent data updates create thousands of tiny files that increase metadata overhead.
+
+!!! Tip 
+    Use [pgaa.lakehouse_table_stats()](monitoring/#analyzing-table-statistics) to identify tables with a high file_count as they are your primary candidates for compaction.
+
+### Performing Delta Lake maintenance 
+
+For Delta tables, maintenance is handled asynchronously by a background worker using the `pgaa.launch_task()` function. This allows you to trigger heavy operations without blocking your active SQL session.
 
 ```sql
- SeafowlDirectScan: Logical Plan
-   Limit:  skip=0, fetch=10
-     Projection:  store_sales.ss_sold_date_sk, store_sales.ss_sold_time_sk, store_sales.ss_item_sk, store_sales.ss_customer_sk, store_sales.ss_cdemo_sk, store_sales.ss_hdemo_sk, store_sales.ss_addr_sk, store_sales.ss_store_sk, store_sales.ss_promo_sk, store_sales.ss_ticket_number, store_sales.ss_quantity, store_sales.ss_wholesale_cost, store_sales.ss_list_price, store_sales.ss_sales_price, store_sales.ss_ext_discount_amt, store_sales.ss_ext_sales_price, store_sales.ss_ext_wholesale_cost, store_sales.ss_ext_list_price, store_sales.ss_ext_tax, store_sales.ss_coupon_amt, store_sales.ss_net_paid, store_sales.ss_net_paid_inc_tax, store_sales.ss_net_profit
-       TableScan:  store_sales
-(4 rows)
+SELECT pgaa.launch_task(
+    table_name => 'my_delta_table'::regclass,
+    task_type => 'compaction', -- or 'z-order', 'vacuum', 'purge'
+    options => '{"target_size": "128MB"}'
+);
 ```
 
-If you see a Foreign Scan or standard Seq Scan instead, the query has fallen back to the Postgres executor. (CompatScan???)
+Supported task types include:
 
-To get the best results, ensure that the engine is performing a DirectScan. ---> how to do this?
+- **Compaction:** Merges small files into larger, optimized blocks (defined by `target_size`) to speed up analytical scans.
+- **Z-Order:** Reorganizes data across multiple columns so related values are stored physically close together. This enables data skipping, where the engine ignores entire files that don't match query filters.
+- **Vacuum:** Deletes data files no longer associated with active snapshots and older than a specified retention period. This reclaims object storage space.
+- **Purge:** An administrative tool to explicitly remove data from a specific storage path, useful for manual cleanup of failed exports.
 
-
-## Optimizing CompatScan
-
-Even when a query falls back to CompatScan, you can maintain high performance by ensuring specific operations are still offloaded to the remote engine. These parameters are enabled by default:
-
-The GUCS ensure that even if a query is too complex for a full DirectScan, the system still tries to offload the heaviest lifting (joins and aggregations) during a CompatScan.
-
-- pgaa.enable_join_pushdown: When in CompatScan, the system will attempt to push joins down to the remote executor engine rather than joining the data locally in Postgres. (Default: on)
-
-- pgaa.enable_groupby_pushdown: When in CompatScan, the system will attempt to push GROUP BY operations and aggregations (like SUM or COUNT) down to the remote executor engine. (Default: on)
+See the function reference section for [pgaa.launch_task()](reference/functions/#pgaalaunch_task) for a complete list of supported options and examples.
 
 
-## Managing DirectScan failures
+### Performing Iceberg maintenance 
 
-If a query contains a function or data type that the vectorized engine doesn't support, it will fail to perform a SeafowlDirectScan. You can manage this behavior using the `pgaa.direct_scan_fail_behavior` setting.
+Iceberg maintenance is performed synchronously using the Spark engine to ensure complex metadata updates and manifest rewrites follow Iceberg's consistency guarantees.
 
-You can control how the system reacts when a query cannot be offloaded to a SeafowlDirectScan by using the pgaa.direct_scan_fail_behavior setting.
+!!! Note
+    To perform these operations, your `pgaa.executor_engine` must be set to `spark_connect`.
 
-- ignore	Automatically switches to CompatScan without notification.	Ensures queries finish, even if slower.
-- warn	Switches to CompatScan but logs a warning in Postgres.	Useful for monitoring production logs for unoptimized queries.
-- error	Stops the query and returns a detailed error message.	Best for development to identify exactly why a query isn't offloading.
+The `pgaa.execute_compaction()` function consolidates fragmented data files and optimizes metadata:
 
+```sql
+SELECT pgaa.execute_compaction('my_iceberg_table'::regclass);
+```
 
-If you encounter a fallback, it is typically due to:
-- Unsupported Types: Using Postgres-specific types like JSONB, UUID, or INET.
-- Complex Functions: Certain User Defined Functions (UDFs) or complex window functions.
-- Collation Mismatches: Using specific Postgres collations that the engine cannot replicate at the storage layer.
+Performs compaction to improve the performance and storage efficiency of a PGAA table.
+Triggers a compaction process for an Iceberg table using a Spark engine. 
+Requires Spark Connect to be configured via pgaa.executor_engine. 
+This operation consolidates small data files into larger, more efficient Parquet files, improving query performance and reducing metadata overhead.
 
-To investigate, set the behavior to error and re-run your EXPLAIN to see the specific reason for the rejection.
+Supported maintenance operations include:
 
+- **Compaction:** Consolidates small data files into larger files to lower metadata overhead during query planning.
+- **Manifest cleanup:** Automatically rewrites manifest files to point to new, optimized data files and removes references to fragmented ones, keeping the table metadata "lean."
+- **Snapshot management:** Prepares the table for advanced lifecycle tasks like expiring old snapshots via the Spark engine to reclaim storage space.
+
+See the function reference section for [pgaa.execute_compaction()](reference/functions/#pgaaexecute_compaction) for a complete list of supported options and examples.
