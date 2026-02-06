@@ -1,12 +1,13 @@
 ---
-title: Monitoring your analytical tables
-navTitle: Monitoring your analytical tables
-description: How to audit storage utilization and performance characteristics for PGAA-managed tables.
+title: Monitoring and maintaining analytical tables
+navTitle: Monitoring and maintaining analytical tables
+deepToC: true
+description: Audit storage utilization, monitor table health, and perform table maintenance tasks for PGAA-managed tables.
 ---
 
-Postgres Analytics Accelerator (PGAA) provides built-in functions to help you understand the storage footprint, table formats, and metadata health of your data lake tables directly from the Postgres prompt.
+Postgres Analytics Accelerator (PGAA) provides built-in functions to help you audit storage utilization, table formats, and metadata health of your data lake tables directly from the Postgres prompt.
 
-## Listing analytical tables 
+## Analyzing table statistics
 
 In environments with hundreds of standard Postgres tables, identifying which ones are managed by PGAA can be challenging. The `pgaa.list_analytics_tables()` function provides a global overview of all lakehouse-integrated tables.
 
@@ -23,26 +24,118 @@ The function output provides the following insights:
     - `object_storage_snapshot_size_bytes`: The size of the latest live snapshot. This represents the actual volume of data scanned during a `SELECT *`.
     - ``object_storage_total_size_bytes``: The total footprint in the bucket, including metadata, manifests, and historical data files not used by the current version.
 
-!!! Tip 
-    If `object_storage_total_size_bytes` is significantly larger than the snapshot size, your table may have accumulated excessive historical versions. This is a primary indicator that you should perform a `VACUUM` or Compaction operation. See [Optimizing performance](optimize_performance) for more.
-
-    
-## Analyzing table statistics 
-
+   
 While `list_analytics_tables()` gives a high-level summary, `pgaa.lakehouse_table_stats()` provides a deep dive into a specific table's physical characteristics. This is essential for capacity planning and fine-tuning query performance.
 
 ```sql
 SELECT * FROM pgaa.lakehouse_table_stats('my_schema.my_table'::regclass);
 ```
 
-
 This function queries the underlying object storage to verify what is happening "under the hood" of a specific mapping. It helps you:
 - **Distinguish live vs. dead data:** Identify exactly how much storage is being "wasted" by old transaction logs or uncompacted small files.
 - **Monitor growth:** Track how snapshot sizes evolve over time as new data is ingested from external sources.
-- **Cache awareness:** The results of this function are governed by the [pgaa.lakehouse_table_stats_cache_ttl_s](reference/configuration_parameters#pgaa.lakehouse_table_stats_cache_ttl_s) configuration parameter. If you need the absolute latest stats and aren't seeing them, ensure your cache TTL is set to 0.
-
+- **Cache awareness:** The results of this function are governed by the [pgaa.lakehouse_table_stats_cache_ttl_s](reference/configuration_parameters#pgaalakehouse_table_stats_cache_ttl_s) configuration parameter. If you need the absolute latest stats and aren't seeing them, ensure your cache TTL is set to 0.
 
 Comparing `latest_snapshot_size` and `total_size` is essential for balancing performance and cost. The snapshot size represents "live" data—the actual volume scanned during a query—while the total size includes the entire bucket footprint, such as historical versions, transaction logs, and uncompacted rows.
 
-In formats like Iceberg or Delta Lake, the total size often exceeds the snapshot size to support time-travel and rollbacks. A significant gap between these values indicates a buildup of historical overhead and serves as a signal to perform a `VACUUM` or compaction. Monitoring these metrics from the Postgres CLI helps you maintain a lean, high-performing data lake. See [Optimizing performance](optimize_performance) for more.
+In formats like Iceberg or Delta Lake, the total size often exceeds the snapshot size to support time-travel and rollbacks. A significant gap between these values indicates a buildup of historical overhead and serves as a signal to perform a `VACUUM` or compaction. Monitoring these metrics helps you maintain a lean, high-performing data lake. 
 
+## Optimizing table performance
+
+Analytical performance is heavily impacted by the "small file problem," where frequent data updates create thousands of tiny files that increase metadata overhead.
+
+### Performing Delta Lake maintenance 
+
+For Delta tables, maintenance is handled asynchronously by a background worker using the `pgaa.launch_task()` function. This allows you to trigger heavy operations without blocking your active SQL session.
+
+```sql
+SELECT pgaa.launch_task(
+    table_name => 'my_delta_table'::regclass,
+    task_type => 'compaction', -- or 'z-order', 'vacuum', 'purge'
+    options => '{"target_size": "128MB"}'
+);
+```
+
+Supported task types include:
+
+- **Compaction:** Merges small files into larger, optimized blocks (defined by `target_size`) to speed up analytical scans.
+- **Z-Order:** Reorganizes data across multiple columns so related values are stored physically close together. This enables data skipping, where the engine ignores entire files that don't match query filters.
+- **Vacuum:** Deletes data files no longer associated with active snapshots and older than a specified retention period. This reclaims object storage space.
+- **Purge:** An administrative tool to explicitly remove data from a specific storage path, useful for manual cleanup of failed exports.
+
+**Delta Lake maintenance examples**
+
+- Use Compaction to merge small files into larger, 256MB blocks to speed up scan performance:
+
+    ```sql
+    SELECT pgaa.launch_task(
+        table_name => 'lakehouse.sales_data'::regclass,
+        task_type  => 'compaction',
+        options    => '{"target_size": "256MB"}'
+    );
+    ```
+
+- Use Z-Order to physically reorganize data so that rows with similar values in `customer_id` and `region` are stored together, allowing the engine to skip irrelevant files:
+
+    ```sql
+    SELECT pgaa.launch_task(
+        table_name => 'lakehouse.sales_data'::regclass,
+        task_type  => 'z-order',
+        options    => '{"columns": ["customer_id", "region"]}'
+    );
+    ```
+
+- Use Vacuum delete files that are no longer part of the active table state and are older than 7 days to reclaim storage space:
+
+    ```sql
+    SELECT pgaa.launch_task(
+        table_name => 'lakehouse.sales_data'::regclass,
+        task_type  => 'vacuum',
+        options    => '{"retention_period": "7 days"}'
+    );
+    ```
+
+See the function reference section for [pgaa.launch_task()](reference/functions/#pgaalaunch_task) for a complete list of supported options and examples.
+
+### Performing Iceberg maintenance 
+
+Iceberg maintenance is performed synchronously using the Spark engine to ensure complex metadata updates and manifest rewrites follow Iceberg's consistency guarantees.
+
+!!! Note
+    To perform these operations, your `pgaa.executor_engine` must be set to `spark_connect`.
+
+The `pgaa.execute_compaction()` function consolidates fragmented data files and optimizes metadata:
+
+```sql
+SELECT pgaa.execute_compaction('my_iceberg_table'::regclass);
+```
+
+Performs compaction to improve the performance and storage efficiency of a PGAA table.
+Triggers a compaction process for an Iceberg table using a Spark engine. 
+Requires Spark Connect to be configured via pgaa.executor_engine. 
+This operation consolidates small data files into larger, more efficient Parquet files, improving query performance and reducing metadata overhead.
+
+Supported maintenance operations include:
+
+- **Compaction:** Consolidates small data files into larger files to lower metadata overhead during query planning.
+- **Manifest cleanup:** Automatically rewrites manifest files to point to new, optimized data files and removes references to fragmented ones, keeping the table metadata "lean."
+- **Snapshot management:** Prepares the table for advanced lifecycle tasks like expiring old snapshots via the Spark engine to reclaim storage space.
+
+**Iceberg maintenance examples**
+
+- Use standard table compaction to merge fragmented data files into larger files and updates the Iceberg manifest:
+
+    ```sql
+    SELECT pgaa.execute_compaction('lakehouse.inventory_iceberg'::regclass);
+    ```
+
+- Set specific file limits to Spark to define the file size strategy:
+
+    ```sql
+    SELECT pgaa.execute_compaction(
+        table_name => 'lakehouse.inventory_iceberg'::regclass,
+        options    => '{"target-file-size-bytes": "536870912"}' -- 512MB
+    );
+    ```
+
+See the function reference section for [pgaa.execute_compaction()](reference/functions/#pgaaexecute_compaction) for a complete list of supported options and examples.
