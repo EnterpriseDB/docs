@@ -215,38 +215,203 @@ This hybrid approach ensures you get the massive scale of a data lake without lo
 
 
 
+## Prerequisites
 
+- An environment running a Postgres instance. See [Compatibility](compatibility) for a full list of supported platforms.
+- An EDB access token.
 
-## Unified OLTP + OLAP Architecture
+## Downloading and installing the package on your PostgreSQL instance
 
-Combine operational and analytical workloads in a single platform:
+1. Download the package from the EDB repository:
 
-Hot data in PostgreSQL
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/standard/setup.rpm.sh" | sudo -E bash
+```
+
+<TabContainer syncKey="platform">
+
+<Tab title="Debian/Ubuntu" active>
+
+```shell
+sudo apt-get install -y postgresql-<version>-pgaa
+```
+
+Where `<version>` is your PostgreSQL version.
+
+</Tab>
+
+<Tab title="CentOS/RHEL">
+
+```shell
+sudo dnf install -y postgresql-<version>-pgaa
+```
+
+Where `<version>` is your PostgreSQL version.
+
+</Tab>
+
+</TabContainer>
+
+Edit your `postgresql.conf` file to add `pgaa` to to your `shared_preload_libraries`, and enable the automatic management and startup of the Seafowl query engine via the Postgres background worker:
+
+```ini
+shared_preload_libraries = 'pgaa'
+pgaa.autostart_seafowl = on
+```
+
+After saving the changes, restart your PostgreSQL service. Once restarted, log in to your Postgres instance and create the PGAA extension:
 
 ```sql
-CREATE TABLE sales_current (
-  sale_id BIGINT PRIMARY KEY,
-  sale_date DATE,
-  amount DECIMAL(10,2)
+CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+```
+
+Using `CASCADE` ensures that any required dependencies (like `PGFS`) are also created. Use `\dx` to verify that the extensions have been installed and check their versions.
+
+You can also use the function `pgaa.pgaa_version()` for full version information:
+
+```sql
+SELECT pgaa.pgaa_version();
+```
+
+
+## Configuring a storage location
+
+Create a storage location that points to our public bucket which contains sample benchmark datasets.
+
+```sql
+SELECT pgfs.create_storage_location(
+'quickstart-sample-data',
+'s3://beacon-analytics-demo-data-us-east-1-prod',
+'{"skip_signature": "true", "region": "us-east-1"}'
 );
 ```
 
-Cold data in lakehouse:
+Verify that the storage location was created:
 
 ```sql
-CREATE TABLE sales_archive () USING PGAA
-WITH (
-  pgaa.format = 'iceberg',
-  pgaa.managed_by = 'lakehouse_catalog',
-  pgaa.catalog_table = 'sales_historical'
+SELECT pgfs.list_storage_locations();
+```
+
+Test connectivity and verify read access (the function must return `NULL`):
+
+```sql
+SELECT pgaa.test_storage_location ('quickstart-sample-data', false);
+```
+
+## Creating local and remote tables
+
+Create the table `warehouse_analytics`, which represents your historical, large-scale dimensional data. The parameter `pgaa.path` points to `tpcds_sf_10/warehouse`, one of our sample [benchmark datasets](../reference/datasets).
+
+```sql
+CREATE TABLE warehouse_analytics () 
+USING PGAA WITH (
+    pgaa.storage_location = 'quickstart-sample-data', 
+    pgaa.path = 'tpcds_sf_10/warehouse' , 
+    pgaa.format = 'delta'
+    );
+```
+
+Create the table `warehouse_inventory` which represents your live, high-velocity transactional data—current stock levels or active shipments—which changes too frequently to be kept in the data lake.
+
+```sql
+CREATE TABLE warehouse_inventory (
+    inventory_id SERIAL PRIMARY KEY,
+    w_warehouse_sk BIGINT, -- This is our Join Key
+    product_id INT,
+    current_stock INT,
+    last_updated TIMESTAMP DEFAULT NOW()
 );
 ```
 
-Unified view across tiers
+Insert sample data into it:
 
 ```sql
-CREATE VIEW sales_complete AS
-SELECT * FROM sales_current
-UNION ALL
-SELECT * FROM sales_archive;
+INSERT INTO warehouse_inventory (w_warehouse_sk, product_id, current_stock, last_updated)
+SELECT 
+    (id % 5) + 1,                     -- Distributes rows across warehouse_sk 1 to 5
+    (random() * 1000 + 100)::int,     -- Random product_id between 100 and 1100
+    (random() * 5000)::int,           -- Random stock levels up to 5000
+    NOW() - (random() * interval '30 days') -- Random timestamps over the last month
+FROM generate_series(1, 50000) AS id;
 ```
+
+## Run analytical queries
+
+Run the following query that aggregates the local inventory data and joins it against the remote warehouse metadata to see regional performance.
+
+```sql
+SELECT 
+    w.w_state,
+    w.w_warehouse_name,
+    COUNT(DISTINCT i.product_id) as unique_products,
+    SUM(i.current_stock) as total_stock_on_hand,
+    AVG(i.current_stock)::numeric(10,2) as avg_stock_per_product
+FROM warehouse_analytics w
+JOIN warehouse_inventory i ON w.w_warehouse_sk = i.w_warehouse_sk
+GROUP BY w.w_state, w.w_warehouse_name
+ORDER BY total_stock_on_hand DESC;
+```
+
+In this scenario, PostgreSQL handles the fresh, transactional data (OLTP) while Seafowl manages the massive historical or reference datasets residing in object storage (OLAP). By leveraging this hybrid architecture, you avoid the cost and latency of moving heavy analytical data into your operational database. Instead, you gain the benefit of "to-the-second" accuracy from your local transactional tables combined with the scale of the data lake. Under the hood, the Analytics Accelerator utilizes DirectScan to pull only the specific columns required from the object storage, while PostgreSQL efficiently coordinates the join logic for a seamless unified output.
+
+## Analyzing the query plan
+
+Run the `EXPLAIN` command to verify how PostgreSQL and the Seafowl engine collaborate to execute a cross-engine join.
+
+```sql
+EXPLAIN SELECT 
+    w.w_state,
+    w.w_warehouse_name,
+    COUNT(DISTINCT i.product_id) as unique_products,
+    SUM(i.current_stock) as total_stock_on_hand,
+    AVG(i.current_stock)::numeric(10,2) as avg_stock_per_product
+FROM warehouse_analytics w
+JOIN warehouse_inventory i ON w.w_warehouse_sk = i.w_warehouse_sk
+GROUP BY w.w_state, w.w_warehouse_name
+ORDER BY total_stock_on_hand DESC;
+```
+
+The output should look something like the below:
+
+```sql
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=37536.03..37536.53 rows=200 width=96)
+   Sort Key: (sum(i.current_stock)) DESC
+   ->  GroupAggregate  (cost=33775.39..37528.39 rows=200 width=96)
+         Group Key: w.w_state, w.w_warehouse_name
+         ->  Sort  (cost=33775.39..34400.39 rows=250000 width=72)
+               Sort Key: w.w_state, w.w_warehouse_name, i.product_id
+               ->  Hash Join  (cost=25.43..1105.92 rows=250000 width=72)
+                     Hash Cond: (i.w_warehouse_sk = w.w_warehouse_sk)
+                     ->  Seq Scan on warehouse_inventory i  (cost=0.00..868.00 rows=50000 width=16)
+                     ->  Hash  (cost=25.30..25.30 rows=10 width=68)
+                           ->  Custom Scan (SeafowlCompatScan) on warehouse_analytics w  (cost=25.00..25.30 rows=10 width=68)
+                                 SeafowlPlan: Logical Plan
+                                   Projection:  r1.w_warehouse_sk, r1.w_warehouse_name, r1.w_state
+                                     SubqueryAlias:  r1
+                                       TableScan:  public.warehouse_analytics
+                                   SeafowlQuery: select r1.w_warehouse_sk, r1.w_warehouse_name, r1.w_state from public.warehouse_analytics as r1
+```
+
+The plan is read from the bottom up:
+
+1. The Seafowl component (`SeafowlCompatScan`): The bottom of the plan shows the work performed on your object storage:
+    - `SeafowlQuery`: The Seafowl engine generates a optimized sub-query to fetch only the required columns (`w_warehouse_sk`, `w_warehouse_name`, `w_state`) from the remote Delta files.
+    - `Custom Scan` (`SeafowlCompatScan`): Because this query involves a join with a local PostgreSQL table, PGAA uses CompatScan. This mode allows Seafowl to stream the remote results back to PostgreSQL so they can be joined with local data.
+
+1. The local PostgreSQL component: Once the remote data is prepared, PostgreSQL takes over to handle the transactional side:
+    - `Seq Scan` on `warehouse_inventory`: PostgreSQL performs a standard sequential scan on your local OLTP table to retrieve the live inventory counts.
+    - `Hash Join`: PostgreSQL creates a hash table from the Seafowl results and joins it with the local inventory records based on the `w_warehouse_sk` key.
+
+1. Final Processing
+    - `GroupAggregate`: After the data is joined, PostgreSQL calculates the totals (`SUM`) and counts (`COUNT`) requested in the query.
+    - `Sort`: The results are sorted by the calculated `total_stock_on_hand` in descending order.
+
+
+This hybrid approach ensures you get the massive scale of a data lake without losing the real-time accuracy of your local Postgres data.
+
+
+
+
