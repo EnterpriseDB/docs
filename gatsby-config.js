@@ -122,7 +122,6 @@ const sourceToPluginConfig = {
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   pwr: { name: "pwr", path: "product_docs/docs/pwr" },
-  repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
