@@ -1,14 +1,14 @@
 ---
-title: Installing and configuring Analytics Accelerator
-navTitle: Installing and configuring
-description: Installation instructions for Analytics Accelerator.
+title: Installing Analytics Accelerator
+navTitle: Installing
+description: Step-by-step instructions to install the PGAA extension.
 ---
 
-Install the EDB Analytics Accelerator (PGAA) extension on your PostgreSQL instance. See [Compatibility](overview/compatibility) for a full list of supported platforms.
+To use the Postgres Analytics Accelerator (PGAA), you must install the extension on your PostgreSQL instance and enable the background worker for the query engine. See [Compatibility](overview/compatibility) for a full list of supported platforms.
 
-## Downloading and installing the package on your PostgreSQL instance
+## Downloading and installing the package
 
-1. Download the package from the EDB repository:
+Download the package from the EDB repository:
 
 ```shell
 export EDB_SUBSCRIPTION_TOKEN=<your-token>
@@ -39,116 +39,33 @@ Where `<version>` is your PostgreSQL version.
 
 </TabContainer>
 
-Edit your `postgresql.conf` file to add `pgaa` to to your `shared_preload_libraries`, and enable the automatic management and startup of the Seafowl query engine via the Postgres background worker:
+## Enabling the extension 
 
-```ini
-shared_preload_libraries = 'pgaa'
-pgaa.autostart_seafowl = on
-```
+To initialize PGAA, you must update your `postgresql.conf` file. Adding `pgaa` to `shared_preload_libraries` allows Postgres to manage the life cycle of the Seafowl query engine as a background worker.
 
-After saving the changes, restart your PostgreSQL service. Once restarted, log in to your Postgres instance and create the PGAA extension:
+1. Edit `postgresql.conf`:
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
-```
+    ```ini
+    shared_preload_libraries = 'pgaa'
+    pgaa.autostart_seafowl = on
+    ```
 
-Using `CASCADE` ensures that any required dependencies (like `PGFS`) are also created. Use `\dx` to verify that the extensions have been installed and check their versions.
+1. Restart your PostgreSQL service to load the new library. Once restarted, log in to your Postgres instance and create the PGAA extension:
 
-You can also use the function `pgaa.pgaa_version()` for full version information:
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+    ```
+
+    Using `CASCADE` ensures that required dependencies, such as the Postgres File System (`PGFS`), are automatically installed.
+
+
+## Verifying the installation
+
+Confirm that the extension is active using the `\dx` meta-command or by calling the version function:
 
 ```sql
 SELECT pgaa.pgaa_version();
 ```
 
-## Configuring a storage location
-
-You can access data in object storage either through a storage location or via an integrated [Iceberg catalog](catalog).
-
-A storage location establishes a bridge between your PostgreSQL instance and external environments, including AWS S3, Google Cloud Storage (GCS), Azure Blob/ADLS Gen2, and local filesystems. PGAA leverages the Postgres File System (PGFS) extension to define a target bucket or directory and manage authentication credentials, allowing you to interact with remote files with the same ease as a local filesystem.
-
-For a comprehensive list of configuration parameters and supported storage providers, see [Creating a PGFS storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location). 
-
-### Types of buckets
-
-You can point a storage location to a public or a private object storage bucket. The primary difference lies in how the engine handles request signing and authorization:
-
-- **Private buckets:** Most production data lakes use private buckets. Accessing them requires valid credentials (IAM roles, static credentials, or environment variables) to sign every request sent by the PGFS extension. The data is only visible to the specific PGAA instance or authorized users.
-- **Public buckets:** Public buckets are accessible to anyone over the internet without authentication. You can use these for accessing shared [benchmark datasets](reference/datasets) or public data repositories. 
-
-The following is an example of a storage location pointing to a public bucket:
-
-```sql
-SELECT pgfs.create_storage_location(
-    'my_lake_data', 
-    's3://your-bucket-name/path', 
-    '{"aws_skip_signature": "true"}'
-);
-```
-
-### Authentication
-
-When creating a storage location, you can authorize access to your buckets using three primary methods: static credentials, environment variables, or IAM roles.
-
-**Static credentials**
-
-Static credentials involve passing a series of parameters directly into the storage location definition. These parameters depend on the different storage providers. For example, for S3, you must provide either an access key id and a secret access key, or a session token:
-
-```sql
-SELECT pgfs.create_storage_location(
-    'dev_lake',
-    's3://dev-bucket/',
-    '{
-        "access_key_id": "AKIA...",
-        "secret_access_key": "wJalr...",
-        "region": "us-east-1"
-    }'
-);
-```
-
-**Environment variables**
-
-PGFS can inherit credentials directly from your operating system’s environment variables. For example:
-
-- Set the variable on your Postgres instance:
-
-    ```bash
-    export GOOGLE_APPLICATION_CREDENTIALS=/var/run/gcs.json
-    ```
-
-- Create the storage location and omit the `credentials` parameter. PGFS will automatically check for `GOOGLE_APPLICATION_CREDENTIALS` or `GOOGLE_SERVICE_ACCOUNT_KEY_FILE` to authorize the connection:
-
-    ```sql
-    SELECT pgfs.create_storage_location(
-        'edb_ai_example_images', 
-        'gs://my-company-ai-images');
-    ```
-
-**IAM roles**
-
-If your PostgreSQL instance is running on cloud infrastructure, the most secure method is to use Instance Profiles or IAM Roles. Attach an IAM policy directly to the underlying virtual machine or container. PGFS automatically detects the instance metadata and uses these temporary, rotating credentials to sign requests.
-
-```sql
-SELECT pgfs.create_storage_location(
-    'production_lake',
-    's3://my-analytics-bucket/',
-    '{"region": "us-east-1"}' 
-);
-```
-
-## Testing storage access
-
-Verify that the storage location was created with the following command:
-
-```sql
-SELECT pgfs.list_storage_locations();
-```
-
-Use the `pgaa.test_storage_location()` function to test connectivity and verify read (`false`) or write (`true`) access:
-
-```sql
-SELECT pgaa.test_storage_location ('my-storage-location', false);
-```
-
-The function returns `NULL` if successful.
-
+Once installed, you can [Configure a storage location](storage_location) to grant PGAA access to your data lake.
 
