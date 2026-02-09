@@ -42,43 +42,44 @@ You can also define custom storage locations in the same bucket to be used by yo
 All of this data needs to be available after a disaster. Depending on the criticality of the data and the level of disaster that you want to be able to recover from, you’ll need to replicate this data outside of the CSP region or physical data center where the HM instance resides.
 
 !!! tip
-    When using an AWS S3 bucket, you can achieve replication by using [cross-region replication](https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html#crr-scenario).
-
-    [do we mean replication of the object storage bucket? Also, we support not only AWS, but also Azure, GCP and other, so I wonder if we should generalize this item]: # 
+    When using a bucket, you can achieve replication by using cross-regions replication. For example, for AWS S3 buckets, see [cross-region replication](https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html#crr-scenario).
 
 Postgres databases use continuous backup by default, so you can restore them at any point in time. They are limited only by backup lifecycle policies.
 
 Critical appliance data, such as the definition of the Postgres clusters, is stored as Kubernetes objects and included in the Velero backup. By default, this backup happens daily at 23:00, as defined by the default schedule `velero-backup-kube-state`.
 
-If your RPO requires more frequent backups, you can define a new backup schedule.
-
-[here we say to define a new backup schedule, but then in the next "danger" do not overwrite it, so this is a bit contradictory...]: #
+If your RPO requires more frequent backups, complement the default schedule by creating an additional custom backup schedules.
 
 !!! Danger
     Do not modify the default schedule, as it may be overwritten by a HM software update.
 
-[related to my question above, maybe we mean that the existing default shouldn't be overwritten but rather complemented with an additional one?, for example "Complement the default schedule by creating an additional custom backup schedule instead."]: #
+The following example shows a custom schedule to back up the needed resources every 6 hours at the top of the hour:
 
-The following example shows a custom schedule to back up the needed resources each hour:
+```shell
+velero create schedule <backup-name> --schedule="0 */6 * * *" --include-namespaces='*' --include-resources='*' --snapshot-volumes=false --ttl=168h --skip-immediately=false
+```
 
-[Below we don't say where nor how to store the CRD with the custom backup schedule. Do we apply with a kubectl command? in which namespace? we should provide more input]: #
+To check how the backup schedule was configured in the backend, run the following command:
+
+```shell
+kubectl get schedules.velero.io example -n velero -o yaml | yq .spec
+```
+
+Which should return the following output:
 
 ```yaml
-apiVersion: velero.io/v1  
-kind: Schedule  
-metadata:  
-  name: custom-velero-backup-kube-state  
-  namespace: velero  
-spec:  
-  schedule: 0 \* \* \* \*  
-  skipImmediately: false  
-  template:  
-    includedNamespaces:  
-    \- '\*'  
-    includedResources:  
-    \- storagelocations.biganimal.enterprisedb.com  
-    \- clusterwrappers.beacon.enterprisedb.com  
-    \- backupwrappers.beacon.enterprisedb.com  
-    snapshotVolumes: false  
-    ttl: 168h
+schedule: 0 */6 * * *
+skipImmediately: false
+template:
+  csiSnapshotTimeout: 0s
+  hooks: {}
+  includedNamespaces:
+    - '*'
+  includedResources:
+    - '*'
+  itemOperationTimeout: 0s
+  metadata: {}
+  snapshotVolumes: false
+  ttl: 168h0m0s
+useOwnerReferencesInBackup: false
 ```
