@@ -1,0 +1,137 @@
+---
+title: Configuring a PGD cluster with TPA
+navTitle: Configuring
+redirects:
+  - /pgd/latest/install-admin/admin-tpa/installing/01-configuring/ #generated for pgd deploy-config-planning reorg 
+  - /pgd/latest/admin-tpa/installing/01-configuring/ #generated for pgd deploy-config-planning reorg 
+---
+
+The `tpaexec configure` command generates a simple YAML configuration file to describe a cluster, based on the options you select. The configuration is ready for immediate use, and you can modify it to better suit your needs. Editing the configuration file is the usual way to make any configuration changes to your cluster both before and after it's created.
+
+The syntax is:
+
+```
+tpaexec configure <cluster_dir> --architecture <architecture_name> [options]
+```
+
+<a id="configurationoptions"></a>The available configuration options include:
+
+| Flags              | Description |
+| ------------------ | ----------- |
+| `--architecture`   | Required. Set to `PGD-Always-ON` for EDB Postgres Distributed deployments. |
+| `–-postgresql <version>` <br/> or <br/> `--edb-postgres-advanced <version>` <br/> or <br/> `--edb-postgres-extended <version>` | Required. Specifies the distribution and version of Postgres to use. For more details, see [Cluster configuration: Postgres flavour and version](/tpa/latest/tpaexec-configure/#postgres-flavour-and-version). |
+| `--redwood` or `--no-redwood` | Required when `--edb-postgres-advanced` flag is present. Specifies whether Oracle database compatibility features are desired. |
+| `--location-names l1 l2 l3` | Required. Specifies the names of the locations to deploy PGD to. |
+| `--data-nodes-per-location N` | Specifies the number of data nodes per location. Default is 3. |
+| `--add-witness-node-per-location` | For an even number of data nodes per location, adds witness nodes to allow for local consensus. Enabled by default for 2-data-node locations. |
+| `--add-proxy-nodes-per-location` | Specifies whether to separate PGD proxies from data nodes and how many to configure. By default one proxy is configured and cohosted for each data node. |
+| `--pgd-proxy-routing global\|local` | Specifies whether PGD Proxy routing is handled on a global or local (per-location) basis. |
+| `--add-witness-only-location loc` | Designates one of the cluster locations as witness-only (no data nodes are present in that location). |
+| `--enable-camo` | Sets up a CAMO pair in each location. Works only with 2 data nodes per location. |
+
+More configuration options are listed in the TPA documentation for [PGD-Always-ON](/tpa/latest/architecture-PGD-Always-ON/).
+
+For example:
+
+```
+[tpa]$ tpaexec configure ~/clusters/speedy \
+         --architecture PGD-Always-ON \
+         --platform aws \
+         --edb-postgres-advanced 16 \
+         --redwood \
+         --location-names eu-west-1 eu-north-1 eu-central-1 \
+         --data-nodes-per-location 3 \
+         --pgd-proxy-routing global
+```
+
+The first argument must be the cluster directory, for example, `speedy` or `~/clusters/speedy`. (The cluster is named `speedy` in both cases.) We recommend that you keep all your clusters in a common directory, for example, `~/clusters`. The next argument must be `--architecture` to select an architecture, followed by options.
+
+The command creates a directory named `~/clusters/speedy` and generates a configuration file named `config.yml` that follows the layout of the PGD-Always-ON architecture. You can use the `tpaexec configure --architecture PGD-Always-ON --help` command to see the values that are supported for the configuration options in this architecture. 
+
+In the example, the options select:
+
+-  An AWS deployment (`--platform aws`) 
+-  EDB Postgres Advanced Server, version 16 and Oracle compatibility (`--edb-postgres-advanced 16` and `--redwood`) 
+-  Three locations (`--location-names eu-west-1 eu-north-1 eu-central-1`) 
+-  Three data nodes at each location (`--data-nodes-per-location 3`) 
+-  Proxy routing policy of global (`--pgd-proxy-routing global`)
+
+### Common configuration options
+
+Other configuration options include the following.
+
+#### Owner
+Every cluster must be directly traceable to a person responsible for the provisioned resources.
+
+By default, a cluster is tagged as being owned by the login name of the user running `tpaexec provision`. If this name doesn't identify a person (for example, `postgres`, `ec2-user`), you must specify `--owner SomeId` to set an identifiable owner.
+
+You can use your initials, "Firstname Lastname", or any text that identifies you uniquely.
+
+#### Platform options
+The default value for `--platform` is `aws`, which is the platform supported by the PGD-Always-ON architecture.
+
+Specify `--region` to specify any existing AWS region that you have access to and that allows you to create the required number of instances. The default region is eu-west-1.
+
+Specify `--instance-type` with any valid instance type for AWS. The default is t3.micro.
+
+### Subnet selection
+By default, each cluster is assigned a random /28 subnet under 10.33/16. However, depending on the architecture, there can be one or more subnets, and each subnet can be anywhere between a /24 and a /29.
+
+Specify `--subnet` to use a particular subnet, for example, `--subnet 192.0.2.128/27`.
+
+### Disk space
+Specify `--root-volume-size` to set the size of the root volume in GB, for example, `--root-volume-size 64`. The default is 16GB. Depending on the image used to create instances, there might be a minimum size for the root volume.
+
+For architectures that support separate Postgres and Barman volumes:
+
+- Specify `--postgres-volume-size` to set the size of the Postgres volume in GB. The default is 16GB.
+
+- Specify `--barman-volume-size` to set the size of the Barman volume in GB. The default is 32GB.
+
+### Distribution
+Specify `--os` or `--distribution` to specify the OS to use on the cluster's instances. The value is case sensitive.
+
+The selected platform determines the distributions that are available and the one that's used by default. For more details, see `tpaexec info platforms/<platformname>`.
+
+In general, you can use `Debian`, `RedHat`, and `Ubuntu` to select TPA images that have Postgres and other software preinstalled (to reduce deployment times). To use stock distribution images instead, append `-minimal` to the value, for example, `--distribution Debian-minimal`.
+
+### Repositories
+When using TPA to deploy PDG 5 and later, TPA selects repositories from EDB Repos 2.0. All software is sourced from these repositories.
+
+To use [EDB Repos 2.0](https://www.enterprisedb.com/repos/), you must use
+`export EDB_SUBSCRIPTION_TOKEN=xxx` before you run tpaexec. You can get
+your subscription token from [the web
+interface](https://www.enterprisedb.com/repos-downloads).
+
+Optionally, use `--edb-repositories repository …` to specify EDB repositories in addition to the default repository to install on each instance.
+
+
+### Software versions
+By default, TPA uses the latest major version of Postgres. Specify `--postgres-version` to install an earlier supported major version, or specify both version and distribution using one of the flags described under [Configure](#configurationoptions).
+
+By default, TPA installs the latest version of every package, which is usually the desired behavior. However, in some testing scenarios, you might need to select specific package versions. For example:
+
+```
+--postgres-package-version 10.4-2.pgdg90+1
+--repmgr-package-version 4.0.5-1.pgdg90+1
+--barman-package-version 2.4-1.pgdg90+1
+--pglogical-package-version '2.2.0*'
+--bdr-package-version '3.0.2*'
+--pgbouncer-package-version '1.8*'
+```
+
+Specify `--extra-packages` or `--extra-postgres-packages` to install more packages. The former lists packages to install along with system packages. The latter lists packages to install later along with Postgres packages. (If you mention packages that depend on Postgres in the former list, the installation fails because Postgres isn't yet installed.) The arguments are passed on to the package manager for installation without any modifications.
+
+The `--extra-optional-packages` option behaves like `--extra-packages`, but it's not an error if the named packages can't be installed.
+
+### Hostnames
+By default, `tpaexec configure` randomly selects as many hostnames as it needs from a preapproved list of several dozen names, which is enough for most clusters.
+
+Specify `--hostnames-from` to select names from a different list, for example, if you need more names than are available in the supplied list. The file must contain one hostname per line.
+
+Specify `--hostnames-pattern`  to restrict hostnames to those matching the egrep-syntax pattern. If you choose to do this, you must ensure that the pattern matches only valid hostnames ([a-zA-Z0-9-]) and finds enough of them.
+
+### Locations
+By default, `tpaexec configure` uses the names first, second, and so on for any locations used by the selected architecture.
+
+Specify `--location-names` to provide more meaningful names for each location.
