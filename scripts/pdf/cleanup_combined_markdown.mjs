@@ -92,7 +92,7 @@ function cleanup() {
     const isVersioned = file.path.includes("product_docs/")
     const thisUnversionedProductPath = isVersioned ? thisProductPath.replace(
       /\/([^\/]+)\/[^\/]+/,
-      "/$1/latest/",
+      "/$1/latest",
     ) : thisProductPath;
 
     const thisProductUrl = docsUrl + thisProductPath;
@@ -410,6 +410,7 @@ const svgoPlugins = [
         // disable plugins
         removeTitle: false,
         removeDesc: false,
+        removeUnknownsAndDefaults: false,
       },
     },
   },
@@ -442,6 +443,33 @@ async function convertSvgNode(node) {
   else {
     node.type = "jsx";
     node.value = result.data;
+    let hast = unified()
+      .use(rehypeParse, {
+        emitParseErrors: true,
+        verbose: true,
+        fragment: true,
+      })
+      .parse(result.data);
+    // avoid images with width / height but no viewbox from breaking layout
+    if (hast.children[0]?.properties?.width) {
+      node.type = "jsx-hast";
+      node.children = hast.children;
+      const width = parseFloat(hast.children[0].properties.width);
+      const height = parseFloat(hast.children[0].properties.height);
+      if (!hast.children[0].properties.viewBox) {
+        hast.children[0].properties.viewBox = `0 0 ${width} ${height}`;
+      }
+      const ratio = height / width;
+      if ( ratio > 1 ) {
+        node.children[0].properties.width = Math.ceil(800*(1/ratio));
+        node.children[0].properties.height = '800';
+      }
+      else {
+        node.children[0].properties.width = '800';
+        node.children[0].properties.height = Math.ceil(800*ratio);
+      }
+    }
+
     delete node.url;
   }
 
