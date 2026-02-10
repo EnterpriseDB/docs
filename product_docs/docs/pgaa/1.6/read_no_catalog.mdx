@@ -11,7 +11,7 @@ To query data at scale, PGAA supports both structured open table formats and raw
 
 - **Apache Iceberg:** A high-performance table format that uses a hierarchical metadata tree to track table state. It allows for "time travel" to previous snapshots and "hidden partitioning," where Postgres can prune files without you needing to manually manage partition columns in the query.
 - **Delta Lake:** An open-source storage layer that brings reliability to data lakes. It uses a transaction log (the `_delta_log` folder) to maintain a versioned history of the table, ensuring Postgres reads a consistent set of Parquet files even while other processes are writing to the same location.
-- **Parquet:** A columnar storage file format available for use as a standalone format. Unlike Iceberg or Delta, which manage a collection of files via metadata, a Parquet-based storage location maps directly to individual files or directories. It is highly efficient for heavy analytical queries because it allows the PGAA engine to read only the specific columns required for a query.
+- **Parquet:** The underlying columnar storage format used by Iceberg and Delta Lake data lakes. When used as a standalone format without a management layer, PGAA maps directly to the physical files or directories. 
 
 To query data lakes without a central catalog, the system establishes a link via a storage location, a set of pointers to the specific bucket or directory where your data files reside, supporting environments across AWS S3 (and S3-compatible API), Google Cloud Storage (GCS), Azure Blob Storage (including ADLS Gen2), and local filesystems.
 
@@ -57,7 +57,7 @@ Where:
 - `pgaa.path`: The relative path from the root of the storage location to the directory containing the table's metadata and data files. For Iceberg, this should point to the folder containing the `/metadata` directory.
 
 !!! Note 
-    If you leave the column definitions empty (`()`), PGAA will automatically discover the schema from the Iceberg or Delta metadata files when you first query the table. For standalone Parquet files, you must explicitly define the columns in your `CREATE TABLE` statement. In both cases, the PGAA engine maps columns by name to the fields found in the remote Iceberg/Delta metadata or Parquet headers.
+    If you leave the column definitions empty (`()`), PGAA will automatically discover the schema from the metadata files when you first query the table and will map columns by name to the fields found in the remote Iceberg/Delta metadata or Parquet headers.
 
 ### Querying and verifying acceleration
 
@@ -69,17 +69,17 @@ EXPLAIN (COSTS OFF) SELECT count(*), region FROM iceberg_data GROUP BY region;
 
 If the engine is active, you will see a node called `SeafowlDirectScan`. This confirms the query has been offloaded to the vectorized accelerator rather than being processed by the standard Postgres executor.
 
-## Limitations and schema interference
+## Limitations
 
-When using direct storage locations, you are responsible for managing the alignment between the local PostgreSQL table definition and the remote data files. This manual approach introduces schema interference, a conflict between the static schema stored in the PostgreSQL system catalog and the actual, dynamic schema defined in the data lake.
+When using direct storage locations, you are responsible for managing the alignment between the local PostgreSQL table definition and the remote data files. This manual approach introduces conflicts between the static schema stored in the PostgreSQL system catalog and the actual, dynamic schema defined in the data lake.
 
-If an external engine evolves the data lake schema, the resulting interference can lead to query failures, silent data omission, or incorrect data mapping.
+If an external engine evolves the data lake schema, this can lead to query failures, silent data omission, or incorrect data mapping.
 
 Working without a centralized catalog also limits the ability to discover new tables, manage concurrent writes from multiple engines, and affects query performance.
 
-You must manually resolve interference as the data lake evolves:
+You must manually resolve these limitations as the data lake evolves:
 - Use `ALTER TABLE` commands in Postgres to add, drop, or modify columns to match the remote schema.
-- For Iceberg and Delta tables, the most common fix is to drop and recreate the table using empty parentheses `()`. Upon the first query, PGAA will perform a fresh discovery of the remote metadata.
+- The most common fix is to drop and recreate the table using empty parentheses `()`. Upon the first query, PGAA performs a fresh discovery of the remote metadata.
 - To prevent drift, explicitly define column names and types in your `CREATE TABLE` statement to match the object storage files exactly.
 
 The most effective way to eliminate schema interference is to move from a standalone storage location to an external Iceberg catalog. By using a catalog, you shift the responsibility of schema management from the user to the system. See [Integrating with Iceberg catalogs](catalog) for details.

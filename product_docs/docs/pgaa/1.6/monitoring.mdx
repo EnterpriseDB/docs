@@ -19,13 +19,15 @@ The function output provides the following insights:
 - **Identity & format:** Displays the schema, table name, and storage format (e.g., Iceberg, Delta, or Parquet).
 - **Storage location:** The exact path to where the data files reside.
 - **Catalog metadata:** If using an external catalog, this function output shows the external catalog service name, namespace, and remote table name.
-- **Replication status:** Displays the current state of data movement (primarily for PGD replication scenarios).
+- **Replication status:** Displays the current state of data movement (only for PGD replication scenarios).
 - **Storage metrics:**
     - `object_storage_snapshot_size_bytes`: The size of the latest live snapshot. This represents the actual volume of data scanned during a `SELECT *`.
-    - ``object_storage_total_size_bytes``: The total footprint in the bucket, including metadata, manifests, and historical data files not used by the current version.
+    - `object_storage_total_size_bytes`: The total footprint in the bucket, including metadata, manifests, and historical data files not used by the current version.
+    - `object_storage_total_size_bytes`: The total footprint in the bucket, including metadata, manifests, and historical data files not used
+    
 
    
-While `list_analytics_tables()` gives a high-level summary, `pgaa.lakehouse_table_stats()` provides a deep dive into a specific table's physical characteristics. This is essential for capacity planning and fine-tuning query performance.
+The function `pgaa.lakehouse_table_stats()` provides specific information about table's physical characteristics. This is essential for capacity planning and fine-tuning query performance.
 
 ```sql
 SELECT * FROM pgaa.lakehouse_table_stats('my_schema.my_table'::regclass);
@@ -38,7 +40,7 @@ This function queries the underlying object storage to verify what is happening 
 
 Comparing `latest_snapshot_size` and `total_size` is essential for balancing performance and cost. The snapshot size represents "live" data—the actual volume scanned during a query—while the total size includes the entire bucket footprint, such as historical versions, transaction logs, and uncompacted rows.
 
-In formats like Iceberg or Delta Lake, the total size often exceeds the snapshot size to support time-travel and rollbacks. A significant gap between these values indicates a buildup of historical overhead and serves as a signal to perform a `VACUUM` or compaction. Monitoring these metrics helps you maintain a lean, high-performing data lake. 
+In formats like Iceberg or Delta Lake, the total size exceeds the snapshot size to support time-travel and rollbacks. A significant gap between these values indicates a buildup of historical overhead and serves as a signal to perform a `VACUUM` or compaction. Monitoring these metrics helps you maintain a lean, high-performing data lake. 
 
 ## Optimizing table performance
 
@@ -102,24 +104,20 @@ See the function reference section for [pgaa.launch_task()](reference/functions/
 Iceberg maintenance is performed synchronously using the Spark engine to ensure complex metadata updates and manifest rewrites follow Iceberg's consistency guarantees.
 
 !!! Note
-    To perform these operations, your `pgaa.executor_engine` must be set to `spark_connect`.
+    To perform these operations, you must set the `pgaa.spark_connect_url` configuration parameter must.
 
-The `pgaa.execute_compaction()` function consolidates fragmented data files and optimizes metadata:
+The `pgaa.execute_compaction()` function consolidates fragmented data files into larger, more efficient Parquet files, improving query performance and optimizing metadata:
 
 ```sql
 SELECT pgaa.execute_compaction('my_iceberg_table'::regclass);
 ```
 
-Performs compaction to improve the performance and storage efficiency of a PGAA table.
-Triggers a compaction process for an Iceberg table using a Spark engine. 
-Requires Spark Connect to be configured via pgaa.executor_engine. 
-This operation consolidates small data files into larger, more efficient Parquet files, improving query performance and reducing metadata overhead.
+Use the function `pgaa.spark_sql()` to run Spark SQL queries directly:
 
-Supported maintenance operations include:
+```sql
+SELECT pgaa.spark_sql('query', 'catalog_name');
+```
 
-- **Compaction:** Consolidates small data files into larger files to lower metadata overhead during query planning.
-- **Manifest cleanup:** Automatically rewrites manifest files to point to new, optimized data files and removes references to fragmented ones, keeping the table metadata "lean."
-- **Snapshot management:** Prepares the table for advanced lifecycle tasks like expiring old snapshots via the Spark engine to reclaim storage space.
 
 **Iceberg maintenance examples**
 
@@ -129,13 +127,17 @@ Supported maintenance operations include:
     SELECT pgaa.execute_compaction('lakehouse.inventory_iceberg'::regclass);
     ```
 
-- Set specific file limits to Spark to define the file size strategy:
+- Use `pgaa.spark_sql()` to reduce metadata overhead via the `rewrite_data_files` Spark task:
 
     ```sql
-    SELECT pgaa.execute_compaction(
-        table_name => 'lakehouse.inventory_iceberg'::regclass,
-        options    => '{"target-file-size-bytes": "536870912"}' -- 512MB
-    );
+    SELECT pgaa.spark_sql($$  
+            CALL preexisting.system.rewrite_data_files(  
+              table => '"preexisting"."ns-1"."table-1"',  
+              strategy => 'sort',  
+              sort_order => 'value DESC',  
+              options => map('rewrite-all', 'true')  
+            )  
+        $$);  
     ```
 
 See the function reference section for [pgaa.execute_compaction()](reference/functions/#pgaaexecute_compaction) for a complete list of supported options and examples.

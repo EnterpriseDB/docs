@@ -9,10 +9,8 @@ A catalog service acts as the centralized "brain" of a data lake, decoupling phy
 
 The Postgres Analytics Accelerator (PGAA) integrates with third-party catalogs to provide seamless data lake connectivity for analytical workloads within your PostgreSQL deployment.
 
-Using an external Iceberg catalog prevents schema interference by establishing a dynamic link rather than a one-time metadata copy. Through PGAA, Postgres actively communicates with the catalog to detect and apply schema evolution automatically. You can manage these updates through continuous background polling or by manually triggering an import as needed.
-
 PGAA supports reading from and writing (using [CTAS](ctas/#using-an-iceberg-catalog)) to Iceberg tables using the following catalog implementations: 
-- **REST catalogs:** Any service following the Apache Iceberg REST API, such as Tabular, Apache Polaris, or Project Nessie. 
+- **REST catalogs:** Any service following the Apache Iceberg REST API, such as Lakekeeper, Tabular, Apache Polaris, or Project Nessie. 
 - **AWS S3 Tables:** A high-performance, AWS-native catalog designed for cloud-scale analytics. 
 
 Managing external Iceberg catalogs with PGAA involves two main phases: 
@@ -52,7 +50,6 @@ SELECT pgaa.add_catalog(
         "warehouse_name": "your_warehouse_name",
         "warehouse": "your_warehouse_id",
         "token": "your_secret_auth_token"
-        "danger_accept_invalid_certs": "false"
     }'
 );
 ```
@@ -107,7 +104,7 @@ After adding a catalog, use the following functions to verify the connection and
 - Browse the tables available within the external catalog before importing them:
 
     ```sql
-    SELECT pgaa.list_catalog_tables(`my_iceberg_catalog`);
+    SELECT pgaa.list_catalog_tables('my_iceberg_catalog');
     ```
 
 For a complete list of functions supporting catalog registration and maintenance, see the [Catalog functions](reference/functions#catalog-functions) reference section.
@@ -123,7 +120,7 @@ Once you have established a catalog connection, you must register its metadata s
 
 Attaching a catalog establishes a dynamic link between Postgres and the external Iceberg metadata service. Unlike a static import, this method ensures your Postgres environment stays synchronized with the data lake as it evolves.
 
-When you attach a catalog, PGAA starts a background worker that continuously polls the catalog to detect new tables or schema evolution. PGAA honors the namespace hierarchy defined on the catalog side.
+When you attach a catalog, PGAA starts a background worker that continuously polls the catalog to detect new tables or schema evolution. PGAA honors the namespace hierarchy defined on the catalog side. If the attached catalog contains a table that shares the name with any existing tables on your database, the background worker will skip it to avoid overwriting it.
 
 The synchronization process is managed by two primary configuration parameters:
 
@@ -148,7 +145,7 @@ The function stops the background synchronization worker and removes the dynamic
 
 ### Importing a catalog 
 
-Instead of continuously polling, you can perform a one-time manual synchronization. Postgres will pull the current state of the tables, but will not detect future changes until you run the import again. You can also import a catalog to force an update without waiting for the next background poll cycle.
+Instead of continuously polling, you can perform a one-time manual synchronization. Postgres will pull the current state of the tables, but will not detect future changes until you run the import again. If the imported catalog contains a table that shares the name with any existing tables on your database, PGAA skips creating that table to avoid overwriting it. You can also import a catalog to force an update without waiting for the next background poll cycle.
 
 Use the `pgaa.import_catalog()` function to import a catalog:
 
@@ -169,7 +166,7 @@ Validate that the new tables appear in your Postgres environment. You can run st
 
 Catalog-managed tables allow you to define custom local table names, choose specific schema placements, and explicitly map columns while leveraging your existing catalog connection.
 
-Manual registration provides more flexibility than attaching an entire catalog. You gain total control over your Postgres namespace, allowing you to place a table in any local schema regardless of its location in the Iceberg catalog. This approach also ensures isolation; if an attached catalog contains a table that shares a name with your manual table, the background worker will skip it to avoid overwriting your custom configuration.
+Manual registration provides more flexibility than attaching an entire catalog. You gain total control over your Postgres namespace, allowing you to place a table in any local schema regardless of its location in the Iceberg catalog. 
 
 The synchronization of a manual table depends on the type of change occurring in the data lake:
 

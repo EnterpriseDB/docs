@@ -5,9 +5,9 @@ description: Reference for the functions provided by the PGAA extension.
 deepToC: true
 ---
 
-The reference section is a list functions available with Analytics Accelerator.
+The reference section is a list of functions available with Analytics Accelerator.
 
-Refer to [PGFS functions for Pipelines](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions) for details.
+Refer to [PGFS functions for Pipelines](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions) for details on how to create storage locations for PGAA.
 
 ## Table functions
 
@@ -36,7 +36,7 @@ None.
 | `format`           | `pgaa.table_format` | The storage format (`delta`, `iceberg`, or `parquet`). |
 | `object_storage_snapshot_size_bytes` | `BIGINT` | The size in bytes of the latest table snapshot in object storage. |
 | `object_storage_total_size_bytes`    | `BIGINT` | The total size in bytes of all versions/files for this table in object storage. | 
-| `replication_status`         | `pgaa.replication_status` | The current state of data movement (`enabled`, `disabled`, or `initial_offload`). |
+| `replication_status`         | `pgaa.replication_status` | The current state of data movement (`enabled`, `disabled`, or `initial_offload`). Requires PGD integration. |
 | `storage_location_name`      | `TEXT` | The name of the PGFS storage location associated with the table. |
 | `storage_location_path`     | `TEXT` | The path within the storage location where the data resides. |
 | `catalog_name`        | `TEXT` |  Name of the external catalog, if applicable. | 
@@ -212,7 +212,7 @@ SELECT * FROM pgaa.update_catalog('catalog_name', 'new_options'::json);
 | `new_options` | `JSON` | A JSON object containing the updated connection and authentication parameters. |
 
 
-See [pgaa.add_catalog()](#pgaa.add_catalog) for for a detailed breakdown of the required JSON fields for each catalog type.
+See [pgaa.add_catalog()](#pgaaadd_catalog) for a detailed breakdown of the required JSON fields for each catalog type.
 
 **Returns**
 
@@ -305,7 +305,7 @@ None.
 
 ### pgaa.attach_catalog()
 
-Enables continuous metadata synchronization for a previously registered Iceberg catalog (using [pgaa.add_catalog()](#pgaa.add_catalog)). Once attached, PGAA automatically monitors the remote catalog for changes and updates the local PostgreSQL metadata accordingly. See [Catalog synchronization](configuration_parameters/#catalog-synchronization) for polling rate configuration.
+Enables continuous metadata synchronization for a previously registered Iceberg catalog (using [pgaa.add_catalog()](#pgaaadd_catalog)). Once attached, PGAA automatically monitors the remote catalog for changes and updates the local PostgreSQL metadata accordingly. See [Catalog synchronization](configuration_parameters/#catalog-synchronization) for polling rate configuration.
 
 **Synopsis**
 
@@ -426,7 +426,11 @@ SELECT * FROM pgaa.drop_catalog_tables('catalog_name', cascade := true);
 
 ### pgaa.spark_sql()
 
-Executes a Spark SQL query directly on the configured Spark Connect endpoint. It requires that the configuration parameter `pgaa.executor_engine` is set to 'spark_connect'.
+Executes a Spark SQL query directly on your Postgres cluster via the configured Spark Connect endpoint. This allows you to run Iceberg compaction routines or Spark functions that aren't available in Postgres.
+
+See [Spark procedures](https://iceberg.apache.org/docs/latest/spark-procedures/) for a list of the available procedures.
+
+To run this function, you must set configuration parameter `pgaa.executor_engine` to `spark_connect` and point `pgaa.spark_connect_url` to an available Spark Connect service.
 
 **Synopsis**
 
@@ -439,7 +443,6 @@ SELECT pgaa.spark_sql('query', 'catalog_name');
 For multiple catalogs:
 
 ```sql
--- Multi-catalog or default version
 SELECT pgaa.spark_sql('query', ARRAY['catalog1', 'catalog2']);
 ```
 
@@ -450,18 +453,34 @@ SELECT pgaa.spark_sql('query', ARRAY['catalog1', 'catalog2']);
 | `query` | `TEXT` | The Spark SQL statement to execute. |
 | `catalog` | `TEXT` or `TEXT[]` | A single catalog name, or an array of catalog names to use for the query. |
 
+
 **Returns**
 
 The result set of the Spark query formatted as a JSON object.
 
+**Example** 
+
+Reduce metadata overhead via the `rewrite_data_files` Spark task:
+
+```sql
+SELECT pgaa.spark_sql($$  
+            CALL preexisting.system.rewrite_data_files(  
+              table => '"preexisting"."ns-1"."table-1"',  
+              strategy => 'sort',  
+              sort_order => 'value DESC',  
+              options => map('rewrite-all', 'true')  
+            )  
+        $$);  
+```
+
 ### pgaa.execute_compaction()
 
-Performs compaction to improve the performance and storage efficiency of an analytical Iceberg table. It requires that the configuration parameter `pgaa.executor_engine` is set to 'spark_connect'.
+Performs compaction to improve the performance and storage efficiency of an analytical Iceberg table. Requires Spark Connect to be configured via the `pgaa.spark_connect_url` configuration parameter.
 
 **Synopsis**
 
 ```sql
-CALL pgaa.execute_compaction('table_name'::regclass, 'settings'::json);
+SELECT pgaa.execute_compaction('table_name'::regclass, 'settings'::json);
 ```
 
 **Parameters**
@@ -469,27 +488,11 @@ CALL pgaa.execute_compaction('table_name'::regclass, 'settings'::json);
 | Parameter                 | Type     | Description                                           
 | ---------------------- | -------- | ----------------------------------------------------- 
 | `relation` | `REGCLASS` | The name or OID of the analytical table to compact. |
-| `settings` | `JSON` | Optional. A JSON object defining compaction behavior. Default is `NULL`. |
+| `settings` | `JSON` |  Currently not supported. An optional JSON object defining compaction behavior. |
 
-Parameters for the optional JSON `settings` are:
 
-```json
-{
-"target_size": 1073741824,
-"preserve_insertion_order": false,
-"max_concurrent_tasks": 4,
-"max_spill_size": 2147483648,
-"min_commit_interval": 30
-}
-```
-
-Where:
-
-- `target_size`: Specifies the size of the output files in bytes.
-- `preserve_insertion_order`: Whether to maintain the existing sort order of rows. 
-- `max_concurrent_tasks`: Limits on the number of parallel Spark tasks.
-- `max_spill_size`: Sets the maximum data size in bytes allowed to spill to disk during the process.
-- `min_commit_interval`: Sets the minimum time in seconds between commits to the Iceberg log.
+!!! Note
+    The parameter `settings` is currently not supported. Instead, use [pgaa.spark_sql()](#pgaaspark_sql), run Spark queries directly on your cluster.
 
 **Returns**
 
@@ -498,16 +501,7 @@ None.
 **Example**
 
 ```sql
-CALL pgaa.execute_compaction(
-    'lakehouse.sales_data'::regclass, 
-    '{
-        "target_size": 1073741824,
-        "preserve_insertion_order": false,
-        "max_concurrent_tasks": 4,
-        "max_spill_size": 2147483648,
-        "min_commit_interval": 30
-    }'::json
-);
+SELECT pgaa.execute_compaction('lakehouse.inventory_iceberg'::regclass);
 ```
 
 
@@ -533,7 +527,7 @@ SELECT pgaa.launch_task(
 
 | Parameter                 | Type     | Description                                           
 | ---------------------- | -------- | ----------------------------------------------------- 
-| `table_name` | `REGCLASS` | The name or OID of the analytical table to compact. |
+| `table_name` | `REGCLASS` | The name or OID of the analytical table to run the task on. |
 | `task_type` | `TEXT` | The maintenance operation: `compaction`, `zorder`, `vacuum`, or `purge`. | 
 | `task_options` | `JSONB` | Configuration specific to the task type (see below). | 
 | `scheduled_at` | `TIMESTAMP` | If provided, the task will wait until this time to execute. Default is `NULL`. |
@@ -616,7 +610,9 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
 
 **Returns**
 
-A unique task ID for the task..
+A unique task ID for the task.
+
+You can check the task status by querying the `pgaa.background_task` table and the provided task ID.
 
 
 **Examples**
