@@ -504,6 +504,14 @@ const Page = () => {
               pgvector
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/vectorchord">
+              VectorChord
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/vectorchord">
+              VectorChord-bm25
+            </BannerWideLink>
+
             <BannerWideLink to="/pg_extensions/pg_anonymizer">
               pg_anonymizer
             </BannerWideLink>
