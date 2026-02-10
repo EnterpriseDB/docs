@@ -10,7 +10,6 @@ redirects:
 
 ## Overview
 
-> Note: This capability was previously part of AIDB and has moved into a separate extension/product called PGPU. EDB open sourced this extension and the code is publicly available at https://github.com/EnterpriseDB/pgpu.
 
 Building a vector index is a compute‑intensive process that can run for hours or days on very large tables. EDB Postgres AI – PGPU can use NVIDIA GPUs to accelerate vector index creation for the VectorChord `vchordq` index type.
 
@@ -20,10 +19,22 @@ Use GPU acceleration when creating indexes on large vector columns to significan
 
 Before using GPU acceleration, ensure the environment meets these requirements:
 - Supported OS: Ubuntu 24.04, Debian 12, RHEL 9.
+- Suported PostgreSQL versions:
+  - EDB Postgres Advanced Server Version 16, 17, and 18.
+  - EDB Postgres Extended Version 16, 17, and 18.
+  - PostgreSQL 16, 17, and 18.
 - CPU architecture: x86_64.
 - Supported NVIDIA GPU architectures: 8.9, 9.0, 10.0, 10.3, 12.0, 12.1 (includes L40S, L40, L20, L4, L2, H200, H100, GH200, B200, B100, GB20x, GB10 and other compatible models).
-- NVIDIA GPU driver version 525 or newer installed and functional.
-- NVIDIA CUDA runtime 12.9 or newer installed (at minimum `libcublas` and `libcudart`).
+- NVIDIA GPU driver version 580 or newer installed and functional.
+- NVIDIA CUDA runtime 13.0 or newer installed. Either install the full runtime, or this minimal set of required libraries:
+  - cuda-cudart
+  - libnvjitlink
+  - libcublas
+  - libcusolver
+  - libcusparse
+  - libcurand
+  - libnccl
+
 - VectorChord extension version 1.0.0 or newer available on the system (for the `vchordq` index type). This package is available in EDB repositories.
 
 ## Installing the extension
@@ -62,11 +73,17 @@ The following example creates a table with a vector column, inserts sample data,
 1. Build the GPU‑accelerated index:
 
    ```sql
-   SELECT pgpu.create_vector_index_on_gpu(
-     table_name      => 'public.test_10k_vecs',
-     column_name     => 'embedding',
-     cluster_count   => 10
-   );
+SELECT pgpu.create_vector_index_on_gpu(table_name => 'public.test_10k_vecs',
+       column_name => 'embedding',
+       batch_size => 1000,
+       lists => ARRAY[1000],
+       sampling_factor => 10,
+       kmeans_iterations=>10,
+       kmeans_nredo=>1,
+       distance_operator=>'ip',
+       skip_index_build=>true,
+       spherical_centroids=>true
+       );
    ```
 
 When the function completes, the table has a VectorChord `vchordq` index ready for use. The centroids that PGPU computed to support building the index are stored in `public.test_10k_vecs_centroids`. Use `\d public.test_10k_vecs` in `psql` to inspect the table and the index settings.
@@ -78,28 +95,59 @@ The `pgpu.create_vector_index_on_gpu()` function runs the entire VectorChord ind
 Signature example with all parameters:
 
 ```sql
-SELECT pgpu.create_vector_index_on_gpu(
-  table_name        => 'public.test_10k_vecs',
-  column_name       => 'embedding',
-  cluster_count     => 10,
-  sampling_factor   => 256,
-  kmeans_iterations => 10,
-  kmeans_nredo      => 1,
-  distance_operator => 'ip',
-  batch_size        => 1000000
-);
+CREATE FUNCTION "create_vector_index_on_gpu"(
+        "table_name" TEXT,
+        "column_name" TEXT,
+        "lists" INT[] DEFAULT NULL,
+        "sampling_factor" bigint DEFAULT 256,
+        "batch_size" bigint DEFAULT 100000,
+        "kmeans_iterations" bigint DEFAULT 10,
+        "kmeans_nredo" bigint DEFAULT 1,
+        "distance_operator" TEXT DEFAULT 'ip',
+        "skip_index_build" bool DEFAULT false,
+        "spherical_centroids" bool DEFAULT false,
+        "residual_quantization" bool DEFAULT false
+) RETURNS void STRICT
 ```
 
 Parameters:
 
-- table_name: Fully qualified table name (`schema.table`).
-- column_name: Name of the vector column to index.
-- cluster_count: Number of clusters to use for the index (VectorChord “lists”).
-- sampling_factor: Optional. Number of sample vectors for k‑means. Default: 256.
-- kmeans_iterations: Optional. Number of k‑means iterations. Default: 10.
-- kmeans_nredo: Optional. Number of k‑means restarts. Default: 1.
-- distance_operator: Optional. Distance metric. One of `ip` (inner product), `l2` (Euclidean), or `cos` (cosine). Default: `ip`.
-- batch_size: Optional. Controls processing batch size. Larger batches increase memory use but can improve throughput.
+- `table_name`: the fully qualified table name
+  - example: `public.test_table`
+- `column_name`: the vector column in the table that should be indexed
+- `lists`: how many centroids should be computed on each level of the tree
+  - default: `[1000]`
+  - valid values: `NULL`, `[n]`, `[n, m]`
+  - note: `NULL` means use default value / auto-tuning
+    - you can provide one or two values to set the number of centroids on each level of the tree. If only one value is provided, a flat index will be produced
+    - refer to vectorchord docs for more details on this parameter: https://docs.vectorchord.ai/vectorchord/usage/indexing.html#tuning this is effectively the `lists` parameter in vectorchord
+    - root level: use `4*sqrt(rows)` up to `16*sqrt(rows)` where "rows" is the number of rows in the table
+    - leaf level: use `sqrt(root_level)`
+    - e.g. for 1 million rows: `[64, 4000]`
+- `sampling_factor`: how many samples to take per centroid/cluster
+  - default: `256`
+  - note: values below 40 are not recommended. More samples lead to more accurate indexes but also increase the clustering time
+- `batch_size`: how many rows to process at once
+  - default: `100000`
+  - note: when this number is lower than cluster_count*sampling_factor, clustering will run in multiple batches. This is useful to reduce the overall amount of memory required for clustering
+- `kmeans_iterations`: how many iterations to run during clustering
+  - default: `10`
+  - note: this rarely needs to be changed
+- `kmeans_nredo`: how many times to rerun the clustering algorithm
+  - default: `1`
+  - note: this rarely needs to be changed
+- `distance_operator`: what distance operator to use for clustering
+  - default: `'ip'`
+  - valid values: `'ip'`, `'l2'`, `'cos'`
+  - note: the index will be built for this specific distance operator. So it will only be used for queries with the same distance operator. Typically, this is determined by the dataset.
+- `skip_index_build`: skip the index build step and only create the centroids table
+  - note: useful for testing/benchmarking purposes
+- `spherical_centroids`: whether to normalize centroids to unit sphere
+  - default: `false`
+  - note: this should be enabled when using `ip` distance operator and/or when using a dataset that is normalized to unit sphere
+- `residual_quantization`: enable the "residual_quantization" feature on vchord when building the index
+  - default: `false`
+  - note: this setting does not affect PGPU behavior at all. It is only used to enable the feature on vchord.
 
 ## Verification
 
