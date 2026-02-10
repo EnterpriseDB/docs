@@ -1,0 +1,125 @@
+---
+title: Getting Started with VectorChord‑BM25
+navTitle: Getting Started
+---
+
+What it is
+
+- VectorChord‑BM25 brings BM25‑based lexical ranking into Postgres for higher‑quality keyword search. It pairs with `pg_tokenizer` for tokenization and provides a BM25 index for efficient top‑k retrieval.
+
+When to use it
+
+- Pure keyword relevance: FAQ/help centers, documentation, catalogs where query terms matter.
+- Hybrid retrieval: Combine BM25 with vector similarity to balance precision (lexical) and recall/semantics (vectors).
+- Popular/common terms: Efficient top‑k under high match counts via pruning.
+
+Quick start
+
+1) Install prerequisites and extensions.
+2) Tokenize text into `bm25vector`.
+3) Build a BM25 index and run top‑k queries.
+
+Install
+
+Prerequisites
+
+- Postgres server (for example, EPAS 16)
+- `pg_tokenizer` package
+- `vchord_bm25` package
+
+Example (RHEL‑family)
+
+```bash
+dnf install -y edb-as16-server-core
+dnf install -y edb-as16-pg-tokenizer
+dnf install -y edb-as16-vectorchord-bm25
+```
+
+Packages and repository setup: https://www.enterprisedb.com/software-downloads-postgres
+
+Initialize and configure
+
+```bash
+/usr/edb/as16/bin/initdb -D ~/epas16d
+# In postgresql.conf
+# shared_preload_libraries = 'pg_tokenizer'
+/usr/edb/as16/bin/pg_ctl -D ~/epas16d -l ~/epas16d/logfile start
+/usr/edb/as16/bin/psql postgres -c 'SET search_path TO "$user", public, tokenizer_catalog, bm25_catalog;'
+```
+
+Enable extensions
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_tokenizer CASCADE;
+CREATE EXTENSION IF NOT EXISTS vchord_bm25 CASCADE;
+```
+
+Tokenize and index
+
+```sql
+-- Create a tokenizer (example: pre‑trained BERT)
+SELECT create_tokenizer('bert', $$
+model = "bert_base_uncased"
+$$);
+
+-- Document table
+CREATE TABLE documents (
+  id serial primary key,
+  passage text,
+  embedding bm25vector
+);
+
+-- Load sample data
+INSERT INTO documents (passage) VALUES
+('PostgreSQL is a powerful, open-source object-relational database system. It has over 15 years of active development.'),
+('Full-text search is a technique for searching in plain-text documents or textual database fields. PostgreSQL supports this with tsvector.'),
+('BM25 is a ranking function used by search engines to estimate the relevance of documents to a given search query.'),
+('PostgreSQL provides many advanced features like full-text search, window functions, and more.'),
+('Search and ranking in databases are important in building effective information retrieval systems.'),
+('The BM25 ranking algorithm is derived from the probabilistic retrieval framework.'),
+('Full-text search indexes documents to allow fast text queries. PostgreSQL supports this through its GIN and GiST indexes.'),
+('The PostgreSQL community is active and regularly improves the database system.'),
+('Relational databases such as PostgreSQL can handle both structured and unstructured data.'),
+('Effective search ranking algorithms, such as BM25, improve search results by understanding relevance.');
+
+-- Tokenize (avoid generated columns; models can change)
+UPDATE documents SET embedding = tokenize(passage, 'bert');
+
+-- Build BM25 index
+CREATE INDEX documents_embedding_bm25 ON documents USING bm25 (embedding bm25_ops);
+```
+
+Top‑k search
+
+```sql
+SELECT id, passage,
+       embedding <&> to_bm25query('documents_embedding_bm25', tokenize('PostgreSQL', 'bert')) AS bm25_score
+FROM documents
+ORDER BY bm25_score
+LIMIT 10;
+```
+
+How it differs from built‑in FTS
+
+- BM25 vs stopwords: BM25 uses IDF across the corpus; built‑in FTS relies on stopword dictionaries.
+- Frequency saturation and length normalization: BM25 includes TF saturation and corpus‑aware length normalization; built‑in FTS uses frequency and proximity heuristics.
+- Efficient top‑k: BM25 index uses pruning to avoid scoring documents unlikely to make the top‑k.
+
+Concepts and APIs
+
+- `bm25vector`: Sparse representation of token IDs and frequencies.
+- Tokenizers: Create with `create_tokenizer(...)`; convert text with `tokenize(text, tokenizer_name)`.
+- Query and scoring:
+  - `to_bm25query(index_name regclass, query_vector bm25vector) -> bm25query`
+  - `bm25vector <&> bm25query -> float4` (negative score; more negative is more relevant)
+
+Operational tips
+
+- Tokenizer choice: Start with a pre‑trained model; revisit for domain‑specific text.
+- Index builds: Run during maintenance windows for large tables; analyze after bulk loads.
+- Query shaping: Keep `LIMIT` small for interactive queries; use covering indexes for common filters.
+
+Appendix: quality and performance checks
+
+- Quality: Rare term vs common term—BM25 emphasizes rarer terms via IDF; built‑in FTS may assign identical ranks.
+- Performance: For common terms with many matches, BM25’s pruning reduces latency versus full rescoring.
