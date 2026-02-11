@@ -220,55 +220,86 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 ## 2. Recovery steps
 
-### Restore EDB internal databases (`app-db` and `beacon-db`)
+### Restore HM-internal databases
 
-Once the old backups are available, you can restore the EDB internal databases. For each internal database:
+After the old backups are available, you can restore the HM-internal databases. These are back-end services used by HM, and are required to fully restore the HM instance. Depending on the HM version you are using, and on the installation scenario you have deployed, the list of databases may vary.
 
-[I find this a bit confusing. In the title we call out `app-db` and `beacon-db`. Are these the internal databases to restore? But in the instructions below we are restoring the K8s cluster config file (`<cluster-name>`) and not individual dbs.]: #
+#### Identify the internal databases to restore
 
-1.  Save the cluster manifest to a yaml file: 
+First, identify the databases you need to restore. You can look this up by listing all HM-internal database clusters that exist in the new HM instance (assuming that you used the same installation configuration for the new HM instance) and excluding those that start with `p-` (these are Postgres database clusters) and the `stats-collector-db` (not required to restore HM functionality):
+
+```shell
+kubectl get clusters.postgresql.k8s.enterprisedb.io -A -o json | jq -rc '.items[].metadata | select((.name | test("^p-") | not) and (.name != "stats-collector-db")) | .name'
+```
+
+The output will be a list of HM-internal database clusters to restore, for example:
+
+```shell
+mp-epas-16
+mp-epas-17
+mp-epas-18
+transporter-db
+app-db
+beacondb
+resourcedb
+vectordb
+```
+
+!!!important
+You list may differ based on the HM version and installation scenario. It may look much shorter. 
+!!!
+
+#### Restore each HM-internal database
+
+Now, for each of the identified HM-internal database clusters, perform the following steps, one after the other:
+
+1.  Save the HM-internal database cluster manifest to a yaml file: 
 
     ```shell
     kubectl get <cluster-name> -o yaml > <cluster-name>.yaml
     ```
 
-    [`<cluster-name`> is the K8s cluster/HM installation, correct? If yes, I will try to disambiguiate from a Postgres db cluster or a internal service cluster.]: #
+    Where `<cluster-name>` is the name of the HM-internal database cluster to restore, e.g. `beacondb`.
 
-1.  Edit the cluster spec in the yaml file so the cluster is created from the backups:  
+1.  Edit the manifest yaml file, so the HM-internal database cluster is created from the backups:  
 
     - Replace the **init** section in bootstrap with a **recovery** section:  
 
       ```yaml
       recovery:  
-        database: <database name as in the init section>  
-        owner: <owner name as in the init section>  
-        source: <pg-cluster-name>  
+        database: <database_name_as_in_the_init_section>  
+        owner: <owner_name_as_in_the_init_section>  
+        source: <cluster-name>  
         secret:  
-          name: <secret name as in the init section>  
+          name: <secret_name_as_in_the_init_section>  
         recoveryTarget:  
-          targetTime: "<recovery date in YYYY-MM-DD HH:MM:SS+00 format>"  
+          targetTime: "${BACKUP_TIMESTAMP}"  
       ```
+
+      [The backup timestamp env variable is actually set up much later in the procedure, so I wonder if we should reorder things? Or just have them set up the timstamp manually here?]: #
 
     - Add the following section:  
 
       ```yaml
       externalClusters:  
        - barmanObjectStore:  
-          destinationPath:  S3://<linked-bucket-name>/edb-internal-backups/<old-backups-random-string>/ databases  
+          destinationPath:  S3://${NEW_BUCKET}/edb-internal-backups/databases  
           s3Credentials:  
             inheritFromIAMRole: true  
           wal:  
             maxParallel: 8  
-        name: <pg-cluster-name>  
+        name: <cluster-name>  
       ```
 
-    - Add the following prefix to the `appliance.enterprisedb.com/s3-prefixes` annotation of the `inheritedMetdata` section (the list comma separated): 
+    - Add the following prefix to the `appliance.enterprisedb.com/s3-prefixes` annotation of the `inheritedMetdata` section (the list is comma separated): 
+
+      [This used to be `edb-internal-backups/<old-backups-random-string>/databases/<db-name>`, please check below?]: #
 
       ```yaml
-      edb-internal-backups/<old-backups-random-string>/databases/<db-name>  
+      edb-internal-backups/<old-backups-random-string>/databases/<cluster-name>  
       ```
 
-1.  Delete the HM-internal database clusters that were created during installation of the new HM instance to make room for the HM-internal database clusters that will be recovered from the backup:
+1.  Delete the HM-internal database cluster that was created during installation of the new HM instance to make room for the HM-internal database cluster that will be recovered from the backup:
 
     ```shell
     kubectl delete cluster <cluster-name>  
@@ -280,35 +311,41 @@ Once the old backups are available, you can restore the EDB internal databases. 
     <Tab title="AWS">
 
     ```shell
-    aws s3 rm s3://\<linked-bucket-name>/edb-internal-backups/\<new-backups-random-string>/databases/\<pg-cluster-name> \--recursive
+    aws s3 rm s3://${NEW_BUCKET}/edb-internal-backups/databases/<cluster-name> \ --recursive
     ```
-
-    [this looks a bit weird to me: should it be `aws s3 rm s3://${NEW_BUCKET}/edb-internal-backups/<new-backups-random-string>/databases/<pg-cluster-name> --recursive`?]: #
 
     </Tab>
 
     <Tab title="GCP">
 
     ```shell
-    gcloud storage rm gs://<linked-bucket-name>/edb-internal-backups/<new-backups-random-string>/databases/<pg-cluster-name>/ --recursive
+    gcloud storage rm gs://${NEW_BUCKET}/edb-internal-backups/databases/<cluster-name> \ --recursive
     ```
-
-    [Same here with using ${NEW_BUCKET} instead of <linked-bucket-name>]: #
 
     </Tab>
     </TabContainer>
 
-1.  Apply the yaml file for the cluster to be re-created: `kubectl apply -f <cluster-name>.yaml`. You can monitor the restore progress using `kubectl get clusters -A`.
-
-1.  After the cluster is successfully restored and in a healthy state, restart the `accm-server` in the namespace `upm-beaco-ff-base` to make sure the HM console is available again: 
+1.  Apply the yaml file for the cluster to be re-created:
 
     ```shell
-    kubectl delete pods $(kubectl get pods -n upm-beaco-ff-base | grep '^accm-server' | awk '{print $1}') -n upm-beaco-ff-base
+    kubectl apply -f <cluster-name>.yaml
     ```
 
-At this point, the HM console on the new cluster is available again.
+    You can monitor the restore progress using `kubectl get clusters -A`.
 
-[Omit `spec.bootstrap.recovery.recoveryTarget` - do we need a note for this in public docs?]: #
+Now repeat the above steps for each HM-internal database cluster you need to restore.
+
+#### Restart HM services
+
+[am I right in assuming that this is a one-time step after all HM-internal databases are restored?]: #
+
+After the cluster is successfully restored and in a healthy state, restart the `accm-server` in the namespace `upm-beaco-ff-base` to make sure the HM console is available again: 
+
+```shell
+kubectl delete pods $(kubectl get pods -n upm-beaco-ff-base | grep '^accm-server' | awk '{print $1}') -n upm-beaco-ff-base
+```
+
+At this point, the HM console on the new cluster is available again.
 
 ### Configure the Velero plugin
 
@@ -359,8 +396,6 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
 
 1.  Restore custom managed storage locations by applying the following Velero:
 
-    [Is this an optional step? I wonder if this is required for multi-DC environments but not for single DC]: #
-
     ```yaml
     kubectl apply -f - <<EOF
     apiVersion: velero.io/v1  
@@ -404,7 +439,7 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
     velero get restore restore-2-clusterwrappers
     ```
 
-1.  After the cluster wrappers are restored, configure and apply the following Velero restore resource manifest to restore the backup wrappers:
+1.  After the cluster wrappers are restored, configure and apply the following Velero resource manifest to restore the backup wrappers:
 
     ```yaml
     kubectl apply -f - <<EOF
@@ -423,7 +458,7 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
     EOF
     ```
 
-1.  Configure and apply the following Velero restore resource manifest to restore Griptape, Lakekeeper and Dex secrets:
+1.  Configure and apply the following Velero resource manifest to restore Griptape, Lakekeeper and Dex secrets:
 
     ```shell
     kubectl apply -f - <<EOF
