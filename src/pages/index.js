@@ -508,7 +508,7 @@ const Page = () => {
               VectorChord
             </BannerWideLink>
 
-            <BannerWideLink to="/pg_extensions/vectorchord">
+            <BannerWideLink to="/pg_extensions/vectorchord_bm25">
               VectorChord-bm25
             </BannerWideLink>
 
