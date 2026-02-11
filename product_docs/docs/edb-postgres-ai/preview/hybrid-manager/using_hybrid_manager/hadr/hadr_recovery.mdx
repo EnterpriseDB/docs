@@ -25,7 +25,7 @@ Before starting the DR procedure, ensure you have made yourself familiar with:
 
   - The container images used to build the clusters in the old HM instance are available to the new one.
 
-- [Install the Velero CLI](https://velero.io/docs/v1.3.0/velero-install/).
+- [Install the Velero CLI](https://velero.io/docs/v1.17/velero-install/).
 
 - [Install the jq utility](https://jqlang.org/download/).
 
@@ -35,7 +35,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 1.  Obtain the name of the old and new buckets, the ID of the old backup, and the region of the new attached bucket and store these parameters in environment variables:
 
-    ```bash
+    ```shell
     export OLD_BUCKET=<old_bucket>
     export OLD_BACKUP_ID=<old_environment_internal_backup_id>
     export NEW_BUCKET=<new_bucket>
@@ -58,7 +58,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
     This is an example for setting the environment variables for an HM instance deployed on EKS:
     
-    ```bash
+    ```shell
     export OLD_BUCKET=eks-1105143903-2511-edb-postgres
     export OLD_BACKUP_ID=a7462dbc7106
     export NEW_BUCKET=eks-1105155418-2511-edb-postgres
@@ -71,7 +71,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 1.  To copy the data from the old bucket to the new bucket, you first need to locate and note the names of the source and target folders. You need to copy the following folders and their content:
 
-    - **Internal EDB backups folder** &mdash; The internal backups folder in the old bucket `edb-internal-backups/\<random-string\>` is different in the new HM instance, as it will have a different `\<random-string\>`.
+    - **Internal EDB backups folder** &mdash; The internal backups folder in the old bucket `edb-internal-backups/<random-string>` is different in the new HM instance, as it will have a different `<random-string>`.
 
     - **Postgres clusters backups folder** &mdash; `customer-pg-backups`.
 
@@ -98,8 +98,6 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
     </Tab>
     </TabContainer>
-
-    [I read that gsutil is being deprecated, can we have the gcloud commands for this?]: # 
     
     [Also, in these examples we don't specify how to move the custom storage locations, should we add that as an optional step?]: #
 
@@ -159,27 +157,6 @@ The first step ensures the backups of the unavailable HM instance (“old backup
         prefix: edb-internal-backups/velero
       provider: gcp
     EOF
-    kubectl apply -f - <<EOF
-    apiVersion: velero.io/v1
-    kind: BackupStorageLocation
-    metadata:
-      annotations:
-        appliance.enterprisedb.com/s3-prefixes: edb-internal-backups/velero
-      labels:
-        appliance.enterprisedb.com/storage-credentials: bound
-      name: recovery
-      namespace: velero
-    spec:
-      accessMode: ReadOnly
-      credential:
-        key: gcp
-        name: gcs-credentials
-      default: false
-      objectStorage:
-        bucket: ${NEW_BUCKET}
-        prefix: edb-internal-backups/velero
-      provider: gcp
-    EOF
     ```
 
     </Tab>
@@ -200,7 +177,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 1.  Choose the backup you want to restore from. You can have multiple backups available, so choose the one that best suits your needs, e.g. the most recent backup before the disaster happened. Note the Velero backup name, as well as the date and time (UTC), as both are required for a restore, for example: 
 
-    ```bash
+    ```shell
     NAME                                      STATUS      ERRORS   WARNINGS   CREATED                         EXPIRES   STORAGE LOCATION   SELECTOR  
     velero-backup-kube-state-**20241216154403**   Completed   0        0          2024-12-16 16:44:03 \+0100 CET   5d        recovery           \<none\>
     ```
@@ -238,8 +215,6 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     gcloud storage buckets update gs://${NEW_BUCKET_DATALAKE} --cors-file=cors-config.json
     ```
 
-    [same here with gsutil being deprecated, can we have the gcloud commands for this?]: #
-
     </Tab>
     </TabContainer>
 
@@ -249,11 +224,15 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 Once the old backups are available, you can restore the EDB internal databases. For each internal database:
 
-[I find this a bit confusing. In the title we call out `app-db` and `beacon-db`. Are these the internal databases to restore? But in the instructions below we are restoring the K8s cluster config file (\<cluster-name\>) and not individual dbs.]: #
+[I find this a bit confusing. In the title we call out `app-db` and `beacon-db`. Are these the internal databases to restore? But in the instructions below we are restoring the K8s cluster config file (`<cluster-name>`) and not individual dbs.]: #
 
-1.  Save the cluster manifest to a yaml file: `kubectl get \<cluster-name\> \-o yaml \>\<cluster-name\>.yaml`.  
+1.  Save the cluster manifest to a yaml file: 
 
-    [<cluster-name\> is the K8s cluster/HM installation, correct? If yes, I will try to disambiguiate from a Postgres db cluster or a internal service cluster.]: #
+    ```shell
+    kubectl get <cluster-name> -o yaml > <cluster-name>.yaml
+    ```
+
+    [`<cluster-name`> is the K8s cluster/HM installation, correct? If yes, I will try to disambiguiate from a Postgres db cluster or a internal service cluster.]: #
 
 1.  Edit the cluster spec in the yaml file so the cluster is created from the backups:  
 
@@ -261,50 +240,50 @@ Once the old backups are available, you can restore the EDB internal databases. 
 
       ```yaml
       recovery:  
-        database: \<database name as in the init section\>  
-        owner: \<owner name as in the init section\>  
-        source: \<pg-cluster-name\>  
+        database: <database name as in the init section>  
+        owner: <owner name as in the init section>  
+        source: <pg-cluster-name>  
         secret:  
-          name: \<secret name as in the init section\>  
+          name: <secret name as in the init section>  
         recoveryTarget:  
-          targetTime: "\<recovery date in YYYY-MM-DD HH:MM:SS+00 format\>"  
+          targetTime: "<recovery date in YYYY-MM-DD HH:MM:SS+00 format>"  
       ```
 
     - Add the following section:  
 
       ```yaml
       externalClusters:  
-      \- barmanObjectStore:  
-          destinationPath:  S3://\<linked-bucket-name\>/edb-internal-backups/\<old-backups-random-string\>/ databases  
+       - barmanObjectStore:  
+          destinationPath:  S3://<linked-bucket-name>/edb-internal-backups/<old-backups-random-string>/ databases  
           s3Credentials:  
             inheritFromIAMRole: true  
           wal:  
             maxParallel: 8  
-        name: \<pg-cluster-name\>  
+        name: <pg-cluster-name>  
       ```
 
     - Add the following prefix to the `appliance.enterprisedb.com/s3-prefixes` annotation of the `inheritedMetdata` section (the list comma separated): 
 
       ```yaml
-      edb-internal-backups/\<old-backups-random-string\>/databases/\<db-name\>  
+      edb-internal-backups/<old-backups-random-string>/databases/<db-name>  
       ```
 
-1.  Delete the cluster:
+1.  Delete the HM-internal database clusters that were created during installation of the new HM instance to make room for the HM-internal database clusters that will be recovered from the backup:
 
-    [do we delete the cluster to retrigger the restore with the new config?]: #
-
-    ```bash
-    kubectl delete cluster \<cluster-name\>  
+    ```shell
+    kubectl delete cluster <cluster-name>  
     ```
 
-1.  Clean the backup area for the cluster:
+1.  Clean the backup area that was created during the installation of the new HM instance to avoid confusion with the old backups that you want to restore:
 
     <TabContainer syncKey="CSP">
     <Tab title="AWS">
 
-    ```bash
-    aws s3 rm s3://\<linked-bucket-name\>/edb-internal-backups/\<new-backups-random-string\>/databases/\<pg-cluster-name\> \--recursive
+    ```shell
+    aws s3 rm s3://\<linked-bucket-name>/edb-internal-backups/\<new-backups-random-string>/databases/\<pg-cluster-name> \--recursive
     ```
+
+    [this looks a bit weird to me: should it be `aws s3 rm s3://${NEW_BUCKET}/edb-internal-backups/<new-backups-random-string>/databases/<pg-cluster-name> --recursive`?]: #
 
     </Tab>
 
@@ -314,12 +293,12 @@ Once the old backups are available, you can restore the EDB internal databases. 
     gcloud storage rm gs://<linked-bucket-name>/edb-internal-backups/<new-backups-random-string>/databases/<pg-cluster-name>/ --recursive
     ```
 
-    [I used AI to generate this gcloud alternative, but we'd need validation]: #
+    [Same here with using ${NEW_BUCKET} instead of <linked-bucket-name>]: #
 
     </Tab>
     </TabContainer>
 
-1.  Apply the yaml file for the cluster to be re-created: `kubectl apply \-f \<cluster-name\>.yaml`. You can monitor the restore progress using `kubectl get clusters -A`.
+1.  Apply the yaml file for the cluster to be re-created: `kubectl apply -f <cluster-name>.yaml`. You can monitor the restore progress using `kubectl get clusters -A`.
 
 1.  After the cluster is successfully restored and in a healthy state, restart the `accm-server` in the namespace `upm-beaco-ff-base` to make sure the HM console is available again: 
 
@@ -368,15 +347,13 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
     data:  
       # configure disaster recovery mode, so restored items are transformed as needed  
       drMode: "true"  
-      \# configure a date corresponding to the velero backup date. Note the format\!  
+      # configure a date corresponding to the velero backup date. Note the format!  
       drDate: "${BACKUP_TIMESTAMP}"  
-      \# old and new buckets for internal custom storage locations  
+      # old and new buckets for internal custom storage locations  
       oldBucket: ${OLD_BUCKET}  
       newBucket: ${NEW_BUCKET}
     EOF
     ```
-
-    [We usually comment yaml files suing '#' only, but I see throughout these docs we have used '/#'. Can we streamline to '#' as in other docs, or is there a technical reason to use '/#'?]: #
 
 ### Restore resources
 
@@ -414,10 +391,10 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
     spec:  
       backupName: "${BACKUP_NAME}" 
       includedResources:  
-      \- clusterwrappers.beacon.enterprisedb.com  
+       - clusterwrappers.beacon.enterprisedb.com  
       restoreStatus:  
         includedResources:  
-        \- clusterwrappers.beacon.enterprisedb.com
+         - clusterwrappers.beacon.enterprisedb.com
     EOF
     ```
 
@@ -439,10 +416,10 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
     spec:   
       backupName: "${BACKUP_NAME}" 
       includedResources:  
-      \- backupwrappers.beacon.enterprisedb.com  
+       - backupwrappers.beacon.enterprisedb.com  
       restoreStatus:  
         includedResources:  
-        \- backupwrappers.beacon.enterprisedb.com
+         - backupwrappers.beacon.enterprisedb.com
     EOF
     ```
 
