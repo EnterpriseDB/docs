@@ -1,0 +1,176 @@
+---
+title: Postgres Distributed terminology
+navTitle: Terminology
+description: The concepts behind EDB Postgres Distributed (PGD) and how they work in practice.
+redirects:
+  - /pgd/latest/testingandtuning/ #generated for DOCS-1247-PGD-6.0-Docs
+  - /pgd/latest/reference/testing-tuning/ #generated for DOCS-3034
+  - /pgd/latest/concepts/*
+  - /pgd/latest/terminology/ 
+---
+
+This terminology list includes terms associated with EDB Postgres Distributed (PGD) that you might be unfamiliar with.
+
+#### Asynchronous replication
+
+A type of replication that copies data to other PGD cluster members after the transaction completes on the origin node. Asynchronous replication can provide higher performance and lower latency than [synchronous replication](#synchronous-replication). However, asynchronous replication can see a lag in how long changes take to appear in the various cluster members. While the cluster will be [eventually consistent](#eventual-consistency), there's potential for nodes to be apparently out of sync with each other.
+
+#### Commit scopes
+
+Rules for managing how transactions are committed between the nodes and groups of a PGD cluster. Used to configure [synchronous replication](#synchronous-replication), [Group Commit](#group-commit), [CAMO](#camo-or-commit-at-most-once), [Eager](#eager), [Lag control](#lag-control), and other PGD features.
+
+#### CAMO or commit-at-most-once
+
+High-value transactions in some applications require that the application successfully commits exactly once, and in the event of failover and retrying, only once. To ensure this happens in PGD, CAMO can be enabled, allowing the application to actively participate in the transaction. 
+
+#### Conflicts
+
+As data is replicated across the nodes of a PGD cluster, there might be occasions when changes from one source clash with changes from another source. This is a conflict and can be handled with conflict resolution. Conflict resolution is a set of rules that decide which source is correct or preferred. Conflicts can also be avoided with conflict-free data types.
+
+#### Connection Manager
+
+To ensure that clients can connect to the right nodes in the distributed cluster, PGD provides a connection management system that allows clients to connect to the appropriate nodes based on their needs.
+
+This system is designed to ensure that clients can access the data they need while maintaining the performance and availability of the cluster. Unlike Proxy systems, this connection management system is built into the database instance itself, allowing for more efficient and reliable connections.
+
+#### Consensus
+
+How [Raft](#replicated-available-fault-tolerance-raft) makes group-wide decisions. Given a number of nodes in a group, Raft looks for a consensus of the majority (number of nodes divided by 2 plus 1) voting for a decision. For example, when a write leader is being selected, a Raft consensus is sought over which node in the group will be the write leader. Consensus can be reached only if there's a quorum of voting members.
+
+#### Cluster
+
+Generically, a cluster is a group of multiple systems arranged to appear to end users as one system. See also [PGD cluster](#pgd-cluster) and [Postgres cluster](#postgres-cluster).
+
+#### DDL (data definition language)
+
+The subset of SQL commands that deal with defining and managing the structure of a database. DDL statements can create, modify, and delete objects (that is, schemas, tables, and indexes) in the database. Common DDL commands are CREATE, ALTER, and DROP.
+
+#### DML (data manipulation language)
+
+The subset of SQL commands that deal with manipulating the data held in a database. DML statements can create, modify, and delete rows in tables in the database. Common DML commands are INSERT, UPDATE, and DELETE. 
+
+#### Durability
+
+Durability guarantees that once a transaction is committed, it remains committed even in the event of a system failure. PGD manages this through [Commit scopes](#commit-scopes).
+
+#### Eager
+
+A synchronous commit mode that avoids conflicts by detecting incoming potentially conflicting transactions and “eagerly” aborts one of them to maintain consistency. 
+
+#### Eventual consistency
+
+A distributed computing consistency model stating changes to the same item in different cluster members will eventually converge to the same value. Asynchronous logical replication with conflict resolution and conflict-free replicated data types exhibit eventual consistency in PGD.
+
+#### Failover
+
+The automated process that recognizes a failure in a highly available database cluster and takes action to maintain consistency and availability. The goal is to minimize downtime and data loss.
+
+#### Group commit
+
+A synchronous commit mode that requires more than one PGD node to successfully receive and confirm a transaction at commit time.
+
+#### Immediate consistency
+
+A distributed computing model where all replicas are updated synchronously and simultaneously. This model ensures that all reads after a write completes will see the same value on all nodes. The downside of this approach is its negative impact on performance.
+
+#### Lag Control
+
+Lag Control is a throttling mechanism used to ensure that secondary nodes do not fall too far behind the primary. If a node’s replication delay exceeds a set threshold, PGD automatically throttles the ingestion on the origin node to allow the rest of the cluster to catch up.
+
+#### Logical replication
+
+A more efficient method of replicating changes in the database. While physical streaming replication duplicates the originating database’s disk blocks, logical replication instead takes the changes made, independent of the underlying physical storage format, and publishes them to all systems that subscribed to see the changes. Each subscriber then applies the changes locally. Logical replication can't support most DDL commands.
+
+#### Logical standby node
+
+Logical standby nodes are used to provide a read-only replica of the data in the cluster. They are similar to subscriber-only nodes, but they are designed to be more flexible and can be used in a wider range of scenarios.
+
+#### Node
+
+A general term for an element of a distributed system. A node can play host to any service. In PGD, [PGD nodes](#pgd-node) run a Postgres database, the BDR extension and the Connection Manager.
+
+Typically, for high availability, each node runs on separate physical hardware, but that's not always the case.
+
+#### Node groups
+
+PGD nodes in PGD clusters can be organized into groups to reflect the logical operation of the cluster. For example, the data nodes in a particular physical location can be part of a dedicated node group for the location.
+
+Each group uses the [Raft consensus](#consensus) algorithm to elect a leader; in data-specific groups, this leader acts as the write leader, which handles all incoming write operations to maintain consistency.
+
+Groups manage data replication, with a "top-level" group representing the entire cluster and serving as the parent to all other sub-groups.
+
+#### PGD cluster
+
+A group of multiple redundant database systems and proxies arranged to avoid single points of failure while appearing to end users as one system. PGD clusters can be run on Docker instances, cloud instances or “bare” Linux hosts, or a combination of those platforms. A PGD cluster can also include backup nodes. The data nodes in a cluster are grouped together in a top-level group and into various local [node groups](#node-groups). 
+
+#### PGD node
+
+In a PGD cluster are nodes that run databases and participate in the PGD cluster. A typical PGD node runs a Postgres database, the BDR extension, and the Connection Manager. PGD modes are also referred to as *data nodes*, which suggests they store data. However, some PGD nodes, specifically [witness nodes](#witness-nodes), don't do that.
+
+#### Physical replication
+
+By making an exact copy of database disk blocks as they're modified to one or more standby cluster members, physical replication provides an easily implemented method to replicate servers. But there are restrictions on how it can be used. For example, only one master node can run write transactions. Also, the method requires that all cluster members are on the same major version of the database software with the same operating system and CPU architecture.
+
+#### Postgres cluster
+
+Traditionally, in PostgreSQL, a number of databases running on a single server is referred to as a cluster (of databases). This kind of Postgres cluster isn't highly available. To get high availability and redundancy, you need a [PGD cluster](#pgd-cluster).
+
+#### Quorum
+
+A quorum is the minimum number of voting nodes needed to participate in a distributed vote. It ensures that the decision made has validity. For example,
+when a [Raft](#replicated-available-fault-tolerance-raft) [consensus](#consensus) is needed by a PGD cluster, a minimum number of voting nodes participating in the vote are needed. With a 5-node cluster, the quorum is 3 nodes in the cluster voting. A consensus is 5/2+1 nodes, 3 nodes voting the same way. If there are only 2 voting nodes, then a consensus is never established. Quorums are required in PGD for [global locks](/pgd/latest/reference/ddl/ddl-locking/) and Raft decisions.
+
+#### Replicated available fault tolerance (Raft)
+
+A consensus algorithm that uses votes from a quorum of machines in a distributed cluster to establish a consensus. PGD uses Raft within groups (top-level or local) to establish the node that's the write leader. 
+
+#### Read scalability
+
+The ability of a system to handle increasing read workloads. For example, PGD can introduce one or more read replica nodes to a cluster and have the application direct writes to the primary node and reads to the replica nodes. As the read workload grows, you can increase the number of read replica nodes to maintain performance.
+
+#### Subscription
+
+PGD nodes will publish changes being made to data to nodes that are interested. Other PGD nodes will ask to subscribe to those changes. This behavior creates a subscription and is the mechanism by which each node is updated. PGD nodes bidirectionally subscribe to other PGD nodes' changes.
+
+#### Switchover
+
+A planned change in connection between the application or proxies and the active database node in a cluster, typically done for maintenance.
+
+#### Synchronous replication
+
+When changes are updated at all participating nodes at the same time, typically leveraging a two-phase commit. While this approach replicates changes and resolves conflicts before committing, a performance cost in latency occurs due to the coordination required across nodes.
+
+#### Subscriber-only nodes
+
+A PGD cluster is based around bidirectional replication. But in some use cases, such as needing a read-only server, bidirectional replication isn't needed. A subscriber-only node is used in this case. It subscribes only to changes in the database to keep itself up to date and provide correct results to any run directly on the node. This feature can be used to enable horizontal read scalability in a PGD cluster. They can be configured in two ways:
+
+- Within a data group: These nodes act as read-only replicas alongside standard data nodes. While they provide local access to data, they do not benefit from specific replication optimizations.
+- Within a subscriber-only group: This configuration lacks a write leader. All nodes are strictly read-only, allowing PGD to apply optional optimizations that streamline the replication process.
+
+#### Two-phase commit (2PC)
+
+A multi-step process for achieving consistency across multiple database nodes.
+The first phase sees a transaction prepared on an originating node and sent to
+all participating nodes. Each participating node validates that it can apply the
+transaction and signals its readiness to the originating node. This is the
+prepare phase. In the second phase, if all the participating nodes signal they're
+ready, the originating node proceeds to commit the transaction and signals
+the participating nodes to commit, too. This is the commit phase. If, in the
+prepare phase, any node signals it isn't ready, the entire transaction is
+aborted. This process ensures all nodes get the same changes.
+
+#### Vertical scaling or scale up
+
+A traditional computing approach of increasing a resource (CPU, memory, storage, network) to support a given workload until the physical limits of that architecture are reached, for example, Oracle Exadata.
+
+#### Witness nodes
+
+Witness nodes primarily serve to help the cluster establish a consensus. An odd number of data nodes is needed to establish a consensus. Where resources are limited, a witness node can be used to participate in cluster decisions but not replicate the data. Not holding the data means it can't operate as a standby server or provide majorities in synchronous commits.
+
+#### Write leader
+
+In an Always-on architecture, a node is selected as the correct connection endpoint for applications. This node is called the write leader. Once selected, the PGD Connection Manager routes queries and updates to it. With only one node receiving writes, unintended multi-node writes can be avoided. The write leader is selected by consensus of a quorum of data nodes. If the write leader becomes unavailable, the data nodes select another node to become write leader. Nodes that aren't the write leader are referred to as *shadow nodes*.
+
+#### Writer
+
+ When a [subscription](#subscription) delivers data changes to a PGD node, the database server tasks a worker process, called a writer, with getting those changes applied.

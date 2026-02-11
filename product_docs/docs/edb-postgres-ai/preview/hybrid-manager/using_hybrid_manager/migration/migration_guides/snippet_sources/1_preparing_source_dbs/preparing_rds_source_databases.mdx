@@ -2,6 +2,7 @@
 title: "Preparing AWS RDS/Aurora PostgreSQL source databases"
 navTitle: "Preparing AWS RDS/Aurora PostgreSQL source"
 
+
 ---
 
 Before migrating data from an AWS RDS for PostgreSQL or Aurora PostgreSQL database using the EDB Data Migration Service, you must prepare the source database to allow the EDB DMS Agent to connect to the source and perform replication.
@@ -14,21 +15,25 @@ To perform logical replication, the EDB DMS Agent in reader mode requires:
 -  `wal_level` set to `logical`
 -  Optionally, `max_wal_size` set to the recommended setting of 8 GB or higher for [improved migration performance](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/specs/#wal-configuration)
 
-Because AWS RDS databases are managed by a cloud service provider, you can't change their default configurations with psql. Instead, create a parameter group with replication enabled and associate it with your RDS instance.
+Because AWS RDS databases are managed by a cloud service provider, you can't change their default configurations with psql. Instead, create a DB cluster parameter group with replication enabled and associate it with your RDS instance.
 
-1.  [Create a parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Creating.html) using either the AWS Management Console, AWS CLI, or RDS API. Ensure the parameter group family matches the Postgres version your RDS database is using.
+1.  [Create a DB cluster parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Creating.html) using either the AWS Management Console, AWS CLI, or RDS API. Ensure the DB cluster parameter group family matches the Postgres version your RDS database is using.
 
     See [Parameter groups for Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.html) for additional configuration information.
 
-2.  [Associate the created parameter group with your source Amazon RDS database](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Associating.html) using either the AWS Management Console, AWS CLI, or RDS API.
+2.  [Associate the created DB cluster parameter group with your source Amazon RDS database](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Associating.html) using either the AWS Management Console, AWS CLI, or RDS API.
 
-3.  [Modify parameters in a parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Modifying.html) using either the AWS Management Console, AWS CLI, or RDS API. 
+3.  [Modify parameters in a DB cluster parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Modifying.html) using either the AWS Management Console, AWS CLI, or RDS API.
 
-    - For this parameter group, you must set `rds.logical_replication` to `1`. After you configure this, the database sets `wal_level` to `logical`.
+    - For this DB cluster parameter group, you must set `rds.logical_replication` to `1`. After you configure this, the database sets `wal_level` to `logical`.
 
-    - Also ensure `max_wal_size` is configured for adequate WAL LSN lifetime.
+    - Ensure `max_wal_size` is configured for adequate WAL LSN lifetime.
 
-      Set the `max_wal_size` value large enough that production traffic is generating mostly timed checkpoints and not requested checkpoints based on WAL size.
+      !!!note
+      If your source database is an Amazon Aurora PostgreSQL instance, you won't be able to modify `max_wal_size` as it is managed by AWS. Only Amazon RDS PostgreSQL instances allow you to edit the `max_wal_size` parameter.
+      !!!
+
+      Set the `max_wal_size` value large enough that production traffic generates mostly timed checkpoints rather than requested checkpoints based on WAL size.
 
       The streaming migration process also requires changes to be available in the WAL until they can be streamed to durable message storage in the cloud infrastructure of EDB DMS. Setting `max_wal_size` too small can affect performance. It can also interfere with the migration process by allowing Postgres LSNs to be dropped from the WAL before they can be streamed. We recommend setting `max_wal_size` to at least 8 GB. Consult your DBA to determine the appropriate size.
 
@@ -63,7 +68,7 @@ Because AWS RDS databases are managed by a cloud service provider, you can't cha
 
     This command prompts you for the password associated with `<PG_USERNAME>`.
 
-2.  Create a role for migration with `LOGIN`: 
+2.  Create a role for migration with `LOGIN`:
 
     ```sql
     CREATE ROLE <MIGRATION_ROLE> WITH LOGIN PASSWORD '<MIGRATION_ROLE_PASSWORD>';
@@ -102,7 +107,7 @@ Because AWS RDS databases are managed by a cloud service provider, you can't cha
     GRANT USAGE ON SCHEMA <DB_SCHEMA> TO <MIGRATION_ROLE>;
     ```
 
-    The new `<MIGRATION_ROLE>` has schema access but still needs `SELECT` access to the source tables of those schemas. 
+    The new `<MIGRATION_ROLE>` has schema access but still needs `SELECT` access to the source tables of those schemas.
 
 6.  Grant `SELECT` on source tables to the migration role. You can grant access across a schema or for each table.
 
@@ -165,41 +170,40 @@ This example shows how to run the validation script.
     ```shell
      *** [Transporter] - Get PostgreSQL Major Version
     PostgreSQL major version: 16
-    
+
      *** [Transporter] - Validate WAL Level
     wal_level:  logical
     [Pass] wal_level is 'logical'.
-    
+
      *** [Transporter] - Validate max WAL senders
     max_wal_senders: 10
     [Pass] max_wal_senders is at least 1.
-    
+
      *** [Transporter] - Validate max replication slots
     max_replication_slots: 10
     [Pass] max_replication_slots is at least 1.
-    
+
      *** [Transporter] - Validate max WAL size
     max_wal_size: 8 GB
     [Pass] max_wal_size is at least 8 GB.
-    
+
      *** [Transporter] - Validate checkpoints
     checkpoints_timed: 424
     checkpoints_req: 1
     [Pass] Timed checkpoints are more frequent than requested checkpoints.
-    
+
      *** [Transporter] - Check debezium user role
     [Pass] User 'debezium' is present
     [Pass] User 'debezium' has replication permission
-    
+
      *** [Transporter] - Check SELECT privilege on the tables to be migrated
     [Pass] User debezium has select privilege on all tables to be migrated.
-    
+
      *** [Transporter] - Check CREATE privilege on database
     [Pass] Role 'debezium' has CREATE privilege on database 'postgres'.
     ```
 
     Your database is ready for CDC migration.
 
-!!!note 
+!!!note
     Address any `[Failed]` or `[Suggestion]` statuses by modifying the source database settings as recommended here. `[Failed]` checks are blocking issues you must resolve before the DMS can execute the data migration. `[Suggestion]` checks allow migration but can negatively affect performance if left unaddressed.
-    

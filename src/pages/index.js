@@ -385,7 +385,7 @@ const Page = () => {
               EDB Postgres Distributed (PGD)
             </BannerWideLink>
 
-            <BannerWideLink to="/repmgr/latest">
+            <BannerWideLink to="/supported-open-source/repmgr/">
               Replication Manager (repmgr)
             </BannerWideLink>
             <BannerWideLink to="/supported-open-source/patroni/">
@@ -435,7 +435,7 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
-            <BannerWideLink to="/edb-postgres-ai/hybrid-manager/using_hybrid_manager/migration/">
+            <BannerWideLink to="/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/">
               Data Migration Service
             </BannerWideLink>
 

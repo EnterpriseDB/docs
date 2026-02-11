@@ -1,0 +1,94 @@
+---
+title: Minor upgrade to Hybrid Manager 1.3
+navTitle: Minor upgrade
+description: Follow the step-by-step procedures for upgrading the Hybrid Manager control plane across supported versions.
+deepToC: true
+redirects: 
+- /edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/in_place_upgrade/
+---
+
+> **Role:** Infrastructure Engineer
+
+**Prerequisites:**
+
+* Administrative access to the Kubernetes cluster.
+* Access to the `values.yaml` file used for the current installation.
+* **Required tools:**
+    * `helm` (Latest version recommended)
+
+---
+
+## Upgrade from 1.2.3 → 1.3.0
+
+This release introduces major changes to the underlying storage for monitoring (Thanos) and adds the Spire identity service.
+
+### Perform system level changes (EKS Only)
+
+If you are running on **Amazon EKS**, you must update your IAM roles to allow NIM models to access S3.
+
+* **Action:** Edit the IAM role associated with your Service Account.
+* **Update:** Add the condition `"system:serviceaccount:m-*:m-*"` to the trust relationship policy.
+
+### Update your `values.yaml`
+
+Modify your configuration file to accommodate new parameters.
+
+1. **Update image tags.**
+
+   ```yaml
+   bootstrapImageTag: v1.3.0
+   ```
+
+1. **Increase storage for monitoring.**
+
+   The Thanos Compactor requires more storage in this release.
+
+   ```yaml
+   parameters:
+     upm-thanos:
+       compactor_pvc_storage: 100Gi
+   ```
+
+1. **Set new mandatory defaults.**
+
+   The following values can no longer be empty and must be defined:
+
+   ```yaml
+   parameters:
+     upm-beaco-ff-base:
+       aes_key_rotation_interval: "24h" # Example value
+     upm-istio-gateway:
+       enable_server_session: true
+       session_duration_seconds: 3600 # Example value
+   ```
+
+1. **Configure Spire trust domain.**
+
+   Spire is now included in the platform. You must set a unique trust domain for this installation.
+
+   ```yaml
+   parameters:
+     global:
+       trust_domain: <your-unique-trust-domain>
+   ```
+
+### Perform the upgrade
+
+```bash
+helm repo update
+
+helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+   -n edbpgai-bootstrap \
+   -f ./values.yaml \
+   --version 1.3.0
+```
+
+### Post-upgrade expectations
+
+* **Portal downtime:** The internal beacon database may take up to **30 minutes** to come online. The portal may be unavailable during this time.
+
+* **Database restarts:** All customer databases will restart during this upgrade as they migrate from `barman-cloud` in-tree to the plugin architecture.
+
+* **Model hosting:** Models previously created via `kubectl` must be re-installed using the UI.
+
+* **Migration Portal:** Databases created prior to 1.3.0 cannot be used as destination targets for migration.
