@@ -1,0 +1,39 @@
+---
+title: "Choosing between Physical Streaming Replication (PSR) and EDB Postgres Distributed (PGD)"
+navTitle: Choosing between PSR and PGD
+description: Learn about the differences between Physical Streaming Replication (PSR) and EDB Postgres Distributed (PGD).
+indexCards: simple
+---
+
+EDB supports both high availability and distributed high availability. High availability is achieved through Physical Streaming Replication (PSR), which is typically managed by external tools like EDB Failover (EFM) or Patroni. Distributed high availability is achieved with EDB Postgres distributed (PGD). 
+
+Choosing the right replication strategy for Postgres depends on your application’s specific availability, consistency, and geographic requirements. While PSR is effective for local high availability and standard DR scenarios, PGD is designed for “always-on” global architectures that require continuous write availability along with advanced consistency and durability guarantees. 
+
+## PSR with EFM or Patroni
+
+In a PSR setup, nodes are typically classified as either primary or standby. The primary serves as the central authority that handles all write operations and generates the Write-Ahead Log (WAL) stream. A standby acts as a resilient secondary node that remains in a continuous recovery state.
+
+PSR works at the block level, creating a byte-for-byte copy of the primary on one or more standbys. Because PostgreSQL does not natively handle automatic failover, external orchestration tools are required. 
+
+### PSR management tools
+
+While there are many tools for managing PSR, the two highlighted here are supported by EDB because they are most widely deployed by EDB customers or the most extensively adopted open source solution.  
+
+- **[EDB Failover Manager (EFM):](/efm/latest/)** This enterprise-grade agent monitors cluster health, manages virtual IP (VIP) addresses, and automates the promotion of a standby to primary. This solution is ideal if you prefer native PSR, use bare metal and virtualized platforms where write operations are centralized on a single node. In this architecture, secondary regions typically serve as Disaster Recovery (DR) targets. Moving traffic between regions typically requires a formal, coordinated promotion process for both the database and application layer. 
+- **[Patroni:](/supported-open-source/patroni/)** This is a popular open source orchestration tool for PSR with an active development community. Patroni relies on an external Distributed Consensus Store (DCS), most commonly `etcd`, to maintain leader election and cluster state. Like EFM, this solution is ideal if you already prefer PSR with an architecture that typically serve a primary and secondary region, requiring a coordinated manual or scripted process to shift operations between sites.
+
+## EDB Postgres Distributed (PGD) 
+
+PGD is an integrated extension stack that transforms PostgreSQL into a distributed, multi-master platform. It builds upon the **logical replication** features originally designed and contributed to the PostgreSQL core by the PGD architects, but adds the essential cluster-wide orchestration that the core feature lacks.
+
+### When to choose PGD
+
+PGD is engineered for Tier 1 enterprise applications where downtime is not an option and data integrity must be guaranteed across a global footprint. Consider PGD if your requirements include:
+
+- **Advanced durability and distributed consistency:** Unlike PSR, which offers limited and coarse-grained options for synchronicity, PGD provides true distributed consistency. Through [commit scopes](/pgd/latest/commit-scopes/), you can precisely define the apply behavior for both local and remote nodes. This allows you to choose exactly how many nodes, and in which specific regions, must acknowledge a transaction before it is considered durable, allowing you to balance performance against data protection from a global down to a transaction level. 
+- **Always-on requirements (99.999%):** PGD offers zero-wait failover. Every node is writable; if one fails, the application simply reroutes to another active node without waiting for a promotion process. This eliminates the detection and promotion lag inherent in PSR, reducing your Recovery Time Objective (RTO) to the time it takes to reroute network traffic.
+- **Zero-downtime operations:** PGD enables rolling upgrades and OS patches while the application remains online. Because the cluster is active-active, you can take nodes offline one by one for maintenance without losing write availability or requiring a complex switchover process. This architecture also allows you to perform heavy maintenance operations such as `REINDEX` or `VACUUM FULL` on a specific node without affecting the availability or performance of other nodes. 
+- **Global read and write scaling:** For workloads requiring massive read capacity, PGD supports subscriber only nodes. By placing writable nodes and high-scale subscribers physically close to your users within a mesh architecture, you eliminate cross-region latency and ensure snappy application response times regardless of geography. This approach allows you to scale reads while maintaining a high-performance write fabric across your primary regions
+
+
+Refer to [Comparing replication solutions](compared) for a more detailed breakdown between PGD, PSR+EFM, pglogical2, and core logical replication in PostgreSQL.
