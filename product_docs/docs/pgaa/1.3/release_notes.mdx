@@ -1,0 +1,69 @@
+---
+title: Analytics Accelerator 1.6 release notes
+navTitle: Release notes
+description: Release notes for version 1.6 of Analytics Accelerator.
+deepToC: true
+---
+
+Released: 17 September 2026
+Analytics Accelerator 1.3.1 includes the following enhancements and bug fixes, reflecting all changes since version 1.3.0:
+
+
+## Features
+
+- **Native CTAS support:** Simplify data migration and table creation with `CREATE TABLE AS SELECT` (CTAS), now supported directly using the `USING PGAA WITH` syntax. This allows you to create PGAA-managed tables directly from the results of a PostgreSQL query.
+- **Spark Connect integration:** Offload heavy analytical queries to a remote Spark cluster using the new Spark Connect executor.
+    - Use `pgaa.executor_engine` to switch between `seafowl` (default) and `spark_connect`.
+    - Manage endpoints via `pgaa.spark_connect_url` and pass fine-grained JSON settings through `pgaa.spark_connect_extra_config`.
+    - Execute Spark SQL statements verbatim on the cluster with the `pgaa.spark_sql()` function, which enables access to Spark-specific functions and Iceberg maintenance routines.
+- **High-speed Iceberg replication with PGD 6.1+:** Significant performance gains for Iceberg tables with new support for merge-on-read using equality deletes. When `pgd.replicate_to_analytics` is enabled, changes are replicated more efficiently than traditional copy-on-write methods.
+- **Expanded catalog support:** PGAA now supports AWS S3 Tables, allowing you to use the `pgaa.import_catalog` and `pgaa.attach_catalog` functions to manage S3-native Iceberg catalogs.
+- **Dynamic worker management:** Implemented a new dynamic, AIDB-style management system that automatically scales and manages background worker processes based on active workload.
+
+
+## Bug fixes
+
+- Resolved an issue where the Seafowl object store cache duplicated entries when working with Iceberg REST tables.
+- Fixed a failure in `CREATE TABLE AS SELECT` (CTAS) statements when the PGAA access method was not explicitly set.
+- Corrected a logic error that caused CTAS operations to erroneously attempt a DirectScan.
+- Fixed a critical bug that caused data loss when using small replication lag settings.
+- Resolved a race condition in transaction state management during the cancellation of a CTAS operation.
+- Implemented LSN-based filtering to skip previously processed changes from PGD, preventing data duplication.
+- Improved data flush plans by disabling unnecessary physical optimizers.
+- Resolved a crash during CTAS operations for tables exceeding the `MAX_ROWS_PER_SYNC` limit.
+- Improved efficiency by concatenating adjacent row changes when schemas are compatible and transactions are complete.
+- Optimized equality deletes by removing unnecessary grouping logic, as primary keys are unique and changes are already squashed.
+- Ensured the system correctly picks up and reflects "last updated" metadata timestamps for tables.
+- Implemented non-durable LSN skipping to improve replication resilience.
+- Added logic to automatically revert aborted or incomplete transactions to maintain data integrity.
+- Added native data purging functionality to CTAS operations.
+- Resolved an issue with the object store cache that occurred when reading from an Iceberg REST catalog.
+- Fixed a lock-up issue where the PGAA autoupgrade worker could inadvertently lock PGD DDL replication.
+- Resolved `CREATE TABLE AS SELECT` (CTAS) failures on multi-node setups by preventing tuple insertions on PGD follower nodes.
+- Fixed a segmentation fault that occurred when inserting `NULL` values during CTAS operations.
+- Resolved an issue where tables could not be recreated after a purge by ensuring the sync collection is reset before CTAS execution.
+- Corrected a misleading batch size estimation in the PGD replication writer to improve monitoring accuracy.
+- Optimized the replication process by skipping unnecessary row squashing for batches that are exclusively append-only or remove-only.
+
+
+
+## Infrastructure & other changes
+
+- Enabled Prometheus metrics by default for the background Seafowl process via the `pgaa.autostart_seafowl_enable_metrics` and `pgaa.autostart_seafowl_metrics_host` parameters.
+- Implemented immediate flushing for truncate and purge operations.
+- Refactored internal synchronization logic for creating Delta and Iceberg targets.
+- Removed the default internal object store and metastore from Seafowl.
+- Introduced automated benchmarks to track and validate replication performance.
+- Implemented various query and replication performance improvements specifically for the Iceberg format.
+- Updated the Rust compiler to version 1.92.0 to leverage the latest language features and security patches.
+- Removed the standalone metastore-agent operation mode and its transitive dependencies to simplify the architecture and reduce the extension's footprint.
+
+## Deprecations
+
+- The standalone Seafowl package has been discontinued; the Seafowl engine binary is now natively included within the PGAA package.
+- Removed the `--one-off` and `--cli` Seafowl options.
+- Removed internal support for several SQL statements within the Seafowl engine that are not utilized by PGAA, including:
+    - Data modification: `INSERT`, `UPDATE`, `DELETE`.
+    - Schema management: `CREATE`/`DROP` for tables and schemas, and `ALTER RENAME`.
+    - Table creation: `CREATE TABLE AS`, `CREATE EXTERNAL TABLE`, and `CONVERT TO DELTA`.
+    - Data export: `COPY TO`.

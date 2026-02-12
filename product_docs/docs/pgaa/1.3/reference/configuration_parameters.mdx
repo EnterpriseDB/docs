@@ -58,18 +58,6 @@ Supported values are:
 
 Behavior if DirectScan was requested but failed, one of `ignore`, `warn`, `error`. Default is `warn`.
 
-### pgaa.enable_join_pushdown
-
-In CompatScan, controls the optimization strategy for join operations between analytical tables. It determines whether joins are processed locally within PostgreSQL or offloaded to the remote execution engine (Seafowl or Spark).
-
-Default is `on`.
-
-### pgaa.enable_groupby_pushdown
-
-In CompatScan, attempt to offload aggregation operations (like `SUM`, `COUNT`, `AVG`) and  (`GROUP BY`) to the remote executor engine (Seafowl or Spark).
-
-Default is `on`.
-
 ### pgaa.ctas_intermediate_flush_size
 
 Controls the batching behavior during large `INSERT` or `CREATE TABLE AS (CTAS)` operations into PGAA-managed tables.
@@ -80,19 +68,13 @@ Default is 8192.
 
 Specifies the frequency, in seconds, at which the PGAA background process checks for and executes pending flushes of analytical data to persistent storage.
 
-Default is 5.
+Default is 30.
 
 ### pgaa.max_replication_lag_s
 
 Defines the maximum permissible delay, in seconds, for replication synchronization. Requires PGD integration. 
 
-Default is 5.
-
-### pgaa.scan_aggregation_cost_factor
-
-A multiplier used by the PostgreSQL query planner to weight the cost of performing aggregations on the remote backend (Spark or Seafowl) compared to local PostgreSQL execution.
-
-Default is 0.005.
+Default is 30.
 
 ### pgaa.scan_per_tuple_cost
 
@@ -253,144 +235,6 @@ Default is 1024.
 Specifies the Time To Live (TTL) for objects stored in the Seafowl object store cache. This parameter determines how long a cached data chunk remains valid before it is eligible for eviction.
 
 Default is 3600.
-
-## DataFusion-inherited configurations
-
-Since PGAA uses Apache DataFusion as its underlying execution engine for the Seafowl query engine, PGAA provides several `pgaa.datafusion.*` configuration parameters that allow you to tune the query execution engine.
-
-These settings control low-level behaviors like memory management, execution parallelism, and optimizer rules.
-
-You can check the full list of DataFusion configuration parameters that PGAA incorporates by running:
-
-```sql
-SELECT name, setting, short_desc, context FROM pg_settings WHERE name LIKE '%pgaa.data%';
-```
-
-Refer to the [DataFusion documentation](https://datafusion.apache.org/user-guide/configs.html) for a comprehensive list of keys, default values, and performance impacts. When referring to the DataFusion documentation, you can translate their documentation keys to the PGAA configuration parameters by prefixing them with `pgaa.`.
-
-
-
-
-## Executor engine
-
-### pgaa.executor_engine
-
-Determines which compute backend is responsible for executing analytical operations.
-
-Supported values are `seafowl`, and `spark_connect`.
-
-Default is `seafowl`. 
-
-### pgaa.spark_connect_url
-
-Defines the connection endpoint for the Spark Connect service.Specifies the URL of the remote Spark Connect service. This setting is mandatory when `pgaa.executor_engine` is set to `spark_connect`. 
-
-The value must follow the specific Spark Connect URI format: `sc://<host>:<port>`.
-
-Default value is `NULL`.
-
-### pgaa.spark_connect_extra_config
-
-When using `pgaa.executor_engine= 'spark_connect'`, provides fine-grained tuning parameters and runtime settings directly to the Spark session as a JSON object. See [Spark Connect configuration](https://spark.apache.org/docs/latest/configuration.html) for a list of options.
-
-**Example**
-
-```sql
-SET pgaa.spark_connect_extra_config = '{
-    "spark.sql.execution.arrow.maxRecordsPerBatch": "65536"
-}';
-```
-
-Default value is `NULL`.
-
-## Query behavior
-
-### pgaa.enable_direct_scan
-
-Controls the query execution strategy for analytical tables. It determines whether PGAA attempts to offload the entire query to the optimized Seafowl engine or processes it using standard PostgreSQL compatibility layers.
-
-Default value is `on`, which means PGAA will attempt a DirectScan first before failing over to CompatScan.
-
-### pgaa.direct_scan_fail_behavior
-
-Defines the system's reaction when a Direct Scan is attempted but cannot be completed due to unsupported SQL features or syntax.
-
-Supported values are: 
-- `ignore` (default): The system silently falls back to CompatScan. 
-- `warn`: The query executes using the compatibility fallback, but PostgreSQL issues a warning notice indicating that DirectScan failed.
-- `error`: The query execution is aborted entirely if it cannot use DirectScan.
-
-Behavior if DirectScan was requested but failed, one of `ignore`, `warn`, `error`. Default is `warn`.
-
-### pgaa.enable_join_pushdown
-
-In CompatScan, controls the optimization strategy for join operations between analytical tables. It determines whether joins are processed locally within PostgreSQL or offloaded to the remote execution engine (Seafowl or Spark).
-
-Default value is `on`.
-
-### pgaa.enable_groupby_pushdown
-
-In CompatScan, attempt to offload aggregation operations (like `SUM`, `COUNT`, `AVG`) and  (`GROUP BY`) to the remote executor engine (Seafowl or Spark).
-
-Default value is `on`.
-
-## Seafowl
-
-### pgaa.autostart_seafowl
-
-Controls automatic start of the Seafowl process managed by the background worker.
-
-Default value is `on`.
-
-### pgaa.autostart_seafowl_max_memory_mb
-
-Sets the upper limit in megabytes on the amount of RAM the embedded Seafowl engine is permitted to consume, ensuring that the analytical engine does not starve the main PostgreSQL process of resources.
-
-Default value is 2147483647.
-
-### pgaa.autostart_seafowl_enable_metrics
-
-Enables Prometheus metrics on the Seafowl process by opening a dedicated HTTP endpoint that serves real-time performance metrics to monitor the health, query throughput, and resource utilization of the analytical engine using standard observability stacks.
-
-Default value is `on`.
-
-### pgaa.autostart_seafowl_metrics_host
-
-Metrics endpoint bind host.
-
-When `pgaa.autostart_seafowl_enable_metrics= on`, specifies the hostname or IP address where the Prometheus metrics service will be reachable. 
-
-Default value is ` 127.0.0.1`, which points to the local loopback for security, ensuring metrics aren't exposed publicly by default.
-
-### pgaa.autostart_seafowl_metrics_port 
-
-Defines the specific network port used for the Prometheus metrics service when `pgaa.autostart_seafowl_enable_metrics= on`.
-
-Supported values range from `1024` to `65535`. Default value is `9090`.
-
-## Catalog synchronization
-
-### pgaa.metastore_sync_poll_rate_s
-
-Determines the interval, in seconds, for polling the state of the current attached for catalog refreshes.
-
-Sets the interval, in seconds, for polling the state of attached catalogs. Setting this to 0 completely disables the automatic background synchronization.
-
-Default value is 60 seconds.
-
-### pgaa.metastore_sync_stale_duration_s
-
-Defines the threshold at which the local metadata for an attached catalog is considered stale. If the metadata in the local cache is older than this duration, the system prioritizes a refresh to ensure consistency with the data lake.
-
-Default value is 60 seconds.
-
-## Caching
-
-### pgaa.lakehouse_table_stats_cache_ttl_s
-
-Controls how long (in seconds) the results of a table statistics lookup are kept in memory. When a query is planned, PostgreSQL needs these stats to choose the most efficient execution path. By caching them, the system avoids making high-latency network requests to the object store for every single query. Setting this to 0 completely disables caching statistics.
-
-Default value is 300 seconds.
 
 ## DataFusion-inherited configurations
 

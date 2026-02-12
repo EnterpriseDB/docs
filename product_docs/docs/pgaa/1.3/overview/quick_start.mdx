@@ -1,0 +1,207 @@
+---
+title: Analytics Accelerator quickstart guide
+navTitle: Quickstart
+description: Install PGAA on a Postgres instance and query sample data.
+redirects:
+- /edb-postgres-ai/latest/analytics/analytics-concepts/
+- /edb-postgres-ai/latest/analytics/terminology/
+- /edb-postgres-ai/latest/analytics/quick_start/
+---
+
+
+In this quickstart guide, you will:
+
+1. Install the PGAA extension on a standalone Postgres instance.
+1. Create a storage location pointing to sample benchmark datasets in object storage.
+1. Run a complex analytical query and verify that Seafowl engine is working.
+1. Perform an analysis of the query plan.
+
+
+## Prerequisites
+
+- An environment running a Postgres instance. See [Compatibility](compatibility) for a full list of supported platforms.
+- An EDB access token.
+
+## Downloading and installing the package on your PostgreSQL instance
+
+1. Download the package from the EDB repository:
+
+
+<TabContainer syncKey="platform">
+
+<Tab title="Debian/Ubuntu" active>
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/standard/setup.deb.sh" | sudo -E bash
+sudo apt-get install -y postgresql-<version>-pgaa
+```
+
+Where `<version>` is your PostgreSQL version.
+
+</Tab>
+
+<Tab title="CentOS/RHEL">
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/standard/setup.rpm.sh" | sudo -E bash
+sudo dnf install -y postgresql-<version>-pgaa
+```
+
+Where `<version>` is your PostgreSQL version.
+
+</Tab>
+
+</TabContainer>
+
+Edit your `postgresql.conf` file to add `pgaa` to to your `shared_preload_libraries`, and enable the automatic management and startup of the Seafowl query engine via the Postgres background worker:
+
+```ini
+shared_preload_libraries = 'pgaa'
+pgaa.autostart_seafowl = on
+```
+
+After saving the changes, restart your PostgreSQL service. Once restarted, log in to your Postgres instance and create the PGAA extension:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+```
+
+Using `CASCADE` ensures that any required dependencies (like `PGFS`) are also created. Use `\dx` to verify that the extensions have been installed and check their versions.
+
+## Configuring a storage location
+
+Create a storage location pointing to our public S3 bucket containing TPC-H benchmark data:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'quickstart-sample-data',
+    's3://beacon-analytics-demo-data-us-east-1-prod',
+    '{"skip_signature": "true", "region": "us-east-1"}'
+);
+```
+
+Verify that the storage location was created:
+
+```sql
+SELECT pgfs.list_storage_locations();
+```
+
+## Creating analytical tables
+
+Create the following analytical tables. These tables map directly to Delta Lake files in our sample [benchmark datasets](../reference/datasets).
+
+```sql
+CREATE TABLE supplier () USING PGAA WITH (pgaa.storage_location = 'quickstart-sample-data', pgaa.path = 'tpch_sf_1/supplier', pgaa.format = 'delta');
+CREATE TABLE lineitem () USING PGAA WITH (pgaa.storage_location = 'quickstart-sample-data', pgaa.path = 'tpch_sf_1/lineitem', pgaa.format = 'delta');
+CREATE TABLE orders () USING PGAA WITH (pgaa.storage_location = 'quickstart-sample-data', pgaa.path = 'tpch_sf_1/orders', pgaa.format = 'delta');
+CREATE TABLE nation () USING PGAA WITH (pgaa.storage_location = 'quickstart-sample-data', pgaa.path = 'tpch_sf_1/nation', pgaa.format = 'delta');
+```
+
+## Running an analytical query
+
+This query identifies suppliers in Saudi Arabia who were the cause of delays in multi-supplier orders. This is a heavy analytical task involving large joins and multiple subqueries.
+
+```sql
+SELECT
+    s_name,
+    COUNT(*) AS numwait
+FROM
+    supplier,
+    lineitem l1,
+    orders,
+    nation
+WHERE
+    s_suppkey = l1.l_suppkey
+    AND o_orderkey = l1.l_orderkey
+    AND o_orderstatus = 'F'
+    AND l1.l_receiptdate > l1.l_commitdate
+    AND EXISTS (
+        SELECT
+            *
+        FROM
+            lineitem l2
+        WHERE
+            l2.l_orderkey = l1.l_orderkey
+            AND l2.l_suppkey <> l1.l_suppkey
+    )
+    AND NOT EXISTS (
+        SELECT
+            *
+        FROM
+            lineitem l3
+        WHERE
+            l3.l_orderkey = l1.l_orderkey
+            AND l3.l_suppkey <> l1.l_suppkey
+            AND l3.l_receiptdate > l3.l_commitdate
+    )
+    AND s_nationkey = n_nationkey
+    AND n_name = 'SAUDI ARABIA'
+GROUP BY
+    s_name
+ORDER BY
+    numwait DESC,
+    s_name
+LIMIT 100;
+```
+
+## Analyzing the query plan
+
+To see how PGAA accelerates this query, prepend `EXPLAIN` to the statement above and inspect the output:
+
+```sql
+                                                                                                                                                    QUERY PLAN                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ SeafowlDirectScan: Logical Plan
+   Limit:  skip=0, fetch=100
+     Sort:  numwait DESC NULLS FIRST, supplier.s_name ASC NULLS LAST
+       Projection:  supplier.s_name, count(Int64(1)) AS count(*) AS numwait
+         Aggregate:  groupBy=[[supplier.s_name]], aggr=[[count(Int64(1))]]
+           Filter:  supplier.s_suppkey = l1.l_suppkey AND orders.o_orderkey = l1.l_orderkey AND orders.o_orderstatus = Utf8("F") AND l1.l_receiptdate > l1.l_commitdate AND EXISTS (<subquery>) AND NOT EXISTS (<subquery>) AND supplier.s_nationkey = nation.n_nationkey AND nation.n_name = Utf8("SAUDI ARABIA")
+             Subquery: 
+               Projection:  l2.l_orderkey, l2.l_partkey, l2.l_suppkey, l2.l_linenumber, l2.l_quantity, l2.l_extendedprice, l2.l_discount, l2.l_tax, l2.l_returnflag, l2.l_linestatus, l2.l_shipdate, l2.l_commitdate, l2.l_receiptdate, l2.l_shipinstruct, l2.l_shipmode, l2.l_comment
+                 Filter:  l2.l_orderkey = outer_ref(l1.l_orderkey) AND l2.l_suppkey != outer_ref(l1.l_suppkey)
+                   SubqueryAlias:  l2
+                     TableScan:  lineitem
+             Subquery: 
+               Projection:  l3.l_orderkey, l3.l_partkey, l3.l_suppkey, l3.l_linenumber, l3.l_quantity, l3.l_extendedprice, l3.l_discount, l3.l_tax, l3.l_returnflag, l3.l_linestatus, l3.l_shipdate, l3.l_commitdate, l3.l_receiptdate, l3.l_shipinstruct, l3.l_shipmode, l3.l_comment
+                 Filter:  l3.l_orderkey = outer_ref(l1.l_orderkey) AND l3.l_suppkey != outer_ref(l1.l_suppkey) AND l3.l_receiptdate > l3.l_commitdate
+                   SubqueryAlias:  l3
+                     TableScan:  lineitem
+             Cross Join:  
+               Cross Join:  
+                 Cross Join:  
+                   TableScan:  supplier
+                   SubqueryAlias:  l1
+                     TableScan:  lineitem
+                 TableScan:  orders
+               TableScan:  nation
+(24 rows)
+```
+
+The presence of `SeafowlDirectScan` at the top of the plan indicates that PGAA has taken full control of the query execution, bypassing the standard PostgreSQL executor to run the query directly against the data lake.
+
+Instead of pulling billions of rows into PostgreSQL to process them, the entire logical plan—including joins, filters, and aggregations—is pushed down into the optimized analytical engine.
+
+- **Subquery pushdown**: Notice the `EXISTS` and` NOT EXISTS` subqueries on the `lineitem` table. These are not being executed one-by-one by Postgres. Instead, they are part of the global logical plan being processed in parallel against the Parquet files.
+
+- **Vectorized joins**: The `Cross Join` nodes combined with the `Filter` higher up indicate that the engine is performing hash joins or nested loop joins at the storage layer.
+
+- **Predicate pushdown**: Filters like `n_name = Utf8("SAUDI ARABIA")` and `o_orderstatus = Utf8("F")` are applied during the initial scan. This means only the relevant data is read from the lake, significantly reducing I/O.
+
+- **Final aggregation and sort**: The `Aggregate` and the `Sort` happen at the end of the pipeline before the final 100 rows are handed back to the PostgreSQL client.
+
+
+## Conclusion
+
+You have successfully installed PGAA, configured it to reach cloud-based object storage, and verified that complex SQL logic—including subqueries and joins—is being natively offloaded.
+
+By leveraging Seafowl DirectScan, your Postgres instance can now act as a gateway to petabyte-scale data lakes, providing analytical performance that scales independently of your transactional compute.
+
+
+
+
+
+
+
