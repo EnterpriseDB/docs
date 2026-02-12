@@ -5,7 +5,7 @@ description: Provides a step-by-step guide to perform a disaster recovery of you
 deepToC: true
 ---
 
-The DR procedure is defined as the series of manual steps that you need to take to recover your HM installation and your HM-managed Postgres database clusters.
+The DR procedure is defined as the series of manual steps that you need to take to recover your HM installation and your HM-managed Postgres clusters.
 
 !!! Warning
     You must constantly test and update your organization's DR procedure for it to remain valid.
@@ -21,13 +21,15 @@ Before starting the DR procedure, ensure you have made yourself familiar with:
 
 A new HM instance deployed and running. It must be running the same version as the old one.
 
-- The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old HM instance must be available in the new one. These are an internal resource created during install and aren't available in the HM console. `managed-devspatcher` is the default value.
+- The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old HM instance must be available in the new one. These are an internal resource created during install and isn't available in the HM console. `managed-devspatcher` is the default value.
+
+[still need to check whether this is required]: #
 
 - The container images used to build the clusters in the old HM instance are available to the new one.
 
 ## Required tools
 
-- [Velero CLI](https://velero.io/docs/v1.17/velero-install/).
+- [Velero CLI](https://velero.io/docs/latest/velero-install/)
 
 - `jq` (Command-line JSON processor)
 
@@ -35,7 +37,7 @@ A new HM instance deployed and running. It must be running the same version as t
 
 ## 1. Make backups available in the new HM instance
 
-The first step ensures the backups of the unavailable HM instance (“old backups”) are reachable from the new HM instance by copying the backups of the damaged HM instance to the linked storage of the new HM instance. 
+The first step ensures the backups of the unavailable HM instance (“old backups”) are reachable from the new HM instance by copying the backups of the damaged HM instance to the linked storage (new bucket) of the new HM instance. 
 
 1.  Obtain the name of the old and new buckets, the ID of the old backup, and the region of the new attached bucket and store these parameters in environment variables:
 
@@ -91,6 +93,8 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     aws s3 cp --recursive s3://${OLD_BUCKET}/customer-pg-backups s3://${NEW_BUCKET}/customer-pg-backups
     ```
 
+    If you have configured additional _custom_ managed locations, use the same method to copy those folders.
+
     </Tab>
 
     <Tab title="GCP">
@@ -100,10 +104,10 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     gcloud storage cp gs://${OLD_BUCKET}/customer-pg-backups gs://${NEW_BUCKET}/customer-pg-backups --recursive
     ```
 
+    If you have configured additional _custom_ managed locations, use the same method to copy those folders.
+
     </Tab>
     </TabContainer>
-    
-    [Also, in these examples we don't specify how to move the custom storage locations, should we add that as an optional step?]: #
 
 1.  Load the backups you just copied to your new HM instance by creating a new custom resource definition and applying it to the new HM instance:
 
@@ -226,7 +230,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 ### Restore HM-internal databases
 
-After the old backups are available, you can restore the HM-internal databases. These are back-end services used by HM, and are required to fully restore the HM instance. Depending on the HM version you are using, and on the installation scenario you have deployed, the list of databases may vary.
+After the old backups are available in the new bucket, you can restore the HM-internal databases. These are back-end services used by HM, and are required to fully restore the HM instance. Depending on the HM version you are using, and on the installation scenario you have deployed, the list of databases may vary.
 
 1.  To simplify these process, run following script with your kubeconfig pointing to your new HM installation: 
 
@@ -237,14 +241,14 @@ After the old backups are available, you can restore the HM-internal databases. 
     This patch script takes care of:
 
     - Saving the HM-internal database cluster manifests to YAML files, while generating two directories: 
-    - One called `old-cluster-configs` with the current state of the databases in the new HM installation (default configs after installation). 
-    - Another one called `new-cluster-configs` where the script will perform the patches required so the HM-internal databases start using the data from the backups.
+      - One directory `old-cluster-configs` with the current state of the database clusters in the new HM installation (default configuration after installation).
+      - Another one called `new-cluster-configs` with the same files, where the script will perform the patches required so the HM-internal databases start using the data from the backups.
 
     </details> 
 
     <br/>
 
-1.  Suspend the reconciliation of all HM-internal database clusters, so that you safely remove the Custom Resource Definitions (CRDs) of the database clusters without having the operator recreating them by default: 
+1.  Suspend the reconciliation of all HM-internal database clusters, so that you can safely remove the old Custom Resource Definitions (CRDs) of the database clusters without having the operator recreating them by default: 
 
     ```shell
     HCP_CR=$(kubectl get hybridcontrolplanes.edbpgai.edb.com -A -o json | jq -rc '.items[0] | .metadata.name')
@@ -316,7 +320,7 @@ After the old backups are available, you can restore the HM-internal databases. 
     </Tab>
     </TabContainer>
 
-1.  Apply the yaml file for all the HM-internal database clusters to be re-created:
+1.  Apply the yaml file for all the HM-internal database clusters to be re-created with the backup data:
 
     ```shell
     for CONFIG in $(find new-cluster-configs -type f)
@@ -327,7 +331,7 @@ After the old backups are available, you can restore the HM-internal databases. 
 
     You can monitor the restore progress using `kubectl get clusters -A`.
 
-#### Restart HM services
+### Restart HM services
 
 [am I right in assuming that this is a one-time step after all HM-internal databases are restored?]: #
 
@@ -341,7 +345,7 @@ At this point, the HM console on the new cluster is available again.
 
 ### Configure the Velero plugin
 
-The Velero plugin helps restore the Kubernetes resources in a correct state, so only the custom managed storage locations are restored. The Postgres clusters resources are restored as deleted, so you can later restore data as desired.
+The Velero plugin helps restore the Kubernetes resources in a correct state. The Postgres cluster's resources are restored as deleted, so you can later restore data as desired.
 
 1.  List the available backups in the new HM instance and choose the one you want to restore from:
 
@@ -352,6 +356,8 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
     ```
 
 1.  Select a backup from this list and export the following environment variables with the corresponding values: 
+
+    [this is a different timestamp than the timestamp above, right? is this for the pg database clusters onstead of HM-internal services?]: #
 
     ```shell
     export BACKUP_TIMESTAMP=<recovery date in YYYY–MM-DDTHH:MM:SSZ format>
@@ -386,7 +392,7 @@ The Velero plugin helps restore the Kubernetes resources in a correct state, so 
 
 ### Restore resources
 
-1.  Restore custom managed storage locations by applying the following Velero:
+1.  Restore custom managed storage locations by applying the following Velero restore:
 
     ```yaml
     kubectl apply -f - <<EOF
@@ -505,7 +511,7 @@ The cluster metadata has been restored, but the HM-managed Postgres clusters mus
 
 1.  After provisioning is complete, verify that the data matches your original state.
 
-The same procedure can be applied to restore any Postgres cluster you had configured on a secondary location.
+You can apply the same procedure to restore any Postgres clusters you had configured on a secondary location.
 
 !!!Note
 AI components (such as the GenAI Builder UI in the Launchpad section) will automatically reappear in the HM console once the restore is initiated. Due to the large size of container images and profiles, synchronization may take some time.
