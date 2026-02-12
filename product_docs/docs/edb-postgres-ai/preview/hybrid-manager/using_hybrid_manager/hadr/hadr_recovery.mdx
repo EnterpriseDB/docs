@@ -14,8 +14,8 @@ The DR procedure is defined as the series of manual steps that you need to take 
 
 Before starting the DR procedure, ensure you have made yourself familiar with:
 
-- [Best practices](./hadr)
-- [Backup considerations](./backup_considerations)
+- [Overview](overview)
+- [Configuring backups](./backup_considerations)
 
 ## Prerequisites 
 
@@ -25,9 +25,13 @@ Before starting the DR procedure, ensure you have made yourself familiar with:
 
   - The container images used to build the clusters in the old HM instance are available to the new one.
 
-- [Install the Velero CLI](https://velero.io/docs/v1.17/velero-install/).
+## Required tools
 
-- [Install the jq utility](https://jqlang.org/download/).
+- [Velero CLI](https://velero.io/docs/v1.17/velero-install/).
+
+- `jq` (Command-line JSON processor)
+
+- `yq` (Command-line YAML processor)
 
 ## 1. Make backups available in the new HM instance
 
@@ -224,85 +228,49 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 After the old backups are available, you can restore the HM-internal databases. These are back-end services used by HM, and are required to fully restore the HM instance. Depending on the HM version you are using, and on the installation scenario you have deployed, the list of databases may vary.
 
-#### Identify the internal databases to restore
+1.  To simplify these process, run following script with your kubeconfig pointing to your new HM installation: 
 
-First, identify the databases you need to restore. You can look this up by listing all HM-internal database clusters that exist in the new HM instance (assuming that you used the same installation configuration for the new HM instance) and excluding those that start with `p-` (these are Postgres database clusters) and the `stats-collector-db` (not required to restore HM functionality):
+    [patch-clusters.sh](ops/patch-clusters.sh)
 
-```shell
-kubectl get clusters.postgresql.k8s.enterprisedb.io -A -o json | jq -rc '.items[].metadata | select((.name | test("^p-") | not) and (.name != "stats-collector-db")) | .name'
-```
+    <details><summary>Script details</summary> 
 
-The output will be a list of HM-internal database clusters to restore, for example:
+    This patch script takes care of:
 
-```shell
-mp-epas-16
-mp-epas-17
-mp-epas-18
-transporter-db
-app-db
-beacondb
-resourcedb
-vectordb
-```
+    - Saving the HM-internal database cluster manifests to YAML files, while generating two directories: 
+    - One called `old-cluster-configs` with the current state of the databases in the new HM installation (default configs after installation). 
+    - Another one called `new-cluster-configs` where the script will perform the patches required so the HM-internal databases start using the data from the backups.
 
-!!!important
-You list may differ based on the HM version and installation scenario. It may look much shorter. 
-!!!
+    </details> 
 
-#### Restore each HM-internal database
+    <br/>
 
-Now, for each of the identified HM-internal database clusters, perform the following steps, one after the other:
-
-1.  Save the HM-internal database cluster manifest to a yaml file: 
+1.  Suspend the reconciliation of all HM-internal database clusters, so that you safely remove the Custom Resource Definitions (CRDs) of the database clusters without having the operator recreating them by default: 
 
     ```shell
-    kubectl get <cluster-name> -o yaml > <cluster-name>.yaml
+    HCP_CR=$(kubectl get hybridcontrolplanes.edbpgai.edb.com -A -o json | jq -rc '.items[0] | .metadata.name')
+    for CLUSTER in $(kubectl get clusters.postgresql.k8s.enterprisedb.io -A -o json | jq -rc '.items[].metadata | select((.name | test("^p-") | not) and (.name != "stats-collector-db")) | {namespace: .namespace}')
+    do
+      INDEX=$(kubectl get hybridcontrolplane edbpgai -o json | jq '.status.components | to_entries[] | select(.value.name=="my-component") | .key')
+      kubectl patch hybridcontrolplane edbpgai --subresource=status --type=json -p "[{\"op\": \"replace\", \"path\": \"/status/components/$INDEX/suspended\", \"value\": true}]"
+    done
     ```
 
-    Where `<cluster-name>` is the name of the HM-internal database cluster to restore, e.g. `beacondb`.
+    [TBD final command]: # 
 
-1.  Edit the manifest yaml file, so the HM-internal database cluster is created from the backups:  
+1.  Verify that the components have been suspended correctly: 
 
-    - Replace the **init** section in bootstrap with a **recovery** section:  
-
-      ```yaml
-      recovery:  
-        database: <database_name_as_in_the_init_section>  
-        owner: <owner_name_as_in_the_init_section>  
-        source: <cluster-name>  
-        secret:  
-          name: <secret_name_as_in_the_init_section>  
-        recoveryTarget:  
-          targetTime: "${BACKUP_TIMESTAMP}"  
-      ```
-
-      [The backup timestamp env variable is actually set up much later in the procedure, so I wonder if we should reorder things? Or just have them set up the timstamp manually here?]: #
-
-    - Add the following section:  
-
-      ```yaml
-      externalClusters:  
-       - barmanObjectStore:  
-          destinationPath:  S3://${NEW_BUCKET}/edb-internal-backups/databases  
-          s3Credentials:  
-            inheritFromIAMRole: true  
-          wal:  
-            maxParallel: 8  
-        name: <cluster-name>  
-      ```
-
-    - Add the following prefix to the `appliance.enterprisedb.com/s3-prefixes` annotation of the `inheritedMetdata` section (the list is comma separated): 
-
-      [This used to be `edb-internal-backups/<old-backups-random-string>/databases/<db-name>`, please check below?]: #
-
-      ```yaml
-      edb-internal-backups/<old-backups-random-string>/databases/<cluster-name>  
-      ```
+    ```shell
+    HCP_CR=$(kubectl get hybridcontrolplanes.edbpgai.edb.com -A -o json | jq -rc '.items[0] | .metadata.name')
+    kubectl hcp status -n edbpgai-bootstrap "${HCP_CR}"
+    ```
 
 1.  Delete the HM-internal database cluster that was created during installation of the new HM instance to make room for the HM-internal database cluster that will be recovered from the backup:
 
     ```shell
-    kubectl delete cluster <cluster-name>  
+    for CONFIG in $(find new-cluster-configs -type f)
+    do
+        kubectl delete -f $CONFIG
+    done
     ```
 
 1.  Clean the backup area that was created during the installation of the new HM instance to avoid confusion with the old backups that you want to restore:
@@ -311,7 +279,19 @@ Now, for each of the identified HM-internal database clusters, perform the follo
     <Tab title="AWS">
 
     ```shell
-    aws s3 rm s3://${NEW_BUCKET}/edb-internal-backups/databases/<cluster-name> \ --recursive
+    for CONFIG in $(find new-cluster-configs -type f)
+    do
+        NAME=$(yq '.metadata.name' $CONFIG)
+        NAMESPACE=$(yq '.metadata.namespace' $CONFIG)
+        # Try to get PREFIX from cluster config first, fallback to ObjectStore if it fails
+        PREFIX=$(yq '.spec.backup.barmanObjectStore.destinationPath | downcase' $CONFIG 2>/dev/null)
+        if [ -z "$PREFIX" ] || [ "$PREFIX" = "null" ]; then
+          # destinationPath doesn't exist in the cluster config (after CNPG-I barman plugin migration)
+          # Get it from the ObjectStore resource instead
+          PREFIX=$(kubectl -n $NAMESPACE get objectstores.barmancloud.cnpg.io $NAME -o yaml | yq '.spec.configuration.destinationPath | downcase')
+        fi
+        aws s3 rm --recursive ${PREFIX}/${NAME}
+    done
     ```
 
     </Tab>
@@ -319,21 +299,34 @@ Now, for each of the identified HM-internal database clusters, perform the follo
     <Tab title="GCP">
 
     ```shell
-    gcloud storage rm gs://${NEW_BUCKET}/edb-internal-backups/databases/<cluster-name> \ --recursive
+    for CONFIG in $(find new-cluster-configs -type f)
+    do
+        NAME=$(yq '.metadata.name' $CONFIG)
+        NAMESPACE=$(yq '.metadata.namespace' $CONFIG)
+        # Try to get PREFIX from cluster config first, fallback to ObjectStore if it fails
+        PREFIX=$(yq '.spec.backup.barmanObjectStore.destinationPath | downcase' $CONFIG 2>/dev/null)
+        if [ -z "$PREFIX" ] || [ "$PREFIX" = "null" ]; then
+          # destinationPath doesn't exist in the cluster config (after CNPG-I barman plugin migration)
+          # Get it from the ObjectStore resource instead
+          PREFIX=$(kubectl -n $NAMESPACE get objectstores.barmancloud.cnpg.io $NAME -o yaml | yq '.spec.configuration.destinationPath | downcase')
+        fi
+        gsutil -m rm -r ${PREFIX}/${NAME}
+    done
     ```
 
     </Tab>
     </TabContainer>
 
-1.  Apply the yaml file for the cluster to be re-created:
+1.  Apply the yaml file for all the HM-internal database clusters to be re-created:
 
     ```shell
-    kubectl apply -f <cluster-name>.yaml
+    for CONFIG in $(find new-cluster-configs -type f)
+    do
+        kubectl apply -f $CONFIG
+    done
     ```
 
     You can monitor the restore progress using `kubectl get clusters -A`.
-
-Now repeat the above steps for each HM-internal database cluster you need to restore.
 
 #### Restart HM services
 
