@@ -1,9 +1,8 @@
 ---
 title: The Klio Server
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/docs/documentation/web//versioned_docs/version-0.0.11/klio_server.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/klio_server.md
 sidebar_position: 5
-editTarget: originalFilePath
 
 ---
 
@@ -36,26 +35,30 @@ providing the fastest recovery times.
 
 ### Tier 2: Remote Object Storage
 
-!!!warning Work in Progress
+Tier 2 offloads data to object storage for long-term retention and disaster
+recovery. When Tier 2 is enabled alongside Tier 1, the server uses a work
+queue to manage the asynchronous transfer of data from local storage to object
+storage.
 
-Tier 2 functionality is currently under heavy development and should be
-considered experimental. The features described below are subject to change.
-!!!
+Alternatively, you can deploy a **read-only server** with only Tier 2
+configured. This is useful for disaster recovery sites that need to restore
+from object storage without the overhead of local storage. See the
+[Read-Only Mode](#read-only-mode) section for details.
 
-Tier 2 offloads data to S3-compatible object storage.
-This is used for long-term retention and disaster recovery.
-When Tier 2 is enabled, the server uses a work queue to manage
-the asynchronous transfer of data from the local environment to the cloud.
+Currently, Klio supports Amazon S3 and S3-compatible storage providers. See
+the [Object Store](#object-store) section for configuration details.
 
 ### The Work Queue
 
-If both Tier 1 and Tier 2 are configured, it is mandatory to configure
-a work queue in the klio Server resource.
+When Tier 1 is configured, the Klio Server pods will use a work queue.
 The work queue is backed by NATS JetStream with file storage on a separate
-`PersistentVolume mounted` at `/queue`.
-When a WAL file is received, the server publishes a notification to the queue,
-enabling asynchronous processing. This ensures that the primary backup flow
-is not slowed down by network latency to remote object storage.
+`PersistentVolume` mounted at `/queue`.
+The queue serves two purposes:
+
+-   **Retention policy enforcement**: Tracks which WAL files are in use before
+    deletion
+-   **Tier 2 replication**: When Tier 2 is enabled, manages asynchronous
+    transfer to object storage
 
 ## Storage Requirements
 
@@ -93,9 +96,9 @@ This limitation will be removed in a future version.
 
 ### Queue PVC
 
-The queue PVC is only required when both Tier 1 and Tier 2 are configured.
-It stores the NATS JetStream work queue used for asynchronous Tier 2
-replication.
+The queue PVC is required when Tier 1 is configured. It stores the NATS
+JetStream work queue used for retention policy enforcement and asynchronous
+Tier 2 replication.
 
 ## Setting up a new Klio server
 
@@ -274,7 +277,7 @@ metadata:
   namespace: default
 spec:
   # Container image for the Klio server
-  image: docker.enterprisedb.com/k8s/klio:v0.0.11
+  image: docker.enterprisedb.com/k8s/klio:v0.0.12
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []  # Add image pull secrets if needed
 
@@ -283,6 +286,11 @@ spec:
 
   # Client authentication configuration
   caSecretName: server-sample-ca
+
+  # Mode: standard (default) or read-only
+  # Omit this field or set to "standard" for normal read-write operation
+  # Set to "read-only" for DR/restore-only servers (see Read-Only Mode section)
+  # mode: standard
 
   # tier 1 configuration
   tier1:
@@ -310,7 +318,7 @@ spec:
       key: encryptionKey
 
   # Queue storage configuration (for NATS work queue)
-  # It can be added only if both tier1 and tier2 are configured
+  # Required when tier1 is configured
   queue:
     pvcTemplate:
       storageClassName: standard  # Adjust to your storage class
@@ -338,20 +346,24 @@ spec:
     s3:
       prefix: klio
       bucketName: klio-bucket
-      endpoint: https://minio:9000
+      endpoint: https://rustfs:9000
       region: us-east-1
       accessKeyId:
-        name: minio
-        key: ACCESS_KEY_ID
+        name: rustfs
+        key: RUSTFS_ACCESS_KEY
       secretAccessKey:
-        name: minio
-        key: ACCESS_SECRET_KEY
+        name: rustfs
+        key: RUSTFS_SECRET_KEY
       customCaBundle:
-        name: minio-server-tls
+        name: rustfs-tls
         key: tls.crt
 ```
 
 <!-- x-release-please-end -->
+
+The example above uses credential-based S3 authentication. For alternative
+authentication methods (IAM roles, IRSA, Pod Identity) and S3-compatible
+storage providers, see the [Object Store](#object-store) section.
 
 Apply the Server resource:
 
@@ -378,6 +390,112 @@ kubectl logs -l klio.enterprisedb.io/klio-server=my-server -n default -f
 ```
 
 The server should create a StatefulSet with a pod named `my-server-klio-0`.
+
+## Read-Only Mode
+
+Klio servers can operate in read-only mode, allowing them to serve backups and
+WAL files from Tier 2 object storage without accepting new backup writes. This
+is useful for disaster recovery sites, cost-optimized restore-only deployments,
+and multi-region architectures.
+
+### When to Use Read-Only Mode
+
+Use read-only mode when you need:
+
+-   **Disaster recovery sites**: Deploy in secondary regions to restore from
+    shared S3 storage without duplicating backup writes
+-   **Geographic distribution**: Multiple read-only servers in different regions
+    can all restore from a single S3 bucket populated by one primary server
+-   **Read-only access control**: Prevent accidental backup modifications at
+    certain sites
+
+### Configuration
+
+A read-only server requires:
+
+-   `mode: read-only` field in the spec
+-   `tier2` configuration (S3 object storage)
+-   **No** `tier1` configuration
+-   **No** `queue` configuration
+
+<!-- x-release-please-start-version -->
+
+```yaml
+apiVersion: klio.enterprisedb.io/v1alpha1
+kind: Server
+metadata:
+  name: dr-server
+  namespace: default
+spec:
+  # Set mode to read-only
+  mode: read-only
+
+  # Container image for the Klio server
+  image: docker.enterprisedb.com/k8s/klio:v0.0.12
+  imagePullPolicy: IfNotPresent
+
+  # TLS configuration
+  tlsSecretName: dr-server-tls
+
+  # Client authentication configuration
+  caSecretName: server-sample-ca
+
+  # Tier 2 configuration (required for read-only mode)
+  tier2:
+    # Cache storage configuration
+    cache:
+      pvcTemplate:
+        storageClassName: standard
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi  # Only cache needed, no data storage
+
+    # Encryption key reference
+    encryptionKey:
+      name: dr-server-encryption
+      key: encryptionKey
+
+    # S3 access configuration
+    # See Object Store section for authentication options
+    s3:
+      bucketName: klio-backups
+      region: us-east-1
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: SECRET_ACCESS_KEY
+```
+
+<!-- x-release-please-end -->
+
+Apply the read-only server:
+
+```bash
+kubectl apply -f dr-server.yaml
+```
+
+### Using a Read-Only Server for Recovery
+
+Once deployed, PostgreSQL clusters can use the read-only server as a restore
+source through a PluginConfiguration. The server will fetch backups and WAL
+files from Tier 2 object storage transparently.
+
+See the Read-Only Server Mode section in the
+[Architectures](architectures.mdx) documentation for detailed use cases and
+architectural patterns.
+
+### Restrictions
+
+In read-only mode, the following operations are **not available**:
+
+-   Creating new backups
+-   Sending WAL files to the server
+-   Applying retention policies
+-   Any write operations
 
 ## Advanced Configuration
 
@@ -434,6 +552,102 @@ for details on node tainting.
 
 Refer to the [OpenTelemetry](opentelemetry.mdx#klio-server-with-opentelemetry)
 documentation for setting up monitoring and telemetry for the Klio server.
+
+## Object Store
+
+Klio uses object storage for Tier 2, providing durable, cost-effective
+long-term backup storage. Currently, Klio supports Amazon S3 and S3-compatible
+storage providers.
+
+### S3
+
+Tier 2 is configured using the `tier2.s3` field in the Server spec. The
+configuration is the same for both AWS S3 and S3-compatible providers.
+
+#### Basic Configuration with Credentials
+
+```yaml
+tier2:
+  s3:
+    bucketName: klio-backups
+    region: us-east-1
+    accessKeyId:
+      name: s3-credentials
+      key: ACCESS_KEY_ID
+    secretAccessKey:
+      name: s3-credentials
+      key: SECRET_ACCESS_KEY
+```
+
+#### S3-Compatible Storage with Custom Endpoint
+
+For S3-compatible providers, add the `endpoint` field:
+
+```yaml
+tier2:
+  s3:
+    bucketName: klio-backups
+    endpoint: https://minio.example.com:9000
+    region: us-east-1  # May be required depending on provider
+    accessKeyId:
+      name: s3-credentials
+      key: ACCESS_KEY_ID
+    secretAccessKey:
+      name: s3-credentials
+      key: SECRET_ACCESS_KEY
+```
+
+#### Custom CA Certificates
+
+For providers using self-signed certificates or custom CAs:
+
+```yaml
+tier2:
+  s3:
+    bucketName: klio-backups
+    endpoint: https://minio.example.com:9000
+    customCaBundle:
+      name: minio-ca-cert
+      key: ca.crt
+    accessKeyId:
+      name: s3-credentials
+      key: ACCESS_KEY_ID
+    secretAccessKey:
+      name: s3-credentials
+      key: SECRET_ACCESS_KEY
+```
+
+#### AWS IAM Roles (IRSA/Pod Identity)
+
+For AWS EKS clusters, using
+[IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
+or [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
+is the recommended approach. This provides better security through automatic
+credential rotation, reduced secret sprawl, and fine-grained IAM policies.
+
+To use IAM role-based authentication:
+
+1.  Create an IAM role with appropriate S3 permissions
+2.  Create a Kubernetes ServiceAccount with the IAM role annotation (for IRSA)
+    or Pod Identity association (for Pod Identity)
+3.  Reference the ServiceAccount in the Server spec and omit credentials:
+
+```yaml
+spec:
+  tier2:
+    s3:
+      bucketName: klio-backups
+      region: us-east-1
+      # No accessKeyId or secretAccessKey - use IAM role
+
+  template:
+    spec:
+      serviceAccountName: klio-s3-access
+      containers: []  # Mandatory but merged with defaults
+```
+
+The AWS SDK will automatically use the pod's IAM role credentials when
+`accessKeyId` and `secretAccessKey` are omitted.
 
 ## Encryption
 
@@ -555,115 +769,3 @@ spec:
   ca:
     secretName: server-sample-ca
 ```
-
-## Access Control Lists (ACLs)
-
-Klio automatically configures Kopia's Access Control Lists (ACLs) during server
-startup to provide fine-grained access control to back up snapshots. This
-automation eliminates the need for manual ACL configuration.
-
-### Automatic ACL Configuration
-
-When the Klio server starts, it automatically:
-
-1.  **Enables ACL support** in the Kopia repository
-2.  **Creates a read-only user** (`snapshot_reader@klio`)
-    with READ access to all snapshots
-3.  **Configures the API server** to use the read-only user for backup catalog queries
-
-This automation ensures that the Klio [API service](api_service.mdx) (used for
-backup observability and catalog browsing) operates with minimal privileges,
-following the principle of least privilege.
-
-### How ACLs Work
-
-Kopia's ACL system controls access to repository resources based on:
-
--   **User identity**: The authenticated username
--   **Resource type**: What is being accessed (e.g., snapshots, policies)
--   **Access level**: READ, APPEND, or FULL access
-
-The automated ACL configuration creates the following rule:
-
-```
-User: snapshot_reader@klio
-Access: READ
-Target: type=snapshot (all snapshots in the repository)
-```
-
-This allows the API server to:
-
--   List all available backups
--   Read backup metadata and manifests
--   Browse backup catalogs
--   Provide observability into the backup state
-
-However, the read-only user **cannot**:
-
--   Create new snapshots
--   Modify existing snapshots
--   Delete backups
--   Change repository configuration
--   Modify ACL rules
-
-### User Configuration
-
-From the authentication point-of-view, the `snapshot_reader@klio` user is not
-special, and to use it you need a corresponding Secret containing a certificate
-to be used for authentication.
-
-Cert-manager can create such a secret with the following Certificate definition:
-
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: client-sample-tls
-spec:
-  secretName: client-sample-tls
-  commonName: snapshot_reader@klio
-
-  duration: 2160h # 90d
-  renewBefore: 360h # 15d
-
-  isCA: false
-  usages:
-    - client auth
-
-  issuerRef:
-    name: server-sample-ca
-    kind: Issuer
-    group: cert-manager.io
-```
-
-### API Server Integration
-
-The Klio API service deployment is automatically configured to use the
-`snapshot_reader@klio` user for all Kopia operations. This happens through
-environment variable configuration in the API server deployment:
-
-```yaml
-- name: CLIENT_BASE_CLIENT_CERT_PATH
-  value: /client-certs/tls.crt
-- name: CLIENT_BASE_CLIENT_KEY_PATH
-  value: /client-certs/tls.key
-```
-
-No manual configuration is required. The API server will automatically use the
-restricted read-only access for all backup catalog queries.
-
-### Benefits
-
-The automated ACL configuration provides several benefits:
-
-1.  **Security**: API server operates with minimal privileges
-2.  **Simplicity**: No manual ACL commands required during setup
-3.  **Consistency**: ACL configuration is standardized across all deployments
-4.  **Separation of Concerns**: Read operations (API server) are isolated from
-    write operations (backup/restore processes)
-
-### Idempotency
-
-The ACL automation is idempotent. If ACLs are already enabled or the user
-already exists, the startup process will detect this and continue without
-error. This allows for safe server restarts and upgrades.
