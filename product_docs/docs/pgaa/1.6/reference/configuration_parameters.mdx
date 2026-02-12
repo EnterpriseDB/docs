@@ -23,7 +23,7 @@ Defines the connection endpoint for the Spark Connect service. Specifies the URL
 
 The value must follow the specific Spark Connect URI format: `sc://<host>:<port>`.
 
-Default value is `NULL`.
+Default is `NULL`.
 
 ### pgaa.spark_connect_extra_config
 
@@ -37,7 +37,7 @@ SET pgaa.spark_connect_extra_config = '{
 }';
 ```
 
-Default value is `NULL`.
+Default is `NULL`.
 
 ## Query behavior
 
@@ -45,7 +45,7 @@ Default value is `NULL`.
 
 Controls the query execution strategy for analytical tables. It determines whether PGAA attempts to offload the entire query to the optimized Seafowl engine or processes it using standard PostgreSQL compatibility layers.
 
-Default value is `on`, which means PGAA will attempt a DirectScan first before failing over to CompatScan.
+Default is `on`, which means PGAA will attempt a DirectScan first before failing over to CompatScan.
 
 ### pgaa.direct_scan_fail_behavior
 
@@ -62,13 +62,61 @@ Behavior if DirectScan was requested but failed, one of `ignore`, `warn`, `error
 
 In CompatScan, controls the optimization strategy for join operations between analytical tables. It determines whether joins are processed locally within PostgreSQL or offloaded to the remote execution engine (Seafowl or Spark).
 
-Default value is `on`.
+Default is `on`.
 
 ### pgaa.enable_groupby_pushdown
 
 In CompatScan, attempt to offload aggregation operations (like `SUM`, `COUNT`, `AVG`) and  (`GROUP BY`) to the remote executor engine (Seafowl or Spark).
 
-Default value is `on`.
+Default is `on`.
+
+### pgaa.ctas_intermediate_flush_size
+
+Controls the batching behavior during large `INSERT` or `CREATE TABLE AS (CTAS)` operations into PGAA-managed tables.
+
+Default is 8192.
+
+### pgaa.flush_task_interval_s
+
+Specifies the frequency, in seconds, at which the PGAA background process checks for and executes pending flushes of analytical data to persistent storage.
+
+Default is 5.
+
+### pgaa.max_replication_lag_s
+
+Defines the maximum permissible delay, in seconds, for replication synchronization. Requires PGD integration. 
+
+Default is 5.
+
+### pgaa.scan_aggregation_cost_factor
+
+A multiplier used by the PostgreSQL query planner to weight the cost of performing aggregations on the remote backend (Spark or Seafowl) compared to local PostgreSQL execution.
+
+Default is 0.005.
+
+### pgaa.scan_per_tuple_cost
+
+A multiplier used by the PostgreSQL query planner to weight the cost of scanning a single row (tuple) on the remote backend (Spark or Seafowl) compared to local PostgreSQL execution.
+
+Default is 0.02.
+
+### pgaa.scan_startup_cost
+
+A multiplier used by the PostgreSQL query planner to weight the fixed "startup" cost of initiating a scan on the remote backend (Spark or Seafowl) compared to local PostgreSQL execution.
+
+Default is 25.
+
+### pgaa.use_seafowl_cost_estimates
+
+Determines whether the PostgreSQL query planner should request real-time cost estimates directly from the Seafowl engine instead of relying on the statistics collected internally by PostgreSQL.
+
+Default is `on`.
+
+### pgaa.write_lock_timeout_s
+
+Specifies the maximum duration, in seconds, that a process will wait to acquire a write lock before timing out and aborting the operation.
+
+Default is 3. 
 
 ## Seafowl
 
@@ -76,13 +124,13 @@ Default value is `on`.
 
 Controls automatic start of the Seafowl process managed by the background worker.
 
-Default value is `on`.
+Default is `on`.
 
 ### pgaa.autostart_seafowl_max_memory_mb
 
 Sets the upper limit in megabytes on the amount of RAM the embedded Seafowl engine is permitted to consume, ensuring that the analytical engine does not starve the main PostgreSQL process of resources.
 
-Default value is 2147483647.
+Default is 2147483647.
 
 ### pgaa.autostart_seafowl_enable_metrics
 
@@ -96,29 +144,89 @@ Metrics endpoint bind host.
 
 When `pgaa.autostart_seafowl_enable_metrics= on`, specifies the hostname or IP address where the Prometheus metrics service will be reachable. 
 
-Default value is `127.0.0.1`, which points to the local loopback for security, ensuring metrics aren't exposed publicly by default.
+Default is `127.0.0.1`, which points to the local loopback for security, ensuring metrics aren't exposed publicly by default.
 
-### pgaa.autostart_seafowl_metrics_port 
+### pgaa.autostart_seafowl_metrics_port
 
 Defines the specific network port used for the Prometheus metrics service when `pgaa.autostart_seafowl_enable_metrics= on`.
 
-Supported values range from `1024` to `65535`. Default value is `9090`.
+Supported values range from 1024 to 65535. Default is `9090`.
+
+### pgaa.autostart_seafowl_enable_object_store_cache
+
+Determines whether to enable the Seafowl object store cache for external storage locations on S3, Azure, or GCP.
+
+Default is `on`.
+
+### pgaa.autostart_seafowl_log_level
+
+Specifies the logging verbosity for the background Seafowl process.
+
+Supported values include `error`, `warn`, `info`, `debug`, and `trace`.
+
+Default is `info`.
+
+### pgaa.autostart_seafowl_path
+
+Specifies the absolute file path to the Seafowl executable. This tells the PGAA supervisor exactly which binary to launch when starting the background analytical engine.
+
+Default is an empty string.
+
+###  pgaa.autostart_seafowl_port
+
+Specifies the TCP port that the background Seafowl process listens on. The PGAA extension uses this port to communicate with the local execution engine.
+
+Default is 47470.
+
+### pgaa.autostart_seafowl_tmp_dir
+
+Specifies the directory where the background Seafowl process stores temporary files during query execution.
+
+Default is an empty string.
+
+### pgaa.enable_maintenance_worker
+
+Controls whether the PGAA background supervisor launches and manages a dedicated maintenance worker process.
+
+Default is `off`.
+
+### pgaa.maintenance_worker_sleep_interval
+
+Defines the duration, in seconds, that the maintenance worker process waits before checking for new tasks when there is currently no pending work to perform.
+
+Default is 30 seconds.
+
+### pgaa.seafowl_client_retry_base_ms
+
+Specifies the initial delay, in milliseconds, that the PostgreSQL client waits before retrying a failed request to the Seafowl process. For every subsequent failure, the wait time doubles.
+
+Default is 100.
+
+### pgaa.seafowl_url 
+
+Specifies the endpoint URL used by the PGAA extension to communicate with the Seafowl service. 
+
+Default is `http://localhost:47470`.
 
 ## Catalog synchronization
 
 ### pgaa.metastore_sync_poll_rate_s
 
-Determines the interval, in seconds, for polling the state of the current attached for catalog refreshes.
+Sets the interval, in seconds, for polling the state of the current attached catalog. Setting this to 0 completely disables the automatic background synchronization.
 
-Sets the interval, in seconds, for polling the state of attached catalogs. Setting this to 0 completely disables the automatic background synchronization.
-
-Default value is 60 seconds.
+Default is 60 seconds.
 
 ### pgaa.metastore_sync_stale_duration_s
 
 Defines the threshold at which the local metadata for an attached catalog is considered stale. If the metadata in the local cache is older than this duration, the system prioritizes a refresh to ensure consistency with the data lake.
 
-Default value is 60 seconds.
+Default is 60 seconds.
+
+### pgaa.enable_metastore_sync_worker
+
+Determines whether PGAA spawns a dedicated background worker to continuously synchronize metadata from a remote provider, such as an Iceberg REST catalog.
+
+Default is `off`.
 
 ## Caching
 
@@ -126,7 +234,25 @@ Default value is 60 seconds.
 
 Controls the duration (in seconds) that physical table sizes are cached to support the `pgaa.lakehouse_table_stats()` function. This prevents frequent requests to the object store for metadata. Setting this to 0 disables statistics caching and forces the function to retrieve data directly from the storage provider.
 
-Default value is 300 seconds.
+Default is 300 seconds.
+
+### pgaa.autostart_seafowl_object_store_cache_capacity_mb
+
+Specifies the maximum amount of local disk space, in megabytes, that the Seafowl process can use for caching data from storage locations.
+
+Default is 1024.
+
+### pgaa.autostart_seafowl_object_store_cache_min_fetch_size_kb
+
+Defines the minimum size of an outbound request sent to the object store when `pgaa.autostart_seafowl_enable_object_store_cache` is enabled.
+
+Default is 1024.
+
+### pgaa.autostart_seafowl_object_store_cache_ttl_s
+
+Specifies the Time To Live (TTL) for objects stored in the Seafowl object store cache. This parameter determines how long a cached data chunk remains valid before it is eligible for eviction.
+
+Default is 3600.
 
 ## DataFusion-inherited configurations
 
