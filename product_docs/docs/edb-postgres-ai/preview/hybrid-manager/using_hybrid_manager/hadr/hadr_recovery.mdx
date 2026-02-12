@@ -15,7 +15,7 @@ The DR procedure is defined as the series of manual steps that you need to take 
 Before starting the DR procedure, ensure you have made yourself familiar with:
 
 - [Overview](overview)
-- [Configuring backups](./backup_considerations)
+- [Configuring backups](backup_considerations)
 
 ## Prerequisites 
 
@@ -248,14 +248,13 @@ After the old backups are available, you can restore the HM-internal databases. 
 
     ```shell
     HCP_CR=$(kubectl get hybridcontrolplanes.edbpgai.edb.com -A -o json | jq -rc '.items[0] | .metadata.name')
-    for CLUSTER in $(kubectl get clusters.postgresql.k8s.enterprisedb.io -A -o json | jq -rc '.items[].metadata | select((.name | test("^p-") | not) and (.name != "stats-collector-db")) | {namespace: .namespace}')
+    for CLUSTER in $(kubectl get clusters.postgresql.k8s.enterprisedb.io -A -o json | jq -rc '.items[].metadata | select((.name | test("^p-") | not) and (.name != "stats-collector-db")) | {namespace: .namespace}' | uniq)
     do
-      INDEX=$(kubectl get hybridcontrolplane edbpgai -o json | jq '.status.components | to_entries[] | select(.value.name=="my-component") | .key')
-      kubectl patch hybridcontrolplane edbpgai --subresource=status --type=json -p "[{\"op\": \"replace\", \"path\": \"/status/components/$INDEX/suspended\", \"value\": true}]"
+     NAMESPACE=$(echo "${CLUSTER}" | jq -rc '.namespace')
+     INDEX=$(kubectl get hybridcontrolplane ${HCP_CR} -o json | jq '.status.components | to_entries[] | select(.value.name=='\"${NAMESPACE}\"') | .key')
+     kubectl patch hybridcontrolplane ${HCP_CR} --subresource=status --type=json -p "[{\"op\": \"replace\", \"path\": \"/status/components/$INDEX/suspended\", \"value\": true}]"
     done
     ```
-
-    [TBD final command]: # 
 
 1.  Verify that the components have been suspended correctly: 
 
