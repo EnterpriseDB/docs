@@ -1,0 +1,126 @@
+---
+title: Upgrading seed mode and installing PGD
+navTitle: Upgrading seed mode and installing PGD
+description: Performing a major version upgrade on the seed node and initializing PGD.
+---
+
+In this phase, you will perform a major version upgrade of your PostgreSQL distribution on the seed node and prepare it for Postgres Distributed (PGD).
+
+## Preparing the seed node for the upgrade
+
+The seed node must be taken offline to perform the major version upgrade. We highly recommend to disable the logical subscription before stopping the service, as subscription metadata must be manually refreshed after the upgrade.
+
+1. On the seed node, disable logical replication:
+
+    ```SQL
+    ALTER SUBSCRIPTION migration_seed_sub DISABLE;
+    ```
+
+1. Stop the existing Postgres instance on seed node:
+
+    ```SQL
+    su -u enterprisedb --command "pg_ctl stop"
+    ```
+
+1. Install the packages for the target version on the seed node. Ensure the old version remains installed, as `pg_upgrade` requires binaries from both versions to perform the transition. See [Installing EPAS](/epas/latest/installing/), [Installing PGE](/pge/latest/installing/), or [Installing PostgreSQL](/supported-open-source/postgresql/installing/) for details.
+
+1. Adjust your `${PATH}` environment variable to point to the new binaries (e.g., `/usr/edb/as17/bin/`) and verify the version:
+
+    ```bash
+    which pg_ctl
+    ```
+
+## Performing the in-place upgrade
+
+Use the `--link` flag with `pg_upgrade` for an "in-place" upgrade that uses hard links instead of copying data files. This significantly reduces the required disk space and time, though it requires both the old (`${OLD_PGDATA}`) and new (`${NEW_PGDATA}`) directories to reside on the same filesystem.
+
+1. On the seed node, prepare the new data directory:
+
+    ```bash
+    OLD_PGDATA = ${PGDATA}
+    unset PGDATA
+    mkdir ${NEW_PGDATA}
+    chown enterprisedb: ${NEW_PGDATA}
+    chmod 700 ${NEW_PGDATA}
+    su enterprisedb -c "initdb -D ${NEW_PGDATA} -E utf-8"
+    ```
+
+1. On seed node, eun `pg_upgrade` in check mode firstL
+
+    ```bash
+    mkdir /tmp/pg_upgrade
+    cd /tmp/pg_upgrade
+    su postgres -c "pg_upgrade \
+    --old-datadir ${OLD_PGDATA} \
+    --new-datadir ${NEW_PGDATA} \
+    --old-bindir /usr/edb/as14/bin/ \
+    --new-bindir /usr/edb/as17/bin/ \
+    --link \
+    --check"
+    ```
+
+1. If the check returns a positive result, perform the actual upgrade by executing the same command without the `--check` flag. 
+
+    ```bash
+    cd /tmp/pg_upgrade
+    su postgres -c "pg_upgrade \
+    --old-datadir ${OLD_PGDATA} \
+    --new-datadir ${NEW_PGDATA} \
+    --old-bindir /usr/edb/as14/bin/ \
+    --new-bindir /usr/edb/as17/bin/ \
+    --link"
+    ```
+
+1. Once completed, start the new version of your Postgres distribution.
+
+    ```bash
+    su -u enterprisedb --command "pg_ctl start"
+    ```
+
+## Re-enabling the subscription
+
+Major version upgrades do not carry over the internal table-mapping information for subscriptions; specifically, `pg_subscription_rel` will be empty. Enabling the subscription immediately would cause it to move the replication slot forward without synchronizing table data, resulting in data loss.
+
+To fix this, you must "bogus-configure" the subscription to prevent it from advancing the real slot while you refresh the table metadata. You can safely ignore errors being reported in the seed node logs about the slot not existing.
+
+Just as after the initial creation of the subscription for logical replication in phase two, the resulting list of tables to replicate should be verified.
+
+
+1. On the seed node, point to a bogus slot to safely refresh metadata: 
+
+    ```sql
+    ALTER SUBSCRIPTION migration_seed_sub SET (slot_name = 'bogus');
+    ```
+
+1. Enable and refresh the publication:
+
+    ```sql
+    ALTER SUBSCRIPTION migration_seed_sub ENABLE;
+    ALTER SUBSCRIPTION migration_seed_sub REFRESH PUBLICATION WITH (copy_data = false);
+    ALTER SUBSCRIPTION migration_seed_sub DISABLE;
+    ```
+
+1. Verify that the table list in the subscription matches your configuration when following [Enabling logical replication to the seed node](3-convert-to-logical-replication/#enabling-logical-replication-to-the-seed-node).
+
+    ```sql
+    SELECT n.nspname AS schemaname,
+        c.relname AS tablename,
+        sr.srsubstate AS state,
+        s.subname AS subscription_name
+    FROM pg_subscription_rel sr
+    JOIN pg_class c ON sr.srrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    JOIN pg_subscription s ON sr.srsubid = s.oid
+    WHERE s.subname = 'migration_seed_sub'
+    ORDER BY n.nspname, c.relname;
+    ```
+
+1. Revert the subscription to the correct slot and resume replication at the right LSN:
+
+    ```SQL
+    ALTER SUBSCRIPTION migration_seed_sub
+        SET (slot_name = 'migration_node_${SEED_NODE_NAME}');
+    ALTER SUBSCRIPTION migration_seed_sub ENABLE;
+    ```
+
+At this stage, the seed node is running the new Postgres version and receiving logical updates from the source primary. Allow the system to settle and ensure the seed node has fully caught up before moving to initialize PGD.

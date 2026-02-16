@@ -1,0 +1,45 @@
+---
+title: Preparing your environment
+navTitle: Preparing your environment
+description: Preparing your environment to perform a migration from PSR to PGD.
+---
+
+Before beginning the migration from Physical Streaming Replication (PSR) to PostgreSQL Distributed (PGD), you must identify the key roles of your nodes and establish your target topology. This ensures the environment can handle the temporary overhead of the migration and provides a clear path for the cluster transition.
+
+## Choosing a source node
+
+You must choose a source node from your existing cluster to provide the initial data and subsequent updates for the PGD cluster. Because logical replication cannot be cascaded from a standby node, only the current primary node is a viable source.
+
+Consider the following:
+- **Resource overhead:** During migration, the source node node must perform additional logical decoding for at least two PGD nodes, requiring extra CPU capacity.
+- **Storage:** The source node will need to retain additional WAL data to keep replicas in sync, necessitating more disk space than standard operations.
+- **Optimization:** If the current primary is underpowered, consider a switchover (promotion) to a more favorable node before starting the migration.
+- **Failover handling:** If the primary node fails during the migration, you must abort and restart the process using a new primary as the source
+
+## Choosing a seed node
+
+The seed node is a new node selected from the group that will form your PGD cluster. This node serves a unique transitional role during the migration:
+
+1. It receives a full copy of the database from the source node.
+1. It performs the in-place major version upgrade.
+1. It initializes (seeds) the final PGD cluster.
+
+
+## Planning your PGD cluster topology
+
+Establish your target topology in advance. You define locations, hostnames, PGD node names, and connection strings (DSNs) before proceeding. This guide assumes a two-node PGD start: the seed node (first node) and one additional node. Adding further nodes follows the same process as the second node.
+
+| Variable | Description |
+| -------- | ----------- | 
+| `${SEED_NODE_PGD_NAME}` | The PGD-specific name assigned to the seed node. |
+| `${SEED_NODE_DSN}` | Connection string to reach the seed node. | 
+| `${ADD_NODE_PGD_NAME}` | The PGD-specific name for the second node. |
+| `${ADD_NODE_DSN}` | Connection string to reach the additional node. | 
+| `${PGD_CLUSTER_NAME}` | The name of the PGD node group containing all nodes. | 
+
+## Configuring local access
+
+The migration steps specify which node to use for each command.
+- Shell commands: run as `root` unless `su` is specified.
+- Environment variables: Ensure `PGDATA` is set to your Postgres data directory (e.g., `/var/lib/edb/as14/data` for EPAS 14). You may also need to set `PGPORT`.
+- Database commands: Connect to the specific database to migrate (not the default `postgres` or `edb` databases) by setting `PGDATABASE` before running `psql`.
