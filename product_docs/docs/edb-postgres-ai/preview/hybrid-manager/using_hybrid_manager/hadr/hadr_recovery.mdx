@@ -21,10 +21,6 @@ Before starting the DR procedure, ensure you have made yourself familiar with:
 
 A new HM instance deployed and running. It must be running the same version as the old one.
 
-- The same locations (`locations.beacon.enterprisedb.com` custom resource) used in the old HM instance must be available in the new one. These are an internal resource created during install and isn't available in the HM console. `managed-devspatcher` is the default value.
-
-[still need to check whether this is required]: #
-
 - The container images used to build the clusters in the old HM instance are available to the new one.
 
 ## Required tools
@@ -81,7 +77,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
     - **Postgres clusters backups folder** &mdash; `customer-pg-backups`.
 
-    - **Folder corresponding to any defined custom storage locations** &mdash; if you have custom storage locations defined in the old HM instance, copy the corresponding folders as well.
+    - **Folder corresponding to any defined custom storage locations** &mdash; If you utilize **Managed Storage Locations** in the HM console (e.g., for offloading Postgres queries), you must ensure the corresponding folders are copied from the old S3-compatible bucket to the new one. While the definitions are restored via Velero, the actual data inside those custom folders must be manually migrated to the new target bucket.
 
 1.  Copy the old backups to the new bucket using your preferred tools. Here are some examples using cloud service provider CLIs to move data between buckets:
 
@@ -93,7 +89,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     aws s3 cp --recursive s3://${OLD_BUCKET}/customer-pg-backups s3://${NEW_BUCKET}/customer-pg-backups
     ```
 
-    If you have configured additional _custom_ managed locations, use the same method to copy those folders.
+    If you have configured additional **Managed Storage Locations**, use the same method to copy those folders.
 
     </Tab>
 
@@ -104,7 +100,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     gcloud storage cp gs://${OLD_BUCKET}/customer-pg-backups gs://${NEW_BUCKET}/customer-pg-backups --recursive
     ```
 
-    If you have configured additional _custom_ managed locations, use the same method to copy those folders.
+    If you have configured additional **Managed Storage Locations**, use the same method to copy those folders.
 
     </Tab>
     </TabContainer>
@@ -217,7 +213,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
     ```shell
     # Copy data lake objects from old bucket to new bucket
-    gcloud storage cp "gs://${OLD_BUCKET_DATALAKE}/*" gs://${NEW_BUCKET_DATALAKE}/ --recursive
+    gcloud storage cp "gs://${OLD_BUCKET_DATALAKE}/**" gs://${NEW_BUCKET_DATALAKE}/ --recursive
     # Copy CORS configuration from old bucket to new bucket
     gcloud storage buckets describe gs://rhos-uat-griptape-datalake --format="json" | jq .cors_config > cors-config.json
     gcloud storage buckets update gs://${NEW_BUCKET_DATALAKE} --cors-file=cors-config.json
@@ -333,21 +329,19 @@ After the old backups are available in the new bucket, you can restore the HM-in
 
 ### Restart HM services
 
-[am I right in assuming that this is a one-time step after all HM-internal databases are restored?]: #
-
-After the cluster is successfully restored and in a healthy state, restart the `accm-server` in the namespace `upm-beaco-ff-base` to make sure the HM console is available again: 
+After all HM-internal database clusters are successfully restored and reporting a healthy state, perform this one-time restart of the management server to refresh the HM console:
 
 ```shell
 kubectl delete pods $(kubectl get pods -n upm-beaco-ff-base | grep '^accm-server' | awk '{print $1}') -n upm-beaco-ff-base
 ```
 
-At this point, the HM console on the new cluster is available again.
+Wait for the new pod to reach the **Running** state. At this point, the HM console is available, though it won't yet show your HM-managed Postgres clusters.
 
 ### Configure the Velero plugin
 
-The Velero plugin helps restore the Kubernetes resources in a correct state. The Postgres cluster's resources are restored as deleted, so you can later restore data as desired.
+The Velero plugin handles the transformation of Kubernetes resources during the restore. Most importantly, it ensures Postgres clusters are restored in a state that allows you to manually trigger their data recovery.
 
-1.  List the available backups in the new HM instance and choose the one you want to restore from:
+1.  List the available backups and note the **Name** and **Timestamp** of your preferred recovery point:
 
     ```shell
     velero get backups -o json --selector velero.io/storage-location=recovery \
@@ -355,9 +349,11 @@ The Velero plugin helps restore the Kubernetes resources in a correct state. The
     | column -t -s "$(printf '\t')"
     ```
 
-1.  Select a backup from this list and export the following environment variables with the corresponding values: 
+1.  Export the environment variables: 
 
-    [this is a different timestamp than the timestamp above, right? is this for the pg database clusters onstead of HM-internal services?]: #
+    !!!note
+    The `BACKUP_TIMESTAMP` must be the exact ISO timestamp (e.g., `2024-12-16T15:44:03Z`) found in the previous step.
+    !!!
 
     ```shell
     export BACKUP_TIMESTAMP=<recovery date in YYYY–MM-DDTHH:MM:SSZ format>
@@ -392,7 +388,7 @@ The Velero plugin helps restore the Kubernetes resources in a correct state. The
 
 ### Restore resources
 
-1.  Restore custom managed storage locations by applying the following Velero restore:
+1.  Restore **Managed Storage Locations** by applying the following Velero restore. This includes the default `managed-devspatcher` location as well as any additional custom-defined locations.
 
     ```yaml
     kubectl apply -f - <<EOF
