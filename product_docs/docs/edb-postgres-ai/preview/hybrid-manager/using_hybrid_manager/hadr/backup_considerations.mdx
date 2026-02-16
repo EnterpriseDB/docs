@@ -25,7 +25,7 @@ During installation, you configure an [S3-compatible storage](/edb-postgres-ai/p
 -   Internal backups (HM control plane data)
 -   Postgres backups (Postgres database backups or data plane data)
 
-There is a default storage location in your bucket for these backups. However, HM supports storing backup data into a custom storage location in the same bucket.
+There is a default storage location in your bucket for these backups. However, HM supports storing backup data into a custom storage location (**Managed Storage Locations** ) in the same bucket. If you use custom storage locations, ensure these directories are included in your cross-region replication strategy to remain available during a regional outage.
 
 All of this data needs to be available after a disaster. Depending on the criticality of the data and the level of disaster that you want to be able to recover from, you’ll need to replicate this data outside of the CSP region or physical data center where the HM instance resides.
 
@@ -34,26 +34,24 @@ All of this data needs to be available after a disaster. Depending on the critic
 
 ### Default backup configuration
 
-**Postgres databases** use continuous backups by default, so you can restore them at any point in time. They are limited only by backup lifecycle policies.
+HM employs a dual-layered backup strategy to protect both the control plane and your data plane:
 
-[not sure if its helpful to call out that postgres cluster can be restore at any point in time, since we later restore them based on a velero timestamp... should we remove this?]: # 
+**Postgres database data** &mdash; Managed via continuous backups. This ensures that once a cluster is restored, your data can be recovered to a specific point-in-time, limited only by your backup lifecycle policies.
 
-**Critical HM configuration data**, such as the definition of the Postgres database clusters, is stored as Kubernetes objects and included in the Velero backup. By default, this backup happens daily at 23:00, as defined by the default schedule `velero-backup-kube-state`.
+**HM configuration data** &mdash; Managed via Velero. This captures the "blueprints" of your environment, including the definitions of your Postgres clusters. By default, this occurs daily at 23:00 via the `velero-backup-kube-state` schedule.
 
-If your RPO requires more frequent backups, complement the default schedule by creating an additional custom backup schedules.
+If your RPO requires more frequent snapshots of your cluster definitions (for example, if you create or delete clusters frequently), you can create a custom Velero schedule.
 
 !!! Danger
-    Do not modify the default schedule, as it may be overwritten by a HM software update.
+    Don't modify the default schedule, as it may be overwritten by a HM software update.
 
 ### Adding a custom backup schedule
 
-The following example shows a custom schedule to back up the needed resources every 6 hours at the top of the hour:
+The following command backs up the Kubernetes metadata for the entire HM installation every 6 hours. Note that `--snapshot-volumes=false` is used because the actual Postgres data is already protected by continuous backups in your object storage.
 
 ```shell
 velero create schedule <backup-name> --schedule="0 */6 * * *" --include-namespaces='*' --include-resources='*' --snapshot-volumes=false --ttl=168h --skip-immediately=false
 ```
-
-[Does this cover both Internal backups (HM control plane data) AND Postgres backups (Postgres database backups or data plane data)?]: # 
 
 To check how the backup schedule was configured in the backend, run the following command:
 
