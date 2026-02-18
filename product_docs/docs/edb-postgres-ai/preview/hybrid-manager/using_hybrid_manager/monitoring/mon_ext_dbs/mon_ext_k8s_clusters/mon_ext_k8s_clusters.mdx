@@ -49,20 +49,28 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
 
    ```
    agentConfig:
-     accessKey: "baak_xxxxxxxxxxxxxxxxxxxxx"  # From HCP Machine User
-     projectID: "your_project_id"              # From HCP Project
+     accessKey: "baak_xxxxxxxxxxxxxxxxxxxxx"  
+     projectID: "your_project_id"              
      beaconServer:
-       host: "your_hcp_instance.example.com"  # HCP endpoint
+       host: "your_hcp_instance.example.com"
        plaintext: false
      metrics:
        push:
          endpoint: "your_hcp_instance.example.com"
      webhook:
        enabled: true
-       # For EDB Postgres for Kubernetes, use:
-       podSelector: "k8s.enterprisedb.io/podRole=instance"
-       # For open-source CloudNativePG, use:
-       # podSelector: "cnpg.io/podRole=instance"
+   ```
+  
+1. Configure the helm chart for EDB Postgres for Kubernetes:
+  
+   ```
+   podSelector: "k8s.enterprisedb.io/podRole=instance"
+   ```
+   
+   Or open-source CloudNativePG:
+   
+   ```
+   podSelector: "cnpg.io/podRole=instance"
    ```
 
 1. Configure Docker registry credentials for EDB images:
@@ -84,10 +92,19 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
      repository: <repo url>
      tag: ""
    ```
+
+1. Download the chart to Cluster B (if not already present), then extract the archive and enter the folder to access the configuration files:
    
-   !!! important 
+    ```
+    tar -xzf beacon-agent-k8s-<version>.tg
+    cd beacon-agent-k8s
+    ```
+   
+1. Install and enable Openshift.
+
+!!!note
    Enabling additional monitoring components is optional.
-   Set to true if not already installed:
+   Set the values to true to enable them:
     
     ```
     additionalCharts:
@@ -121,17 +138,6 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
         repository: <repo url>
         tag: ""
     ```
-   !!!
-
-1. Download the chart to Cluster B (if not already present), then extract the archive and enter the folder to access the configuration files:
-   
-    ```
-    tar -xzf beacon-agent-k8s-<version>.tg
-    cd beacon-agent-k8s
-    ```
-   
-1. Install and enable Openshift.
-
 
 ### Installing the Helm chart with customized values file
 
@@ -522,10 +528,9 @@ Core Configuration Options
 
 ### Security context configuration for standard Kubernetes clusters
 
-By default, the chart uses secure settings with explicit user or group IDs:
+Configure your custom-values.yaml with default secure settings which include user and group IDs:
 
-   ```
-   # In your custom-values.yaml
+   ``` Yaml
    securityContext:
      allowPrivilegeEscalation: false
      capabilities:
@@ -544,24 +549,24 @@ By default, the chart uses secure settings with explicit user or group IDs:
 
 ### Security context configuration for OpenShift clusters
 
-Enable the OpenShift mode to automatically configure security contexts for SCC compatibility.
+1. Enable the OpenShift mode to automatically configure security contexts for SCC (Security contenxt configuration) compatibility.
 
-In your custom-values Yaml file, run:
+1. Enable OpenShift support in your custom-values.yaml file:
 
-   ```
+   ```yaml
    openshift:
      enabled: true
    ```
 
-When the value is `openshift.enabled: true`, the chart automatically:
+When the value is set to `openshift.enabled: true`, the chart automatically:
 
-- Omits `runAsUser` and `runAsGroup` from the container security contexts, allowing SCC to assign them.
+- Omits `runAsUser` and `runAsGroup` from the container security contexts, allowing SCC (Security contenxt configuration) to assign them.
 - Stores other security settings like capabilities drop, readOnlyRootFilesystem, etc.
 - Uses numeric UID 65532 for the OpenTelemetry collector that is required for distroless image validation.
 
-Alternatively, you can apply `"-f custom-values.yaml"` through the command line:
+1. Alternatively, specify your configuration via the command line using the -f custom-values.yaml flag:
 
-   ```
+   ```Yaml
    In your custom-values.yaml for OpenShift
    securityContext:
      allowPrivilegeEscalation: false
@@ -571,17 +576,26 @@ Alternatively, you can apply `"-f custom-values.yaml"` through the command line:
      privileged: false
      readOnlyRootFilesystem: true
      runAsNonRoot: true
-     # Leave these empty - OpenShift will assign them automatically
-     runAsUser:
-     runAsGroup:
-   
+     ```
+
+1. Leave the fields below empty as OpenShift will assign them automatically:
+     
+    ```
+    runAsUser:
+    runAsGroup:
+    ```
+1. When deploying to OpenShift, ensure the fsGroup field remains undefined to allow the platform to manage volume permissions automatically:
+
+   ```
    podSecurityContext:
      seccompProfile:
        type: RuntimeDefault
      # Leave fsGroup empty for OpenShift
      # fsGroup:
-   
-   # Configure subcharts for OpenShift compatibility
+   ```
+1. To ensure OpenShift compatibility, configure the OpenTelemetry Collector subchart with a restricted security context:
+
+   ```
    opentelemetry-collector:
      podSecurityContext:
        seccompProfile:
@@ -592,14 +606,28 @@ Alternatively, you can apply `"-f custom-values.yaml"` through the command line:
        capabilities:
          drop:
            - ALL
-       # runAsUser 65532 is the 'nonroot' user in distroless images.
-       # Required because runAsNonRoot needs a numeric UID to verify.
-       # Privileged SCC (required for hostPath) allows any UID, so this works on OpenShift.
-       runAsUser: 65532
-       runAsGroup: 65532
-   
-   kube-state-metrics:
-     # Pod-level security context - leave runAsUser/runAsGroup/fsGroup empty for OpenShift
+   ```
+
+!!! note
+- Distroless Image Support: The UID/GID `65532` is the standard "nonroot" user for distroless images, which lacks a traditional `/etc/passwd` file.
+
+- Numeric Validation: Setting a specific numeric ID is required for the runAsNonRoot: true directive to verify the user identity correctly.
+
+- OpenShift Compatibility: While OpenShift's Privileged Security Context Constraint (SCC) allows any UID, using 65532 ensures a consistent, secure identity across both OpenShift and standard Kubernetes environments.
+!!!
+
+
+**Key configuration notes:**
+
+- OpenShift ID Management: The runAsUser, runAsGroup, and fsGroup fields are left empty to allow OpenShift’s Security Context Constraints (SCC) to automatically assign the correct UID and GID ranges for the project.
+
+- Security Context Activation: Setting enabled: true ensures the subchart applies the specified security settings rather than falling back to its internal defaults.
+
+- Non-Root Enforcement: The runAsNonRoot: true flag remains active to guarantee that the container never runs with root privileges, even when IDs are dynamically assigned by the platform.
+
+- Seccomp Hardening: Utilizing the RuntimeDefault profile ensures the container uses the container runtime's default secure syscall filter.
+
+  ```
      securityContext:
        enabled: true
        runAsNonRoot: true
@@ -608,8 +636,11 @@ Alternatively, you can apply `"-f custom-values.yaml"` through the command line:
        fsGroup:
        seccompProfile:
          type: RuntimeDefault
+  ```
          
-     # Container-level security context
+1. Harden the container-level security context by enforcing a read-only filesystem, disabling privilege escalation, and dropping all default Linux capabilities:
+
+   ```
      containerSecurityContext:
        readOnlyRootFilesystem: true
        allowPrivilegeEscalation: false
@@ -618,7 +649,7 @@ Alternatively, you can apply `"-f custom-values.yaml"` through the command line:
            - ALL
    ```
    
-   Or through command line overrides:
+   Alternatively, you can apply these settings via the command line:
    
    ```
    helm upgrade --install beacon-agent-k8s \
@@ -640,7 +671,7 @@ OpenShift assigns a specific UID range to each namespace.
 
 For example: 1000880000-1000889999.
 
-When you specify an explicit runAsUser like 10000, it falls outside this range and causes Security Context Constraints (SCC) violations. By leaving these values empty, OpenShift's admission controller automatically assigns appropriate values from the allowed range.
+Specifying an explicit runAsUser like 10000 often falls outside this range, triggering Security Context Constraints (SCC) violations. By leaving these values empty, OpenShift's admission controller automatically assigns appropriate values from the allowed range.
 
 ### runAsUser differences between components:
 
@@ -653,23 +684,40 @@ When you specify an explicit runAsUser like 10000, it falls outside this range a
 
 ### OpenShift: Granting SCC (Security Context Constraints) for Daemonsets 
 
-If you enable opentelemetry-collector or prometheus-node-exporter subcharts on OpenShift, these daemonsets require privileged access to collect node-level metricsm including hostPath volumes, hostPorts, hostNetwork.
-Grant the privileged SCC to their service accounts:
+To collect node-level metrics and logs on OpenShift, the opentelemetry-collector and prometheus-node-exporter subcharts require elevated permissions to access hostPath, hostPorts, and hostNetwork. Grant the privileged Security Context Constraint (SCC) to their respective service accounts using the commands below.
+
+!!! note
+Since OpenShift includes a built-in node-exporter, your deployment may conflict with existing monitoring; consider using the platform's native exporter instead.
+!!!
+
+### Openshift permission setup and deployment
+
+1. Create the namespace (if not already present):
 
    ```
-   # Required for opentelemetry-collector daemonset (cadvisor/kubelet metrics, logs)
+   oc new-project upm-beacon
+   ```
+
+1. Grant the Privileged SCC:
+
+  ``` 
    oc adm policy add-scc-to-user privileged \
      system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
    
-   # Required for prometheus-node-exporter daemonset (node metrics)
-   # Note: OpenShift already has its own node-exporter, so this may conflict.
-   # Consider disabling prometheus-node-exporter and using OpenShift's built-in monitoring instead.
    oc adm policy add-scc-to-user privileged \
      system:serviceaccount:upm-beacon:beacon-agent-k8s-prometheus-node-exporter
+  ```
+
+1. Deploy or Update the Helm Chart:
    
-   # Restart the daemonsets to pick up the SCC changes
+   ```
+   helm upgrade --install beacon-agent . -f custom-values.yaml -n upm-beacon
+   ```
+
+1. Restart the Daemonsets:
+   ```
    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
-   kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-prometheus-node-exporter 
+   kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-prometheus-node-exporter
    ```
 
 !!! note 
