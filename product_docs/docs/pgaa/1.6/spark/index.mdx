@@ -4,7 +4,6 @@ navTitle: Accelerating with Spark
 description: How to accelerate with Spark using Analytics Accelerator.
 navigation:
   - spark-only
-  - rapids
 ---
 
 By default, the Postgres Analytics Accelerator (PGAA) utilizes Seafowl, an embedded analytical engine, to accelerate queries. However, for large-scale data processing that exceeds the resources of a single Postgres instance, you can offload execution to a remote Apache Spark cluster via Spark Connect.
@@ -13,24 +12,20 @@ Spark Connect is a thin client-server protocol for Apache Spark that decouples t
 
 ### Choosing your executor engine
 
-The `pgaa.executor_engine` configuration parameter determines where the heavy lifting of your analytical queries happens. When moving beyond the default Seafowl engine, you have two primary options for distributed execution:
+The `pgaa.executor_engine` configuration parameter determines where the heavy lifting of your analytical queries happens.
 
-### Distributed execution options
 
-To leverage Spark, you can configure your environment in one of two ways:
+| Feature | Seafowl | Spark Connect |
+| ------- | ------- | ------------- | 
+| Architecture | Runs as a process alongside Postgres. | Connects to an external Spark cluster. |
+| Best for | Small to medium datasets, low latency. | Petabyte-scale data, heavy ETL/Z-Ordering. |
+| Scalability | Limited by the host machine's RAM/CPU. | Distributed across multiple worker nodes. | 
+| Complexity | Zero-config; starts automatically. | Requires a running Spark Connect endpoint. |
+| Performance | Faster for single-node data skipping. | Faster for massive joins and aggregations.
 
-- **[Distributed Spark execution](spark-only):** Use standard Apache Spark clusters to process massive datasets using distributed CPU cores. This is the standard approach for large-scale data processing and heavy maintenance tasks.
-- **[GPU-accelerated Spark](rapids):** Integrate the NVIDIA RAPIDS Accelerator for Apache Spark. This option offloads query execution to GPUs, significantly reducing processing time and infrastructure costs for compute-intensive joins and aggregations.
+### When to switch to Spark?
 
-| Feature | Seafowl | Spark Connect (CPU) | Spark + RAPIDS (GPU) |
-| ------- | ------- | ------------- | ------------- |
-| **Architecture** | Process alongside Postgres. | Remote Spark cluster. | Remote Spark with NVIDIA GPUs. |
-| **Best for** | Small/medium datasets. | Petabyte-scale, complex ETL. | Massive joins & aggregations. |
-| **Scalability** | Single host limits. | Horizontal (Multi-node). | Horizontal + GPU Acceleration. | 
-| **Complexity** | Zero-config. | Requires Spark endpoint. | Requires GPU-enabled nodes. |
-| **Cost Efficiency** | Best for datasets < 1 TB. | Best for datasets between 1 TB and 3 TB. | Best for datasets 3 TB or higher.  |
-
-While Seafowl is highly optimized for single-node performance, consider switching to a Spark-based executor if:
-- **Memory constraints:** Your queries exceed the `pgaa.autostart_seafowl_max_memory_mb` limit.
-- **Maintenance heavy:** You are performing resource-intensive operations like large-scale Compaction or Z-Ordering on Iceberg tables.
-- **Extreme scale:** You need to process joins and aggregations across datasets that require the distributed compute of an external cluster.
+While Seafowl is highly optimized for performance on a single node, you should consider switching to Spark Connect if:
+- **Memory constraints:** Your aggregations or joins are hitting the `pgaa.autostart_seafowl_max_memory_mb` limit.
+- **Maintenance heavy:** You are performing resource-intensive operations like Z-Ordering or large-scale Compaction on Delta or Iceberg tables.
+- **Centralized compute:** You already have a managed Spark environment and want to leverage existing compute credits.
