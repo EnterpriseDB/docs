@@ -14,23 +14,23 @@ The Postgres Analytics Accelerator (PGAA) achieves its high performance by offlo
 When you query an analytical table, PGAA manages data retrieval and processing via two distinct execution paths:
 
 
-**DirectScan:** Seafowl reads data directly from object storage, applies all filters and aggregations at the source, and returns only the final result set to PostgreSQL. This maximizes performance by fully utilizing vectorized acceleration and minimizing network traffic.
+**DirectScan:** Seafowl reads data directly from object storage, applies all filters and aggregations at the source, and returns only the final result set to Postgres. This maximizes performance by fully utilizing vectorized acceleration and minimizing network traffic.
 
-**CompatScan**: If a query contains SQL features or custom functions that Seafowl cannot process natively, the system falls back to a hybrid mode. In this scenario, Seafowl still acts as the data source—streaming data from object storage and performing basic filtering—while PostgreSQL acts as the orchestrator for final complex processing. 
+**CompatScan**: If a query contains SQL features or custom functions that Seafowl cannot process natively, the system falls back to a hybrid mode. In this scenario, Seafowl still acts as the data source—streaming data from object storage and performing basic filtering—while Postgres acts as the orchestrator for final complex processing. 
 
 In CompatScan, the workload is divided:
 - Seafowl reads files and handles authorized pushdowns (like joins or group-bys).
-- PostgreSQL receives the optimized stream from Seafowl to execute specialized functions, final sorting, or complex logic that the vectorized engine doesn't yet support.
+- Postgres receives the optimized stream from Seafowl to execute specialized functions, final sorting, or complex logic that the vectorized engine doesn't yet support.
 
-While DirectScan is the goal for maximum speed, CompatScan serves as a reliable fallback, ensuring full PostgreSQL feature compatibility at the cost of some performance.
+While DirectScan is the goal for maximum speed, CompatScan serves as a reliable fallback, ensuring full Postgres feature compatibility at the cost of some performance.
 
 
 ## Analyzing your query plan
 
 To verify how PGAA is executing your query, use the `EXPLAIN` command. The output will reveal which engine is doing the heavy lifting:
 
-- **DirectScan:** Look for a `SeafowlDirectScan` or a `SparkDirectScan` node. This indicates that Seafowl is handling the entire operation (filtering, joining, and aggregating) and returning only the final result to PostgreSQL.
-- **CompatScan:** If you see a `SeafowlCompatScan` or a `SparkCompatScan` node, the query is running in "hybrid" mode. While PostgreSQL orchestrates the final execution to ensure full feature compatibility, the remote engine can still accelerate parts of the query if pushdown settings are enabled.
+- **DirectScan:** Look for a `SeafowlDirectScan` or a `SparkDirectScan` node. This indicates that Seafowl is handling the entire operation (filtering, joining, and aggregating) and returning only the final result to Postgres.
+- **CompatScan:** If you see a `SeafowlCompatScan` or a `SparkCompatScan` node, the query is running in "hybrid" mode. While Postgres orchestrates the final execution to ensure full feature compatibility, the remote engine can still accelerate parts of the query if pushdown settings are enabled.
 
 ## Managing DirectScan fallbacks
 
@@ -49,7 +49,7 @@ If your query falls back to the slower CompatScan path, follow these steps to tr
     SET pgaa.direct_scan_fail_behavior = 'error';
     ```
 
-   PostgreSQL will throw an explicit error identifying the incompatible SQL syntax or data type.
+   Postgres will throw an explicit error identifying the incompatible SQL syntax or data type.
 
 3. If the query is complex, try removing clauses one by one to isolate the specific "compatibility trigger" forcing the hybrid mode.
 
@@ -58,8 +58,8 @@ If your query falls back to the slower CompatScan path, follow these steps to tr
 
 Even in hybrid mode, you can maintain high performance by offloading resource-intensive operations. The following settings are enabled by default and act as a performance safety net:
 
-**pgaa.enable_join_pushdown** Authorizes the system to attempt to offload joins to the remote executor (Seafowl or Spark). By joining data where it resides, you avoid pulling massive raw datasets into PostgreSQL memory, significantly reducing network traffic.
+**pgaa.enable_join_pushdown** Authorizes the system to attempt to offload joins to the remote executor (Seafowl or Spark). By joining data where it resides, you avoid pulling massive raw datasets into Postgres memory, significantly reducing network traffic.
 
-**pgaa.enable_groupby_pushdown** Authorizes the offloading of aggregations (`SUM`, `COUNT`, `AVG`) and `GROUP BY` clauses. Aggregating 1 billion rows into 10 groups at the source reduces data transfer by several orders of magnitude, saving both bandwidth and PostgreSQL CPU.
+**pgaa.enable_groupby_pushdown** Authorizes the offloading of aggregations (`SUM`, `COUNT`, `AVG`) and `GROUP BY` clauses. Aggregating 1 billion rows into 10 groups at the source reduces data transfer by several orders of magnitude, saving both bandwidth and Postgres CPU.
 
 See the function reference section for [pgaa.execute_compaction()](reference/functions/#pgaaexecute_compaction) for a complete list of supported options and examples.
