@@ -191,7 +191,7 @@ const Page = () => {
                 <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
               </BannerCardLink>
 
-              <BannerCardLink to="/pgaa/latest/quick_start/">
+              <BannerCardLink to="/pgaa/latest/overview/quick_start/">
                 Managed Lakehouse
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>
