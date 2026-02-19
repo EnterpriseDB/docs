@@ -16,7 +16,8 @@ The CVEs listed in this section are from PostgreSQL and other parties who have r
 {% for ass in asssorted %}
 
 {% set thisass=asss[ass] %}
-{% set releaseYear = thisass.open.first_published.slice(0,4) %}
+{% set firstPublished = thisass.open.first_published or "" %}
+{% set releaseYear = firstPublished.slice(0,4) %}
 {% if lastYear != releaseYear %}
 {% if lastYear !=-1 %}</table>{% endif %}
 <h2>Released {{ releaseYear }}</h2>
