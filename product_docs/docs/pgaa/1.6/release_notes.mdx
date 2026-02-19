@@ -1,0 +1,93 @@
+---
+title: Analytics Accelerator 1.6 release notes
+navTitle: Release notes
+description: Release notes for version 1.6 of Analytics Accelerator.
+deepToC: true
+---
+
+Released: 4 February 2026
+
+Analytics Accelerator 1.6 includes the following enhancements and bug fixes, reflecting all changes since version 1.3.1:
+
+## Highlights
+
+- **Native Azure support:** PGAA now officially supports Azure Blob Storage and Azure Data Lake Storage Gen2 (ADLS), allowing you to leverage Azure-based data lakes as primary storage locations for your analytical workloads.
+- **Expanded Parquet support:** The Parquet storage format is now supported for PGFS locations using both `file://` and `s3://` protocols. 
+- **Advanced query pushdown:** Significant performance gains for CompatScan with new support for offloading joins and group-by aggregations directly to the vectorized engine.
+
+## Features
+
+### Performance & query optimization
+
+- Added general optimizations for the Iceberg storage format.
+- Enabled DirectScan for `HTAP` tables when an `analytics_storage_location` is set.
+- The caching object store now invalidates entries immediately upon file read errors, but doesn't invalidate in-memory entries if file writes fail.
+- Updated DataFusion to version 51 for improved stability and query performance.
+- Added native support for `NOT LIKE` and `NOT ILIKE` operators.
+
+### Replication & data types
+
+- Added support for the Postgres UUID type during replication.
+- Added the following wrapper functions for easier PGD management: `pgaa.enable_analytics_replication`, `pgaa.disable_analytics_replication`, `pgaa.convert_to_analytics`, `pgaa.restore_from_analytics`, and `pgaa.convert_to_tiered_table`.
+- All integer-like types smaller than `BIGINT` are now coerced to `INTEGER`.
+- Updated default `pgaa.max_replication_lag_s` and `pgaa.flush_task_interval_s` to 5 seconds for more responsive data freshing.
+- Added support for `BYTEA` replication and schema inference.
+- Introduced support for replicating Postgres array types to native lakehouse types, including specific support for `BPCHAR` and `UUID` arrays.
+- Added a fallback mechanism that converts unsupported types to `TEXT` to prevent replication failures.
+- Integrated the option `pgd.purge_analytics_target` into the `pgaa.enable_analytics_replication` and `pgaa.convert_to_tiered_table` functions to purge existing analytics before replicating. 
+
+### Catalog & storage management
+
+- Iceberg REST connections now support OAuth2 authentication.
+- Added `pgaa.execute_compaction` to improve the performance and storage efficiency of an analytical Iceberg table using a Spark Connect executor engine.
+- Added helper commands for environment management: 
+    - `pgaa.list_analytics_tables()` to monitor table sizes and replication status.
+    - `pgaa.list_tiered_tables()` to view all tiered/partitioned tables.
+    - `pgaa.pgaa_version()`: to retrieve detailed version information.
+- Added `pgaa.test_storage_location()` and `pgaa.test_catalog()` functions to verify connectivity and configurations.
+- Added support for Parquet format for a PGFS storage location using `file://` and `s3://` protocols.
+- Added a `cascade` parameter to `pgaa.detach_catalog()`, which drops all tables managed by the catalog before detaching. 
+- Included a safety improvement to the `pgaa.delete_catalog()` function, by making it require an explicit `cascade := true` parameter if tables are present, preventing accidental metadata loss.
+- Added automated catalog connection checks for the `pgaa.add_catalog()` and `pgaa.update_catalog()` functions.
+- Added the `pgaa.list_catalog_tables()` function which allows you to explore the all tables and views in a catalog without having to import or attach the tables to your local database first, with optional namespace filtering.
+- Added the `pgaa.drop_catalog_tables()` function, which removes all local Postgres table and view definitions managed by a specific Iceberg catalog, without affecting tables in the remote Iceberg catalog.
+- Added namespace filtering to `pgaa.import_catalog()`, allowing for selective schema imports.
+- Changed default value for configuration parameters such as `pgaa.tiered_table` and `pgaa.purge_data_if_exists` to `true` if specified without an explicit value.
+
+## Bug fixes
+
+- Fix object store cache issues when reading from Iceberg REST catalog.
+- Fixed a lock-up issue where the PGAA `autoupgrade` worker could block PGD DDL replication.
+- Resolved CTAS failures on multi-node setups by preventing tuple insertions on follower nodes.
+- Fixed a segmentation fault occurring during `NULL` insertions in `CREATE TABLE AS SELECT` operations.
+- Fixed table recreation issues after purging by resetting sync collection before CTAS execution.
+- Fixed misleading batch size estimation in the replication writer.
+- Refined row squashing logic for append or remove-only batches.
+- Resolved an issue where pre-existing tables or incompatible views were not correctly dropped for partitioned tables.
+- Fixed query truncation issues in DirectScan query extraction.
+- Resolved an issue where DirectScan failed to operate after a failed `CREATE TABLE AS SELECT` (CTAS).
+- Fixed sync writer purges for views. 
+- Resolved duplicate key constraint violations when modifying the `pgaa.tiered_table` option.
+- Corrected object deletion scoping when dropping `SingleTableFileCatalog` tables.
+- Resolved an issue with table truncation where so now table truncation correctly replaces data with "no files" instead of an empty Parquet file.
+- Resolved a memory leak during Create Table As Select (CTAS) operations that caused Out-of-Memory (OOM) errors on large tables.
+- Fixed memory leaks occurring during internal table mapping operations.
+- Fixed an issue where tiered table DML failed when using qualifiers without partition columns.
+- Removed an unnecessary table existence warning from the CTAS hook.
+- Fixed a duplicate key error triggered when repeatedly setting the `tiered_table` option.
+
+## Infrastructure & other changes
+
+- Added automated benchmarks for replication performance.
+- Updated `rustc` to 1.92.0.
+- Upgraded to DataFusion 50.
+- Introduced ABI version 300, exposing new functionality including `pgaa_tabular_exists` and object purging.
+- Exposed the ability to purge data via the PGAA ABI v300.
+
+## Deprecations
+
+- Removed standalone metastore-agent.
+- Dropped support for PGD versions prior to 6.1.
+- Removed BigAnimal sidecar images.
+- Removed the `pgaa.get_all_analytics_table_settings` function.
+- Upgrade paths from versions prior to 1.3 have been removed. Users on older versions must first upgrade to PGAA 1.3.1 before moving to 1.6.0.

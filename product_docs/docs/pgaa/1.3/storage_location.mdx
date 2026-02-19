@@ -1,0 +1,105 @@
+---
+title: Configuring storage locations
+navTitle: Configuring storage locations
+description: How to connect PGAA to AWS S3, GCS, and Azure Blob storage using PGFS.
+---
+
+You can access data in object storage either through a storage location or via an integrated [Iceberg catalog](catalog). A storage location establishes a bridge between your Postgres instance and your data lake. 
+
+Postgres Analytics Accelerator (PGAA) leverages the Postgres File System extension (PGFS) to define target buckets and manage the authentication required to interact with remote files.
+
+## Creating a storage location
+
+Storage locations act as aliases for your cloud buckets. You can create a storage location with the `pgfs.create_storage_location()` function using the following syntax:
+
+```sql
+select pgfs.create_storage_location(name=>'storage_location_name',
+                                    url=>'protocol://path',
+                                    options => '{}',
+                                    credentials => '{}');
+```
+
+For a comprehensive list of configuration parameters and supported storage providers, see [Creating a PGFS storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location). 
+
+## Types of buckets
+
+The primary difference between public and private buckets lies in how the engine handles request signing and authorization:
+
+- **Private buckets:** Used for most production data. Accessing them requires valid credentials (IAM roles, static credentials, or environment variables) to sign every request sent by the PGFS extension. The data is only visible to the specific PGAA instance or authorized users.
+- **Public buckets:** Accessible without authentication. These are commonly used for [benchmark datasets](reference/datasets) or public data repositories. 
+
+The following is an example of a storage location pointing to a public bucket:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'my_lake_data', 
+    's3://your-bucket-name/path', 
+    '{"aws_skip_signature": "true"}'
+);
+```
+
+## Authentication
+
+PGFS supports three primary methods for authorizing access to your object storage:
+
+### Static credentials
+
+You can embed credentials directly within the storage location definition. By passing these as a second parameter to `pgfs.create_storage_location`, they are stored as a user mapping—a standard Postgres foreign data wrapper security feature. This ensures that the secrets are isolated and cannot be read by other database users.
+
+While convenient for testing, ensure you manage these secrets securely. The parameters provided vary by storage providers. For example, for S3, you must provide either an access key id and a secret access key, or a session token:
+
+
+```sql
+SELECT pgfs.create_storage_location(
+    'dev_lake',
+    's3://dev-bucket/',
+    '{
+        "region": "us-east-1"
+    }',
+    '{  
+        "access_key_id": "AKIA...",  
+        "secret_access_key": "wJalr..."  
+    }'      
+);
+```
+
+### Environment variables
+
+PGFS can inherit credentials directly from the operating system environment where Postgres is running. For example:
+
+- Set the variable (OS level):
+
+    ```bash
+    export GOOGLE_APPLICATION_CREDENTIALS=/var/run/gcs.json
+    ```
+
+- Create the storage location and omit the `credentials` parameter. PGFS will automatically check for search for the relevant environment keys to authorize the connection:
+
+    ```sql
+    SELECT pgfs.create_storage_location(
+        'edb_ai_example_images', 
+        'gs://my-company-ai-images');
+    ```
+
+### IAM roles
+
+If your Postgres instance is running on cloud infrastructure, use Instance Profiles or IAM Roles. This is the most secure method as it uses temporary, rotating credentials. Attach an IAM policy directly to the underlying virtual machine or container. PGFS automatically detects the instance metadata and uses these temporary, rotating credentials to sign requests.
+
+```sql
+SELECT pgfs.create_storage_location(
+    'production_lake',
+    's3://my-analytics-bucket/',
+    '{"region": "us-east-1"}' 
+);
+```
+
+## Testing storage access
+
+After creating a location, verify its existence with the following command:
+
+```sql
+SELECT pgfs.list_storage_locations();
+```
+
+
+

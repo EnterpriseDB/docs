@@ -1,0 +1,662 @@
+---
+title: Functions 
+navTitle: Functions
+description: Reference for the functions provided by the PGAA extension.
+deepToC: true
+redirects:
+- /edb-postgres-ai/preview/analytics/reference/functions
+- /edb-postgres-ai/preview/analytics/reference/pgaa_functions
+---
+
+The reference section is a list of functions available with Analytics Accelerator.
+
+Refer to [PGFS functions for Pipelines](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions) for details on how to create storage locations for PGAA.
+
+## Table functions
+
+### pgaa.list_analytics_tables()
+
+Returns a list of all analytics tables managed by PGAA, including their configuration, storage statistics, and current replication status.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.list_analytics_tables();
+```
+
+**Parameters**
+
+None.
+
+**Returns**
+
+| Column  | Type       | Description                              
+| ---------- | ---------- | ---------------------------------------- 
+| `nspoid`           | `OID` | The OID of the namespace (schema) containing the table. |
+|  `reloid`          | `OID` | The OID of the table relation.      |
+| `schema_name`      | `TEXT` | Name of the Postgres schema. |
+| `table_name`       | `TEXT` |  Name of the analytics table. |
+| `format`           | `pgaa.table_format` | The storage format (`delta`, `iceberg`, or `parquet`). |
+| `object_storage_snapshot_size_bytes` | `BIGINT` | The size in bytes of the latest table snapshot in object storage. |
+| `object_storage_total_size_bytes`    | `BIGINT` | The total size in bytes of all versions/files for this table in object storage. | 
+| `replication_status`         | `pgaa.replication_status` | The current state of data movement (`enabled`, `disabled`, or `initial_offload`). Requires PGD integration. |
+| `storage_location_name`      | `TEXT` | The name of the PGFS storage location associated with the table. |
+| `storage_location_path`     | `TEXT` | The path within the storage location where the data resides. |
+| `catalog_name`        | `TEXT` |  Name of the external catalog, if applicable. | 
+| `catalog_namespace`   | `TEXT` | The namespace within the external catalog. |
+| `catalog_table`       | `TEXT` | The table name as defined in the external catalog. | 
+
+
+A table can either have a storage location or a catalog. It cannot have both. 
+
+The catalog details refer to either the replication target, if performing a catalog-managed offload or replication to object storage, or to the source catalog location, if [reading data from tables managed by an external catalog](../catalog).
+
+### pgaa.lakehouse_table_stats()
+
+Returns storage statistics for a specific analytical table, including the size of the latest active snapshot and the total cumulative size of all data versions (historical data and logs) stored in object storage.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.lakehouse_table_stats('table_name'::regclass);
+```
+
+
+**Parameters**
+
+| Parameter  | Type       | Description                              
+| ---------- | ---------- | ---------------------------------------- 
+| `relation`           | `REGCLASS` | The name or OID of the analytical table to investigate. |
+
+**Returns**
+
+| Column                 | Type     | Description                                          | 
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `latest_snapshot_size` | `BIGINT` | The size in bytes of the latest active snapshot of the table. |
+| `total_size`           | `BIGINT` | The total size in bytes of all files associated with the table in object storage, including metadata, transaction logs, and historical snapshots. |  
+
+
+### pgaa.test_storage_location()
+
+Tests the connectivity and configuration of a defined storage location, and verifies read or write permissions.
+
+**Synopsis**
+
+```sql
+SELECT pgaa.test_storage_location('location_name', test_writes);
+```
+
+**Parameters**
+
+| Parameter  | Type       | Description                              
+| ---------- | ---------- | ---------------------------------------- 
+| `name`           | `TEXT` | The name of the storage location to test. |
+| `test_writes`    | `BOOLEAN` | If `true`, the function attempts a write operation to verify permissions. If `false`, only reads are tested. |
+
+**Returns**
+
+Returns `NULL` if the test is successful. Returns a descriptive error message if the test fails.
+
+
+### pgaa.pgaa_version()
+
+Returns the version information for the EDB Postgres Analytics Accelerator, including the specific build version, build date, and Git commit hash.
+
+### pgaa.add_catalog
+
+```sql
+SELECT pgaa.pgaa_version();
+```
+
+**Parameters**
+
+None.
+
+**Returns**
+
+A string containing the semantic version, the build timestamp, and the unique Git identifier for the current installation.
+
+
+## Catalog functions
+
+### pgaa.add_catalog()
+
+Registers a new Iceberg catalog with PGAA. This function performs an automated connection check to validate credentials and accessibility before the catalog is registered in the system.
+
+**Synopsis**
+
+```sql
+SELECT pgaa.add_catalog('catalog_name', 'catalog_type', 'catalog_options'::json);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- | 
+| `catalog_name` | `VARCHAR` | A unique name for the catalog within PGAA. | 
+| `catalog_type` | `pgaa.catalog_type` | The catalog type. Supported values are `iceberg-rest` (Iceberg REST catalog), and `iceberg-s3tables` (AWS S3 Tables). |
+| `catalog_options` | `JSON` | A JSON object containing the the connection and authentication parameters. |
+
+Depending on which storage you use, your JSON file for the `catalog_options` must specify different options.
+
+- For REST catalogs
+
+    ```json
+    {
+    "url": "https://your-catalog-endpoint.com",
+    "warehouse_name": "your_warehouse_name",
+    "warehouse": "your_warehouse_id",
+    "token": "your_secret_auth_token"
+    "danger_accept_invalid_certs": "false"
+    }
+    ```
+
+    Where:
+
+    - `url`: The base HTTP(S) endpoint of the REST catalog service.
+    - `warehouse_name`: A human-readable alternative to the warehouse ID, supported by some REST providers for easier configuration.
+    - `warehouse`: The unique identifier for the specific warehouse within the catalog service.
+    - `danger_accept_invalid_certs`: If set to `true`, Postgres skips SSL certificate validation. Use this only for internal testing or with self-signed certificates; never use it for sensitive public connections.
+
+    Some Iceberg REST Catalog providers, like Snowflake Open Catalog, might expect different parameters. Specify the following OAuth options:
+
+    ```json
+    {
+    "oauth2.grant_type": "client_credentials",
+    "oauth2.client_id": "oauth-client-id",
+    "oauth2.client_secret": "oauth-client-secret",
+    "oauth2.token_uri": "https://EXAMPLE-polaristest.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens",
+    "oauth2.scope": "PRINCIPAL_ROLE:read_only"
+    }
+    ```
+
+    Where:
+
+    - `oauth2.grant_type`: Specifies the OAuth2 flow. The most common value for service-to-service communication is `client_credentials`.
+    - `oauth2.client_id`: The unique identifier for your application registered with the identity provider.
+    - `oauth2.client_secret`: The secret key used to authenticate the client ID.
+    - `oauth2.token_uri`: The full HTTP(S) endpoint where PGAA sends the credentials to request an access token.
+    - `oauth2.scope`: (Optional) A space-delimited list of permissions or resources the client is requesting access to.
+
+
+- For AWS S3 Tables: 
+
+    ```json
+    {
+    "arn": "arn:aws:s3tables:us-east-1:1234567890:bucket/my-bucket",
+    "region": "us-east-1"
+    }
+    ```
+
+    Where:
+
+    - `arn`: Specifies the Amazon Resource Name (ARN), the unique identifier for your S3 Table bucket.
+    - `region`: Specifies the physical AWS data center location where your S3 Table bucket resides.
+
+**Returns**
+
+Returns the name of the catalog on success.
+
+### pgaa.update_catalog()
+
+Updates the configuration options (the JSON object) for an existing Iceberg catalog. Like `pgaa.add_catalog()`, this function performs a validation check to ensure the new connection parameters are functional before applying the changes.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.update_catalog('catalog_name', 'new_options'::json);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- | 
+| `catalog_name` | `VARCHAR` | A unique name for the catalog within PGAA. | 
+| `new_options` | `JSON` | A JSON object containing the updated connection and authentication parameters. |
+
+
+See [pgaa.add_catalog()](#pgaaadd_catalog) for a detailed breakdown of the required JSON fields for each catalog type.
+
+**Returns**
+
+Returns the name of the catalog upon successful update.
+
+**Example**
+
+Rotate an OAuth2 token:
+
+```sql
+SELECT * FROM pgaa.lakehouse.update_catalog(
+    'marketing_lakehouse', 
+    '{
+        "url": "https://iceberg.example.com",
+        "oauth2.client_id": "pgaa_service_user",
+        "oauth2.client_secret": "new_secure_secret_2026",
+        "oauth2.token_uri": "https://auth.example.com/token"
+    }'::json
+);
+```
+
+### pgaa.delete_catalog()
+
+Removes a registered catalog from the database. To prevent accidental data loss, this function requires a cascade parameter to be explicitly set to true if there are still tables managed by the catalog.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.delete_catalog('catalog_name', cascade := true);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- | 
+| `catalog_name`         | `VARCHAR` | The name of the catalog to be removed.       | 
+| `cascade`              | `BOOLEAN` | If `true`, PGAA automatically drops all local table definitions managed by this catalog before deleting the catalog entry. Default is `false`. |
+
+**Returns**
+
+Returns the name of the deleted catalog upon successful completion.
+
+### pgaa.list_catalogs()
+
+Returns a list of all registered catalogs in the system, including their connection configuration, metadata synchronization timestamps, and current operational status.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.list_catalogs();
+```
+
+**Parameters**
+
+None.
+
+**Returns**
+
+| Column                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- | 
+| `name`                 | `TEXT`  | The name of the catalog. |
+| `type`                 | `pgaa.catalog_type` | The catalog type. Supported values are `iceberg-rest` (Iceberg REST catalog), and `iceberg-s3tables` (AWS S3 Tables). |
+| `options`              | `JSON`      | The connection parameters (URL, ARN, etc.) used for this catalog. | 
+| `status`               | `pgaa.catalog_status` | The current health of the catalog ( `detached`, `attached`, `refresh_retry`, or `refresh_failed`). |
+| `created_at`           | `TIMESTAMPTZ`         | The timestamp when the catalog was first registered. |
+| `last_refreshed_at`    | `TIMESTAMPTZ`         | The last time PGAA successfully synced metadata from this catalog. |
+
+
+
+### pgaa.import_catalog()
+
+Performs a one-time scan and import of table definitions from a registered Iceberg catalog into Postgres. This function creates the local metadata required for PGAA to query the remote tables. This is a manual, once-off import and does not enable automatic, continuous synchronization.
+
+**Synopsis**
+
+```sql
+SELECT pgaa.import_catalog('catalog_name', 'namespace_filter');
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- | 
+| `catalog_name`        | `VARCHAR` | The name of the previously registered catalog to import from. |
+| `namespace_filter`    | `VARCHAR` | If provided, only tables within this specific Iceberg namespace will be imported. If omitted or `NULL`, all tables in all namespaces are imported. Default is `NULL`. |
+
+**Returns**
+
+None.
+
+### pgaa.attach_catalog()
+
+Enables continuous metadata synchronization for a previously registered Iceberg catalog (using [pgaa.add_catalog()](#pgaaadd_catalog)). Once attached, PGAA automatically monitors the remote catalog for changes and updates the local Postgres metadata accordingly. See [Catalog synchronization](configuration_parameters/#catalog-synchronization) for polling rate configuration.
+
+**Synopsis**
+
+```sql
+SELECT pgaa.attach_catalog('catalog_name');    
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                         |  
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `catalog_name` | `VARCHAR` | The name of the registered catalog to start synchronizing. |
+
+**Returns**
+
+None.
+
+### pgaa.detach_catalog()
+
+Stops continuous metadata synchronization for a registered Iceberg catalog and moves it to a `detached` state. If `cascade` is `true`, it drops all tables managed by the catalog before detaching. If `cascade` is `false`, the tables remain in the database but synchronization is halted.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.detach_catalog('catalog_name', cascade := true);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `catalog_name` | `VARCHAR` | The name of the registered catalog to detach. |
+| `cascade`      | `BOOLEAN` | Optional. If `true`, PGAA automatically drops all local table definitions associated with this catalog before detaching. Default is `false`. |
+
+**Returns**
+
+The function returns the row from the `pgaa.catalog` system table for the catalog being detached.
+
+| Column                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `name` | `TEXT` | The name of detached catalog. |
+| `type` | `pgaa.catalog_type` | The catalog type. |
+| `status` | `pgaa.catalog_status` | The new status, which will be `detached`. |
+
+### pgaa.test_catalog()
+
+Tests the connectivity and configuration of a registered Iceberg catalog. This function verifies that the Postgres instance can communicate with the remote catalog endpoint and, optionally, validates that the provided credentials have write permissions.
+
+**Synopsis**
+
+```sql
+SELECT pgaa.test_catalog('catalog_name', test_writes:=true);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `name` | `TEXT` | The name of the registered catalog to test. |
+| `text_writes` | `BOOLEAN` | If `true`, the function attempts a write operation to the catalog metadata service to verify permissions. If `false`, only read permissions are tested. |
+
+**Returns**
+
+Returns `NULL` if the test is successful. Returns a descriptive error message if the test fails.
+
+
+### pgaa.list_catalog_tables()
+
+Returns a list of all tables and views available in a registered Iceberg catalog. This function allows you to explore the contents of a remote catalog without having to import or attach the tables to your local database first. 
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.list_catalog_tables('catalog_name', 'namespace_filter');
+
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `catalog_name` | `TEXT` | The name of the registered catalog to explore. |
+| `namespace_filter` | `TEXT` | If provided, specifies the Iceberg namespace (schema) to filter by. If omitted or `NULL`, all tables in the catalog are returned. Default is `NULL`. | 
+
+**Returns**
+
+| Column                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `schema_name` | `TEXT` | The remote Iceberg namespace/schema. |
+| `table_name` | `TEXT` | The name of the table or view. | 
+
+### pgaa.drop_catalog_tables()
+
+Removes all local Postgres table and view definitions that are managed by a specific Iceberg catalog, including any dependent objects if `cascade` is `true`. It does not affect tables in the remote Iceberg catalog.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa.drop_catalog_tables('catalog_name', cascade := true);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `catalog_name` | `VARCHAR` | The name of the registered catalog to whose managed tables will be removed. |
+| `cascade`              | `BOOLEAN` | If `true`, the function automatically drops objects that depend on these tables. Default is `false`. |
+
+
+**Returns**
+
+| Column                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `schema_name` | `TEXT` | The local Postgres schema where the table resided. |
+| `table_name` | `TEXT` | The name of the local table that was dropped. |
+
+## Spark functions
+
+### pgaa.spark_sql()
+
+Executes a Spark SQL query directly on your Postgres cluster via the configured Spark Connect endpoint. This allows you to run Iceberg compaction routines or Spark functions that aren't available in Postgres.
+
+See [Spark procedures](https://iceberg.apache.org/docs/latest/spark-procedures/) for a list of the available procedures.
+
+To run this function, you must set the configuration parameter `pgaa.spark_connect_url` to point to an available Spark Connect service.
+
+**Synopsis**
+
+For a single catalog:
+
+```sql
+SELECT pgaa.spark_sql('query', 'catalog_name');
+```
+
+For multiple catalogs:
+
+```sql
+SELECT pgaa.spark_sql('query', ARRAY['catalog1', 'catalog2']);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           |
+| ---------------------- | -------- | ----------------------------------------------------- |
+| `query` | `TEXT` | The Spark SQL statement to execute. |
+| `catalog` | `TEXT` or `TEXT[]` | A single catalog name, or an array of catalog names to use for the query. |
+
+
+**Returns**
+
+The result set of the Spark query formatted as a JSON object.
+
+**Example** 
+
+Reduce metadata overhead via the `rewrite_data_files` Spark task:
+
+```sql
+SELECT pgaa.spark_sql($$  
+            CALL preexisting.system.rewrite_data_files(  
+              table => '"preexisting"."ns-1"."table-1"',  
+              strategy => 'sort',  
+              sort_order => 'value DESC',  
+              options => map('rewrite-all', 'true')  
+            )  
+        $$);  
+```
+
+### pgaa.execute_compaction()
+
+Performs compaction to improve the performance and storage efficiency of an analytical Iceberg table. Requires Spark Connect to be configured via the `pgaa.spark_connect_url` configuration parameter.
+
+**Synopsis**
+
+```sql
+SELECT pgaa.execute_compaction('table_name'::regclass, 'settings'::json);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           
+| ---------------------- | -------- | ----------------------------------------------------- 
+| `relation` | `REGCLASS` | The name or OID of the analytical table to compact. |
+| `settings` | `JSON` |  Currently not supported. An optional JSON object defining compaction behavior. |
+
+
+!!! Note
+    The parameter `settings` is currently not supported. Instead, use [pgaa.spark_sql()](#pgaaspark_sql), run Spark queries directly on your cluster.
+
+**Returns**
+
+None.
+
+**Example**
+
+```sql
+SELECT pgaa.execute_compaction('lakehouse.inventory_iceberg'::regclass);
+```
+
+
+## Background task functions
+
+
+### pgaa.launch_task()
+
+Schedules a background maintenance task for an analytical Delta table. 
+
+**Synopsis**
+
+```sql
+SELECT pgaa.launch_task(
+    'table_name'::regclass, 
+    'task_type', 
+    'task_options'::jsonb, 
+    'scheduled_at'::timestamp
+);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           
+| ---------------------- | -------- | ----------------------------------------------------- 
+| `table_name` | `REGCLASS` | The name or OID of the analytical table to run the task on. |
+| `task_type` | `TEXT` | The maintenance operation: `compaction`, `zorder`, `vacuum`, or `purge`. | 
+| `task_options` | `JSONB` | Configuration specific to the task type (see below). | 
+| `scheduled_at` | `TIMESTAMP` | If provided, the task will wait until this time to execute. Default is `NULL`. |
+
+The values for the JSONB `task_options` depend on each `task_type`. All options are optional except `zorder`, which requires `columns`, and `purge`, which requires both `storage_location` and `path`.
+
+- `compaction`: Merges small files into larger ones to speed up analytical scans. The available `task_options` are: 
+
+    ```json
+    {
+    "target_size": 536870912,
+    "preserve_insertion_order": true,
+    "max_concurrent_tasks": 10,
+    "max_spill_size": 2147483648,
+    "min_commit_interval": 60
+    }
+    ```
+
+    Where:
+
+    - `target_size`: Specifies the size of the output files in bytes.
+    - `preserve_insertion_order`: Whether to maintain the existing sort order of rows.
+    - `max_concurrent_tasks`: Limits the number of parallel tasks the executor can run.
+    - `max_spill_size`: Sets the maximum data size in bytes allowed to spill to disk during the process.
+    - `min_commit_interval`: Sets the minimum wait time in seconds between committing updates to the Delta log.
+
+
+- `zorder`: A clustering technique that reorganizes data across multiple columns to improve "data skipping" for queries with filters on those columns. The available `task_options` are:
+
+    ```json
+    {
+    "columns": ["customer_id", "transaction_date"],        
+    "target_size": 1073741824,
+    "preserve_insertion_order": false,
+    "max_concurrent_tasks": 4,
+    "max_spill_size": 2147483648,
+    "min_commit_interval": 30
+    }
+    ```
+    
+    Where:
+
+    - `columns`: (Required) An array of strings representing the columns to be used for Z-ordering.
+    - `target_size`: Specifies the size of the output files in bytes.
+    - `preserve_insertion_order`: Whether to maintain the existing sort order of rows.
+    - `max_concurrent_tasks`: Limits the number of parallel tasks the executor can run.
+    - `max_spill_size`: Sets the maximum data size in bytes allowed to spill to disk during the process.
+    - `min_commit_interval`: Sets the minimum wait time in seconds between committing updates to the Delta log.
+
+- `vacuum`: Deletes old data files that are no longer referenced by the Delta transaction logs, freeing up space in object storage. The available `task_options` are:
+
+    ```json
+    {
+    "retention_period": "168 hours",
+    "dry_run": false,
+    "enforce_retention_duration": true
+    }
+    ```
+
+    Where:
+
+    - `retention_period`: Defines the age at which unreferenced files become eligible for deletion.
+    - `dry_run`: If `true`, calculates and logs the files that would be deleted, but performs no deletions.
+    - `enforce_retention_duration`: If `true`, the task validates the `retention_period` against the system's global minimum safety limit.
+
+- `purge`: Explicitly removes data from a specific storage path. The available `task_options` are:
+
+    ```json
+    {
+    "storage_location": "s3_main",
+    "path": "archive/2023/temp/"
+    }
+    ```
+
+    Where:
+
+    - `storage_location`: Required. The name of the storage location.
+    - `path`: The relative directory path or file prefix within the storage location that should be permanently deleted.
+
+
+**Returns**
+
+A unique task ID for the task.
+
+You can check the task status by querying the `pgaa.background_task` table and the provided task ID.
+
+
+**Examples**
+
+- Delete old data files prior to the last 7 days:
+
+    ```sql
+    SELECT pgaa.launch_task(
+        'sales.transactions', 
+        'vacuum', 
+        '{"retention_period": "7 days", "dry_run": false}'::jsonb
+    );
+    ```
+
+- Perform compaction: 
+
+    ```sql
+    SELECT pgaa.launch_task(
+        'telemetry.logs', 
+        'compaction', 
+        '{
+            "target_size": 536870912, 
+            "max_concurrent_tasks": 2
+        }'::jsonb
+    );
+    ```
+
+- Reorganize data rows by clustering on columns `region` and `customer_id`:
+
+    ```sql
+    SELECT pgaa.launch_task(
+        'crm.customers', 
+        'zorder', 
+        '{
+            "columns": ["region", "customer_id"], 
+            "target_size": 1073741824
+        }'::jsonb
+    );
+    ```
+
+
+### pgaa.execute_compaction()
+
+Performs compaction to improve the performance and storage efficiency of an analytical Iceberg table. See [Spark functions](#spark-functions) for details.

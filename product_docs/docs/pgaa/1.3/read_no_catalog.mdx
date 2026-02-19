@@ -1,0 +1,86 @@
+---
+title: Reading tables in object storage
+navTitle: Reading tables in object storage
+description: How to read from tables in object storage using Analytics Accelerator.
+deepToC: true
+---
+
+The Postgres Analytics Accelerator (PGAA) allows you to perform high-performance analytical queries from tables in object storage using Postgres’s SQL interface by establishing a direct connection to the data files. In this mode, Postgres interacts directly with the storage path to resolve the table structure, acting as the metadata coordinator by reading manifest files from your cloud bucket to determine how to scan and process the underlying data.
+
+To query data at scale, PGAA supports both structured open table formats and raw file formats. These standards define how data is organized and how Postgres retrieves it:
+
+- **Apache Iceberg:** A high-performance table format that uses a hierarchical metadata tree to track table state. It allows for "time travel" to previous snapshots and "hidden partitioning," where Postgres can prune files without you needing to manually manage partition columns in the query.
+- **Delta Lake:** An open-source storage layer that brings reliability to data lakes. It uses a transaction log (the `_delta_log` folder) to maintain a versioned history of the table, ensuring Postgres reads a consistent set of Parquet files even while other processes are writing to the same location.
+
+To query data lakes without a central catalog, the system establishes a link via a storage location, a set of pointers to the specific bucket or directory where your data files reside, supporting environments across AWS S3 (and S3-compatible API), Google Cloud Storage (GCS), Azure Blob Storage (including ADLS Gen2), and local filesystems.
+
+The retrieval process follows these three steps:
+- PGAA first scans the storage path for the latest metadata file or transaction log (in the case of Iceberg and Delta).
+- The system parses the metadata to create a virtual map of the relevant objects in S3, GCS, Azure, or local file system.
+- The Seafowl analytical engine pulls the data directly from the object store, applying vectorized filters and aggregations at the source. The processed results are then streamed back into the Postgres executor, ensuring that only the relevant data is transferred.
+
+## Configuring Postgres to read from object storage
+
+The process involves two steps: defining the physical storage access and mapping the remote metadata to a local definition.
+
+### Creating a storage location
+
+You must create a PGFS storage location to tell Postgres where your bucket is and provide the necessary credentials. See [Configuring storage locations](storage_location) for details. For example, with a public S3 bucket:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'my-lake-data',
+    's3://beacon-analytics-demo-data-us-east-1-prod',
+    '{"skip_signature": "true", "region": "us-east-1"}'
+);
+```
+
+### Mapping the table to Postgres
+
+Create a table using the `PGAA` access method that points to your storage location. For example:
+
+```sql
+CREATE TABLE iceberg_data () 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.storage_location = 'my_lake_data',
+    pgaa.path = 'path/to/data'
+);
+```
+
+Where:
+
+- `pgaa.format`: Specifies the underlying table or file format. Supported values are 'iceberg' or 'delta'.
+- `pgaa.storage_location`: The name of the storage location defined in the previous step.
+- `pgaa.path`: The relative path from the root of the storage location to the directory containing the table's metadata and data files. For Iceberg, this should point to the folder containing the `/metadata` directory.
+
+!!! Note 
+    If you leave the column definitions empty (`()`), PGAA will automatically discover the schema from the metadata files when you first query the table and will map columns by name to the fields found in the remote Iceberg/Delta metadata.
+
+### Querying and verifying acceleration
+
+Once the table is created, you can query it with standard SQL. To verify that PGAA’s vectorized engine is actually handling the work, use `EXPLAIN`.
+
+```sql
+EXPLAIN (COSTS OFF) SELECT count(*), region FROM iceberg_data GROUP BY region;
+```
+
+If the engine is active, you will see a node called `SeafowlDirectScan`. This confirms the query has been offloaded to the vectorized accelerator rather than being processed by the standard Postgres executor.
+
+## Limitations
+
+When using direct storage locations, you are responsible for managing the alignment between the local Postgres table definition and the remote data files. This manual approach introduces conflicts between the static schema stored in the Postgres system catalog and the actual, dynamic schema defined in the data lake.
+
+If an external engine evolves the data lake schema, this can lead to query failures, silent data omission, or incorrect data mapping.
+
+Working without a centralized catalog also limits the ability to discover new tables, manage concurrent writes from multiple engines, and affects query performance.
+
+You must manually resolve these limitations as the data lake evolves:
+- Use `ALTER TABLE` commands in Postgres to add, drop, or modify columns to match the remote schema.
+- The most common fix is to drop and recreate the table using empty parentheses `()`. Upon the first query, PGAA performs a fresh discovery of the remote metadata.
+- To prevent drift, explicitly define column names and types in your `CREATE TABLE` statement to match the object storage files exactly.
+
+The most effective way to eliminate schema interference is to move from a standalone storage location to an external Iceberg catalog. By using a catalog, you shift the responsibility of schema management from the user to the system. See [Integrating with Iceberg catalogs](catalog) for details.
+
+

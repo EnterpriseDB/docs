@@ -1,0 +1,80 @@
+---
+title: Concepts
+navTitle: Concepts
+description: Glossary of key terms used in the Analytics Accelerator and Hybrid Manager analytics features.
+deepToC: true
+redirects:
+- /edb-postgres-ai/1.2/analytics/learn/explained
+- /edb-postgres-ai/1.2/analytics/learn/explained/analytics-concepts
+- /edb-postgres-ai/1.2/analytics/learn/explained/generic-concepts
+- /edb-postgres-ai/1.2/analytics/learn/explained/terminology
+- /edb-postgres-ai/latest/analytics/analytics-concepts/
+- /edb-postgres-ai/latest/analytics/terminology/
+- /edb-postgres-ai/latest/analytics/generic-concepts/
+- /edb-postgres-ai/1.3/analytics/analytics-concepts/
+- /edb-postgres-ai/1.3/analytics/terminology/
+- /edb-postgres-ai/1.3/analytics/generic-concepts/
+
+---
+
+
+This concepts guide provides a technical foundation for the Analytics Accelerator (PGAA) architecture, organized by functional layers.
+
+### Storage and table formats
+
+**PGFS storage abstraction**: The [Postgres File System (PGFS)](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/) is a cloud-native storage layer that provides a unified interface between Postgres and object storage (S3, GCS, Azure). It handles authentication, network resilience, and the mapping of remote objects to local table structures.
+
+**Delta Lake**: An open-source storage framework that brings ACID transactions to data lakes.
+
+**Transaction log**: A central metadata record &mdash; such as the Delta Log in Delta Lake or snapshots in Iceberg &mdash; that tracks every change to the table, ensuring data consistency.
+
+**Time travel**: The ability to query previous versions of data by referencing specific timestamps or log versions.
+
+**Schema evolution**: The capability to change a table's schema (e.g., adding columns) over time without rewriting the entire dataset.
+
+**Apache Iceberg**: A high-performance table format for massive analytical datasets.
+
+**Metadata**: A multi-layered manifest system that tracks file-level statistics, enabling efficient data skipping.
+
+**Snapshots**: Versions of a table at a specific point in time; queries always run against a consistent snapshot.
+
+**Partition evolution:** The ability to change a table's partitioning strategy (e.g., changing from daily to monthly) without needing to rewrite existing data.
+
+**Parquet columnar storage:** The underlying file format used by PGAA. Unlike standard Postgres which stores data in rows, Parquet stores data in columns.
+
+**Compression and encoding:** Columnar storage allows for aggressive compression (like Snappy or Zstandard) and encoding (like Delta or Dictionary encoding) because similar data types are stored together, significantly reducing the storage footprint and I/O overhead.
+
+### Catalogs
+
+Catalogs act as the central source of truth for table metadata. They allow different compute engines (Postgres, Spark, Trino) to discover tables, resolve schemas, and maintain transactional integrity across a shared data lake.
+
+**Iceberg REST:** A standardized API used by PGAA to communicate with external catalogs. It allows EDB to integrate with any catalog service that supports the REST specification, such as Lakekeeper, Tabular, or Snowflake Polaris.
+
+**AWS S3 Tables:** A managed catalog and storage service from AWS. PGAA integrates with S3 Tables to provide a serverless metadata layer, simplifying the management of Iceberg tables within the AWS ecosystem.
+
+### Query execution
+
+**Table Access Method (TAM) architecture:** The internal Postgres API that allows PGAA to plug in a custom storage engine. This allows the Postgres planner to interact with remote object storage as if it were a native local table.
+
+**DirectScan:** A performance optimization where a query is fully offloaded to the analytical executor engine (Seafowl or Spark). This occurs when a query only references analytics tables, allowing the vectorized engine to handle the entire operation and return the final result to the user.
+
+**CompatScan:** A hybrid execution mode used to join local Postgres tables with remote analytics tables, or to process functions only supported by Postgres.
+
+**Partial pushdown:** PGAA optimizes the query by pushing filters and projections down to the object storage layer, streaming only the necessary rows back to Postgres to complete the join or complex local operation.
+
+**Cost-based planning:** The process where the Postgres optimizer uses statistics (like row counts and data distribution) from the lakehouse metadata to decide the most efficient way to execute a query, such as choosing between a Hash Join or a Nested Loop.
+
+**Vectorized execution in Seafowl:** The core processing technology of the Seafowl engine. Instead of processing data row-by-row, it processes data in batches (vectors). This leverages modern CPU instructions (SIMD) to perform mathematical operations on multiple data points simultaneously, dramatically accelerating analytical queries.
+
+### Caching
+
+To minimize the latency inherent in network-based object storage, PGAA implements a multi-tiered caching hierarchy. This ensures that repeated queries can execute at speeds comparable to local storage.
+
+**Object store cache:** This layer caches the actual data blocks (Parquet files) retrieved from the data lake on the local SSDs of the lakehouse nodes. By keeping frequently accessed data "close" to the compute engine, PGAA avoids the overhead of repeated GET requests to the remote object store for the same data segments.
+
+**Metadata caching:** Maintaining a local, high-speed copy of the data lake's structural information—such as file manifests and schema definitions. This way the engine can perform partition pruning and file-level filtering instantaneously, identifying exactly which data to fetch without the high latency of repeatedly querying the remote storage provider.
+
+Metadata caching stores the structure of the data lake tables—including file manifests, schema definitions, and partition locations. Since Iceberg and Delta Lake tables can consist of thousands of individual files, caching this "map" allows the query planner to skip irrelevant data almost instantaneously without reaching out to the storage provider.
+
+**Table stats caching:** Maintaining a local record of physical table sizes to support the `pgaa.lakehouse_table_stats()` function. While the query planner retrieves fresh metadata from the storage provider at execution time for plan accuracy, this cache allows the function to provide immediate visibility into the scale of data lake objects without requiring a live remote scan.
+

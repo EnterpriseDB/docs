@@ -1,0 +1,49 @@
+---
+title: Analytics Accelerator architecture
+navTitle: Architecture
+description: Overview of the Analytics Accelerator architecture for unified transactional and analytical processing.
+redirects:
+- /edb-postgres-ai/1.3/analytics/architecture/
+- /edb-postgres-ai/latest/analytics/architecture/
+- /edb-postgres-ai/1.2/analytics/generic-concepts/
+---
+
+This architecture page provides a high-level technical overview of how the Analytics Accelerator (PGAA) bridges the gap between transactional Postgres and the modern data lake.
+
+## Architecture overview
+The EDB Analytics Accelerator extends Postgres's capabilities to create a unified platform for transactional (OLTP) and analytical (OLAP) workloads. The system operates on three fundamental principles: separation of compute and storage for elastic scaling, transparent query access across hot and cold data tiers, and native compatibility with open table formats.
+
+## Core components
+
+### Postgres Analytics Accelerator (PGAA)
+
+The PGAA extension hooks into the Postgres query planner to identify queries that can be offloaded to the analytical engine. It manages the metadata for analytical tables and coordinates communication between the Postgres process and the query executors.
+
+### PGFS storage abstraction
+
+The Postgres File System (PGFS) acts as a unified abstraction layer for object storage, enabling Postgres to interact seamlessly with AWS S3, GCS, and Azure Blob Storage while masking the complexities of individual cloud provider protocols. It optimizes performance and reliability by managing secure authentication through IAM roles and HMAC keys, ensuring network resilience with automated retries and connection pooling, and reducing metadata overhead by caching remote file locations and schemas.
+
+### Executor engine
+
+**Seafowl** is the default, DataFusion-based query engine for PGAA, utilizing a stateless architecture that allows lakehouse nodes to scale compute up or down dynamically without the overhead of local data storage or movement. As a vectorized execution engine designed specifically for analytical workloads, it maximizes CPU cache efficiency by processing data in columnar batches rather than the traditional row-by-row approach used by standard Postgres.
+
+The Postgres instance communicates with the Seafowl engine using Apache Arrow Flight. This is a high-performance RPC framework designed for large-scale data transfer. By using Arrow, PGAA can move columnar data between the database and the query engine with minimal serialization overhead.
+
+While Seafowl is the default executor for high-speed SQL, PGAA also supports **Spark Connect**. This allows organizations to leverage Apache Spark for extremely complex ETL transformations while still accessing the data through the familiar Postgres wire protocol.
+
+
+
+## Query execution modes
+
+When a query is executed against an analytics table, PGAA automatically selects the most efficient scanning mode based on the query structure and the location of the data:
+
+**DirectScan**: The query is offloaded entirely to the Seafowl engine. Seafowl reads the remote files directly from object storage, processes all logic (filtering, aggregations, and joins), and returns only the final result set to Postgres. This mode provides maximum performance by utilizing vectorized execution at the source.
+
+**CompatScan**: This mode is used when a query requires features not yet supported by the vectorized engine or when joining remote lakehouse data with local Postgres tables. In this scenario, Seafowl performs initial filtering and projection on the remote data, then streams those optimized results back to Postgres to complete the final join or complex processing locally.
+
+
+
+
+
+
+
