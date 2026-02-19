@@ -56,7 +56,7 @@ function parseMarkdownFile(filePath) {
         currentHeading = slugify(block.content);
         heading_capture = false;
       } else {
-        let match = block.content.match("^([A-Za-z0-9- ]*): *(.*)$");
+        let match = block.content.match(/^([A-Za-z0-9- ]*): *(.*)$/m);
         if (match) {
           let key = slugify(match[1]);
           let value = match[2];
