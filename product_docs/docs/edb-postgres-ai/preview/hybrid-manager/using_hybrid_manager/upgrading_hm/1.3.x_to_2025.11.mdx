@@ -1,0 +1,92 @@
+---
+title: Upgrading from 1.3.x to the 2025.12 Innovation Release
+navTitle: 1.3.x to 2025.12
+description: Follow the step-by-step procedures for upgrading from HM 1.3.x to HM 2025.12.
+deepToC: true
+---
+
+Upgrade from 1.3.x to 2025.11.
+
+> **Role:** Infrastructure Engineer
+
+## Prerequisites
+
+* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+* Access to the `values.yaml` file used for the current installation.
+* **Required Tools:**
+    * `helm` (Latest version recommended)
+    * `cmctl` (Cert-Manager CLI) - *Required for 2025.11+*
+
+## Upgrade 1.3.x → 2025.11
+
+This release increases the Certificate Authority (CA) TTL to 10 years and refactors the Istio implementation on OpenShift.
+
+### Certificate renewal (required)
+
+The internal self-signed CA has been updated. 
+You must regenerate certificates to apply the new 10-year TTL.
+
+1. **Install `cmctl** (for example, `brew install cmctl`).
+
+1. **Regenerate certificates:**
+
+   ```bash
+   # Global CA
+   cmctl renew -n cert-manager global-ca-cert
+    
+   # Leaf Certificates
+   cmctl renew -n upm-beacon beacon-int-ca
+   cmctl renew -n istio-system beaco-istio-gw-cert
+   ```
+
+### OpenShift specifics: Istio Migration
+
+!!! Note
+You can skip this step if you are not running on Red Hat OpenShift (RHOS).
+!!!
+
+HM is no longer using the OLM-managed Maistra Service Mesh with RHOS.
+You must manually clean up the old resources before the upgrade.
+
+1. **Scale down the operator.**
+
+   ```bash
+   kubectl scale deployment --replicas 0 edb-hcp-operator-controller-manager -n edbpgai-bootstrap
+   ```
+
+1. **Remove old Maistra resources.**
+
+   ```
+   kubectl delete servicemeshmemberrolls.maistra.io -n istio-system default
+   kubectl delete servicemeshcontrolplanes.maistra.io -n istio-system upm
+   ```
+
+1. **Bulk delete members.**
+
+   ```
+   kubectl get servicemeshmember -A -ojsonpath='{range .items[*]}{"kubectl delete servicemeshmember "}{@.metadata.name}{" -n "}{@.metadata.namespace}{"\n"} {end}' | while read -r line; do eval $line; done
+   ```
+
+!!! Important
+Do not resume the operator at this point. 
+Proceed with the upgrade. 
+The Helm upgrade automatically scales the operator back up.
+!!!
+
+### Perform the upgrade
+
+1. **Update the repo.**
+
+   ```bash
+   helm repo update
+   ```
+
+1. **Perform the upgrade.**
+
+   ```bash
+   helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+     --version 2025.11.0 \
+     --values values.yaml \
+     --namespace edbpgai-bootstrap \
+     --wait
+   ```
