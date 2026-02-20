@@ -57,6 +57,11 @@ const products = {
   alteruser_utility: { name: "alteruser", iconName: IconNames.TOOLS },
   edb_sqlpatch: { name: "EDB SQL Patch", iconName: IconNames.TOOLS },
   language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
+  klio: {
+    name: "Enterprise Data Protection for CloudNativePG™",
+    shortName: "Klio",
+    iconName: IconNames.BACKUP,
+  },
   lasso: { name: "Lasso" },
   livecompare: { name: "LiveCompare", iconName: IconNames.INTEGRATION },
   "Migration Handbook": { name: "Migration Handbook" },
