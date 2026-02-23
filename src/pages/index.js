@@ -183,15 +183,15 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Analytics Accelerator"
-              to="/edb-postgres-ai/latest/analytics"
+              to="/pgaa/latest/"
             >
-              <BannerCardLink to="/edb-postgres-ai/latest/analytics/lakehouse/">
+              <BannerCardLink to="/pgaa/latest/">
                 Analytics Engine
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
               </BannerCardLink>
 
-              <BannerCardLink to="/edb-postgres-ai/latest/analytics/quick_start/">
+              <BannerCardLink to="/pgaa/latest/overview/quick_start/">
                 Managed Lakehouse
                 <br />
                 <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>
@@ -502,6 +502,14 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/pgvector">
               pgvector
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/vectorchord">
+              VectorChord
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/vectorchord_bm25">
+              VectorChord-bm25
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pg_anonymizer">

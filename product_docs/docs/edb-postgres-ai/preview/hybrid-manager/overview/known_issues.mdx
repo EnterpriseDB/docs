@@ -10,13 +10,21 @@ These are the currently known issues and limitations identified in the Hybrid Ma
 
 ### Multi-DC configuration loss after upgrade
 
+!!!tip
+Resolved in HM versions 2025.12 and later.
+!!!
+
 **Description:** Configurations applied by the multi-data center (DC) setup scripts (for cross-cluster communication) don't persist after an HM platform upgrade or operator reconciliation.
 
 **Workaround:** After every HM upgrade or component reversion, run the multi-DC setup scripts again to reapply the necessary configurations.
 
-[UPM-68388, status cancelled]: #
+[UPM-68388]: #
 
 ### Location dropdown list is empty for multi-DC setups
+
+!!!tip
+Resolved in HM versions 2025.12 and later.
+!!!
 
 **Description:** In multi-DC environments, the API call to retrieve available locations fails with a gRPC message `size error (429/4.3MB limit exceeded)`. This is due to the large amount of image set information included in the API response, resulting in an empty location list in the HM console.
 
@@ -89,13 +97,17 @@ After completing these steps, the reduced image data size allows the location AP
 
 ### Dedicated object storage for project isolation
 
+!!!tip
+Resolved in HM versions 2025.12 and later.
+!!!
+
 **Description:** In the current iteration, project boundaries aren’t strictly applied, and authorized users on one project may have visibility of the data and databases of other projects. For this reason, granular project access is available for HM.
 
 **Workaround:** Create dedicated object storage for new projects and enable project isolation. 
 
 **Workaround details:** If you need to isolate project resources, you can configure [dedicated object storage](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/projects/projected-object-storage/) for each project.
 
-[UPM-72365 ???]: #
+[UPM-72365]: #
 
 <br/>
 
@@ -115,19 +127,37 @@ After completing these steps, the reduced image data size allows the location AP
 
 **Workaround:** Manually patch the Kubernetes deployment to increase the memory resource limits for the `upm-beacon-agent` pod.
 
-[UPM-65269]: #
+[UPM-65269, backlog]: #
 
-### HM console doesn't handle custom CA issuer
+### IdP configuration fails after upgrade to version 2026.02
 
-**Description:** The HM console currently doesn't support custom cluster certificate authority (CA) issuers. If a custom CA issuer is configured, the public certificate downloaded from the console doesn't work correctly with the `beacon-agent`, which can lead to connectivity and reporting errors.
+[UPM-78482, backlog]: #
 
-**Workaround:** An administrator can verify the status of the custom CA. If the following command returns no output, the `beacon-agent` deployment can proceed without manually providing a root CA certificate, avoiding the issue:
+**Description:** In some cases, upgrading from version 2026.01 to 2026.02 can cause your Identity Provider (IdP) configuration to display the **Expiring Soon** status in the HM console. This is caused by a race condition during the migration process. While this issue doesn't occur in every environment, it prevents users from successfully authenticating via their IdP provider if triggered.
 
-```shell
-kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | base64 -d
+**Workaround:** To resolve this state and allow the configuration to restore correctly, a cluster administrator must manually update the internal application database. 
+
+Execute the following SQL statement on the internal `app-db` database **before** attempting to re-setup the IdP integration in the HM console:
+
+```sql
+UPDATE upm_api_admin.idp SET deleted_at = NOW() WHERE deleted_at IS NULL;
 ```
 
-[UPM-72544]: #
+### `accm-server` fails to start due to missing Langflow secret
+
+[UPM-78624, UPM-78456]: #
+
+**Description:** The `accm-server` component currently has a hard dependency on a Kubernetes secret named `langflow-secret`. This secret is required even in installation scenarios where AI features aren't being used. If the secret doesn't exist, the `accm-server` pod will fail to start with the error `CreateContainerConfigError`.
+
+**Workaround:** To allow the `accm-server` to start in environments where AI features aren't installed, you must manually create a placeholder secret in the `upm-beaco-ff-base` namespace.
+
+You can create an empty secret using the following kubectl command:
+
+```shell
+kubectl create secret generic langflow-secret -n upm-beaco-ff-base --from-literal=LANGFLOW_NOT_INSTALLED=true
+```
+
+Once the secret exists, the `accm-server` pod will be able to mount the volume and transition to a **Running** state.
 
 ## Database cluster engine 
 
@@ -137,7 +167,7 @@ kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | 
 
 **Workaround:** Create the PGD 3-data-node cluster using the default `max_connections` value. Update the value after the cluster is successfully provisioned.
 
-[UPM-67733]: #
+[UPM-67733, backlog]: #
 
 ### AHA witness node resources are over-provisioned
 
@@ -145,7 +175,7 @@ kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | 
 
 **Workaround:** Manually update the pgdgroup YAML configuration to specify and configure the minimal resources needed by the witness node.
 
-[UPM-65193, tickets says ready for review]: #
+[UPM-65193, backlog]: #
 
 ### HA clusters use `verify-ca` instead of `verify-full` for streaming replication certificate authentication
 
@@ -153,31 +183,47 @@ kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | 
 
 **Workaround:** None. A fix depends on the underlying CNP component supporting IP SANs.
 
-[UPM-65193, tickets says blocked]: #
+[UPM-67365, blocked due to CNP dependency]: #
 
 ### Second node is too slow to join large HA clusters
+
+!!!tip
+Resolved in HM versions 2025.12 and later.
+!!!
 
 **Description:** For large clusters, the `pg_basebackup` process used by a second node (standby) to join an HA cluster is too slow. This can cause the standby node to fail to join, which prevents scaling a single node to HA. It also causes issues when restoring a cluster directly into an HA configuration.
 
 **Workaround:** Avoid the best practice of loading data into a single node and then scaling to HA. Instead, load data directly into an HA cluster from the start. There's no workaround for restoring a large cluster into an HA configuration.
 
-[UPM-65185]: #
+[UPM-65185, an annotation may have to be removed, TBD]: #
 
 ### EDB Postgres Distributed (PGD) cluster with 2 data groups and 1 witness group not healthy
 
 **Description:** PGD clusters provisioned with the topology of two data groups and one witness group may fail to reach a healthy state upon creation. This failure is caused by an underlying conflict between the bdr extension (used for replication) and the edb_wait_states extension. The combination of these two extensions in this particular topology prevents the cluster from initializing successfully.
 
-[UPM-73217]: #
+[UPM-73217, backlog]: #
 
 ## Backup and recovery 
 
 ### Replica cluster creation fails when using volume snapshot recovery across regions
 
+!!!tip
+Resolved in HM versions 2025.12 and later.
+!!!
+
 **Description:** Creating a replica cluster in a second location that's in a different region fails with an `InvalidSnapshot.NotFound` error because volume snapshot recovery doesn't support cross-region restoration.
 
 **Workaround:** Manually trigger a Barman backup from the primary cluster first. Then use that Barman backup (instead of the volume snapshot) to provision the cross-region replica cluster.
 
-[UPM-67032, ticket says ready for review]: #
+[UPM-67032, volumesnapshot limitation is still valid, see below]: #
+
+### Volume snapshot restoration is limited to the same region
+
+**Description:** While HM automatically handles cross-region data synchronization for replica clusters using the internal backup mechanism, manual restoration of a cluster from a volume snapshot doesn't support cross-region operations. If you attempt to restore a cluster to a location in a different region using a volume snapshot, the operation will fail because snapshots are geographically restricted to their source region.
+
+**Workaround:** To restore data to a location in a different region, use a Barman backup instead of a volume snapshot. Barman backups are accessible across regions.
+
+[UPM-78346]: #
 
 ### WAL archiving is slow due to default parallel configuration
 
@@ -185,7 +231,7 @@ kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | 
 
 **Workaround:** Manually edit the `objectstores.barmancloud.cnpg.io` Kubernetes resource for the specific backup object store and increase the `wal.maxParallel` value (for example, to 20) to accelerate archiving.
 
-[UPM-65033 ???]: #
+[UPM-65033, backlog]: #
 
 ### `transporter-db` disaster recovery (DR) process may fail due to WAL gaps
 
@@ -193,7 +239,7 @@ kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | 
 
 **Workaround:** To ensure a successful restore, select an older backup to restore that has at least one archived WAL file immediately following it. This makes the needed transactional logs available for the recovery process.
 
-[ET-4092]:#
+[ET-4092, backlog]:#
 
 ## AI Factory and model management
 
@@ -203,7 +249,7 @@ kubectl -n upm-beacon get secret beacon-gw-cert -o jsonpath='{.data.ca\.crt}' | 
 
 **Workaround:** An administrator must manually download the necessary model profile from the NVIDIA registry to a local machine. They must then upload the profile files directly to HM's object storage path. Then they deploy the model by patching the Kubernetes InferenceService YAML with a specific environment variable to force it to use the pre-cached files instead of attempting a failed network download.
 
-[UPM-67298, ticket says blocked]:#
+[UPM-67298, ticket says blocked, dependency on nvidia]:#
 
 <details><summary>Workaround details</summary> 
 
@@ -289,6 +335,10 @@ The pods now start successfully, using the model profiles you manually provided 
 
 ### AI Model cluster deployment stalls if object storage path for model profiles is empty
 
+!!!tip
+Resolved in HM versions 2025.11 and later.
+!!!
+
 **Description:** Creating an AI Model cluster and specifying an object storage path in the **Model Profiles Path** field causes the deployment to stall at the pending stage. This issue occurs if the specified path contains no content (that is, the model profile doesn't yet exist).
 
 **Workaround:** Ensure that the object storage path specified in the **Model Profiles Path** field contains a correct, valid profile before initiating the model cluster deployment.
@@ -301,7 +351,7 @@ The pods now start successfully, using the model profiles you manually provided 
 
 **Workaround:** In the HM console, manually reenter or set your required model configurations to restore functionality.
 
-[GRIP-935]: #
+[GRIP-935, backlog]: #
 
 ### Error page appears when editing knowledge base credentials
 
@@ -309,7 +359,7 @@ The pods now start successfully, using the model profiles you manually provided 
 
 **Workaround:** To prevent the error page from appearing, fill in the **Username** field immediately after selecting **Edit KB** and before attempting to enter the password.
 
-[GRIP-934]: # 
+[GRIP-934, backlog]: #
 
 ### Missing aidb_users role on PGD witness node prevents AI functionality
 
@@ -325,9 +375,13 @@ create user aidb_users;
 commit;
 ```
 
-[UPM-71454, status says blocked, on hold]: #
+[UPM-71454, blocked]: #
 
 ### GenAI Builder structures and tools execution failure
+
+!!!tip
+Resolved in HM versions 2025.12 and later.
+!!!
 
 **Description:** GenAI Builder's structures and tools capabilities don't function correctly unless specific environment variables are configured during their creation.
 If these variables are missing or incorrect, execution fails with the following error:
@@ -351,7 +405,7 @@ If these variables are missing or incorrect, execution fails with the following 
 
 <br/>
 
-[GRIP-936, status in progress]: #
+[GRIP-936]: #
 
 ### Pipeline Designer-created knowledge bases not visible to GenAI Builder
 
@@ -361,7 +415,7 @@ However, this isolation prevents GenAI Builder from querying these KBs out of th
 
 **Workaround:** Explicitly share PD-created KBs with your specific PostgreSQL user account to make them queryable in GenAI Builder.
 
-[UPM-72526, ticket says in progress]: #
+[UPM-72526, the solution is the workaround, so issue won't be solved in a future release]: #
 
 <details><summary>Workaround details</summary> 
 
@@ -397,17 +451,57 @@ Alice connects to HM as `alice@acme.org` and to PostgreSQL as the database user 
 
 <br/>
 
+### Editing external inference service parameters returns a name change error
+
+[UPM-78375]: #
+
+**Description:** When attempting to edit the parameters of an existing external inference service, the HM console returns an error stating `invalid patch inference service request: change model cluster name is not yet supported`. This error occurs even if you don't attempt to change the name field. While the core functionality of the inference service remains operational, the API currently prevents updates to any configuration parameters for external models.
+
+**Workaround:** To update the parameters of an external inference service, you must delete the existing service and create a new one with the desired configurations. This issue specifically affects external model services and doesn't impact internal inference services.
+
+### Missing validation message for invalid external model names
+
+[UPM-78639]: #
+
+**Description:** When registering a new external inference service in the HM console, the system doesn't display a specific validation error message if the external service name or model name contains invalid characters. Instead, the registration page remains active without feedback, while the underlying request fails with a 400 error.
+
+To be valid, both names must:
+
+- Consist only of lowercase alphanumeric characters, hyphens (`-`), or dots (`.`).
+
+- Start and end with an alphanumeric character.
+
+**Workaround:** Ensure that all names provided during registration strictly follow the character requirements. If the page appears to hang after register an external service, verify that your service and model names don't contain uppercase letters or unsupported special characters.
+
 ## Analytics and tiered tables
 
 ### Updating tiered, partitioned tables fails with PGAA error
+
+!!!tip
+Resolved in HM versions 2026.02 and later.
+!!!
 
 **Description:** When attempting to execute an `UPDATE` statement on a large, tiered and partitioned table, the operation fails with the message `ERROR: system columns are not supported by PGAA scan`. This issue occurs even when the target partition for the update uses a standard heap access method (that is, it isn't an actively tiered Iceberg table), indicating a conflict in how the Analytics Accelerator (PGAA) processes the partitioned table structure during a modification query.
 
 [BEAC-902]: #
 
+### Table offloading fails with a 500 timeout error
+
+[UPM-77149]: #
+
+**Description:** When attempting to offload a table to object storage, the API may return a 500 error with the message `error offloading table: callback error: runner error: timeout: context deadline exceeded`. This occurs when the operation takes longer than the allowed timeout period, typically due to slow write performance or high latency from the cloud provider's object storage.
+
+**Workaround:** This issue is generally caused by external infrastructure bottlenecks rather than the HM deployment itself. To mitigate this, troubleshoot any performance bottlenecks or latency issues within your cloud provider's object storage service.
+
+Once the storage performance is restored, retry the table offload operation from the HM console.
+
 ## HM console and observability
 
 ### False positive backup alerts for Advanced High Availability and Distributed High Availability (PGD) clusters
+
+!!!tip
+Resolved in HM versions 2026.02 and later.
+!!!
 
 **Description:** Backup-related alerts, specifically `pem_time_since_last_backup_available_seconds` and `pem_backup_longer_than_expected`, can trigger false positives for Advanced High Availability and Distributed High Availability (PGD) clusters. This occurs because these alerts currently target individual pods rather than the cluster as a whole. In a data group with multiple nodes, backups are typically executed on only one node. Consequently, the other nodes incorrectly trigger alerts for missing or delayed backups.
 
@@ -419,9 +513,25 @@ Alice connects to HM as `alice@acme.org` and to PostgreSQL as the database user 
 
 [UPM-73760]: #
 
+### HTTP 431 "Request Header Fields Too Large" error when accessing the Estate page
+
+[UPM-78342]: #
+
+**Description:** Users who have access to a large number of projects (typically more than 50) may encounter an HTTP 431 error when navigating to the **Estate** page in the HM console. This error occurs because the authorization headers generated for the request exceed the size limits of the upstream proxy or load balancer. This issue prevents the HM console from loading estate results and can also affect machine users or automation scripts calling the `/api/v1/estate` endpoint directly.
+
+**Workaround:** For users impacted by this error, an organization owner must reduce the size of the request headers by performing one of the following actions:
+
+- Revoke project access: Remove the affected user's access to projects that are no longer actively required.
+
+- Remove unused projects: Delete projects that are no longer in use to reduce the total count associated with the user's profile.
+
 ## Clusters and upgrades
 
 ### Major version upgrade fails for Advanced High Availability and Distributed High Availability (PGD) clusters with witness groups
+
+!!!tip
+Resolved in HM versions 2026.02 and later.
+!!!
 
 **Description:** Performing an in-place major version upgrade of the database engine (for example, from Postgres/EPAS 17 to 18) fails for Advanced high Availability and Distributed High Availability (PGD) clusters configured with two data groups and one witness group. The upgrade process becomes stuck in the "Waiting for nodes major version in-place upgrade" phase due to inactive replication slots. This results in the upgrade pod failing to progress, and the PGD CLI reporting a critical status for the cluster.
 
@@ -437,9 +547,13 @@ Alice connects to HM as `alice@acme.org` and to PostgreSQL as the database user 
 
 **Workaround:** There is currently no manual workaround to install this extension on managed clusters. Avoid using these two specific actions until the extension is included in a future image update.
 
-[UPM-74007]: #
+[UPM-74007, backlog]: #
 
 ### Deleted clusters still appear in AI components
+
+!!!tip
+Resolved in HM versions 2026.02 and later.
+!!!
 
 **Description:** When configuring an EDB DB Component or an EDB Knowledge Base Component (such as within Langflow), Advanced High Availability and Distributed High Availability (PGD) clusters that have already been deleted from the HM console may still appear in the selection list. Attempting to use a deleted cluster will result in an execution error.
 
@@ -467,15 +581,27 @@ Affected actions and parameters:
 
 - `explain_query` (`hypothetical_indexes`): Use tool mode to provide a valid list.
 
-[AID-852]: #
+[AID-852, backlog]: #
 
 ### Advanced high Availability and Distributed High Availability (PGD) witness groups appear in database selection lists
+
+!!!tip
+Resolved in HM versions 2026.02 and later.
+!!!
 
 **Description:** When using the EDB Database Component or EDB Knowledge Base Component with a Advanced High Availability and Distributed High Availability (PGD) cluster, the witness group is incorrectly included in the list of available database groups. Because witness groups don't contain actual database data or connection strings, selecting one will result in a failure to connect or display information.
 
 **Workaround:** When configuring these components, manually ignore any entries labeled as a witness group. Only select data groups to ensure a valid connection and successful data retrieval.
 
 [AID-851]: #
+
+### Text search may match on non-visible fields
+
+[UPM-77534]: #
+
+**Description:** When using the search functionality in the HM console, for example in the **Activity Log** section, the system performs a full-text search across all underlying data fields. As a result, search results may include resources or activity log entries where the visible **Activity Name** or other shown attributes don't appear to match the search term.
+
+**Workaround:** There is currently no workaround for this behavior as it is a result of the underlying search design. Users should be aware that search results are inclusive of internal action details not displayed in the primary log view.
 
 ## Migrations 
 
