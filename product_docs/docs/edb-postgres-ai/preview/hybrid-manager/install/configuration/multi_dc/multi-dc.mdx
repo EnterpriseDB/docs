@@ -1,47 +1,9 @@
 ---
-title: Deploy Hybrid Manager across multiple data centers
-navTitle: Multi-DC deployment
+title: Configuring a Hybrid Manager deployment across multiple data centers
+navTitle: Configuring a multi-dc deployment
 description: Learn how to set up multiple data centers (multi-DC) with Hybrid Manager to support the deployment of database clusters across multiple geographical locations.
 deepToC: true
-redirects:
-- /edb-postgres-ai/current/hybrid-manager/using/multi-dc/
-- /edb-postgres-ai/current/hybrid-manager/install/customization/multi-dc/
-- /edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/multi-dc/
 ---
-
-## Overview
-
-### Why run Hybrid Manager (HM) across multiple data centers (DCs)?
-
-Deploying HM across multiple data centers gives you high availability and disaster recovery for Postgres database clusters. It allows you to:
-
-- Survive a database loss (DR) &mdash; Keep one or two warm Secondary Postgres databases ready. If the Primary data center is unavailable, promote replicas in the Secondary location and restore services.
-
-- Minimize downtime (HA) &mdash; Perform maintenance or lifecycle operations on one database while workloads continue on the other.
-
-- Protect data (RPO) &mdash; Continuous replication to a second data center reduces potential data loss compared to single-site backups only.
-
-- Reduce blast radius &mdash; Faults, misconfigurations, or noisy neighbors in one data center don’t take down the other.
-
-- Meet compliance/sovereignty &mdash; Keep copies in a specific region or facility while still centralizing control.
-
-- Operate at scale &mdash; Split read traffic, stage upgrades, or run blue/green cutovers across data centers.
-
-!!!important
-This excludes the recovery of the HM installation itself, which you must [back up and restore separately](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery/).
-!!!
-
-#### RTO/RPO at a glance
-
-- **RTO (time to restore service)**: Typically minutes, driven by your promotion/cutover runbook and DNS/LB changes.
-
-#### RPO (data loss window):
-
-- Async replication (common across data centers): very low, but not zero (best-effort seconds).
-
-- Sync replication (latency-sensitive): can approach zero data loss, but adds cross-data-center latency and requires robust low-latency links.
-
-### What this guide helps you do
 
 To be able to deploy Postgres databases into multiple data centers, you first must deploy HM installations into two or three different geographical locations or regions. You then link these installations to each other, so you can manage them from a single HM console. This guides help you:
 
@@ -55,7 +17,7 @@ To be able to deploy Postgres databases into multiple data centers, you first mu
 
 - Prepare a Postgres topology with a primary cluster in one data center and replica cluster(s) in the other(s); perform manual failover by promoting replicas.
 
-### Current limitations
+## Current limitations
 
 - Up to three locations (Primary and one Secondary, or a Primary and two Secondaries).
 
@@ -63,47 +25,13 @@ To be able to deploy Postgres databases into multiple data centers, you first mu
 
 - Same cloud/on-prem family: Cross-CSP multi-DC is not supported.
 
-### Architecture at a glance
-
-- Control plane: Two or three Kubernetes clusters, each with an instance of HM, configured as a hub and spokes; Primary “manages” the Secondaries as a location through an HM-internal agent (Beacon).
-
-- Data nodes: Postgres primary cluster in DC-A, replica cluster(s) in DC-B (async by default), and, if configured, in DC-C. Similarly, for Distributed and Advanced High Availability (PGD) clusters, you could have Datagroup A in DC-A, Datagroup B in DC-B, and Witness in DC-C.
-
-- Storage: Shared/consistent object store configured across sites for backups/artifacts.
-
-- Observability: Thanos/Loki configured to view metrics/logs across sites.
-
-- The Primary acts as the management Hub, while Secondaries act as managed execution Spokes.
-
-### Understanding HM roles: Primary vs. Secondary
-
-It is important to distinguish between the Hybrid Manager (the control plane) and the Postgres Clusters (the data plane). In a multi-DC setup, HM operates in a "Hub and Spoke" model rather than a distributed mesh.
-
-**The Primary (The Hub)** &mdash; The Primary location is the "source of truth" and the only place where the full HM control plane is active.
-
-  - **HM console (UI)** &mdash; This is your single pane of glass. You log into the Primary's URL to manage databases across all regions.
-
-  - **API & scheduler** &mdash; The Primary makes the decisions on where database nodes should live and sends instructions to the Secondaries.
-
-  - **Identity provider** &mdash; The Primary acts as the root of trust for SPIRE, issuing identities to the Secondaries.
-
-**The Secondaries (The Spokes)** &mdash; Secondary locations are "lean" installations. They don't run their own independent management consoles.
-
-  - **HM-internal Beacon agent** &mdash; Instead of a full UI, Secondaries run the HM-internal Beacon agent. This agent heartbeats back to the Primary, making the local Kubernetes resources (nodes, storage) available to the Primary's scheduler.
-
-  - **Local execution** &mdash; When you trigger a "Create Cluster" command on the Primary UI and select a Secondary location, the Primary instructs the Secondary's local operators to provision the Postgres pods.
-
-  - **Resource efficiency** &mdash; By setting scenarios such as `core` and disabling `upm-ui`, the Secondary consumes significantly fewer resources than the Primary.
-
-### Who is this for?
-
-This is for teams that need higher resilience than a single data center can provide, and are comfortable running a manual, well-rehearsed failover playbook with clearly defined RTO/RPO targets.
-
 ## Prerequisites
 
 ### Architecture prereqs
 
 - Two or three Kubernetes clusters available: Primary and Secondaries, with the required infrastructure and secrets configured.
+
+- A fully deployed primary HM on one of the Kubernetes clusters.
 
 - Network connectivity:
 
@@ -114,6 +42,8 @@ This is for teams that need higher resilience than a single data center can prov
     - Same provider/on-prem family (no cross-cloud).
 
 - Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC deployment, this object storage is shared between all clusters.
+
+- A high-performance networking layer in cloud and multi-region deployments. EKS simplifies this due to its integration with the AWS ecosystem. OpenShift may require more complex networking configurations. Complex networking configurations, especially in OpenShift, can lead to connectivity problems between clusters. Ensure a proper network setup to allow communication between PGD nodes. High network latency can cause PGD clusters to become unstable if Raft settings aren't properly tuned. Symptoms may include slow failure detection and recovery. Adjust Raft-related settings to accommodate higher network latency.
 
 ### Collect the required information
 
@@ -225,6 +155,10 @@ HM can now provision into the Secondary locations, but you must still choose and
 For single-node and high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Replica Clusters** tab](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/) to add replica database clusters in other locations. 
 
 For advanced high availability and distributed high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Data Groups** tab > **Node Settings** > **Deployment Location**](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/#node-settings) option to distribute the cluster data groups across locations.
+
+!!!note
+Witness nodes in PGD require a minimum of 10GB of disk space.
+!!!
 
 [Confirm replication mode (sync/async) and monitor replication lag meets your SLOs.]: #
 
