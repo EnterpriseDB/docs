@@ -6,6 +6,7 @@ deepToC: true
 redirects:
 - /edb-postgres-ai/current/hybrid-manager/using/multi-dc/
 - /edb-postgres-ai/current/hybrid-manager/install/customization/multi-dc/
+- /edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/multi-dc/
 ---
 
 ## Overview
@@ -36,9 +37,9 @@ This excludes the recovery of the HM installation itself, which you must [back u
 
 #### RPO (data loss window):
 
-- Async replication (common across DCs): very low, but not zero (best-effort seconds).
+- Async replication (common across data centers): very low, but not zero (best-effort seconds).
 
-- Sync replication (latency-sensitive): can approach zero data loss, but adds cross-DC latency and requires robust low-latency links.
+- Sync replication (latency-sensitive): can approach zero data loss, but adds cross-data-center latency and requires robust low-latency links.
 
 ### What this guide helps you do
 
@@ -48,15 +49,11 @@ To be able to deploy Postgres databases into multiple data centers, you first mu
 
 - Connect two or more HM installations (HM Kubernetes clusters) on the same provider/on-prem family. These can be on different geographical regions. For example, you can have a Primary and one Secondary, or a Primary and two Secondaries. 
 
-- Align object storage (identical `edb-object-storage` secret) so backups/artifacts are usable in all DCs
+- Align object storage (identical `edb-object-storage` secret), so backups/artifacts are usable in all data centers.
 
-- Enable SPIRE federation (trust domains via 8444/TCP) so HM installation identities work cross-site.
+- Wire the HM-internal agent (Beacon, or `upm-beacon-agent`) so the Secondary can register to the Primary as managed locations and provision there (9445/TCP).
 
-- Wire the HM-internal agent (Beacon, or `upm-beacon-agent`) so the Primary can register the Secondary locations as managed locations and provision there (9445/TCP).
-
-- Prepare a Postgres topology with a primary in one data center and replicas in the other(s); perform manual failover by promoting replicas.
-
-- (Optional) Federate telemetry (Thanos/Loki) to enable cross-site metrics and logs.
+- Prepare a Postgres topology with a primary cluster in one data center and replica cluster(s) in the other(s); perform manual failover by promoting replicas.
 
 ### Current limitations
 
@@ -70,11 +67,33 @@ To be able to deploy Postgres databases into multiple data centers, you first mu
 
 - Control plane: Two or three Kubernetes clusters, each with an instance of HM, configured as a hub and spokes; Primary “manages” the Secondaries as a location through an HM-internal agent (Beacon).
 
-- Data nodes: Postgres primary in DC-A, replicas in DC-B (async by default), and, if configured, in DC-C.
+- Data nodes: Postgres primary cluster in DC-A, replica cluster(s) in DC-B (async by default), and, if configured, in DC-C. Similarly, for Distributed and Advanced High Availability (PGD) clusters, you could have Datagroup A in DC-A, Datagroup B in DC-B, and Witness in DC-C.
 
 - Storage: Shared/consistent object store configured across sites for backups/artifacts.
 
 - Observability: Thanos/Loki configured to view metrics/logs across sites.
+
+- The Primary acts as the management Hub, while Secondaries act as managed execution Spokes.
+
+### Understanding HM roles: Primary vs. Secondary
+
+It is important to distinguish between the Hybrid Manager (the control plane) and the Postgres Clusters (the data plane). In a multi-DC setup, HM operates in a "Hub and Spoke" model rather than a distributed mesh.
+
+**The Primary (The Hub)** &mdash; The Primary location is the "source of truth" and the only place where the full HM control plane is active.
+
+  - **HM console (UI)** &mdash; This is your single pane of glass. You log into the Primary's URL to manage databases across all regions.
+
+  - **API & scheduler** &mdash; The Primary makes the decisions on where database nodes should live and sends instructions to the Secondaries.
+
+  - **Identity provider** &mdash; The Primary acts as the root of trust for SPIRE, issuing identities to the Secondaries.
+
+**The Secondaries (The Spokes)** &mdash; Secondary locations are "lean" installations. They don't run their own independent management consoles.
+
+  - **HM-internal Beacon agent** &mdash; Instead of a full UI, Secondaries run the HM-internal Beacon agent. This agent heartbeats back to the Primary, making the local Kubernetes resources (nodes, storage) available to the Primary's scheduler.
+
+  - **Local execution** &mdash; When you trigger a "Create Cluster" command on the Primary UI and select a Secondary location, the Primary instructs the Secondary's local operators to provision the Postgres pods.
+
+  - **Resource efficiency** &mdash; By setting scenarios such as `core` and disabling `upm-ui`, the Secondary consumes significantly fewer resources than the Primary.
 
 ### Who is this for?
 
@@ -86,188 +105,25 @@ This is for teams that need higher resilience than a single data center can prov
 
 - Two or three Kubernetes clusters available: Primary and Secondaries, with the required infrastructure and secrets configured.
 
-- Each cluster has a unique SPIRE trust domain.
-
 - Network connectivity:
 
-  - 8444/TCP (Cross-Cluster SPIRE Federation): Required for SPIRE servers to exchange trust bundles. This allows identities created in Location A to be cryptographically verified in Location B, enabling secure cross-site communication. 
-  
-    [8444/TCP must be open between clusters]: #
+    - 8444/TCP open between clusters (SPIRE bundle endpoint).
 
-  - 9445/TCP (Beacon gRPC Control Plane): This is the heartbeat of the Multi-DC setup. Secondary locations use this port to dial back to the Primary Beacon server to register their health and receive management instructions.
-
-    [must be open "from Secondaries → Primary" an all clusters?]: #
-
-    - Tooling: kubectl, jq (and yq if editing YAML locally).
+    - 9445/TCP from Secondaries → Primary (Beacon gRPC).
 
     - Same provider/on-prem family (no cross-cloud).
 
 - Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC deployment, this object storage is shared between all clusters.
 
-- Tools:
-    - `jq`, `yq`, AWS command line
+### Collect the required information
 
-- Scripts:
-    - There are a number of scripts referred to use throughout this procedure. Please contact [EDB Professional Services](https://www.enterprisedb.com/services-support/professional-services) or [EDB Support Center](https://www.enterprisedb.com/support-center) to get access to the scripts.
+1. Prepare two (or three) copies of the HM installation configuration file (`values.yaml`). Name them `primary.yaml`, `secondary.yaml` if you are deploying in two locations, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` if you are deploying in three locations.
 
-    [can I get access to these scripts? I wonder if they support three locations? And if yes, what are the names of the variables]: #
+1. Domain names:
 
-### Discover and set necessary environment variables
+   Each HM installation must be configured with a dedicated domain name, set in the HM installation configuration file as `portal_domain_name`. This parameter is used by the Primary and Secondaries.
 
-1. Tell `kubectl` which clusters are Primary vs. Secondaries.
-
-    Set the kube contexts you’ll use for all subsequent discovery commands:
-
-    ```bash
-    export KUBE_CONFIG_PRIMARY_CONTEXT="<primary-kube-ctx-or-arn>"
-    export KUBE_CONFIG_SECONDARY_CONTEXT="<secondaryA-kube-ctx-or-arn>"
-    # If required, when configuring a 3-DC environment
-    export KUBE_CONFIG_SECONDARY_CONTEXT="<secondaryB-kube-ctx-or-arn>"
-    ```
-
-1. Discover the Primary portal FQDN (used by Beacon/telemetry).
-
-    Query the Primary cluster for the Beacon gateway host, then export it as `PRIMARY_PORTAL_URL`:
-
-    ```bash
-    export PRIMARY_PORTAL_URL="$(
-    kubectl --context "$KUBE_CONFIG_PRIMARY_CONTEXT" \
-        -n upm-beacon get gw beacon-server -o json \
-    | jq -r '.spec.servers[1].hosts[0]'
-    )"
-    ```
-
-1. (Optional) Discover the portal FQDN of the Secondary A instance:
-
-    If you’ll also federate telemetry, capture the portal host of Secondary as `SECONDARY_PORTAL_URL` and set the environment variable accordingly:
-
-    ```bash
-    export SECONDARY_PORTAL_URL="$(
-    kubectl --context "$KUBE_CONFIG_SECONDARY_CONTEXT" \
-        -n upm-beacon get gw beacon-server -o json \
-    | jq -r '.spec.servers[1].hosts[0]'
-    )"
-    ```
-
-1. (Optional) Discover the portal FQDN of the Secondary B instance.
-
-    [Do we need eng work to make the script support three locations? Or reference a different script for the 3-loc use case?]: #
-
-    Capture the Secondary portal host as `SECONDARY_PORTAL_URL` and set the environment variable accordingly:
-
-    ```bash
-    export SECONDARY_PORTAL_URL="$(
-    kubectl --context "$KUBE_CONFIG_SECONDARY_CONTEXT" \
-        -n upm-beacon get gw beacon-server -o json \
-    | jq -r '.spec.servers[1].hosts[0]'
-    )"
-    ```
-
-1. Derive the Beacon gRPC endpoint for the Primary.
-
-    Beacon listens on `:9445` on the Primary portal host.
-
-    ```bash
-    export BEACON_SERVER_ENDPOINT_PRIMARY="${PRIMARY_PORTAL_URL}:9445"
-    ```
-
-1. Discover the SPIRE trust domain for the Primary.
-
-    Read the SPIRE server config from the Primary and export `TRUST_DOMAIN_PRIMARY`.
-
-    ```bash
-    export TRUST_DOMAIN_PRIMARY="$(
-    kubectl --context "$KUBE_CONFIG_PRIMARY_CONTEXT" \
-        -n spire-system get cm spire-server \
-        -o jsonpath="{['data']['server\.conf']}" \
-    | jq -r '.server.trust_domain'
-    )"
-    ```
-
-1. Discover the SPIRE trust domain for the Secondary.
-
-    Do the same for the Secondary and export `TRUST_DOMAIN_SECONDARY`.
-
-    ```bash
-    export TRUST_DOMAIN_SECONDARY="$(
-    kubectl --context "$KUBE_CONFIG_SECONDARY_CONTEXT" \
-        -n spire-system get cm spire-server \
-        -o jsonpath="{['data']['server\.conf']}" \
-    | jq -r '.server.trust_domain'
-    )"
-    ```
-
-1. Discover the SPIRE trust domain for the Secondary B.
-
-    Do the same for the Secondary and export `TRUST_DOMAIN_SECONDARY`.
-
-    ```bash
-    export TRUST_DOMAIN_SECONDARY="$(
-    kubectl --context "$KUBE_CONFIG_SECONDARY_CONTEXT" \
-        -n spire-system get cm spire-server \
-        -o jsonpath="{['data']['server\.conf']}" \
-    | jq -r '.server.trust_domain'
-    )"
-    ```
-
-    [need to know who to call this env variable in the case of 3-loca]: # 
-
-1. Choose a label for the managed Secondary location (A).
-
-    Pick any unique label (it will show up as `managed-<label>` on the Primary).
-
-    ```bash
-    export SECONDARY_LOCATION_NAME="secondary"
-    ```
-
-1. Choose a label for the managed Secondary location (B).
-
-    Pick any unique label (it will show up as `managed-<label>` on the Primary).
-
-    ```bash
-    export SECONDARY_LOCATION_NAME="secondary"
-    ```
-
-    [here too, well have to check how the script uses env variables]: #
-
-1. (Optional for EKS/IRSA helpers) Set the EKS identifiers.
-
-    Only do this if you’ll use the helper to update S3 trust policy and copy the object-store secret.
-    This step requires `PRIMARY_EKS`, `SECONDARY_EKS`, and `AWS_PROFILE`.
-
-    ```bash
-    export PRIMARY_EKS="<region>:<primary-eks-name>"
-    export SECONDARY_EKS="<region>:<secondary-eks-name>"
-    export AWS_PROFILE="<aws-profile>"
-    ```
-
-1. Sanity check before proceeding.
-
-    Verify the key variables are set (will error if any are missing):
-
-    ```bash
-    : "${KUBE_CONFIG_PRIMARY_CONTEXT:?}"; : "${KUBE_CONFIG_SECONDARY_CONTEXT:?}"
-    : "${PRIMARY_PORTAL_URL:?}"; : "${BEACON_SERVER_ENDPOINT_PRIMARY:?}"
-    : "${TRUST_DOMAIN_PRIMARY:?}"; : "${TRUST_DOMAIN_SECONDARY:?}"
-    : "${SECONDARY_LOCATION_NAME:?}"
-    ```
-
-    [we'll have complete this list if third is added]: #
-
-    Here are some optional checks if you’re doing telemetry or EKS helper.
-
-    ```bash
-    : "${SECONDARY_PORTAL_URL:?Set if doing telemetry federation}" || true
-    : "${PRIMARY_EKS:?Set if using EKS helper}" || true
-    : "${SECONDARY_EKS:?Set if using EKS helper}" || true
-    : "${AWS_PROFILE:?Set if using EKS helper}" || true
-    ```
-
-    [we'll have complete this list if third is added]: #
-
-!!! Note
-If you open a new shell or run a new CI step later, re-run these exports (or save them to a file and source it).
-!!!
+   Create these domain names for the each of the HM installations (two or three installations, depending on your configuration), and record this information.
 
 ## Object storage across locations
 
@@ -278,599 +134,101 @@ HM uses an object store for backups, artifacts, WAL, and internal bundles.
 
 All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the default namespace. Store this secret in the Primary and Secondary if you are running on two locations. Store this secret in the Primary, Secondary A and Secondary B, if you have three data centers.
 
-!!! Note
-Create/sync `edb-object-storage` before installing HM at any secondary location.
-!!!
+## Parameter uniqueness
 
-You create the initial secret when setting up object storage during installation for the Primary.
-Replicate it now to the Secondary:
+Because the two or three clusters involved in this multi-data-center deployment are using the same object store, we must ensure that specific parameters are different between all clusters.
 
-```bash
-# Clean slate on Secondary
-kubectl delete secret \
---context=$KUBE_CONFIG_SECONDARY_CONTEXT \
--n default edb-object-storage || true
+| Parameter                | Requirement                                                         | Why it matters                                                                                  |
+|--------------------------|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `location_id`            | Must be unique per location.                                        | Human-readable location identifier. Identifies the specific location in the HM console and API. |
+| `internal_backup_folder` | Must be unique per location AND match the format: `^[0-9a-z]{12}$`. | Separates database backups so that a restore doesn't pull the wrong data.                       |
+| `metrics_storage_prefix` | Must be unique per location.                                        | Ensures observability data from each site is stored in its own directory.                       |
+| `logs_storage_prefix`    | Must be unique per location.                                        | Prevents logs from different locations from overwriting each other in shared storage.           |
 
-# Copy Primary → Secondary (A)
-kubectl get secret \
---context=$KUBE_CONFIG_PRIMARY_CONTEXT_A \
--n default edb-object-storage -o yaml | \
-kubectl apply \
---context=$KUBE_CONFIG_SECONDARY_CONTEXT_A \
--n default -f -
-
-# If required, copy Primary → Secondary (B)
-kubectl get secret \
---context=$KUBE_CONFIG_PRIMARY_CONTEXT_B \
--n default edb-object-storage -o yaml | \
-kubectl apply \
---context=$KUBE_CONFIG_SECONDARY_CONTEXT_B \
--n default -f -
-```
-
-[TBD on third loc]: #
-
-### EKS (IRSA) trust policy
-
-If you use S3 + IAM Roles for Service Accounts (IRSA), the role must trust both clusters’ OIDC providers.
-
-1. Either update the trust policy manually to include both OIDC issuers, or
-
-1. Retrieve the helper `object-storage-on-multi-dc.sh` helper script:
-
-1. Use the helper script to copy the secret and append OIDC providers to the role’s trust policy automatically:
-
-    ```bash
-    ./object-storage-on-multi-dc.sh \
-    -p <region>:<primary-eks-name> \
-    -s <region>:<secondary-eks-name>[,<region>:<another-eks>] \
-    -a <aws-profile>
-    ```
-
-    The `object-storage-on-multi-dc.sh` helper script reads the IAM role ARN from the Primary’s edb-object-storage secret, copies the identical secret to each Secondary, and appends the Secondary cluster’s OIDC provider to the role trust policy if missing.
-
-1. Validation checklist
-
-    - Secrets identical (compare .data only).
-
-    - Both clusters can list/write the bucket (quick Pod/Job test).
-
-    - IRSA role trust includes both OIDC providers (if EKS).
-
-## Setup options
-
-Choose Option A (one-shot) or Option B (step-by-step). You’ll reach the same end state.
-
-### Option A — Quick start (master script)
-
-The master script runs object storage sync, SPIRE federation, Beacon wiring, and optional telemetry in one pass.
-
-1. Retrieve the `master-install.sh` script.
-
-1. Run the script:
-
-    ```bash
-    cd scripts/multi-dc
-    ./master-install.sh
-    ```
-
-1. Useful flags:
-
-    ```bash
-    ./master-install.sh --dry-run \
-    --skip-object-store --skip-federation --skip-beacon --skip-telemetry
-    ```
-
-1. Verify:
-
-   - Verify that SPIRE federation is listed:
-   
-       ```bash
-       kubectl -n spire-system exec svc/spire-server -c spire-server -- \
-       /opt/spire/bin/spire-server federation list
-       ```
-   
-   - Verify the secondary location registered in Primary
-   
-       ```bash
-       kubectl get location
-       ```
-
-[Is this master script configured for 3 locations?]: #
-
-### Option B — Manual setup (advanced/customizable)
-
-#### Retrieve the necessary scripts
-
-You need to retrieve these scripts in order to manually setup multi-DC:
-
-- `update_objectstore_secrets.sh`
-- `apply-federated-domain.sh `
-- `configure-beacon-primary.sh`
-- `configure-beacon-secondary.sh`
-- `install.sh` (if setting up telemetry federation)
-
-[are these scripts available for 3-locations]: #
-
-#### Run the scripts to setup multi-DC
-
-Run these scripts in order:
-
-- `update_objectstore_secrets.sh`
-- `apply-federated-domain.sh `
-- `configure-beacon-primary.sh`
-- `configure-beacon-secondary.sh`
-- `install.sh` (if setting up telemetry federation)
-
-1. Object storage sync:
-
-    ```bash
-    ./update_objectstore_secrets.sh
-    # (EKS only, if IRSA)
-    ./eks-object-storage-on-multi-dc.sh -p $PRIMARY_EKS -s $SECONDARY_EKS -a $AWS_PROFILE
-    ```
-
-1. SPIRE federation:
-
-    ```bash
-    ./apply-federated-domain.sh $KUBE_CONFIG_PRIMARY_CONTEXT $KUBE_CONFIG_SECONDARY_CONTEXT
-    ```
-
-1. Validate:
-
-    ```bash
-    kubectl -n spire-system exec svc/spire-server -c spire-server -- \
-    /opt/spire/bin/spire-server federation list
-    ```
-
-1. Beacon wiring:
-
-    ```bash
-    ./configure-beacon-primary.sh   $TRUST_DOMAIN_SECONDARY
-    ./configure-beacon-secondary.sh $BEACON_SERVER_ENDPOINT_PRIMARY $TRUST_DOMAIN_PRIMARY $SECONDARY_LOCATION_NAME
-    ```
-
-1. Validate:
-
-    ```bash
-    kubectl get location
-    ```
-
-1. (Optional) Telemetry federation
-
-    ```bash
-    cd thanos && ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ./install.sh -l primary  -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-
-    cd ../fluent-bit && ./install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-## SPIRE federation details (what/why/how)
-
-SPIRE federation lets each SPIRE server trust the peer trust domain and continuously refresh its bundle (requires 8444/TCP). 
-It can be configured via CRDs or spire-server federation CLI.
-
-**Typical flow (CRD-based)**:
-
-- Generate ClusterFederatedTrustDomain manifest from each cluster (helper script).
-
-- Cross-apply them (A → B, B → A).
-
-- Validate with spire-server federation list.
-
-**Post-federation**: Any workload identity that needs to cross sites must have a `ClusterSPIFFEID` with `federatesWith: "<peer-trust-domain>"`.
-
-## Beacon configuration (Primary & Secondary)
-
-Beacon enables the Primary HM to register the Secondaries as a managed “locations” and provision there.
-
-#### Primary: allow Secondary trust domain
-
-1. With the kubeconfig pointed at the Primary, export current values and edit:
-
-    ```bash
-    kubectl get configmap -n edbpgai-bootstrap -l app=edbpgai-bootstrap -o yaml \
-    | yq '.items[0].data["values.yaml"]' > /tmp/primary-boot-values.yaml
-    ```
-
-1. Edit /tmp/primary-boot-values.yaml:
-
-    ```bash
-    beaconServer:
-    additionalTrustDomains:
-        - "<secondary-location-trust-domain>"
-    ```
-
-1. Retrieve the Agent (beacon) install script, `install-dev.sh`.
-
-1. Reinstall Beacon:
-
-    ```bash
-    ./install-dev.sh -f <provider> -a install -c upm-beacon -v <beacon-version> -p /tmp/primary-boot-values.yaml
-    ```
-
-#### Secondary (A): point agent to Primary Beacon 
-
-1. With the kubeconfig pointed at the Secondary (A):
-
-    ```bash
-    kubectl get configmap -n edbpgai-bootstrap -l app=edbpgai-bootstrap -o yaml \
-    | yq '.items[0].data["values.yaml"]' > /tmp/secondary-boot-values.yaml
-    ```
-
-1. Edit `/tmp/secondary-boot-values.yaml`:
-
-    ```yaml
-    parameters:
-    upm-beacon:
-        beacon_location_id: "secondary"   # unique label
-    beaconAgent:
-    beaconServerAddress: "<primary-portal-fqdn>:9445"
-    beaconServerTrustDomain: "<primary-trust-domain>"
-    plaintext: false
-    tlsInsecure: false
-    inCluster: false
-    ```
-
-1. Retrieve the Agent (beacon) install script `install-dev.sh`.
-
-1. Reinstall Beacon:
-
-    ```bash
-    ./install-dev.sh -f <provider> -a install -c upm-beacon -v <beacon-version> -p /tmp/secondary-boot-values.yaml
-    ```
-
-#### (Optional) Secondary B: point agent to Primary Beacon (A)
-
-1. With the kubeconfig pointed at the Secondary B, From the Secondary:
-
-    ```bash
-    kubectl get configmap -n edbpgai-bootstrap -l app=edbpgai-bootstrap -o yaml \
-    | yq '.items[0].data["values.yaml"]' > /tmp/secondary-boot-values.yaml
-    ```
-
-1. Edit `/tmp/secondary-boot-values.yaml`:
-
-    ```yaml
-    parameters:
-    upm-beacon:
-        beacon_location_id: "secondary"   # unique label
-    beaconAgent:
-    beaconServerAddress: "<primary-portal-fqdn>:9445"
-    beaconServerTrustDomain: "<primary-trust-domain>"
-    plaintext: false
-    tlsInsecure: false
-    inCluster: false
-    ```
-
-1. Retrieve the Agent (beacon) install script `install-dev.sh`.
-
-1. Reinstall Beacon:
-
-    ```bash
-    ./install-dev.sh -f <provider> -a install -c upm-beacon -v <beacon-version> -p /tmp/secondary-boot-values.yaml
-    ```
-
-#### Federate Agent (Beacon) SPIFFE IDs (required)
-
-1. Retrieve the `federate-beacon-spiffe-ids.sh` script.
-
-1. Run from Secondary (A), include Primary trust domain:
-
-    ```bash
-    ./federate-beacon-spiffe-ids.sh "$TRUST_DOMAIN_PRIMARY"
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-server
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-agent-k8s
-    ```
-
-    [in a three-location, do we need to include the other two trust domains?]: #
-
-1. If you want to configure three locations, from Secondary B, run the following command including the Primary and Secondary A trust domains:
-
-    ```bash
-    ./federate-beacon-spiffe-ids.sh "$TRUST_DOMAIN_PRIMARY"
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-server
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-agent-k8s
-    ```
-
-    [in a three-location, do we need to include the other two trust domains?]: #
-
-1. Run from Primary (include Secondary trust domain):
-
-    ```bash
-    ./federate-beacon-spiffe-ids.sh "$TRUST_DOMAIN_SECONDARY"
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-server
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-agent-k8s
-    ```
-
-    [in a three-location, do we need to include the other two trust domains?]: #
-
-1. Validate registration (Primary):
-
-    ```bash
-    kubectl get location
-    # Expect: managed-<SECONDARY_LOCATION_NAME> with recent LASTHEARTBEAT
-    ```
-
-## Telemetry federation (optional)
-
-If you need cross-site metrics/logs.
-
-[this means that all replicas/data groups deployed to different locations will show up here?]: #
-
-[Will they be shown as part of the same cluster?]: # 
-
-### Thanos (metrics)
-
-1. Retrieve the Thanos install script, `install.sh`.
-
-1. Secondary (A): 
-
-    ```bash
-    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-    [tbd]: #
-
-1. Secondary: 
-
-    ```bash
-    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-    [tbd]: #
-
-1. Primary:.
-
-    ```bash
-    ./install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-   [TBD]: #
-
-1. Validate: port-forward `thanos-query` and hit `/api/v1/stores` for entries containing `thanos-query-federated`.
-
-### Fluent Bit/Loki (logs)
-
-1. Retrieve the Loki install script, `install.sh`.
-
-1. Primary:
-
-    ```bash
-    ./install.sh -l primary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-    [tbd]: #
-
-1. Secondary: 
-
-    ```bash
-    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-    [tbd]: #
-
-1. Secondary: 
-
-    ```bash
-    ./install.sh -l secondary -p $PRIMARY_PORTAL_URL -s $SECONDARY_PORTAL_URL
-    ```
-
-    [tbd]: #
-
-1. Validate: port-forward `loki-read` and query for `{app="fluent-forward"}`.
-
-!!! Note
-Use distinct prefixes for metrics and logs in values:
-
-- "`global.metrics_storage_prefix`"
-- "`upm-loki.logs_storage_prefix`"
-!!!
-
-## Database topology and cross-DC provisioning
+## Configure the multi-DC topology
 
 Primary and Secondary locations must be aware of its own role as well as the addresses of the other clusters in the multi-DC group. The following configuration stanza describes the topology and must be present in each of the HM installation configuration files. 
 
-**Goal**: Wire Beacon so the Primary HM can treat the Secondary as a managed location and you can provision PG primary/replicas across DCs.
+In a two-location setup, you must make sure this stanza is properly set in both `primary.yaml`, and `secondary.yaml` files. In a three-location setup, it must be set in all three `primary.yaml`, `secondaryA.yaml`, and `secondaryB.yaml` files.
 
-### Prereqs recap
-
-- Two HM Kubernetes clusters (same provider/on-prem family), with SPIRE federation already configured.
-
-- Shared object store (edb-object-storage secret) present and identical in both clusters.
-
-- Network open: 8444/TCP (SPIRE bundle endpoint), 9445/TCP (Beacon gRPC), plus your Postgres replication ports.
-
-- Tools installed: `jq`, `yq`.
-
-#### Discover important values (run against each cluster where noted):
-
-1. Retrieve Primary portal host used by Beacon (append :9445)
-
-    ```bash
-    kubectl get gw beacon-server -n upm-beacon -o json \
-    | jq -r '.spec.servers[1].hosts[0]'
-    ```
-
-1. Retrieve trust domain (run in each cluster)
-
-    ```bash
-    kubectl get cm spire-server -n spire-system -o jsonpath="{['data']['server\.conf']}" \
-    | jq -r '.server.trust_domain'
-    ```
-
-#### Export environment variables you’ll reuse:
-
-```bash
-export KUBE_CONFIG_PRIMARY_CONTEXT="<primary-kube-ctx-or-arn>"
-export KUBE_CONFIG_SECONDARY_CONTEXT="<secondary-kube-ctx-or-arn>"
-# if required 
-export KUBE_CONFIG_SECONDARY_B_CONTEXT="<secondary-kube-ctx-or-arn>"
-
-export TRUST_DOMAIN_PRIMARY="<primary-trust-domain>"
-export TRUST_DOMAIN_SECONDARY="<secondary-trust-domain>"
-# if required 
-export TRUST_DOMAIN_SECONDARY_B="<secondary-b-trust-domain>"
-
-export BEACON_SERVER_ENDPOINT_PRIMARY="<primary-portal-fqdn>:9445"
-export SECONDARY_LOCATION_NAME="secondary"     # any unique label
-# if required 
-export SECONDARY_B_LOCATION_NAME="secondaryB"     # any unique label
+```yaml
+clusterGroups:
+  role: (secondary|primary|standalone)
+  primary:
+    domainName: <primary portal domain>
+  secondaries:
+  - domainName: <secondary portal domain>
+    # add an additional domainName entry here for a three-location setup
 ```
 
-### Multi-DC Beacon Helm install (Primary)
+Fill in the missing domainName parameters using the `portal_domain_name` parameter you previously set in each HM installation configuration file.
 
-1. Extract the current `values.yaml` for Primary:
+Add this stanza to the `clusterGroups` section of `primary.yaml`, and configure the `role` as `primary`.
 
-    ```bash
-    kubectl get configmap -n edbpgai-bootstrap -l app=edbpgai-bootstrap -o yaml \
-    | yq eval '.items.0.data["values.yaml"]' > /tmp/primary-boot-values.yaml
-    ```
+Similarly, add this stanza to the `clusterGroups` section of the `secondary.yaml` file (or `secondaryA.yaml` and `secondaryB.yaml` files) and configure the role as `secondary`.
 
-1. Edit `/tmp/primary-boot-values.yaml` to allow the Secondary trust domain(s):
+## Reduced set of components
 
-    ```bash
-    beaconServer:
-    # ...
-    additionalTrustDomains:
-        - "<secondary-location-trust-domain>"
-        # if required
-        - "<secondary-B-location-trust-domain>"
-    ```
+The HM consists of a number of different components, some of which are not necessary on the Secondary locations. While the full set can be installed successfully on Secondary locations, we recommend to reduce that list by setting the parameter `scenarios` to be just `core`, and disabling the HM console (UI).
 
-1. Install/Reinstall Beacon on Primary (example):
+Add the following parameters in the secondary values file, `secondary.yaml` (or `secondaryA.yaml` and `secondaryB.yaml`).
 
-    ```bash
-    ./install-dev.sh -f <provider> -a install -c upm-beacon -v <upm-beacon-version> -p /tmp/primary-boot-values.yaml
-    ```
+```yaml
+scenarios: 'core'
+disabledComponents: 
+  - upm-ui
+```
 
-### Multi-DC Beacon Helm install (Secondary)
+1. Validation checklist:
 
-1. Extract the current `values.yaml for` Secondary:
+   - The `edb-object-storage` secret must be identical across all locations (compare .data only).
 
-    ```bash
-    kubectl get configmap -n edbpgai-bootstrap -l app=edbpgai-bootstrap -o yaml \
-    | yq eval '.items.0.data["values.yaml"]' > /tmp/secondary-boot-values.yaml
-    ```
+   - All locations can list/write the bucket (quick Pod/Job test).
 
-1. Edit `/tmp/secondary-boot-values.yaml` to register this cluster as a managed location and to point the agent back to Primary:
+   - `location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must be unique per location.
 
-    ```yaml
-    parameters:
-    upm-beacon:
-        # name can be anything, just not the same as Primary
-        beacon_location_id: "secondary"
+   - `scenarios` has been set to be `core` for Secondary locations.
 
-    beaconAgent:
-    beaconServerAddress: "<primary-portal-fqdn>:9445"
-    beaconServerTrustDomain: "<primary-trust-domain>"
-    plaintext: false
-    tlsInsecure: false
-    inCluster: false
-    ```
+   - `disabledComponents` has the `upm-ui` component listed for Secondary locations.
 
-    [does this need to trust the other secondary in a three-location scenario as well?]: #
+## Hybrid Manager installation
 
-1. Install/Reinstall Beacon on Secondary:
-
-    ```bash
-    ./install-dev.sh -f <provider> -a install -c upm-beacon -v <upm-beacon-version> -p /tmp/secondary-boot-values.yaml
-    ```
-
-### Multi-DC Beacon Helm install (Secondary B)
-
-1. Extract the current `values.yaml for` Secondary B:
-
-    ```bash
-    kubectl get configmap -n edbpgai-bootstrap -l app=edbpgai-bootstrap -o yaml \
-    | yq eval '.items.0.data["values.yaml"]' > /tmp/secondary-boot-values.yaml
-    ```
-
-1. Edit `/tmp/secondary-boot-values.yaml` to register this cluster and the other secondary as a managed location and to point the agent back to Primary:
-
-    ```yaml
-    parameters:
-    upm-beacon:
-        # name can be anything, just not the same as Primary
-        beacon_location_id: "secondaryB"
-
-    beaconAgent:
-    beaconServerAddress: "<primary-portal-fqdn>:9445"
-    beaconServerTrustDomain: "<primary-trust-domain>"
-    plaintext: false
-    tlsInsecure: false
-    inCluster: false
-    ```
-
-    [does this need to trust the other secondary in a three-location scenario as well?]: #
-
-1. Install/Reinstall Beacon on Secondary B:
-
-    ```bash
-    ./install-dev.sh -f <provider> -a install -c upm-beacon -v <upm-beacon-version> -p /tmp/secondary-boot-values.yaml
-    ```
-
-### Beacon ClusterSPIFFEID federation (both directions)
-
-Each Beacon SPIFFE ID that crosses DCs must include the peer trust domain in `federatesWith`. 
-
-Use your helper script on both clusters.
-
-1. From Secondary (add Primary trust domain):
-
-    ```
-    ./federate-beacon-spiffe-ids.sh "$TRUST_DOMAIN_PRIMARY"
-
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-server
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-agent-k8s
-    ```
-
-    [only add primary, or secondary B as well if 3-loc]: #
-
-1. From Primary (add Secondary trust domain):
-
-    ```bash
-    ./federate-beacon-spiffe-ids.sh "$TRUST_DOMAIN_SECONDARY"
-
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-server
-    kubectl rollout restart -n upm-beacon deploy/upm-beacon-agent-k8s
-    ```
-
-    [probably add both secondaries in 3-loc]: #
-
-The script finds Beacon ClusterSPIFFEID objects, creates a federatesWith list if missing, and appends the peer trust domain if not present.
+Using the HM installation configuration files `primary.yaml` and `secondary.yaml` (or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager through helm. 
 
 ### Validate wiring
 
 1. On the Primary, list the managed Secondary locations:
 
-    ```bash
-    kubectl get location
-    ```
+   ```bash
+   kubectl get location
+   ```
 
-    You should see all locations as `managed-<SECONDARY_LOCATION_NAME>` with recent `LASTHEARTBEAT`.
+   You should see all locations as `managed-<SECONDARY_LOCATION_NAME>` with recent `LASTHEARTBEAT`.
 
 1. Validate that SPIRE federation is present on all locations:
 
-    ```bash
-    kubectl -n spire-system exec svc/spire-server -c spire-server -- \
-    /opt/spire/bin/spire-server federation list
-    ```
+   ```bash
+   kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+   /opt/spire/bin/spire-server federation list
+   ```
+   
+   You should see a `federation list` showing the relationships (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
 
-    You should see a `federation list` showing 1 relationship (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
+   On the Primary, you should see one or two entries in the federation list (one for each Secondary).
 
-    [2 relationships]: #
+   On each Secondary instances, you will only see one entry (the relationship back to the Primary).
 
-### Create the cross-DC Postgres topology
+### Create a Postgres database cluster across different data centers
 
 HM can now provision into the Secondary locations, but you must still choose and create the actual database topology. In the HM console, create a database cluster and make sure to select different locations for each database node. 
 
-#### Typical flow
-
 For single-node and high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Replica Clusters** tab](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/) to add replica database clusters in other locations. 
 
-Monitor that the replication lag meets your SLOs. Ensure backups are writing to the shared object store from both data centers, and test a restore.
+For advanced high availability and distributed high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Data Groups** tab > **Node Settings** > **Deployment Location**](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/#node-settings) option to distribute the cluster data groups across locations.
+
+[Confirm replication mode (sync/async) and monitor replication lag meets your SLOs.]: #
+
+Ensure backups are writing to the shared object store from both data centers, and test a restore.
 
 #### Operational notes
 
@@ -899,13 +257,13 @@ On the Primary location, perform the following checks to validate the multi-DC s
 
    - From the Primary, deploy a small test workload to a Secondary location.
      -  Telemetry (optional)
-
+        Thanos stores show federated peer; Loki queries return logs tagged from Secondary.
      -  Object storage
         Both clusters can read/write the bucket; secrets are identical.
 
 ## Manual failover
 
-#### Manual failover procedure from Primary to Secondary
+### Manual failover procedure for databases from the Primary location to a Secondary location
 
 1. Suspend writes to the Primary location (maintenance mode/LB cutover).
 
@@ -916,6 +274,10 @@ On the Primary location, perform the following checks to validate the multi-DC s
 1. Observe: confirm that writes succeed; and the replication role is updated.
 
 1. When original the primary location returns: re-seed it as a replica of the new Primary; optionally plan a later cutback.
+
+!!!note 
+While you promote the Postgres database in the Secondary DC, the HM console itself still runs on the Primary. If the Primary DC (where HM lives) is completely gone, follow the [HM disaster recovery guide](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/) to restore the management console elsewhere.
+!!!
 
 #### Operator tips
 
@@ -943,11 +305,6 @@ On the Primary location, perform the following checks to validate the multi-DC s
 
 - Problem: **Replica lag / connectivity**
     - Verify network ACLs/SGs, TLS certs, and storage performance.
-
-## Appendix A — SPIRE federation via CLI (optional)
-
-You can manage federation with spire-server federation (create, list, update, delete, show, refresh) instead of CRDs. 
-Use this if you prefer direct server control or for debugging.
 
 ## Appendix B — Quick daily checks
 
