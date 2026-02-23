@@ -5,7 +5,7 @@ description: Learn how to set up multiple data centers (multi-DC) with Hybrid Ma
 deepToC: true
 ---
 
-To be able to deploy Postgres databases into multiple data centers, you first must deploy HM installations into two or three different geographical locations or regions. You then link these installations to each other, so you can manage them from a single HM console. This guides help you:
+To be able to deploy Postgres databases into multiple data centers, you first must deploy HM installations into two or three different geographical locations or regions, supporting the [Hub & Spoke or Primary & Secondary architecture](overview/#architecture-and-roles-hub-and-spoke). You then link these installations to each other, so you can manage them from a single HM console. This guides help you:
 
 - Create all HM installation configuration files, and deploy them.
 
@@ -15,7 +15,7 @@ To be able to deploy Postgres databases into multiple data centers, you first mu
 
 - Wire the HM-internal agent (Beacon, or `upm-beacon-agent`) so the secondary can register to the primary as managed locations and provision there (9445/TCP).
 
-- Prepare a Postgres topology with a primary cluster in one data center and replica cluster(s) in the other(s); perform manual failover by promoting replicas.
+- Prepare a Postgres topology with a primary Postgres cluster in one data center and replica Postgres cluster(s) in the other(s); perform manual failover by promoting replicas.
 
 ## Before you start
 
@@ -27,9 +27,11 @@ Before starting the multi-DC procedure, ensure you have made yourself familiar w
 
 ### Architecture prerequisites
 
-- Two or three Kubernetes clusters available: primary and secondaries, with the required infrastructure and secrets configured.
+This multi-DC setup follows a Hub and Spoke model, where a single Primary manages several lean Secondaries.
 
-- A fully deployed primary HM on one of the Kubernetes clusters.
+- Hub cluster: One Kubernetes cluster to host the Primary HM. This cluster serves as the central management plane and UI.
+
+- Spoke clusters: One or two Kubernetes clusters to host Secondary HMs. These act as execution points for your database workloads.
 
 - Network connectivity:
 
@@ -73,31 +75,32 @@ Because the two or three clusters involved in this multi-data-center deployment 
 
 ## Configure the multi-DC topology
 
-Primary and secondary locations must be aware of its own role as well as the addresses of the other clusters in the multi-DC group. The following configuration stanza describes the topology and must be present in each of the HM installation configuration files. 
+In this step, you define the Hub-and-Spoke relationship. The Hub (primary) must know about all its Spokes (secondaries), and each Spoke must know how to reach the Hub.
 
-You must make sure this stanza is properly set in `primary.yaml`, and `secondary.yaml` files:
+Add the following stanza to each of your configuration files (`primary.yaml`, and `secondary.yaml`):
 
 ```yaml
 clusterGroups:
+# Set to 'primary' for your Hub, 'secondary' for your Spokes
   role: (secondary|primary|standalone)
   primary:
     domainName: <primary portal domain>
   secondaries:
   - domainName: <secondary portal domain>
-    # add an additional domainName entry here for additional locations
+    # Add an additional entry here for additional locations
 ```
 
 Fill in the missing domainName parameters using the `portal_domain_name` parameter you previously set in each HM installation configuration file.
 
-Add this stanza to the `clusterGroups` section of `primary.yaml`, and configure the `role` as `primary`.
+In `primary.yaml`: Set role: `primary`. This cluster will act as the Hub.
 
-Similarly, add this stanza to the `clusterGroups` section of the `secondary.yaml` file (or `secondaryA.yaml` and `secondaryB.yaml` files) and configure the role as `secondary`.
+In `secondary.yaml`: Set role: `secondary`. This cluster will act as a Spoke and use the `primary.domainName` to find its manager.
 
-## Reduced set of components
+## Reduced set of components (Spoke clusters only)
 
 The HM consists of a number of different components, some of which are not necessary on the secondary locations. While the full set can be installed successfully on secondary locations, we recommend to reduce that list by setting the parameter `scenarios` to be just `core`, and disabling the HM console (UI).
 
-Add the following parameters in the secondary values file, `secondary.yaml` (or `secondaryA.yaml` and `secondaryB.yaml`).
+Add the following parameters in the values file for secondary locations:
 
 ```yaml
 scenarios: 'core'
@@ -122,6 +125,8 @@ disabledComponents:
 Using the HM installation configuration files `primary.yaml` and `secondary.yaml` (or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager through helm. 
 
 ### Validate wiring
+
+Once the Helm installations are complete, verify the Hub and Spoke link.
 
 1. On the primary, list the managed secondary locations:
 
