@@ -15,7 +15,7 @@ This excludes the recovery of the HM installation itself, which you must [back u
 
 Deploying HM across multiple data centers gives you high availability and disaster recovery for Postgres database clusters. It allows you to:
 
-- Survive a database loss (DR) &mdash; Keep one or two warm Secondary Postgres databases ready. If the Primary data center is unavailable, promote replicas in the Secondary location and restore services.
+- Survive a database loss (DR) &mdash; Keep one or two warm secondary Postgres databases ready. If the primary data center is unavailable, promote replicas in the secondary location and restore services.
 
 - Minimize downtime (HA) &mdash; Perform maintenance or lifecycle operations on one database while workloads continue on the other.
 
@@ -27,74 +27,72 @@ Deploying HM across multiple data centers gives you high availability and disast
 
 - Operate at scale &mdash; Split read traffic, stage upgrades, or run blue/green cutovers across data centers.
 
-- Centralized management &mdash; A single Primary HM manages databases across all remote Kubernetes clusters, simplifying administration while providing geo-redundancy.
+- Centralized management &mdash; A single primary HM manages databases across all remote Kubernetes clusters, simplifying administration while providing geo-redundancy.
 
 ## Architecture and roles: Hub and Spoke
 
 HM uses a Hub and Spoke model to manage multiple data centers. It is important to distinguish between the control plane (the management software) and the data plane (your actual Postgres databases).
 
-### The Primary (The Hub)
+### The primary (The Hub)
 
-The Primary location is the "source of truth" and the only site where the full HM control plane is active.
+The primary location is the "source of truth" and the only site where the full HM control plane is active. The following processes are owned by the primary or hub:
 
-**HM console (UI):** Your "single pane of glass." You log into the Primary's URL to manage databases across all regions.
+- **HM console (UI):** Your "single pane of glass." You log into the primary's URL to manage databases across all regions.
 
-**Central scheduler:** The Primary decides where database nodes should live and sends provisioning instructions to the Secondaries.
+- **Central scheduler:** The primary decides where database nodes should live and sends provisioning instructions to the secondaries.
 
-**Identity provider:** Acts as the root of trust for SPIRE, issuing secure identities to all Secondary locations.
+- **Identity provider:** Acts as the root of trust for SPIRE, issuing secure identities to all secondary locations.
 
-**Observability hub:** Uses Thanos and Loki to aggregate metrics and logs from every location into a single view.
+- **Observability hub:** Uses Thanos and Loki to aggregate metrics and logs from every location into a single view.
 
-### The Secondaries (The Spokes)
+### The secondaries (The Spokes)
 
-Secondaries are "lean" installations designed for execution rather than management. They don't run their own independent consoles.
+Secondaries are "lean" installations designed for execution rather than management. They don't run their own independent consoles, but they do run components that facilitate the communication and management from the primary or hub: 
 
-**HM-internal Beacon agent:** Instead of a UI, Secondaries run the HM-internal Beacon agent. This agent heartbeats back to the Primary, making local Kubernetes resources (nodes, storage) available to the central scheduler.
+- **HM-internal Beacon agent:** Instead of a UI, secondaries run the HM-internal Beacon agent. This agent heartbeats back to the primary, making local Kubernetes resources (nodes, storage) available to the central scheduler.
 
-**Local execution:** When you deploy a cluster to a Secondary location, the Primary instructs the Secondary’s local operators to provision the Postgres pods.
+- **Local execution:** When you deploy a cluster to a secondary location, the primary instructs the secondary’s local operators to provision the Postgres pods.
 
 ### Data plane & storage
 
 While the control plane is Hub-and-Spoke, your data stays synchronized across the environment:
 
-**Postgres clusters:** You can deploy a Primary Postgres cluster in DC-A and asynchronous Replicas in DC-B and DC-C. For Distributed High Availability (PGD), you can spread Data Groups and Witness nodes across all three locations.
+- **Postgres clusters:** You can deploy a primary Postgres cluster in DC-A and asynchronous Replicas in DC-B and DC-C. For Distributed High Availability (PGD), you can spread Data Groups and Witness nodes across all three locations.
 
-**Unified storage:** All locations must share a consistent object store configuration. This ensures that backups and WAL files generated in one data center are immediately available for recovery in another.
+- **Unified storage:** All locations must share a consistent object store configuration. This ensures that backups and WAL files generated in one data center are immediately available for recovery in another.
 
 ## Topologies
 
-You can deploy the multi-HM setup with the following topologies:
+You can deploy the multi-DC setup with the following topologies:
 
 -   **Primary and data-only HM:** This is the basic setup with one primary HM and at least one data-only HM. It allows for Postgres cluster deployments across two locations.
 
 -   **Multiple data-only HMs:** The system can support multiple data-only HMs, allowing a single primary HM to manage databases across many Kubernetes clusters. This is useful for organizations with numerous application teams, each with its own cluster. 
 
-    [I don't think this is supported yet]: #
-
 -   **Three HMs for PGD:** For optimal PGD deployments (Distributed and Advanced High Availability Postgres clusters), especially with two data groups and a witness group, we recommend a three-HM topology. This configuration ensures an odd quorum for proper distributed consensus.
 
 ## Resilience and failover
 
-Because you can mix and match different database topologies across your data centers, the impact of a site failure varies. Failover is performed per database cluster, not for the entire Hybrid Manager environment at once. Here are some exmaples: 
+Because you can mix and match different database topologies across your data centers, the impact of a site failure varies. Failover is performed per database cluster, not for the entire Hybrid Manager environment at once. Here are some examples: 
 
-| Database Topology         | Setup                                          | Recovery Action                                                            | RTO (Time)                                          | RPO (Data)                                              |
+| Database topology         | Setup                                          | Recovery action                                                            | RTO (Time)                                          | RPO (Data)                                              |
 |---------------------------|------------------------------------------------|----------------------------------------------------------------------------|-----------------------------------------------------|---------------------------------------------------------|
-| **Single-Node**           | No replicas, located in DC-A.                  | **Full restore:** Must recreate the cluster from object storage in DC-B.   | **High:** depends on DB size and restore speed.     | **Medium:** Up to the last backup/WAL archive.          |
-| **Single-Node + Replica** | Single-node in DC-A, replica in DC-B.          | **Manual promotion:** Promote the replica in DC-B to a standalone primary. | **Low:** is driven by runbook and DNS updates.      | **Very Low:** Seconds (based on async replication lag). |
-| **HA cluster**            | Primary/Replicas in DC-A, replica in DC-B.     | **Manual promotion:** Promote the cross-DC replica in DC-B to primary.     | **Low:** is driven by runbook and DNS updates.      | **Very Low:** Seconds (based on async replication lag). |
+| **Single-Node**           | No replicas, located in DC-A.                  | **Full restore:** Must recreate the cluster from object storage/backup.    | **High:** depends on DB size and restore speed.     | **Medium:** Up to the last backup/WAL archive.          |
+| **Single-Node + Replica** | Single-node in DC-A, replica in DC-B.          | **Manual promotion:** Promote the replica in DC-B to a standalone primary. | **Low:** is driven by runbook and DNS updates.      | **Very low:** Seconds (based on async replication lag). |
+| **HA cluster**            | Primary/Replicas in DC-A, replica in DC-B.     | **Manual promotion:** Promote the cross-DC replica in DC-B to primary.     | **Low:** is driven by runbook and DNS updates.      | **Very low:** Seconds (based on async replication lag). |
 | **DHA cluster**           | Data Groups in DC-A and DC-B, witness in DC-C. | **Automatic:** PGD maintains quorum; surviving nodes stay writable.        | **Near zero:** Instant, limited only by DNS/LB TTL. | **Zero:** If using sync commit, otherwise near-zero.    |
 
 The differences in the recovery depend on both the multi-DC setup as well as the topology you have chosen for each specific database cluster.
 
 **Single-Node + replica vs. HA cluster:** From a multi-DC perspective, both offer similar recovery times (RTO) because both require a manual promotion in the second data center. However, the HA cluster is more resilient within its own data center, surviving a local node failure without needing a cross-DC failover.
 
-**RTO (Recovery Time Objective):** This is your downtime. For any manual promotion (Single-node + Replica or HA Cluster), your RTO is limited by how fast you can run your failover playbook.
+**RTO (Recovery Time Objective):** This is your downtime. For any manual promotion (Single-node + Replica or HA cluster), your RTO is limited by how fast you can run your failover playbook.
 
 **RPO (Recovery Point Objective):** This is your data loss. For async replication, which is standard for multi-DC, this typically results in an RPO of a few seconds. In the case of sync replication, you can achieve zero RPO, but this adds latency to every write as it waits for the remote data center to acknowledge the data.
 
-## Network latency
+## Network latency in Distributed High Availability (DHA) clusters
 
-There's an inherent trade-off between how quickly PGD can react to consensus issues and the amount of network latency present. Higher latency requires more relaxed consensus settings, potentially increasing the time to detect and respond to failures. Some Raft settings may not be directly configurable through the HM console.
+There's an inherent trade-off between how quickly Distributed High Availability clusters (powered by PGD) can react to consensus issues and the amount of network latency present. Higher latency requires more relaxed consensus settings, potentially increasing the time to detect and respond to failures. Some Raft settings may not be directly configurable through the HM console.
 
 Latency is less of a concern in on-premises, tightly coupled environments compared to cloud environments that span regions. You can configure more relaxed Raft settings to accommodate high-latency scenarios.
 
@@ -110,10 +108,20 @@ HM uses two methods to protect your data. In a multi-DC setup, these roles are s
 
 To ensure you can recover both your Hybrid Manager control plane and your Postgres databases during a site outage, verify the following:
 
-- Ensure your Primary HM metadata (configurations, users, and cluster definitions) is backed up and stored outside the Primary data center.
+- Ensure your primary HM metadata (configurations, users, and cluster definitions) is backed up and stored outside the primary data center.
 
-- All HM instances (Primary and Secondaries) must have an identical edb-object-storage secret to access the shared "safe" where backups live. 
+- All HM instances (primary and secondaries) must have an identical `edb-object-storage` secret to access the shared backups live. 
 
-- You must configure [automated backup schedules](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/#backup-readiness) for each locatio individually, settings don't sync automatically between sites.
+- You must configure [automated backup schedules](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/#backup-readiness) for each location individually, settings don't sync automatically between sites.
 
-- Your organization knows how to [restore a database using the CLI](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery/) if the HM console is down due to a Primary site's outage.
+- Your organization knows how to [restore a database using the CLI](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery/) if the HM console is down due to a primary site's outage.
+
+## Current limitations
+
+These are the current limitations for multi-DC deployments:
+
+- Up to three locations (primary and one secondary, or a primary and two secondaries).
+
+- Manual failover: Promote replicas in one of the secondary locations if the primary is down.
+
+- Same cloud/on-prem family: Cross-CSP multi-DC is not supported.
