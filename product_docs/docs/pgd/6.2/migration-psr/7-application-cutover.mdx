@@ -1,93 +1,53 @@
 ---
 title: Application cutover
 navTitle: Application cutover
-description: Application cutover.
+description: Finalize your migration by redirecting applications to the PGD cluster.
 ---
 
-This phase covers the final transition of write traffic to the PGD cluster and the subsequent decommissioning of legacy infrastructure.
 
-## Checklist
+With the PGD cluster fully synchronized, this phase details the final transition from your Postgres Streaming Replication (PSR) environment to the Postgres Distributed (PGD) cluster.
 
-TODO: Instruct to add a test table to verify PGD replication
+## Performing lag verification
 
-Before initiating the cutover, you must verify that the PGD cluster is healthy and fully synchronized with the PSR primary. Rather than manual checks, leverage PGD’s built-in monitoring tools.
+The primary health indicator for cutover readiness is the replication lag. You must ensure that the PGD cluster has ingested all outstanding changes from the source node before shifting traffic.
 
-Verify Replication Streams: Ensure all nodes are caught up. Check bdr.node_slots and bdr.node_replication_rates across all nodes to confirm there is no significant lag.
-
-Check Raft Consensus: Confirm the cluster is in a consistent state and the majority of nodes are available for Raft consensus.
-
-Centralized Overview: For a cluster-wide perspective, use the PGD CLI. It aggregates metrics that might be tedious to collect node-by-node.
-
-Note: For detailed instructions on interpreting these metrics, see Monitoring PGD Health and Health Check Reference.
-
-## Switching application traffic
-
-With all of the above verification, the PGD cluster is now ready to take over the application traffic.
-
-TODO: check whether the PGD connection manager shall be used
-
-The method for redirecting write traffic depends on your PGD version and routing architecture. Most modern setups support a write leader switch, which minimizes downtime.
-
-PGD 6.x (Connection Manager): Use the Connection Manager to orchestrate the switch. It provides native support for managing write leaders and ensuring traffic is routed to the correct primary node.
-
-Third-Party Load Balancers: If you are using HAProxy or other external load balancers, trigger a switch-over based on the health check endpoints provided by PGD.
-
-
-1. The Core Concept: The Write Leader
-The Connection Manager works by monitoring the cluster's Raft consensus. It identifies which node is designated as the write_leader. When you want to move traffic, you aren't manually changing application strings; you are telling PGD to promote a different node to be the leader.
-
-2. Performing a Manual Switchover
-To move traffic for maintenance or rebalancing, you use the pgd command-line tool. This gracefully transitions the "Write Leader" role from one node to another.
-
-Step A: Identify the Current Leader
-First, see where the traffic is currently going:
-
-```bash
-pgd show-nodes
-```
-
-Look for the node marked with the L (Leader) or W (Writer) attribute.
-
-Step B: Execute the Switch
-Use the set-writer command to nominate a specific node to take over the write traffic:
-
-```bash
-pgd set-writer <target-node-name>
-```
-
-The Connection Manager stops accepting new write transactions on the old leader.
-
-Synchronization: It ensures pending transactions are flushed/replicated.
-
-Promotion: The target node is promoted to Write Leader via Raft.
-
-Redirection: The Connection Manager instantly updates its internal routing table to point to the new node. Your application, connected via the CM endpoint, stays connected throughout.
-
-3. Monitoring the Transition
-As your developer mentioned, you should monitor the replication streams during this process to ensure the "handoff" is clean.
-
-Check Replication Rates: 
+Run the following command on the seed node to ensure that replication lag on the migration subscription is near zero:
 
 ```sql
-SELECT * FROM bdr.node_replication_rates;
+SELECT * FROM bdr.subscription_summary;
 ```
 
-Verify the New Leader:
-Check the logs of the Connection Manager service to see the switching leader event confirmation.
+## Switching the application traffic
 
-4. Integration with External Tools (HAProxy)
-If you are using HAProxy in front of your Connection Managers, HAProxy doesn't need to know about the Postgres nodes. It only needs to health-check the Connection Manager's port (usually 6432 or a dedicated HTTP health port).
+Once lag is minimal, the PGD cluster is ready to take over the application traffic by pointing your application to the [Connection Manager](/pgd/latest/connection-manager). The specific method (e.g., updating DNS, Kubernetes ConfigMaps, or `.env` files) depends on your specific application architecture.
 
-The Workflow: HAProxy → Connection Manager → Write Leader.
+To ensure a consistent cutover with no data loss, follow this sequence:
 
-The Switch: When the CM changes the Write Leader, the health check remains green, and traffic flows through the same pipe to the new destination.
+1. Stop all write traffic to the PSR cluster.
+1. Update the connection strings to point your application to the Connection Manager.
+1. Resume application traffic. The Connection Manager will now route requests to the PGD nodes.
 
 ## Performing validation
 
-TODO: provide queries and example output
+After the application is live on the PGD cluster, perform final verification checks to ensure the PGD mesh is healthy, receiving data from the application, and propagating across all nodes in the PGD cluster. This involves re-verifying the replication streams to confirm that writes are propagating across all nodes.
 
-Once traffic has been redirected, perform a final validation to ensure the application is performing optimally in the new environment.
+1. Confirm that all nodes are in an 'active' state and that internal subscriptions are streaming correctly. On any PGD node, run:
 
-Monitor Raft and Replication: Continuously monitor replication rates post-switch to ensure the new write load isn't causing unexpected lag.
+    ```sql
+    SELECT * FROM bdr.node_summary;
+    SELECT * FROM bdr.subscription_summary;
+    ```
 
-Health Check Baseline: Compare post-cutover health metrics against your pre-migration baseline.
+1. Check the replication rates to ensure the cluster is processing the new load without building up internal lag. On any PGD node, run:
+
+    ```sql
+    SELECT * FROM bdr.node_replication_rates;
+    ```
+
+1. Since you stopped the traffic to the old PSR cluster, verify that the migration subscriptions on your PGD nodes show zero lag and no new data incoming. On each PGD node, run:
+
+    ```sql
+    SELECT subname, pid, received_lsn, latest_end_lsn, pg_size_pretty(pg_wal_lsn_diff(latest_end_lsn, received_lsn)) as lag FROM pg_stat_subscription;
+    ```
+
+Next step: [Clean up the environment](8-cleanup).

@@ -6,11 +6,11 @@ description: Expanding the PGD cluster to establish high availability and redund
 
 In this phase, you expand the PGD cluster beyond a single node to enable high availability features and establish redundancy before the final application cutover . Since BDR does not automatically forward data arriving from external logical replication streams, the source node must feed each PGD node individually through its own dedicated logical replication stream. This architecture ensures data consistency across the entire cluster during the migration.
 
-A fast data transfer through a physical copy is applied again, using `pg_basebackup` under the hood. In PGD, this is called a physical join and is automated through the PGD CLI; the `pg_basebackup` utility does not need to be invoked directly in this phase .
+This procedure involves a fast data transfer through a physical copy that uses `pg_basebackup` under the hood, called a **physical join**. This process is automated through the PGD CLI.
 
 ## Installing the PGD packages
 
-Additional nodes requires PGD packages that match your Postgres distribution and version (e.g., `edb-pgd6-essential-epas17` for PGD Essential on EPAS 17). Ensure you have configured the appropriate PGD repository and PGD edition you want to install (Essential or Expanded) before proceeding. See [Installing the database and pgd](/pgd/latest/installing/03-installing-database-and-pgd/) for details.
+Additional nodes require PGD packages that match your Postgres distribution and version (e.g., `edb-pgd6-essential-epas17` for PGD Essential on EPAS 17). Ensure you have configured the appropriate PGD repository and PGD edition you want to install (Essential or Expanded) before proceeding. See [Installing the database and pgd](/pgd/latest/installing/03-installing-database-and-pgd/) for details.
 
 1. To enable the BDR extension, update your Postgres configuration to preload the library and enable commit timestamps on the seed node:
 
@@ -29,7 +29,7 @@ Additional nodes requires PGD packages that match your Postgres distribution and
 
 ## Creating additional replication slots on the source node
 
-To add a new node, you must create a dedicated replication slot on the source node. To align the new node's data perfectly, use the seed node as a reference point and temporarily pause its replication to establish a consistent switch-over LSN.
+To add a new node, you must create a dedicated replication slot on the source node. To align the new node's data, use the seed node as a reference point and temporarily pause its replication to establish a consistent switch-over LSN.
 
 1. On the source node, create an additional replication slot for the additional PGD node:
 
@@ -61,7 +61,7 @@ To add a new node, you must create a dedicated replication slot on the source no
     FROM pg_replication_slots;
     ```
 
-1. On the source node, check active connections from standbys. It must not show entries for the seed node nor the additional node:
+1. On the source node, check active connections from standbys. It mustn't show entries for the seed node nor the additional node:
 
     ```sql
     SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,
@@ -69,7 +69,7 @@ To add a new node, you must create a dedicated replication slot on the source no
     FROM pg_stat_replication;
     ```
 
-## Joining an additional PGD node
+## Joining the additional PGD node
 
 PGD CLI automates the data transfer process through a physical join, which uses `pg_basebackup` internally to clone the seed node onto the new node. 
 
@@ -124,7 +124,7 @@ With both nodes synchronized to the same LSN, you can resume the logical data fl
         );
     ```
 
-1. On the additional node, verify that the table list in the subscription matches your configuration when following [Enabling logical replication to the seed node](3-convert-to-logical-replication/#enabling-logical-replication-to-the-seed-node).
+1. On the additional node, verify that the table list in the subscription matches your configuration you obtained on [Enabling logical replication to the seed node](3-convert-to-logical-replication/#enabling-logical-replication-to-the-seed-node):
 
     ```sql
     SET bdr.ddl_replication = off;
@@ -150,14 +150,14 @@ With both nodes synchronized to the same LSN, you can resume the logical data fl
 
 Ensure all nodes are receiving data from the source and are communicating within the PGD cluster. Note that data does not flow back from PGD to the source node.
 
-1. On the source node, query the walsender status. Expect one walsender per PGD node.
+1. On the source node, query the walsender status. Expect one walsender per PGD node:
 
     ```sql
     SELECT slot_name, active, restart_lsn
         FROM pg_stat_replication;
     ```
 
-1. On each PGD node, verify non-PGD logical subscription lag. Expect very little lag or no lag at all.
+1. On each PGD node, verify non-PGD logical subscription lag. Expect very little lag or no lag at all:
 
     ```sql
     SELECT subname, pid, received_lsn, latest_end_lsn,
@@ -165,10 +165,13 @@ Ensure all nodes are receiving data from the source and are communicating within
         FROM pg_stat_subscription;
     ```
 
-1. On each PGD node, verify the status of PGD mesh and replication. Expect very little traffic due to idle state of the PGD cluster, but no lag.
+1. On each PGD node, verify the status of PGD mesh and replication. Expect very little traffic due to idle state of the PGD cluster, but no lag:
 
     ```sql
     SELECT * FROM bdr.node_summary;
     SELECT * FROM bdr.subscription_summary;
     SELECT * FROM bdr.node_replication_rates;
     ```
+
+
+Next step: [Execute application cutover](7-application-cutover).
