@@ -1,0 +1,100 @@
+---
+title: Upgrading from 2025.12 to the 2026.01 Innovation Release
+navTitle: 2025.12 to 2026.01
+description: Follow the step-by-step procedures for upgrading from HM 2025.12 to HM 2026.01.
+deepToC: true
+---
+
+Upgrade from 2025.12 to 2026.01.
+
+> **Role:** Infrastructure Engineer
+
+## Prerequisites
+
+* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+* Access to the `values.yaml` file used for the current installation.
+* **Required Tools:**
+    * `helm` (Latest version recommended)
+
+## Upgrade 2025.12 → 2026.01
+
+This release introduces new authentication secrets, and deprecates several Beacon parameters.
+
+### Create Langflow secret
+
+Before installing the 2026.01 chart, you must manually create the `langflow-secret` secret in the `default` namespace. 
+
+1.  Create a Langflow secret: 
+
+    ```shell
+    kubectl create secret generic langflow-secret -n default \
+      --from-literal LANGFLOW_SUPERUSER=langflow \
+      --from-literal LANGFLOW_SECRET_KEY="$(python3 -c "from secrets import token_urlsafe; print(f'{token_urlsafe(32)}')")" \
+      --from-literal LANGFLOW_SUPERUSER_PASSWORD="$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | cut -c1-16)"
+    ```
+
+    This command: 
+    - Generates a base64url-encoded application secret key (`LANGFLOW_SECRET_KEY`) required for Langflow encryption (a secure token with 32 bytes is required).
+    - Associates the secret with the `langflow` superuser (`LANGFLOW_SUPERUSER`).
+    - Generates a secure password for the `langflow` user (`LANGFLOW_SUPERUSER_PASSWORD`).
+
+1.  Ensure the created secret is synchronized with the `upm-langflow` and `upm-beaco-ff-base` namespaces:
+
+    ```shell
+    kubectl annotate secret langflow-secret -n default replicator.v1.mittwald.de/replicate-to="upm-langflow,upm-beaco-ff-base"
+    ```
+
+    <details><summary>Alternatively, you can create the secret manually.</summary> 
+    
+    ```yaml
+    kubectl apply -f - <<EOF
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: langflow-secret
+      namespace: default
+      annotations:
+        replicator.v1.mittwald.de/replicate-to: "upm-langflow,upm-beaco-ff-base"
+    type: Opaque
+    stringData:
+      LANGFLOW_SECRET_KEY: <generated_langflow_secret_key>
+      LANGFLOW_SUPERUSER: langflow
+      LANGFLOW_SUPERUSER_PASSWORD: <generated_superuser_password>
+        EOF
+    ```
+
+    </details> 
+
+    <br/>
+
+### Update `values.yaml`
+
+In your HM installation configuration file or `values.yaml`, replace the following deprecated fields with new fields:
+    
+| Remove field:                                   | Replace with:                              |
+|-------------------------------------------------|--------------------------------------------|
+| `beaconAgent.provisioning.provider`             | `parameters.global.load_balancer_provider` |
+| `beaconAgent.provisioning.loadBalancersEnabled` | `parameters.global.load_balancer_mode`     |
+| `beaconAgent.provisioning.nodePortDomain`       | `parameters.global.node_port_domain`       |
+
+!!!note 
+If you don't replace these fields, the HM installation upgrade will still suceed, but if in the future you have differing values set for both the old and new parameter, the new parameter will take preference over the old one.
+!!!
+
+### Perform the upgrade 
+
+1. Update your Helm repo:
+
+   ```bash
+   helm repo update
+   ```
+
+1. Perform the upgrade:
+
+   ```bash
+   helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+     --version 2026.01.0 \
+     --values values.yaml \
+     --namespace edbpgai-bootstrap \
+     --wait
+   ```
