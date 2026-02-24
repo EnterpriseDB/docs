@@ -352,6 +352,7 @@ const Page = () => {
             <BannerWideLink to="/pwr/latest">
               Postgres Workload Report
             </BannerWideLink>
+            <BannerWideLink to="/edbctl/latest">edbctl</BannerWideLink>
 
             <BannerDivider
               iconName={iconNames.SECURITY}
