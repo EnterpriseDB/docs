@@ -4,13 +4,13 @@ navTitle: Joining additional PGD nodes
 description: Expanding the PGD cluster to establish high availability and redundancy.
 ---
 
-In this phase, you expand the PGD cluster beyond a single node to enable high availability features and establish redundancy before the final application cutover . Since BDR does not automatically forward data arriving from external logical replication streams, the source node must feed each PGD node individually through its own dedicated logical replication stream. This architecture ensures data consistency across the entire cluster during the migration.
+In this phase, you expand the PGD cluster beyond a single node to enable high availability features and establish redundancy before the final application cutover. Since BDR does not automatically forward data arriving from external logical replication streams, the source node must feed each PGD node individually through its own dedicated logical replication stream. This architecture ensures data consistency across the entire cluster during the migration.
 
 This procedure involves a fast data transfer through a physical copy that uses `pg_basebackup` under the hood, called a **physical join**. This process is automated through the PGD CLI.
 
 ## Installing the PGD packages
 
-Additional nodes require PGD packages that match your Postgres distribution and version (e.g., `edb-pgd6-essential-epas17` for PGD Essential on EPAS 17). Ensure you have configured the appropriate PGD repository and PGD edition you want to install (Essential or Expanded) before proceeding. See [Installing the database and pgd](/pgd/latest/installing/03-installing-database-and-pgd/) for details.
+Additional nodes require PGD packages that match your Postgres distribution and version (e.g., `edb-pgd6-essential-epas17` for PGD Essential on EPAS 17). Ensure you have configured the appropriate PGD repository and PGD edition you want to install (Essential or Expanded) before proceeding. See [Installing the database and pgd](/pgd/latest/lifecycle/deploying/deploy-manual/03-installing-database-and-pgd/) for details.
 
 1. To enable the BDR extension, update your Postgres configuration to preload the library and enable commit timestamps on the seed node:
 
@@ -44,7 +44,7 @@ To add a new node, you must create a dedicated replication slot on the source no
     ALTER SUBSCRIPTION migration_seed_sub DISABLE;
     ```
 
-1. With replication paused, align the new slot's position with the seed node's current position to exactly the LSN marking the switch-over point. On the source node, advance the new slot to match the seed node's LSN:  
+1. While replication is paused, align the new slot with the seed node's LSN to mark the exact switch-over point. On the source node, run the following to advance the slot
 
     ```sql
     SELECT pg_replication_slot_advance('migration_node_${ADD_NODE_PGD_NAME}',
@@ -150,20 +150,13 @@ With both nodes synchronized to the same LSN, you can resume the logical data fl
 
 Ensure all nodes are receiving data from the source and are communicating within the PGD cluster. Note that data does not flow back from PGD to the source node.
 
-1. On the source node, query the walsender status. Expect one walsender per PGD node:
+1. On the source node, verify non-PGD logical subscription lag by running the following query:
 
     ```sql
-    SELECT slot_name, active, restart_lsn
-        FROM pg_stat_replication;
+    SELECT slot_name, active, confirmed_flush_lsn, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) as lag FROM pg_replication_slots;
     ```
 
-1. On each PGD node, verify non-PGD logical subscription lag. Expect very little lag or no lag at all:
-
-    ```sql
-    SELECT subname, pid, received_lsn, latest_end_lsn,
-            pg_size_pretty(pg_wal_lsn_diff(latest_end_lsn, received_lsn)) as lag
-        FROM pg_stat_subscription;
-    ```
+    Expect one entry per PGD node, and the lag to be minimal.
 
 1. On each PGD node, verify the status of PGD mesh and replication. Expect very little traffic due to idle state of the PGD cluster, but no lag:
 

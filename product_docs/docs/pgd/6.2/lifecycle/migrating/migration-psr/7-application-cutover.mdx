@@ -7,25 +7,47 @@ description: Finalize your migration by redirecting applications to the PGD clus
 
 With the PGD cluster fully synchronized, this phase details the final transition from your Postgres Streaming Replication (PSR) environment to the Postgres Distributed (PGD) cluster.
 
+## Stopping application writes
+
+To prevent data divergence, stop all write traffic to the legacy PSR cluster at the application level. Ensure no new transactions are being initiated on the source node.
+
 ## Performing lag verification
 
-The primary health indicator for cutover readiness is the replication lag. You must ensure that the PGD cluster has ingested all outstanding changes from the source node before shifting traffic.
-
-Run the following command on the seed node to ensure that replication lag on the migration subscription is near zero:
+Ensure that the PGD cluster has ingested all outstanding changes from the source node before shifting traffic. Run the following command on the seed node to ensure that replication lag on the migration subscription is zero:
 
 ```sql
-SELECT * FROM bdr.subscription_summary;
+DO $$
+DECLARE
+   wait_lsn pg_lsn := pg_current_wal_lsn();
+   current_flush_lsn pg_lsn;
+BEGIN
+  LOOP
+    current_flush_lsn := (SELECT MAX(flush_lsn) FROM pg_stat_replication WHERE application_name IN ('migration_seed_sub', 'migration_add_sub'));
+    IF wait_lsn <= current_flush_lsn THEN
+      EXIT;
+    END IF;
+    RAISE NOTICE 'Waiting for replication to catch up, current lag: %',  pg_wal_lsn_diff(current_flush_lsn, wait_lsn);
+    PERFORM pg_sleep(1);
+  END LOOP;
+END;$$;
+```
+
+## Disabling subscriptions
+
+Once the lag is zero, disable the logical subscriptions on all PGD nodes that connect back to the original PSR source. On all PGD nodes, run:
+
+```sql
+SET bdr.ddl_replication = off;
+DISABLE SUBSCRIPTION migration_seed_sub DISABLE;
 ```
 
 ## Switching the application traffic
 
-Once lag is minimal, the PGD cluster is ready to take over the application traffic by pointing your application to the [Connection Manager](/pgd/latest/connection-manager). The specific method (e.g., updating DNS, Kubernetes ConfigMaps, or `.env` files) depends on your specific application architecture.
+With the PGD cluster confirmed as fully up-to-date and isolated from the old source, you can now redirect traffic and resume operations.
 
-To ensure a consistent cutover with no data loss, follow this sequence:
+Update the connection strings to point your application to the [Connection Manager](/pgd/latest/connection-manager). The specific method (e.g., updating DNS, Kubernetes ConfigMaps, or `.env` files) depends on your specific application architecture.
 
-1. Stop all write traffic to the PSR cluster.
-1. Update the connection strings to point your application to the Connection Manager.
-1. Resume application traffic. The Connection Manager will now route requests to the PGD nodes.
+Resume application traffic. The Connection Manager will now route requests to the correct PGD nodes.
 
 ## Performing validation
 
