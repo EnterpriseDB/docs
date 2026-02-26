@@ -1,0 +1,85 @@
+---
+title: Installing WHPG Collector
+navTitle: Installing WHPG Collector
+description: Learn how to install the WarehousePG Collector on your WarehousePG cluster.
+---
+
+Install WarehousePG (WHPG) Collector on your WHPG cluster coordinator.
+
+## Downloading and installing WHPG Collector
+
+1. On the coordinator, download the packages from the EDB repository:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpg<whpg_major_version>-collector
+    ```
+
+Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+1. On the coordinator install the Collector package. It will automatically install it on all hosts in the WHPG cluster:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo dnf install -y edb-whpg<whpg_major_version>-collector'
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash 
+    gpssh -f all_hosts -e 'sudo yum install -y edb-whpg<whpg_major_version>-collector'
+    ```
+
+    </Tab>
+    </TabContainer>
+
+## Configuring the Collector 
+
+On the coordinator, edit the file `/var/lib/whpg-observability-collector/collector.conf` to include the following configuration:
+
+```
+[settings] # Do not change this
+# Please update below details before running /var/lib/whpg-observability-collector/deploy-observability
+# Connection url for the WHPG cluster to fetch segment hostnames, data dirs.
+#WHPG_OBS_DSN="host=localhost port=5432 dbname=postgres user=gpadmin password=postgres sslmode=disable"
+
+# The HTTP API endpoint for sending logs to Loki (Log Aggregation).
+#LOKI_ENDPOINT="http://host.docker.internal:3100/loki/api/v1/push"
+
+# The HTTP API endpoint for sending custom metrics via Remote Write to Prometheus.
+#PROMETHEUS_ENDPOINT="http://host.docker.internal:9090/api/v1/write"
+``` 
+
+Ensure that you configure the following parameters:
+- `WHPG_OBS_DSN`: Your WHPG cluster connection details. The database must be a database with the WHPG Extension installed, and the user must hold the superuser role. This parameter doesn't support `.pgpass` for the Collector.
+- `LOKI_ENDPOINT`: Your configured host name and port number for the Loki endpoint for log files.
+- `PROMETHEUS_ENDPOINT`: Your configured host name port number for the Prometheus endpoint for host-level metrics.
+
+
+## Starting the Collector service
+
+On the coordinator, run the following commands to deploy the configuration and start the service on every host in the WHPG cluster:
+
+ ```bash
+ cd /var/lib/whpg-observability-collector
+ ./deploy-observability 
+ ```
+
+The Collector now runs in the background on each host as the `alloy` service. You can manage this service using `systemctl` commands. For example:
+
+Check status:
+
+```bash
+sudo systemctl status alloy
+```
+
+Enable on boot:
+
+```bash
+sudo systemctl enable alloy
+```
