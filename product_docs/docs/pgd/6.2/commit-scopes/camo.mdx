@@ -17,9 +17,9 @@ Without CAMO, when a client loses connection after a `COMMIT` is submitted, the 
 
 The application can't easily decide between the two options of:
 
--  Retrying the transaction with the same data, since this can in some cases cause the data to be entered twice
+-   Retrying the transaction with the same data, since this can in some cases cause the data to be entered twice
 
--  Not retrying the transaction and risk that the data doesn't get processed at all
+-   Not retrying the transaction and risk that the data doesn't get processed at all
 
 Either of those is a critical error with high-value data.
 
@@ -31,11 +31,13 @@ If the application sends an explicit `COMMIT`, the protocol ensures that the app
 
 CAMO works by creating a pair of partner nodes that are two PGD nodes from the same PGD group. In this operation mode, each node in the pair knows the outcome of any recent transaction executed on the other peer and especially (for our need) knows the outcome of any transaction disconnected during `COMMIT`. The node that receives the transactions from the application might be referred to as "origin" and the node that confirms these transactions as "partner." However, there's no difference in the CAMO configuration for the nodes in the CAMO pair. The pair is symmetric.
 
-!!! Warning
+!!!Warning
+
 CAMO requires changes to the user's application to take advantage of the advanced error handling. Enabling a parameter isn't enough to gain protection. Reference client implementations are provided to customers on request.
 !!!
 
-!!! Note
+!!!Note
+
 The `CAMO` commit scope kind is mostly an alias for `GROUP COMMIT (transaction_tracking = true, commit_decision = partner)` with an additional `DEGRADE ON` clause.
 !!!
 
@@ -49,16 +51,16 @@ See the[`CAMO`](/pgd/latest/reference/tables-views-functions/commit-scopes/#camo
 
 ## Confirmation
 
-   Confirmation&nbsp;Level    | CAMO handling
--------------------------|-------------------------------
- `received`              | Not applicable, only uses the default, `VISIBLE`.
- `replicated`            | Not applicable, only uses the default, `VISIBLE`.
- `durable`               | Not applicable, only uses the default, `VISIBLE`.
- `visible` (default)     | Confirms the transaction after all of its changes are flushed to disk and it's visible to concurrent transactions.
+| Confirmation Level  | CAMO handling                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `received`          | Not applicable, only uses the default, `VISIBLE`.                                                                  |
+| `replicated`        | Not applicable, only uses the default, `VISIBLE`.                                                                  |
+| `durable`           | Not applicable, only uses the default, `VISIBLE`.                                                                  |
+| `visible` (default) | Confirms the transaction after all of its changes are flushed to disk and it's visible to concurrent transactions. |
 
 ## Limitations
 
-See the CAMO section of [Limitations](/pgd/latest/known_issues/#camo).
+See the CAMO section of [Limitations](/pgd/current/overview/known_issues/#camo).
 
 ## Failure scenarios
 
@@ -82,7 +84,6 @@ For a CAMO partner to switch to ready, it needs to be connected, and the estimat
 
 The switch from CAMO-protected to asynchronous mode is only ever triggered by an actual CAMO transaction. This is true either because the commit exceeds the `timeout` value of `TO ASYNC` or, in case the CAMO partner is already known, disconnected at the time of commit. This switch is independent of the estimated catchup interval. If the CAMO pair is configured to require the current node to be the write lead of a group as configured through the `enable_routing` node group option. See [Commit scopes](commit-scopes) for syntax. This can prevent a split brain situation due to an isolated node from switching to asynchronous mode. If `enable_routing` isn't set for the CAMO group, the origin node switches to asynchronous mode immediately.
 
-
 The switch from asynchronous mode to CAMO mode depends on the CAMO partner node, which initiates the connection. The CAMO partner tries to reconnect at least every 30 seconds. After connectivity is reestablished, it might therefore take up to 30 seconds until the CAMO partner connects back to its origin node. Any lag that accumulated on
 the CAMO partner further delays the switch back to CAMO protected mode.
 
@@ -104,6 +105,7 @@ SELECT bdr.create_commit_scope(
     rule := 'ALL (left_dc) CAMO DEGRADE ON (timeout=500ms) TO ASYNC'
 );
 ```
+
 For this CAMO commit scope to be legal, the number of nodes in the group must equal exactly 2. Using ALL or ANY 2 on a group consisting of several nodes is an error because the unquantified group expression doesn't resolve
 to a definite pair of nodes.
 
@@ -111,15 +113,15 @@ to a definite pair of nodes.
 
 If asynchronous mode is allowed, there's no single point of failure. When one node fails:
 
-- The other node can determine the status of all transactions that were disconnected during `COMMIT` on the failed node.
-- New write transactions are allowed. If the second node also fails, then the outcome of those transactions that were being committed at that time is unknown.
+-   The other node can determine the status of all transactions that were disconnected during `COMMIT` on the failed node.
+-   New write transactions are allowed. If the second node also fails, then the outcome of those transactions that were being committed at that time is unknown.
 
 #### Without asynchronous mode
 
 If asynchronous mode isn't allowed, then each node requires the other node for committing transactions, that is, each node is a single point of failure. When one node fails:
 
-- The other node can determine the status of all transactions that were disconnected during `COMMIT` on the failed node.
-- New write transactions are prevented until the node recovers.
+-   The other node can determine the status of all transactions that were disconnected during `COMMIT` on the failed node.
+-   New write transactions are prevented until the node recovers.
 
 ## Application use
 
@@ -127,9 +129,9 @@ If asynchronous mode isn't allowed, then each node requires the other node for c
 
 CAMO relies on a retry loop and specific error handling on the client side. There are three aspects to it:
 
-- The result of a transaction's `COMMIT` needs to be checked and, in case of a temporary error, the client must retry the transaction.
-- Prior to `COMMIT`, the client must retrieve a global identifier for the transaction, consisting of a node id and a transaction id (both 32-bit integers).
-- If the current server fails while attempting a `COMMIT` of a transaction, the application must connect to its CAMO partner, retrieve the status of that transaction, and retry depending on the response.
+-   The result of a transaction's `COMMIT` needs to be checked and, in case of a temporary error, the client must retry the transaction.
+-   Prior to `COMMIT`, the client must retrieve a global identifier for the transaction, consisting of a node id and a transaction id (both 32-bit integers).
+-   If the current server fails while attempting a `COMMIT` of a transaction, the application must connect to its CAMO partner, retrieve the status of that transaction, and retry depending on the response.
 
 The application must store the global transaction identifier only for the purpose of verifying the transaction status in case of disconnection during `COMMIT`. In particular, the application doesn't need another persistence layer. If the application fails, it needs only the information in the database to restart.
 
@@ -185,7 +187,6 @@ If it was a bad connection, then you can check on the CAMO partner node to see i
 
 If you can't connect to the partner node, there's not a lot you can do. In this case, panic, or take similar actions.
 
-
 But if you can connect, you can use [`bdr.logical_transaction_status()`](/pgd/latest/reference/tables-views-functions/functions#bdrlogical_transaction_status) to find out how the transaction did. The code recorded the required values, node_id and xid (the transaction id), just before committing the transaction.
 
 ```
@@ -217,10 +218,10 @@ If the transaction reports it's been committed, then you can call this transacti
 
 If status of the transaction wasn't success or bad connection, check if the problem was a permanent error. If so, report a failure of the transaction. If not, you can still retry it. Have the code sleep for a period of time that increases with each retry, and then retry the transaction.
 
-
 ### Working with the CAMO partner
 
-!!! Note Permissions required
+!!!Note Permissions required
+
 A number of the following CAMO functions require permission. Any user wanting to use CAMO 
 must have at least the [bdr_application](../security/pgd-predefined-roles/#bdr_application) 
 role assigned to them.
@@ -269,7 +270,7 @@ For CAMO in `received` mode, a proxy that potentially switches between the CAMO 
 
 ## CAMO limitations
 
-CAMO limitations are covered in [Known Issues and Limitations](/pgd/latest/known_issues#camo).
+CAMO limitations are covered in [Known Issues and Limitations](/pgd/current/overview/known_issues/#camo).
 
 ## Performance implications
 
