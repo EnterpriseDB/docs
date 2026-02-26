@@ -240,7 +240,7 @@ async function main() {
       if (a === "preview") return 1;
       if (b === "preview") return -1;
       return b.localeCompare(a, undefined, { numeric: true });
-    });    
+    });
   }
 
   // post-process redirects
@@ -352,16 +352,14 @@ Links checked: **${linksChecked}**
 
 Links corrected: **${linksUpdated}**
 Files updated: **${filesUpdated}**`);
-  else if (linksUpdated)
-    ghCore.summary.addRaw(`
-
-**${linksUpdated}** links could be updated to avoid redirects; 
-run \`npm run links:fix\` locally.`);
 
   ghCore.summary.write();
 
   if (brokenPaths > 0)
     ghCore.setFailed(`Broken links found; please fix before publishing!`);
+  else if (linksUpdated && !updateLinks)
+    ghCore.setFailed(`**${linksUpdated}** links should be updated to avoid redirects; 
+run \`npm run links:fix\` locally.`);
 
   function getInheritedRedirects(urlPath) {
     const ret = [];
@@ -512,7 +510,8 @@ function cleanup() {
   return async (tree, file) => {
     const { allValidUrlPaths, ignoredUrlPaths, metadata } = file.data;
 
-    const relativize = ({ path: relative, latest }) => {
+    const relativize = ({ canonical, latest, version, product }) => {
+      let relative = canonical;
       // if path is identical to current: strip all but hash
       if (relative === metadata.canonical) return "";
 
@@ -523,10 +522,18 @@ function cleanup() {
       // if dirname contains current dirname: relative path + hash
       if (path.posix.dirname(relative).startsWith(currentDirname))
         relative = path.posix.relative(currentDirname, relative);
+      // if versioned and pointing to same product+version, use /current/ path
+      else if (
+        version &&
+        product &&
+        metadata.version === version &&
+        metadata.product === product
+      )
+        relative = replacePathVersion(relative, "current");
       // if versioned and pointing to latest, use "latest" path
       else if (latest) relative = replacePathVersion(relative);
       // otherwise: full path
-      return relative;
+      return relative.replace(/(?<=.)\/*$/, "/"); // ends with at most one slash, empty path ends with none
     };
 
     const checkImportSource = (ancestors) => {
@@ -543,8 +550,8 @@ function cleanup() {
       let test = normalizeUrl(url, metadata.canonical, metadata.index);
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
-      if (url.includes("/current/")) {
-        url = url.replace("/current/", "/" + metadata.version + "/");
+      if (/\/current[\/#?]/.test(url)) {
+        url = url.replace(/\/current([\/#?])/, "/" + metadata.version + "$1");
         test = normalizeUrl(url, metadata.canonical, metadata.index);
       }
       const ext = path.posix.extname(test.pathname);
@@ -571,7 +578,10 @@ function cleanup() {
       }
 
       // check if path is ignored
-      if (ignoredUrlPaths.has(testPath)) {
+      if (
+        ignoredUrlPaths.has(testPath) &&
+        !ignoredUrlPaths.has(metadata.canonical)
+      ) {
         file.message(
           `URL path is ignored: ${url}` +
             (url !== testPath + "/" + test.hash ? ` (${testPath})` : "") +
@@ -586,17 +596,37 @@ function cleanup() {
         ? allValidUrlPaths.get(testPath)
         : metadata;
 
+      // warn if link will redirect to a different version of the same product
+      if (
+        testPath !== destMetadata.canonical && // redirect
+        metadata.product &&
+        destMetadata.product &&
+        metadata.product === destMetadata.product &&
+        metadata.version !== destMetadata.version
+      ) {
+        /* don't do this yet; super noisy
+        file.message(
+          `link from version ${metadata.version} to version ${destMetadata.version} of product ${metadata.product}: ${url}` +
+            checkImportSource(ancestors),
+          position,
+          "link-check:crossVersionLink",
+        );
+        */
+      }
+
       // check if path needs to be remapped. Must be:
       // - not the canonical URL, and
       // - not the "latest" version of canonical for a latest destination
-      // When remapping, if destination is the last version then use "latest" path
+      // When remapping, if destination is the latest version then use "latest" path
+      const testPathIsLatestDest =
+        testPath === replacePathVersion(destMetadata.canonical);
       if (
         testPath !== destMetadata.canonical &&
-        !(
-          destMetadata.latest &&
-          testPath === replacePathVersion(destMetadata.canonical)
-        )
+        !(destMetadata.latest && testPathIsLatestDest)
       ) {
+        let reason = testPathIsLatestDest
+          ? "replaced latest with last available version"
+          : "replaced with redirect";
         // check for latest / non-latest mismatch: that's a link in an older version using a "latest"
         // path in a link. That might be intentional, but if we're hitting a redirect there's a good chance
         // the intent was to link to a page in the older version, back when it was current
@@ -608,24 +638,32 @@ function cleanup() {
           const olderDest = allValidUrlPaths.get(
             replacePathVersion(testPath, metadata.version),
           );
-          if (olderDest) destMetadata = olderDest;
+          if (olderDest) {
+            reason =
+              "redirect to newer version, replaced with updated path in same version";
+            destMetadata = olderDest;
+          }
         }
 
-        const newPath =
-          relativize({
-            path: destMetadata.canonical,
-            latest: destMetadata.latest,
-          }) +
-          "/" +
-          test.hash;
-
-        metadata.linksUpdated = (metadata.linksUpdated || 0) + 1;
-        file.info(
-          `Update link path ${url} to ${newPath}`,
-          position,
-          "link-check:urlPathRewrite",
-        );
-        url = newPath;
+        const newPath = relativize(destMetadata) + test.hash;
+        if (newPath !== url) {
+          metadata.linksUpdated = (metadata.linksUpdated || 0) + 1;
+          file.info(
+            `Update link path (${reason})
+    ${url} to 
+    ${newPath}`,
+            position,
+            "link-check:urlPathRewrite",
+          );
+          url = newPath;
+        } else {
+          file.message(
+            `normalized old path ${testPath} is equivalent in relative form to canonical path ${destMetadata.canonical}: ${url}` +
+              checkImportSource(ancestors),
+            position,
+            "link-check:errantPathRewrite",
+          );
+        }
       }
 
       // check valid slug
