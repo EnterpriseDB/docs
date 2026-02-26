@@ -1,0 +1,247 @@
+---
+title: Configuring a Hybrid Manager deployment across multiple data centers
+navTitle: Configuring a multi-DC deployment
+description: Learn how to set up multiple data centers (multi-DC) with Hybrid Manager to support the deployment of database clusters across multiple geographical locations.
+deepToC: true
+---
+
+To be able to deploy Postgres databases into multiple data centers, you first must deploy HM installations into two or three different geographical locations or regions, supporting the [Hub & Spoke or Primary & Secondary architecture](overview/#architecture-and-roles-hub-and-spoke). You then link these installations to each other, so you can manage them from a single HM console. This guides help you:
+
+- Create all HM installation configuration files, and deploy them.
+
+- Connect two or more HM installations (HM Kubernetes clusters) on the same provider/on-prem family. These can be on different geographical regions. For example, you can have a primary and one secondary, or a primary and two secondaries. 
+
+- Align object storage (identical `edb-object-storage` secret), so backups/artifacts are usable in all data centers.
+
+- Wire the HM-internal agent (Beacon, or `upm-beacon-agent`) so the secondary can register to the primary as managed locations and provision there (9445/TCP).
+
+- Prepare a Postgres topology with a primary Postgres cluster in one data center and replica Postgres cluster(s) in the other(s); perform manual failover by promoting replicas.
+
+## Before you start
+
+Before starting the multi-DC procedure, ensure you have made yourself familiar with:
+
+- [Overview](overview)
+
+## Prerequisites
+
+### Architecture prerequisites
+
+This multi-DC setup follows a Hub and Spoke model, where a single Primary manages several lean Secondaries.
+
+- Hub cluster: One Kubernetes cluster to host the Primary HM. This cluster serves as the central management plane and UI.
+
+- Spoke clusters: One or two Kubernetes clusters to host Secondary HMs. These act as execution points for your database workloads.
+
+- Network connectivity:
+
+    - 8444/TCP open between clusters (SPIRE bundle endpoint).
+
+    - 9445/TCP from secondaries → primary (Beacon gRPC).
+
+    - Same provider/on-prem family (no cross-cloud).
+
+- Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC deployment, this object storage is shared between all clusters.
+
+### Collect the required information
+
+1. Prepare two (or three) copies of the HM installation configuration file (`values.yaml`). Name them `primary.yaml`, `secondary.yaml` if you are deploying in two locations, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` if you are deploying in three locations.
+
+1. Domain names:
+
+   Each HM installation must be configured with a dedicated domain name, set in the HM installation configuration file as `portal_domain_name`. This parameter is used by the primary and secondaries.
+
+   Create these domain names for the each of the HM installations (two or three installations, depending on your configuration), and record this information.
+
+## Object storage across locations
+
+HM uses an object store for backups, artifacts, WAL, and internal bundles. 
+**In multi-DC, all HM installations must use the same object store configuration**.
+
+### Key requirement
+
+All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the default namespace. Store this secret in the primary and secondary if you are running on two locations. Store this secret in the primary, and secondary locations, if you have three data centers.
+
+## Parameter uniqueness
+
+Because the two or three clusters involved in this multi-data-center deployment are using the same object store, we must ensure that specific parameters are different between all clusters.
+
+| Parameter                | Requirement                                                         | Why it matters                                                                                  |
+|--------------------------|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `location_id`            | Must be unique per location.                                        | Human-readable location identifier. Identifies the specific location in the HM console and API. |
+| `internal_backup_folder` | Must be unique per location AND match the format: `^[0-9a-z]{12}$`. | Separates database backups so that a restore doesn't pull the wrong data.                       |
+| `metrics_storage_prefix` | Must be unique per location.                                        | Ensures observability data from each site is stored in its own directory.                       |
+| `logs_storage_prefix`    | Must be unique per location.                                        | Prevents logs from different locations from overwriting each other in shared storage.           |
+
+## Configure the multi-DC topology
+
+In this step, you define the Hub-and-Spoke relationship. The Hub (primary) must know about all its Spokes (secondaries), and each Spoke must know how to reach the Hub.
+
+Add the following stanza to each of your configuration files (`primary.yaml`, and `secondary.yaml`):
+
+```yaml
+clusterGroups:
+# Set to 'primary' for your Hub, 'secondary' for your Spokes
+  role: (secondary|primary|standalone)
+  primary:
+    domainName: <primary portal domain>
+  secondaries:
+  - domainName: <secondary portal domain>
+    # Add an additional entry here for additional locations
+```
+
+Fill in the missing domainName parameters using the `portal_domain_name` parameter you previously set in each HM installation configuration file.
+
+In `primary.yaml`: Set role: `primary`. This cluster will act as the Hub.
+
+In `secondary.yaml`: Set role: `secondary`. This cluster will act as a Spoke and use the `primary.domainName` to find its manager.
+
+## Reduced set of components (Spoke clusters only)
+
+The HM consists of a number of different components, some of which are not necessary on the secondary locations. While the full set can be installed successfully on secondary locations, we recommend to reduce that list by setting the parameter `scenarios` to be just `core`, and disabling the HM console (UI).
+
+Add the following parameters in the values file for secondary locations:
+
+```yaml
+scenarios: 'core'
+disabledComponents: 
+  - upm-ui
+```
+
+1. Validation checklist:
+
+   - The `edb-object-storage` secret must be identical across all locations (compare .data only).
+
+   - All locations can list/write the bucket (quick Pod/Job test).
+
+   - `location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must be unique per location.
+
+   - `scenarios` has been set to be `core` for secondary locations.
+
+   - `disabledComponents` has the `upm-ui` component listed for secondary locations.
+
+## Hybrid Manager installation
+
+Using the HM installation configuration files `primary.yaml` and `secondary.yaml` (or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager through helm. 
+
+### Validate wiring
+
+Once the Helm installations are complete, verify the Hub and Spoke link.
+
+1. On the primary, list the managed secondary locations:
+
+   ```bash
+   kubectl get location
+   ```
+
+   You should see all locations as `managed-<SECONDARY_LOCATION_NAME>` with recent `LASTHEARTBEAT`.
+
+1. Validate that SPIRE federation is present on all locations:
+
+   ```bash
+   kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+   /opt/spire/bin/spire-server federation list
+   ```
+   
+   You should see a `federation list` showing the relationships (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
+
+   On the primary, you should see one or two entries in the federation list (one for each secondary).
+
+   On each secondary instances, you will only see one entry (the relationship back to the primary).
+
+### Create a Postgres database cluster across different data centers
+
+HM can now provision into the secondary locations, but you must still choose and create the actual database topology. In the HM console, create a database cluster and make sure to select different locations for each database node. 
+
+- For single-node and high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Replica Clusters** tab](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/) to add replica database clusters in other locations. 
+
+- For advanced high availability and distributed high availability database clusters, during [cluster creation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Data Groups** tab > **Node Settings** > **Deployment Location**](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/#node-settings) option to distribute the cluster data groups across locations.
+
+  !!!note
+  Witness nodes in PGD require a minimum of 10GB of disk space.
+  !!!
+
+Ensure backups are writing to the shared object store from both data centers.
+
+#### Operational notes
+
+- DB TLS is separate from SPIRE/Beacon (platform identity). Configure PG TLS per your policy.
+- Verify StorageClasses in each DC meet PG IOPS/latency.
+- Open replication ports between sites.
+
+## Validation (end-to-end)
+
+On the primary location, perform the following checks to validate the multi-DC setup:
+
+1. Validate primary/secondary cluster relationships:
+
+    ```bash
+    kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+    /opt/spire/bin/spire-server federation list
+    ```
+
+1. Validate that the secondary locations are registered:
+
+    ```bash
+    kubectl get location
+    ```
+
+1. Validate provisioning to secondary works:
+
+   - From the primary, deploy a small test workload to a secondary location.
+     -  Telemetry (optional)
+        Thanos stores show federated peer; Loki queries return logs tagged from secondary.
+     -  Object storage
+        Both clusters can read/write the bucket; secrets are identical.
+
+## Manual failover
+
+### Manual failover procedure for databases from the primary location to a secondary location
+
+1. Suspend writes to the primary location (maintenance mode/LB cutover).
+
+1. Promote a replicas in a secondary location to primary (using the HM console or your scripts).
+
+1. Redirect clients (DNS/LB) to the secondary location.
+
+1. Observe: confirm that writes succeed; and the replication role is updated.
+
+1. When original the primary location returns: re-seed it as a replica of the new primary; optionally plan a later cutback.
+
+!!!note 
+While you promote the Postgres database in the secondary DC, the HM console itself still runs on the primary. If the primary DC (where HM lives) is completely gone, follow the [HM disaster recovery guide](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/hadr/) to restore the management console elsewhere.
+!!!
+
+#### Operator tips
+
+- Keep DNS TTL low enough for cutovers.
+- Track downtime to measure RTO.
+- Validate backups post-promotion.
+
+## Troubleshooting
+
+- Problem: **No federation relationships**
+    - Re-generate and cross-apply `ClusterFederatedTrustDomain` CRs.
+    - Confirm 8444/TCP reachability.
+
+- Problem: **secondary not listed in `kubectl get location`**
+    - Recheck Beacon values on both sides; restart Beacon server/agent.
+    - Confirm 9445/TCP reachability to primary portal; trust domains correct.
+
+- Problem: **Object store access fails on secondary**
+    - Re-sync `edb-object-storage`.
+    - For EKS/IRSA: ensure secondary OIDC is in the role’s trust policy.
+
+- Problem: **Telemetry federation missing**
+    - Reinstall with the correct -l primary|secondary flags and unique prefixes.
+    - Check Thanos `/api/v1/stores` and Loki read API.
+
+- Problem: **Replica lag / connectivity**
+    - Verify network ACLs/SGs, TLS certs, and storage performance.
+
+## Appendix B — Quick daily checks
+
+- `kubectl get location` on primary shows secondary Ready.
+- Thanos/Loki federation healthy (if enabled).
+- Object store writes succeed from both DCs.
+- Replication lag within SLOs.
