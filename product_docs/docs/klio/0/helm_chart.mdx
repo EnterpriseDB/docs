@@ -1,0 +1,202 @@
+---
+title: EDB Klio Operator Helm Chart
+navTitle: ''
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/helm_chart.mdx
+sidebar_position: 90
+
+---
+
+<!-- spell-checker-disable -->
+
+import PartialValues from "./_helm_chart_values.mdx";
+
+<!-- spell-checker-enable -->
+
+The EDB Klio Operator Helm chart from EDB allows you to deploy the Klio
+Operator in your Kubernetes cluster. It is distributed as a private OCI image.
+
+## Prerequisites
+
+Before installing the Klio Operator, ensure you have:
+
+-   **Helm** – see the [Helm installation guide](https://helm.sh/docs/intro/install/)
+-   **Kubernetes** cluster with appropriate permissions
+-   **Credentials** to access the registry hosting the Helm chart, the Klio operator
+    image, and the Klio operand image. For the EDB registry, your username will be `k8s`
+    and your password will be [your EDB Repos 2.0 token](https://www.enterprisedb.com/docs/repos/getting_started/with_web/get_your_token/).
+-   **CloudNativePG Operator** already installed in your Kubernetes cluster.
+    See the [CloudNativePG installation guide](https://cloudnative-pg.io/documentation/current/installation_upgrade/).
+-   **cert-manager** (optional, but strongly recommended for managing TLS certificates).
+    See the [cert-manager installation guide](https://cert-manager.io/docs/installation/).
+-   **Prometheus Operator** (optional, for operator monitoring).
+    See the [Prometheus Operator installation guide](https://prometheus-operator.dev/docs/getting-started/installation/).
+
+## Installation
+
+For simplicity, the instructions below assume you've put the following values into environment variables:
+
+- `$TOKEN` - will be your [EDB Repos 2.0 token](https://www.enterprisedb.com/docs/repos/getting_started/with_web/get_your_token/).
+- `$NAMESPACE` - will be the namespace where you installed CNPG (`cnpg-system` is the default namespace for CNPG installations).
+
+Example:
+
+```sh
+export TOKEN=your-edb-token
+export NAMESPACE=cnpg-system
+```
+
+### Step 1: Registry Authentication
+
+First, authenticate with the EDB registry where the Helm chart is hosted:
+
+```sh
+helm registry login helm.oci.cloudsmith.io -u enterprisedb/k8s -p "${TOKEN}"
+```
+
+### Step 2: Create an Image Pull Secret
+
+Create a Kubernetes secret to allow the operator to pull container images from
+the registry:
+
+```sh
+kubectl create secret docker-registry klio-registry-secret \
+  --docker-server=docker.enterprisedb.com \
+  "--docker-username=k8s" \
+  "--docker-password=${TOKEN}" \
+  "--namespace "${NAMESPACE}"
+```
+
+!!!info Namespace Selection
+
+Select the namespace where you want to deploy the Klio Operator. This must be
+the same namespace where CloudNativePG is deployed.
+!!!
+
+### Step 3: Install the Helm Chart
+
+Deploy the Klio Operator to your cluster:
+
+<!-- x-release-please-start-version -->
+
+```sh
+helm install klio-operator oci://helm.oci.cloudsmith.io/enterprisedb/k8s/klio-operator-chart \
+  --version 0.0.12 \
+  --namespace "${NAMESPACE}" \
+  --set "controllerManager.manager.image.pullSecrets[0].name=klio-registry-secret"
+```
+
+<!-- x-release-please-end -->
+
+### Step 4: Verify Installation
+
+After installation, verify that the Klio Operator is running:
+
+```sh
+kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=klio
+```
+
+You should see the operator pod in a `Running` state. Check the logs to ensure
+there are no errors:
+
+```sh
+kubectl logs -n "${NAMESPACE}" deployment/klio-controller-manager -f
+```
+
+Verify that the Custom Resource Definitions (CRDs) were created:
+
+```sh
+kubectl get crds | grep klio.enterprisedb.io
+```
+
+You should see CRDs like `servers.klio.enterprisedb.io` and `pluginconfigurations.klio.enterprisedb.io`.
+
+## Configuration
+
+### Customizing the Installation
+
+The chart is designed to be customizable, allowing you to configure multiple
+aspects of the Klio Operator deployment, passing in values through a custom
+`values.yaml` file or using the `--set` flag during installation.
+See the [Helm documentation](https://helm.sh/docs/) for more details
+on how to customize and manage Helm charts.
+
+#### Inspecting the Chart
+
+Before installing, you can download the Helm chart to inspect its contents,
+review the default values, and understand what resources it will create:
+
+<!-- x-release-please-start-version -->
+
+```sh
+helm pull oci://docker.enterprisedb.com/k8s/klio-operator-chart --version 0.0.12
+```
+
+<!-- x-release-please-end -->
+
+This downloads the chart as a `.tgz` file. Extract it to examine the templates,
+default `values.yaml`, and other chart files:
+
+<!-- x-release-please-start-version -->
+
+```sh
+tar -xzf klio-operator-chart-0.0.12.tgz
+cd klio-operator-chart
+cat values.yaml
+```
+
+<!-- x-release-please-end -->
+
+### Configuration Reference
+
+<PartialValues />
+
+## Upgrading
+
+To upgrade the Klio Operator to a newer version:
+
+```sh
+helm upgrade klio-operator oci://docker.enterprisedb.com/k8s/klio-operator-chart \
+  --version <NEW_VERSION> \
+  --namespace "${NAMESPACE}"
+```
+
+...where `<NEW_VERSION>` is the version you're upgrading to.
+
+When upgrading, you can control how Helm handles values from the previous
+installation. Please refer to the [Helm upgrade documentation](https://helm.sh/docs/helm/helm_upgrade/)
+to understand the different options.
+
+!!!warning CRD Upgrades
+
+Helm does not automatically upgrade CRDs. If the new version includes CRD
+updates, you may need to apply them manually. Check the release notes for
+specific upgrade instructions.
+!!!
+
+## Uninstalling
+
+To uninstall the Klio Operator:
+
+```sh
+helm uninstall klio-operator --namespace "${NAMESPACE}"
+```
+
+!!!warning Data Preservation
+
+Uninstalling the operator does not automatically remove:
+
+-   Custom Resource Definitions (CRDs)
+-   Existing Klio resources (Servers, PluginConfigurations)
+-   Persistent volumes containing backup data
+
+To completely remove Klio from your cluster, you must manually delete these resources.
+If you want to completely remove Klio, you must manually delete these resources.
+!!!
+
+To remove the CRDs after uninstalling:
+
+```sh
+kubectl delete crd servers.klio.enterprisedb.io
+kubectl delete crd pluginconfigurations.klio.enterprisedb.io
+```

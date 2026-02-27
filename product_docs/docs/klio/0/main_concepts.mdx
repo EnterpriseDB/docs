@@ -1,0 +1,130 @@
+---
+title: Main Concepts
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/main_concepts.md
+sidebar_position: 2
+
+---
+
+Klio is built on top of two foundational technologies:
+
+-   PostgreSQL's native physical backup infrastructure
+-   The CloudNativePG Interface (CNPG-I) for backup and recovery
+
+PostgreSQL has provided **native continuous backup and point-in-time recovery
+(PITR) capabilities since version 8.0, released in 2005**, enabling reliable
+disaster recovery and business continuity for mission-critical systems
+worldwide.
+
+!!!info
+
+PostgreSQL offers logical backups using tools like `pg_dump`, which generate a
+logical representation of the database as SQL statements or data files. Logical
+backups do not provide continuous protection or point-in-time recovery
+capabilities. As a result, they are not suitable for **business continuity
+scenarios** in mission-critical environments where minimizing downtime and data
+loss is essential.
+!!!
+
+At its core, [PostgreSQL’s continuous backup and recovery](https://www.postgresql.org/docs/current/continuous-archiving.html)
+system uses **physical (file system level) copies** combined with **write-ahead
+log (WAL) archiving**.
+This approach enables consistent, recoverable backups while keeping systems
+online, a strategy proven effective in production environments for over two
+decades.
+
+In a PostgreSQL backup solution, the infrastructure typically consists of:
+
+-   **WAL Archive**: A designated location for continuously archived WAL
+    (write-ahead log) files, preserving all changes made to the database to
+    support data durability and recovery.
+-   **Physical Base Backups**: A consistent copy of all data files used by
+    PostgreSQL (primarily the `PGDATA` directory and any tablespaces), forming
+    the foundational layer for any recovery operation.
+
+The diagram below illustrates the relationship between physical base backups
+and the WAL archive over time:
+
+![Physical backups, WAL archive, and time](images/basebackups_walarchive.png)
+
+* * *
+
+## WAL Archive
+
+The WAL archive is central to **continuous backup** in PostgreSQL and is
+essential for:
+
+-   **Hot (Online) Backups**: Allowing physical base backups to be taken from any
+    node (primary or standby) without shutting down PostgreSQL, ensuring backups
+    can proceed without service disruption.
+-   **Point-in-Time Recovery (PITR)**: Enabling recovery to any precise moment
+    after the earliest available base backup, using archived WAL files to replay
+    transactions up to the desired recovery point.
+
+!!!important
+
+WAL archives on their own are insufficient for disaster recovery.
+A **physical base backup is required** to restore a PostgreSQL cluster.
+!!!
+
+Using a WAL archive significantly enhances the resilience of a PostgreSQL
+system. WAL files can be fetched by any PostgreSQL instance for replication or
+recovery, with archives typically retaining WAL segments longer than local
+retention policies, ensuring historical data is preserved for PITR and disaster
+recovery workflows.
+
+Klio receives WAL content from a PostgreSQL primary via streaming replication.
+
+* * *
+
+## Physical base backups
+
+PostgreSQL supports **physical base backups** as the cornerstone of its
+disaster recovery and PITR strategies. A base backup is a **consistent, file
+system-level copy** of all data files used by a PostgreSQL cluster, including
+the `PGDATA` directory and any additional tablespaces.
+
+Key properties of PostgreSQL base backups:
+
+-   **Online (Hot) Backups**: Base backups can be taken while the database is
+    online, avoiding downtime. PostgreSQL maintains consistency during an online
+    backup by coordinating with its write-ahead logging system, ensuring a valid
+    restore point.
+-   **Foundation for PITR**: A base backup provides the starting point for
+    point-in-time recovery. After restoring the base backup, archived WAL files
+    are replayed to advance the system to a specific recovery target, allowing
+    precise restoration following accidental data loss or corruption.
+-   **Efficient Storage and Transport**: Base backups can be compressed and
+    streamed to external or object storage, supporting offsite and cloud-based
+    disaster recovery workflows.
+
+Klio leverages CNPG-I to coordinate the hot backup procedure, using
+PostgreSQL’s `pg_backup_start` and `pg_backup_stop` concurrent API to ensure
+consistency. It uses [Kopia](https://github.com/kopia/kopia/) to efficiently
+transfer backup data across locations, ensuring backups are portable,
+secure, and space-efficient.
+
+* * *
+
+## Recovery
+
+In PostgreSQL, **recovery** is the process of restoring a database cluster from
+a **physical base backup**, bringing it to a consistent state by replaying
+**write-ahead log (WAL)** files, which contain the necessary *redo* information
+for all changes made after the backup.
+
+PostgreSQL’s recovery system supports [Point-in-Time Recovery (PITR)](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-PITR-RECOVERY),
+enabling you to restore a cluster to **any precise moment** between your
+earliest base backup and the latest available WAL segment. To perform recovery,
+a **valid WAL archive is required alongside the physical base backup**.
+
+Klio follows the approach of CloudNativePG and implements the recovery part of
+CNPG-I. It **does not perform in-place recovery on an existing cluster**;
+instead, recovery is used to **bootstrap a new cluster** from a base backup and
+replay WAL files to reach a desired state.
+
+Recovery can operate in two primary modes: full recovery (replaying WAL files
+to the latest available segment) or **Point-in-Time Recovery (PITR)**, allowing
+restoration to a chosen state before an incident such as accidental data
+deletion. Klio supports all PITR targets provided by CloudNativePG, including
+time, restore point, and transaction.

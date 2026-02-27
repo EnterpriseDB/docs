@@ -1,0 +1,338 @@
+---
+title: WAL Player
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/walplayer.md
+sidebar_position: 80
+
+---
+
+The WAL Player is a command-line tool designed to benchmark the performance of
+your Klio servers by simulating PostgreSQL Write-Ahead Log (WAL) file streaming
+workloads. It is an essential tool for ensuring your Klio servers can handle
+your production workloads efficiently. Use it regularly to validate performance
+and capacity planning decisions.
+
+## Overview
+
+WAL Player provides two main commands:
+
+-   **`generate`** - Creates synthetic WAL files for testing
+-   **`play`** - Sends WAL files to a Klio server and measures performance
+
+This tool is essential for:
+
+-   Performance testing and benchmarking Klio servers
+-   Validating server capacity under different workloads
+-   Measuring throughput and latency characteristics
+-   Load testing before production deployment
+
+## Prerequisites
+
+-   Klio binary installed and accessible
+-   A running Klio server to test against
+-   Sufficient disk space for generating test WAL files
+
+## Commands
+
+### `klio wal-player generate`
+
+Generates synthetic WAL files for testing purposes.
+
+#### Usage
+
+```bash
+klio wal-player generate [output-directory] [flags]
+```
+
+#### Parameters
+
+-   `output-directory` - Directory where WAL files will be created (defaults to
+    current directory)
+
+#### Flags
+
+-   `--wal-size` - Size of each WAL file in MB (default: 16)
+-   `--length` - Number of WAL files to generate (required)
+
+#### Examples
+
+```bash
+# Generate 10 WAL files of 16MB each in the current directory
+klio wal-player generate --length 10
+
+# Generate 50 WAL files of 32MB each in a specific directory
+klio wal-player generate /tmp/test-wals --wal-size 32 --length 50
+```
+
+### `klio wal-player play`
+
+Sends WAL files to a Klio server and measures performance metrics.
+
+#### Usage
+
+```bash
+klio wal-player play [directory] [flags]
+```
+
+#### Parameters
+
+-   `directory` - Directory containing WAL files to send (required). This
+    directory should contain PostgreSQL WAL files in the standard format (e.g.,
+    `000000010000000000000001`). It also supports files compressed with gzip,
+    provided they have the `.gz` extension.
+
+#### Flags
+
+-   `--jobs, -j` - Number of parallel jobs for concurrent uploads (default: 1).
+    Can be used to simulate multiple Klio clients sending data simultaneously.
+-   `--block-size` - Block size in KB for streaming (default: 2048). This controls
+    how much data is sent in each request.
+
+#### Configuration
+
+The play command requires client configuration to connect to your Klio server.
+This can be provided via:
+
+-   Configuration file
+-   Environment variables
+-   Command-line flags
+
+Example configuration:
+
+```yaml
+# klio-config.yaml
+client:
+  cluster_name: walplayer
+  wal:
+    address: localhost:52000
+    server_cert_path: "/path/to/server.crt"
+    client_cert_path: "/path/to/client/tls.crt"
+    client_key_path: "/path/to/client/tls.key"
+```
+
+#### Examples
+
+```bash
+# Send WAL files using single connection
+klio wal-player play ./test-wals
+
+# Send WAL files using 4 workers for parallel uploads
+klio wal-player play ./test-wals --jobs 4
+
+# Benchmark with different block sizes
+klio wal-player play ./test-wals --jobs 2 --block-size 1024
+```
+
+## Performance Metrics
+
+The `play` command outputs detailed performance metrics in JSON format for each
+WAL file:
+
+```json
+{
+  "walFullPath": "/path/to/000000010000000000000001",
+  "startTime": "2025-01-15T10:30:00Z",
+  "endTime": "2025-01-15T10:30:02Z",
+  "elapsedTime": "7651680",
+  "error": ""
+}
+```
+
+### Metrics Explained
+
+-   **`walFullPath`** - Full path to the WAL file that was sent
+-   **`startTime`** - When the upload started
+-   **`endTime`** - When the upload completed
+-   **`elapsedTime`** - Total time taken for the upload in nanoseconds
+-   **`error`** - Error message if the upload failed (empty on success)
+
+## Benchmarking Example
+
+The following Kubernetes Job definition demonstrates how to use
+the WAL Player to benchmark a Klio server. This example covers generating
+WAL files and then playing them back to the server.
+
+<!-- x-release-please-start-version -->
+
+```yaml
+---
+# PVC for storing generated WAL files
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: walplayer-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi # Enough space to hold the generated amount of WAL files
+---
+# Client certificate for authenticating with the Klio server
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: walplayer-client-cert
+spec:
+  commonName: klio@walplayer
+  secretName: walplayer-client-cert
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  isCA: false
+  usages:
+    - client auth
+  issuerRef:
+    name: server-sample-ca
+    kind: Issuer
+    group: cert-manager.io
+---
+# ConfigMap with klio client configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: walplayer-config
+data:
+  # Address your klio server
+  klio-config.yaml: |
+    client:
+      cluster_name: walplayer
+      wal:
+        address: server-sample.default:52000
+        server_cert_path: /certs/server/ca.crt
+        client_cert_path: /certs/client/tls.crt
+        client_key_path: /certs/client/tls.key
+---
+# Job to generate and play WAL files
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: walplayer-benchmark
+spec:
+  template:
+    metadata:
+      labels:
+        app: walplayer
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # Generate synthetic WAL files
+        - name: generate-wals
+          image: docker.enterprisedb.com/k8s/klio:v0.0.12
+          imagePullPolicy: Always
+          command:
+            - /usr/bin/klio
+            - wal-player
+            - generate
+            - /data
+            - --wal-size=16
+            - --length=100
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        # Play WAL files to the Klio server
+        - name: play-wals
+          image: docker.enterprisedb.com/k8s/klio:v0.0.12
+          imagePullPolicy: Always
+          command:
+            - /usr/bin/klio
+            - wal-player
+            - play
+            - /data
+            - --config=/config/klio-config.yaml
+            - --jobs=4
+            - --block-size=2048
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: server-cert
+              mountPath: /certs/server
+              readOnly: true
+            - name: client-cert
+              mountPath: /certs/client
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: walplayer-data
+        - name: config
+          configMap:
+            name: walplayer-config
+        - name: server-cert
+          secret:
+            secretName: server-sample-tls
+        - name: client-cert
+          secret:
+            secretName: walplayer-client-cert
+```
+
+<!-- x-release-please-end -->
+
+### Customizing the Benchmark
+
+You can adjust the following parameters to simulate different workload scenarios:
+
+#### WAL Generation Parameters
+
+Modify the `generate-wals` init container to create different test workloads:
+
+-   Many small files:
+
+    ```yaml
+    - --wal-size=16
+    - --length=1000
+    ```
+
+-   Less large files:
+
+    ```yaml
+    - --wal-size=256
+    - --length=100
+    ```
+
+Match actual production for better results.
+
+#### WAL Playback Parameters
+
+Modify the `play-wals` container to test different upload patterns:
+
+-   **Jobs** (`--jobs`): Number of parallel upload workers
+    -   Start with `--jobs=1` to establish baseline performance
+    -   Increase to `--jobs=2`, `--jobs=4`, `--jobs=8` to find optimal concurrency
+    -   Performance typically plateaus at some point
+-   **Block Size** (`--block-size`): Size of each streaming chunk in KB
+    -   Default is `--block-size=2048`
+    -   Maximum is 8192
+
+### Analyzing Results
+
+View the job logs to see the JSON performance metrics:
+
+```bash
+kubectl logs job/walplayer-benchmark -c play-wals
+```
+
+You can analyze the output using `jq`:
+
+```bash
+# Get all results
+kubectl logs job/walplayer-benchmark -c play-wals > results.json
+
+# Calculate total successful uploads
+jq -s '[.[] | select(.error == "")] | length' results.json
+
+# Calculate average upload time (in nanoseconds)
+jq -s '[.[] | select(.error == "") | .elapsedTime | tonumber] | add / length' results.json
+
+# Find any failed uploads
+jq -s '.[] | select(has("error") and .error != "")' results.json
+```
+
+## Performance Optimization Tips
+
+1.  **Resource Monitoring**: Monitor CPU, memory, and disk I/O on the Klio server
+2.  **Network Bandwidth**: Ensure sufficient bandwidth between client and server
+3.  **Storage Performance**: Verify storage can handle the write throughput

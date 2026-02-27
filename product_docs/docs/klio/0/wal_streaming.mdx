@@ -1,0 +1,122 @@
+---
+title: WAL Streaming
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/wal_streaming.md
+sidebar_position: 4
+
+---
+
+A standout feature of Klio is its native, cloud-first implementation of WAL
+streaming for PostgreSQL. This architecture enables:
+
+-   Partial WAL segment streaming, ensuring real-time data transfer
+-   Built-in compression and encryption using user-provided keys
+-   Controlled replication slot advancement, protecting against WAL loss
+-   Optional synchronous replication, offering zero RPO when enabled
+
+## Architecture
+
+WAL streaming in Klio is built around two components: a client and a server.
+
+-   The client, invoked using the `klio send-wal` command, typically runs
+    alongside PostgreSQL but does not have to.
+-   The server, started with the `klio server start-wal` command, runs as a
+    dedicated process on the Klio server.
+
+In Kubernetes environments, as illustrated in the diagram above, Klio streams
+WAL records directly from the PostgreSQL primary over a local Unix domain
+socket. The WAL streamer runs as a lightweight sidecar container within the
+same pod as the primary instance and is managed by the CNPG-I–compliant plugin.
+It continuously pushes data to a remote Klio WAL server (Tier 1), which handles
+partial WAL file synchronization and archives completed segments into the
+central WAL archive for the PostgreSQL cluster.
+
+![WAL streaming architectural overview](images/wal-streaming.png)
+
+## Moving Beyond `archive_command`
+
+Klio replaces the traditional PostgreSQL `archive_command` method for WAL
+handling in CloudNativePG clusters, providing improved reliability, efficiency,
+security, and observability.
+
+PostgreSQL’s `archive_command` is a shell command executed when a WAL segment
+is complete—either because the segment reached its size limit (typically 16MB)
+or the `archive_timeout` elapsed (5 minutes by default in CloudNativePG).
+
+The streaming model provided by Klio offers several key advantages over this
+approach:
+
+-   **Near-zero RPO:** WAL changes are streamed incrementally in near real-time,
+    reducing the worst-case recovery point objective (RPO) from 5 minutes to
+    near-zero, or even zero in synchronous mode.
+
+-   **Improved efficiency and scalability:** A single, continuously running WAL
+    streamer process replaces the need to spawn a new process for each WAL
+    segment, resulting in lower CPU and I/O usage and better scalability during
+    periods of high WAL volume.
+
+-   **Enhanced security:** WAL data is encrypted end-to-end, both in transit and
+    at rest, providing protection not available with the traditional
+    `archive_command`.
+
+-   **Comprehensive observability:** Native metrics and structured logging
+    provide full visibility into WAL streaming operations, simplifying
+    monitoring, anomaly detection, and troubleshooting compared to the opaque
+    nature of `archive_command`.
+
+## Monitoring Klio WAL Streamer in PostgreSQL
+
+The Klio WAL streamer is a PostgreSQL streaming replication client and,
+as such, can be monitored using the standard `pg_stat_replication`
+system view in the PostgreSQL catalog.
+
+The WAL streamer identifies itself with `application_name` set to `klio`.
+
+To verify whether any Klio WAL streamer is connected to an instance (in
+Kubernetes deployments, this will always be the primary), run the following
+query:
+
+```sql
+SELECT * FROM pg_stat_replication WHERE application_name = 'klio';
+```
+
+An example output might look like this:
+
+The following excerpt is an a example:
+
+```console
+-[ RECORD 1 ]----+------------------------------
+pid              | 1070
+usesysid         | 10
+usename          | postgres
+application_name | klio
+client_addr      |
+client_hostname  |
+client_port      | -1
+backend_start    | 2025-08-07 01:14:39.619662+00
+backend_xmin     |
+state            | streaming
+sent_lsn         | 2/C765A000
+write_lsn        | 2/C75FA000
+flush_lsn        | 2/C741A000
+replay_lsn       | 2/C741A000
+write_lag        | 00:00:00.919907
+flush_lag        | 00:00:00.923556
+replay_lag       | 00:00:00.923556
+sync_priority    | 0
+sync_state       | async
+reply_time       | 2025-08-07 01:54:44.756306+00
+```
+
+As you can see, Klio provides relevant feedback to PostgreSQL. Here is a brief
+explanation of the key fields:
+
+-   `state`: The replication connection status (`streaming` indicates active
+    streaming).
+-   `sent_lsn`, `write_lsn`, `flush_lsn`, `replay_lsn`: Positions in the WAL
+    indicating how far data has been sent, written, flushed, and replayed on the
+    Klio server (replayed and flushed are always identical).
+-   `write_lag`, `flush_lag`, `replay_lag`: Delays between WAL positions
+    indicating replication latency.
+-   `sync_state`: The synchronization state of this standby (e.g., `async`,
+    `sync`, `potential`, `quorum`).

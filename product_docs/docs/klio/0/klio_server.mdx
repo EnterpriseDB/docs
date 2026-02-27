@@ -1,0 +1,771 @@
+---
+title: The Klio Server
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/klio_server.md
+sidebar_position: 5
+
+---
+
+The Klio server is a central component of the Klio backup solution. It is
+defined as the `Server` custom resource in Kubernetes, which creates a
+StatefulSet running the Klio server application.
+
+The Klio server is composed of two main containers:
+
+-   `base`: Manages full and incremental backups using Kopia.
+-   `wal`: Receives the stream of PostgreSQL Write-Ahead Logs (WAL).
+
+An additional init container, `init`, is responsible for initializing the
+Kopia repository and setting up the necessary configuration.
+
+The base backups and WAL files are stored in multiple PersistentVolume attached
+to the Klio server pod in the `/data/base` and `/data/wal` directories, respectively.
+
+An additional cache defined by a PersistentVolume is used for the Kopia cache.
+This cache allows Kopia to quickly browse repository contents without
+having to download from the storage location.
+
+## Storage Tiers
+
+### Tier 1: Local Storage
+
+Tier 1 uses local `PersistentVolumes` for immediate data access.
+This is the primary landing zone for backups and WAL files,
+providing the fastest recovery times.
+
+### Tier 2: Remote Object Storage
+
+Tier 2 offloads data to object storage for long-term retention and disaster
+recovery. When Tier 2 is enabled alongside Tier 1, the server uses a work
+queue to manage the asynchronous transfer of data from local storage to object
+storage.
+
+Alternatively, you can deploy a **read-only server** with only Tier 2
+configured. This is useful for disaster recovery sites that need to restore
+from object storage without the overhead of local storage. See the
+[Read-Only Mode](#read-only-mode) section for details.
+
+Currently, Klio supports Amazon S3 and S3-compatible storage providers. See
+the [Object Store](#object-store) section for configuration details.
+
+### The Work Queue
+
+When Tier 1 is configured, the Klio Server pods will use a work queue.
+The work queue is backed by NATS JetStream with file storage on a separate
+`PersistentVolume` mounted at `/queue`.
+The queue serves two purposes:
+
+-   **Retention policy enforcement**: Tracks which WAL files are in use before
+    deletion
+-   **Tier 2 replication**: When Tier 2 is enabled, manages asynchronous
+    transfer to object storage
+
+## Storage Requirements
+
+The Klio Server uses three distinct PersistentVolumeClaims (PVCs), each
+serving a different purpose. Understanding what each PVC contains helps you
+size them appropriately for your environment.
+
+### Data PVC
+
+The data PVC stores all backup data and WAL archives for Tier 1 storage.
+
+It holds the base backups and the WAL archive of all the servers that are backed
+up.
+
+The following factors should be considered when defining the PVC size:
+
+1.  WAL file production rate
+2.  Base backup size
+3.  Retention policies
+
+### Cache PVCs
+
+The cache PVCs (one for Tier 1 and Tier 2 each) are used by Kopia for its
+[caching operations](https://kopia.io/docs/advanced/caching/).
+They are used to speed up snapshot operations.
+
+!!!warning
+
+Klio is currently limited to use the default cache size when creating a Kopia
+repository, 5GB for content and 5GB for metadata.
+The cache sizes are not hard limits, as the cache is swept periodically,
+so users should have a space buffer to account for this additional space.
+This limitation will be removed in a future version.
+!!!
+
+### Queue PVC
+
+The queue PVC is required when Tier 1 is configured. It stores the NATS
+JetStream work queue used for retention policy enforcement and asynchronous
+Tier 2 replication.
+
+## Setting up a new Klio server
+
+Setting up a Klio server involves creating a `Server` resource along with the
+required Kubernetes secrets and certificates.
+
+### Prerequisites
+
+Before setting up a Klio server, ensure you have:
+
+-   A Kubernetes cluster with the Klio operator installed
+-   `kubectl` configured to access your cluster
+-   [cert-manager](https://cert-manager.io/) installed for certificate
+    management (recommended)
+-   Enough storage resources for the data and cache PersistentVolumeClaims
+-   Enough storage resources for the queue PersistentVolumeClaim
+
+### Required Components
+
+A Klio server setup requires the following components:
+
+1.  **Server Resource**: The main `Server` custom resource
+2.  **TLS Certificate**: For secure communication
+3.  **Encryption Password**: For encrypting backup data at rest
+4.  **CA Certificate**: For client authentication via mTLS
+5.  **Storage**: PersistentVolumeClaims for data, cache, and queue
+
+### Step-by-step setup
+
+#### 1. Create the Encryption Key Secret
+
+The encryption key is used to encrypt backup data at rest:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-server-encryption
+  namespace: default
+type: Opaque
+data:
+  encryptionKey: "bXktc2VjdXJlLWtleQ==" # my-secure-key
+```
+
+Apply the secret:
+
+```bash
+kubectl apply -f encryption-secret.yaml
+```
+
+!!!tip
+
+Use a strong, randomly generated key. This key is critical for
+data security and recovery.
+!!!
+
+#### 2. Create CA Certificate
+
+Using cert-manager, a CA certificate can be created by using the following
+Certificate resource:
+
+```yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: default
+spec:
+  selfSigned: { }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: server-sample-ca
+spec:
+  commonName: server-sample-ca
+  secretName: server-sample-ca
+
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+
+  isCA: true
+  usages:
+    - cert sign
+
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+```
+
+Apply the CA configuration with:
+
+```
+kubectl apply -f ca-configuration.yaml
+```
+
+In the previous example, the CA to be used for authentication is signed by a
+self-signed issuer. This doesn't pose any security issue as this CA is only
+used internally and trust is established through configuration.
+
+The primary concern is the relationship between the client and the certificates
+signed by the CA.
+
+!!!info
+
+The usage of a self-signed CA is not required by the Klio server. If your
+PKI infrastructure already includes a CA for this scope, that CA can be used
+for the Klio server, too.
+!!!
+
+#### 3. Create TLS Certificate
+
+Using cert-manager, create a self-signed certificate (for development) or use
+your organization's certificate issuer:
+
+```yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: default
+spec:
+  selfSigned: { }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-server-cert
+  namespace: default
+spec:
+  secretName: my-server-tls
+  commonName: my-server
+  dnsNames:
+    - my-server
+    - my-server.default
+    - my-server.default.svc
+    - my-server.default.svc.cluster.local
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+  isCA: false
+  usages:
+    - server auth
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+```
+
+Apply the certificate configuration:
+
+```bash
+kubectl apply -f tls-certificate.yaml
+```
+
+!!!info
+
+For production environments, use certificates signed by your organization's
+Certificate Authority (CA) or a trusted public CA instead of self-signed
+certificates.
+!!!
+
+#### 4. Create the Server Resource
+
+Now create the main `Server` resource:
+
+<!-- x-release-please-start-version -->
+
+```yaml
+apiVersion: klio.enterprisedb.io/v1alpha1
+kind: Server
+metadata:
+  name: my-server
+  namespace: default
+spec:
+  # Container image for the Klio server
+  image: docker.enterprisedb.com/k8s/klio:v0.0.12
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []  # Add image pull secrets if needed
+
+  # TLS configuration
+  tlsSecretName: my-server-tls
+
+  # Client authentication configuration
+  caSecretName: server-sample-ca
+
+  # Mode: standard (default) or read-only
+  # Omit this field or set to "standard" for normal read-write operation
+  # Set to "read-only" for DR/restore-only servers (see Read-Only Mode section)
+  # mode: standard
+
+  # tier 1 configuration
+  tier1:
+    # Cache storage configuration
+    cache:
+      pvcTemplate:
+        storageClassName: standard  # Adjust to your storage class (use 'kubectl get storageclass' to see available options)
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi  # Adjust based on your needs
+    # Data storage pvcTemplate (for backups and WAL)
+    data:
+      pvcTemplate:
+        storageClassName: standard  # Adjust to your storage class (use 'kubectl get storageclass' to see available options)
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 100Gi  # Adjust based on your backup needs
+    # Encryption key reference
+    encryptionKey:
+      name: my-server-encryption
+      key: encryptionKey
+
+  # Queue storage configuration (for NATS work queue)
+  # Required when tier1 is configured
+  queue:
+    pvcTemplate:
+      storageClassName: standard  # Adjust to your storage class
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi  # Adjust based on queue volume needs
+
+  # tier 2 configuration
+  tier2:
+    # Cache storage configuration
+    cache:
+      pvcTemplate:
+        resources:
+          requests:
+            storage: 1Gi
+        accessModes:
+          - ReadWriteOnce
+    # Encryption key reference. Can differ from tier1 encryption key.
+    encryptionKey:
+      name: my-server-encryption
+      key: encryptionKey
+    # S3 access configuration
+    s3:
+      prefix: klio
+      bucketName: klio-bucket
+      endpoint: https://rustfs:9000
+      region: us-east-1
+      accessKeyId:
+        name: rustfs
+        key: RUSTFS_ACCESS_KEY
+      secretAccessKey:
+        name: rustfs
+        key: RUSTFS_SECRET_KEY
+      customCaBundle:
+        name: rustfs-tls
+        key: tls.crt
+```
+
+<!-- x-release-please-end -->
+
+The example above uses credential-based S3 authentication. For alternative
+authentication methods (IAM roles, IRSA, Pod Identity) and S3-compatible
+storage providers, see the [Object Store](#object-store) section.
+
+Apply the Server resource:
+
+```bash
+kubectl apply -f klio-server.yaml
+```
+
+#### 5. Verify the Server is Running
+
+Check the status of your Klio server:
+
+```bash
+# Check the Server resource status
+kubectl get server my-server -n default
+
+# Check the StatefulSet
+kubectl get statefulset my-server-klio -n default
+
+# Check the Pod
+kubectl get pods -l klio.enterprisedb.io/klio-server=my-server -n default
+
+# View logs
+kubectl logs -l klio.enterprisedb.io/klio-server=my-server -n default -f
+```
+
+The server should create a StatefulSet with a pod named `my-server-klio-0`.
+
+## Read-Only Mode
+
+Klio servers can operate in read-only mode, allowing them to serve backups and
+WAL files from Tier 2 object storage without accepting new backup writes. This
+is useful for disaster recovery sites, cost-optimized restore-only deployments,
+and multi-region architectures.
+
+### When to Use Read-Only Mode
+
+Use read-only mode when you need:
+
+-   **Disaster recovery sites**: Deploy in secondary regions to restore from
+    shared S3 storage without duplicating backup writes
+-   **Geographic distribution**: Multiple read-only servers in different regions
+    can all restore from a single S3 bucket populated by one primary server
+-   **Read-only access control**: Prevent accidental backup modifications at
+    certain sites
+
+### Configuration
+
+A read-only server requires:
+
+-   `mode: read-only` field in the spec
+-   `tier2` configuration (S3 object storage)
+-   **No** `tier1` configuration
+-   **No** `queue` configuration
+
+<!-- x-release-please-start-version -->
+
+```yaml
+apiVersion: klio.enterprisedb.io/v1alpha1
+kind: Server
+metadata:
+  name: dr-server
+  namespace: default
+spec:
+  # Set mode to read-only
+  mode: read-only
+
+  # Container image for the Klio server
+  image: docker.enterprisedb.com/k8s/klio:v0.0.12
+  imagePullPolicy: IfNotPresent
+
+  # TLS configuration
+  tlsSecretName: dr-server-tls
+
+  # Client authentication configuration
+  caSecretName: server-sample-ca
+
+  # Tier 2 configuration (required for read-only mode)
+  tier2:
+    # Cache storage configuration
+    cache:
+      pvcTemplate:
+        storageClassName: standard
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi  # Only cache needed, no data storage
+
+    # Encryption key reference
+    encryptionKey:
+      name: dr-server-encryption
+      key: encryptionKey
+
+    # S3 access configuration
+    # See Object Store section for authentication options
+    s3:
+      bucketName: klio-backups
+      region: us-east-1
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: SECRET_ACCESS_KEY
+```
+
+<!-- x-release-please-end -->
+
+Apply the read-only server:
+
+```bash
+kubectl apply -f dr-server.yaml
+```
+
+### Using a Read-Only Server for Recovery
+
+Once deployed, PostgreSQL clusters can use the read-only server as a restore
+source through a PluginConfiguration. The server will fetch backups and WAL
+files from Tier 2 object storage transparently.
+
+See the Read-Only Server Mode section in the
+[Architectures](architectures.mdx) documentation for detailed use cases and
+architectural patterns.
+
+### Restrictions
+
+In read-only mode, the following operations are **not available**:
+
+-   Creating new backups
+-   Sending WAL files to the server
+-   Applying retention policies
+-   Any write operations
+
+## Advanced Configuration
+
+The `.spec.template` field allows you to customize the Klio server's pod
+template. You can add additional containers, volumes, or modify existing
+settings.
+
+!!!warning Advanced Users Only
+
+The `.spec.template` field is primarily designed for advanced configurations.
+While powerful, improper modifications can affect server functionality.
+Always test changes in a non-production environment first.
+!!!
+
+!!!note
+
+The `containers` field within `.spec.template.spec` is mandatory but will be
+merged with the default Klio server containers `base` and `wal`. If you do not
+need to add containers or modify the default ones, you must still include an
+empty list.
+!!!
+
+### Node Affinity and Tolerations
+
+To dedicate specific nodes for Klio workloads (e.g., for performance isolation
+or to separate backup workloads from application workloads), you can use the
+`template` field to define affinity and toleration rules.
+
+```yaml
+spec:
+  template:
+    spec:
+      # Mandatory field; merged with default containers
+      containers: []
+      tolerations:
+        # Allow scheduling on nodes tainted for Klio
+        - key: node-role.kubernetes.io/klio
+          operator: Exists
+          effect: NoSchedule
+      affinity:
+        # Require nodes labeled for Klio
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/klio
+                    operator: Exists
+```
+
+See [Reserving Nodes for Klio Workloads](architectures.mdx#reserving-nodes-for-klio-workloads)
+for details on node tainting.
+
+### Monitoring
+
+Refer to the [OpenTelemetry](opentelemetry.mdx#klio-server-with-opentelemetry)
+documentation for setting up monitoring and telemetry for the Klio server.
+
+## Object Store
+
+Klio uses object storage for Tier 2, providing durable, cost-effective
+long-term backup storage. Currently, Klio supports Amazon S3 and S3-compatible
+storage providers.
+
+### S3
+
+Tier 2 is configured using the `tier2.s3` field in the Server spec. The
+configuration is the same for both AWS S3 and S3-compatible providers.
+
+#### Basic Configuration with Credentials
+
+```yaml
+tier2:
+  s3:
+    bucketName: klio-backups
+    region: us-east-1
+    accessKeyId:
+      name: s3-credentials
+      key: ACCESS_KEY_ID
+    secretAccessKey:
+      name: s3-credentials
+      key: SECRET_ACCESS_KEY
+```
+
+#### S3-Compatible Storage with Custom Endpoint
+
+For S3-compatible providers, add the `endpoint` field:
+
+```yaml
+tier2:
+  s3:
+    bucketName: klio-backups
+    endpoint: https://minio.example.com:9000
+    region: us-east-1  # May be required depending on provider
+    accessKeyId:
+      name: s3-credentials
+      key: ACCESS_KEY_ID
+    secretAccessKey:
+      name: s3-credentials
+      key: SECRET_ACCESS_KEY
+```
+
+#### Custom CA Certificates
+
+For providers using self-signed certificates or custom CAs:
+
+```yaml
+tier2:
+  s3:
+    bucketName: klio-backups
+    endpoint: https://minio.example.com:9000
+    customCaBundle:
+      name: minio-ca-cert
+      key: ca.crt
+    accessKeyId:
+      name: s3-credentials
+      key: ACCESS_KEY_ID
+    secretAccessKey:
+      name: s3-credentials
+      key: SECRET_ACCESS_KEY
+```
+
+#### AWS IAM Roles (IRSA/Pod Identity)
+
+For AWS EKS clusters, using
+[IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
+or [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
+is the recommended approach. This provides better security through automatic
+credential rotation, reduced secret sprawl, and fine-grained IAM policies.
+
+To use IAM role-based authentication:
+
+1.  Create an IAM role with appropriate S3 permissions
+2.  Create a Kubernetes ServiceAccount with the IAM role annotation (for IRSA)
+    or Pod Identity association (for Pod Identity)
+3.  Reference the ServiceAccount in the Server spec and omit credentials:
+
+```yaml
+spec:
+  tier2:
+    s3:
+      bucketName: klio-backups
+      region: us-east-1
+      # No accessKeyId or secretAccessKey - use IAM role
+
+  template:
+    spec:
+      serviceAccountName: klio-s3-access
+      containers: []  # Mandatory but merged with defaults
+```
+
+The AWS SDK will automatically use the pod's IAM role credentials when
+`accessKeyId` and `secretAccessKey` are omitted.
+
+## Encryption
+
+Klio implements encryption at rest for both base backups and WAL files to
+ensure data security throughout the backup lifecycle.
+
+### Base Backups Encryption
+
+Base backups are encrypted by Kopia using the encryption password provided in
+the `encryptionKey` secret references. Kopia handles encryption transparently.
+
+The encryption key is set during repository initialization and is required
+for all subsequent backup and restore operations.
+
+!!!warning Critical
+
+Store the encryption key securely. Loss of this key means permanent
+loss of access to all backup data. There is no key recovery mechanism.
+!!!
+
+### WAL Files Encryption
+
+WAL files are encrypted using a master key derivation system with authenticated
+encryption. The encryption process works as follows:
+
+1.  **Master Key Generation**: A 32-byte master key is derived from the encryption
+    key using PBKDF2
+2.  **Key Enveloping**: The master key itself is encrypted using AES-256-GCM
+    with a password-derived encryption key to protect the key at rest
+3.  **Per-File Encryption**: Each WAL file is compressed and then encrypted using
+    the master key with authenticated encryption before being stored
+
+WAL files are first compressed using Snappy S2 compression,
+then encrypted to ensure both space efficiency and security.
+
+The same encryption key used for base backups encrypts the WAL files,
+ensuring a unified security model across all backup artifacts.
+
+### Encryption Password Rotation
+
+Currently, encryption key rotation is not supported. To change the
+encryption key, you would need to:
+
+1.  Create a new Klio server with a new encryption key
+2.  Perform new base backups to the new server
+3.  Migrate to using the new server
+
+!!!tip
+
+Choose a strong encryption key from the start. Use a password manager or
+key management system to generate and store a cryptographically secure key
+(recommended: 32+ random characters).
+!!!
+
+### Encryption in Transit
+
+In addition to encryption at rest, Klio protects both base backups and WAL files
+during transmission using TLS (Transport Layer Security).
+
+All communication between a Klio client and the Klio server is secured
+with TLS:
+
+-   **Base Backup Traffic**: Kopia client connections to the base backup server
+    are encrypted using TLS, protecting backup data as it transfers to the Klio
+    server
+-   **WAL Streaming**: PostgreSQL instances streaming WAL files to the Klio server
+    use gRPC over TLS, ensuring WAL data is encrypted during transmission
+
+The TLS certificate is configured via the `.spec.tlsSecretName` field in the
+Server resource, which references a Kubernetes secret containing the TLS
+certificate and private key. This provides end-to-end encryption, ensuring that
+backup data is protected both at rest and in transit.
+
+## Authentication
+
+Klio uses mTLS Authentication for securing access to both the base backup server
+and the WAL streaming server. Authentication is handled by verifying the client
+certificates against the CA certificate which has been created when configuring
+the Klio server.
+
+### Creating a client-side certificate
+
+To create a client-side certificate, you need a issuer that will sign all the
+certificates with a CA known by the Klio server. Supposing that such a issuer is
+called `server-sample-ca` and available in the current namespace, you can create
+a client certificate with the following Certificate object:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: client-sample-tls
+spec:
+  secretName: client-sample-tls
+  commonName: klio@cluster-1
+
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+
+  isCA: false
+  usages:
+    - client auth
+
+  issuerRef:
+    name: server-sample-ca
+    kind: Issuer
+    group: cert-manager.io
+```
+
+If used the example proposed in the [server configuration documentation
+page](#2-create-ca-certificate), the issuer can be created with:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: server-sample-ca
+spec:
+  ca:
+    secretName: server-sample-ca
+```
