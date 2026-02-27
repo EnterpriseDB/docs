@@ -97,7 +97,7 @@ let argv = yargs(hideBin(process.argv))
   .parse();
 
 function converter(markdown) {
-  return micromark(markdown);
+  return micromark(markdown).replace(/[{]/g, "&#123;");
 }
 
 function error_and_exit(message) {
