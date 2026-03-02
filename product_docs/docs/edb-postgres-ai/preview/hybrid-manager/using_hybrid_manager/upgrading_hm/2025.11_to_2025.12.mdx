@@ -1,0 +1,106 @@
+---
+title: Upgrading from 2025.11 to the 2025.12 Innovation Release
+navTitle: 2025.11 to 2025.12
+description: Follow the step-by-step procedures for upgrading from HM 2025.11 to HM 2025.12.
+deepToC: true
+---
+
+Upgrade from 2025.11 to 2025.12.
+
+> **Role:** Infrastructure Engineer
+
+## Prerequisites
+
+* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+* Access to the HM installation configuration file or `values.yaml` file used for the current installation. To save the contents of your current installation configuration: 
+
+  ```shell
+  helm get values edbpgai-bootstrap -n edbpgai-bootstrap > values.yaml
+  ```
+
+* Required Tools:
+    * `helm` (Latest version recommended)
+    * `cmctl` (Cert-Manager CLI) - *Required for 2025.11+*
+
+## Upgrade 2025.11 → 2025.12
+
+This release introduces new authentication secrets, updates the Data Migration Service (DMS) configuration, and deprecates several Beacon parameters.
+
+### Create Fernet secret
+
+**Before** installing the 2025.12 chart, you must manually create the `dex-fernet-key`.
+
+   ```bash
+   FERNET_KEY=$(head -c 32 /dev/urandom | base64)
+
+   kubectl create secret generic dex-fernet-key \
+     --from-literal=fernet-key="$FERNET_KEY" \
+     -n upm-dex
+   ```
+
+### Update `values.yaml`
+
+1. **Add DMS domain to `values.yaml`.**
+
+   Add a new global parameter `dms_domain_name`.
+
+   ```yaml
+   parameters:
+   global:
+       dms_domain_name: <your-hm-dms-domain-name> 
+   ```
+
+1. **Remove deprecated fields.**
+
+   Remove the following fields from your `values.yaml`:
+
+   * `beaconAgent.plaintext`
+   * `beaconAgent.beaconServerAddress`
+   * `beaconAgent.tlsInsecure`
+   * `beaconAgent.inCluster`
+
+### Critical infrastructure workaround
+
+To ensure Postgres workloads schedule correctly, you must add a taint to a specific node pool.
+
+* **Taint key:** `edbaiplatform.io/postgres`
+* **Value:** `'true'`
+* **Effect:** `NoSchedule`
+
+### Perform the upgrade
+
+1. **Update your Helm repo.**
+
+   ```bash
+   helm repo update
+   ```
+
+1. **Perform the upgrade.**
+
+   ```bash
+   helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+     --version 2025.12.0 \
+     --values values.yaml \
+     --namespace edbpgai-bootstrap \
+     --wait
+   ```
+
+### Post-upgrade fixes
+
+1. **Re-initialize SPIRE (if trust domain changed).**
+
+   In 2025.12, the `trust_domain` parameter is removed and defaults to `portal_domain_name`. 
+   If the `trust_domain` you set in version 1.3.0 differs from your Portal Domain, SPIRE breaks.
+
+   * **Fix:**
+
+     ```bash
+     kubectl scale statefulset spire-server -n spire-system --replicas=0
+     kubectl delete pvc -l app=spire-server -n spire-system
+     kubectl scale statefulset spire-server -n spire-system --replicas=1
+     ```
+
+1. **Reconfigure models**
+
+   Knowledge Bases (KBs) may disappear from the UI after upgrade.
+   To workaround, log in to the Portal, navigate to the **Model Configuration** page, and re-save your model settings.
