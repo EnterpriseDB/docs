@@ -34,11 +34,9 @@ Option B: [CloudNativePG Operator](https://cloudnative-pg.io/docs/devel/installa
  
 Follow the steps in the documentation [EDB Postgres Distributed for Kubernetes - Installation and upgrade](/postgres_distributed_for_kubernetes/latest/installation_upgrade/).
 
-**Optional: cert-manager (for TLS certificates)**
+**Cert-manager (for TLS certificates)**
 
 If cert-manager is not installed, you must first manually install the Custom Resource Definitions (CRDs).
-
-[Is this step optional or mandatory? Seems to be contradictory.]: #
 
 !!!note 
 Make sure to [assign the Estate Ingest Role](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/create_machine_user/) to the machine user you created. This is required for both the Beacon Agent and the external CNP cluster.
@@ -60,24 +58,78 @@ Make sure to [assign the Estate Ingest Role](/edb-postgres-ai/latest/hybrid-mana
 
    - [Operator for CloudNativePG](https://cloudnative-pg.io/docs/devel/installation_upgrade/)
 
-## Install the PG4K-PGD Operator
+## Installing the PG4K-PGD Operator
 
 Follow the steps in the documentation [EDB Postgres Distributed for Kubernetes - Installation and upgrade](/postgres_distributed_for_kubernetes/latest/installation_upgrade/).
 
-**Optional: cert-manager for TLS certificates**
 
-If cert-manager is not present, you must manually install the Custom Resource Definitions (CRDs) before proceeding:
-[Is this step optional or mandatory? Seems to be contradictory.]: #
-
-```
-kubectl create namespace cert-manager
-kubectl ns cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.9.1/cert-manager.crds.yaml
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.2/cert-manager.yaml
-```
-
-### Requirements for each namespace in CloudnativePG clusters or PGD Groups
+## Requirements for each namespace in CloudnativePG clusters or PGD Groups
 
 - Beacon Access Key Secret: Contains the HCP access key for the cluster.
 - Beacon Server CA Secret: Contains the TLS certificate for connecting to HCP.
 - Image Pull Secret: Contains credentials for pulling the agent and OpenTelemetry (OTEL) Collector images.
+
+### Required namespace and secrets
+
+```
+kubectl create namespace "${AGENT_NS}"
+kubectl create secret generic beacon-server-ca --from-literal=ca.crt="${HM_CACERT}" -n "${TARGET_NS}"
+kubectl create secret generic beacon-server-ca --from-literal=ca.crt="${HM_CACERT}" -n "${AGENT_NS}"
+kubectl create secret generic beacon-access-key --from-literal=access-key="${HM_ACCESS_KEY}" -n "${TARGET_NS}"
+```
+
+## Requirements to add the EDB Postgres AI Agent to CNPG Clusters
+
+- Required software versions
+- Kubernetes 1.21 or higher
+- Helm 3.8 or higher
+- You will need the following executables to run the commands in this guide:
+
+kubectl
+helm
+envsubst
+The `cnp` and `ns` plugins for kubectl are also recommended.
+
+### Required environment
+This guide assumes that you have an existing Kubernetes cluster, with a Postgres cluster managed by on of the following operators:
+
+- EDB CloudNativePG Operator
+- CloudNativePG Operator
+- EDB PGD4K Operator
+You must have cert-manager installed in your cluster to complete the deployment.
+
+To install cert-manager if you don't have it already
+
+```
+#install cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.9.1/cert-manager.crds.yaml
+```
+
+## Collect values
+
+Collect all the values you will need to complete deployment. You can skip this step if you prefer to provide the values explicitly.
+
+- `TARGET_NS` - the namespace of your existing CNPG cluster (or PGD Group for PGD4K)
+- `AGENT_NS` - the namespace to install the Agent, this must be upm-beacon
+- `HM_ACCESS_KEY` - the access key for Hybrid Manager
+- `HM_PROJECT_ID` - the Project ID in HM
+- `HM_CACERT` - the root CA cert of HM (currently required even if the root is already present in the system. Works with any cert provided from the chain.)
+- `HM_URL` - the beacon server URL including port
+- `EDB_REPO` - the name of the EDB repo matching your subscription: enterprise, standard or community360
+- `EDB_SUBSCRIPTION_TOKEN` - your token from enterprisedb.com/repos
+- `POD_SELECTOR` - set to k8s.enterprisedb.io/podRole=instance for EDB operators, or cnpg.io/podRole=instance for the community CNPG operator
+- `AGENT_VERSION` - set to v1.337.18 for HM 2026.2
+
+For example:
+
+```
+export TARGET_NS=cnpg
+export AGENT_NS=upm-beacon
+export HM_ACCESS_KEY=baak_1DMvAduJeigwIcCJyk2pc6BxllJxAbjFa5Nlc1c680lqSj0sj
+export HM_PROJECT_ID=prj_3AlRuOvlbUZafFY2
+export HM_CACERT=$(cat source/k8s-agent/ca.cert)
+export HM_URL=beacon-pm-test.edbhcp.com:9443
+export EDB_REPO=enterprise
+export POD_SELECTOR='k8s.enterprisedb.io/podRole=instance'
+export AGENT_VERSION=v1.337.18
+```

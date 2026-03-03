@@ -43,63 +43,72 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
 1. Download the PGAI agent chart from the EDB repository:
 
    ```bash
-   helm repo add enterprisedb-enterprise 'https://downloads.enterprisedb.com/<token>/enterprise/helm/charts/'
+   helm repo add enterprisedb-$EDB_REPO "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/helm/charts/"
    ```
 
 1. Create a custom-values.yaml file that includes your HM access credentials:
-
-   ```
-1. Enter your access key and the machine you created in the HM console:
-
-   ```
+   
+   ```yaml
+   # Required: Your HCP access credentials
    agentConfig:
-     accessKey: "baak_xxxxxxxxxxxxxxxxxxxxx"  
-     projectID: "your_project_id"              
+     accessKey: ${HM_ACCESS_KEY} 
+     projectID: ${HM_PROJECT_ID}
      beaconServer:
-       host: "your_hcp_instance.example.com"
+       host: ${HM_URL}
        plaintext: false
      metrics:
        push:
-         endpoint: "your_hcp_instance.example.com"
+         endpoint: ${HM_URL}
      webhook:
        enabled: true
-   ```
-  
-1. Configure the helm chart for EDB Postgres for Kubernetes:
-  
-   ```
-   podSelector: "k8s.enterprisedb.io/podRole=instance"
-   ```
-   
-   Or open-source CloudNativePG:
-   
-   ```
-   podSelector: "cnpg.io/podRole=instance"
-   ```
-
-1. Configure Docker registry credentials for EDB images:
-
-   ```
+       podSelector: ${POD_SELECTOR}
+   # Required: Docker registry credentials for EDB images
    image:
-     repository: <repo url>
-     tag: ""
+     repository: docker.enterprisedb.com/${EDB_REPO}/upm-beacon-agent
+     tag: ${AGENT_VERSION}
      imageCredentials:
-       registry: "repository-url"
-       username: "your_username"
-       password: "your_password"
-   ```
-
-1. Specify the OpenTelemetry Collector image repository and tag in the following configuration:
-
-   ```
+       registry: docker.enterprisedb.com
+       username: ${EDB_REPO}
+       password: ${EDB_SUBSCRIPTION_TOKEN}
+   
+   # OpenTelemetry Collector image
    otelImage:
-     repository: <repo url>
-     tag: ""
-   ```
+     repository: "docker.enterprisedb.com/${EDB_REPO}/upm-beacon-external-metrics-receiver"
+     tag: ${AGENT_VERSION}
+   
+   # Optional: Enable additional monitoring components
+   additionalCharts:
+     cert-manager:
+       install: false 
+     opentelemetry-collector:
+       install: true  # Enable for metrics collection
+     kube-state-metrics:
+       install: true  # Enable for Kubernetes state metrics
+     prometheus-node-exporter:
+       install: true  # Enable for node metrics (requires privileged access)
+   
+   # Required if opentelemetry-collector.install is true:
+   opentelemetry-collector:
+     image:
+       repository: "docker.enterprisedb.com/${EDB_REPO}/upm-beacon-external-metrics-receiver"
+       tag: ${AGENT_VERSION}
+   ```    
 
+  1. Apply the helm chart:
+
+     ```envsubst < source/k8s-agent/custom-values.yaml | helm upgrade --install beacon-agent-k8s \
+     enterprisedb-$EDB_REPO/beacon-agent-k8s \
+     --namespace "$AGENT_NS" \
+     -f -
+     ```
+  
+1. Copy the image pull secret the CNP cluster namespace
+
+   ```
+   kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
+   ```
 
 ### Installing the Helm chart with customized values file
-
 
 1. Install the Helm chart for standard Kubernetes (KIND, GKE, EKS, AKS):
    
@@ -120,16 +129,63 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
         --namespace upm-beacon \
         --set openshift.enabled=true \
         --values custom-values.yaml
-      
-      !!!important
-      Grant SCC if using opentelemetry-collector:
+      ```
 
-      ```
-      oc adm policy add-scc-to-user privileged \
-        system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
-      kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
-      ```
-      !!!
+    !!!important
+    Grant SCC if using opentelemetry-collector:
+
+    ```
+    oc adm policy add-scc-to-user privileged \
+      system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
+    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
+    ```
+    !!!
+
+
+## Patching CNP clusters to enable the agent sidecar
+
+This shows how to patch a single cluster, you can adapt this to patch many clusters:
+- Export an environment variable TARGET_NAME with the name of the CNP cluster or PGD group to which you wish to add the agent.
+- Export an environment variable TARGET_TYPE with a value of either cluster or pgdgroup as appropriate.
+
+  ```export TARGET_UID="$(kubectl get "${TARGET_TYPE}" "${TARGET_NAME}" -n "${TARGET_NS}" -o jsonpath='{.metadata.uid}')"
+  
+  PATCH_CONTENT=$(cat <<EOF
+  metadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+  spec:
+    imagePullSecrets:
+    - name: beacon-agent-pull-secret
+    inheritedMetadata:
+      labels:
+        k8s.enterprisedb.io/beacon: enabled
+        k8s.enterprisedb.io/beacon-project-id: "${HM_PROJECT_ID}"
+        k8s.enterprisedb.io/beacon-resource-id: "${TARGET_NAME}-${TARGET_UID}"
+  EOF
+  )
+  
+  kubectl patch pgdgroup "${TARGET_NAME}" -n "${TARGET_NS}" --type='merge' -p "$PATCH_CONTENT"
+  ```
+
+Restart the cluster to bring the agent online.
+
+**For CNPG clusters:**
+
+```
+kubectl cnp restart "$TARGET_NAME"
+```
+
+**For PGD4K clusters:**
+Restart each node in the group.
+
+ For example:
+ 
+ ```
+ kubectl cnp restart region-a-1
+ kubectl cnp restart region-a-2
+ kubectl cnp restart region-a-3
+ ```
 
 ## Creating and connecting external CNP clusters
 
@@ -241,22 +297,26 @@ You can create an external CNP cluster and connect it to an instance in HM.
    ```
 
 1. Get the image registry credentials on the CNP cluster
+
+   [Is this replaced by: `kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -`]: #
+
    ```
     export registry=docker.enterprisedb.com
     export username="${USERNAME}"
     export password="${PASSWORD}"
+
    ```
-   !!!note
-   These values below need to be used in the `custom-values.yaml` file while installing the PGAI agent describe in step 12 to get the image registry credentials:
+!!! note
+These values below need to be used in the `custom-values.yaml` file while installing the PGAI agent described in step 12 to get the image registry credentials:
+
     ```yaml
     imageCredentials:
       registry: "repository-url"
       username: "your-username"
       password: "your-password"
     ```
-
-   For customer deployment, you need to use the CloudSmith registry.
-   !!!
+For customer deployment, you need to use the CloudSmith registry.
+!!!
 
 1. [Install the PGAI Agent](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/mon_ext_k8s_clusters/#installing-the-helm-chart-with-customized-values-file) using customized values:
 
