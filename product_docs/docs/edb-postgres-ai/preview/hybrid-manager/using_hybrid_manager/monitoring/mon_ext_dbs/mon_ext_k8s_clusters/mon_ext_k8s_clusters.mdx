@@ -1,7 +1,7 @@
 ---
-title: PGAI agent Installation
-navTitle: Installing the PGAI agent
-description: Installing the PGAI agent 
+title: EDB Postgres AI agent installation
+navTitle: Installing the EDB Postgres AI agent
+description: Installing the EDB Postgres AI agent 
 deepToC: true
 ---
 
@@ -38,9 +38,9 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
 
 ### Installing Helm chart from repository with customized values file
 
-1. Create an [EDB subscription token](/postgres_distributed_for_kubernetes/latest/installation_upgrade/#obtaining-an-edb-subscription-token).
+1. Obtain an [EDB subscription token](/postgres_distributed_for_kubernetes/latest/installation_upgrade/#obtaining-an-edb-subscription-token).
 
-1. Download the PGAI agent chart from the EDB repository:
+1. Download the EDB Postgres AI agent chart from the EDB repository:
 
    ```bash
    helm repo add enterprisedb-$EDB_REPO "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/helm/charts/"
@@ -49,7 +49,7 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
 1. Create a custom-values.yaml file that includes your HM access credentials:
    
    ```yaml
-   # Required: Your HCP access credentials
+   # Required: Your HM access credentials
    agentConfig:
      accessKey: ${HM_ACCESS_KEY} 
      projectID: ${HM_PROJECT_ID}
@@ -108,7 +108,7 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
    kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
    ```
 
-### Installing the Helm chart with customized values file
+### Installing the Helm chart with a customized values file
 
 1. Install the Helm chart for standard Kubernetes (KIND, GKE, EKS, AKS):
    
@@ -120,7 +120,7 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
         --values custom-values.yaml
       ```
 
-1. Deploy the PGAI agent o cluster B using the OpenShift (RHOS) configuration:
+   Alternatively, install the Helm chart with a customized values file (RHOS):
    
       ```
       helm upgrade --install beacon-agent-k8s \
@@ -131,16 +131,15 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
         --values custom-values.yaml
       ```
 
-    !!!important
-    Grant SCC if using opentelemetry-collector:
+  !!!important
+  Grant SCC if using opentelemetry-collector:
+  ```
+  oc adm policy add-scc-to-user privileged \
+    system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
+  kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
+  ```
 
-    ```
-    oc adm policy add-scc-to-user privileged \
-      system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
-    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
-    ```
-    !!!
-
+  !!!
 
 ## Patching CNP clusters to enable the agent sidecar
 
@@ -187,386 +186,7 @@ Restart each node in the group.
  kubectl cnp restart region-a-3
  ```
 
-## Creating and connecting external CNP clusters
-
-You can create an external CNP cluster and connect it to an instance in HM.
-
-### Requirements
-
-- HM cluster: Make sure your HM instance is active and the PGAI agent server is running and reachable.
-- External CNP cluster: Confirm that the target Kubernetes cluster has the CNP or CNPG operator pre-installed.
-
-1. Get your external Kubernetes cluster ready by deploying the CNP or CNPG operator.
-
-   Create a namespace in the CNP cluster if it doesn't exist yet:
-   
-   ```
-   export cluster_ns="test-cnp"
-   kubectl create ns "${cluster_ns}"
-   ```
-   See [Install the appropriate PostgreSQL operator for operator installation](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/Installation%20requirements/#install-the-pg4k-pgd-operator).
-
-   !!!note
-   For Openshift, use the operator catalogue to install the PostgreSQL operator.
-   !!!
-
-1. Get your access key for the PGAI agent
-   In the HM console, create a machine user and assign the Estate Ingest Role to the machine user you created.
-   
-   !!!note
-   Ensure that the access key's respective machine user is assigned the Estate Ingest Role. This is required for both the Beacon Agent and the external CNP cluster.
-   !!!
-
-   Set the environment variable in the CNP cluster:
-
-   ```
-   export access_key_agent="<ACCESS_KEY_AGENT>"
-   export project_agent="<PROJECT_ID_AGENT>"
-   ```
-
-1. Get your access key for external PGDGroups
-   Create another machine user for the external CNP cluster and assign the Estate Ingest Role to the machine user you created.
-
-   !!!note 
-   Ensure that the access key's respective machine user is assigned the Estate Ingest Role. This is required for both the Beacon Agent and the external CNP cluster.
-   !!!
-
-   Set the environment variables for the PGDGroups :
-
-   ```
-   export access_key_pgdgroup="<ACCESS_KEY_PGDGROUP>"
-   export project_pgdgroup="<PROJECT_ID_PGDGROUP>"
-   ```
-
-1. Create a secret for external PGDGroups
-
-  With the access key you created in HM, create a secret for the PGDGroup in the CNP cluster:
-
-   ```
-   kubectl create secret generic beacon-access-key \
-       --from-literal=access-key="${access_key_cluster}" -n "${pgdgroup_ns}"
-   ```
-
-1. Extract and configure the TLS certificates from the HM cluster
-
-   ```
-   kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d > temp.crt
-   ```
-
-1. Transfer the temp.crt certificate the CNP cluster
-
-1. On the CNP cluster for the agent (used in helm install) run: 
- 
- [Need more clarification on this]: #
-
-   ```
-   export cacert=$(cat temp.crt)
-   
-1. On Cluster CNP: For the cluster
-   [Ask for clarification on this]: #
-
-   ```
-   kubectl create secret generic beacon-server-ca \
-       --from-literal=ca.crt="$(cat temp.crt)" -n "${pgdgroup_ns}"
-   ```
-
-1. Get the server host and port from the HM cluster
-
-   ```
-   export server_host=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[0].hosts[0]')
-   export server_port=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[0].port.number')
-   export server_url="${server_host}:${server_port}"
-   ```
-
-   !!!note
-   The value echo $server_url will be used in the custom-values.yaml file while installing the PGAI agent as described in step 12:
-   
-   ```
-   beaconServer:
-     host: "your-hcp-instance.example.com"
-   metrics:
-     push:
-       endpoint: "your-hcp-instance.example.com"
-   ```
-   !!!
-
-1. Set the server URL on the CNP cluster:
-
-   ```
-   export server_url="<server_url>"  #Output of previous step
-   ```
-
-1. Get the image registry credentials on the CNP cluster
-
-   [Is this replaced by: `kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -`]: #
-
-   ```
-    export registry=docker.enterprisedb.com
-    export username="${USERNAME}"
-    export password="${PASSWORD}"
-
-   ```
-!!! note
-These values below need to be used in the `custom-values.yaml` file while installing the PGAI agent described in step 12 to get the image registry credentials:
-
-    ```yaml
-    imageCredentials:
-      registry: "repository-url"
-      username: "your-username"
-      password: "your-password"
-    ```
-For customer deployment, you need to use the CloudSmith registry.
-!!!
-
-1. [Install the PGAI Agent](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/mon_ext_k8s_clusters/#installing-the-helm-chart-with-customized-values-file) using customized values:
-
-   ```
-   tar -xzf beacon-agent-k8s-<version>.tg
-   cd beacon-agent-k8s
-   ```
-   
-   - For CNP or PG4K clusters, use: `--set agentConfig.webhook.podSelector="k8s.enterprisedb.io/podRole=instance"`
-   - For CNPG clusters, use: `--set agentConfig.webhook.podSelector="cnpg.io/podRole=instance"`
-   
-  !!!important 
-  This step applies for both CNP (CloudNativePG) and PGDGroup use cases. Make sure to set the `podSelector` value in the configuration file according to the operator you are using (CNP or PGDGroup).
-  Run this step only while following the guide for creating an external CNP (CloudNativePG) or PGDGroup cluster managed in HM.
-  !!!
-
-1. [Install the PGAI Agent](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/mon_ext_k8s_clusters/#installing-the-helm-chart-with-customized-values-file) using customized values.
-
-    !!!note
-    For PGDGroup, use: `--set agentConfig.webhook.podSelector="k8s.enterprisedb.io/podRole=instance"`
-    !!!
-
-### Creating a PGDGroup by enabling the beacon selector
-
-!!!important
-Make sure these secrets are present in the PGDGroup namespace. If not, please create them as mentioned in the previous steps. The secrets are required for the PGDGroup to communicate with the beacon   server and for pulling the agent image.
-
-```
-kubectl get secret -n "${pgdgroup_ns}"
-NAME                             TYPE                             DATA   AGE
-beacon-access-key                Opaque                           1      79m
-beacon-agent-pull-secret         kubernetes.io/dockerconfigjson   1      110m
-beacon-server-ca                 Opaque                           1      115m
-```
-
-Then add/patch the PGDGroup to use beacon-agent-pull-secret to pull images from repo.
-
-```
-export cluster_name=cluster-example-test
-```
-
-!!!
-
-1. Configure the self-signed certificate authority (CA) and required issuers for the Postgres Distributed (PGD) cluster:
-  
-   ```
-   kubectl apply -f -n ${pgdgroup_ns} - <<EOF
-   apiVersion: cert-manager.io/v1
-   kind: Issuer
-   metadata:
-     name: selfsigned-issuer
-   spec:
-     selfSigned: {}
-   ---
-   apiVersion: cert-manager.io/v1
-   kind: Certificate
-   metadata:
-     name: server-ca
-   spec:
-     isCA: true
-     commonName: my-selfsigned-server-ca
-     secretName: server-ca-key-pair
-     privateKey:
-       algorithm: ECDSA
-       size: 256
-     issuerRef:
-       name: selfsigned-issuer
-       kind: Issuer
-       group: cert-manager.io
-   ---
-   apiVersion: cert-manager.io/v1
-   kind: Issuer
-   metadata:
-     name: server-ca-issuer
-   spec:
-     ca:
-       secretName: server-ca-key-pair
-   ---
-   apiVersion: cert-manager.io/v1
-   kind: Certificate
-   metadata:
-     name: client-ca
-   spec:
-     isCA: true
-     commonName: my-selfsigned-client-ca
-     secretName: client-ca-key-pair
-     privateKey:
-       algorithm: ECDSA
-       size: 256
-     issuerRef:
-       name: selfsigned-issuer
-       kind: Issuer
-       group: cert-manager.io
-   ---
-   apiVersion: cert-manager.io/v1
-   kind: Issuer
-   metadata:
-     name: client-ca-issuer
-   spec:
-     ca:
-       secretName: client-ca-key-pair
-   EOF
-   ```
-
-1. Define your database topology,including instances, proxies, and TLS connectivity settings—within this primary manifest:
-   ```
-   kubectl apply -f - <<EOF
-   apiVersion: pgd.k8s.enterprisedb.io/v1beta1
-   kind: PGDGroup
-   metadata:
-     namespace: ${pgdgroup_ns}
-     name: ${pgdgroup_name}
-     labels:
-       k8s.enterprisedb.io/beacon: enabled
-   spec:
-     inheritedMetadata:
-       labels:
-         k8s.enterprisedb.io/beacon: enabled
-     instances: 2
-     proxyInstances: 2
-     witnessInstances: 1
-     imageName: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:17.6-pgd590-ubi9
-     imagePullSecrets:
-     - name: registry-pullsecret
-     pgd:
-       parentGroup:
-         name: world
-         create: true
-       globalRouting: true
-     cnp:
-       initDBOptions:
-         encoding: UTF8
-         walSegmentSize: 64
-       storage:
-         size: 2Gi
-       postgresql:
-         parameters:
-           "bdr.global_lock_timeout": "20min"
-           "min_wal_size": "200"
-           "pgaudit.log": "all, -misc"
-           "pgaudit.log_catalog": "off"
-           "pgaudit.log_parameter": "on"
-           "pgaudit.log_relation": "on"
-           # enable more logs for postgres
-           "bdr.debug_level": log
-           "log_min_messages": debug5
-           "log_statement": all
-           "log_connections": "on"
-           "log_disconnections": "on"
-           "log_checkpoints": "on"
-       env:
-         - name: AWS_REQUEST_CHECKSUM_CALCULATION
-           value: when_required
-         - name: AWS_RESPONSE_CHECKSUM_VALIDATION
-           value: when_required
-     witness:
-       initDBOptions:
-         encoding: UTF8
-         walSegmentSize: 16
-       storage:
-         size: 1Gi
-       postgresql:
-         parameters:
-           "bdr.global_lock_timeout": "20min"
-           "min_wal_size": "100"
-     pgdProxy:
-       imageName: docker.enterprisedb.com/k8s/edb-pgd-proxy:5.9.0-ubi9
-     connectivity:
-       dns:
-         additional:
-           - domain: alternate.domain
-           - domain: my.domain
-             hostSuffix: -dc1
-       tls:
-         mode: verify-ca
-         clientCert:
-           caCertSecret: client-ca-key-pair
-           certManager:
-             spec:
-               issuerRef:
-                 name: client-ca-issuer
-                 kind: Issuer
-                 group: cert-manager.io
-         serverCert:
-           caCertSecret: server-ca-key-pair
-           certManager:
-             spec:
-               issuerRef:
-                 name: server-ca-issuer
-                 kind: Issuer
-                 group: cert-manager.io
-   EOF
-   ```
-   
-After creating the cluster, add the other two required labels to the inheritedMetadata which are required metrics collection.
-
-### On Cluster B
-
-Get the PGDGroup UID for the beacon-resource-id:
-
-   ```
-   export pgdgroup_uid="$(kubectl get pgdgroup external-pgd-group -n test-pgd -o jsonpath='{.metadata.uid}')"
-   
-   
-   kubectl patch pgdgroup external-pgd-group -n test-pgd --type='merge' -p='
-   spec:
-     inheritedMetadata:
-       labels:
-         k8s.enterprisedb.io/beacon: enabled
-         k8s.enterprisedb.io/beacon-project-id: "'"${project_pgdgroup}"'"
-         k8s.enterprisedb.io/beacon-resource-id: "'"${pgdgroup_name}-${pgdgroup_uid}"'"
-   '
-   ```
-
-### Label Descriptions:
-   
-   These labels are essential for:
-   
-   - k8s.enterprisedb.io/beacon: Enables beacon monitoring
-   - k8s.enterprisedb.io/beacon-project-id: Associates metrics with the correct HCP project
-   - k8s.enterprisedb.io/beacon-resource-id: Provides unique cluster identification using Kubernetes UID
-   - All three labels will be inherited by pods/PVCs and used for metric labeling
-
-### Verification in the HM console
-
-Log in to the HM console and select the **Estate** tab.
-
-The external PGDGroup should now appear with the collected metrics.
-
-## Configuration
-
-Core Configuration Options
-
-| Parameter                                             | Description                              | Default            | Required              |
-|-------------------------------------------------------|------------------------------------------|--------------------|-----------------------|
-| agentConfig.accessKey                                 | HCP Machine User access key              | `""`               | Yes                   |
-| agentConfig.projectID                                 | HCP Project ID                           | `""`               | Yes                   |
-| agentConfig.beaconServer.host                         | HCP server hostname                      | `""`               | Yes                   |
-| agentConfig.locationID                                | Agent location identifier                | `"standalone-k8s"` | Yes                   |
-| namespace                                             | Kubernetes namespace                     | `"upm-beacon"`     | No                    |
-| **image.repository**                                  | Beacon agent image                       | `""`               | Yes                   |
-| **image.tag**                                         | Beacon agent version                     | `""`               | Yes                   |
-| **otelImage.repository**                              | OTEL collector image                     | `""`               | Yes (if OTEL enabled) |
-| **otelImage.tag**                                     | OTEL collector version                   | `""`               | Yes (if OTEL enabled) |
-| **additionalCharts.cert-manager.install**             | Enable cert-manager subchart             | `false`            | No                    |
-| **additionalCharts.opentelemetry-collector.install**  | Enable opentelemetry-collector subchart  | `false`            | No                    |
-| **additionalCharts.kube-state-metrics.install**       | Enable kube-state-metrics subchart       | `false`            | No                    |
-| **additionalCharts.prometheus-node-exporter.install** | Enable prometheus-node-exporter subchart | `false`            | No                    |
-| **opentelemetry-collector.image.repository**          | OpenTelemetry collector image repository | `""`               | Yes (if OTEL enabled) |
-| **opentelemetry-collector.image.tag**                 | OpenTelemetry collector image tag        | `""`               | Yes (if OTEL enabled) |
+## Security context configuration for external Kubernetes clusters
 
 ### Security context configuration for standard Kubernetes clusters
 
