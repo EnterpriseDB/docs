@@ -7,6 +7,11 @@ deepToC: true
 
 ## Installation Methods: Environment-Specific Configuration
 
+!!!important
+Set the [environment values](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/installation_requirements) before proceeding with the installation of the EDB Postgres AI agent for external Kubernetes cluster.
+!!!
+
+
 This chart is designed to work across different Kubernetes platforms (including OpenShift) with a unified configuration:
 
 | Environment         | Configuration                                   | OpenShift Flag                           |
@@ -82,55 +87,48 @@ Enabling the `openshift.enabled=true` flag is only required when using deprecate
        tag: ${AGENT_VERSION}
    ```    
 
-   For other configuration parameters and options, see the [Configuration reference](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/configuration_reference/).
+   For other configuration parameters and options, see the [Configuration reference](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/configuration_reference/).
 
 1. Apply the helm chart:
 
+   - For standard Kubernetes (GKE, EKS, AKS, KIND):
+   
    ```
-   envsubst < custom-values.yaml | helm upgrade --install beacon-agent-k8s \
-     enterprisedb-$EDB_REPO/beacon-agent-k8s \
-     --namespace "$AGENT_NS" \
-     -f -
+   helm upgrade --install beacon-agent-k8s \
+    enterprisedb-enterprise/beacon-agent-k8s \
+    --create-namespace \
+    --namespace upm-beacon \
+    --values custom-values.yaml
    ```
 
-1. Copy the image pull secret the CNP cluster namespace
+   - For OpenShift clusters:
+   Add the `--set openshift.enabled=true` flag:
+   
+   ```shell
+   helm upgrade --install beacon-agent-k8s \
+    enterprisedb-enterprise/beacon-agent-k8s \
+    --create-namespace \
+    --namespace upm-beacon \
+    --set openshift.enabled=true \
+    --values custom-values.yaml
+   ```
+
+   !!!important
+   Grant SCC if using opentelemetry-collector:
+
+   ```
+   oc adm policy add-scc-to-user privileged \
+     system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
+   kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
+   ```
+
+   !!!
+
+1. Copy the image pull secret the CNP cluster namespace:
 
    ```
    kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
    ```
-
-## Installing the Helm chart with a customized values file
-
-### For standard Kubernetes (KIND, GKE, EKS, AKS)
-   
-```
-helm upgrade --install beacon-agent-k8s \
-  enterprisedb-enterprise/beacon-agent-k8s \
-  --create-namespace \
-  --namespace upm-beacon \
-  --values custom-values.yaml
-```
-
-### For OpenShift Kubernetes clusters
-   
-```
-helm upgrade --install beacon-agent-k8s \
-  enterprisedb-enterprise/beacon-agent-k8s \
-  --create-namespace \
-  --namespace upm-beacon \
-  --set openshift.enabled=true \
-  --values custom-values.yaml
-```
-
-!!!important
-Grant SCC if using opentelemetry-collector:
-```
-oc adm policy add-scc-to-user privileged \
-  system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
-kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
-```
-
-!!!
 
 ## Patching clusters to enable the agent sidecar
 
