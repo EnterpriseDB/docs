@@ -1,0 +1,113 @@
+---
+title: Preparing Oracle source databases (for schema and data migration)
+navTitle: Preparing Oracle
+---
+
+Before you perform a migration of an Oracle source using Hybrid Manager (HM), you must configure a dedicated database user and alter several database configurations. These steps ensure that all migration components, including the EDB Postgres AI agent, the DMS agent, and the Data Migration Service, can establish a stable connection, discover your schemas, and perform data extraction operations.
+
+## Prerequisites
+
+- Install Oracle's SQL*Plus utility on the auxiliary machine you're using to connect to the Oracle database.
+- Collect the names of the schemas you want to migrate.
+
+## Create a migration user
+
+You need a dedicated user that both the EDB Postgres AI agent (packed as `beacon-agent`) and the DMS agent (packaged as `cdcreader`) can use to access and perform read operations on the source database. 
+
+Create the user following your organization's usual provisioning process, and ensure the user receives the recommended privileges. Alternatively, you can use an existing user if its current permissions aren't overly broad.
+
+Because user management is different for modern multi-tenant CDB/PDB than for legacy non-CDB databases (Oracle 12 and earlier), the user creation process will depend on the Oracle database type.
+
+1.  Log in to your Oracle database using the SYS account with SYSDBA privileges:
+
+    ```shell
+    sqlplus sys/<PASSWD>//<HOST>:<PORT>/<DB_IDENTIFIER> as sysdba
+    ```
+
+    Where: 
+    `sys` is the Oracle user with sysdba privileges.
+    `<PASSWD>` is the password for the sys user.
+    `<HOST>` is the hostname of your Oracle database.
+    `<PORT>` is the port of your Oracle database.
+    `<DB_IDENTIFIER>` is, for CDB/PDB, the container database name (for example, CDB1). For non-CDB, this is either the service name (recommended) or SID (for example, ORCL).
+
+1.  Create a migration user:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+    
+    You can't use a common user (C##) for migration tasks. Switch to the Pluggable Database where your data resides, so you can create a local user.
+
+    !!!tip
+    If you are unsure if you are in a PDB or a CDB, run `SELECT name, open_mode FROM v$pdbs;`. If this returns rows, you are in a multitenant environment and should ensure your migration user is created within the PDB containing your data.
+    !!!
+
+    ```sql
+    ALTER SESSION SET CONTAINER = <PDB_NAME>
+    ```
+
+    Create a user you will use for all migration processes: 
+
+    ```sql
+    CREATE USER MIGRATOR_USER IDENTIFIED BY "<MIG_PASSWD>";
+    GRANT CONNECT TO MIGRATOR_USER;
+    ```
+
+    Where: 
+    `MIGRATOR_USER` is the dedicated user for migrations.
+    `<MIG_PASSWD>` is the password for the migration user.
+
+    </Tab>
+    
+    <Tab title="Non-CDB">
+    
+    Create a user you will use for all migration processes: 
+
+    ```sql
+    CREATE USER MIGRATOR_USER IDENTIFIED BY "<MIG_PASSWD>";
+    GRANT CONNECT TO MIGRATOR_USER;
+    ```
+
+    Where: 
+    `MIGRATOR_USER` is the dedicated user for migrations.
+    `<MIG_PASSWD>` is the password for the migration user.
+    
+    </Tab>
+    </TabContainer>
+
+1.  Give the new user the grants it needs to see the metadata (discovery), read the table rows (migration), and handle specialized tasks like large objects or sequence values.
+
+    ```sql
+    -- Allows the user to log in and perform basic database operations.
+    GRANT CONNECT, RESOURCE TO MIGRATOR_USER;
+    
+    -- Required so HM can see the list of schemas, tables, and constraints.
+    GRANT SELECT ANY DICTIONARY TO MIGRATOR_USER;
+    GRANT SELECT_CATALOG_ROLE TO MIGRATOR_USER;
+    
+    -- Allows the EDB Postgres AI agent to read the actual rows from the source tables.
+    GRANT SELECT ANY TABLE TO MIGRATOR_USER;
+
+    -- The DMS agent creates temporary "helper" tables to track migration progress 
+    -- or handle Large Objects (LOBs).
+    GRANT CREATE TABLE TO MIGRATOR_USER;
+    ALTER USER MIGRATOR_USER QUOTA UNLIMITED ON USERS;
+    
+    -- Allows the EDB Postgres AI agent to execute internal Oracle functions to calculate 
+    -- object sizes or extract DDL.
+    GRANT EXECUTE ANY PROCEDURE TO MIGRATOR_USER;
+
+    -- The EDB Postgres AI agent requires explicit access to these 
+    -- specific system views to identify the Oracle version and features.
+    GRANT SELECT ON V_$VERSION TO MIGRATOR_USER;
+    GRANT SELECT ON V_$INSTANCE TO MIGRATOR_USER;
+    GRANT SELECT ON V_$LICENSE TO MIGRATOR_USER;
+    ```
+
+1.  
+
+
+
+!!!note Service names
+When configuring the EDB Postgres AI and DMS agents, you must use the service name of the PDB (e.g., `ORCLPDB1`) rather than the SID of the container. A common cause of "Schema Not Found" errors is connecting to the CDB root instead of the specific Pluggable Database where the grants were applied.
+!!!
