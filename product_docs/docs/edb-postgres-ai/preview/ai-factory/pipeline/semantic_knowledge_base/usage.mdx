@@ -1,0 +1,312 @@
+---
+title: "Semantic knowledge base usage"
+navTitle: "Usage"
+deepToC: true
+description: "Creating, managing, and searching semantic knowledge bases."
+---
+
+## Creating a semantic knowledge base
+
+Use `aidb.create_semantic_kb()` to create a semantic knowledge base:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    name,              -- TEXT: unique identifier
+    model,             -- TEXT: embedding model name (must exist)
+    schemas,           -- TEXT[]: PostgreSQL schemas to monitor
+    auto_processing,   -- TEXT: 'Live', 'Background', or 'Disabled'
+    bypass_triggers,   -- BOOLEAN: skip DDL triggers (default: FALSE)
+    vector_index       -- JSONB: index configuration (default: NULL)
+);
+```
+
+### Example
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'analytics_kb',
+    'my_embedding_model',
+    ARRAY['public', 'sales', 'analytics'],
+    'Background',
+    FALSE,
+    aidb.vector_index_hnsw_config(m => 16, ef_construction => 64)
+);
+```
+
+## Auto-processing modes
+
+Auto-processing determines how the knowledge base stays synchronized with schema changes. Choosing the right mode depends on your environment and requirements.
+
+### Live mode
+
+```sql
+SELECT aidb.create_semantic_kb('my_kb', 'my_model', ARRAY['public'], 'Live');
+```
+
+DDL event triggers fire immediately when schema changes occur. The knowledge base updates synchronously within the same transaction.
+
+**When to use**:
+- Development environments where you want instant searchability after schema changes
+- Small schemas where vectorization overhead is negligible
+- Scenarios requiring guaranteed consistency between schema and knowledge base
+
+**Trade-offs**:
+- Adds latency to DDL operations (each change triggers vectorization)
+- May slow down bulk schema migrations
+
+### Background mode
+
+```sql
+SELECT aidb.create_semantic_kb('my_kb', 'my_model', ARRAY['public'], 'Background');
+```
+
+DDL triggers log changes to a state table. A background worker periodically processes the queue and updates the knowledge base asynchronously.
+
+**When to use**:
+- Production environments where schema change performance matters
+- Large schemas with frequent changes
+- Bulk migrations or schema-heavy deployments
+- When slight staleness (seconds to minutes) is acceptable
+
+**Trade-offs**:
+- Knowledge base may lag behind actual schema by the sync interval
+- Requires background worker to be running
+
+#### Bypass triggers option
+
+```sql
+SELECT aidb.create_semantic_kb('my_kb', 'my_model', ARRAY['public'], 'Background', TRUE);
+```
+
+When `bypass_triggers` is `TRUE` for background mode semantic knowledge bases, no DDL event triggers are installed. Instead, background mode periodically diffs system catalogs against the knowledge base to detect changes.
+
+**When to use**:
+- Environments where event triggers are prohibited by policy
+- Managed database services that restrict trigger creation
+- Databases with existing trigger conflicts
+
+### Disabled mode
+
+```sql
+SELECT aidb.create_semantic_kb('my_kb', 'my_model', ARRAY['public'], 'Disabled');
+```
+
+No triggers are installed. The knowledge base only updates when you explicitly call `refresh_semantic_kb()`.
+
+**When to use**:
+- Static reference schemas that rarely change
+- Environments where DDL triggers are restricted or prohibited
+- When you want explicit control over when re-indexing occurs
+- Initial bulk loading before switching to Live or Background mode
+
+**Trade-offs**:
+- Knowledge base becomes stale until manually refreshed
+- Requires operational discipline to keep synchronized
+
+## Search functions
+
+The search functions enable different types of schema discovery. Each is optimized for specific use cases.
+
+### get_metadata &mdash; general purpose search
+
+Returns all indexed entities (tables, views, columns) matching your query. This is the most flexible search function.
+
+```sql
+SELECT schema_name, relation_name, column_name, entity_type, definition, similarity
+FROM aidb.get_metadata(
+    'my_kb',           -- knowledge base name
+    'user profiles',   -- natural language query
+    0.8,               -- minimum similarity threshold (0.0-1.0)
+    10,                -- maximum results
+    0                  -- offset for pagination
+);
+```
+
+**Use cases**:
+- Exploring an unfamiliar schema ("what tables relate to billing?")
+- Finding all schema elements matching a concept
+- Text-to-SQL context retrieval
+
+**Returned columns**:
+
+| Column          | Description                                                             |
+| --------------- | ----------------------------------------------------------------------- |
+| `schema_name`   | PostgreSQL schema containing the entity                                 |
+| `relation_name` | Table or view name                                                      |
+| `column_name`   | Column name (NULL for tables/views)                                     |
+| `entity_type`   | `Table`, `View`, `Column`, or `Alias`                                   |
+| `definition`    | Full DDL definition (e.g., `price numeric(10,2) NOT NULL DEFAULT 0.00`) |
+| `comment`       | Database comment if present                                             |
+| `similarity`    | Cosine similarity score (higher = more relevant)                        |
+
+### get_column_definitions &mdash; column-focused search
+
+Returns only column definitions. Useful when you specifically need field-level information.
+
+```sql
+SELECT schema_name, relation_name, column_name, definition, similarity
+FROM aidb.get_column_definitions(
+    'my_kb',
+    'payment method',
+    0.8,
+    10,
+    0
+);
+```
+
+**Use cases**:
+- Finding columns across tables ("which tables have email fields?")
+- Identifying data type patterns ("where are timestamps stored?")
+- Discovering redundant or related columns across a schema
+
+### get_entity_definitions &mdash; table/view search
+
+Returns table and view definitions, filtered by entity type. Useful for structural discovery.
+
+```sql
+SELECT schema_name, relation_name, definition, similarity
+FROM aidb.get_entity_definitions(
+    'my_kb',
+    'transaction history',
+    0.8,
+    ARRAY['Table', 'View'],  -- filter to specific types
+    10,
+    0
+);
+```
+
+**Use cases**:
+- Finding tables for a business concept ("customer data")
+- Discovering views that aggregate specific domains
+- Understanding schema organization
+
+Valid entity types: `'Table'`, `'View'`, `'Column'`, `'Alias'`
+
+### search_by_comment &mdash; documentation search
+
+Searches based on table/column `COMMENT` values rather than definitions. Useful when your schema has rich documentation.
+
+```sql
+SELECT schema_name, relation_name, column_name, comment, similarity
+FROM aidb.search_by_comment(
+    'my_kb',
+    'stores customer preferences',
+    0.7,
+    10,
+    0
+);
+```
+
+**Use cases**:
+- Schemas with descriptive comments explaining business logic
+- Finding columns by their documented purpose rather than technical name
+- Leveraging existing schema documentation
+
+### Tuning similarity thresholds
+
+The `min_similarity` parameter filters results by relevance:
+
+| Threshold | Behavior |
+|-----------|----------|
+| 0.9+      | Very strict &mdash; only near-exact semantic matches |
+| 0.8       | Good default &mdash; relevant results with low noise |
+| 0.7       | Broader &mdash; useful for exploration or uncommon terms |
+| 0.5-0.6   | Very broad &mdash; may include tangentially related results |
+
+Start with 0.8 and adjust based on result quality.
+
+## Managing semantic knowledge bases
+
+### Listing knowledge bases
+
+```sql
+SELECT * FROM aidb.list_semantic_kbs();
+```
+
+Returns: `name`, `model_name`, `schemas`, `auto_processing`, `bypass_triggers`, `created_at`
+
+### Refreshing a knowledge base
+
+Re-crawls all monitored schemas and rebuilds the metadata index. Useful after bulk schema changes or when using Disabled mode.
+
+```sql
+SELECT aidb.refresh_semantic_kb('my_kb');
+```
+
+### Updating auto-processing mode
+
+Switch between processing modes without recreating the knowledge base:
+
+```sql
+SELECT aidb.update_semantic_kb_auto_processing('my_kb', 'Background');
+```
+
+### Viewing statistics
+
+```sql
+SELECT * FROM aidb.semantic_kb_stats('my_kb');
+```
+
+Returns:
+
+| Column               | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `total_count`        | Total indexed entities                               |
+| `tables_count`       | Number of tables                                     |
+| `views_count`        | Number of views                                      |
+| `columns_count`      | Number of columns                                    |
+| `pending_ddl_events` | Queued changes awaiting processing (Background mode) |
+
+### Deleting a knowledge base
+
+```sql
+SELECT aidb.delete_semantic_kb('my_kb');
+```
+
+## Vector index configuration
+
+Vector indexes accelerate similarity search for large schemas. Configure during knowledge base creation using helper functions.
+
+### HNSW index (default)
+
+Hierarchical Navigable Small World &mdash; fast approximate nearest neighbor search.
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'my_kb', 'my_embedding_model', ARRAY['public'], 'Live', FALSE,
+    aidb.vector_index_hnsw_config(m => 16, ef_construction => 64)
+);
+```
+
+| Parameter         | Description                                                     | Default |
+| ----------------- | --------------------------------------------------------------- | ------- |
+| `m`               | Max connections per node (higher = more accurate, more memory)  | 16      |
+| `ef_construction` | Build-time search depth (higher = better quality, slower build) | 64      |
+| `ef_search`       | Query-time search depth (higher = more accurate, slower query)  | &mdash; |
+
+### IVFFlat index
+
+Inverted file index &mdash; good for very large datasets with acceptable accuracy trade-offs.
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'my_kb', 'my_embedding_model', ARRAY['public'], 'Live', FALSE,
+    aidb.vector_index_ivfflat_config(lists => 100)
+);
+```
+
+| Parameter | Description                                                            |
+| --------- | ---------------------------------------------------------------------- |
+| `lists`   | Number of clusters (more = faster search, requires more training data) |
+| `probes`  | Clusters to search at query time (higher = more accurate, slower)      |
+
+### Disabling indexing
+
+For small schemas where sequential scan is fast enough:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'my_kb', 'my_embedding_model', ARRAY['public'], 'Live', FALSE,
+    aidb.vector_index_disabled_config()
+);
+```

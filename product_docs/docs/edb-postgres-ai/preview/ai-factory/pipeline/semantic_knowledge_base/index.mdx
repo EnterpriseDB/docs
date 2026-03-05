@@ -1,0 +1,108 @@
+---
+title: "Semantic knowledge base"
+navTitle: "Semantic knowledge base"
+deepToC: true
+description: "A vector-searchable representation of your database schema for natural language discovery."
+navigation:
+- usage
+- semantic_aliases
+---
+
+The semantic knowledge base feature provides a vector-searchable representation of your database schema. It enables natural language discovery of tables, views, columns, and comments. Instead of manually searching through schema definitions, you can ask questions like "find columns related to customer payments."
+
+## How it works
+
+When you create a semantic knowledge base:
+
+1. **Schema crawling**: The system extracts metadata from PostgreSQL system catalogs, including table definitions, column types, constraints, defaults, and comments.
+
+2. **Vectorization**: Each definition is converted into a vector embedding using your specified model. These vectors capture semantic meaning, so `customer_email` and `user_email_address` have similar vectors.
+
+3. **Schema monitoring**: Event triggers or background jobs watch for schema changes. When someone adds a column, creates a table, or updates a comment, the knowledge base updates automatically.
+
+4. **Similarity search**: When you query "payment methods", the system vectorizes your query and finds schema elements with similar vectors, returning results ranked by relevance.
+
+## Prerequisites
+
+Before creating a semantic knowledge base, register an embedding model to convert schema definitions into vectors for similarity search.
+
+```sql
+SELECT aidb.create_model(
+    'my_embedding_model',
+    'openai_embeddings',
+    aidb.embeddings_config(
+        model => 'text-embedding-3-small',
+        api_key => 'sk-...'
+    )
+);
+```
+
+## Quick start
+
+```sql
+-- Create a knowledge base monitoring the public schema
+SELECT aidb.create_semantic_kb(
+    'my_kb',
+    'my_embedding_model',
+    ARRAY['public'],
+    'Live'
+);
+
+-- Search for tables/columns semantically
+SELECT schema_name, relation_name, column_name, definition, similarity
+FROM aidb.get_metadata('my_kb', 'customer orders', 0.8, 10, 0);
+```
+
+## Use cases
+
+### Text-to-SQL context retrieval
+
+An AI agent translating natural language to SQL can retrieve relevant schema context:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'sales_kb', 'my_embedding_model',
+    ARRAY['sales', 'analytics'], 'Background', FALSE, NULL
+);
+
+-- Agent retrieves context for query generation
+SELECT definition FROM aidb.get_metadata('sales_kb', 'sales by region', 0.75, 5, 0);
+```
+
+### Development environment
+
+Get immediate searchability after schema changes:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'dev_kb', 'my_embedding_model',
+    ARRAY['public'], 'Live', FALSE, NULL
+);
+```
+
+### Production environment
+
+Use asynchronous processing to avoid DDL latency:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'prod_kb', 'my_embedding_model',
+    ARRAY['public', 'analytics'], 'Background', FALSE, NULL
+);
+```
+
+### Restricted trigger environments
+
+When DDL triggers are prohibited:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'restricted_kb', 'my_embedding_model',
+    ARRAY['public'], 'Background', TRUE, NULL  -- bypass_triggers = TRUE
+);
+```
+
+## Next steps
+
+- [Usage](usage) &mdash; Learn how to create, manage, and search semantic knowledge bases
+- [Semantic aliases](semantic_aliases) &mdash; Create reusable, parameterized SQL queries with semantic descriptions
