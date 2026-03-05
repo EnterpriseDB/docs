@@ -37,6 +37,8 @@ __OUTPUT__
 - `max_length` (optional): The upper bound for chunk size, in characters. If specified, the function will try to generate chunks close to `desired_length` but may extend up to `max_length` to preserve larger semantic units (like full sentences or paragraphs). Chunks will exceed `desired_length` only when it's necessary to avoid cutting across meaningful boundaries.
   - Specifying `desired_length = max_length` results in fixed-size chunks (for example, when filling a context window exactly for embeddings).
   - Use a larger `max_length` if you want to stay within a soft limit but allow some flexibility to preserve higher semantic units, common in RAG, summarization, or Q&A applications.
+- `overlap_length` (optional): The amount of content to overlap between consecutive chunks (unit depends on the `strategy` used). This helps preserve context across chunk boundaries by duplicating a portion of the content from the end of one chunk to the beginning of the next chunk. Defaults to 0 (no overlap).
+- `strategy` (optional): The chunking strategy to use. Can be either `"chars"` (default) for character-based chunking that splits strictly by character count, or `"words"` for word-based chunking that preserves word boundaries.
 
 ### Algorithm summary
 
@@ -145,7 +147,32 @@ __OUTPUT__
 (1 row)
 ```
 
- - The `model` is the name of the created model to use for summarization. The model must support the `decode_text()` and `decode_text_batch()` [model primitives](/edb-postgres-ai/current/ai-factory/pipeline/models/primitives).
+### Options
+
+- `model` (required): The name of the created model to use for summarization. The model must support the `decode_text()` and `decode_text_batch()` [model primitives](/edb-postgres-ai/current/ai-factory/pipeline/models/primitives).
+- `chunk_config` (optional): Configuration for chunking the input text before summarization. Accepts the same options as the [chunk_text operation](#chunk-text). This is useful when the input text is too large to fit in the model's context window.
+- `prompt` (optional): A custom prompt to guide the summarization. If not provided, a default summarization prompt is used.
+- `strategy` (optional): The summarization strategy to use. Can be either `"append"` (default) or `"reduce"`:
+  - `"append"`: Summarizes each chunk independently and concatenates the results.
+  - `"reduce"`: Applies iterative summarization, repeatedly summarizing the accumulated text until it reaches the desired length.
+- `reduction_factor` (optional): Used with the `"reduce"` strategy. Controls how aggressively the text is reduced in each iteration. Higher values result in more aggressive reduction. Defaults to 3.
+
+### Aggregate function
+
+The `aidb.summarize_text_aggregate()` function is an aggregate function that can be used with `GROUP BY` to summarize multiple rows of text together:
+
+```sql
+SELECT
+    category,
+    aidb.summarize_text_aggregate(
+        text_column,
+        '{"model": "my_t5_model"}'::json ORDER BY id
+    ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+The aggregate function accepts the same options as the regular `summarize_text()` function and processes rows in the order specified by the `ORDER BY` clause within the aggregate call.
 
 ## Perform OCR
 
