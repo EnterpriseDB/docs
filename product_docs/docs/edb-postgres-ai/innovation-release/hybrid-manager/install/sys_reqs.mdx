@@ -119,12 +119,11 @@ Ensure the cluster you provision matches the platform selected in the **[Plannin
     * Microsoft Azure AKS (IR release stream only)
     * Amazon EKS
     * Google GKE
-    * Red Hat OpenShift (RHOS) on AWS (IR 2026.2 and later IR versions)
+    * ROSA RedHat OpenShift Service on AWS (IR release stream only)
 
   * On premises platforms:
     * SUSE Rancher RKE2 
-    * SUSE Rancher
-    * Red Hat OpenShift (RHOS)
+    * OCP RedHat OpenShift (RHOS)
 
 For a more detailed overview of HM compatibility per LTS/IR version, see [Hybrid Manager platform compatibility](https://www.enterprisedb.com/resources/platform-compatibility#hybrid%20management%20).
 
@@ -144,9 +143,10 @@ Record these now for the next phase:
 
 | Parameter | YAML Key | Required Value |
 | :--- | :--- | :--- |
-| **System Flavor** | `system` | `eks`, `gke`, `rke2`, or `rhos` |
-| **Provider** | `beaconAgent.provisioning.provider` | `AWS` or `GCP` (If on cloud) |
+| **System Flavor** | `system` | `eks`, `gke`, `aks`, `rke2`, or `rhos` |
 | **OpenShift** | `beaconAgent.provisioning.openshift` | Set to `true` **only** if using Red Hat OpenShift. |
+| **OpenShift ingress domain** | `parameters.global.default_ingress_domain` | Required only for `system: "rhos"` (query via `oc get ingresses.config/cluster -o jsonpath={.spec.domain}`). |
+| **OpenShift console domain** | `parameters.upm-istio-gateway.openshift_console_domain_name` | Required only for OpenShift; used for console linking and UX. |
 
 ## 3. Compute (Node requirements)
 
@@ -270,7 +270,8 @@ resourceAnnotations:
 
 | Parameter | YAML Key | Value / Format |
 | :--- | :--- | :--- |
-| **Enable LB** | `beaconAgent.provisioning.loadBalancersEnabled` | `true` |
+| **Enable LB** | `parameters.global.load_balancer_mode` | `"public", "private" or "disabled"` |
+| **Provider** | `parameters.global.load_balancer_provider` | `aws`, `azure`, or `gcp` |
 | **Annotations** | `resourceAnnotations` | Provider-specific list (see below). |
 
 **Spot validation**
@@ -307,7 +308,7 @@ With a proper load balancer setup, the following are Postgres ports:
 
 If a Load Balancer is not available, you must use a **NodePort** strategy.
 
-* **Configuration:** You must configure `beaconAgent.provisioning.loadBalancersEnabled: false` and define a `nodePortDomain` in your HM Helm chart `values.yaml` configuration.
+* **Configuration:** You must configure `parameters.global.load_balancer_mode: "disabled"` and define a `parameters.global.node_port_domain` in your HM Helm chart `values.yaml` configuration.
 
 * **Context:** By default, HM components expose services on specific NodePort values. You may use NodePort directly, or front these ports with **MetalLB** (software load balancer) or a **hardware load balancer** for a friendlier DNS name and better failover.
 
@@ -315,7 +316,7 @@ If a Load Balancer is not available, you must use a **NodePort** strategy.
 
 If using NodePort for ingress, the following specific ports must use **NodePort**.
 
-* **Constraint:** You must define a `nodePortDomain` (Base DNS name).
+* **Constraint:** You must define a `node_port_domain` (Base DNS name).
 
 * **Context:** HM components expose services on specific NodePort values. You may use NodePort directly, or front these ports with a hardware load balancer.
 
@@ -323,25 +324,25 @@ If using NodePort for ingress, the following specific ports must use **NodePort*
 
 | Parameter | YAML Key | Value / Format |
 | :--- | :--- | :--- |
-| **Enable LB** | `beaconAgent.provisioning.loadBalancersEnabled` | `false` |
-| **Domain** | `nodePortDomain` | Base DNS domain (e.g., `nodes.myorg.com`). |
+| **Enable LB** | `parameters.global.load_balancer_mode` | `"public", "private" or "disabled"` |
+| **Domain** | `parameters.global.node_port_domain` | Postgres DNS domain (e.g., `pg.myorg.com`). |
 
 **Default NodePort assignments**
 
 | NodePort Variable | Port | Description |
 | :--- | :--- | :--- |
-| `ingress_http_node_port` | **32542** | HM Portal (HTTP) |
-| `ingress_https_node_port` | **30288** | HM Portal (HTTPS) |
-| `ingress_grpc_tls_node_port` | **30290** | Beacon gRPC |
-| `ingress_spire_tls_node_port` | **30292** | Spire TLS |
-| `ingress_beacon_spire_tls_node_port` | **30294** | Beacon Spire TLS |
-| `ingress_thanos_query_tls_node_port` | **30296** | Thanos-query TLS (inter-cluster metrics) |
-| `ingress_fluent_bit_tls_node_port` | **30298** | Fluent-bit TLS (inter-cluster logs) |
-| `enable_server_session` | n/a | Enable server stored session ("true" or "false") |
+| `parameters.upm-istio-gateway.ingress_http_node_port` | **32542** | HM Portal (HTTP) |
+| `parameters.upm-istio-gateway.ingress_https_node_port` | **30288** | HM Portal (HTTPS) |
+| `parameters.upm-istio-gateway.ingress_grpc_tls_node_port` | **30290** | Beacon gRPC |
+| `parameters.upm-istio-gateway.ingress_spire_tls_node_port` | **30292** | Spire TLS |
+| `parameters.upm-istio-gateway.ingress_beacon_spire_tls_node_port` | **30294** | Beacon Spire TLS |
+| `parameters.upm-istio-gateway.ingress_thanos_query_tls_node_port` | **30296** | Thanos-query TLS (inter-cluster metrics) |
+| `parameters.upm-istio-gateway.ingress_fluent_bit_tls_node_port` | **30298** | Fluent-bit TLS (inter-cluster logs) |
+| `parameters.upm-istio-gateway.enable_server_session` | n/a | Enable server stored session (`"true"` or `"false"`) |
 
 **Postgres NodePorts**
 
-Postgres clusters use the `NodePortDomain` and increment on the port, provisioned in the port range `30000+`.
+Postgres clusters use the `node_port_domain` and increment on the port, provisioned in the port range `30000+`.
 
 ### 5.2 DNS
 
@@ -366,9 +367,8 @@ These are inputs into your configuration in the HM Helm chart `values.yaml` in t
 | :--- | :--- | :--- |
 | **Portal Domain** | `parameters.global.portal_domain_name` | The host name for the HM Portal UI. |
 | **Agent Domain** | `parameters.upm-beacon.server_host` | The host name through which the Beacon Server API is reachable. |
-| **Migration Domain** | `parameters.transporter-rw-service:domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. |
-| **Migration URL** | `parameters.transporter-dp-agent:rw_service_url` | The full URL for the service: `https://<Migration Domain>/transporter`. Required unless the `migration` installation scenario isn't enabled. |
-| **NodePort Base** | `beaconAgent.provisioning.nodePortDomain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
+| **Migration Domain** | `parameters.global.dms_domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. |
+| **NodePort Base** | `parameters.global.node_port_domain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
 
 In case of NodePort approach, the above DNS entries should be round robin on the compute IP where the control-plane label is applied on the Kubernetes Nodes.
 
@@ -378,7 +378,7 @@ Your DNS configuration depends on your Ingress selection.
 
 *Scenario A: Load balancer (recommended)*
 
-* **Dependency:** Ensure `beaconAgent.provisioning.loadBalancersEnabled:` is `true` in the `values.yaml`.
+* **Dependency:** Ensure `parameters.global.load_balancer_mode:` is set to `"public"` or `"private"` in the `values.yaml`.
 
 * **Portal:** In the case of an optimal load balancer controller like AWS ELB or an F5 with DNS capability, manually configure DNS to point to the resulting Load Balancer IP for `istio-ingress`. Domain names must be resolvable to a **locally routable IP** so that the ingress service on Kubernetes can properly route traffic according to the hostname in the HTTPS request.
 
@@ -388,11 +388,11 @@ Postgres DNS records are populated automatically as a function of the load balan
 
 *Scenario B: NodePort alternative*
 
-* **Prerequisite:** You disabled load balancers and defined a `nodePortDomain` in the Ingress section.
+* **Prerequisite:** You disabled load balancers and defined a `node_port_domain` in the Ingress section.
 
 * **Portal:** DNS entries should be a **Round Robin A Record** pointing to the compute IPs of the **Control Plane nodes** (nodes labeled `edbaiplatform.io/control-plane`).
 
-* **Postgres:** The `nodePortDomain` value is used as the base URL for all Postgres instances. It should be a **Round Robin DNS record** pointing to the IP addresses of the **Worker nodes** where the Postgres clusters are running.
+* **Postgres:** The `node_port_domain` value is used as the base URL for all Postgres instances. It should be a **Round Robin DNS record** pointing to the IP addresses of the **Worker nodes** where the Postgres clusters are running.
 
 ### 5.3 Certificate management
 
@@ -412,54 +412,13 @@ You must decide on a certificate management strategy before installation.
 
 #### Configuration dependencies by strategy
 
-Once you select a strategy, record the corresponding values for the `values.yaml` later, or in the file if you have already started it:
-
-**Option A: Custom cert-manager issuer**
-
-> **Optionality:** You should use your own custom cert-manager issuer&mdash;managed by you&mdash;for the optimal production experience.
-
-You can leverage your cert-manager for automatic certificate handling by specifying an `Issuer` or `ClusterIssuer` kind and name in the `values.yaml`:
-
-| Parameter | YAML Key | Value / Format |
+| Strategy | YAML Key | Description |
 | :--- | :--- | :--- |
-| **Issuer kind** | `parameters.global.portal_certificate_issuer_kind:` | `<ClusterIssuer or Issuer>`
-| **Issuer name** | `portal_certificate_issuer_name:` | `<my_issuer>`
-
----
-
-**Option B: Custom CA (BYO CA)**
-
-> **Optionality**: Alternative to using a custom cert-manager issuer (see Option A above).
-
-If you do not have your own custom cert-manager issuer, you can instead use your own Certificate Authority (CA).
-
-* With this strategy, after deploying your Kubernetes cluster, you create a Kubernetes secret and specify in the `values.yaml`:
-
-| Parameter | YAML Key | Value / Format |
-| :--- | :--- | :--- |
-| **CA Secret** | `parameters.global.ca_secret_name` | Name of the pre-created K8s Secret. |
-
----
-
-**Option C: Custom certificate (BYO cert)**
-
-> **Optionality**: Alternative to using a custom cert-manager issuer or custom CA.
-
-If you don't choose to use a customer cert-manager issuer or custom CA, you should use a custom certificate.
-
-* With this strategy, after deploying your Kubernetes cluster, you create a Kubernetes secret and specify in the `values.yaml`:
-
-| Parameter | YAML Key | Value / Format |
-| :--- | :--- | :--- |
-| **Cert Secret** | `parameters.global.portal_certificate_secret` | Name of the pre-created K8s Secret. |
-
-This secret requires an export of the entire certificate chain in the public certificate file and the unencrypted private key.
-
-**Option D: Self signed certificates**
-
-**Configuration dependencies**
-
-N/A, default
+| **A. Cert Manager** | `parameters.global.portal_certificate_issuer_kind` | **Required.** The Resource Kind (`Issuer` or `ClusterIssuer`). |
+| **A. Cert Manager** | `parameters.global.portal_certificate_issuer_name` | **Required.** The Resource Name (e.g., `letsencrypt-prod`). |
+| **B. BYO CA** | `parameters.global.ca_secret_name` | **Required.** The name of your CA Secret. |
+| **C. BYO Cert** | `parameters.global.portal_certificate_secret` | **Required.** The name of your Certificate Secret. |
+| **D. Self-signed** | N/A | **Default behavior.** (No configuration required). |
 
 ## 6. Block storage (Database & logs)
 
@@ -540,6 +499,7 @@ Object storage is the backbone of disaster recovery and data mobility. It is use
 * Postgres WAL archiving (Point-in-Time Recovery)
 * Unstructured data for GenAI/AIDB
 * Parquet files for Lake Keeper
+* Log files
 
 ### General requirements
 
@@ -578,10 +538,6 @@ Choose the authentication method supported by your provider:
 
 These are the keys that are affected in the `values.yaml` you create in the Phase 3.
 
-| Parameter | YAML Key | Value / Format |
-| :--- | :--- | :--- |
-| **Storage Class** | `parameters.global.storage_class` | The exact name of your K8s StorageClass. |
-
 ## 8. Container registry
 
 > **Optionality:** A local container registry is a **required option for an optimal experience**.
@@ -596,7 +552,7 @@ You require a container registry that is accessible from your Kubernetes Cluster
 
 If your environment cannot access the public EDB repository, you must pull the artifacts and push them to your local private registry using `edbctl`.
 
-#### Supported providers & authentication
+### Supported providers & authentication
 
 | Registry provider | Supported Auth | Recommended Auth |
 | :--- | :--- | :--- |
@@ -604,10 +560,12 @@ If your environment cannot access the public EDB repository, you must pull the a
 | **Amazon (ECR)** | EKS Managed Identity | EKS Managed Identity |
 | **Google (GAR)** | Token, Basic | Basic |
 | **EDB Repo** | Token | Token (PoC/Pilot only!) |
+    # Examples: Azure CR: myregistry.azurecr.io, AWS ECR: 123456079902.dkr.ecr.us-east-1.amazonaws.com,
+    #           GCP GAR: us-east1-docker.pkg.dev, EDB CloudSmith Repos 2.0: docker.enterprisedb.com/pgai-platform
 
-### Configuration dependencies
+Harbor and Artifactory have also been used in customer environments.
 
-#### Provisioning actions
+### Preparation
 
 * **Sync images to your local container registry:** You must use `edbctl` to synchronize images if using a private registry.
   * [**SOP: Sync images to local registry**](./configuration/sync_images)
@@ -622,24 +580,24 @@ This ensures the cluster pulls artifacts from the correct location (local regist
     * *Guidance: Configuring registry mirrors and pull policies.*
 !!!
 
-#### Configuration file
+### Configuration file
 
 You need to collect these specific values to populate your `values.yaml` in the next phase (Phase 3).
 
 | Parameter | YAML Key | Value / Format |
 | :--- | :--- | :--- |
 | **Bootstrap Image** | `bootstrapImageName` | `<Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<K8s_Flavor>` |
+| **Bootstrap Tag** | `bootstrapImageTag` | HM/Platform version tag (for example, `"1.2.0"`). |
 | **Global Registry** | `containerRegistryURL` | `<Registry Domain>/pgai-platform` |
+| **Pull Secret** | `imagePullSecrets` | Array of Kubernetes image pull secret names (for example, `["edb-cred"]`). |
 | **Discovery Registry** | `beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | `<Registry Domain>/pgai-platform` |
 | **Discovery Auth** | `beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | `<Auth Type>` (e.g., `token`, `basic`, `eks_managed_identity`) |
-| **TLS Validation** | `imagesetDiscoveryAllowInsecureRegistry` | Set to `true` if using TL without certificate validation. |
+| **TLS Validation** | `beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Set to `true` only if intentionally allowing insecure (no/invalid TLS) registry discovery. |
 
 ## 9. Identity provider (IdP)
 
 Hybrid Manager is **not intended** to provide user authentication directly. 
 It relies on an external Identity Provider (IdP) to manage user access securely.
-
-### 9.1 External IdP (Recommended)
 
 **Optionality:** Required for optimal experience and security.
 
@@ -647,49 +605,6 @@ It relies on an external Identity Provider (IdP) to manage user access securely.
 * **Supported Backends:** LDAP or SAML.
 
 You must prepare the following values and artifacts for [Preparing your environment](environment_prep) (Phase 4):
-
-### Configuration dependencies
-
-#### Configuration file
-
-| Parameter | YAML Key / Resource Name | Value / Format |
-| :--- | :--- | :--- |
-| **Client Secret** | `pgai.portal.authentication.clientSecret` | The OIDC client secret string. |
-| **Connector Config** | `pgai.portal.authentication.idpConnectors` | List of connector configurations. |
-| **Connector Type** | `...idpConnectors[0].type` | Must be `ldap` or `saml` (parameters vary by type). |
-
-#### Provisioning actions
-
-* **CA Bundle Secret**: K8s Secret: `beaconator-ca-bundle`: Create in **all namespaces** containing the IdP trust chain.
-
-* **Dex Secret**: K8s Secret: `upm-dex`: Create in `upm-dex` namespace. 
-
-### 9.2 Static user alternative
-
-> **Optionality:** Alternative to [External IdP](#91-external-idp-recommended).
-
-!!! Warning
-This method is **strongly discouraged** for production and should be used for pilot or proof of concept activity only.
-!!!
-
-* **Context:** There is a single mandatory static `User-0` created for installation purposes. 
-
-While you *can* create additional static users at provisioning time, there is **no UI provided** to manage them, as this is not a secure pattern.
-
-* **Minimum action:** You must set the password for the required static user (`User-0`).
-
-#### Configuration dependencies
-
-##### Configuration file
-
-If choosing this path, you need to configure the following in `values.yaml`:
-
-| Parameter | YAML Key | Value / Format |
-| :--- | :--- | :--- |
-| **Password Hash** | `pgai.portal.authentication.staticPasswords.hash` | Bcrypt hash string of the password. |
-| **User Email** | `pgai.portal.authentication.staticPasswords.email` | A valid email address (e.g., `admin@example.com`). |
-| **Username** | `pgai.portal.authentication.staticPasswords.username` | The login username (e.g., `admin`). |
-| **User ID** | `pgai.portal.authentication.staticPasswords.userID` | A unique string identifier (e.g., `user-0`). |
 
 ## 10. Key management service (KMS)
 
@@ -713,70 +628,9 @@ You must prepare the following for the `values.yaml` for [Phase 4](./environment
 
 | Parameter | YAML Key | Value / Format |
 | :--- | :--- | :--- |
-| **KMS Providers** | `beaconAgent.transparentDataEncryptionMethods` | List of enabled providers (e.g., `aws-kms`, `google-cloud-kms`). |
-| **Auth Strategy** | `auth_type` (nested under provider) | `workloadIdentity` or `credentials`. |
+| **TDE Providers** | `beaconAgent.transparentDataEncryptionMethods` | List of enabled methods (e.g., `passphrase`, `aws_kms`, `azure_kms`, `gcp_kms`, `hashicorp_vault`). |
 
 * **Auth Secrets:** If using `credentials` mode, specific Kubernetes Secrets must be provisioned with API keys. 
-
-## Impact on configuration
-
-The infrastructure specifications detailed in this document—combined with your architecture decisions from Phase 1—dictate the values you use in the next phase.
-
-Use this **Master Inventory** to ensure you have every required value before proceeding to Phase 3.
-
-### General & Platform
-
-| Source | Requirement | YAML Key | Condition |
-| :--- | :--- | :--- | :--- |
-| **Phase 1** | **K8s Flavor** | `system` | **Required** (e.g., `eks`, `gke`, `rhos`) |
-| **Phase 1** | **Provider** | `beaconAgent.provisioning.provider` | **Required** (e.g., `AWS`, `GCP`) |
-| **Phase 1** | **OpenShift** | `beaconAgent.provisioning.openshift` | **Required** if using RHOS (`true`) |
-| **Phase 1** | **Location** | `parameters.upm-beacon.beacon_location_id` | **Required** (String ID) |
-| **Phase 1** | **Installation scenarios** | `spec.scenarios` | **Optional**. All scenarios are enabled by default. To customize, specify `core` plus a combination of `migration`, `ai`, or `analytics`. |
-
-### Networking & ingress
-
-| Source | Requirement | YAML Key | Condition |
-| :--- | :--- | :--- | :--- |
-| **Phase 2** | **Portal Domain** | `global.portal_domain_name` | **Required** |
-| **Phase 2** | **Agent Domain** | `upm-beacon.server_host` | **Required** |
-| **Phase 2** | **Migration Domain** | `transporter-rw-service:domain_name` | **Required** |
-| **Phase 2** | **Migration URL** | `transporter-dp-agent:rw_service_url` | **Required** |
-| **Phase 2** | **Load Balancer** | `beaconAgent.provisioning.loadBalancersEnabled` | **Required** (`true` or `false`) |
-| **Phase 2** | **LB Annotations** | `resourceAnnotations` | **Required** if using CSP LB (e.g., AWS) |
-| **Phase 2** | **NodePort Domain** | `nodePortDomain` | Required if `loadBalancersEnabled` is `false` |
-
-### Storage & Registry
-
-| Source | Requirement | YAML Key | Condition |
-| :--- | :--- | :--- | :--- |
-| **Phase 2** | **Storage Class** | `parameters.global.storage_class` | **Required** |
-| **Phase 2** | **Global Registry** | `containerRegistryURL` | **Required** |
-| **Phase 2** | **Bootstrap Image** | `bootstrapImageName` | **Required** |
-| **Phase 2** | **Discovery Reg.** | `beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | **Required** |
-| **Phase 2** | **Registry Auth** | `beaconAgent.provisioning.imagesetDiscoveryAuthenticationType	` | **Required** |
-| **Phase 2** | **Insecure TLS** | `imagesetDiscoveryAllowInsecureRegistry` | Optional (If using self-signed registry) |
-
-### Security & Identity
-
-| Source | Requirement | YAML Key | Condition |
-| :--- | :--- | :--- | :--- |
-| **Phase 2** | **IDP Secret** | `pgai.portal.authentication.clientSecret` | **Required** (if using OIDC) |
-| **Phase 2** | **IDP Config** | `pgai.portal.authentication.idpConnectors` | **Required** (if using OIDC) |
-| **Phase 2** | **Static User** | `pgai.portal.authentication.staticPasswords.*` | **PoC Only** (if no IdP) |
-| **Phase 2** | **TDE Keys** | `beaconAgent.transparentDataEncryptionMethods` | Optional (if using TDE) |
-
-### Certificates (Choose One Strategy)
-
-Select **one** strategy (A, B, C, or D) and record the corresponding value(s).
-
-| Strategy | YAML Key | Description |
-| :--- | :--- | :--- |
-| **A. Cert Manager** | `parameters.global.portal_certificate_issuer_kind` | **Required.** The Resource Kind (e.g., `ClusterIssuer`). |
-| **A. Cert Manager** | `portal_certificate_issuer_name` | **Required.** The Resource Name (e.g., `letsencrypt-prod`). |
-| **B. BYO CA** | `parameters.global.ca_secret_name` | **Required.** The name of your CA Secret. |
-| **C. BYO Cert** | `parameters.global.portal_certificate_secret` | **Required.** The name of your Certificate Secret. |
-| **D. Self-signed** | N/A | **Default behavior.** (No configuration required). |
 
 ### Example `values.yaml`
 
@@ -790,53 +644,32 @@ system: <Kubernetes>
 bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
 bootstrapImageTag: <Version>
 containerRegistryURL: "<Container Registry Domain>/pgai-platform"
+scenarios: "core,migration,ai,analytics"
 parameters:
   global:
     portal_domain_name: <Portal Domain>
     storage_class: <Block Storage>
     portal_certificate_issuer_kind: <ClusterIssuer>
     portal_certificate_issuer_name: <my-issuer>
-    trust_domain: <Portal Domain>
+    dms_domain_name: <Migration Domain>
+    load_balancer_mode: "public"
+    load_balancer_provider: <cloud_provider>
   upm-beacon:
     beacon_location_id: <Location>
     server_host: <Agent Domain>
-  transporter-rw-service:
-    domain_name: <Migration Domain>
-  transporter-dp-agent:
-    rw_service_url: https://<Migration Domain>/transporter
 beaconAgent:
   provisioning:
     imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
     imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+    imagesetDiscoveryAllowInsecureRegistry: false
   transparentDataEncryptionMethods:
     - <available_encryption_method>
-pgai:
-  portal:
-    authentication:
-      idpConnectors:
-        - config:
-            caData: <base64 encyrption of Certificate Authority from SSO provider>
-            emailAttr: email
-            groupsAttr: groups
-            entityIssuer: https://<Portal Domain>/auth/callback
-            redirectURI: https://<Portal Domain>/auth/callback
-            ssoURL: https://login.microsoft.com/<azure service identifier>/saml2
-            usernameAttr: name
-          id: azure
-          name: Azure
-          type: saml
 resourceAnnotations:
   - name: istio-ingressgateway
     kind: Service
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internal
-      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
-spec:
-  scenarios:
-    - core
-    - <if required, migration>
-    - <if required, ai>
-    - <if required, analytics>
+      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8  
 ``` 
 
 ## Next phase
