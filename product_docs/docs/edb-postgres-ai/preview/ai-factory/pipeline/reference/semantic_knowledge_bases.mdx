@@ -1,0 +1,476 @@
+---
+title: "Pipelines semantic knowledge bases reference"
+navTitle: "Semantic knowledge bases"
+description: "Reference documentation for EDB Postgres AI - AI Accelerator Pipelines semantic knowledge bases."
+deepToC: true
+---
+
+This reference documentation for Pipelines semantic knowledge bases includes information on the functions and views available in the aidb extension for [semantic knowledge bases](/edb-postgres-ai/current/ai-factory/pipeline/semantic_knowledge_base/).
+
+## Views
+
+### `aidb.list_semantic_kbs`
+
+Returns a list of all semantic knowledge bases.
+
+| Column           | Type      | Description                                         |
+| ---------------- | --------- | --------------------------------------------------- |
+| `name`           | text      | Name of the semantic knowledge base                 |
+| `model_name`     | text      | Name of the embedding model used                    |
+| `schemas`        | text[]    | PostgreSQL schemas being monitored                  |
+| `auto_processing`| text      | Auto-processing mode (Live, Background, or Disabled)|
+| `bypass_triggers`| boolean   | Whether DDL triggers are bypassed                   |
+| `created_at`     | timestamp | When the knowledge base was created                 |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.list_semantic_kbs();
+```
+
+## Functions
+
+### `aidb.create_semantic_kb`
+
+Creates a new semantic knowledge base that indexes database schema metadata.
+
+#### Parameters
+
+| Parameter        | Type     | Default | Description                                                              |
+| ---------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `name`           | TEXT     | Required| Unique identifier for the knowledge base                                 |
+| `model`          | TEXT     | Required| Name of the embedding model (must exist)                                 |
+| `schemas`        | TEXT[]   | Required| PostgreSQL schemas to monitor                                            |
+| `auto_processing`| TEXT     | Required| Processing mode: 'Live', 'Background', or 'Disabled'                     |
+| `bypass_triggers`| BOOLEAN  | FALSE   | Skip DDL triggers (for Background mode only)                             |
+| `vector_index`   | JSONB    | NULL    | Vector index configuration (see helper functions)                        |
+
+#### Example
+
+```sql
+SELECT aidb.create_semantic_kb(
+    'my_kb',
+    'my_embedding_model',
+    ARRAY['public', 'sales'],
+    'Background',
+    FALSE,
+    aidb.vector_index_hnsw_config(m => 16, ef_construction => 64)
+);
+```
+
+### `aidb.delete_semantic_kb`
+
+Deletes a semantic knowledge base and its metadata.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                             |
+| --------- | ---- | ------- | --------------------------------------- |
+| `name`    | TEXT | Required| Name of the semantic knowledge base     |
+
+#### Example
+
+```sql
+SELECT aidb.delete_semantic_kb('my_kb');
+```
+
+### `aidb.refresh_semantic_kb`
+
+Re-crawls all monitored schemas and rebuilds the metadata index.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                             |
+| --------- | ---- | ------- | --------------------------------------- |
+| `name`    | TEXT | Required| Name of the semantic knowledge base     |
+
+#### Example
+
+```sql
+SELECT aidb.refresh_semantic_kb('my_kb');
+```
+
+### `aidb.update_semantic_kb_auto_processing`
+
+Changes the auto-processing mode for an existing semantic knowledge base.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                          |
+| --------- | ---- | ------- | ---------------------------------------------------- |
+| `name`    | TEXT | Required| Name of the semantic knowledge base                  |
+| `mode`    | TEXT | Required| New processing mode: 'Live', 'Background', or 'Disabled' |
+
+#### Example
+
+```sql
+SELECT aidb.update_semantic_kb_auto_processing('my_kb', 'Background');
+```
+
+### `aidb.semantic_kb_stats`
+
+Returns statistics about a semantic knowledge base.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                             |
+| --------- | ---- | ------- | --------------------------------------- |
+| `name`    | TEXT | Required| Name of the semantic knowledge base     |
+
+#### Returns
+
+| Column               | Type    | Description                                          |
+| -------------------- | ------- | ---------------------------------------------------- |
+| `total_count`        | bigint  | Total indexed entities                               |
+| `tables_count`       | bigint  | Number of tables indexed                             |
+| `views_count`        | bigint  | Number of views indexed                              |
+| `columns_count`      | bigint  | Number of columns indexed                            |
+| `pending_ddl_events` | bigint  | Queued changes awaiting processing (Background mode) |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_stats('my_kb');
+```
+
+## Search functions
+
+### `aidb.get_metadata`
+
+Searches all indexed entities (tables, views, columns) matching a query.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                    |
+| -------------- | ------- | ------- | ---------------------------------------------- |
+| `kb_name`      | TEXT    | Required| Name of the semantic knowledge base            |
+| `query`        | TEXT    | Required| Natural language query                         |
+| `min_similarity`| FLOAT  | Required| Minimum similarity threshold (0.0-1.0)         |
+| `limit`        | INTEGER | Required| Maximum number of results                      |
+| `offset`       | INTEGER | Required| Offset for pagination                          |
+
+#### Returns
+
+| Column          | Type             | Description                                     |
+| --------------- | ---------------- | ----------------------------------------------- |
+| `schema_name`   | text             | PostgreSQL schema containing the entity         |
+| `relation_name` | text             | Table or view name                              |
+| `column_name`   | text             | Column name (NULL for tables/views)             |
+| `entity_type`   | text             | 'Table', 'View', 'Column', or 'Alias'           |
+| `definition`    | text             | Full DDL definition                             |
+| `comment`       | text             | Database comment if present                     |
+| `similarity`    | double precision | Cosine similarity score                         |
+
+#### Example
+
+```sql
+SELECT schema_name, relation_name, column_name, entity_type, definition, similarity
+FROM aidb.get_metadata('my_kb', 'customer orders', 0.8, 10, 0);
+```
+
+### `aidb.get_column_definitions`
+
+Searches only column definitions.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                    |
+| -------------- | ------- | ------- | ---------------------------------------------- |
+| `kb_name`      | TEXT    | Required| Name of the semantic knowledge base            |
+| `query`        | TEXT    | Required| Natural language query                         |
+| `min_similarity`| FLOAT  | Required| Minimum similarity threshold (0.0-1.0)         |
+| `limit`        | INTEGER | Required| Maximum number of results                      |
+| `offset`       | INTEGER | Required| Offset for pagination                          |
+
+#### Returns
+
+| Column          | Type             | Description                             |
+| --------------- | ---------------- | --------------------------------------- |
+| `schema_name`   | text             | PostgreSQL schema containing the column |
+| `relation_name` | text             | Table or view name                      |
+| `column_name`   | text             | Column name                             |
+| `definition`    | text             | Column DDL definition                   |
+| `similarity`    | double precision | Cosine similarity score                 |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_column_definitions('my_kb', 'payment method', 0.8, 10, 0);
+```
+
+### `aidb.get_entity_definitions`
+
+Searches table and view definitions, filtered by entity type.
+
+#### Parameters
+
+| Parameter      | Type     | Default | Description                                    |
+| -------------- | -------- | ------- | ---------------------------------------------- |
+| `kb_name`      | TEXT     | Required| Name of the semantic knowledge base            |
+| `query`        | TEXT     | Required| Natural language query                         |
+| `min_similarity`| FLOAT   | Required| Minimum similarity threshold (0.0-1.0)         |
+| `entity_types` | TEXT[]   | Required| Entity types to include ('Table', 'View')      |
+| `limit`        | INTEGER  | Required| Maximum number of results                      |
+| `offset`       | INTEGER  | Required| Offset for pagination                          |
+
+#### Returns
+
+| Column          | Type             | Description                             |
+| --------------- | ---------------- | --------------------------------------- |
+| `schema_name`   | text             | PostgreSQL schema containing the entity |
+| `relation_name` | text             | Table or view name                      |
+| `entity_type`   | text             | 'Table' or 'View'                       |
+| `definition`    | text             | Entity DDL definition                   |
+| `similarity`    | double precision | Cosine similarity score                 |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_entity_definitions('my_kb', 'transaction history', 0.8, ARRAY['Table', 'View'], 10, 0);
+```
+
+### `aidb.search_by_comment`
+
+Searches based on table/column COMMENT values.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                    |
+| -------------- | ------- | ------- | ---------------------------------------------- |
+| `kb_name`      | TEXT    | Required| Name of the semantic knowledge base            |
+| `query`        | TEXT    | Required| Natural language query                         |
+| `min_similarity`| FLOAT  | Required| Minimum similarity threshold (0.0-1.0)         |
+| `limit`        | INTEGER | Required| Maximum number of results                      |
+| `offset`       | INTEGER | Required| Offset for pagination                          |
+
+#### Returns
+
+| Column          | Type             | Description                             |
+| --------------- | ---------------- | --------------------------------------- |
+| `schema_name`   | text             | PostgreSQL schema containing the entity |
+| `relation_name` | text             | Table or view name                      |
+| `column_name`   | text             | Column name (NULL for tables/views)     |
+| `comment`       | text             | Database comment                        |
+| `similarity`    | double precision | Cosine similarity score                 |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.search_by_comment('my_kb', 'stores customer preferences', 0.7, 10, 0);
+```
+
+## Semantic alias functions
+
+### `aidb.create_semantic_alias`
+
+Creates a parameterized SQL query with a semantic description.
+
+#### Parameters
+
+| Parameter    | Type   | Default | Description                                        |
+| ------------ | ------ | ------- | -------------------------------------------------- |
+| `name`       | TEXT   | Required| Unique name for the alias                          |
+| `description`| TEXT   | Required| Semantic description for search                    |
+| `query`      | TEXT   | Required| SQL query with `${param}` placeholders             |
+| `params`     | JSONB  | Required| Parameter definitions (use `aidb.alias_params()`)  |
+| `model`      | TEXT   | Required| Embedding model for vectorizing description        |
+
+#### Example
+
+```sql
+SELECT aidb.create_semantic_alias(
+    'get_customer_orders',
+    'Retrieve all orders for a specific customer',
+    'SELECT * FROM orders WHERE customer_id = ${customer_id}',
+    aidb.alias_params(
+        aidb.alias_param('customer_id', 'integer', 'The customer ID')
+    ),
+    'my_embedding_model'
+);
+```
+
+### `aidb.alias_param`
+
+Defines a single parameter for a semantic alias.
+
+#### Parameters
+
+| Parameter    | Type   | Default | Description                                     |
+| ------------ | ------ | ------- | ----------------------------------------------- |
+| `name`       | TEXT   | Required| Parameter name (matches `${name}` in query)     |
+| `param_type` | TEXT   | Required| Data type ('integer', 'text', 'date', etc.)     |
+| `description`| TEXT   | Required| Human-readable description                      |
+| `enum_values`| TEXT[] | NULL    | Optional allowed values                         |
+
+#### Example
+
+```sql
+aidb.alias_param('status', 'text', 'Order status filter', ARRAY['pending', 'shipped', 'delivered'])
+```
+
+### `aidb.alias_params`
+
+Combines multiple alias parameters.
+
+#### Parameters
+
+| Parameter | Type     | Default | Description                     |
+| --------- | -------- | ------- | ------------------------------- |
+| `params`  | VARIADIC | Required| Multiple `aidb.alias_param()` calls |
+
+#### Example
+
+```sql
+aidb.alias_params(
+    aidb.alias_param('customer_id', 'integer', 'Customer identifier'),
+    aidb.alias_param('limit', 'integer', 'Maximum results to return')
+)
+```
+
+### `aidb.execute_semantic_alias`
+
+Executes a semantic alias with provided parameters.
+
+#### Parameters
+
+| Parameter | Type   | Default | Description                               |
+| --------- | ------ | ------- | ----------------------------------------- |
+| `name`    | TEXT   | Required| Name of the alias to execute              |
+| `args`    | JSONB  | Required| Parameter values as JSON object           |
+| `role`    | TEXT   | NULL    | Optional role to execute as               |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.execute_semantic_alias(
+    'get_customer_orders',
+    '{"customer_id": 123}'::jsonb
+);
+
+-- With role-based execution
+SELECT * FROM aidb.execute_semantic_alias(
+    'get_customer_orders',
+    '{"customer_id": 123}'::jsonb,
+    'analytics_role'
+);
+```
+
+### `aidb.search_semantic_aliases`
+
+Searches aliases by semantic similarity.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                    |
+| -------------- | ------- | ------- | ---------------------------------------------- |
+| `model`        | TEXT    | Required| Embedding model (must match alias creation)    |
+| `query`        | TEXT    | Required| Natural language query                         |
+| `min_similarity`| FLOAT  | Required| Minimum similarity threshold (0.0-1.0)         |
+| `limit`        | INTEGER | Required| Maximum number of results                      |
+| `offset`       | INTEGER | Required| Offset for pagination                          |
+
+#### Returns
+
+| Column       | Type             | Description                     |
+| ------------ | ---------------- | ------------------------------- |
+| `name`       | text             | Alias name                      |
+| `description`| text             | Semantic description            |
+| `query_text` | text             | SQL query template              |
+| `similarity` | double precision | Cosine similarity score         |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.search_semantic_aliases('my_embedding_model', 'customer purchase history', 0.7, 10, 0);
+```
+
+### `aidb.get_semantic_aliases`
+
+Lists all semantic aliases.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_semantic_aliases();
+```
+
+### `aidb.get_semantic_alias`
+
+Gets details for a specific semantic alias.
+
+#### Parameters
+
+| Parameter | Type | Default | Description            |
+| --------- | ---- | ------- | ---------------------- |
+| `name`    | TEXT | Required| Name of the alias      |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_semantic_alias('get_customer_orders');
+```
+
+### `aidb.delete_semantic_alias`
+
+Deletes a semantic alias.
+
+#### Parameters
+
+| Parameter | Type | Default | Description            |
+| --------- | ---- | ------- | ---------------------- |
+| `name`    | TEXT | Required| Name of the alias      |
+
+#### Example
+
+```sql
+SELECT aidb.delete_semantic_alias('get_customer_orders');
+```
+
+## Vector index helper functions
+
+### `aidb.vector_index_hnsw_config`
+
+Configures an HNSW index for the semantic knowledge base.
+
+#### Parameters
+
+| Parameter         | Type    | Default | Description                                     |
+| ----------------- | ------- | ------- | ----------------------------------------------- |
+| `vector_data_type`| TEXT    | NULL    | Vector storage type                             |
+| `m`               | INTEGER | 16      | Max connections per node                        |
+| `ef_construction` | INTEGER | 64      | Build-time search depth                         |
+| `ef_search`       | INTEGER | NULL    | Query-time search depth                         |
+
+#### Example
+
+```sql
+aidb.vector_index_hnsw_config(m => 16, ef_construction => 64)
+```
+
+### `aidb.vector_index_ivfflat_config`
+
+Configures an IVFFlat index for the semantic knowledge base.
+
+#### Parameters
+
+| Parameter         | Type    | Default | Description                                     |
+| ----------------- | ------- | ------- | ----------------------------------------------- |
+| `vector_data_type`| TEXT    | NULL    | Vector storage type                             |
+| `lists`           | INTEGER | Required| Number of clusters                              |
+| `probes`          | INTEGER | NULL    | Clusters to search at query time                |
+
+#### Example
+
+```sql
+aidb.vector_index_ivfflat_config(lists => 100)
+```
+
+### `aidb.vector_index_disabled_config`
+
+Disables vector indexing for the semantic knowledge base.
+
+#### Example
+
+```sql
+aidb.vector_index_disabled_config()
+```
