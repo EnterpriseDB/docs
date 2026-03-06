@@ -31,7 +31,7 @@ kubectl annotate secret -n upm-replicator edb-cred replicator.v1.mittwald.de/rep
 
 kubectl create namespace upm-griptape
 
-FERNET_KEY=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64)
+FERNET_KEY=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr '+/' '-_')
 
 kubectl apply -f - <<EOF
 apiVersion: v1
