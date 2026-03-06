@@ -1,0 +1,157 @@
+---
+title: "Semantic aliases"
+navTitle: "Semantic aliases"
+deepToC: true
+description: "Reusable, parameterized SQL queries with semantic descriptions."
+---
+
+Semantic aliases are reusable, parameterized SQL queries with semantic descriptions. They function like enhanced database views that can be discovered through natural language search.
+
+## Why use semantic aliases?
+
+- **Discoverability**: Users find queries by describing what they need ("customer purchase history") rather than memorizing names
+- **Reusability**: Common business queries are defined once and executed many times
+- **Governance**: Approved queries can be centrally managed and audited
+- **Parameterization**: Dynamic values without SQL injection risks
+
+## Creating an alias
+
+```sql
+SELECT aidb.create_semantic_alias(
+    'get_customer_orders',                              -- unique name
+    'Retrieve all orders for a specific customer',      -- semantic description
+    'SELECT * FROM orders WHERE customer_id = ${customer_id}
+     AND order_date >= ${start_date}',                  -- query with placeholders
+    aidb.alias_params(
+        aidb.alias_param('customer_id', 'integer', 'The customer ID'),
+        aidb.alias_param('start_date', 'date', 'Start date for order search')
+    ),
+    'my_embedding_model'                                -- model for vectorizing description
+);
+```
+
+**Parameter placeholders**: Use `${param_name}` syntax. Parameters are safely substituted at execution time.
+
+## Defining parameters
+
+Parameters describe the inputs your query accepts:
+
+```sql
+aidb.alias_param(
+    name,          -- TEXT: matches ${name} placeholder in query
+    param_type,    -- TEXT: data type ('integer', 'text', 'date', 'boolean', etc.)
+    description,   -- TEXT: human-readable description
+    enum_values    -- TEXT[]: optional allowed values (default: NULL)
+);
+```
+
+### With enum constraint
+
+Restricts allowed values:
+
+```sql
+aidb.alias_param('status', 'text', 'Order status filter',
+    ARRAY['pending', 'shipped', 'delivered', 'cancelled'])
+```
+
+### Combining multiple parameters
+
+```sql
+aidb.alias_params(
+    aidb.alias_param('customer_id', 'integer', 'Customer identifier'),
+    aidb.alias_param('limit', 'integer', 'Maximum results to return')
+)
+```
+
+## Executing an alias
+
+```sql
+SELECT * FROM aidb.execute_semantic_alias(
+    'get_customer_orders',
+    '{"customer_id": 123, "start_date": "2024-01-01"}'::jsonb
+);
+```
+
+### With role-based execution
+
+Runs the query as a specified role:
+
+```sql
+SELECT * FROM aidb.execute_semantic_alias(
+    'get_customer_orders',
+    '{"customer_id": 123, "start_date": "2024-01-01"}'::jsonb,
+    'analytics_role'
+);
+```
+
+## Searching for aliases
+
+Find aliases by semantic similarity to a natural language description:
+
+```sql
+SELECT name, description, query_text, similarity
+FROM aidb.search_semantic_aliases(
+    'my_embedding_model',           -- must match model used to create aliases
+    'find customer purchase history',
+    0.7,
+    10,
+    0
+);
+```
+
+## Managing aliases
+
+### List all aliases
+
+```sql
+SELECT * FROM aidb.get_semantic_aliases();
+```
+
+### Get details for a specific alias
+
+```sql
+SELECT * FROM aidb.get_semantic_alias('get_customer_orders');
+```
+
+### Delete an alias
+
+```sql
+SELECT aidb.delete_semantic_alias('get_customer_orders');
+```
+
+## Example: building a query library
+
+Build a centralized, searchable collection of approved queries:
+
+```sql
+-- Create the embedding model
+SELECT aidb.create_model(
+    'query_lib_model', 'openai_embeddings',
+    aidb.embeddings_config(model => 'text-embedding-3-small', api_key => 'sk-...')
+);
+
+-- Create commonly-used business queries
+SELECT aidb.create_semantic_alias(
+    'monthly_revenue_by_product',
+    'Calculate total revenue grouped by product for a given month',
+    'SELECT p.name, SUM(o.amount) as revenue
+     FROM orders o JOIN products p ON o.product_id = p.id
+     WHERE DATE_TRUNC(''month'', o.created_at) = DATE_TRUNC(''month'', ${target_month}::date)
+     GROUP BY p.name ORDER BY revenue DESC',
+    aidb.alias_params(
+        aidb.alias_param('target_month', 'date', 'Any date within the target month')
+    ),
+    'query_lib_model'
+);
+
+-- Users discover queries semantically
+SELECT * FROM aidb.search_semantic_aliases(
+    'query_lib_model', 'product sales report', 0.7, 5, 0
+);
+
+-- Execute discovered query
+SELECT * FROM aidb.execute_semantic_alias(
+    'monthly_revenue_by_product',
+    '{"target_month": "2024-06-01"}'::jsonb
+);
+```
