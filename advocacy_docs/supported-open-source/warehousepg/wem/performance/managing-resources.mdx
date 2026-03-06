@@ -1,0 +1,58 @@
+---
+title: Managing system resources
+navTitle: Managing system resources
+description: Use the Resource Groups panel to configure and monitor CPU, memory, and concurrency limits to optimize workload performance for resource groups and resource queues.
+---
+
+The **Resource Management** panel on the left sidebar allows you to govern cluster performance by controlling how system resources are distributed across different workloads. 
+
+
+WarehousePG (WHPG) provides two primary strategies for resource management: resource groups and resource queues. They are controlled by the `gp_resource_manager` server configuration parameter. See [Managing resources](/supported-open-source/warehousepg/warehousepg/admin_guide/wlmgmt/) from the WHPG documentation for details about how WHPG provides resource management.
+
+The interface automatically adapts based on two factors:
+
+1. The value of `gp_resource_manager`:
+    - `group`: Displays the Resource Groups interface.
+    - `queue`: Displays the Resource Queues interface.
+    - `none` (WHPG 7+): Disables resource management. In this mode, the panel will display a status message indicating that no governance is active.
+
+2. Your WHPG major version:
+The configuration options differ between WHPG 6 and WHPG 7 to reflect changes in the underlying engine's capabilities.
+
+## Governing workloads with resource groups
+
+Use this section when `gp_resource_manager` is set to `group`. Resource groups use Linux Control Groups (cgroups) to provide hard limits on CPU and memory. WEM automatically adjusts the **Configuration** tab to match the capabilities of your WHPG version.
+
+- **Configure group limits:**
+    - **WHPG 7 settings:**
+        - **CPU Max %:** Sets a hard limit on CPU usage. The group cannot exceed this even if the cluster is idle.
+        - **CPU Weight:** Determines the relative share of CPU the group receives when there is contention.
+        - **Memory Quota:** Sets the specific amount of RAM allocated to the group.
+        - **Concurrency:** Limits the number of simultaneous active queries.
+        - **Min Cost:** Defines the minimum query cost required before resource group limits are applied.
+    - **WHPG 6 settings:**
+        - **CPU Rate %:** Sets the percentage of CPU resources allocated to the group.
+        - **Memory %:** Defines the percentage of total available memory dedicated to the group.
+        - **Shared Quota %:** Sets the percentage of memory that can be shared among multiple transactions in the group.
+        - **Spill Ratio:** Controls the threshold at which memory-intensive operations (like sorts or joins) begin spilling data to disk.
+        - **Concurrency:** Limits the number of simultaneous active queries.
+
+- **Monitor group status:** Review the **Status** tab to see real-time consumption. Identify groups with a high queue depth, which indicates that queries are waiting for an available execution slot because the group's concurrency or memory limits have been reached.
+- **Map roles to groups:** Use the **Role Assignments** tab to link specific database users to their appropriate resource groups. This ensures that high-priority production ETL processes remain isolated from ad-hoc user queries.
+- **Visualize resource distribution:** Check the **Distribution** charts for a high-level view of your allocation. Use the **CPU Max %** (WHPG 7) or **CPU Rate %** (WHPG 6) distribution pie chart to verify that your most critical groups are granted the intended share of the cluster's processing power.
+
+
+### Governing workloads with resource queues
+
+Use this section when `gp_resource_manager` is set to `queue`. This strategy is available on both WHPG 6 and 7, but uses a different management logic centered on query "cost" rather than OS-level cgroups.
+
+- **Track active and queued queries:** Use the **Status** tab to monitor the count of **Active** vs. **Queued** queries. If the queued count is high, your resource queues are likely too restrictive or your cluster lacks the processing power to handle the current concurrent load.
+- **Analyze cost-based limits:** Review the cost limits assigned to each queue. Unlike groups, queues rely on the estimated "cost" of a query (from the optimizer) to determine if it should be allowed to run immediately or be placed in a wait state.
+- **Identify lock contention:** Check for queries in a "Waiting" state. In a queue-based system, this often points to long-running transactions holding resources and blocking other users in the same queue.
+
+### Troubleshooting waiting queries
+
+Regardless of the management strategy or version, use these steps to resolve resource-based delays:
+
+- **Identify limit breaches:** Determine if the delay is caused by CPU caps, memory shortages, or concurrency ceilings. If a group or queue is consistently hitting its limits, contact an administrator to adjust the values in the **Configuration** tab.
+- **Evaluate query cost:** Check the **Min Cost** setting (or the **Cost thresholds** in queues). Queries with a cost lower than this threshold will bypass limits, ensuring small, administrative tasks always run instantly.
