@@ -1,0 +1,154 @@
+---
+title: Creating tired tables
+navTitle: Creating tired tables
+description: Creating tired tables.
+---
+
+
+- Combines AutoPartition with PGAA for automatic data lifecycle
+- Cold partitions offload to object storage transparently
+- Queries span hot and cold data seamlessly
+- Partitioned tables get replicated to Iceberg Catalog as a table per partition + view unioning all of them
+
+
+This method leverages **PGD AutoPartition** to automate the lifecycle of high-volume data. By calling `pgaa.convert_to_tiered_table`, a standard Heap table is transformed into a partitioned structure:
+  - **Hot partition:** Recent data remains as Heap (or HTAP if `enable_replication` is `true`) for active processing.
+  - **Cold partition:** Once partitions cross an age threshold, they are automatically converted to PGAA tables. The local storage is reclaimed, but the data remains queryable.
+
+The PGD Task Manager automatically monitors the age of the table's partitions. When a partition becomes older than the defined offload period, it bulk-copies the entire partition to the object store, and then truncates it locally.
+
+The main benefit of this method is zero-touch data lifecycle management that optimizes storage costs. 
+
+
+## Prerequisites
+
+- Provisioned PGD cluster version 6.1 or later.
+- PGFS extension or an external REST-compatible catalog service.
+- Object storage: S3-compatible with credentials.
+- User permissions: the database user must have `CREATE`/`ALTER`/`EXECUTE` privileges for the PGD and PGAA functions.
+
+## Initial configuration
+
+Configure your PGD cluster to point to object storage for analytics or to an external catalog to write metadata to if you are using one. 
+
+Configure the default write location for your PGD cluster, which can either be a storage location, or a write catalog replication target.
+
+1. **Option 1**: Point to storage.
+
+      Create a storage location using the PGFS extension. See [Creating a storage location](/edb-postgres-ai/current/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) for details.
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgfs.create_storage_location(
+        'storage_location_name',
+        'protocol://your-bucket-name/path/',
+        '{"region": "region-name"}',
+        '{"access_key_id": "...", "secret_access_key": "..."}'
+      ));
+      ```
+
+      Point PGD to the defined storage location:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_storage_location', 'storage_location_name');
+      ```
+
+
+1. **Option 2**: Point to a catalog.
+      Configure a connection to an external catalog:
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgaa.add_catalog(
+          'write-catalog-name',
+          'iceberg-rest',
+          '{
+            "url": "https://your-catalog-rest-endpoint.com",
+            "token": "YOUR_AUTH_TOKEN",
+           }'
+        )
+      );
+      ```
+
+      Set the catalog as the analytics write destination:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_write_catalog', 'write-catalog-name');
+      ```
+
+### Converting to tiered table
+
+
+Configure AutoPartition with Offload:
+
+```sql
+SELECT bdr.autopartition(
+  relation := 'my_table',
+  partition_increment := '1 month',
+  partition_initial_lowerbound := '2020-01-01',
+  analytics_offload_period := '3 months',
+  managed_locally := TRUE
+);
+```
+
+
+
+Configure an existing heap table to use tiered tables.
+
+!!! Note 
+    Tables with sequences or foreign key constraints are not supported with tiered tables. Drop the sequence or constraint before converting to tiered table, then recreate it after conversion.
+
+1. Once the process completes, the table **Type** changes from **Heap** to **Tiered**.
+1. Expand the table to view the individual partitions: their **Type** shows as **Heap** or **HTAP** (if you enabled real-time analytics replication) for the "hot" tier, and **Iceberg** or **Delta** for the "cold" tier.  
+1. Compare the table values for **Disk Rows**, **Object Storage Rows**, **Disk Size**, and **Object Storage Size**.
+
+Find your non-partitioned heap table and use the `pgaa.convert_to_tiered_table` function to convert it to a tiered table:
+
+```sql
+CALL pgaa.convert_to_tiered_table(
+    'public.transactional_table',
+    range_partition_column := 'your_timestamp_column',
+    partition_increment := '1 year', 
+    analytics_offload_period := '1 year',
+    initial_lower_bound := '2010-01-01',
+    enable_replication := true 
+);
+```
+
+```sql
+CALL pgaa.convert_to_tiered_table(
+  relation := 'my_table'::regclass,
+  range_partition_column := 'created_at',
+  partition_increment := '1 month',
+  analytics_offload_period := '3 months'::interval,
+  initial_lower_bound := '2020-01-01'
+);
+```
+
+
+Where:
+- `relation` is the name of the table. This function uses Autopartition to configure the table data into partitions. 
+- `range_partition_column` specifies the column to partition by. It must be `DATE` or `TIMESTAMP`, and it must also be included in the primary key.
+- `initial_lower_bound` specifies the chronological starting point for the first partition.
+- `partition_increment` defines the time interval in between partitions.
+- `analytics_offload_period` defines the age threshold that automatically triggers the migration of all older partitions to object storage, marking the data as "cold".
+- `enable_replication` When set to `FALSE`, the table's data is only offloaded once partitions exceed the "cold" data threshold, If set to `TRUE`, it triggers immediate real-time replication.
+- `minimum_advance_partitions` establishes the minimum count of partitions that the system must proactively create and maintain ahead of the current date.
+
+
+Set `purge_analytics_target=true` to purge existing analytics data before replication.
+
+!!! Note
+  The option `purge_analytics_target` is only available for PGD 6.3 and later.
+
+This function converts the heap table into a tiered table and initiates the automated process to offload partitions older than `analytics_offload_period` to the configured object storage. If you set `enable_replication` to true, it will also convert the non-offloaded partitions into HTAP tables and replicate them to object storage. 
+
+!!! Note 
+    Tables with sequences or foreign key constraints are not supported with tiered tables. Drop the sequence or constraint before converting to tiered table, then recreate it after conversion.
+
+
+## Monitoring tiered tables
+
+```sql
+SELECT * FROM pgaa.list_tiered_tables();
+```

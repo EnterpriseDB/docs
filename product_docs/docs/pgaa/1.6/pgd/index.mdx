@@ -1,0 +1,84 @@
+---
+title: Integrating with PGD
+navTitle: Integrating with PGD
+description: Understand how writing Postgres data to lakehouse tables enables cost-efficient data lifecycle management
+deepToC: true
+navigation:
+- tiered-tables
+- offload
+- replicate
+---
+
+Integrate Postgres Distributed (PGD) and Postgres Analytics Accelerator (PGAA) to manage the complete data lifecycle within a unified architecture. PGD provides the high-availability transactional backbone for "hot" data, while PGAA delivers the vectorized engine and cloud-native handlers for "cold" data in object storage.
+
+This collaboration creates two distinct storage tiers:
+
+- "Hot" Tier (PGD): Local PostgreSQL storage for current operational data requiring sub-millisecond latency and full ACID compliance.
+- "Cold" Tier (PGAA): Cost-effective object storage (S3/GCS/Azure) using columnar formats like Apache Iceberg® or Delta Lake, optimized for high-speed analytical queries.
+
+Together, they enable you to move data from expensive transactional storage to the data lake while maintaining transparent query access through a single Postgres interface.
+
+**Key use cases:**
+
+  - **Regulatory compliance:** Offload aged data and audit trails to maintain lean, high-performance systems while ensuring long-term retention.
+  - **Time-series & IoT:** Balance real-time dashboards using "hot" recent data with cost-effective "cold" historical analytics for sensor and event streams.
+  - **Financial services:** Manage massive volumes of required historical transaction records without inflating transactional storage costs.
+  - **Retail & seasonal business cycles**: Use adaptive policies to keep peak-season order data "hot" for customer service while tiering older records to "cold" storage.
+
+## Understanding table types
+
+This architecture implements two distinct storage tiers: the Hot Tier (local SSD, sub-millisecond latency) and the Cold Tier (object storage, columnar format). Data exists in one of the following three distinct table types:
+
+| Table type | Storage location |  Behavior | 
+| ---------- | --------------- |  -------- | 
+| Heap | Local disk only | Standard transactional table in the hot tier. |
+| HTAP | Local + object storage | A heap table mapped to an analytical copy. PGD replicates all changes in near real-time. |
+| PGAA | Object storage only | A purely analytical cold table, available in the Delta or Iceberg format. |
+
+## Implementing tiered storage
+
+Choose from three methods to transition data between tiers based on your operational needs.
+
+### Tiered tables
+
+This method leverages **PGD AutoPartition** to automate the lifecycle of high-volume data. A heap table is transformed into a partitioned structure where:
+  - **Hot partitions:** Recent data remains as Heap (or HTAP if `enable_replication` is enabled) for active processing.
+  - **Cold partition:** Once partitions cross an age threshold, PGD bulk-copies them to object storage, converts them to PGAA tables, and reclaims local disk space, maintaining the data queryable.
+
+Benefit: Zero-touch storage optimization for time-series data.
+
+### Replicating to analytics
+
+This method continuously synchronizes a table with an analytical copy in object storage. A Heap table is converted into an HTAP table. To the user, it appears as a standard transactional table, but an analytical copy is maintained in the background.
+
+Disabling replication stops the sync; the local table reverts to Heap while the cloud copy remains a static snapshot.
+
+### Offloading tables
+
+This method offers a one-time, surgical way to immediately reclaim local disk space for HTAP tables, leaving only the copy in object storage (PGAA table). The local heap copy is truncated, and the table access method is altered to `PGAA`, which now points to object storage.
+
+If you need to bring your data back for transactional writes, you can restore the table back from object storage into the local Postgres heap. While the data in object storage remains intact as a "cold" copy unless manually purged.
+
+
+Method | Purpose | Use case | Origin Table | Destination table 
+----------|-----------------------------|---------------- | ----- | -------
+Tiered tables | Automated <br />Lifecycle management | High-volume time-series<br /> data where historical retention<br /> is critical and automated. | Heap | Heap/HTAP (Hot)<br /> PGAA (Cold)
+Replication | Continuous <br />synchronization | Replicating a transactional table<br /> in near real-time for general analytics. | Heap | HTAP 
+Offload | Selective<br /> archiving | One-time, surgical removal and<br /> archival of a specific table. | HTAP | PGAA
+
+
+### Metadata management
+
+PGAA supports two ways to manage object store metadata when integrating with PGD:
+
+- **No-catalog offload**: Metadata is stored alongside data files. Use storage locations via the [PGFS extension](/edb-postgres-ai/current/ai-factory/pipeline/pgfs) to connect directly to object storage.
+- **Catalog-managed offload**: Decouples data from the metadata using a centralized service like Iceberg REST. This allows Postgres and external tools (like Spark or Trino) to query the same data lake tables from a universal registry. 
+
+## Operational Considerations
+
+Ensure high availability and cost efficiency by proactively managing your tiered environment.
+
+- **Monitoring & capacity:** Track partition growth, offload success rates, and query patterns. Use dashboards to quantify storage savings and forecast ingestion rates for the "hot" tier versus long-term growth in "cold" object storage.
+- **Scheduling:** Execute bulk offload or restore operations during maintenance windows to minimize impact on production traffic.
+- **Lifecycle maintenance:** Perform routine maintenance, such as merging small files in "cold" storage and cleaning up orphaned files, to optimize analytical query performance.
+- **Tiered backup & resilience:** Maintain frequent backups for the "hot" transactional tier while leveraging the native durability of object storage for the "cold" tier. Ensure all operations remain reversible through validated restore functions.

@@ -1,0 +1,103 @@
+---
+title: Offloading to analytics
+navTitle: Offloading to analytics
+description: Offloading to analytics.
+---
+
+This is a surgical operation to free up disk space immediately. Using `pgaa.convert_to_analytics`, you move an HTAP table entirely to the cold tier. The local heap copy is truncated, and the table access method is altered to `PGAA`, which now points to object storage.
+
+If you need to bring your data back for transactional writes, `pgaa.restore_from_analytics` pulls the data from object storage back into the local Postgres Heap.
+
+What happens to the object store data when we restore?
+
+This method offers a one-time, surgical way to clear local storage, leaving only the copy in object storage. You can only perform this operation on tables that are already set with replication (HTAP tables).
+
+The system converts a replicated HTAP table into PGAA table. A PGAA table is a pure, "cold" analytics table in object storage, available in the Delta or Iceberg format. This process truncates the local copy, effectively eliminating local storage overhead.
+
+The main benefit is a rapid release of local disk space for tables that are no longer actively transactional.
+
+Restore the table back to HTAP to recreate that local storage and resume replication.
+
+## Prerequisites
+
+- Provisioned PGD cluster version 6.1 or later.
+- PGFS extension or an external REST-compatible catalog service.
+- Object storage: S3-compatible with credentials.
+- User permissions: the database user must have `CREATE`/`ALTER`/`EXECUTE` privileges for the PGD and PGAA functions.
+
+## Initial configuration
+
+Configure your PGD cluster to point to object storage for analytics or to an external catalog to write metadata to if you are using one. 
+
+Configure the default write location for your PGD cluster, which can either be a storage location, or a write catalog replication target.
+
+1. **Option 1**: Point to storage.
+
+      Create a storage location using the PGFS extension. See [Creating a storage location](/edb-postgres-ai/current/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) for details.
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgfs.create_storage_location(
+        'storage_location_name',
+        'protocol://your-bucket-name/path/',
+        '{"region": "region-name"}',
+        '{"access_key_id": "...", "secret_access_key": "..."}'
+      ));
+      ```
+
+      Point PGD to the defined storage location:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_storage_location', 'storage_location_name');
+      ```
+
+1. **Option 2**: Point to a catalog.
+      Configure a connection to an external catalog:
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgaa.add_catalog(
+          'write-catalog-name',
+          'iceberg-rest',
+          '{
+            "url": "https://your-catalog-rest-endpoint.com",
+            "token": "YOUR_AUTH_TOKEN",
+           }'
+        )
+      );
+      ```
+
+      Set the catalog as the analytics write destination:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_write_catalog', 'write-catalog-name');
+      ```
+
+
+### Offload table
+
+Move the contents of an existing HTAP table to "cold" storage, truncate the local copy, and stop replication.
+
+
+Use the `pgaa.convert_to_analytics` function to convert a synchronized HTAP table into a "cold", pure-analytics table and remove the data from local disk.
+
+```sql
+CALL pgaa.convert_to_analytics('t'::regclass);
+```
+
+The function removes the local data and redefines the table's access method to point solely to the external Iceberg or Delta files.
+
+
+## Restoring from analytics
+
+To restore the table use the `pgaa.restore_from_analytics` function to bring the data stored in the external analytics tier back into the Postgres transactional storage as a heap table.
+
+```sql
+CALL pgaa.restore_from_analytics('public.transactional_table');
+```
+
+Converts a PGD-replicated table to use PGAA access method, pointing to the analytics data that has been replicated.
+
+The function checks the table's configuration, identifies its external Iceberg/Delta path in object storage, and rewrites the data back into the table's local storage structure. Once the data is locally present, the function sets the table's access method back to the local transactional endpoint again.
+
+The function `pgaa.restore_from_analytics` converts a PGAA analytics table back to heap access method while preserving data. Used for reverting analytics tables to standard Postgres tables.

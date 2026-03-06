@@ -1,0 +1,130 @@
+---
+title: Replicating to analytics
+navTitle: Replicating to analytics
+description: Replicating to analytics.
+---
+
+Use this method to continuously synchronize an entire table in near real-time with an analytical copy in object storage, regardless of the age of the data.
+
+Use `pgaa.enable_analytics_replication` to convert a Heap table into an HTAP table. Data is continuously streamed to object storage. To the user, it appears as a standard transactional table, but an analytical copy is maintained in the background.
+
+The system uses continuous logical replication that captures every DML operation on the table and streams it to the external object storage destination.
+
+This method converts your origin heap table to an HTAP type. An HTAP table is a heap table that is mapped to an analytics table at the destination object storage where PGD replicates any changes. 
+
+You can also configure replication for partitions within a tiered table. Partitions newer than the threshold offload period will become HTAP tables.
+
+The main benefit is near real-time, analytical replica of an entire transactional table for immediate analytics.
+
+
+## Prerequisites
+
+- Provisioned PGD cluster version 6.1 or later.
+- PGFS extension or an external REST-compatible catalog service.
+- Object storage: S3-compatible with credentials.
+- User permissions: the database user must have `CREATE`/`ALTER`/`EXECUTE` privileges for the PGD and PGAA functions.
+
+## Initial configuration
+
+Configure your PGD cluster to point to object storage for analytics or to an external catalog to write metadata to if you are using one. 
+
+Configure the default write location for your PGD cluster, which can either be a storage location, or a write catalog replication target.
+
+1. **Option 1**: Point to storage.
+
+      Create a storage location using the PGFS extension. See [Creating a storage location](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) for details.
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgfs.create_storage_location(
+        'storage_location_name',
+        'protocol://your-bucket-name/path/',
+        '{"region": "region-name"}',
+        '{"access_key_id": "...", "secret_access_key": "..."}'
+      ));
+      ```
+
+      Point PGD to the defined storage location:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_storage_location', 'storage_location_name');
+      ```
+
+1. **Option 2**: Point to a catalog.
+      Configure a connection to an external catalog:
+
+      ```sql
+      SELECT bdr.replicate_ddl_command($$
+        SELECT pgaa.add_catalog(
+          'write-catalog-name',
+          'iceberg-rest',
+          '{
+            "url": "https://your-catalog-rest-endpoint.com",
+            "token": "YOUR_AUTH_TOKEN",
+           }'
+        )
+      );
+      ```
+
+      Set the catalog as the analytics write destination:
+
+      ```sql
+      SELECT bdr.alter_node_group_option('your_pgd_group', 'analytics_write_catalog', 'write-catalog-name');
+      ```
+
+### Enabling replication
+
+Configure an existing heap table to stream data to object storage. Convert the heap table to an analytical HTAP table and starts the logical replication worker.
+
+
+**Using alter table option**
+
+
+```sql
+ALTER TABLE t SET (pgd.replicate_to_analytics = TRUE);
+```
+
+**Using the PGAA function**
+
+Use the `pgaa.enable_analytics_replication` function to enable continuous replication of a heap table. Note that your table must have a primary key.
+
+```sql
+CALL pgaa.enable_analytics_replication('t'::regclass);
+CALL pgaa.enable_analytics_replication('t'::regclass, purge_analytics_target := TRUE);
+```
+
+Set `purge_analytics_target=true` to purge existing analytics data before replication.
+
+!!! Note
+  The option `purge_analytics_target` is only available for PGD 6.3 and later.
+
+### Disabling replication
+
+
+The function `pgaa.disable_analytics_replication` stops the synchronization. The object storage copy remains as a static snapshot, while the local table reverts to Heap.
+
+Disable replication to switch the table back to heap and only use transactional storage.
+
+**Using alter table option**
+
+
+```sql
+ALTER TABLE t SET (pgd.replicate_to_analytics = FALSE);
+```
+
+**Using the PGAA function**
+
+
+```sql
+CALL pgaa.disable_analytics_replication('public.transactional_table');
+```
+
+The function stops the analytics replication worker process from capturing and streaming any further DML changes to the external object storage. The table is no longer contributing data to the analytics platform, though the data that was already offloaded remains in object storage.
+
+## Monitoring replication
+
+```sql
+SELECT * FROM bdr.analytics_table;
+SELECT * FROM pgaa.list_analytics_tables();
+```
+
