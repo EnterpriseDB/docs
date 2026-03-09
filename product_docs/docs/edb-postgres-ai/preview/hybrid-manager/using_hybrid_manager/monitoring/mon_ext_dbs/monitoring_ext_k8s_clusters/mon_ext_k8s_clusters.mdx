@@ -1,14 +1,14 @@
 ---
-title: EDB Postgres AI agent installation
+title: Installing the EDB Postgres AI agent
 navTitle: Installing
-description: Installing the EDB Postgres AI agent 
+description: Installing the EDB Postgres AI agent
 deepToC: true
 ---
 
 ## Installation methods
 
 !!!important
-Set the [environment values](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_k8s_clusters/installation_requirements) before proceeding with the installation of the EDB Postgres AI agent for external Kubernetes cluster.
+Set the [environment values](/edb-postgres-ai/preview/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/monitoring_ext_k8s_clusters/installation_requirements/#required-environment-values) before proceeding with the installation of the EDB Postgres AI agent for external Kubernetes cluster.
 !!!
 
 
@@ -21,13 +21,13 @@ This chart is designed to work across different Kubernetes platforms (including 
 
 Key points:
 
-- **Universal Compatibility:** The chart defaults to runAsUser: null, allowing OpenShift SCCs to assign valid UIDs automatically, while standard Kubernetes falls back to the image's default user.
-- **Security Context:** runAsNonRoot strategy varies by component to ensure compatibility with standard K8s validation logic vs OpenShift named-user support.
+- **Universal Compatibility:** The chart defaults to `runAsUser: null`, allowing OpenShift SCCs to assign valid UIDs automatically, while standard Kubernetes falls back to the image's default user.
+- **Security Context:** runAsNonRoot strategy varies by component to ensure compatibility with standard Kubernetes validation logic vs OpenShift named-user support.
 - **OTEL collector:** Uses the image default user (nonroot) without explicit numeric IDs to satisfy both strict K8s validation and OpenShift SCCs.
 
 ## Downloading the Helm chart and customizing the values file
 
-1. Obtain an [EDB subscription token](https://www.enterprisedb.com/docs/repos/getting_started/).
+1. Obtain an EDB subscription token.
 
 1. Download the EDB Postgres AI agent chart from the EDB repository:
 
@@ -120,7 +120,7 @@ Key points:
 
    !!!
 
-1. Copy the image pull secret the CNP cluster namespace:
+1. To allow your target namespace to pull the required images, copy the beacon-agent-pull-secret from the agent's namespace to the CloudNativePG™ cluster namespace:
 
    ```
    kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
@@ -128,13 +128,17 @@ Key points:
 
 ## Patching clusters to enable the agent sidecar
 
-This shows how to patch a single cluster, you can adapt this to patch many clusters:
+This section shows how to patch a single cluster. You can adapt the instructions below to patch many clusters:
 
-1. Export an environment variable `TARGET_NAME` with the name of either the CNPG cluster or PGD group (for PGD4K) to which you wish to add the agent.
+1. Define the target resource you wish to patch. Export the TARGET_NAME for your CloudNativePG™ cluster or PGD group (for EDB Postgres® AI for CloudNativePG™ Cluster) to which you wish to add the agent.
 
-   ```
+   ```shell
    export TARGET_UID="$(kubectl get "${TARGET_TYPE}" "${TARGET_NAME}" -n "${TARGET_NS}" -o jsonpath='{.metadata.uid}')"
+  ```
+
+1. Create the configuration patch. This template adds the necessary labels and ensures the agent can pull the required images:
   
+  ```shell
    PATCH_CONTENT=$(cat <<EOF
    metadata:
      labels:
@@ -149,7 +153,11 @@ This shows how to patch a single cluster, you can adapt this to patch many clust
          k8s.enterprisedb.io/beacon-resource-id: "${TARGET_NAME}-${TARGET_UID}"
    EOF
    )
-   
+  ```
+
+1. Run the following command to merge the configuration changes into your resource:
+
+   ```
    kubectl patch pgdgroup "${TARGET_NAME}" -n "${TARGET_NS}" --type='merge' -p "$PATCH_CONTENT"
    ```
 
