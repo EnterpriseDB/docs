@@ -1,0 +1,401 @@
+---
+title: Install Hybrid Manager using the Operator
+navTitle: Installing with Operator
+description: Deploy Hybrid Manager using the operator helm chart and HybridControlPlane custom resource.
+deepToC: true
+---
+
+## Overview
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+!!! Success Recommended Installation Method
+This is the **recommended installation method** for Hybrid Manager. The operator-based approach is the future direction for HM installations and provides better version flexibility, Kubernetes-native resource management, and GitOps support.
+!!!
+
+This installation method uses the **EDB Postgres AI Operator** helm chart and a **HybridControlPlane Custom Resource** instead of the bootstrap helm chart with `values.yaml`.
+
+### Prerequisites
+
+* [Phase 1: Planning your architecture](./planning_arch) (Completed)
+* [Phase 2: Gathering your system requirements](./sys_reqs) (Completed)
+* [Phase 3: Deploying your Kubernetes Cluster](./k8s_install) (Running and validated)
+* [Phase 4: Preparing your environment](./environment_prep) (Completed and validated)
+
+!!! Warning Migrating from Bootstrap?
+If you have an **existing Bootstrap installation** and want to migrate to the Operator method, you **cannot** install the operator directly on top of it. You must first uninstall the bootstrap deployment to avoid Helm ownership conflicts. See the [Migration guide](./migrate_bootstrap_to_operator) for detailed instructions.
+!!!
+
+### Outcomes
+
+* *A fully deployed Hybrid Manager (HM) platform using the operator approach, accessible via the web portal.*
+
+!!! Note
+**Deployment responsibility:** Installation of Hybrid Manager (HM) is optimally executed by the **customer's SRE team**, and the customer owns its life cycle operation.
+If you have a [Sovereign System](/edb-postgres-ai/current/hybrid-manager/system/), the EDB CX team executes the HM install. **Professional Services** and **Sales Engineering** can also be engaged for assistance, and **Support** has knowledge base articles available.
+!!!
+
+**Next phase:** Phase 6: [Exploring post-installation options](./post_install)
+
+## Installation approach comparison
+
+There are two methods for installing Hybrid Manager:
+
+| Method | Configuration | Status | Use case |
+|--------|---------------|--------|----------|
+| **Operator (This guide - Recommended)** | Uses `HybridControlPlane` Custom Resource with `edb-hcp-operator` helm chart | **Active - Recommended** | **All new installations**, GitOps workflows, Kubernetes-native resource management, version flexibility |
+| **Bootstrap (Legacy)** | Uses `values.yaml` with `edbpgai-bootstrap` helm chart | **Deprecated** | Existing installations only, documented in [Install Hybrid Manager](./install_hm) |
+
+!!! Note
+Both methods result in the same deployed platform. However, the **Bootstrap method is deprecated** and will be removed in a future release. All new installations should use the **Operator method** described in this guide.
+!!!
+
+## Understanding the HybridControlPlane Custom Resource
+
+The `HybridControlPlane` (HCP) is a Kubernetes Custom Resource that defines the desired state of your Hybrid Manager installation.
+
+### Key benefits of the operator approach
+
+1. **Kubernetes-native:** Follows standard Kubernetes patterns with Custom Resources
+2. **Version flexibility:** Can install different HCP versions independently from the operator version
+3. **GitOps friendly:** CR manifests work seamlessly with GitOps tools (ArgoCD, Flux)
+4. **Declarative:** The operator reconciles the actual state to match your desired state
+
+## Verify final configuration
+
+Before installing, you should have prepared your HybridControlPlane manifest. The following sections show how values from `values.yaml` map to the HybridControlPlane CR.
+
+### Configuration mapping reference
+
+The operator installation uses a `HybridControlPlane` Custom Resource instead of `values.yaml`. Here's how the configurations map:
+
+| values.yaml field | HybridControlPlane field | Description |
+|-------------------|--------------------------|-------------|
+| `system` | `spec.flavour` | Kubernetes distribution (eks, aks, gke, rhos, etc.) |
+| `containerRegistryURL` | `spec.imageRegistry` | Container registry URL |
+| `bootstrapImageTag` | `spec.version` | HM version to install |
+| `imagePullSecrets` | `spec.imagePullSecrets[]` | Image pull secret references |
+| `disabledComponents` | `spec.disabledComponents[]` | Components to disable |
+| `parameters.global.*` | `spec.globalParameters` | Global configuration parameters |
+| `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters |
+| `beaconServer` | `spec.beaconServer` | Beacon server configuration |
+| `beaconAgent` | `spec.beaconAgent` | Beacon agent configuration |
+| `clusterGroups` | `spec.clusterGroups` | Multi-DC cluster topology |
+| `scenarios` | `spec.scenarios[]` | Installation scenarios (core, migration, ai, analytics) |
+| `resourceAnnotations` | `spec.resourceAnnotations[]` | Custom resource annotations |
+| `source.remote` | `spec.source.remote` | Use remote bootstrap image for manifests |
+
+### Example HybridControlPlane manifest
+
+Here's a complete example showing the structure:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+  annotations:
+    edbpgai.com/ready-for-upgrade: "true"
+    biganimal.enterprisedb.io/deletion-protect: enabled
+spec:
+  # Basic configuration
+  flavour: eks  # or aks, gke, rhos, kind, rke, microk8s, nkp
+  imageRegistry: docker.enterprisedb.com/pgai-platform
+  version: "2026.1.0"
+
+  # Source configuration
+  source:
+    remote: true  # Use remote bootstrap image
+    # OR
+    # useLocalKustomizations: true  # Use operator embedded manifests
+
+  # Image pull secrets
+  imagePullSecrets:
+    - name: edb-cred
+      namespace: edbpgai-bootstrap
+
+  # Global parameters (maps from values.yaml parameters.global)
+  globalParameters:
+    CONTAINER_REGISTRY_URL: docker.enterprisedb.com/pgai-platform
+    HCP_VERSION: "2026.1.0"
+    internal_backup_folder: "abc123xyz789"
+    portal_domain_name: "portal.my-company.com"
+    storage_class: "gp3"
+    portal_certificate_issuer_kind: "ClusterIssuer"
+    portal_certificate_issuer_name: "letsencrypt-prod"
+    trust_domain: "portal.my-company.com"
+
+  # Component-specific parameters
+  componentsParameters:
+    upm-beacon:
+      beacon_location_id: "us-east-1"
+      server_host: "beacon.my-company.com"
+    transporter-rw-service:
+      domain_name: "migration.my-company.com"
+    transporter-dp-agent:
+      rw_service_url: "https://migration.my-company.com/transporter"
+    upm-istio-gateway:
+      cookie_aeskey: "your-16-or-32-byte-key"
+    transporter-data-operator:
+      fips_enabled: "false"
+
+  # Beacon server configuration
+  beaconServer:
+    logLevel: info
+    hybridManagerInstallation: "my-company-prod"
+    additionalTrustDomains:
+      - "secondary-location.my-company.com"
+
+  # Beacon agent configuration
+  beaconAgent:
+    accessKey: "your-access-key"
+    logLevel: info
+    providers:
+      - kubernetes
+    provisioning:
+      imageDiscovery: true
+      imagesetDiscoveryAuthenticationType: "basic"
+      imagesetDiscoveryContainerRegistryURL: "docker.enterprisedb.com/pgai-platform"
+      openshift: false
+      operandSetVersions:
+        - "1\\.1\\.[0-9]+"
+      nodeSelector:
+        kubernetes.io/os: linux
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "topology.kubernetes.io/zone"
+          whenUnsatisfiable: "DoNotSchedule"
+          podSelector: "MatchDatabasePods"
+    transparentDataEncryptionMethods:
+      - passphrase
+      - hashicorp_vault
+
+  # Cluster groups (for multi-DC deployments)
+  clusterGroups:
+    role: standalone  # or primary/secondary
+    # For multi-DC primary:
+    # primary:
+    #   domainName: "primary.my-company.com"
+    # secondaries:
+    #   - domainName: "secondary.my-company.com"
+
+  # Installation scenarios
+  scenarios:
+    - core
+    - migration
+    - ai
+    - analytics
+
+  # Optional: Disable specific components
+  # disabledComponents:
+  #   - component-name
+
+  # Optional: Resource annotations
+  resourceAnnotations:
+    - name: istio-ingressgateway
+      kind: Service
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+        service.beta.kubernetes.io/load-balancer-source-ranges: "10.0.0.0/8"
+```
+
+## Install the EDB Postgres AI Operator
+
+### Create namespace
+
+Create a dedicated namespace for the operator:
+
+```bash
+kubectl create namespace edbpgai-operator --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### Install the operator helm chart
+
+Execute the operator deployment using Helm:
+
+* **`[REGISTRY]`:** Use `docker.enterprisedb.com` (Public) or your private registry domain.
+* **`<"VERSION">`:** The operator version tag (e.g., `1.0.0`).
+
+```bash
+helm template \
+  --namespace edbpgai-bootstrap \
+  --install \
+  --version <OPERATOR_VERSION> \
+  --include-crds \
+  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
+  --set "controllerManager.manager.image.repository=docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager" \
+  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
+  --set "imagePullSecrets[0].name=edb-cred" \
+  | kubectl apply -f -
+```
+
+### Verify operator installation
+
+Check that the operator pod is running:
+
+```bash
+kubectl get pods -n edbpgai-operator
+```
+
+You should see output similar to:
+
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+edb-hcp-operator-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
+```
+
+## Create the HybridControlPlane resource
+
+### Prepare your HCP manifest
+
+Create a file named `hybridcontrolplane.yaml` with your configuration. Use the [example above](#example-hybridcontrolplane-manifest) as a template, customizing the values based on your environment preparation.
+
+**Critical fields to verify:**
+
+1. **`spec.flavour`**: Your Kubernetes distribution
+2. **`spec.imageRegistry`**: Your container registry URL
+3. **`spec.version`**: The HM version you want to install
+4. **`spec.globalParameters.portal_domain_name`**: Your portal FQDN
+5. **`spec.beaconAgent.provisioning`**: Your provisioning configuration
+
+### Apply the HCP resource
+
+Deploy the HybridControlPlane:
+
+```bash
+kubectl apply -f hybridcontrolplane.yaml
+```
+
+## Monitor installation progress
+
+Once the HCP resource is created, the operator begins reconciling and deploying HM components.
+
+### Check HCP status
+
+Monitor the HybridControlPlane resource status:
+
+```bash
+kubectl get hybridcontrolplane edbpgai -o yaml
+```
+
+Look for the `status` section:
+
+```yaml
+status:
+  phase: deployed  # Can be: "", "deploying", "deployed", "failed", "deleting"
+  components:
+    - name: component-name
+      state: success  # Can be: pending, success, failed, deleted
+      version: "2026.1.0"
+      timestamp: "2026-03-09T10:30:00Z"
+  preflightChecks:
+    phase: passed
+    totalChecks: 10
+    failedChecks: 0
+  postflightChecks:
+    phase: passed
+    totalChecks: 8
+    failedChecks: 0
+```
+
+### Use kubectl to monitor
+
+Get a quick status view:
+
+```bash
+kubectl get hcp
+```
+
+Expected output:
+
+```
+NAME      PHASE      PREFLIGHT   POSTFLIGHT
+edbpgai   deployed   passed      passed
+```
+
+### Check component deployment
+
+View all components and their status:
+
+```bash
+kubectl get hcp edbpgai -o jsonpath='{.status.components[*].name}' | tr ' ' '\n'
+```
+
+Check for failed components:
+
+```bash
+kubectl get hcp edbpgai -o jsonpath='{.status.components[?(@.state=="failed")]}'
+```
+
+### Check pod health
+
+Verify that all pods are coming up healthy across namespaces:
+
+```bash
+kubectl get pods -A | grep -E '(edbpgai|upm|transporter|edb-)'
+```
+
+**What to look for:**
+
+* Pods should transition from `Pending` → `ContainerCreating` → `Running`
+* All containers in each pod should show `READY` (e.g., `2/2`, `1/1`)
+
+!!! Note Troubleshooting
+If pods are stuck in `ImagePullBackOff`, verify your **Image Pull Secret** from [Phase 4](./environment_prep).
+If they are `Pending`, verify your **Storage Class** availability.
+If the HCP phase shows `failed`, check component status for error messages.
+!!!
+
+## Verify Portal access
+
+Once the HCP phase shows `deployed` and pods are running, verify portal access:
+
+1. **Open your browser** and navigate to the domain defined in `spec.globalParameters.portal_domain_name` (e.g., `https://portal.my-company.com`).
+
+2. **Accept the certificate:** If you used a self-signed certificate, you may see a browser warning. Proceed past it for now.
+
+3. **Log In:** Use the **User-0** credentials you defined during environment preparation (under static passwords configuration).
+
+**Success:** You should see the HM landing page.
+
+## Managing the HybridControlPlane
+
+### Updating configuration
+
+To update your HM configuration:
+
+1. Edit your `hybridcontrolplane.yaml` manifest
+2. Apply the changes:
+   ```bash
+   kubectl apply -f hybridcontrolplane.yaml
+   ```
+3. The operator will reconcile and apply the changes
+
+### Checking operator logs
+
+If you encounter issues, check the operator logs:
+
+```bash
+kubectl logs -n edbpgai-operator deployment/edb-hcp-operator -f
+```
+
+### Upgrading HM version
+
+To upgrade to a new HM version:
+
+1. Update `spec.version` in your HCP manifest to the target version
+2. Apply the manifest:
+   ```bash
+   kubectl apply -f hybridcontrolplane.yaml
+   ```
+3. Monitor the upgrade progress using the status commands above
+
+!!! Note
+When using `spec.source.remote: true`, the operator downloads manifests from the bootstrap image for the specified version, enabling version flexibility independent of the operator version.
+!!!
+
+## Next phase
+
+The platform is installed and running using the operator approach. You are now ready to perform the initial post-installation configuration, such as connecting your first self-managed cluster or adding team members.
+
+**[Proceed to Phase 6: Exploring your post-installation options](./post_install) →**
