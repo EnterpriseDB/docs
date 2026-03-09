@@ -182,19 +182,11 @@ const Page = () => {
 
             <BannerSubCard
               iconName={iconNames.IMPROVE}
-              headingText="Analytics Accelerator"
+              headingText="Analytics"
               to="/pgaa/latest/"
             >
               <BannerCardLink to="/pgaa/latest/">
-                Analytics Engine
-                <br />
-                <span style={{ fontSize: "0.8em" }}>Columnar Query Engine</span>
-              </BannerCardLink>
-
-              <BannerCardLink to="/pgaa/latest/overview/quick_start/">
-                Managed Lakehouse
-                <br />
-                <span style={{ fontSize: "0.8em" }}>Delta Tables, Iceberg</span>
+                Analytics Accelerator (PGAA)
               </BannerCardLink>
 
               <BannerCardLink to="/supported-open-source/warehousepg/">
