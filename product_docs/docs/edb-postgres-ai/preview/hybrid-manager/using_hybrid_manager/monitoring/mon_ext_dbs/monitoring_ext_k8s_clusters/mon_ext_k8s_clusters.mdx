@@ -23,11 +23,11 @@ Key points:
 
 - **Universal Compatibility:** The chart defaults to runAsUser: null, allowing OpenShift SCCs to assign valid UIDs automatically, while standard Kubernetes falls back to the image's default user.
 - **Security Context:** runAsNonRoot strategy varies by component to ensure compatibility with standard K8s validation logic vs OpenShift named-user support.
-- **OpenTelemetry collector:** Uses the image default user (nonroot) without explicit numeric IDs to satisfy both strict K8s validation and OpenShift SCCs.
+- **OTEL collector:** Uses the image default user (nonroot) without explicit numeric IDs to satisfy both strict K8s validation and OpenShift SCCs.
 
 ## Downloading the Helm chart and customizing the values file
 
-1. Obtain an [EDB subscription token](/postgres_distributed_for_kubernetes/latest/installation_upgrade/#obtaining-an-edb-subscription-token).
+1. Obtain an [EDB subscription token](https://www.enterprisedb.com/docs/repos/getting_started/).
 
 1. Download the EDB Postgres AI agent chart from the EDB repository:
 
@@ -60,7 +60,7 @@ Key points:
        username: ${EDB_REPO}
        password: ${EDB_SUBSCRIPTION_TOKEN}
    
-   # OpenTelemetry Collector image
+   # OTEL collector image
    otelImage:
      repository: "docker.enterprisedb.com/${EDB_REPO}/upm-beacon-external-metrics-receiver"
      tag: ${AGENT_VERSION}
@@ -171,7 +171,7 @@ This shows how to patch a single cluster, you can adapt this to patch many clust
     kubectl cnp restart region-a-3
     ```
 
-## Security context configuration for external Kubernetes clusters
+## Configure security contexts for external Kubernetes clusters
 
 ### For standard Kubernetes (KIND, GKE, EKS, AKS)
 
@@ -196,7 +196,7 @@ Configure your `custom-values.yaml` with default secure settings which include u
 
 ### For OpenShift Kubernetes clusters
 
-1. Enable the OpenShift mode to automatically configure security contexts for Security contenxt configuration (SCC) compatibility.
+1. Enable the OpenShift mode to automatically configure security contexts for SCC compatibility.
 
 1. Enable OpenShift support in your `custom-values.yaml` file:
 
@@ -205,11 +205,11 @@ Configure your `custom-values.yaml` with default secure settings which include u
      enabled: true
    ```
 
-When the value is set to `openshift.enabled: true`, the chart automatically:
-
-- Omits `runAsUser` and `runAsGroup` from the container security contexts, allowing SCC to assign them.
-- Stores other security settings like capabilities drop, readOnlyRootFilesystem, etc.
-- Uses numeric UID 65532 for the OpenTelemetry collector that is required for distroless image validation.
+   When the value is set to `openshift.enabled: true`, the chart automatically:
+      
+   - Omits `runAsUser` and `runAsGroup` from the container security contexts, allowing SCC to assign them.
+   - Stores other security settings like capabilities drop, readOnlyRootFilesystem, etc.
+   - Uses numeric UID 65532 for the OTEL collector that is required for distroless image validation.
 
 1. Alternatively, specify your configuration via the command line using the `-f custom-values.yaml` flag:
 
@@ -223,7 +223,7 @@ When the value is set to `openshift.enabled: true`, the chart automatically:
      privileged: false
      readOnlyRootFilesystem: true
      runAsNonRoot: true
-     ```
+   ``
 
 1. Leave the fields below empty as OpenShift will assign them automatically:
      
@@ -240,7 +240,7 @@ When the value is set to `openshift.enabled: true`, the chart automatically:
      # Leave fsGroup empty for OpenShift
      # fsGroup:
    ```
-1. To ensure OpenShift compatibility, configure the OpenTelemetry Collector subchart with a restricted security context:
+1. To ensure OpenShift compatibility, configure the OTEL collector subchart with a restricted security context:
 
    ```yaml
    opentelemetry-collector:
@@ -255,61 +255,65 @@ When the value is set to `openshift.enabled: true`, the chart automatically:
            - ALL
    ```
 
-!!! note
-- Distroless image support: The UID/GID `65532` is the standard "nonroot" user for distroless images, which lacks a traditional `/etc/passwd` file.
+1. Configure the security context to prohibit root access, manage volume permissions via file system groups, and restrict system calls using the default seccomp profile.
 
-- Numeric validation: Setting a specific numeric ID is required for the `runAsNonRoot: true` directive to verify the user identity correctly.
+    ```yaml
+        securityContext:
+          enabled: true
+          runAsNonRoot: true
+          runAsUser:
+          runAsGroup:
+          fsGroup:
+          seccompProfile:
+            type: RuntimeDefault
+     ```
 
-- OpenShift compatibility: While OpenShift's Privileged SCC allows any UID, using 65532 ensures a consistent, secure identity across both OpenShift and standard Kubernetes environments.
-!!!
+   !!! note
+   Implementing a standardized security context for your deployments ensures seamless compatibility and enhanced security across diverse container platforms.
+   
+   - Distroless image support: The UID/GID `65532` is the standard "nonroot" user for distroless images, which lacks a traditional `/etc/passwd` file.
+   
+   - Numeric validation: Setting a specific numeric ID is required for the `runAsNonRoot: true` directive to verify the user identity correctly.
+   
+   - OpenShift compatibility: While OpenShift's Privileged SCC allows any UID, using 65532 ensures a consistent, secure identity across both OpenShift and standard Kubernetes environments.
+   !!!
 
-**Key configuration notes:**
-
-- OpenShift ID Management: The runAsUser, runAsGroup, and fsGroup fields are left empty to allow OpenShift’s Security Context Constraints (SCC) to automatically assign the correct UID and GID ranges for the project.
-
-- Security context activation: The setting `enabled: true` ensures the subchart applies the specified security settings rather than falling back to its internal defaults.
-
-- Non-root enforcement: The `runAsNonRoot: true` flag remains active to guarantee that the container never runs with root privileges, even when IDs are dynamically assigned by the platform.
-
-- Seccomp hardening: Utilizing the RuntimeDefault profile ensures the container uses the container runtime's default secure syscall filter.
-
-  ```
-     securityContext:
-       enabled: true
-       runAsNonRoot: true
-       runAsUser:
-       runAsGroup:
-       fsGroup:
-       seccompProfile:
-         type: RuntimeDefault
-  ```yaml
+   **Key configuration notes:**
+   
+   - OpenShift ID Management: The runAsUser, runAsGroup, and fsGroup fields are left empty to allow OpenShift’s Security Context Constraints (SCC) to automatically assign the correct UID and GID ranges for the project.
+   
+   - Security context activation: The setting `enabled: true` ensures the subchart applies the specified security settings rather than falling back to its internal defaults.
+   
+   - Non-root enforcement: The `runAsNonRoot: true` flag remains active to guarantee that the container never runs with root privileges, even when IDs are dynamically assigned by the platform.
+   
+   - Seccomp hardening: Utilizing the RuntimeDefault profile ensures the container uses the container runtime's default secure syscall filter.
          
 1. Harden the container-level security context by enforcing a read-only filesystem, disabling privilege escalation, and dropping all default Linux capabilities:
 
-```yaml
-  containerSecurityContext:
-    readOnlyRootFilesystem: true
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-```
+   ```yaml
+     containerSecurityContext:
+       readOnlyRootFilesystem: true
+       allowPrivilegeEscalation: false
+       capabilities:
+         drop:
+           - ALL
+   ```
    
-Alternatively, you can apply these settings via the command line:
-   
-```shell
-helm upgrade --install beacon-agent-k8s \
-  . \
-  --namespace upm-beacon \
-  --create-namespace \
-  # ... your other flags ...
-  --set securityContext.runAsUser=null \
-  --set securityContext.runAsGroup=null \
-  --set podSecurityContext.fsGroup=null \
-  --set opentelemetry-collector.securityContext.runAsUser=null \
-  --set opentelemetry-collector.securityContext.runAsGroup=null \
-  --set kube-state-metrics.podSecurityContext=null
-```
+   Alternatively, you can apply these settings via the command line:
+      
+   ```shell
+   helm upgrade --install beacon-agent-k8s \
+     . \
+     --namespace upm-beacon \
+     --create-namespace \
+     # ... your other flags ...
+     --set securityContext.runAsUser=null \
+     --set securityContext.runAsGroup=null \
+     --set podSecurityContext.fsGroup=null \
+     --set opentelemetry-collector.securityContext.runAsUser=null \
+     --set opentelemetry-collector.securityContext.runAsGroup=null \
+     --set kube-state-metrics.podSecurityContext=null
+   ```
 
 ## Additional requirements for OpenShift
 
@@ -319,7 +323,9 @@ For example: 1000880000-1000889999.
 
 Specifying an explicit runAsUser (like 10000) often falls outside the UID range range, triggering SCC violations. Leave these values empty so OpenShift's admission controller automatically assigns appropriate values from the allowed range.
 
-### runAsUser differences between components:
+### Recommended runAsUser configurations by component
+
+This table outlines the required runAsUser settings for EDB Postgres AI agent components to ensure compatibility with different SCC.
 
 | Component               | runAsUser | Reason                                                                                                                                                                                     |
 |-------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
