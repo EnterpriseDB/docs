@@ -134,35 +134,118 @@ Deletes the preparer's configuration.
 This  function doesn't delete the destination table or any data in it.
 !!!
 
-## Step configuration helper functions
+## Helper functions
 
-These helper functions simplify creating JSONB configuration objects for preparer operations. They provide proper parameter types, defaults, and validation.
+Helper functions simplify the creation of configuration JSON for data preparation operations by providing a structured way to specify options.
 
 ### `aidb.chunk_text_config`
 
-Creates configuration for the ChunkText operation.
+Creates a configuration JSON object for the ChunkText operation.
 
 #### Parameters
 
-| Parameter       | Type    | Default | Description                                         |
-| --------------- | ------- | ------- | --------------------------------------------------- |
-| `desired_length`| INTEGER | Required| Target chunk length in characters                   |
-| `max_length`    | INTEGER | NULL    | Maximum chunk length                                |
-| `overlap_length`| INTEGER | NULL    | Overlap between chunks                              |
-| `strategy`      | TEXT    | NULL    | Chunking strategy                                   |
+| Parameter       | Type    | Default  | Description                                                                                                          |
+| --------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| desired_length  | INTEGER | Required | Target chunk size (unit depends on `strategy`)                                                                       |
+| max_length      | INTEGER | NULL     | Maximum chunk size (unit depends on `strategy`)                                                                      |
+| overlap_length  | INTEGER | NULL     | Amount to overlap between consecutive chunks (unit depends on `strategy`)                                            |
+| strategy        | TEXT    | NULL     | Chunking strategy: `'chars'` (default) or `'words'`. Determines the unit for all size parameters                     |
 
-#### Example
+#### Returns
+
+JSONB configuration object for use with ChunkText operation.
+
+#### Examples
 
 ```sql
+-- Basic chunking with desired length only
+SELECT aidb.chunk_text_config(100);
+
+-- Chunking with max length
+SELECT aidb.chunk_text_config(100, 150);
+
+-- Chunking with overlap
+SELECT aidb.chunk_text_config(100, 150, 20);
+
+-- Character-based chunking with overlap
+SELECT aidb.chunk_text_config(100, 120, 10, 'chars');
+
+-- Use in a preparer
 SELECT aidb.create_table_preparer(
     name => 'my_chunker',
     operation => 'ChunkText',
     source_table => 'source_data',
-    source_data_column => 'content',
+    source_data_column => 'text_content',
     destination_table => 'chunked_data',
-    destination_data_column => 'chunks',
-    options => aidb.chunk_text_config(desired_length => 500, max_length => 1000)
+    options => aidb.chunk_text_config(120, 150, 15)
 );
+```
+
+### `aidb.summarize_text_config`
+
+Creates a configuration JSON object for the summarize text operation.
+
+#### Parameters
+
+| Parameter        | Type    | Default  | Description                                                                                                  |
+| ---------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| model            | TEXT    | Required | Name of the model to use for summarization                                                                   |
+| chunk_config     | JSONB   | NULL     | Optional chunking configuration (created with `chunk_text_config`)                                           |
+| prompt           | TEXT    | NULL     | Custom prompt to guide the summarization                                                                     |
+| strategy         | TEXT    | NULL     | Summarization strategy: `'append'` (default) or `'reduce'`                                                   |
+| reduction_factor | INTEGER | NULL     | Used with `'reduce'` strategy to control how aggressively text is reduced in each iteration (default: 3)     |
+
+#### Returns
+
+JSONB configuration object for use with summarize text operation or `summarize_text_aggregate` function.
+
+#### Examples
+
+```sql
+-- Basic summarization with model only
+SELECT aidb.summarize_text_config('my_t5_model');
+
+-- Summarization with chunking
+SELECT aidb.summarize_text_config(
+    'my_t5_model',
+    aidb.chunk_text_config(100)
+);
+
+-- Summarization with custom prompt and append strategy
+SELECT aidb.summarize_text_config(
+    'my_t5_model',
+    aidb.chunk_text_config(80, 80, 5, 'words'),
+    'create a concise summary'
+);
+
+-- Summarization with reduce strategy
+SELECT aidb.summarize_text_config(
+    'my_t5_model',
+    aidb.chunk_text_config(100, 100, 5, 'words'),
+    'summarize the key points',
+    'reduce',
+    5
+);
+
+-- Use in a preparer
+SELECT aidb.create_table_preparer(
+    name => 'my_summarizer',
+    operation => 'SummarizeText',
+    source_table => 'source_data',
+    source_data_column => 'text_content',
+    destination_table => 'summarized_data',
+    options => aidb.summarize_text_config('my_t5_model')
+);
+
+-- Use with aggregate function
+SELECT
+    category,
+    aidb.summarize_text_aggregate(
+        content,
+        aidb.summarize_text_config('my_t5_model')::json ORDER BY id
+    ) AS summary
+FROM my_table
+GROUP BY category;
 ```
 
 ### `aidb.ocr_config`
@@ -235,34 +318,6 @@ SELECT aidb.create_table_preparer(
     destination_table => 'parsed_pdfs',
     destination_data_column => 'text',
     options => aidb.pdf_parse_config(method => 'Structured', allow_partial_parsing => true)
-);
-```
-
-### `aidb.summarize_text_config`
-
-Creates configuration for the SummarizeText operation.
-
-#### Parameters
-
-| Parameter        | Type    | Default | Description                              |
-| ---------------- | ------- | ------- | ---------------------------------------- |
-| `model`          | TEXT    | Required| Name of the summarization model          |
-| `chunk_config`   | JSONB   | NULL    | Chunk config (use `aidb.chunk_text_config()`) |
-| `prompt`         | TEXT    | NULL    | Custom summarization prompt              |
-| `strategy`       | TEXT    | NULL    | Summarization strategy                   |
-| `reduction_factor`| INTEGER| NULL    | Target reduction factor                  |
-
-#### Example
-
-```sql
-SELECT aidb.create_table_preparer(
-    name => 'my_summarizer',
-    operation => 'SummarizeText',
-    source_table => 'documents',
-    source_data_column => 'content',
-    destination_table => 'summaries',
-    destination_data_column => 'summary',
-    options => aidb.summarize_text_config(model => 'my_t5_model')
 );
 ```
 
