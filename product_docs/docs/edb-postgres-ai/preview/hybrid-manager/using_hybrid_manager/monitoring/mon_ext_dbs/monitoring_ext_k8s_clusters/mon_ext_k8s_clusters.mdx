@@ -35,7 +35,7 @@ Key points:
    helm repo add enterprisedb-$EDB_REPO "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/helm/charts/"
    ```
 
-1. Create a `custom-values.yaml` file that includes your HM access credentials:
+1. Create a `custom-values.yaml` file that includes your Hybrid Manager (HM) access credentials:
    
    ```yaml
    # Required: Your HM access credentials
@@ -89,7 +89,7 @@ Key points:
 
    - For standard Kubernetes (GKE, EKS, AKS, KIND):
    
-   ```
+   ```helm
    helm upgrade --install beacon-agent-k8s \
     enterprisedb-enterprise/beacon-agent-k8s \
     --create-namespace \
@@ -112,7 +112,7 @@ Key points:
    !!!important
    Grant SCC if using OTEL collector:
 
-   ```
+   ```shell
    oc adm policy add-scc-to-user privileged \
      system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
@@ -179,7 +179,7 @@ This section shows how to patch a single cluster. You can adapt the instructions
     kubectl cnp restart region-a-3
     ```
 
-## Configure security contexts for external Kubernetes clusters
+## Configuring security contexts for external Kubernetes clusters
 
 ### For standard Kubernetes (KIND, GKE, EKS, AKS)
 
@@ -216,7 +216,7 @@ Configure your `custom-values.yaml` with default secure settings which include u
    When the value is set to `openshift.enabled: true`, the chart automatically:
       
    - Omits `runAsUser` and `runAsGroup` from the container security contexts, allowing SCC to assign them.
-   - Stores other security settings like capabilities drop, readOnlyRootFilesystem, etc.
+   - Stores other security settings like `capabilities.drop`, `readOnlyRootFilesystem`, etc.
    - Uses numeric UID 65532 for the OTEL collector that is required for distroless image validation.
 
 1. Alternatively, specify your configuration via the command line using the `-f custom-values.yaml` flag:
@@ -239,7 +239,7 @@ Configure your `custom-values.yaml` with default secure settings which include u
     runAsUser:
     runAsGroup:
     ```
-1. When deploying to OpenShift, ensure the fsGroup field remains undefined to allow the platform to manage volume permissions automatically:
+1. When deploying to OpenShift, ensure the `fsGroup` field remains undefined to allow the platform to manage volume permissions automatically:
 
    ```yaml
    podSecurityContext:
@@ -288,13 +288,13 @@ Configure your `custom-values.yaml` with default secure settings which include u
 
    **Key configuration notes:**
    
-   - OpenShift ID Management: The runAsUser, runAsGroup, and fsGroup fields are left empty to allow OpenShift’s Security Context Constraints (SCC) to automatically assign the correct UID and GID ranges for the project.
+   - OpenShift ID management: The `runAsUser`, `runAsGroup`, and `fsGroup` fields are left empty to allow OpenShift’s SCC to automatically assign the correct UID and GID ranges for the project.
    
    - Security context activation: The setting `enabled: true` ensures the subchart applies the specified security settings rather than falling back to its internal defaults.
    
    - Non-root enforcement: The `runAsNonRoot: true` flag remains active to guarantee that the container never runs with root privileges, even when IDs are dynamically assigned by the platform.
    
-   - Seccomp hardening: Utilizing the RuntimeDefault profile ensures the container uses the container runtime's default secure syscall filter.
+   - Seccomp hardening: Utilizing the `RuntimeDefault` profile ensures the container uses the container runtime's default secure syscall filter.
          
 1. Harden the container-level security context by enforcing a read-only filesystem, disabling privilege escalation, and dropping all default Linux capabilities:
 
@@ -325,7 +325,7 @@ Configure your `custom-values.yaml` with default secure settings which include u
 
 ## Additional requirements for OpenShift
 
-OpenShift assigns a specific UID range to each namespace. 
+OpenShift assigns a specific UID range to each namespace.  For example:  1000880000-1000889999.
 
 For example: 1000880000-1000889999.
 
@@ -338,11 +338,11 @@ This table outlines the required runAsUser settings for EDB Postgres AI agent co
 | Component               | runAsUser | Reason                                                                                                                                                                                     |
 |-------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | beacon-agent            | Empty     | Uses restricted SCC; OpenShift assigns UID from namespace range                                                                                             |
-| kube-state-metrics      | Empty     | Uses restricted SCC (Security Context Constraints); OpenShift assigns UID from namespace range                                                                                             |
-| opentelemetry-collector | 65532     | Uses privileged SCC (Security Context Constraints) for hostPath or hostPorts.                                                                                                              |
-| opentelemetry-collector | 65532     | Requires explicit numeric UID because `runAsNonRoot: true` cannot verify non-numeric users like `nonroot`. Privileged SCC (Security Context Constraints) allows any UID, so `65532` works. |
+| kube-state-metrics      | Empty     | Uses restricted SCC; OpenShift assigns UID from namespace range                                                                                             |
+| opentelemetry-collector | 65532     | Uses privileged SCC for `hostPath` or `hostPorts`.                                                                                                              |
+| opentelemetry-collector | 65532     | Requires explicit numeric UID because `runAsNonRoot: true` cannot verify non-numeric users like `nonroot`. Privileged SCC allows any UID, so `65532` works. |
 
-### Granting SCC (Security Context Constraints) for Daemonsets 
+### Granting SCC for Daemonsets 
 
 To collect node-level metrics and logs on OpenShift, the `opentelemetry-collector` and `prometheus-node-exporter` subcharts require elevated permissions to access `hostPath`, `hostPorts`, and `hostNetwork`. Grant the privileged SCC to their respective service accounts using the commands below.
 
@@ -358,7 +358,7 @@ Since OpenShift includes a built-in node-exporter, your deployment may conflict 
    oc new-project upm-beacon
    ```
 
-1. Grant the Privileged SCC:
+1. Grant the privileged SCC:
 
   ``` shell
    oc adm policy add-scc-to-user privileged \
