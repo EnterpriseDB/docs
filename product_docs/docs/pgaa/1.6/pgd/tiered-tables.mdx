@@ -11,8 +11,9 @@ Tiered tables provide a unified storage architecture by combining Postgres Distr
 
 In this architecture, queries span both hot and cold data tiers seamlessly, providing a single point of access for the entire dataset regardless of its physical location. Recent data remains in local heap partitions for high-performance transactional processing, while older cold partitions are offloaded to object storage transparently once they cross a defined age threshold. 
 
-By calling `pgaa.convert_to_tiered_table`, a standard heap table is transformed into a hybrid partitioned structure:
-- **Hot tier:** Recent data remains in local heap tables (or HTAP if `enable_replication` is `true`) for active transactional processing.
+By calling `pgaa.convert_to_tiered_table()`, a standard heap table is transformed into a hybrid partitioned structure:
+- **Hot tier:** Recent data stays in local heap partitions (or HTAP tables if replication is enabled). For HTAP, PGAA uses Iceberg Merge-on-Read (MoR) to capture updates and deletes as lightweight "delete files." This keeps the cloud tier synchronized without the overhead of rewriting large data blocks.
+
 - **Cold tier:** Once partitions cross a the age threshold defined by `analytics_offload_period`, they are automatically converted to PGAA tables in the data lake. Local storage is reclaimed, but the data remains transparently queryable through the same table interface.
 
 ## Process overview
@@ -20,7 +21,7 @@ By calling `pgaa.convert_to_tiered_table`, a standard heap table is transformed 
 To convert a heap table into a tiered table, follow these steps:
 
 1. Meet the [prerequisites](#prerequisites).
-1. [Point to object storage](#pointing-to-object-storage): by choosing either a storage location or a catalog service.
+1. [Point to object storage](#pointing-to-object-storage) by choosing either a storage location or a catalog service.
 1. Use the `pgaa.convert_to_tiered_table()` function to [convert a heap table to a tiered table](#converting-a-heap-table-to-tiered-table).
 1. [Verify and monitor](#monitoring-tiered-tables) the automated offloading.
 1. [Modify or disable](#modifying-and-disabling-tiered-tables) settings as your storage needs evolve.
@@ -28,13 +29,28 @@ To convert a heap table into a tiered table, follow these steps:
 ## Prerequisites
 
 - **Cluster:** PGD version 6.1 or later with PGAA and PGFS extensions installed.
-- **Catalog:** An external REST-compatible catalog service (optional).
-- **Storage:** S3-compatible object storage with valid credentials.
+- **Storage locations:** Local, S3, GCP, or Azure storage using Iceberg or Delta Lake formats.
+- **Catalog:** If using an external catalog service, only Iceberg REST catalogs are supported.
 - **Permissions:** The database user must have `CREATE`, `ALTER`, and `EXECUTE` privileges for the PGD and PGAA functions.
+
+!!! Note
+    The credentials associated with a storage location or a catalog service must have both read and write permissions for the destination bucket. You can verify permissions by running the following functions, which return `NULL` if successful.
+    - For a storage location:
+      ```sql
+      SELECT pgaa.test_storage_location ('my_storage_location', true);
+      ```
+    - For a catalog service:
+      ```sql
+      SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
+      ```
 
 ## Pointing to object storage 
 
 Before creating a tiered table, you must define the destination for the cold data. Because you are working within a distributed PGD cluster, you must wrap these configuration calls in `bdr.replicate_ddl_command` to ensure the settings are propagated to all nodes in the group.
+
+!!! Tip
+  To view your node group, use `SELECT node_group_id FROM bdr.node_group;`.
+!!!
 
 ### Option 1: Using a storage location
 
@@ -43,8 +59,8 @@ Before creating a tiered table, you must define the destination for the cold dat
   ```sql
   SELECT bdr.replicate_ddl_command($$
     SELECT pgfs.create_storage_location(
-    'your-storage-location',
-    'protocol://your-bucket-name/path/',
+    'my-storage-location',
+    'protocol://my-bucket-name/path/',
     '{"region": "region-name"}',
     '{"access_key_id": "...", "secret_access_key": "..."}'
     )
@@ -54,19 +70,13 @@ Before creating a tiered table, you must define the destination for the cold dat
 1. Clear `analytics_write_catalog`. This must be `NULL` before an `analytics_storage_location` can be assigned:
 
   ```sql
-  SELECT bdr.alter_node_group_option('your-pgd-group', 'analytics_write_catalog', NULL)
+  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', NULL);
   ```
 
-1. Set the analytics storage location for your node group. This command starts the Seafowl engine:
+1. Set the analytics storage location for your node group:
 
   ```sql
-  SELECT bdr.alter_node_group_option('your-pgd-group', 'analytics_storage_location', 'your-storage-location');
-  ```
-
-1. Verify that Seafowl has started. (look for`pgd seafowl_manager`):
-
-  ```sql
-  SELECT application_name FROM pg_stat_activity WHERE application_name LIKE '%seafowl%';
+  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_storage_location', 'my-storage-location');
   ```
 
 ### Option 2: Using a catalog service
@@ -76,11 +86,11 @@ Before creating a tiered table, you must define the destination for the cold dat
       ```sql
       SELECT bdr.replicate_ddl_command($$
         SELECT pgaa.add_catalog(
-          'your-catalog-name',
+          'my-catalog-name',
           'iceberg-rest',
           '{
-            "url": "https://your-catalog-rest-endpoint.com",
-            "token": "YOUR_AUTH_TOKEN",
+            "url": "https://my-catalog-rest-endpoint.com",
+            "token": "MY_AUTH_TOKEN",
            }'
         )
       );
@@ -90,19 +100,13 @@ Before creating a tiered table, you must define the destination for the cold dat
 
   ```sql
   SELECT bdr.alter_node_group_option(
-    SELECT bdr.alter_node_group_option('your-pgd-group', 'analytics_write_catalog', 'your-catalog-name')
+    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', 'my-catalog-name')
     );
-  ```
-
-1. Verify that Seafowl has started. (look for`pgd seafowl_manager`):
-
-  ```sql
-  SELECT application_name FROM pg_stat_activity WHERE application_name LIKE '%seafowl%';
   ```
 
 ## Converting a heap table to tiered table
 
-The `pgaa.convert_to_tiered_table()` function initiates the automated offloading process. If `enable_replication` is `true`, it also converts active partitions into HTAP tables for continuous replication. For example:
+The `pgaa.convert_to_tiered_table()` function initiates the automated offload process. If `enable_replication` is `true`, it also converts active partitions into HTAP tables for continuous replication. For example:
 
 ```sql
 CALL pgaa.convert_to_tiered_table(
@@ -155,9 +159,22 @@ Query the `bdr.analytics_table` view to see the low-level mapping between your P
 SELECT * FROM bdr.analytics_table;
 ```
 
+Use the following query to distinguish between hot and cold partitions:
+
+```sql
+SELECT 
+    relname AS partition_name, 
+    amname AS access_method 
+FROM pg_class c
+JOIN pg_am am ON c.relam = am.oid
+WHERE relname LIKE 'my-transactional-table%'
+  AND c.relkind = 'r'
+ORDER BY relname;
+```
+
 ## Modifying and disabling tiered tables
 
-Because tiered tables are built on top of the PGD AutoPartition framework, you can modify their lifecycle policies or revert them to standard partitioned tables using a combination of PGD and PGAA commands.
+You can modify their lifecycle policies or revert them to standard partitioned tables using a combination of PGD and PGAA commands.
 
 **Adjusting lifecycle settings**
 
@@ -168,48 +185,71 @@ This is particularly useful if you need to shorten or extend the offload thresho
 ```sql
 SELECT bdr.replicate_ddl_command($$
   SELECT bdr.autopartition(
-    relation := 'my_table',
+    relation := 'public.my-transactional-table',
     partition_increment := '1 month',
     partition_initial_lowerbound := '2020-01-01',
-    analytics_offload_period := '3 months',
-    managed_locally := TRUE
+    analytics_offload_period := '3 months'
   )
 $$);
 ```
+
+!!! Warning
+  Modifying these settings only affects new partitions and does not reorganize existing data. If you increase the partition size, the system will not merge your current small partitions; it will only begin creating larger partitions once the current set is exhausted. While new offload timing applies to all partitions, the physical structure created under previous settings remains unchanged.
+!!!
 
 **Modifying replication status**
 
 If you wish to change the current setting for `enable_replication`, you must manage the replication status of the partitions.
 
-Use the `pgaa.enable_analytics_replication()` or `pgaa.disable_analytics_replication()` functions against the parent table to ensure consistency across the hierarchy.
+Use the `pgaa.enable_analytics_replication()` or `pgaa.disable_analytics_replication()` functions against the parent table to ensure consistency across the hierarchy:
 
-Alternatively, run `ALTER TABLE` against the parent table and set `pgd.replicate_to_analytics = TRUE` or `pgd.replicate_to_analytics = TRUE`.
+```sql
+CALL pgaa.enable_analytics_replication('my-transactional-table'::regclass);
+```
+
+Using `ALTER TABLE` against the parent table only sets the value of `enable_replication` for future partitions; it does not retroactively update existing child partitions. You must manually run the `ALTER TABLE` command on every existing partition to ensure consistency across your data.
 
 **Disabling tiered tables**
 
 To revert to a standard partitioned heap table:
 
-1. **Stop replication:** If `enable_replication` was active, run `pgaa.disable_analytics_replication('parent_table')` against the parent table.
-
-1. **Restore cold partitions:** For each cold partition, run:
+1. If `enable_replication` was active, stop replication on the parent table:
 
   ```sql
-  ALTER TABLE partition_name SET ACCESS METHOD heap;
+  CALL pgaa.disable_analytics_replication('my-transactional-table'::regclass);
   ```
 
-  Or use `pgaa.restore_from_analytics('partition_name')`.
-
-1. **Remove tiered table flag from the parent table:**
+1. Restore cold partitions. For each cold partition, run:
 
   ```sql
-  ALTER TABLE my_table SET (pgaa.tiered_table = 'false');
+  pgaa.restore_from_analytics('partition_name');
   ```
 
-1. Stop AutoPartition (optional): Setting `pgaa.tiered_table = 'false'` tells PGAA to stop treating the table as a tiered structure, but it does not automatically stop PGD AutoPartition. To stop the table from creating new partitions entirely, run:
+  Or use `ALTER TABLE partition_name SET ACCESS METHOD heap;`.
+
+1. Remove the tiered table flag from the parent table:
 
   ```sql
-  bdr.drop_autopartition('my_table');
+  ALTER TABLE my-transactional-table SET (pgaa.tiered_table = 'false');
   ```
 
-1. Verify the table is not listed anymore under `pgaa.list_tiered_tables()`. 
+1. Stop AutoPartition (optional). To stop the table from creating new partitions entirely, run:
+
+  ```sql
+  bdr.drop_autopartition('my-transactional-table');
+  ```
+
+1. Verify the table is not listed as a tiered table anymore with `SELECT * FROM pgaa.list_tiered_tables()`. 
+
+1. Verify that all partitions list `heap` as their access method:
+
+  ```sql
+  SELECT 
+      c.relname AS partition_name,
+      a.amname AS access_method
+  FROM pg_class c
+  JOIN pg_am a ON c.relam = a.oid
+  WHERE c.relname LIKE 'my-transactional-table%' 
+    AND c.relkind = 'r';
+  ```
 

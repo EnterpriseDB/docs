@@ -4,38 +4,51 @@ navTitle: Offloading to analytics
 description: Manually transition HTAP tables to the PGAA access method to reclaim local disk space while maintaining query access to data in object storage.
 ---
 
-An HTAP table is a table within a Postgres Distributed (PGD) cluster that uses Postgres Analytics Accelerator (PGAA) to continuously synchronize its content with an analytical copy in object storage. 
+An HTAP table uses Postgres Analytics Accelerator (PGAA) to continuously synchronize a Postgres Distributed (PGD) cluster with an analytical copy in object storage, enabling heavy analytics without impacting transaction performance at the cost of redundant storage in both the local heap and the data lake.
 
-While this dual-state allows you to run heavy analytics without slowing down your transactions, it requires double the storage: once in the local **heap** and once in the data lake.
-
-Offloading to analytics is a manual, surgical operation used to remove the local heap copy and reclaim disk space. When you offload a table, the system:
+Offloading an HTAP table to analytics is a manual, surgical operation used to remove the local heap copy and reclaim disk space. When you offload a table, the system:
 
 - Truncates the local heap table, immediately freeing up disk space on the PGD nodes.
 - Stops the real-time replication to the data lake.
 - Changes the table access method to PGAA, pointing the Postgres table definition directly to the existing data in object storage.
 
-The result is a cold table that remains fully queryable through Postgres but consumes no local storage. If transactional writes are required again in the future, you can restore the table and stream the data back from the lake into the local heap.
+The result is a cold table that remains fully queryable through Postgres but consumes no local storage. If you require transactional writes again in the future, you can restore the table and stream the data back from the lake into the local heap.
 
 ## Process overview
 
 To surgically offload a table to the data lake, follow these steps:
 
 1. Meet the [prerequisites](#prerequisites).
-1. [Point to object storage](#pointing-to-object-storage): by choosing either a storage location or a catalog service.
+1. [Point to object storage](#pointing-to-object-storage) by choosing either a storage location or a catalog service.
 1. [Offload the table to object storage](#offloading-a-table).
-1. [Restore the table](#restoring-from-analytics) back to heap if transactional access is needed again.
+1. [Restore the table](#restoring-from-analytics) back to heap if you require transactional access again.
 
 
 ## Prerequisites
 
 - **Cluster:** PGD version 6.1 or later with PGAA and PGFS extensions installed.
-- **Catalog:** An external REST-compatible catalog service (optional).
-- **Storage:** S3-compatible object storage with valid credentials.
+- **Storage locations:** Local, S3, GCP, or Azure storage using Iceberg or Delta Lake formats.
+- **Catalog:** If using an external catalog service, only Iceberg REST catalogs are supported.
 - **Permissions:** The database user must have `CREATE`, `ALTER`, and `EXECUTE` privileges for the PGD and PGAA functions.
+
+!!! Note
+    The credentials associated with a storage location or a catalog service must have both read and write permissions for the destination bucket. You can verify permissions by running the following functions, which return `NULL` if successful.
+    - For a storage location:
+      ```sql
+      SELECT pgaa.test_storage_location ('my_storage_location', true);
+      ```
+    - For a catalog service:
+      ```sql
+      SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
+      ```
 
 ## Pointing to object storage 
 
 You must define the destination for the offloaded data. Because you are working within a distributed PGD cluster, you must wrap these configuration calls in `bdr.replicate_ddl_command` to ensure the settings are propagated to all nodes in the group.
+
+!!! Tip
+  To view your node group, use `SELECT node_group_id FROM bdr.node_group;`.
+!!!
 
 ### Option 1: Using a storage location
 
@@ -44,44 +57,38 @@ You must define the destination for the offloaded data. Because you are working 
   ```sql
   SELECT bdr.replicate_ddl_command($$
     SELECT pgfs.create_storage_location(
-    'your-storage-location',
-    'protocol://your-bucket-name/path/',
+    'my-storage-location',
+    'protocol://my-bucket-name/path/',
     '{"region": "region-name"}',
     '{"access_key_id": "...", "secret_access_key": "..."}'
     )
   $$);
   ```
 
-1. Clear `analytics_write_catalog`. This must be `NULL` before an `analytics_storage_location` can be assigned:
+1. Clear `analytics_write_catalog` for your PGD node group. This must be `NULL` before an `analytics_storage_location` can be assigned:
 
   ```sql
-  SELECT bdr.alter_node_group_option('your-pgd-group', 'analytics_write_catalog', NULL)
+  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', NULL);
   ```
 
-1. Set the analytics storage location. This command targets your specific PGD node group and starts the Seafowl engine:
+1. Set the analytics storage location for your node group:
 
   ```sql
-  SELECT bdr.alter_node_group_option('your-pgd-group', 'analytics_storage_location', 'your-storage-location');
-  ```
-
-1. Verify that Seafowl has started. (look for `pgd seafowl_manager`):
-
-  ```sql
-  SELECT application_name FROM pg_stat_activity WHERE application_name LIKE '%seafowl%';
+  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_storage_location', 'my-storage-location');
   ```
 
 ### Option 2: Using a catalog service
       
-1. Configure a connection to an external catalog:
+1. Configure a connection to an [external catalog](../catalog):
 
       ```sql
       SELECT bdr.replicate_ddl_command($$
         SELECT pgaa.add_catalog(
-          'your-catalog-name',
+          'my-catalog-name',
           'iceberg-rest',
           '{
-            "url": "https://your-catalog-rest-endpoint.com",
-            "token": "YOUR_AUTH_TOKEN",
+            "url": "https://my-catalog-rest-endpoint.com",
+            "token": "MY_AUTH_TOKEN",
            }'
         )
       );
@@ -91,14 +98,8 @@ You must define the destination for the offloaded data. Because you are working 
 
   ```sql
   SELECT bdr.alter_node_group_option(
-    SELECT bdr.alter_node_group_option('your-pgd-group', 'analytics_write_catalog', 'your-catalog-name')
+    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', 'my-catalog-name')
     );
-  ```
-
-1. Verify that Seafowl has started. (look for `pgd seafowl_manager`):
-
-  ```sql
-  SELECT application_name FROM pg_stat_activity WHERE application_name LIKE '%seafowl%';
   ```
 
 ## Offloading a table
@@ -121,9 +122,9 @@ ALTER TABLE public.my_table
   SET (
     pgaa.auto_truncate = 'true',
     pgaa.format = 'iceberg',
-    pgaa.storage_location = 'your-storage-location',
+    pgaa.storage_location = 'my-storage-location',
     pgaa.path = 'public.my_table'
-  )
+  );
 ```
 
 For a catalog-managed table:
@@ -142,7 +143,7 @@ ALTER TABLE public.my_catalog_managed_table
 
 ## Restoring from analytics
 
-If you need to resume transactional writes or bring the data back to local high-performance transactional storage, use the `pgaa.restore_from_analytics()` function.
+If you need to resume transactional writes or bring the data back to local high-performance transactional storage, use the `pgaa.restore_from_analytics()` function:
 
 ```sql
 CALL pgaa.restore_from_analytics('public.transactional_table');
@@ -154,8 +155,9 @@ You can also use the `ALTER TABLE` command to restore a table from its cold stat
 
 ```sql
   ALTER TABLE public.my_table 
-  SET ACCESS METHOD heap
+  SET ACCESS METHOD heap;
 ```
 
 !!! Warning
-  Restoring a table to the heap access method does not remove the files from object storage. Manually delete the data via your object storage provider or use a tool like PyIceberg to drop the table from the catalog.
+  Restoring a table to the heap access method does not remove the files from object storage. Manually delete the data via your object storage provider, or use a tool like PyIceberg to drop the table from the catalog.
+!!!
