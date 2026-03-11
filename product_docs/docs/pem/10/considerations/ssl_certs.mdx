@@ -1,0 +1,58 @@
+---
+title: "Deciding on an SSL model"
+navTitle: "SSL models"
+redirects: []
+---
+
+PEM agents are Postgres clients and make connections to the PEM backend database directly using libpq as detailed in the [PEM architecture](../../pem_architecture.mdx).
+
+PEM relies on the SSL support of its Postgres backend to encrypt and authenticate these connections. 
+
+This means that:
+- Each agent requires a client certificate bearing the name of the Postgres user.
+- The backend Postgres server requires a root CA file against which to verify these connections.
+- The backend Postgres server requires a server certificate and key pair with which to encrypt SSL connections.
+
+There are different models you can use to supply these certificates and keys based on your needs and policies.
+The information below will help you decide what model you wish to follow before starting installation.
+
+## Use sslutils
+
+PEM can act as a certificate authority and issue client certificates to
+agents automatically using the sslutils Postgres extension. PEM can then
+automatically generate client certificates for each new agent at the
+moment it is registered.
+
+This is the most convenient option for simple deployments. However,
+if your organization requires that all certificates are signed by an
+approved CA, or you require greater control over your certificate
+generation and renewal, you should use the next option.
+
+!!! Note on High Availability and pgBouncer
+
+When configuring a non-HA PEM deployment, sslutils can be
+configured automatically. However, in HA deployments, PEM does not
+configure or restart the cluster to avoid clashing with the cluster
+manager; therefore SSL must be configured manually.
+
+Note also that if you plan to use pgBouncer for connection pooling you
+will need a common agent user, so sslutils is not likely to be useful -
+see below
+
+!!!
+
+
+## Use an external CA
+
+Instead of using sslutils, you may supply your own certificates, signed by your organization's approved CA.
+
+If bring your own certificates, you can either:
+
+- Use a single manually-created Postgres user, and therefore a single client certificate and key shared by all agents. This is referred to as a "common agent user".
+- Generate unique certificates for each agent (in this case PEM can automatically create numbered agent users, `agent1`, `agent2`, etc).
+
+Only the former is possible when using pgBouncer because only transactions from the same user can be pooled.
+Using a common agent user is also convenient if you wish to minimize the number of unique certificates issued.
+
+Conversely, using one certificate and on user per agent means you have to manage a much larger number of certificates. 
+However it does allow you to more easily trace connections to a specific agent, and means if you have to revoke a certificate it will only affect a single agent rather than all of them.

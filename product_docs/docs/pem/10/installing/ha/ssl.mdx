@@ -1,0 +1,81 @@
+---
+title: "Generating SSL files for HA PEM backend hosts"
+navTitle: "SSL Files"
+
+redirects:
+---
+
+This page covers how to generate SSL files for an HA PEM backend.
+
+## If using an external CA
+
+!!!Note
+
+If you have an existing process for provisioning SSL-enabled Postgres clusters,
+it is possible that these conditions are already met. 
+In this case no further action required.
+
+!!!
+
+If you are supplying your own certificates, generate a server
+certificate and key for the each backend Postgres instance. Place the
+certificate and key for the local instance, along with the the public
+certificate of your CA, in PGDATA on each backend host. It is important
+that the CA is the same one you will use to sign client certificates for
+PEM agents, otherwise `cert` authentication will fail.
+
+Optionally, you may include a Certificate Revocation List (CRL) if one
+is available.
+
+Ensure these files are owned by the `postgres` or `enterprisedb` user
+and group, and that the permissions are set to `0600`.
+
+
+## If using sslutils
+
+In HA deployments, PEM does not configure or restart the cluster to
+avoid clashing with the cluster manager; therefore sslutils must be
+configured manually.
+
+!!!Note 
+Ensure these steps are carried out as the `postgres` or
+`enterprisedb` user so the ownership of the files is correct. 
+!!!
+
+1.  Generate a single certificate and key pair to be used by sslutils
+    when acting as a certificate authority. Place these in PGDATA on
+    each of the backend hosts.
+
+    ```sh
+    openssl genrsa -out ca_key.key 2048
+
+    openssl req -x509 -new -nodes -key ca_key.key -sha256 -days 3650 \
+    -out ca_certificate.crt \
+    -subj "/C=.../ST=.../L=.../O=.../CN=PEM CA"
+    ```
+
+1.  On each backend host, make a copy of `ca_certificate.crt` and name it `root.crt`.
+    This should also be stored in PGDATA.
+
+1.  On each backend host, generate a server key, then generate a server certificate signed by the CA.
+    If you plan to use `verify-full` SSL mode for client connections, it is important that the common name matches the DNS name of the server.
+
+    ```sh
+    openssl genrsa -out server.key 2048
+
+    openssl req -new -key server.key -out server.csr \
+        -subj "/C=.../ST=.../L=.../O=.../CN=..."
+
+    openssl x509 -req -in server.csr -CA ca_certificate.crt -CAkey ca_key.key \
+        -CAcreateserial -out server.crt -days 3650 -sha256
+    ```
+
+1.  Set the permissions of the key and certificate files, then remove the CSR.
+    ```sh
+    chmod 0600 ca_certificate.crt
+    chmod 0600 ca_key.key
+    chmod 0600 root.crt
+    chmod 0600 server.crt
+    chmod 0600 server.key
+    rm server.csr
+    ```

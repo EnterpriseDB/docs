@@ -9,8 +9,11 @@ redirects:
 
 This page provides detailed instructions to install and configure a High Availability (HA) PEM deployment according to reference architecture C1.
 
-This example uses EDB Failover Manager (EFM 5.0) for cluster management, EDB Postgres Advanced Server (EPAS 17) as the PEM backend database and Virtual IP (VIP) as the mechanism for routing traffic to the primary on RHEL like systems.
+This example uses EDB Failover Manager (EFM 5.2) for cluster management, EDB Postgres Advanced Server (EPAS 17) as the PEM backend database and Virtual IP (VIP) as the mechanism for routing traffic to the primary on RHEL like systems.
 Please see [High Availability Patterns for PEM Deployment](../../considerations/ha_pem.mdx) to understand other options.
+
+Also refer to [Deciding on an SSL model](../../considerations/ssl_certs.mdx) to determine how you will provide SSL certificates and keys prior to starting installation.
+
 
 !!! Note "Witness nodes vs standby nodes"
     In this example we configured a primary, two standbys, and a witness node.
@@ -33,22 +36,29 @@ The following must use the VIP address:
 -   Accessing the PEM web client
 -   Accessing the webserver services
 
-## Initial package installation and Postgres configuration
+## Deploying an EFM cluster
 
-Perform the following steps on all nodes unless stated otherwise.
+Before installing PEM, you should have a working EFM cluster on the
+hosts. This section provides instructions to deploy such a cluster. You
+do not have to follow these steps if you have your own processes to
+provision EFM clusters. However, if you plan to use sslutils you should
+ensure it is installed on your cluster before proceeding.
+
+### Initial package installation and Postgres configuration
+
+Perform the following steps on all hosts.
+Postgres is not required for witnesses.
 
 1.  Install the following packages:
 
     -   [EDB Postgres Advanced Server](/epas/latest/installing/) (backend database for PEM Server)
-    -   [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites) (see Prerequisites in PEM server installation)
-    -   [PEM Server](/pem/latest/installing/) and libpq5
     -   [EDB Failover Manager](/efm/latest/installing/)
 
     ```shell
     dnf -qy module disable postgresql
     dnf -y install epel-release
     dnf config-manager --set-enabled crb
-    dnf -y install edb-as17-server edb-pem edb-as17-server-sslutils edb-efm50 libpq5
+    dnf -y install edb-as17-server edb-efm52
     ```
 
 1.  Initialize a Postgres database and start the service.
@@ -61,7 +71,6 @@ Perform the following steps on all nodes unless stated otherwise.
 
 1.  Open the following ports on the firewall:
 
-    -   `8443` for PEM Server (HTTPS)
     -   `5444` for EPAS 
     -   `7800` for EFM
 
@@ -69,138 +78,28 @@ Perform the following steps on all nodes unless stated otherwise.
 
     ```shell
     firewall-cmd --zone=public --add-port=5444/tcp --permanent 
-    firewall-cmd --zone=public --add-port=8443/tcp --permanent
     firewall-cmd --zone=public --add-port=7800/tcp --permanent
     firewall-cmd --reload      
     ```
+### Optional: install sslutils
 
-1.  **On the standbys only**, install the NGINX web server and add the `pem` user to the `nginx` group.
-    This is not required on the primary because it occurs automatically during PEM configuration.
+If you wish PEM to act as a certificate authority and automatically issue client certificates, you will need to configure [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites).
+If you plan to provide your own certificates, then you may skip this step.
 
-    ```shell
-    dnf install nginx
-    usermod -a -G pem nginx
+1.  Install the sslutils package on all non-witness hosts.
+
+    ```sh
+    dnf install edb-as17-server-sslutils
     ```
 
-## User and access configuration on the primary
+### Set up the primary node for streaming replication
 
-Perform the following steps on the primary.
-
-1.  Create a superuser that can login using a password.
-    
-    ```shell
-    su - enterprisedb -c "psql edb -c \"CREATE ROLE pemserver LOGIN SUPERUSER PASSWORD 'your-password-here';\""
-    ```
-
-1.  Add the following line to the the `pg_hba.conf` file to permit the new user to connect from any of the server IPs.
-    You may adjust the size of the subnet as appropriate to you network, but it must include all the PEM nodes.
-    
-    ```
-    hostssl  all  pemserver  172.16.161.1/24  scram-sha-256
-    ```
-
-1.  Add the following line to the the `pg_hba.conf` file to permit other PEM users to connect to the PEM backend through the web application.
-    You may adjust the size of the subnet as appropriate to you network, but it must include all the PEM nodes.
-    
-    ```
-    hostssl all    +pem_user   172.16.161.201/24  scram-sha-256
-    ```
-
-1.  Restart the Postgres server.
-    
-    ```shell
-    systemctl restart edb-as-17
-    ```
-
-## Configure PEM on the primary
-
-Configure the PEM installation **on the primary server only**:
-
-1. Manually assign the VIP to the primary. For example:
-
-    ```shell
-    /usr/edb/efm-5.0/bin/efm_address add4 eth0 172.16.161.245/32
-    ```
-
-2. Run the PEM configuration script, specifying the VIP as the host and option 1 (Database and Web Services).
-   If you are using PEM 10.3 or later, also specify the agent-server-binding host as localhost.
-
-    ```shell
-    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
-                                             -ho 172.16.161.245 \
-                                             --asb-host-name localhost
-    ```
-    You will be prompted for various additional details. 
-    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
-
-3. Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](user_settings.md).
-   This will be replicated to the standbys in the next step.
-
-## Copy PEM configuration to the standbys 
-
-During the previous step, various configuration files and directories were created on the primary.
-In this step, we will create the same files and directories on the standbys.
-
-1. Create the uWSGI directory structure:
-
-    ```shell
-    mkdir -p /etc/edb-uwsgi/apps-available
-    mkdir -p /etc/edb-uwsgi/apps-enabled
-    chmod 755 /etc/edb-uwsgi
-    chmod 755 /etc/edb-uwsgi/apps-available
-    chmod 755 /etc/edb-uwsgi/apps-enabled
-    mkdir -p /var/log/edb-uwsgi
-    mkdir -p /var/run/edb-uwsgi
-    chmod 755 /var/log/edb-uwsgi
-    chmod 755 /var/run/edb-uwsgi
-    chown pem:pem /var/run/edb-uwsgi
-    chown pem:pem /var/log/edb-uwsgi
-    ```
-
-1.  Copy the following files from the primary node to the standby nodes at the same location, overwriting any existing files.
-
-    | File Path                                    | Description                                                                                                                                   |
-    | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `/usr/edb/pem/resources/server-pem.crt`      | Self-signed server certificate for the web application. You may replace this with another certificate either now or after deployment is complete. |
-    | `/usr/edb/pem/resources/server-pem.key`      | Private key of the web server certificate. This must match the certificate.                                                               |
-    | `/usr/edb/pem/share/.install-config`         | Used by PEM during upgrades. Copying this to the standbys means you can initiate a PEM database upgrade from whichever node is the primary at the time. |
-    | `/usr/edb/pem/web/config_setup.py`           | Configuration file for the web application.                                                                                                   |
-    | `/usr/edb/pem/web/config_local.py`           | Local overrides for web application configuration. If not present on the primary, no action is needed.                                        |
-    | `/etc/edb-uwsgi/uwsgi.ini`                   | uWSGI global configuration file.                                                                                                              |
-    | `/usr/lib/tmpfiles.d/edb-uwsgi.conf`         | uWSGI configuration file for the PEM web application.                                                                                         |
-    | `/etc/systemd/system/edb-uwsgi.service`      | uWSGI service file for the PEM web application                                                                                                |
-    | `/etc/edb-uwsgi/apps-available/pem.ini`      | uWSGI configuration file for the PEM web application                                                                                          |
-    | `/etc/nginx/conf.d/edb-pem.conf`             | NGINX configuration for the PEM web application.                                                                                              |
-
-1.  Run the following commands to create links to the copied files:
-
-    ```shell
-    cp /usr/edb/pem/web/pem.wsgi.in /usr/edb/pem/web/pem.wsgi
-    
-    ln -sf /usr/edb/pem/web/pem.wsgi /usr/edb/pem/web/wsgi.py
-    if [ ! -f "/usr/edb/pem/web/venv/lib64" ]; then
-        ln -fs /usr/edb/pem/web/venv/lib /usr/edb/pem/web/venv/lib64
-    fi
-    
-    ln -sf $(which python3) /usr/edb/pem/web/venv/bin/python3
-    ```
-
-
-1.  On the standbys, reload the NGINX and uWSGI services with the new configuration:
-
-    ```shell
-    systemctl daemon-reload
-    systemctl enable edb-uwsgi
-    systemctl start edb-uwsgi
-    systemctl restart nginx
-    ```
-
-## Set up the primary node for streaming replication
+Perform these steps on the primary only.
 
 1.  Create the replication role:
 
-    ```shell
-    psql -h 172.16.161.200 -p 5444 -U pemserver edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
+    ```sql
+    CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password';
     ```
 
     Give the password of your choice.
@@ -217,19 +116,41 @@ In this step, we will create the same files and directories on the standbys.
     For more information on configuring parameters for streaming replication, see the [PostgreSQL documentation](https://www.postgresql.org/docs/17/warm-standby.html#STREAMING-REPLICATION).
 
 
-3.  Add the following entry in the host-based authentication (`/var/lib/edb/as17/data/pg_hba.conf`) file to allow the replication user to connect from all the standbys:
+3.  Add the following entries in the host-based authentication (`/var/lib/edb/as17/data/pg_hba.conf`) file to allow the replication user to connect from all the standbys:
 
-    ```shell
-    hostssl  replication  repl  172.16.161.201/24  scram-sha-256
+    ```
+    host  replication  repl  172.16.161.200/32  scram-sha-256
+    host  replication  repl  172.16.161.201/32  scram-sha-256
+    host  replication  repl  172.16.161.202/32  scram-sha-256
     ```
 
-5.  Restart the EPAS server.
+4.  Restart the EPAS server.
 
     ```shell
     systemctl restart edb-as-17.service
     ```
 
-## Set up the standby nodes for streaming replication
+### Add a .pgpass file
+
+Perform these steps on all non-witness nodes.
+
+1.  Create the `.pgpass` file in the home directory of the enterprisedb user and add the following content.
+    Replace `<password>` with the password of the replication user created previously.
+
+    ```
+    172.16.161.200:5444:replication:repl:<password>
+    172.16.161.201:5444:replication:repl:<password>
+    172.16.161.202:5444:replication:repl:<password>
+    ```
+
+1.  Set the permissions on the file to restrict access
+        
+    ```shell
+    chmod 600 ~/.pgpass
+    ```
+
+
+### Set up the standby nodes for streaming replication
 
 Use the pg_basebackup utility to create replicas of the PEM backend database server on the standby servers. 
 
@@ -239,7 +160,7 @@ Use the pg_basebackup utility to create replicas of the PEM backend database ser
     systemctl stop edb-as-17.service
     ```
 
-2.  Remove the data directory of the database server on all the standby nodes:
+1.  Remove the data directory of the database server on all the standby nodes:
 
     ```shell
     su - enterprisedb
@@ -247,107 +168,25 @@ Use the pg_basebackup utility to create replicas of the PEM backend database ser
     rm -rf /var/lib/edb/as17/data/*
     ```
 
-3.  Create the `.pgpass` file in the home directory of the enterprisedb user on all the standby nodes and add the following content.
-    Replace `<password>` with the password of the replication user created previously.
-
-    ```
-    172.16.161.200:5444:replication:repl:<password>
-    172.16.161.201:5444:replication:repl:<password>
-    172.16.161.202:5444:replication:repl:<password>
-    ```
-
-3.  Set the permissions on the file to restrict access
-        
-    ```shell
-    chmod 600 ~/.pgpass
-    ```
-
-4.  Take a backup of the primary node on each of the standby nodes using pg_basebackup:
+1.  Take a backup of the primary node on each of the standby nodes using pg_basebackup:
 
     ```shell
     su - enterprisedb -c "\
         /usr/edb/as17/bin/pg_basebackup \
-        -h 172.31.6.186 \
+        -h 172.16.161.200 \
         -D /var/lib/edb/as17/data \
         -U repl \
         -v -P -Fp -R -p 5444\
         "
     ```
 
-6.  Start the EPAS database server on each of the standby nodes:
+1.  Start the EPAS database server on each of the standby nodes:
 
     ```shell
     systemctl start edb-as-17
     ```
 
-## Configure SELinux
-
-On all nodes, run the `configure-selinux.sh` script to configure the SELinux policy for PEM.
-
-```shell
-USE_NGINX=1 /usr/edb/pem/bin/configure-selinux.sh
-```
-
-## Register agents and servers on the standbys
-
-On each standby, perform the following steps.
-
-1.  Register the PEM agent. Specify the VIP as the PEM server host and enable alert and notification handling.
-    For example:
-
-    ```shell
-    export PEM_SERVER_PASSWORD=pemserver-password-here
-    /usr/edb/pem/agent/bin/pemworker --register-agent \
-                                     --pem-server 172.16.161.245 \
-                                     --pem-user pemserver \
-                                     --pem-port 5444 \
-                                     -o alert_threads=1 \
-                                     --enable-snmp true \
-                                     --enable-webhook true \
-                                     --enable-smtp true \
-                                     --max-webhook-retries 3
-    ```
-     Enable and start the PEM agent service:
-
-     ```shell
-     systemctl enable --now pemagent
-     ```
-     
-     See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
-
-1.  Register the Postgres instance with PEM. 
-    The following command means the PEM web application will use the server's external IP when making a client connection to the database, 
-    but the PEM Agent will use the loopback interface to connect locally.
-
-    ```shell
-    export PEM_SERVER_PASSWORD=pemserver-password-here
-    export PEM_MONITORED_SERVER_PASSWORD=pemserver-password-here
-    /usr/edb/pem/agent/bin/pemworker --register-server \
-                                     --pem-user pemserver \
-                                     --server-addr 172.16.161.201 \
-                                     --server-port 5444 \
-                                     --server-database edb \
-                                     --server-user pemserver \
-                                     --server-service-name edb-as-17 \
-                                     --asb-host-name localhost  
-    ```
-    
-    See [Registering a Postgres Server](/pem/latest/registering_database_server/) for more information
-
-    1.  Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each.
-
-    ```sql
-    SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5444;
-    ```
-
-    !!! Info
-    In older versions of PEM, the PEM server and its local agent had to have ID 1. 
-    This is no longer the case from PEM 10.1. Instead this SQL flags this server and agent as belonging to a PEM deployment, 
-    which in turn enables important system jobs such as purging expired data when this server is the primary.
-    !!!
-
-
-## Set up EFM to manage failover
+### Set up EFM to manage failover
 
 Perform the following steps to set up EFM:
 
@@ -373,13 +212,14 @@ Perform the following steps to set up EFM:
     ```
     This change will be replicated to the standbys.
 
-1.  On all nodes, add entries in `pg_hba.conf` to allow the `efm` database user to connect to the database server from all nodes on all the hosts.
-    
+1.  On the primary, add entries in `pg_hba.conf` to allow the `efm` database user to connect to the database server from all nodes.
+    These entries will be replicated to the standbys.
+
     ```
-    hostssl      edb     efm     172.16.161.200/32     scram-sha-256
-    hostssl      edb     efm     172.16.161.201/32     scram-sha-256
-    hostssl      edb     efm     172.16.161.202/32     scram-sha-256
-    hostssl      edb     efm     172.16.161.203/32     scram-sha-256
+    host      edb     efm     172.16.161.200/32     scram-sha-256
+    host      edb     efm     172.16.161.201/32     scram-sha-256
+    host      edb     efm     172.16.161.202/32     scram-sha-256
+    host      edb     efm     172.16.161.203/32     scram-sha-256
     ```
 
 1.  Reload the configurations on all the database servers.
@@ -388,30 +228,30 @@ Perform the following steps to set up EFM:
     SELECT pg_reload_conf();
     ```
 
-4.  On all nodes, create an `efm.nodes` file using the sample file (`/etc/edb/efm-5.0/efm.nodes.in`), and give read-write access to the EFM OS user:
+4.  On all nodes, create an `efm.nodes` file using the sample file (`/etc/edb/efm-5.2/efm.nodes.in`), and give read-write access to the EFM OS user:
 
     ```shell
-    cp /etc/edb/efm-5.0/efm.nodes.in /etc/edb/efm-5.0/efm.nodes
-    chown efm:efm /etc/edb/efm-5.0/efm.nodes
-    chmod 600 /etc/edb/efm-5.0/efm.nodes
+    cp /etc/edb/efm-5.2/efm.nodes.in /etc/edb/efm-5.2/efm.nodes
+    chown efm:efm /etc/edb/efm-5.2/efm.nodes
+    chmod 600 /etc/edb/efm-5.2/efm.nodes
     ```
 
-5.  On the standby nodes, add the IP address and EFM port of the primary node in the `/etc/edb/efm-5.0/efm.nodes` file:
+5.  On the standby nodes, add the IP address and EFM port of the primary node in the `/etc/edb/efm-5.2/efm.nodes` file:
 
-6.  On all nodes, create the `efm.properties` file using the sample file (`/etc/edb/efm-5.0/efm.properties.in`). 
+6.  On all nodes, create the `efm.properties` file using the sample file (`/etc/edb/efm-5.2/efm.properties.in`). 
     Grant read access to all users:
 
     ```shell
-    cp /etc/edb/efm-5.0/efm.properties.in /etc/edb/efm-5.0/efm.properties
-    chown efm:efm /etc/edb/efm-5.0/efm.properties
-    chmod a+r /etc/edb/efm-5.0/efm.properties
+    cp /etc/edb/efm-5.2/efm.properties.in /etc/edb/efm-5.2/efm.properties
+    chown efm:efm /etc/edb/efm-5.2/efm.properties
+    chmod a+r /etc/edb/efm-5.2/efm.properties
     ```
 
 7.  On any node, encrypt the `efm` database user's password (as defined in Step 1 above) using the `efm` utility, make a note of the output for the next step.
 
     ```shell
     export EFMPASS=password
-    /usr/edb/efm-5.0/bin/efm encrypt efm --from-env
+    /usr/edb/efm-5.2/bin/efm encrypt efm --from-env
     ```
 
 8.  On all nodes, edit the following parameters in the `efm.properties` file. 
@@ -463,29 +303,29 @@ Perform the following steps to set up EFM:
 10. On the primary node, enable and start the EFM service:
 
     ```shell
-    systemctl enable edb-efm-5.0
-    systemctl start edb-efm-5.0
+    systemctl enable edb-efm-5.2
+    systemctl start edb-efm-5.2
     ```
 
 11. On the primary node, allow the standbys to join the cluster:
 
     ```shell
-    /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.201
-    /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.202
-    /usr/edb/efm-5.0/bin/efm allow-node  efm  172.16.161.203
+    /usr/edb/efm-5.2/bin/efm allow-node  efm  172.16.161.201
+    /usr/edb/efm-5.2/bin/efm allow-node  efm  172.16.161.202
+    /usr/edb/efm-5.2/bin/efm allow-node  efm  172.16.161.203
     ```
 
 12. Enable and start the EFM service on the standby nodes and the EFM witness node:
 
     ```shell
-    systemctl enable edb-efm-5.0
-    systemctl start edb-efm-5.0
+    systemctl enable edb-efm-5.2
+    systemctl start edb-efm-5.2
     ```
 
 13. Check the EFM cluster status by running the following command on any node.
 
     ```shell
-    /usr/edb/efm-5.0/bin/efm cluster-status efm
+    /usr/edb/efm-5.2/bin/efm cluster-status efm
     ```
 
     The output should look like this:
@@ -522,7 +362,348 @@ This status confirms that EFM is set up successfully and managing the failover f
 
 In case of failover, any of the standbys are promoted as the primary node, and PEM agents connect to the new primary node. You can replace the failed primary node with a new standby using the procedure above.
 
-## Correct the agent-server binding host on the primary
+## Prepare the EFM cluster for PEM installation
 
-If you are using PEM 10.2 or 10.1, login to the PEM web application, right click the primary server in Object Explorer and navigate to `Properties > PEM Agent`.
-If the value of **Host** is set to the VIP, change it to `localhost` or `127.0.0.1`.
+Before installing PEM in HA mode, we must ensure that the cluster meets two requirements:
+
+- SSL is configured such the the `cert` auth method can be used for connections from PEM agents to the PEM backend database
+- HBA rules are in place to allow agents and web application instances to connect to the PEM backend
+
+### Prepare SSL files
+
+Follow the instructions in [Generating SSL files for HA PEM backend hosts](ssl.mdx).
+
+### Modify the EFM cluster to add SSL and HBA rules
+
+Perform the following actions on each PEM node (excluding the witness).
+
+1.  Modify `postgresql.conf` to enable SSL and set the paths to the SSL files created above.
+
+    ```ini
+    ssl = on
+    ssl_ca_file = 'root.crt'
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    ```
+
+    If you have a CRL, also set:
+
+    ```ini
+    ssl_crl_file = 'root.crl'
+    ```
+
+1.  Modify `pg_hba.conf` to add the rules required by PEM.
+    Add this block at the top of the file, above any existing content, adjusting the IP addresses to match your cluster.
+
+    ```
+    # Allow users of the web interface to connect to pem and postgres databases
+    hostssl pem      +pem_user   127.0.0.1/32           scram-sha-256
+    hostssl postgres +pem_user   127.0.0.1/32           scram-sha-256
+
+    # Allow the PEM server agents to register and connect to send data to PEM server
+    hostssl pem      +pem_agent  127.0.0.1/32           cert
+    hostssl pem      +pem_admin  172.16.161.200/32      scram-sha-256
+    hostssl pem      +pem_agent  172.16.161.200/32      cert
+    hostssl pem      +pem_admin  172.16.161.201/32      scram-sha-256
+    hostssl pem      +pem_agent  172.16.161.201/32      cert
+    hostssl pem      +pem_admin  172.16.161.202/32      scram-sha-256
+    hostssl pem      +pem_agent  172.16.161.202/32      cert
+
+    # Allow our superuser to connect to perform cluster configuration
+    hostssl pem,postgres      pemsuper   172.16.161.200/32    scram-sha-256
+    hostssl pem,postgres      pemsuper   172.16.161.201/32    scram-sha-256
+    hostssl pem,postgres      pemsuper   172.16.161.202/32    scram-sha-256
+
+    # Allow monitoring agents to connect to PEM
+    # Specify a subnet that includes all your monitored servers
+    # Duplicate these lines for multiple subnets
+    hostssl pem      +pem_user   0.0.0.0/0               scram-sha-256
+    hostssl pem      +pem_agent  0.0.0.0/0               cert
+    ```
+
+1.  If using a common agent user, add one additional line to allow the first agent to connect during PEM installation.
+    This line can be removed later if required.
+
+    ```
+    hostssl pem      common_agent_user  127.0.0.1/32           cert
+    ```
+
+1.  Modify the HBA rules added in the previous sections (for replication and EFM) to `hostssl` instead of `host` to enforce SSL for all connections.
+
+### Restart the cluster
+
+!!! Note
+    By default, EFM will trigger a failover if the database service stops.
+    During this rolling restart, stop the EFM agent before restarting Postgres to prevent an unintended failover.
+!!!
+
+Perform a rolling restart of the cluster. On each non-witness host, starting with the standbys and concluding with the primary, do the following:
+
+1.  Stop the EFM agent service
+
+    ```sh
+    systemctl stop edb-efm-5.2
+    ```
+
+1.  Restart Postgres
+
+    ```sh
+    systemctl restart edb-as-17
+    ```
+
+1.  Start the EFM agent service
+
+    ```sh
+    systemctl start edb-efm-5.2
+    ```
+
+## Prepare agent users and certificates
+
+If you are supplying your own SSL certificates, follow these steps to
+prepare for PEM deployment. If you are using sslutils, you may skip this
+section.
+
+<TabContainer syncKey="sslmodel2">
+
+<Tab title="Using a common agent user">
+
+On the primary, create the common agent user.
+Grant it connect permission on `template1`.
+This is only required temporarily and can be revoked later.
+
+```sql
+CREATE USER common_agent_user;
+GRANT CONNECT ON DATABASE template1 TO common_agent_user;
+```
+
+Generate a certificate and key pair for this user and save them on all
+the hosts.
+
+</Tab>
+
+<Tab title="Using one certificate per agent">
+
+PEM will automatically create numbered agent users for the agents we
+will deploy on the three hosts.
+Therefore you must generate three certificate key pairs for `agent1`
+through `agent3` and place one pair on each host.
+
+</Tab>
+
+</TabContainer>
+
+
+## Install PEM on the primary
+
+Perform the following steps on the primary host only.
+
+1.  Install the PEM package.
+
+    ```shell
+    dnf install edb-pem --allowerasing
+    ```
+
+1.  Create a superuser that can login using a password. This is the user we will use to install PEM.
+    It will also become the agent-server binding user for the agents running on PEM hosts.
+
+    ```shell
+    su - enterprisedb -c "psql -c \"create role pemsuper login superuser password 'your-password-here';\""
+    ```
+
+1.  Run the PEM configuration script, specifying option 3 (Database) and the VIP as the host.
+    You must specify the `--replication-solution efm` and `--replication-role primary` options to ensure HA mode is used.
+    It is also important to specify `--skip-db-certificate` to tell the script not to attempt to set up SSL itself,
+    and `--use-existing-sslutils` to tell it that it should still use sslutils to generate the agent certificates.
+
+    <TabContainer syncKey="sslmodel">
+
+    <Tab title="Using sslutils">
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                             -ho 172.16.161.245 \
+                                             -p 5444 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution efm \
+                                             --replication-role primary \
+                                             --skip-db-certificate \
+                                             --use-existing-sslutils \
+                                             --db-install-path '/usr/edb/as17/' \
+                                             --db-unitfile edb-as-17
+    ```
+
+    </Tab>
+
+    <Tab title="Using a common agent user">
+
+    When using a common agent user you must supply the username and path to the certificate and key generated for that user.
+    You must also supply the `--skip-db-certificate` option to prevent PEM trying to configure SSL itself.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                             -ho 172.16.161.245 \
+                                             -p 5444 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution efm \
+                                             --replication-role primary \
+                                             --db-unitfile edb-as-17 \
+                                             --db-install-path '/usr/edb/as17/' \
+                                             --skip-db-certificate \
+                                             --use-agent-user 'common_agent_user' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key'
+    ```
+
+    After running this command, grant the common agent user the pem_agent role and revoke its permissions on `template1`.
+
+    ```sql
+    GRANT pem_agent to common_agent_user;
+    REVOKE CONNECT ON DATABASE template1 FROM common_agent_user;
+    ```
+    You may also remove the HBA rule we added for the common agent user at this stage if desired as it will now match the `+pem_agent` rules.
+
+    </Tab>
+
+    <Tab title="Using one certificate per agent">
+
+    When using your own certificate you should specify the agent_id as `1` and path to the certificate and key generated for the corresponding `agent1` user.
+    You must also supply the `--skip-db-certificate` option to prevent PEM trying to configure SSL itself.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                             -ho 172.16.161.245 \
+                                             -p 5444 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution efm \
+                                             --replication-role primary \
+                                             --db-unitfile edb-as-17 \
+                                             --db-install-path '/usr/edb/as17/' \
+                                             --skip-db-certificate \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key' \
+                                             -aro agent_id=1
+
+    ```
+
+    </Tab>
+
+    </TabContainer>
+
+    You will be prompted for various additional details.
+    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+1.  Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](user_settings.mdx).
+    At this stage, you can only complete the backend configuration.
+    We will configure the web application later.
+
+
+## Install PEM on the standbys
+
+Perform the following steps on the standby hosts only.
+
+1.  Install the PEM package.
+
+    ```shell
+    dnf install edb-pem --allowerasing
+    ```
+
+1.  Run the PEM configuration script, specifying option 3 (Database) and the VIP as the host.
+    You must specify the `--replication-solution efm` and `--replication-role standby` options to ensure HA mode is used.
+
+    <TabContainer syncKey="sslmodel">
+
+    <Tab title="Using sslutils">
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                             -ho 172.16.161.245 \
+                                             -p 5444 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution efm \
+                                             --replication-role standby \
+                                             --db-unitfile edb-as-17 \
+                                             --db-install-path '/usr/edb/as17/'
+    ```
+
+    </Tab>
+
+    <Tab title="Using a common agent user">
+
+    When using a common agent user you must supply the username and path to the certificate and key generated for that user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                             -ho 172.16.161.245 \
+                                             -p 5444 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution efm \
+                                             --replication-role standby \
+                                             --db-unitfile edb-as-17 \
+                                             --db-install-path '/usr/edb/as17/' \
+                                             --use-agent-user 'common_agent_user' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key'
+    ```
+
+    </Tab>
+
+    <Tab title="Using one certificate per agent">
+
+    When using your own certificate you should specify the agent_id as
+    the next integer `N` and path to the certificate and key generated
+    for the corresponding `agentN` user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                             -ho 172.16.161.245 \
+                                             -p 5444 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution efm \
+                                             --replication-role standby \
+                                             --db-unitfile edb-as-17 \
+                                             --db-install-path '/usr/edb/as17/' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key' \
+                                             -aro agent_id=2
+    ```
+
+    </Tab>
+
+    </TabContainer>
+
+    You will be prompted for various additional details.
+    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+## Final steps for PEM Web Application
+
+Perform the following steps on all web application hosts.
+
+1.  Open the following ports on the firewall:
+
+    -   `8443` for PEM Server (HTTPS)
+
+    For example:
+
+    ```shell
+    firewall-cmd --zone=public --add-port=8443/tcp --permanent
+    firewall-cmd --reload      
+    ```
+
+1.  Run the `configure-selinux.sh` script to configure the SELinux policy for PEM.
+
+    ```shell
+    USE_NGINX=1 /usr/edb/pem/bin/configure-selinux.sh
+    ```
+
+1.  You can now login to any of the web application instances using the `pemsuper` superuser we created earlier.
+
+1.  If you chose to synchronize PEM web application user preferences between instances,
+    complete the setup now by [configuring each web application instance to use the backend for user settings](user_settings.mdx#configure-the-pem-web-applications).
+
+
