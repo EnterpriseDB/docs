@@ -326,7 +326,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       !navRoot.mdxNode.frontmatter.navRootedTo
     )
       navRoot = navRoot.parent;
-    const navTree = treeToNavigation(navRoot, node);
+    const navTree = treeToNavigation(navRoot, curr);
 
     // determine next and previous nodes
     const prevNext = findPrevNextNavNodes(navRoot, curr);

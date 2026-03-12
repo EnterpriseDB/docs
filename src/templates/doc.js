@@ -201,10 +201,10 @@ const DocTemplate = ({ data, pageContext }) => {
   let title = frontmatter.title;
   let preciseVersion = frontmatter.version;
 
-  if (depth === 2 && !navTree.hideVersion) {
+  if (depth === 2 && !navRoot.hideVersion) {
     // product version root
     title += ` ${FormatVersion(preciseVersion || version)}`;
-  } else if (depth > 2 && !navTree.hideVersion) {
+  } else if (depth > 2 && !navRoot.hideVersion) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
@@ -263,7 +263,7 @@ const DocTemplate = ({ data, pageContext }) => {
           <div className="d-flex flex-column flex-md-row justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}{" "}
-              {!navTree.hideVersion && (
+              {!navRoot.hideVersion && (
                 <span className="fw-light ms-2 text-muted bg-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
                   {FormatVersion(preciseVersion || version)}
                 </span>
@@ -286,12 +286,12 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
-          {navTree.displayBanner ? (
+          {navRoot.displayBanner ? (
             <div
               className="alert alert-warning mt-3"
               role="alert"
               dangerouslySetInnerHTML={{
-                __html: navTree.displayBanner.replace(
+                __html: navRoot.displayBanner.replace(
                   /href="latest:splat"/,
                   `href="${withPrefix(pageContext.pathVersions[0] || getProductUrlBase(pagePath))}"`,
                 ),
