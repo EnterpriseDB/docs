@@ -111,8 +111,20 @@ If you are deploying on RHOS, you can install the operator directly from the Cat
 
 ## Monitor installation progress
 
-Once the Helm command completes, the **bootstrap operator** takes over. 
+Once the Helm command completes, the **bootstrap operator** takes over.
 It interprets your configuration and spins up the HM platform.
+
+### Check preflight status
+
+After the bootstrap operator creates the `HybridControlPlane` resource, it automatically generates a `Preflight` resource to validate required secrets. This controller reflects the cluster state and will re-run every 30 seconds until all requirements pass (or fail). If the resource hasn't been created yet, the command will return "No resources found."
+
+```bash
+kubectl get preflight -o yaml
+```
+
+If all entries in `status.secretRequirementsStatus` show the `Valid` status, proceed with the next checks. 
+
+If any entry in `status.secretRequirementsStatus` shows `SecretNotFound` or `Invalid`, the operator is blocked waiting for those secrets to be fixed. See [Understanding Preflight checks](./troubleshooting/preflight_checks/) for details on interpreting results and resolving failures.
 
 ### Check HM control plane status
 
@@ -145,7 +157,7 @@ If pods are stuck in `ImagePullBackOff`, verify your **Image Pull Secret** from 
 If they are `Pending`, verify your **Storage Class** availability.
 !!!
 
-## Verify Portal access
+## Verify HM console access
 
 Once the pods are running, verify that you can access the user interface.
 
@@ -153,7 +165,26 @@ Once the pods are running, verify that you can access the user interface.
 1.  **Accept the certificate:** If you used a self-signed certificate (or haven't trusted your Custom CA yet), you may see a browser warning. Proceed past it for now.
 1.  **Log In:** Use the **User-0** credentials you defined in `values.yaml` (under `staticPasswords`).
 
-**Success:** You should see the HM landing page.
+**Success:** You should see the landing page of the HM console.
+
+## Monitor deployment with postflight check
+
+The bootstrap operator automatically creates a `Postflight` resource once the `HybridControlPlane` reaches the Deployed phase. This resource monitors your installation by verifying that pods, databases, backups, nodes, and certificates are correctly configured and valid.
+
+Before moving on to post-installation configurations, ensure your installation is healthy:
+
+```bash
+kubectl get postflight
+```
+
+The output should look like this:
+
+```bash
+NAME                  PHASE     LAST CHECK
+edbpgai-postflight    Healthy   2025-01-15T10:30:00Z
+```
+
+If the phase is `Healthy` continue with the next phase. If the phase is `Unhealthy`, obtain more detailed results with `kubectl get postflight <name> -o yaml`. See [Monitoring with postflight checks](./troubleshooting/postflight_checks/) for details on interpreting results and resolving failures.
 
 ## Next phase
 
