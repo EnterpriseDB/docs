@@ -88,7 +88,8 @@ async function cleanup() {
 async function checkoutVersionBranch({ latestVersionPath, version }) {
   console.log("Checking out version branch...");
   const branch = `REL-${version.replace(/\./g, "_")}`;
-  execSync(`cd ${workDir} && git checkout ${branch} && git pull && cd $OLDPWD`);
+  execSync(`cd ${workDir} && git checkout ${branch} && git fetch`);
+  execSync(`cd ${workDir} && git pull || git reset --hard ${branch}`);
 }
 
 async function loadPEMConfig() {
@@ -108,7 +109,7 @@ async function loadPEMConfig() {
 
   // JSON should parse C-style strings and numbers correctly most of the time
   return {
-    base_url: "https://PEM-SERVER-IP",
+    base_url: "https://PEM-SERVER-IP/pem",
     company_short_name: JSON.parse(config.SHORT_COMPANY_NAME).toUpperCase(),
     company_long_name: JSON.parse(config.LONG_COMPANY_NAME),
     company_website: JSON.parse(config.COMPANY_SITE),
