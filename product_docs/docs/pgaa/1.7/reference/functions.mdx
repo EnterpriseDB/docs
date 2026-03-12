@@ -3,6 +3,9 @@ title: Functions
 navTitle: Functions
 description: Reference for the functions provided by the PGAA extension.
 deepToC: true
+redirects:
+- /edb-postgres-ai/latest/analytics/reference/functions
+- /edb-postgres-ai/latest/analytics/reference/pgaa_functions
 ---
 
 The reference section is a list of functions available with Analytics Accelerator.
@@ -477,6 +480,9 @@ SELECT pgaa.spark_sql($$
 
 Performs compaction to improve the performance and storage efficiency of an analytical Iceberg table. Requires Spark Connect to be configured via the `pgaa.spark_connect_url` configuration parameter.
 
+!!! Note
+    The function `pgaa.execute_compaction()` is deprecated in favor of `pgaa.launch_task()`.
+
 **Synopsis**
 
 ```sql
@@ -492,7 +498,7 @@ SELECT pgaa.execute_compaction('table_name'::regclass, 'settings'::json);
 
 
 !!! Note
-    The parameter `settings` is currently not supported. Instead, use [pgaa.spark_sql()](#pgaaspark_sql), run Spark queries directly on your cluster.
+    The parameter `settings` is currently not supported. Instead, use [pgaa.spark_sql()](#pgaaspark_sql) to run Spark queries directly on your cluster.
 
 **Returns**
 
@@ -507,10 +513,13 @@ SELECT pgaa.execute_compaction('lakehouse.inventory_iceberg'::regclass);
 
 ## Background task functions
 
-
 ### pgaa.launch_task()
 
-Schedules a background maintenance task for an analytical Delta table. 
+Schedules a background maintenance task for an analytical Delta or Iceberg table. 
+
+
+!!! Note
+    While Delta Lake supports all available task types, Iceberg tables currently only support the `compaction` operation. Furthermore, Iceberg compaction does not support the granular configuration keys available for Delta Lake, except for `dry_run`.
 
 **Synopsis**
 
@@ -542,20 +551,22 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
     "preserve_insertion_order": true,
     "max_concurrent_tasks": 10,
     "max_spill_size": 2147483648,
-    "min_commit_interval": 60
+    "min_commit_interval": 60,
+    "dry_run": false
     }
     ```
 
     Where:
 
-    - `target_size`: Specifies the size of the output files in bytes.
-    - `preserve_insertion_order`: Whether to maintain the existing sort order of rows.
-    - `max_concurrent_tasks`: Limits the number of parallel tasks the executor can run.
-    - `max_spill_size`: Sets the maximum data size in bytes allowed to spill to disk during the process.
-    - `min_commit_interval`: Sets the minimum wait time in seconds between committing updates to the Delta log.
+    - `target_size` (Delta only): Specifies the size of the output files in bytes.
+    - `preserve_insertion_order` (Delta only): Whether to maintain the existing sort order of rows.
+    - `max_concurrent_tasks` (Delta only): Limits the number of parallel tasks the executor can run.
+    - `max_spill_size` (Delta only): Sets the maximum data size in bytes allowed to spill to disk during the process.
+    - `min_commit_interval` (Delta only): Sets the minimum wait time in seconds between committing updates to the Delta log.
+    - `dry_run`: If `true`, calculates and logs the operation, but does not perform compaction.
 
 
-- `zorder`: A clustering technique that reorganizes data across multiple columns to improve "data skipping" for queries with filters on those columns. The available `task_options` are:
+- `zorder` (Delta only): A clustering technique that reorganizes data across multiple columns to improve "data skipping" for queries with filters on those columns. The available `task_options` are:
 
     ```json
     {
@@ -577,7 +588,7 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
     - `max_spill_size`: Sets the maximum data size in bytes allowed to spill to disk during the process.
     - `min_commit_interval`: Sets the minimum wait time in seconds between committing updates to the Delta log.
 
-- `vacuum`: Deletes old data files that are no longer referenced by the Delta transaction logs, freeing up space in object storage. The available `task_options` are:
+- `vacuum` (Delta only): Deletes old data files that are no longer referenced by the Delta transaction logs, freeing up space in object storage. The available `task_options` are:
 
     ```json
     {
@@ -593,7 +604,7 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
     - `dry_run`: If `true`, calculates and logs the files that would be deleted, but performs no deletions.
     - `enforce_retention_duration`: If `true`, the task validates the `retention_period` against the system's global minimum safety limit.
 
-- `purge`: Explicitly removes data from a specific storage path. The available `task_options` are:
+- `purge` (Delta only): Explicitly removes data from a specific storage path. The available `task_options` are:
 
     ```json
     {
@@ -654,6 +665,41 @@ You can check the task status by querying the `pgaa.background_task` table and t
     ```
 
 
-### pgaa.execute_compaction()
+## Utility functions
 
-Performs compaction to improve the performance and storage efficiency of an analytical Iceberg table. See [Spark functions](#spark-functions) for details.
+### pgaa._bench_replication()
+
+Runs a synthetic, pgbench-like replication benchmark to measure the performance of data ingestion into a specified storage location. It calculates the initial data load speed and the sustained transaction throughput.
+
+!!! Note Internal function
+    This function is primarily intended for internal testing and is still under development.
+
+**Synopsis**
+
+```sql
+SELECT * FROM pgaa._bench_replication(
+    storage_location text,
+    format text DEFAULT 'iceberg',
+    scale integer DEFAULT 100,
+    transactions integer DEFAULT 100000,
+    dry_run boolean DEFAULT false
+);
+```
+
+**Parameters**
+
+| Parameter                 | Type     | Description                                           
+| ---------------------- | -------- | ----------------------------------------------------- 
+| `storage_location` | `TEXT` | The name of the PGFS destination storage location where the benchmark data will be written. |
+| `format` | `TEXT` | The table format to use for the benchmark. Default is 'iceberg'. |
+| `scale` | `INTEGER` | The scale factor for the benchmark, determining the size of the initial dataset. Default is 100. |
+| `transactions` | `INTEGER` | The total number of transactions to simulate during the throughput test. Default is 100000. |
+| `dry_run` | `BOOLEAN` | If `true`, the function validates the parameters and connection without performing the actual benchmark. Default is `false`. | 
+
+**Returns**
+
+| Column  | Type       | Description                              
+| ---------- | ---------- | ---------------------------------------- 
+| `initial load speed  (MB/s)`    | `DOUBLE PRECISION` | The rate at which the initial dataset was written to storage. |
+|  `throughput (TPS)`          | `DOUBLE PRECISION` | The sustained number of transactions per second achieved during the benchmark. |
+

@@ -1,0 +1,203 @@
+---
+title: Integrating with Iceberg catalogs
+navTitle: Integrating with Iceberg catalogs
+description: How to integrate your Postgres environment with an external Iceberg catalog using Analytics Accelerator.
+deepToC: true
+---
+
+A catalog service acts as the centralized "brain" of a data lake, decoupling physical storage from logical table definitions. By maintaining a single source of truth for metadata, schemas, and partitioning, it allows multiple independent engines—such as Postgres, Spark, and Trino—to share the same data without the risk of corruption or schema drift.
+
+The Postgres Analytics Accelerator (PGAA) integrates with third-party catalogs to provide seamless data lake connectivity for analytical workloads within your Postgres deployment.
+
+PGAA supports reading from and writing (using [CTAS](ctas/#using-an-iceberg-catalog)) to Iceberg tables using the following catalog implementations: 
+- **REST catalogs:** Any service following the Apache Iceberg REST API, such as Lakekeeper, Tabular, Apache Polaris, or Project Nessie. 
+- **AWS S3 Tables:** A high-performance, AWS-native catalog designed for cloud-scale analytics. 
+
+Managing external Iceberg catalogs with PGAA involves two main phases: 
+
+1. [Adding a catalog connection](#adding-a-catalog-connection). 
+1. [Registering catalog tables](#registering-catalog-tables). 
+
+!!! Note 
+    When you use an external catalog, you don't need to create a storage location. A table is either linked to a storage location or a catalog.
+
+## Adding a catalog connection
+
+Use the function `pgaa.add_catalog()` to register an external Iceberg catalog with your Postgres instance. The function creates a metadata link which tells Postgres where the catalog lives and how to log in. It also validates the catalog connection and credentials, and saves the configuration. 
+
+```sql
+SELECT pgaa.add_catalog(
+    catalog_name TEXT,
+    catalog_type TEXT,
+    catalog_options JSON
+);
+```
+
+Specify one of the following catalog types:
+- `iceberg-rest`: For Iceberg REST catalog (Lakekeeper, Snowflake Polaris, Tabular).
+- `iceberg-s3tables`: For AWS S3 Tables.
+
+### REST catalog
+
+For most REST catalog services, provide the endpoint and token details via a JSON object:
+
+```sql
+SELECT pgaa.add_catalog(
+    'my_iceberg_catalog',    
+    'iceberg-rest',           
+    '{ 
+        "url": "https://your-catalog-endpoint.com",
+        "warehouse_name": "your_warehouse_name",
+        "warehouse": "your_warehouse_id",
+        "token": "your_secret_auth_token"
+    }'
+);
+```
+
+Some Iceberg REST Catalog providers, like Snowflake, require more advanced settings for authentication. PGAA supports full OAuth2 options to handle secure, rotating authentication. For example:
+
+```sql
+SELECT pgaa.add_catalog(
+    'my_iceberg_catalog',     
+    'iceberg-rest',           
+    '{ 
+        "oauth2.grant_type": "client_credentials",
+        "oauth2.client_id": "oauth-client-id",
+        "oauth2.client_secret": "oauth-client-secret",
+        "oauth2.token_uri": "https://EXAMPLE-polaristest.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens",
+        "oauth2.scope": "PRINCIPAL_ROLE:read_only"
+    }'
+);
+```
+
+### AWS S3 Tables
+
+For a AWS S3 Tables catalog, specify the Amazon Resource Name (ARN) and the region: 
+
+```sql
+SELECT pgaa.add_catalog(
+    'my_s3_catalog',     
+    'iceberg-s3tables',    
+    '{ 
+        "arn": "arn:aws:s3tables:us-east-1:123456:bucket/analytics",
+        "region": "us-east-1"
+    }'
+);
+```
+
+### Verifying the catalog configuration
+
+After adding a catalog, use the following functions to verify the connection and explore available data:
+
+- List registered catalogs:
+
+    ```sql
+    SELECT * FROM pgaa.list_catalogs();
+    ```
+
+- Test connectivity and write permissions of your configuration. The function returns `NULL` if the connection is successful. For example:
+
+    ```sql
+    SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
+    ```
+
+- Browse the tables available within the external catalog before importing them:
+
+    ```sql
+    SELECT pgaa.list_catalog_tables('my_iceberg_catalog');
+    ```
+
+For a complete list of functions supporting catalog registration and maintenance, see the [Catalog functions](reference/functions#catalog-functions) reference section.
+
+## Registering catalog tables
+
+Once you have established a catalog connection, you must register its metadata so Postgres can recognize and query the external data. PGAA provides three distinct paths for registration:
+- [Attaching a catalog](#attaching-a-catalog) for dynamic, automated synchronization.
+- [Importing a catalog](#importing-a-catalog) for a static, one-time snapshot.
+- [Creating a catalog-managed table](#creating-catalog-managed-tables) to register a single table with a high level of granularity. 
+
+### Attaching a catalog
+
+Attaching a catalog establishes a dynamic link between Postgres and the external Iceberg metadata service. Unlike a static import, this method ensures your Postgres environment stays synchronized with the data lake as it evolves.
+
+When you attach a catalog, PGAA starts a background worker that continuously polls the catalog to detect new tables or schema evolution. PGAA honors the namespace hierarchy defined on the catalog side. If the attached catalog contains a table that shares the name with any existing tables on your database, the background worker will skip it to avoid overwriting it.
+
+The synchronization process is managed by two primary configuration parameters:
+
+- `pgaa.metastore_sync_poll_rate_s`: Controls the polling frequency.
+- `pgaa.metastore_sync_stale_duration_s`: Defines the threshold for metadata freshness.
+
+Use the `pgaa.attach_catalog()` function to attach a catalog:
+
+```sql
+SELECT pgaa.attach_catalog('my_iceberg_catalog'); 
+```
+
+Verify that the tables have been created on your Postgres environment. Once the catalog tables are registered in your Postgres instance, they are accessible just like standard tables.
+
+You can use the `pgaa.detach_catalog()` function to detach the catalog:
+
+```sql
+SELECT pgaa.detach_catalog('my_iceberg_catalog');
+```
+
+The function stops the background synchronization worker and removes the dynamic link to the Iceberg metadata service. The catalog remains added (visible in `pgaa.list_catalogs()`), allowing you to re-attach it later without re-entering your credentials, but it will no longer poll for updates or automatically map new tables. If you use the option `CASCADE`, all tables managed by this catalog are also dropped.
+
+### Importing a catalog 
+
+Instead of continuously polling, you can perform a one-time manual synchronization. Postgres will pull the current state of the tables, but will not detect future changes until you run the import again. If the imported catalog contains a table that shares the name with any existing tables on your database, PGAA skips creating that table to avoid overwriting it. You can also import a catalog to force an update without waiting for the next background poll cycle.
+
+Use the `pgaa.import_catalog()` function to import a catalog:
+
+```sql
+SELECT pgaa.import_catalog('my_iceberg_catalog');
+```
+
+
+You can optionally use the command specifying a namespace filter so only tables within this specific Iceberg namespace will be imported. For example:
+
+```sql
+SELECT pgaa.import_catalog('my_iceberg_catalog', 'tpcds_sf_1000');
+```
+
+Validate that the new tables appear in your Postgres environment. You can run standard SQL queries directly against your data lake without further configuration.
+
+### Creating catalog-managed tables
+
+Catalog-managed tables allow you to define custom local table names, choose specific schema placements, and explicitly map columns while leveraging your existing catalog connection.
+
+Manual registration provides more flexibility than attaching an entire catalog. You gain total control over your Postgres namespace, allowing you to place a table in any local schema regardless of its location in the Iceberg catalog. 
+
+The synchronization of a manual table depends on the type of change occurring in the data lake:
+
+| Change type |	Synchronization |	Behavior details |
+| ----------- | --------------- | ------------------ |
+| Data changes | Automatic      | Every query resolves the latest Iceberg snapshot. New, updated, or deleted rows are reflected immediately. |
+| Partition evolution | Automatic | Iceberg stores partitioning logic in metadata. If the partitioning strategy changes, PGAA handles the file-pruning adjustments behind the scenes. |
+| Schema evolution | Manual | Structural changes (new or deleted columns) are ignored or will cause errors. You must update the Postgres table using `ALTER TABLE` to match the new remote schema. |
+
+Create catalog-managed tables using the `CREATE TABLE ... USING PGAA WITH` syntax. For example:
+
+```sql
+CREATE TABLE managed_sales_data (
+    id BIGINT,
+    sale_date TIMESTAMP,
+    amount NUMERIC
+) 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'my_iceberg_catalog',
+    pgaa.catalog_namespace = 'public',
+    pgaa.catalog_table = 'managed_sales_data'
+);
+```
+
+Where:
+- `pgaa.format`: Sets the table format ('iceberg').
+- `pgaa.managed_by`: Specifies the specific external catalog (previously defined by `pgaa.add_catalog`).
+- `pgaa.catalog_namespace`: Defines the namespace where the table resides within your Iceberg catalog.
+- `pgaa.catalog_table`: Specifies the name of the table as it appears in your data lake.
+
+!!! Note 
+    If you leave the column definitions empty (`()`), PGAA will automatically discover and map the schema from the Iceberg catalog. 
