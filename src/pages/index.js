@@ -208,7 +208,7 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/preview/ai-factory/langflow/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/langflow/">
                 Langflow
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/agent-studio/">
