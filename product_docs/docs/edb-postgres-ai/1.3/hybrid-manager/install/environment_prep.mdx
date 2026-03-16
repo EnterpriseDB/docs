@@ -3,6 +3,9 @@ title: Preparing your environment
 navTitle: Preparing environment
 description: 'Step through preparing your environment for Hybrid Manager installation, including: syncing images to your local registry, configuring secrets, setting up any advanced features, and completing your `values.yaml` configuration file .'
 deepToC: true
+redirects: 
+- /edb-postgres-ai/latest/hybrid-manager/install/configuration/data_catalog_secret/
+- /edb-postgres-ai/latest/hybrid-manager/install/configuration/genai_secret/
 ---
 
 ## Overview
@@ -48,11 +51,11 @@ Preparing your environment, Phase 4, covers:
         -   [(C) custom certificate](#option-c-custom-certificate)
         -   [(D) self-signed default](#option-d-self-signed-certificates-default)
 
--   **Creating other necessary secrets**
+-   [**Creating other necessary secrets**](#creating-other-necessary-secrets)
 
-    -   [Creating **GenAI Builder** secret](#creating-genai-builder-secret) (requires Fernet secret)
-    -   [Creating **Catalog** secret](#creating-catalog-secret) (requires Fernet secret)
-    -   [Customizing secrets for the **Migration Portal**](#creating-catalog-secret).
+    -   Creating **GenAI Builder** secret - requires Fernet secret
+    -   Creating **Catalog** secret - requires Fernet secret
+    -   Customizing secrets for the **Migration Portal
 
 -   **Configuring advanced features:** 
 
@@ -283,6 +286,8 @@ This configuration does not require you utilize the associated feature; it only 
 
 - One of the secrets you will create require an NGC API key. Create one following the [NVIDIA NGC documentation](https://docs.nvidia.com/ngc/gpu-cloud/ngc-user-guide/index.html#ngc-api-keys) to enable model image pulls.
 
+[In 1.3.x instances the secrets MUST exist regardless of whethet the installation ises GenAI or not. But what about the NGC API key? How would the customer create a secret without the key? Or can they leave the secret "empty" when prompter in th command below?]: #
+
 ### Using edbctl to create secrets
 
 Use `edbctl` to create the required additional secrets. It knows which secrets you need, based on your HM version. 
@@ -304,9 +309,37 @@ Use `edbctl` to create the required additional secrets. It knows which secrets y
 
 This creates secrets required for GenAI Builder, Catalog, and Migration Portal, among others:
 
--  GenAI Builder secrets - Fernet key secret and NGC key secrets allows you to build AI agents.
--  Catalog secret - Is required to create encrypted storage credentials and manage Lakehouse data.
--  Migration Portal secrets - Are required for internal component communication.
+-   GenAI Builder secrets - Fernet key secret, and NGC key secrets allow you to build AI agents. A confounding key is a randomized string that's at least 32 bytes long and one is required per HM installation.
+
+    The administrator must keep the Fernet key safe and back it up.
+    
+    ```shell
+    kubectl get secret -n upm-griptape fernet-secret -o yaml
+    ```
+   
+-   Catalog secret - A confounding key is required to create encrypted storage credentials and manage Lakehouse data.
+
+    !!!warning
+    The loss of the confounding key in a disaster scenario leads to a situation in which there's no mechanism for accessing the Lakehouse data managed by the Hybrid Manager data catalog. Instead, the administrator would have to create and store the new key, restart the upm-lakekeeper/lakekeeper workload, and rebuild all of the existing data catalogs carefully without deleting them. That procedure is very risky and would require support from EDB PG AI Professional Services team.
+    !!!
+
+    Fetch the key and store it safely: 
+
+    ```shell
+    kubectl get secrets -n upm-lakekeeper pg-confounding-key -o yaml
+    ```
+
+-   Migration Portal secrets - Are required for internal component communication.
+
+    Creates the namespaces, custom secrets, and generates secure random passwords for all five service accounts: 
+
+    - `edb-migration-portal.db_secrets`
+    - `edb-migration-portal.db_superuser_secrets`
+    - `edb-migration-portal.copilot_secrets`
+    - `edb-migration-copilot.db_secrets`
+    - `edb-migration-copilot.metrics_auth_secrets`
+
+    For more information on Migration Portal secrets, see [**Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/current/hybrid-manager/install/configuration/migration_portal_secrets/).
 
 ### Finish configuring GenAI Builder
 
