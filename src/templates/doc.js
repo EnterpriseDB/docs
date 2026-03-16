@@ -291,10 +291,23 @@ const DocTemplate = ({ data, pageContext }) => {
               className="alert alert-warning mt-3"
               role="alert"
               dangerouslySetInnerHTML={{
-                __html: navRoot.displayBanner.replace(
-                  /href="latest:splat"/,
-                  `href="${withPrefix(pageContext.pathVersions[0] || getProductUrlBase(pagePath))}"`,
-                ),
+                __html: navRoot.displayBanner
+                  .replace(
+                    new RegExp(`href="\\/${product}\\/([^:\\/]+)\\/?:splat"`),
+                    (substring, version) => {
+                      const versionMatch = versionArray.find(
+                        (v) => v.version === version,
+                      );
+                      const url = versionMatch
+                        ? versionMatch.url
+                        : `/${product}/${version}/`;
+                      return `href="${withPrefix(url)}"`;
+                    },
+                  )
+                  .replace(
+                    /href="(\/[^"]+)"/,
+                    (substring, urlPath) => `href="${withPrefix(urlPath)}"`,
+                  ),
               }}
             />
           ) : null}
