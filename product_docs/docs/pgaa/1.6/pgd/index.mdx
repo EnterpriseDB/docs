@@ -4,6 +4,7 @@ navTitle: Replicating with PGD
 description: Understand how writing Postgres data to lakehouse tables enables cost-efficient data lifecycle management
 deepToC: true
 navigation:
+- get-started
 - tiered-tables
 - replicate
 - offload
@@ -30,7 +31,7 @@ This architecture implements two distinct storage tiers: the hot tier (local SSD
 | Table type | Storage location |  Behavior | 
 | ---------- | --------------- |  -------- | 
 | Heap | Local disk only | Standard transactional table in the hot tier. |
-| HTAP | Local + object storage | A heap table mapped to an analytical copy. PGD replicates all changes in near real-time. |
+| Hybrid Analytics and Transactional Processing (HTAP) | Local + object storage | A heap table mapped to an analytical copy. PGD replicates all changes in near real-time. |
 | PGAA | Object storage only | A purely analytical cold table, available in the Delta or Iceberg format. |
 
 ## Tiered storage strategies
@@ -49,14 +50,11 @@ This method continuously synchronizes a table with an analytical copy in object 
 
 To ensure near real-time synchronization without taxing your transactional throughput, PGAA uses Iceberg Merge-on-Read (MoR). This records changes in small "delete files" rather than rewriting entire data blocks, keeping the data lake fresh with minimal overhead.
 
-Disabling replication stops the synchronization and the local table reverts to heap while the cloud copy remains a static snapshot. 
-
 ### Offloading to analytics
 
 This method offers a one-time, surgical way to immediately reclaim local disk space for HTAP tables, leaving only the copy in object storage (PGAA table). The local heap copy is truncated, and the table access method is altered to `PGAA`, which now points to object storage.
 
 If you need to bring your data back for transactional writes, you can restore the table back from object storage into the local Postgres heap.
-
 
 Method | Purpose | Use case | Origin Table | Destination table 
 ----------|-----------------------------|---------------- | ----- | -------
@@ -72,10 +70,3 @@ PGAA supports two ways to manage object store metadata when integrating with PGD
 - **No-catalog offload**: Store metadata alongside data files using [storage locations](../storage_location/) to connect directly to object storage.
 - **Catalog-managed offload**: Decouple data from the metadata [using a centralized catalog service](../catalog) like Iceberg REST. 
 
-## Best practices for tiered storage
-
-Maintain high availability and cost efficiency by proactively managing your tiered environment according to these guidelines.
-- **Monitor capacity and health:** Regularly track partition growth and storage savings by comparing local versus remote data sizes.
-- **Schedule offloads strategically:** Execute bulk offload or restore operations during low-traffic maintenance windows to minimize resource contention on production workloads.
-- **Maintain storage lifecycle:** Periodically verify object storage connectivity. Ensure the storage layer remains optimized for analytical query performance by managing file consistency in the cold tier.
-- **Validate resilience and recovery:** While standard backup routines should continue for the hot transactional tier, you should leverage the native durability of object storage for the cold tier. Periodically validate access paths by inspecting query plans for historical data.

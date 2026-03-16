@@ -4,7 +4,7 @@ navTitle: Replicating to analytics
 description: Use PGD and the PGAA extension to continuously synchronize heap tables with an analytical copy in object storage.
 ---
 
-Use Postgres Analytics Accelerator (PGAA) within a Postgres Distributed (PGD) cluster to synchronize local heap tables with an analytical data lake by converting them to HTAP tables.
+Use Postgres Analytics Accelerator (PGAA) within a Postgres Distributed (PGD) cluster to synchronize local heap tables with an analytical data lake by converting them to Hybrid Analytics and Transactional Processing (HTAP) tables.
 
 In this state, every `INSERT`, `UPDATE`, and `DELETE` operation is captured and streamed in near real-time to object storage. While the table remains a standard transactional endpoint for applications, PGD maintains a high-fidelity analytical replica in the background, making data immediately available for BI tools and query engines without impacting production performance.
 
@@ -12,95 +12,16 @@ The key benefits of this process are:
 - **Near real-time analytics:** Access the latest transactional data in your data lake without waiting for batch ETL processes.
 - **Dual-state accessibility:** Maintain local high-performance storage for transactions while providing a columnar version for heavy analytical queries.
 - **Unified management:** Manage your data lifecycle and replication settings directly through standard SQL and PGAA functions.
-- **Efficiency with Merge-on-Read:** PGAA uses Iceberg Merge-on-Read (MoR) to synchronize data. Instead of rewriting large files every time a row changes, it simply records the change in a small "delete file." This keeps replication fast and significantly reduces the load on your object storage.
+- **Efficiency with Merge-on-Read:** PGAA uses Iceberg Merge-on-Read (MoR) to synchronize data. Instead of rewriting large files every time a row changes, it simply records the change in a delete file. This keeps replication fast and significantly reduces the load on your object storage.
 
 ## Process overview
 
 To enable continuous replication for a table, follow these steps:
 
-1. Meet the [prerequisites](#prerequisites).
-2. [Point to object storage](#pointing-to-object-storage) by choosing either a storage location or a catalog service.
-3. [Enable replication](#enabling-replication) to start the data stream.
-4. [Monitor replication](#monitoring-replication) status and health.
-5. [Disable replication](#disabling-replication) if you no longer require synchronization.
-
-## Prerequisites
-
-- **Cluster:** PGD version 6.1 or later with PGAA and PGFS extensions installed.
-- **Storage locations:** Local, S3, GCP, or Azure storage using Iceberg or Delta Lake formats.
-- **Catalog:** If using an external catalog service, only Iceberg REST catalogs are supported.
-- **Permissions:** The database user must have `CREATE`, `ALTER`, and `EXECUTE` privileges for the PGD and PGAA functions.
-
-!!! Note
-    The credentials associated with a storage location or a catalog service must have both read and write permissions for the destination bucket. You can verify permissions by running the following functions, which return `NULL` if successful.
-    - For a storage location:
-      ```sql
-      SELECT pgaa.test_storage_location ('my_storage_location', true);
-      ```
-    - For a catalog service:
-      ```sql
-      SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
-      ```
-
-## Pointing to object storage 
-
-Before enabling replication, you must define where the data will be streamed. In a distributed PGD cluster, these configuration calls must be wrapped in `bdr.replicate_ddl_command` to ensure the settings are consistent across all nodes.
-
-!!! Tip
-  To view your node group, use `SELECT node_group_id FROM bdr.node_group;`.
-!!!
-
-### Option 1: Using a storage location
-
-1. Create a storage location using the [PGFS extension](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) and set it as the analytics storage for your node group.
-
-  ```sql
-  SELECT bdr.replicate_ddl_command($$
-    SELECT pgfs.create_storage_location(
-    'my-storage-location',
-    'protocol://my-bucket-name/path/',
-    '{"region": "region-name"}',
-    '{"access_key_id": "...", "secret_access_key": "..."}'
-    )
-  $$);
-  ```
-
-1. Clear `analytics_write_catalog`. This must be `NULL` before an `analytics_storage_location` can be assigned:
-
-  ```sql
-  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', NULL);
-  ```
-
-1. Set the analytics storage location for your node group:
-
-  ```sql
-  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_storage_location', 'my-storage-location');
-  ```
-
-### Option 2: Using a catalog service
-      
-1. Configure a connection to an [external catalog](../catalog):
-
-      ```sql
-      SELECT bdr.replicate_ddl_command($$
-        SELECT pgaa.add_catalog(
-          'my-catalog-name',
-          'iceberg-rest',
-          '{
-            "url": "https://my-catalog-rest-endpoint.com",
-            "token": "MY_AUTH_TOKEN",
-           }'
-        )
-      );
-      ```
-
-1. Set the catalog as the write destination:
-
-  ```sql
-  SELECT bdr.replicate_ddl_command(  
-    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', 'my-catalog-name')  
-  );  
-  ```
+1. [Meet the prerequisites and point to object storage](get-started) by choosing either a storage location or a catalog service.
+1. [Enable replication](#enabling-replication) to start the data stream.
+1. [Monitor replication](#monitoring-replication) status and health.
+1. [Disable replication](#disabling-replication) if you no longer require synchronization.
 
 ## Enabling replication
 
@@ -118,6 +39,14 @@ Alternatively, switch the replication state directly on the table object:
 ```sql
 ALTER TABLE my_table SET (pgd.replicate_to_analytics = TRUE);
 ```
+
+Additionally, you can enable the `bdr.prefer_analytics_engine` parameter to route queries to the PGAA engine (Seafowl or Spark):
+
+```sql
+SET bdr.prefer_analytics_engine = TRUE;
+```
+
+If disabled, queries are executed by the standard Postgres engine against the local heap.
 
 ## Monitoring replication
 
@@ -150,6 +79,12 @@ Alternatively, use `ALTER TABLE`:
 
 ```sql
 ALTER TABLE my_table SET (pgd.replicate_to_analytics = FALSE);
+```
+
+Disable the `bdr.prefer_analytics_engine` parameter so queries are again executed by the standard Postgres.
+
+```sql
+SET bdr.prefer_analytics_engine= FALSE;
 ```
 
 !!! Note

@@ -12,7 +12,7 @@ Tiered tables provide a unified storage architecture by combining Postgres Distr
 In this architecture, queries span both hot and cold data tiers seamlessly, providing a single point of access for the entire dataset regardless of its physical location. Recent data remains in local heap partitions for high-performance transactional processing, while older cold partitions are offloaded to object storage transparently once they cross a defined age threshold. 
 
 By calling `pgaa.convert_to_tiered_table()`, a standard heap table is transformed into a hybrid partitioned structure:
-- **Hot tier:** Recent data stays in local heap partitions (or HTAP tables if replication is enabled). For HTAP, PGAA uses Iceberg Merge-on-Read (MoR) to capture updates and deletes as lightweight "delete files." This keeps the cloud tier synchronized without the overhead of rewriting large data blocks.
+- **Hot tier:** Recent data stays in local heap partitions, or Hybrid Analytics and Transactional Processing (HTAP) tables if replication is enabled. For HTAP, PGAA uses Iceberg Merge-on-Read (MoR) to capture updates and deletes as lightweight "delete files." This keeps the cloud tier synchronized without the overhead of rewriting large data blocks.
 
 - **Cold tier:** Once partitions cross a the age threshold defined by `analytics_offload_period`, they are automatically converted to PGAA tables in the data lake. Local storage is reclaimed, but the data remains transparently queryable through the same table interface.
 
@@ -20,89 +20,10 @@ By calling `pgaa.convert_to_tiered_table()`, a standard heap table is transforme
 
 To convert a heap table into a tiered table, follow these steps:
 
-1. Meet the [prerequisites](#prerequisites).
-1. [Point to object storage](#pointing-to-object-storage) by choosing either a storage location or a catalog service.
+1. [Meet the prerequisites and point to object storage](get-started) by choosing either a storage location or a catalog service.
 1. Use the `pgaa.convert_to_tiered_table()` function to [convert a heap table to a tiered table](#converting-a-heap-table-to-tiered-table).
 1. [Verify and monitor](#monitoring-tiered-tables) the automated offloading.
 1. [Modify or disable](#modifying-and-disabling-tiered-tables) settings as your storage needs evolve.
-
-## Prerequisites
-
-- **Cluster:** PGD version 6.1 or later with PGAA and PGFS extensions installed.
-- **Storage locations:** Local, S3, GCP, or Azure storage using Iceberg or Delta Lake formats.
-- **Catalog:** If using an external catalog service, only Iceberg REST catalogs are supported.
-- **Permissions:** The database user must have `CREATE`, `ALTER`, and `EXECUTE` privileges for the PGD and PGAA functions.
-
-!!! Note
-    The credentials associated with a storage location or a catalog service must have both read and write permissions for the destination bucket. You can verify permissions by running the following functions, which return `NULL` if successful.
-    - For a storage location:
-      ```sql
-      SELECT pgaa.test_storage_location ('my_storage_location', true);
-      ```
-    - For a catalog service:
-      ```sql
-      SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
-      ```
-
-## Pointing to object storage 
-
-Before creating a tiered table, you must define the destination for the cold data. Because you are working within a distributed PGD cluster, you must wrap these configuration calls in `bdr.replicate_ddl_command` to ensure the settings are propagated to all nodes in the group.
-
-!!! Tip
-  To view your node group, use `SELECT node_group_id FROM bdr.node_group;`.
-!!!
-
-### Option 1: Using a storage location
-
-1. Create a storage location using the [PGFS extension](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) and set it as the analytics storage for your node group.
-
-  ```sql
-  SELECT bdr.replicate_ddl_command($$
-    SELECT pgfs.create_storage_location(
-    'my-storage-location',
-    'protocol://my-bucket-name/path/',
-    '{"region": "region-name"}',
-    '{"access_key_id": "...", "secret_access_key": "..."}'
-    )
-  $$);
-  ```
-
-1. Clear `analytics_write_catalog`. This must be `NULL` before an `analytics_storage_location` can be assigned:
-
-  ```sql
-  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', NULL);
-  ```
-
-1. Set the analytics storage location for your node group:
-
-  ```sql
-  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_storage_location', 'my-storage-location');
-  ```
-
-### Option 2: Using a catalog service
-      
-1. Configure a connection to an [external catalog](../catalog):
-
-      ```sql
-      SELECT bdr.replicate_ddl_command($$
-        SELECT pgaa.add_catalog(
-          'my-catalog-name',
-          'iceberg-rest',
-          '{
-            "url": "https://my-catalog-rest-endpoint.com",
-            "token": "MY_AUTH_TOKEN",
-           }'
-        )
-      );
-      ```
-
-1. Set the catalog as the default analytics write location:
-
-  ```sql
-  SELECT bdr.replicate_ddl_command($$  
-    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', 'my-catalog-name')  
-  );
-  ```
 
 ## Converting a heap table to tiered table
 
