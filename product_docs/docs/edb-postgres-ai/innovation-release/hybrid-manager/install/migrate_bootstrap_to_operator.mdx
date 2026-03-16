@@ -97,8 +97,15 @@ Remove all deployments in the bootstrap namespace. This stops the bootstrap cont
 # Delete all deployments in the bootstrap namespace
 kubectl delete deployments -n edbpgai-bootstrap --all
 
+deployment.apps "edb-hcp-operator-controller-manager" deleted
+deployment.apps "file-server" deleted
+```
+
+```bash
 # Verify deployments are removed
 kubectl get deployments -n edbpgai-bootstrap
+
+No resources found in edbpgai-bootstrap namespace.
 ```
 
 !!! Success Safe Operation
@@ -115,6 +122,8 @@ kubectl annotate sa edb-hcp-operator-controller-manager \
   meta.helm.sh/release-name=edb-hcp-operator \
   --overwrite \
   -n edbpgai-bootstrap
+
+serviceaccount/edb-hcp-operator-controller-manager annotated
 ```
 
 ### Step 3: Transfer Helm ownership - CRDs
@@ -129,12 +138,25 @@ for line in $(kubectl get crd | grep edbpgai.edb.com | awk '{print $1}'); do
     --overwrite
 done
 
+customresourcedefinition.apiextensions.k8s.io/hybridcontrolplanes.edbpgai.edb.com annotated
+customresourcedefinition.apiextensions.k8s.io/postflights.edbpgai.edb.com annotated
+customresourcedefinition.apiextensions.k8s.io/preflights.edbpgai.edb.com annotated
+```
+
+```bash
 # Verify the annotations were updated
 kubectl get crd | grep edbpgai.edb.com | head -5 | while read crd rest; do
   echo "CRD: $crd"
   kubectl get crd $crd -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}'
   echo ""
 done
+
+CRD: hybridcontrolplanes.edbpgai.edb.com
+edb-hcp-operator
+CRD: postflights.edbpgai.edb.com
+edb-hcp-operator
+CRD: preflights.edbpgai.edb.com
+edb-hcp-operator
 ```
 
 ### Step 4: Transfer Helm ownership - ClusterRoles
@@ -149,6 +171,19 @@ for line in $(kubectl get clusterroles -o json | \
     meta.helm.sh/release-name=edb-hcp-operator \
     --overwrite
 done
+
+clusterrole.rbac.authorization.k8s.io/create-hcp annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-hybridcontrolplane-editor-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-hybridcontrolplane-viewer-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-manager-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-metrics-auth-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-metrics-reader annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-postflight-admin-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-postflight-editor-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-postflight-viewer-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-preflight-admin-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-preflight-editor-role annotated
+clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-preflight-viewer-role annotated
 ```
 
 ### Step 5: Transfer Helm ownership - ClusterRoleBindings
@@ -163,6 +198,10 @@ for line in $(kubectl get clusterrolebindings -o json | \
     meta.helm.sh/release-name=edb-hcp-operator \
     --overwrite
 done
+
+clusterrolebinding.rbac.authorization.k8s.io/create-hcp annotated
+clusterrolebinding.rbac.authorization.k8s.io/edb-hcp-operator-manager-rolebinding annotated
+clusterrolebinding.rbac.authorization.k8s.io/edb-hcp-operator-metrics-auth-rolebinding annotated
 ```
 
 ### Step 6: Transfer Helm ownership - Roles
@@ -178,6 +217,8 @@ for line in $(kubectl get roles -n edbpgai-bootstrap -o json | \
     --overwrite \
     -n edbpgai-bootstrap
 done
+
+role.rbac.authorization.k8s.io/edb-hcp-operator-leader-election-role annotated
 ```
 
 ### Step 7: Transfer Helm ownership - RoleBindings
@@ -193,6 +234,8 @@ for line in $(kubectl get rolebindings -n edbpgai-bootstrap -o json | \
     --overwrite \
     -n edbpgai-bootstrap
 done
+
+rolebinding.rbac.authorization.k8s.io/edb-hcp-operator-leader-election-rolebinding annotated
 ```
 
 ### Step 8: Transfer Helm ownership - Services
@@ -208,6 +251,9 @@ for line in $(kubectl get svc -n edbpgai-bootstrap -o json | \
     --overwrite \
     -n edbpgai-bootstrap
 done
+
+service/edb-hcp-operator-controller-manager-metrics-service annotated
+service/edb-hcp-operator-webhook-service annotated
 ```
 
 ### Step 9: Transfer Helm ownership - Webhook Configurations
@@ -221,11 +267,17 @@ kubectl annotate mutatingwebhookconfiguration \
   meta.helm.sh/release-name=edb-hcp-operator \
   --overwrite
 
+mutatingwebhookconfiguration.admissionregistration.k8s.io/edb-hcp-operator-mutating-webhook-configuration annotated
+```
+
+```bash
 # Update ValidatingWebhookConfiguration
 kubectl annotate validatingwebhookconfiguration \
   edb-hcp-operator-validating-webhook-configuration \
   meta.helm.sh/release-name=edb-hcp-operator \
   --overwrite
+
+validatingwebhookconfiguration.admissionregistration.k8s.io/edb-hcp-operator-validating-webhook-configuration annotated
 ```
 
 ### Step 10: Verify ownership transfer
@@ -242,9 +294,6 @@ echo ""
 echo "Checking ClusterRole ownership:"
 kubectl get clusterroles -o json | \
   jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edb-hcp-operator") | .metadata.name' | head -3
-
-echo "Database clusters still running:"
-kubectl get clusters -A
 ```
 
 ### Step 11: Convert your configuration to HybridControlPlane CR

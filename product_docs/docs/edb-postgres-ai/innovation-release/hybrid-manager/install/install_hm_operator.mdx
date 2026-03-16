@@ -216,6 +216,17 @@ Execute the operator deployment using Helm:
 * **`<"VERSION">`:** The operator version tag (e.g., `1.0.0`).
 
 ```bash
+kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
+
+# Create a pull secret for the EDB cloudsmith:
+kubectl create secret docker-registry edb-cred \
+  --namespace edbpgai-bootstrap \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=<USERNAME> \
+  --docker-password=<PASSWORD> \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Install the operator using Helm:
 helm template \
   --namespace edbpgai-bootstrap \
   --install \
@@ -223,6 +234,41 @@ helm template \
   --include-crds \
   edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
   --set "controllerManager.manager.image.repository=docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager" \
+  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
+  --set "imagePullSecrets[0].name=edb-cred" \
+  | kubectl apply -f -
+```
+
+If you are using an air-gapped environment, you can load the operator image into your cluster and reference it in the Helm command:
+
+```bash
+kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
+
+# Create a pull secret for your private registry:
+kubectl create secret docker-registry edb-cred \
+  --namespace edbpgai-bootstrap \
+  --docker-server=<PRIVATE_REGISTRY_URL> \
+  --docker-username=<USERNAME> \
+  --docker-password=<PASSWORD> \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Load the operator image into your private registry from cloudsmith:
+edbctl operator sync-to-local-registry \
+  --source-registry-username=<CLOUDSMITH_REGISTRY_USERNAME> \
+  --source-registry-password=<CLOUDSMITH_REGSIRT_PASSWORD> \
+  --destination-registry-uri=<PRIVATE_REGISTRY_URL> \
+  --destination-registry-username=<PRIVATE_REGISTRY_USERNAME> \
+  --destination-registry-password=<PRIVATE_REGISTRY_PASSWORD> \
+  --version <OPERATOR_VERSION>
+
+# Install the operator using Helm, referencing your private registry:
+helm template \
+  --namespace edbpgai-bootstrap \
+  --install \
+  --version <OPERATOR_VERSION> \
+  --include-crds \
+  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
+  --set "controllerManager.manager.image.repository=<PRIVATE_REGISTRY_URL>/edb-hcp-operator/manager" \
   --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
   --set "imagePullSecrets[0].name=edb-cred" \
   | kubectl apply -f -
@@ -332,6 +378,28 @@ Verify postflight status of the HM:
 
 ```bash
 kubectl get postflights.edbpgai.edb.com edbpgai -o yaml
+...
+status:
+  checkResults:
+  - description: Check whether all pods belonging to the Hybrid Manager are ready.
+    name: PodsChecker
+    state: Passed
+  - description: Check whether all internal databases belonging to the Hybrid Manager
+      are ready.
+    name: DBsChecker
+    state: Passed
+  - description: Check whether the latest Velero Backup has been completed.
+    name: VeleroChecker
+    state: Passed
+  - description: Check whether all nodes are ready.
+    name: NodesChecker
+    state: Passed
+  - description: Check whether all certificates belonging to the Hybrid Manager are
+      valid.
+    name: CertificatesChecker
+    state: Passed
+  lastTransitionTime: "2026-01-27T08:50:25Z"
+  phase: Healthy
 ```
 
 **What to look for:**
