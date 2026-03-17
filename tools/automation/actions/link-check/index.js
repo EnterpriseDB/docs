@@ -36,6 +36,18 @@ const args = yargs()
     default: false,
     description: "Set to update links that would redirect if not updated",
   })
+  .option("warn-crossversion", {
+    type: "boolean",
+    default: false,
+    description:
+      "Set to report links that point to a different version of the current product",
+  })
+  .option("fix-current", {
+    type: "boolean",
+    default: false,
+    description:
+      "Set to update links that point to the same version of the product such that they use the 'current' version keyword",
+  })
   .help()
   .parse(hideBin(process.argv));
 
@@ -515,19 +527,26 @@ function cleanup() {
       // if path is identical to current: strip all but hash
       if (relative === metadata.canonical) return "";
 
+      const ext = path.posix.extname(relative);
+      const isImageUrl = imageExts.includes(ext);
+
       const currentDirname = metadata.index
         ? metadata.canonical
         : path.posix.dirname(metadata.canonical);
       // if dirname is identical to current: strip all but filename and hash
       // if dirname contains current dirname: relative path + hash
-      if (path.posix.dirname(relative).startsWith(currentDirname))
+      if (
+        path.posix.dirname(relative).startsWith(currentDirname) &&
+        !rawExts.includes(ext)
+      )
         relative = path.posix.relative(currentDirname, relative);
-      // if versioned and pointing to same product+version, use /current/ path
+      // if versioned and pointing to same product+version, use /current/ path (don't do this for image URLs)
       else if (
         version &&
         product &&
         metadata.version === version &&
-        metadata.product === product
+        metadata.product === product &&
+        !isImageUrl
       )
         relative = replacePathVersion(relative, "current");
       // if versioned and pointing to latest, use "latest" path
@@ -551,12 +570,12 @@ function cleanup() {
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
       if (/\/current[\/#?]/.test(url)) {
-        url = url.replace(/\/current([\/#?])/, "/" + metadata.version + "$1");
-        test = normalizeUrl(url, metadata.canonical, metadata.index);
+        test = normalizeUrl(
+          url.replace(/\/current([\/#?])/, "/" + metadata.version + "$1"),
+          metadata.canonical,
+          metadata.index,
+        );
       }
-      const ext = path.posix.extname(test.pathname);
-      const isImageUrl = imageExts.includes(ext);
-      //if (!(ext || isImageUrl)) return url;
 
       metadata.linksChecked = (metadata.linksChecked || 0) + 1;
 
@@ -602,16 +621,15 @@ function cleanup() {
         metadata.product &&
         destMetadata.product &&
         metadata.product === destMetadata.product &&
-        metadata.version !== destMetadata.version
+        metadata.version !== destMetadata.version &&
+        args.warnCrossversion
       ) {
-        /* don't do this yet; super noisy
         file.message(
           `link from version ${metadata.version} to version ${destMetadata.version} of product ${metadata.product}: ${url}` +
             checkImportSource(ancestors),
           position,
           "link-check:crossVersionLink",
         );
-        */
       }
 
       // check if path needs to be remapped. Must be:
@@ -620,13 +638,33 @@ function cleanup() {
       // When remapping, if destination is the latest version then use "latest" path
       const testPathIsLatestDest =
         testPath === replacePathVersion(destMetadata.canonical);
+      const testPathIsCurrent =
+        destMetadata.product &&
+        destMetadata.version &&
+        destMetadata.product === metadata.product &&
+        destMetadata.version === metadata.version;
+      const originalUrlAbsolutePath =
+        url.startsWith("/") || url.startsWith("http");
+      const originalUrlIsCurrent =
+        originalUrlAbsolutePath && url.split("/")[2] === "current";
       if (
-        testPath !== destMetadata.canonical &&
-        !(destMetadata.latest && testPathIsLatestDest)
+        (testPath !== destMetadata.canonical &&
+          !(destMetadata.latest && testPathIsLatestDest)) ||
+        (args.fixCurrent &&
+          originalUrlAbsolutePath &&
+          testPathIsCurrent &&
+          !originalUrlIsCurrent)
       ) {
-        let reason = testPathIsLatestDest
-          ? "replaced latest with last available version"
-          : "replaced with redirect";
+        let reason = "???";
+        if (!destMetadata.latest && testPathIsLatestDest)
+          reason = "replaced latest with last available version";
+        else if (
+          testPath !== destMetadata.canonical &&
+          !(destMetadata.latest && testPathIsLatestDest)
+        )
+          reason = "redirected";
+        else if (testPathIsCurrent && !originalUrlIsCurrent)
+          reason = "replaced version with /current/";
         // check for latest / non-latest mismatch: that's a link in an older version using a "latest"
         // path in a link. That might be intentional, but if we're hitting a redirect there's a good chance
         // the intent was to link to a page in the older version, back when it was current
