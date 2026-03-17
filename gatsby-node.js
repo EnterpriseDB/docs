@@ -328,6 +328,17 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       navRoot = navRoot.parent;
     const navTree = treeToNavigation(navRoot, curr);
 
+    // sanity check
+    const findPageInNav = (root, pagePath) => {
+      if (root.path === pagePath) return root;
+      return root.items.find((node) => findPageInNav(node, pagePath));
+    };
+    if (!findPageInNav(navTree, node.fields.path)) {
+      reporter.panicOnBuild(`Page defined in ${node.fileAbsolutePath} does not have a place in the navigation at ${node.fields.path}. 
+  Ensure there are index.mdx files present in the ancestor directories, and that they do not have navExclude set to true.
+  You may need to apply navRootedTo in frontmatter to ensure this page appears in the navigation somewhere.`);
+    }
+
     // determine next and previous nodes
     const prevNext = findPrevNextNavNodes(navRoot, curr);
 
