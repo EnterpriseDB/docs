@@ -1,0 +1,169 @@
+---
+title: Monitoring with Postflight checks
+navTitle: Postflight checks
+description: Monitor the health of your Hybrid Manager deployment with automated postflight checks.
+deepToC: true
+---
+
+Check the results of the `Postflight` check to monitor your HM deployment is ready.
+
+> **Role focus:** Infrastructure Engineer / Platform Administrator
+
+## Prerequisites
+
+* [Phase 5: Installing Hybrid Manager](../install_hm) &mdash; You have completed and verified the installation of HM. The deployment is running and you want to either check its state or troubleshoot failed checks.
+
+## Outcomes
+
+* *Confirmation that the deployed Hybrid Manager (HM) platform is healthy and ready for day-2 configuration.*
+
+The **Postflight** custom resource provides automated health monitoring for your deployed HM stack. It periodically runs a set of built-in checks and reports an overall health status.
+
+!!! Note
+Unlike [preflight checks](./preflight_checks), postflight provides monitoring capabilities. It does **not** block any operations or trigger automated remediation. It provides visibility for troubleshooting.
+!!!
+
+## What postflight checks do
+
+The operator uses a `Postflight` resource to run 5 built-in health checks at a configurable interval. Checks only begin after the `HybridControlPlane` reaches the `deployed` phase. Each check verifies a different aspect of the running platform:
+
+| Check | What it verifies |
+|-------|-----------------|
+| **Pods** | All HM pods are running and ready. |
+| **Databases** | All internal EDB Postgres for Kubernetes clusters are ready and their latest backups completed. |
+| **Velero backups** | The latest Velero backup completed successfully. |
+| **Nodes** | All Kubernetes cluster nodes are ready. |
+| **Certificates** | All cert-manager certificates are valid and ready. |
+
+If **all** checks pass, the overall phase is `Healthy`. If **any** check fails, the phase is `Unhealthy`.
+
+## Checking the postflight status
+
+### Quick overview
+
+Check whether your installation is healthy:
+
+```bash
+kubectl get postflight
+```
+
+The output should look like this:
+
+```
+NAME                  PHASE     LAST CHECK
+edbpgai-postflight    Healthy   2025-01-15T10:30:00Z
+```
+
+### Detailed results
+
+If the phase is `Unhealthy`, obtain more detailed results:
+
+```bash
+kubectl get postflight <name> -o yaml
+```
+
+The `status.checkResults` section shows individual results:
+
+```yaml
+status:
+  phase: Unhealthy
+  lastTransitionTime: "2025-01-15T10:30:00Z"
+  checkResults:
+    - name: PodsChecker
+      description: "Check whether all pods belonging to the Hybrid Manager are ready."
+      state: Passed
+    - name: DBsChecker
+      description: "Check whether all internal databases belonging to the Hybrid Manager are ready."
+      state: Passed
+    - name: VeleroChecker
+      description: "Check whether the latest Velero Backup has been completed."
+      state: Failed
+      messages:
+        - "the latest velero backup is in a unhealthy phase: PartiallyFailed"
+    - name: NodesChecker
+      description: "Check whether all nodes are ready."
+      state: Passed
+    - name: CertificatesChecker
+      description: "Check whether all certificates belonging to the Hybrid Manager are valid."
+      state: Passed
+```
+
+## Troubleshooting unhealthy checks
+
+When the postflight phase is `Unhealthy`, inspect the `status.checkResults` section to identify which checks are failing and their associated messages.
+
+### Pods check is failing
+
+One or more HM pods are not in a ready state. Investigate the failing pods:
+
+```bash
+kubectl get pods -A | grep -v Running
+kubectl describe pod <pod-name> -n <namespace>
+kubectl logs <pod-name> -n <namespace>
+```
+
+Common causes include image pull failures, resource limits, and crashlooping containers.
+
+### Databases check is failing
+
+An EDB Postgres for Kubernetes database cluster is not ready, or its latest backup failed. Check the cluster and backup status:
+
+```bash
+kubectl get clusters.postgresql.k8s.enterprisedb.io -A
+kubectl get backups.postgresql.k8s.enterprisedb.io -A --sort-by=.metadata.creationTimestamp
+```
+
+Common causes include storage issues, connection failures, and WAL archiving problems.
+
+### Velero backup check is failing
+
+The latest Velero backup is in a failed or partially failed state:
+
+```bash
+kubectl get backups.velero.io -n velero --sort-by=.metadata.creationTimestamp
+kubectl describe backup <backup-name> -n velero
+```
+
+### Nodes check is failing
+
+One or more cluster nodes are not ready. This affects the entire cluster, not just HM:
+
+```bash
+kubectl get nodes
+kubectl describe node <node-name>
+```
+
+Common causes include disk pressure, memory pressure, network unreachable conditions, and kubelet issues.
+
+### Certificates check is failing
+
+A cert-manager certificate has not been issued or has expired:
+
+```bash
+kubectl get certificates -A
+kubectl describe certificate <cert-name> -n <namespace>
+kubectl get certificaterequests -A
+```
+
+Common causes include issuer configuration problems, rate limiting (for ACME/Let's Encrypt), and DNS validation failures.
+
+## Configuring the check interval
+
+You can also change the interval in which the postflight check runs. 
+
+The `spec.interval` field controls how often checks run. The operator respects this interval when the phase is `Healthy`, requeuing for the remaining duration after each successful run.
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: Postflight
+metadata:
+  name: edbpgai-postflight
+spec:
+  hm:
+    name: edbpgai
+  interval: 30m
+```
+
+!!! Note
+When the phase transitions to `Unhealthy`, the status is updated immediately. The interval only affects the cadence of re-checks when the system is healthy.
+!!!

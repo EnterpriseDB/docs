@@ -15,7 +15,7 @@ const EDBPGAIBannerCard = ({ children }) => (
             width="64"
             height="64"
           />
-          <a href="/edb-postgres-ai/">
+          <Link to="/edb-postgres-ai/">
             <h4 className="d-inline align-center card-title m-1 fw-large text-dark display-3">
               <span>EDB Postgres</span>
               <span
@@ -29,7 +29,7 @@ const EDBPGAIBannerCard = ({ children }) => (
               </span>
               <span> AI</span>
             </h4>
-          </a>
+          </Link>
         </div>
         <div className="row">{children}</div>
       </div>
@@ -208,7 +208,7 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/">
                 GenAI Builder
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/preview/ai-factory/langflow/">
+              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/langflow/">
                 Langflow
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/agent-studio/">

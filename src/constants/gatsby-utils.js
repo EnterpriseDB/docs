@@ -334,10 +334,24 @@ const treeNodeToNavNode = (treeNode) => {
 // create a tree structure suitable for embedding in page context
 // for use by sidebar nav, card decks during rendering
 // treeNode: produced by mdxNodesToTree(), represents the root of navigation (product index, etc)
-// pageNode: an mdxNode representing the page for which navigation is desired
+// pageNode: produced by mdxNodesToTree(), representing the page for which navigation is desired
 const treeToNavigation = (treeNode, pageNode) => {
-  const rootNode = treeNodeToNavNode(treeNode, true);
-  const { depth, path } = pageNode.fields;
+  const { depth, path } = pageNode;
+  // special-case: if this node is a version-specific root under an unversioned product root which actually has a landing page,
+  // then we want to rewrite children to be the children of the version-specific page. This allows unversioned siblings to exist and
+  // be navigated to.
+  let rootNode = null;
+  let remapChildren = false;
+  if (
+    depth === 2 &&
+    treeNode.depth === 1 &&
+    pageNode.mdxNode?.fields?.version &&
+    treeNode.path &&
+    path.includes(treeNode.path)
+  ) {
+    rootNode = treeNodeToNavNode(pageNode, true);
+    remapChildren = true;
+  } else rootNode = treeNodeToNavNode(treeNode, true);
 
   // if this page is "rooted" to another page, then we want to collect the chain
   // of ancestors (but not their other children) for use as the breadcrumb trail
@@ -368,7 +382,17 @@ const treeToNavigation = (treeNode, pageNode) => {
         // ignore nodes that are marked as such
         if (n.mdxNode?.frontmatter?.navExclude) return null;
 
-        const navNode = treeToNavigation(n, pageNode);
+        // special-case: if we're swapping in the version-specific page as the root, then we need to
+        // swap out children that belong to the latest-version page with their version-specific counterparts, if they exist
+        const navNode = treeToNavigation(
+          (remapChildren &&
+            pageNode.children.find(
+              (child) => replacePathVersion(child.path) === n.path,
+            )) ||
+            n,
+          pageNode,
+        );
+
         // mark "fake" children so that they can be made visually distinct, ignored, etc.
         if (n.parent !== treeNode || n.rootedTo === treeNode)
           navNode.rootedTo = true;

@@ -1,6 +1,6 @@
 import React from "react";
 import { Container, Row, Col } from "react-bootstrap";
-import { graphql } from "gatsby";
+import { graphql, withPrefix } from "gatsby";
 import {
   isPathAnIndexPage,
   getRelativeFilePathFromPageAbsolutePath,
@@ -208,7 +208,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <div
               className="alert alert-warning mt-3"
               role="alert"
-              dangerouslySetInnerHTML={{ __html: frontmatter.displayBanner }}
+              dangerouslySetInnerHTML={{
+                __html: frontmatter.displayBanner.replace(
+                  /href="(\/[^"]+)"/,
+                  (substring, urlPath) => `href="${withPrefix(urlPath)}"`,
+                ),
+              }}
             />
           ) : null}
 

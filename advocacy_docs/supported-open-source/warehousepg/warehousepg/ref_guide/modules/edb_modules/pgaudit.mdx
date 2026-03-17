@@ -1,0 +1,176 @@
+---
+title: pgAudit 
+navTitle: pgAudit
+description: Learn about the pgaudit extension for WarehousePG.
+directoryDefaults:  
+  displayBanner: ""  
+---
+
+The PostgreSQL Audit Extension (pgAudit) provides detailed session and object audit logging via the standard PostgreSQL logging facility. It produces the forensic audit trails required to comply with various government, financial, and ISO certifications. 
+
+While standard PostgreSQL statement logging (`log_statement = all`) provides a basic history, it often lacks the granular detail required for deep forensics. pgAudit focuses on the specific internal actions taken by the database to satisfy a request, rather than just the request itself.
+
+## Downloading, installing, and loading the extension
+
+Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/warehousepg/ref_guide/modules/edb_modules/#downloading-and-installing-an-extension) for installation and setup instructions.
+
+Once installed, you must load the pgAudit extension as a shared library before you can use it within your databases.
+
+1. Load the extension as a shared library before you can use it within your databases. Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+1. Use the output of the previous command to enable the new extension, along any other shared libraries, and restart WHPG:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, pgAudit'
+    gpstop -ar
+    ```
+
+1. Create the extension in your database:
+
+    ```sql
+    CREATE EXTENSION pgaudit;
+    ```
+
+## Configuring pgAudit settings
+
+These settings control pgAudit behavior and can only be modified by a superuser. Settings can be applied globally (via `postgresql.conf` or using `ALTER SYSTEM`), at the database level (`ALTER DATABASE`), or at the role level (`ALTER ROLE`).
+
+- `pgaudit.log`:  Specifies the classes of statements to log. The supported values are:
+    - `READ`: `SELECT` and `COPY` when the source is a relation or a query.
+    - `WRITE`: `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, and `COPY` when the target is a relation.
+    - `FUNCTION`: Function calls and DO blocks.
+    - `ROLE`: Statements related to roles and privileges, such as `GRANT`, `REVOKE`, `CREATE/ALTER/DROP ROLE`.
+    - `DDL`: All other DDL statements not included in the `ROLE` class.
+    - `MISC`: Miscellaneous commands, such as `DISCARD`, `FETCH`, `CHECKPOINT`, `VACUUM`, and `SET`.
+    - `MISC_SET`: Miscellaneous `SET` commands. For example, `SET ROLE`.
+    - `ALL`: Include all of the above.
+    - `NONE`: (Default) Log nothing.
+
+- `pgaudit.log_catalog`: Logs statements where all relations are in `pg_catalog`. Default is `on`. Disable this setting to reduce system noise.
+
+- `pgaudit.log_client`: Determines if audit messages are visible to the client process, such as `psql`. Default is `off`. Leave this setting disabled to reduce noise, but consider enabling it for debugging purposes.
+
+- `pgaudit.log_level`: Specifies the log level for entries. See [Message Severity Levels](https://www.postgresql.org/docs/current/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) for supported values. Note that `ERROR`, `FATAL`, and `PANIC` are not supported. This setting `pgaudit.log_level` is only enabled when `pgaudit.log_client` is enabled. The default value is `LOG`.
+
+- `pgaudit.log_parameter`: Includes statement parameters in CSV format following the statement text. Default is `off`.
+
+- `pgaudit.log_relation`: Creates a separate entry for each relation referenced in a statement. Enable this parameter for exhaustive logging without using object audit logging. Default is `off`.
+
+- `pgaudit.log_statement_once`: Logs statement text only once per statement/substatement pair to reduce verbosity. Default is `off`.
+
+- `pgaudit.role`: Specifies the master role to use for object audit logging. There is no default value.
+
+
+## Using pgAudit
+
+pgAudit supports two main auditing methods: **session audit logging** and **object audit logging**.
+
+### Session audit logging
+
+Session auditing captures statements executed by a specific user or backend. You define which classes of statements to log using the `pgaudit.log` parameter.
+
+**Examples** 
+
+- Log all DDL and `WRITE` statements:
+
+    ```sql
+    SET pgaudit.log = 'write, ddl';
+    ```
+
+- Create a separate log entry for every table referenced in a statement:
+
+    ```sql
+    SET pgaudit.log_relation = on;
+    ```
+
+- Log everything except miscellaneous commands:
+
+    ```sql
+    SET pgaudit.log = 'all, -misc';
+    ```
+
+- Report audit log messages as `NOTICE`:
+
+    ```
+    SET pgaudit.log_level = notice;
+    ```
+
+### Object audit logging
+
+Object auditing allows for granular logging of specific tables, views, or columns. This method uses the PostgreSQL role system to trigger logging, which is often more efficient for targeted tracking of sensitive data.
+
+!!! Note
+     pgAudit object logging only supports `SELECT`, `INSERT`, `UPDATE`, and `DELETE` statements.
+
+To configure object audit logging:
+
+1. Create an auditor role: Define a dedicated role for auditing and set `pgaudit.role` to include this role. 
+
+    ```sql
+    CREATE ROLE auditor WITH NOLOGIN;
+    SET pgaudit.role = 'auditor';
+    ```
+
+1. Grant target permissions: Grant the `auditor` role the permissions you wish to track on objects.
+
+    ```sql
+    GRANT <permission> ON <object> TO auditor;
+    ```
+
+**Examples**
+
+- Audit all reads on a table: 
+
+    ```sql
+    GRANT SELECT ON public.payroll TO auditor;
+    ```
+
+- Audit updates to a specific column:
+    
+    ```sql
+    GRANT UPDATE (password) ON public.users TO auditor;
+    ```
+
+### Interpreting audit logs
+
+Audit entries are sent to the PostgreSQL standard logger (`stderr` or `csvlog`). WarehousePG stores these logs within the `pg_log` directory of each segment's data directory. Each entry is prefixed with `AUDIT`.
+
+A typical log entry follows this format:
+
+```
+AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.test_table,CREATE TABLE test_table (id int),<not logged>
+```
+
+The audit logs contain the following columns:
+
+- `AUDIT_TYPE`: Indicates if the log was triggered by a `SESSION` or an `OBJECT` setting.
+- `STATEMENT_ID`: A unique ID for the statement in this session (sequential). There may be multiple entries for a statement ID when more than one relation is logged.
+- `SUBSTATEMENT_ID`: Sequential ID for sub-statements (e.g., function calls within a query).
+- `CLASS`: The category of the statement, defined by `pgaudit.log` (`READ`, `WRITE`, `DDL`, etc.).
+- `COMMAND`: The specific SQL command executed.
+- `OBJECT_TYPE`: Type of object accessed (`TABLE`, `INDEX`, `VIEW`).
+- `OBJECT_NAME`: Fully-qualified name of the object.
+- `STATEMENT`: The full text of the SQL query.
+- `PARAMETER`: Statement parameters if `pgaudit.log_parameter` is enabled.
+
+
+## Usage considerations
+
+When implementing pgAudit in your environment, keep the following operational behaviors in mind:
+
+- **Object renaming:** When an object is renamed, pgAudit logs the event using the new name (the target name). For example, if you execute `ALTER TABLE test RENAME TO test2;`, the audit entry will record the object name as `public.test2`.
+- **Duplicate entries:** Certain commands may trigger multiple log entries for a single action. For instance, creating a table with a primary key will generate independent log entries for both the table and the underlying index. However, these related entries are grouped under a single `STATEMENT_ID`, allowing you to correlate them during an audit review.
+- **Superuser auditing limitations:** It is not possible to reliably audit superuser accounts with pgAudit, as superusers have the necessary permissions to modify or bypass the extension's settings. We recommend to restrict the use of superuser accounts for daily operations.
+- **Automated maintenance tasks:** Operations performed by Autovacuum and Autoanalyze processes are not captured in the audit log, as they are system-level background tasks.
+- **Aborted transactions:** Statements attempted after a transaction has entered an `aborted` state (due to a previous error) are not captured by pgAudit. However the standard PostgreSQL logging facility will still record the initial error that caused the abort, along with any subsequent failed attempts, as standard `ERROR` messages.
+
+## Best practices
+
+- **Manage log volume:** In analytical (OLAP) environments, audit logging can generate enormous volumes of data. Assess disk space and performance impact before enabling exhaustive logging on large fact tables.
+- **Filter system noise:** Set `pgaudit.log_catalog = off` to prevent logging the internal queries generated by administration tools.
+- **Capture prepared statements:** Set `pgaudit.log_parameter = on` to see the actual values being passed into the query.
+- **Storage management:** Use object auditing for fact tables in WarehousePG. Auditing every `INSERT` in a multi-terabyte table via session auditing can exhaust disk space rapidly.
