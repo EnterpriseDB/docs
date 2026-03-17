@@ -1,0 +1,79 @@
+---
+title: "Using VectorChord-BM25"
+navTitle: Using
+description: Learn how to use `VectorChord-BM25` extension for full-text search.
+---
+
+`VectorChord-BM25` uses specialized tokenizers such as BERT to process text into a format suitable for BM25 indexing. Define your tokenizer configuration first:
+
+Follow these steps to initialize a tokenizer, prepare your data, and perform high-performance keyword searches.
+
+1. Initialize a tokenizer. 
+
+   Create a tokenizer configuration using the `create_tokenizer` function. You can specify a pre-trained model (e.g., BERT) in the configuration:
+
+   ```sql
+   SELECT create_tokenizer('bert', $$
+   model = "bert_base_uncased"
+   $$);
+   ```
+
+1. Create a table with `bm25vector` data type column.
+
+   Create a document table with a `bm25vector` data type column to store the processed search tokens:
+
+   ```sql
+   CREATE TABLE documents (
+    id serial primary key,
+    passage text,
+    embedding bm25vector
+   );
+   ```
+
+1. Load the data.
+
+   Load sample text data into the `documents` table:
+
+   ```sql
+   INSERT INTO documents (passage) VALUES
+   ('PostgreSQL is a powerful, open-source object-relational database system. It has over 15 years of active development.'),
+   ('Full-text search is a technique for searching in plain-text documents or textual database fields. PostgreSQL supports this with tsvector.'),
+   ('BM25 is a ranking function used by search engines to estimate the relevance of documents to a given search query.'),
+   ('PostgreSQL provides many advanced features like full-text search, window functions, and more.'),
+   ('Search and ranking in databases are important in building effective information retrieval systems.'),
+   ('The BM25 ranking algorithm is derived from the probabilistic retrieval framework.'),
+   ('Full-text search indexes documents to allow fast text queries. PostgreSQL supports this through its GIN and GiST indexes.'),
+   ('The PostgreSQL community is active and regularly improves the database system.'),
+   ('Relational databases such as PostgreSQL can handle both structured and unstructured data.'),
+   ('Effective search ranking algorithms, such as BM25, improve search results by understanding relevance.');
+   ```
+
+1. Tokenize the text and index.
+
+   Before searching, you must convert the raw text into the `bm25vector` format. Convert text into tokens using the `bert` tokenizer:
+   
+   ```sql
+   UPDATE documents SET embedding = tokenize(passage, 'bert');
+   ```
+
+   Then, create a BM25 index on the `embedding` column:
+   
+   ```sql
+    CREATE INDEX documents_embedding_bm25 
+   ON documents 
+   USING bm25 (embedding bm25_ops);
+   ```
+
+1. Perform a Top-k search.
+
+   To query the data, use the BM25 distance operator `<&>` to calculate the BM25 score against your indexed tokens:
+   
+   ```sql
+   SELECT id, passage,
+          embedding <&> to_bm25query('documents_embedding_bm25', tokenize('PostgreSQL', 'bert')) AS bm25_score
+   FROM documents
+   ORDER BY bm25_score
+   LIMIT 10;
+   ```
+
+   Where `<&>` is the BM25 distance operator, and `to_bm25query` function converts your search query into the appropriate format for comparison against the indexed data. This will return the top 10 most relevant passages based on BM25 scoring.
