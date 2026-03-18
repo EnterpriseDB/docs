@@ -1,0 +1,83 @@
+---
+title: Offloading to analytics
+navTitle: Offloading to analytics
+description: Manually transition HTAP tables to the PGAA access method to reclaim local disk space while maintaining query access to data in object storage.
+---
+
+An Hybrid Analytics and Transactional Processing (HTAP) table uses Postgres Analytics Accelerator (PGAA) to continuously synchronize a Postgres Distributed (PGD) cluster with an analytical copy in object storage, enabling heavy analytics without impacting transaction performance at the cost of redundant storage in both the local heap and the data lake.
+
+Offloading an HTAP table to analytics is a manual, surgical operation used to remove the local heap copy and reclaim disk space. When you offload a table, the system:
+
+- Truncates the local heap table, immediately freeing up disk space on the PGD nodes.
+- Stops the real-time replication to the data lake.
+- Changes the table access method to PGAA, pointing the Postgres table definition directly to the existing data in object storage.
+
+The result is a cold table that remains fully queryable through Postgres but consumes no local storage. If you require transactional writes again in the future, you can restore the table and stream the data back from the lake into the local heap.
+
+## Process overview
+
+To surgically offload a table to the data lake, follow these steps:
+
+1. [Meet the prerequisites and point to object storage](get-started) by choosing either a storage location or a catalog service.
+1. [Offload the table to object storage](#offloading-a-table).
+1. [Restore the table](#restoring-from-analytics) back to heap if you require transactional access again.
+
+## Offloading a table
+
+Use the `pgaa.convert_to_analytics()` function to convert a synchronized HTAP table into a cold, analytical table and remove the data from local disk.
+
+```sql
+CALL pgaa.convert_to_analytics('my-table'::regclass);
+```
+
+The function removes the local data and redefines the table's access method to PGAA to point solely to the external Iceberg or Delta files.
+
+Alternatively, switch the access method with the `ALTER TABLE` command. Use the `pgaa.auto_truncate` option to ensure local disk space is freed immediately.
+
+For storage locations:
+
+```sql
+ALTER TABLE public.my_table
+  SET ACCESS METHOD pgaa,
+  SET (
+    pgaa.auto_truncate = 'true',
+    pgaa.format = 'iceberg',
+    pgaa.storage_location = 'my-storage-location',
+    pgaa.path = 'public.my_table'
+  );
+```
+
+For a catalog-managed table:
+
+```sql
+ALTER TABLE public.my_catalog_managed_table
+  SET ACCESS METHOD pgaa,
+  SET (
+      pgaa.auto_truncate = 'true',
+      pgaa.format = 'iceberg',
+      pgaa.managed_by = 'my_iceberg_catalog',
+      pgaa.catalog_namespace = 'public',
+      pgaa.catalog_table = 'my_remote_table_name'
+  );
+```
+
+## Restoring from analytics
+
+If you need to resume transactional writes or bring the data back to local high-performance transactional storage, use the `pgaa.restore_from_analytics()` function:
+
+```sql
+CALL pgaa.restore_from_analytics('public.transactional_table');
+```
+
+The function checks the PGAA table's configuration, identifies its external Iceberg/Delta path in object storage, and rewrites the data back into the table's local storage structure. Once the data is locally present, the function sets the table's access method back to the local transactional endpoint again.
+
+You can also use the `ALTER TABLE` command to restore a table from its cold state in the data lake back into a local transactional heap table. This manual method provides granular control over the transition back to local storage.
+
+```sql
+  ALTER TABLE public.my_table 
+  SET ACCESS METHOD heap;
+```
+
+!!! Warning
+  Restoring a table to the heap access method does not remove the files from object storage. Manually delete the data via your object storage provider, or use a tool like PyIceberg to drop the table from the catalog.
+!!!
