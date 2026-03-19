@@ -169,9 +169,9 @@ Gets models running on the Hybrid Manager.
 
 | Column  | Type | Description                                       |
 | ------- | ---- | ------------------------------------------------- |
-| `name`  | text | The name of the model instance running on the HCP |
-| `url`   | text | The API URL of the model running on the HCP       |
-| `model` | text | The name the model running on the HCP             |
+| `name`  | text | The name of the model instance running on the HCP (Hybrid Manager) |
+| `url`   | text | The API URL of the model running on the HCP (Hybrid Manager)       |
+| `model` | text | The name the model running on the HCP (Hybrid Manager)             |
 
 #### Example
 ```sql
@@ -185,25 +185,25 @@ SELECT * FROM  aidb.get_hcp_models();
 ```
 ### `aidb.create_hcp_model`
 
-Creates a new model in the system by referencing a running instance in the HCP
+Creates a new model in the system by referencing a running instance in the HCP (Hybrid Manager)
 
 #### Parameters
 
 | Parameter        | Type | Default | Description                               |
 | ---------------- | ---- | ------- | ----------------------------------------- |
 | `name`           | text |         | User-defined name of the model            |
-| `hcp_model_name` | text |         | Name of the model instance running on HCP |
+| `hcp_model_name` | text |         | Name of the model instance running on HCP (Hybrid Manager) |
 
 ### `aidb.sync_hcp_models`
 
-Creates models in the HCP and sets `is_hcp_model=true`; deletes models with that setting if not found in the HCP.
+Creates models in the HCP (Hybrid Manager) and sets `is_hcp_model=true`; deletes models with that setting if not found in the HCP (Hybrid Manager).
 
 #### Returns
 
 | Column   | Type | Description                                                                     |
 | -------- | ---- | ------------------------------------------------------------------------------- |
 | `status` | text | Synchronization status; either `deleted`, `unchanged`, `created`, or `skipped`. |
-| `model`  | text | The name the synchronized HCP model.                                            |
+| `model`  | text | The name the synchronized HCP (Hybrid Manager) model.                           |
 
 
 
@@ -300,4 +300,235 @@ Reranks text using a model, generating a vector representation of a given text i
 | `text`        | text             | The text from "input"                      |
 | `logit_score` | double precision | Score/rank of this text                    |
 | `id`          | int              | index that the text had in the input array |
+
+
+## Model configuration helper functions
+
+These helper functions simplify creating JSONB configuration objects for `aidb.create_model()`. They provide proper parameter types, defaults, and validation.
+
+### `aidb.embeddings_config`
+
+Creates configuration for embeddings model providers (`embeddings`, `openai_embeddings`, `nim_embeddings`).
+
+#### Parameters
+
+| Parameter                | Type    | Default  | Description                                   |
+| ------------------------ | ------- | -------- | --------------------------------------------- |
+| `model`                  | TEXT    | Required | The model identifier                          |
+| `api_key`                | TEXT    | NULL     | API key (can use credentials instead)         |
+| `basic_auth`             | TEXT    | NULL     | Basic auth credentials                        |
+| `url`                    | TEXT    | NULL     | Custom API URL                                |
+| `max_concurrent_requests`| INTEGER | NULL     | Maximum concurrent requests                   |
+| `max_batch_size`         | INTEGER | NULL     | Maximum batch size                            |
+| `input_type`             | TEXT    | NULL     | Input type for the model                      |
+| `input_type_query`       | TEXT    | NULL     | Input type for queries                        |
+| `tls_config`             | JSONB   | NULL     | TLS configuration                             |
+| `is_hcp_model`           | BOOLEAN | NULL     | Whether this is an HCP (Hybrid Manager) model |
+
+#### Example
+
+```sql
+SELECT aidb.create_model(
+  'my_model',
+  'openai_embeddings',
+  aidb.embeddings_config(model => 'text-embedding-3-small'),
+  '{"api_key": "sk-..."}'::JSONB
+);
+```
+
+### `aidb.completions_config`
+
+Creates configuration for completions model providers (`completions`, `openai_completions`, `nim_completions`).
+
+#### Parameters
+
+| Parameter                | Type    | Default  | Description                                        |
+| ------------------------ | ------- | -------- | -------------------------------------------------- |
+| `model`                  | TEXT    | Required | The model identifier                               |
+| `api_key`                | TEXT    | NULL     | API key (can use credentials instead)              |
+| `basic_auth`             | TEXT    | NULL     | Basic auth credentials                             |
+| `url`                    | TEXT    | NULL     | Custom API URL                                     |
+| `max_concurrent_requests`| INTEGER | NULL     | Maximum concurrent requests                        |
+| `max_tokens`             | JSONB   | NULL     | Max tokens config (use `aidb.max_tokens_config()`) |
+| `is_hcp_model`           | BOOLEAN | NULL     | Whether this is an HCP (Hybrid Manager) model      |
+
+#### Example
+
+```sql
+SELECT aidb.create_model(
+  'my_model',
+  'openai_completions',
+  aidb.completions_config(model => 'gpt-4o'),
+  '{"api_key": "sk-..."}'::JSONB
+);
+```
+
+### `aidb.max_tokens_config`
+
+Creates the `max_tokens` configuration for completions models.
+
+#### Parameters
+
+| Parameter | Type    | Default | Description                                |
+| --------- | ------- | ------- | ------------------------------------------ |
+| `size`    | INTEGER | Required| Maximum number of tokens                   |
+| `format`  | TEXT    | NULL    | Format: 'default', 'legacy', or 'both'     |
+
+#### Example
+
+```sql
+aidb.completions_config(
+  model => 'gpt-4o',
+  max_tokens => aidb.max_tokens_config(size => 1024, format => 'default')
+)
+```
+
+### `aidb.bert_config`
+
+Creates configuration for the `bert_local` model provider.
+
+#### Parameters
+
+| Parameter  | Type | Default | Description                |
+| ---------- | ---- | ------- | -------------------------- |
+| `model`    | TEXT | Required| The model identifier       |
+| `revision` | TEXT | NULL    | Model revision             |
+| `cache_dir`| TEXT | NULL    | Cache directory path       |
+
+### `aidb.clip_config`
+
+Creates configuration for the `clip_local` model provider.
+
+#### Parameters
+
+| Parameter   | Type    | Default | Description                |
+| ----------- | ------- | ------- | -------------------------- |
+| `model`     | TEXT    | Required| The model identifier       |
+| `revision`  | TEXT    | NULL    | Model revision             |
+| `cache_dir` | TEXT    | NULL    | Cache directory path       |
+| `image_size`| INTEGER | NULL    | Image size                 |
+
+### `aidb.llama_config`
+
+Creates configuration for the `llama_instruct_local` model provider.
+
+#### Parameters
+
+| Parameter            | Type             | Default | Description                        |
+| -------------------- | ---------------- | ------- | ---------------------------------- |
+| `model`              | TEXT             | Required| The model identifier               |
+| `revision`           | TEXT             | NULL    | Model revision                     |
+| `cache_dir`          | TEXT             | NULL    | Cache directory path               |
+| `system_prompt`      | TEXT             | NULL    | System prompt                      |
+| `use_flash_attention`| BOOLEAN          | NULL    | Use flash attention                |
+| `model_path`         | TEXT             | NULL    | Local model path                   |
+| `seed`               | BIGINT           | NULL    | Random seed                        |
+| `temperature`        | DOUBLE PRECISION | NULL    | Sampling temperature               |
+| `top_p`              | DOUBLE PRECISION | NULL    | Top-p sampling                     |
+| `sample_len`         | INTEGER          | NULL    | Max tokens to generate             |
+| `use_kv_cache`       | BOOLEAN          | NULL    | Use KV cache                       |
+| `repeat_penalty`     | REAL             | NULL    | Repetition penalty                 |
+| `repeat_last_n`      | INTEGER          | NULL    | Tokens for repetition penalty      |
+
+### `aidb.t5_config`
+
+Creates configuration for the `t5_local` model provider.
+
+#### Parameters
+
+| Parameter       | Type             | Default | Description                   |
+| --------------- | ---------------- | ------- | ----------------------------- |
+| `model`         | TEXT             | Required| The model identifier          |
+| `revision`      | TEXT             | NULL    | Model revision                |
+| `temperature`   | DOUBLE PRECISION | NULL    | Sampling temperature          |
+| `seed`          | BIGINT           | NULL    | Random seed                   |
+| `max_tokens`    | INTEGER          | NULL    | Max tokens to generate        |
+| `repeat_penalty`| REAL             | NULL    | Repetition penalty            |
+| `repeat_last_n` | INTEGER          | NULL    | Tokens for repetition penalty |
+| `model_path`    | TEXT             | NULL    | Local model path              |
+| `cache_dir`     | TEXT             | NULL    | Cache directory path          |
+
+### `aidb.gemini_config`
+
+Creates configuration for the `gemini` model provider.
+
+#### Parameters
+
+| Parameter               | Type    | Default | Description                        |
+| ----------------------- | ------- | ------- | ---------------------------------- |
+| `api_key`               | TEXT    | Required| The Gemini API key                 |
+| `model`                 | TEXT    | NULL    | The model identifier               |
+| `url`                   | TEXT    | NULL    | Custom API URL                     |
+| `max_concurrent_requests`| INTEGER| NULL    | Maximum concurrent requests        |
+| `thinking_budget`       | INTEGER | NULL    | Thinking tokens budget             |
+
+### `aidb.nim_clip_config`
+
+Creates configuration for the `nim_clip` model provider.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                   |
+| -------------- | ------- | ------- | --------------------------------------------- |
+| `api_key`      | TEXT    | NULL    | API key (can use credentials)                 |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials                        |
+| `model`        | TEXT    | NULL    | The model identifier                          |
+| `url`          | TEXT    | NULL    | Custom API URL                                |
+| `is_hcp_model` | BOOLEAN | NULL    | Whether this is an HCP (Hybrid Manager) model |
+
+### `aidb.nim_ocr_config`
+
+Creates configuration for the `nim_paddle_ocr` model provider.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                   |
+| -------------- | ------- | ------- | --------------------------------------------- |
+| `api_key`      | TEXT    | NULL    | API key (can use credentials)                 |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials                        |
+| `url`          | TEXT    | NULL    | Custom API URL                                |
+| `model`        | TEXT    | NULL    | The model identifier                          |
+| `is_hcp_model` | BOOLEAN | NULL    | Whether this is an HCP (Hybrid Manager) model |
+
+### `aidb.nim_reranking_config`
+
+Creates configuration for the `nim_reranking` model provider.
+
+#### Parameters
+
+| Parameter      | Type    | Default | Description                                   |
+| -------------- | ------- | ------- | --------------------------------------------- |
+| `api_key`      | TEXT    | NULL    | API key (can use credentials)                 |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials                        |
+| `model`        | TEXT    | NULL    | The model identifier                          |
+| `url`          | TEXT    | NULL    | Custom API URL                                |
+| `is_hcp_model` | BOOLEAN | NULL    | Whether this is an HCP (Hybrid Manager) model |
+
+### `aidb.openrouter_chat_config`
+
+Creates configuration for the `openrouter_chat` model provider.
+
+#### Parameters
+
+| Parameter                 | Type    | Default  | Description                                        |
+| ------------------------- | ------- | -------- | -------------------------------------------------- |
+| `model`                   | TEXT    | Required | The model identifier                               |
+| `api_key`                 | TEXT    | NULL     | API key (can use credentials instead)              |
+| `url`                     | TEXT    | NULL     | Custom API URL                                     |
+| `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests                        |
+| `max_tokens`              | JSONB   | NULL     | Max tokens config (use `aidb.max_tokens_config()`) |
+
+### `aidb.openrouter_embeddings_config`
+
+Creates configuration for the `openrouter_embeddings` model provider.
+
+#### Parameters
+
+| Parameter                 | Type    | Default  | Description                           |
+| ------------------------- | ------- | -------- | ------------------------------------- |
+| `model`                   | TEXT    | Required | The model identifier                  |
+| `api_key`                 | TEXT    | NULL     | API key (can use credentials instead) |
+| `url`                     | TEXT    | NULL     | Custom API URL                        |
+| `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests           |
+| `max_batch_size`          | INTEGER | NULL     | Maximum batch size                    |
 
