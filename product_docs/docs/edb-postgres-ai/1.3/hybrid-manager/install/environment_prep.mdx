@@ -3,6 +3,9 @@ title: Preparing your environment
 navTitle: Preparing environment
 description: 'Step through preparing your environment for Hybrid Manager installation, including: syncing images to your local registry, configuring secrets, setting up any advanced features, and completing your `values.yaml` configuration file .'
 deepToC: true
+redirects: 
+  - /edb-postgres-ai/latest/hybrid-manager/install/configuration/data_catalog_secret/
+  - /edb-postgres-ai/latest/hybrid-manager/install/configuration/genai_secret/
 ---
 
 ## Overview
@@ -48,11 +51,11 @@ Preparing your environment, Phase 4, covers:
         -   [(C) custom certificate](#option-c-custom-certificate)
         -   [(D) self-signed default](#option-d-self-signed-certificates-default)
 
--   **Creating other necessary secrets**
+-   [**Creating other necessary secrets**](#creating-other-necessary-secrets)
 
-    -   [Creating **GenAI Builder** secret](#creating-genai-builder-secret) (requires Fernet secret)
-    -   [Creating **Catalog** secret](#creating-catalog-secret) (requires Fernet secret)
-    -   [Customizing secrets for the **Migration Portal**](#creating-catalog-secret).
+    -   Creating **GenAI Builder** secret - requires Fernet secret and NGC key secrets.
+    -   Creating **Catalog** secret - requires confounding key secret.
+    -   Customizing secrets for the **Migration Portal** - requires secrets for service accounts.
 
 -   **Configuring advanced features:** 
 
@@ -271,65 +274,213 @@ stringData:
 
 ## Creating other necessary secrets
 
-!!!Warning
+There are other secrets that must be created for the HM installation to be successful.
 
+!!!Warning
 The following are not optional configurations.
 These preparatory steps **must be completed** in order to successfully complete your installation.
 This configuration does not require you utilize the associated feature; it only prepares a secure implementation in case it's needed.
 !!!
 
-There are other secrets that must be created for the HM installation to be successful.
+### Prerequisites
 
-### Creating GenAI Builder secret
+- If using **GenAI Builder**, you must provide an NGC API key to authorize model image pulls. You will be prompted for this key when running the `edbctl` secret creation command. Generate a key by following the [NVIDIA NGC documentation](https://docs.nvidia.com/ngc/gpu-cloud/ngc-user-guide/index.html#ngc-api-keys).
 
-!!!Warning
+### Using edbctl to create secrets
 
-It is necessary to create a GenAI Builder secret for HM to install successfully.
-!!!
+Use `edbctl` to generate the required additional secrets. The tool automatically determines which secrets are necessary based on your version.
 
-Even if you are not planning to use GenAI Builder, creating a secret is a necessary step.
+- For manual installations, run this command and follow the interactive prompts:
 
-You must manually set up encryption keys and a dedicated S3-compatible bucket with specific CORS policies.
+  The terminal will prompt you for specific information. For example, provide your NGC API key only if you plan to use GenAI Builder. Otherwise, leave it blank to skip that specific secret creation.
 
-**Preparation checklist:**
+  ```shell
+  edbctl setup create-install-secrets --version <version>
+  ```
 
-1.  **Namespace:** Create the `upm-griptape` namespace.
-2.  **Encryption:** Generate a Fernet key and create the `fernet-secret` inside that namespace.
-3.  **Storage:** Create a dedicated Object Storage bucket (DataLake).
-4.  **Networking:** Apply CORS configuration to the bucket to allow access from the Portal domain.
+- If you are running the installation via a CI/CD pipeline, you must suppress interactive prompts. The method for achieving this depends on your `edbctl` version:
 
--   [**SOP: Enabling GenAI Builder**](/edb-postgres-ai/current/hybrid-manager/install/configuration/genai_secret/)
-    -   *Guidance: Scripts for generating Fernet keys and CORS JSON configurations.*
+  <TabContainer syncKey="edbctl version">
+  <Tab title="edbctl 1.2">
 
-### Creating Catalog secret
+  1.  Ensure the NGC API key you created above is available as a variable (`export EDB_AI_NVIDIA_NGC=<your-ngc-api-key>`).
 
-!!!Warning
+  1.  Use the `--non-interactive` flag to suppress confirmation prompts:
+  
+      ```bash
+      edbctl setup create-install-secrets --version <version> --non-interactive
+      ```
 
-It is necessary to create a Catalog secret for HM to install successfully.
-!!!
+  </Tab>
 
-Similar to GenAI, even if not using the Catalog service, it is required to create encrypted storage credentials.
+  <Tab title="edbctl 1.3 and later">
 
-**Preparation checklist:**
+  In version 1.3.0, the `--non-interactive` flag was replaced by global configuration settings. You must disable both `interactive_mode` and `confirm_mode` for fully unattended execution.
 
-1.  **Namespace:** Create the `upm-lakekeeper` namespace.
-2.  **Encryption:** Generate a Fernet key and create the secret in that namespace.
-3.  **Configuration:** Configure the *installation-time* catalogs (Infrastructure/OS images) in `values.yaml`.
+  1.  Ensure the NGC API key you created above is available as a variable.
 
--   [**SOP: Enabling data catalogs**](/edb-postgres-ai/current/hybrid-manager/install/configuration/data_catalog_secret/)
-    -   *Guidance: Commands for creating the confounding key, namespace, and secret.*
+  1.  Configure `edbctl` for non-interactive behavior:
 
-### Customizing Migration Portal secrets
+      ```shell
+      edbctl config set interactive_mode off
+      edbctl config set confirm_mode off
+      ```
 
-!!!Warning
+  1.  Run the setup command:
+      
+      ```shell
+      edbctl setup create-install-secrets --version <version>
+      ```
 
-It is necessary to customize your Migration Portal secrets for HM to install successfully.
-!!!
+  </Tab>
+  </TabContainer>
 
-Create secrets in namespaces `edb-migration-portal` and `edb-migration-copilot`.
+This creates secrets required for GenAI Builder, Catalog, and Migration Portal, among others:
 
--   [**SOP: Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/current/hybrid-manager/install/configuration/migration_portal_secrets/)
-    -   *Guidance: Commands for creating custom secrets for using Migration Portal.*
+-   GenAI Builder secrets - Fernet key secret, and NGC key secrets allow you to build AI agents. A confounding key is a randomized string that's at least 32 bytes long and one is required per HM installation.
+
+    The HM administrator must keep the Fernet key safe and back it up.
+    
+    ```shell
+    kubectl get secret -n upm-griptape fernet-secret -o yaml
+    ```
+   
+-   Catalog secret - A confounding key is required to create encrypted storage credentials and manage Lakehouse data.
+
+    !!!warning
+    The loss of the confounding key in a disaster scenario leads to a situation in which there's no mechanism for accessing the Lakehouse data managed by the Hybrid Manager data catalog. Instead, the administrator would have to create and store the new key, restart the upm-lakekeeper/lakekeeper workload, and rebuild all of the existing data catalogs carefully without deleting them. That procedure is very risky and would require support from EDB PG AI Professional Services team.
+    !!!
+
+    Fetch the key and store it safely: 
+
+    ```shell
+    kubectl get secrets -n upm-lakekeeper pg-confounding-key -o yaml
+    ```
+
+-   Migration Portal secrets - Are required for internal component communication.
+
+    Creates the namespaces, custom secrets, and generates secure random passwords for all five service accounts: 
+
+    - `edb-migration-portal.db_secrets`
+    - `edb-migration-portal.db_superuser_secrets`
+    - `edb-migration-portal.copilot_secrets`
+    - `edb-migration-copilot.db_secrets`
+    - `edb-migration-copilot.metrics_auth_secrets`
+
+    For more information on Migration Portal secrets, see [**Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/current/hybrid-manager/install/configuration/migration_portal_secrets/).
+
+### Finish configuring GenAI Builder
+
+If you are planning to use GenAI Builder capabilities, complete the GenAI Builder configuration:
+
+1.  Configure DataLake object storage for GenAI builder by creating a DataLake bucket in the object storage you're using for your Hybrid Manager deployment. GenAI Builder uses it to store structures, tools, and indexed data.
+
+    <TabContainer>
+    <Tab title="AWS S3">
+
+    ```shell
+    aws s3 mb s3://<your-datalake-bucket-name> –region     <your-region>
+    ```
+
+    </Tab>
+
+    <Tab title="Google Cloud Storage (GCS)">
+
+    ```shell
+    gsutil mb -l <your-region> gs://<your-datalake-bucket-name>
+    ```
+
+    </Tab>
+
+    <Tab title="Other S3-compatible storage">
+
+    Use your provider’s management console or CLI to create a bucket with a unique name for your DataLake bucket.
+
+    </Tab>
+    </TabContainer>
+
+1.  Capture the following information for your bucket. You will need it later when you first use the GenAI launchpad application. The console will prompt you for your DataLake bucket configuration, which requires: 
+
+    -   `DATA_LAKE_ROOT_BUCKET`: The name of the bucket for use with DataLake. 
+
+    -   `DATA_LAKE_S3_ACCESS_KEY`: The access_key used to connect to the DataLake bucket.
+
+    -   `DATA_LAKE_S3_SECRET_ACCESS_KEY`: The secret_access_key used to connect to the DataLake bucket.
+
+    -   `DATA_LAKE_S3_ENDPOINT_UR`: The endpoint URL used to connect to the DataLake bucket.
+
+1.  Update the bucket's settings with the CORS configuration: 
+
+    <TabContainer>
+    <Tab title="AWS S3">
+
+    Update the bucket's settings to have the following [CORS configuration](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html):
+
+    ```txt
+    [
+        {
+            "AllowedHeaders": [
+                "*"
+            ],
+            "AllowedMethods": [
+                "PUT",
+                "POST",
+                "DELETE",
+                "GET",
+                "HEAD"
+            ],
+            "AllowedOrigins": [
+                "https://${PORTAL_DOMAIN_NAME}"
+            ],
+            "ExposeHeaders": []
+        }
+    ]
+    ```
+
+    Where `https://${PORTAL_DOMAIN_NAME}` is the domain configured for your Hybrid Manager.
+
+    </Tab>
+        
+    <Tab title="Google Cloud Storage (GCS)">
+    
+    The [S3 interoperability layer](https://cloud.google.com/storage/docs/aws-simple-migration) in GCS allows GenAI Builder to use GCS as an S3-compatible object store.
+    
+    1.  In the GCS console, under **Settings**, turn on the s3 interoperability. 
+    
+    2.  Update or [create a service account](https://cloud.google.com/iam/docs/service-accounts-create#creating_a_service_account) with the Storage Admin and Service Account Token Creator roles. 
+    
+    3.  Create an [HMAC key pair](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#console) for the service account.
+    
+    4.  Create a config file with a CORS configuration that points at the Hybrid Manager endpoint:
+    
+        ```txt
+        cat cors-config.json
+        [
+          {
+            "origin": ["https://${PORTAL_DOMAIN_NAME}"],
+            "method": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+            "responseHeader": ["*"],
+            "maxAgeSeconds": 3600
+          }
+        ]
+        ```
+    
+        Where `https://${PORTAL_DOMAIN_NAME}` is the domain configured for your Hybrid Manager.
+    
+    5.  Apply the CORS configuration to the previously created bucket:
+    
+        ```shell
+        gsutil cors set cors-config.json gs://<bucket name>
+        ```
+    
+    </Tab>
+        
+    <Tab title="Other S3-compatible storage">
+    
+    Use your provider’s management console or CLI to configure cross-origin resource sharing (CORS) with Hybrid Manager.
+    
+    </Tab>
+    </TabContainer>
 
 ### Implement TLS
 
