@@ -10,7 +10,7 @@ Before you perform a migration of an Oracle source using Hybrid Manager (HM), yo
 - Install Oracle's SQL*Plus utility on the auxiliary machine you're using to connect to the Oracle database.
 - Collect the names of the schemas you want to migrate.
 
-## Create a migration user
+## 1. Creating a migration user
 
 You need a dedicated user that both the EDB Postgres AI agent (packed as `beacon-agent`) and the DMS agent (packaged as `cdcreader`) can use to access and perform read operations on the source database. 
 
@@ -21,7 +21,7 @@ Because user management is different for modern multi-tenant CDB/PDB than for le
 1.  Log in to your Oracle database using the SYS account with SYSDBA privileges:
 
     ```shell
-    sqlplus sys/<PASSWD>//<HOST>:<PORT>/<DB_IDENTIFIER> as sysdba
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<DB_IDENTIFIER> as sysdba
     ```
 
     Where: 
@@ -40,6 +40,7 @@ Because user management is different for modern multi-tenant CDB/PDB than for le
 
     !!!tip
     If you are unsure if you are in a PDB or a CDB, run `SELECT name, open_mode FROM v$pdbs;`. If this returns rows, you are in a multitenant environment and should ensure your migration user is created within the PDB containing your data.
+    You can also run `SHOW CON_NAME;`, if it says `CDB$ROOT` it also means you need to switch.  
     !!!
 
     ```sql
@@ -75,7 +76,7 @@ Because user management is different for modern multi-tenant CDB/PDB than for le
     </Tab>
     </TabContainer>
 
-1.  Give the new user the grants it needs to see the metadata (discovery), read the table rows (migration), and handle specialized tasks like large objects or sequence values.
+1.  In the same terminal session, give the new user the grants it needs to see the metadata (discovery), read the table rows (migration), and handle specialized tasks like large objects or sequence values.
 
     ```sql
     -- Allows the user to log in and perform basic database operations.
@@ -104,12 +105,101 @@ Because user management is different for modern multi-tenant CDB/PDB than for le
     GRANT SELECT ON V_$LICENSE TO MIGRATOR_USER;
     ```
 
-!!!note
-These permissions are the minimum required. Granting additional permissions may be necessary depending on your specific Oracle database configuration and security policies.
-!!!
+    !!!note
+    These permissions are the minimum required. Granting additional permissions may be necessary depending on your specific Oracle database configuration and security policies.
+    !!!
 
+## 2. Verifying the migration user 
 
+Check whether the user you have created has access to the schemas you intend to migrate:
+
+```sql
+-- Replace YOUR_SCHEMA with your actual schema names in UPPERCASE
+SELECT count(*) FROM dba_tables WHERE owner IN ('YOUR_SCHEMA_1', 'YOUR_SCHEMA_2');
+__OUTPUT__
+  COUNT(*)
+----------
+	 2
+```
+
+You can also display the schemas: 
+
+```sql
+-- Replace YOUR_SCHEMA with your actual schema names in UPPERCASE
+SELECT owner, table_name FROM dba_tables WHERE owner IN ('YOUR_SCHEMA_1', 'YOUR_SCHEMA_2');
+```
+
+Here are some of the common errors and how to resolve them: 
+
+| Issue                                   | Meaning                                                                                                                      | How to fix it                                                                                                                  |
+|-----------------------------------------|------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| "no rows selected"                      | **Permissions or case-sensitivity:** The user can't "see" the metadata, OR you typed the schema name in lowercase.           | 1. Ensure you granted `SELECT ANY DICTIONARY`.<br><br>  <br><br>2. Ensure schema names are in **'UPPERCASE'** in your query. |
+| ORA-00942: table or view does not exist | **Missing system privilege:** The user has a role (like `SELECT_CATALOG_ROLE`) but it isn't active/sufficient for this view. | Run `GRANT SELECT ANY DICTIONARY TO MIGRATOR_USER;` directly.                                                                  |
+| ORA-01017: invalid username/password    | **Wrong container:** You created the user in the PDB but are trying to log into the CDB (or vice-versa).                     | Check your _Service Name_. Ensure you are connecting to the PDB (e.g., `ORCLPDB1`).                                            |
+| ORA-00942 (when querying `V$`)          | **Missing fixed view grant:** Even with Dictionary access, some versions require explicit access to V\$ views.               | Run the `GRANT SELECT ON V_$VERSION...\` commands.                                                                             |
 
 !!!note Service names
-When configuring the EDB Postgres AI and DMS agents, you must use the service name of the PDB (e.g., `ORCLPDB1`) rather than the SID of the container. A common cause of "Schema Not Found" errors is connecting to the CDB root instead of the specific Pluggable Database where the grants were applied.
+When configuring the EDB Postgres AI and DMS agents later on, you must use the service name of the PDB (e.g., `ORCLPDB1`) rather than the SID of the container. A common cause of "Schema Not Found" errors is connecting to the CDB root instead of the specific Pluggable Database where the grants were applied.
 !!!
+
+## 3. Configure database logging and performance
+
+For a successful migration, the Oracle engine must be configured to log enough detail for the DMS agent to read.
+
+### Enable ARCHIVELOG mode
+
+Migration tools require the database to be in `ARCHIVELOG` mode to ensure that data changes aren't lost during the transfer.
+
+-  **Check status:** `SELECT log_mode FROM v$database;`
+-  **Action:** If it says `NOARCHIVELOG`, you must restart the database in ARCHIVELOG mode (this requires a brief maintenance window).
+
+### Enable supplemental logging
+
+Oracle doesn't log enough information by default for EDB to reconstruct "Update" and "Delete" commands on the Postgres side.
+
+```sql
+-- Run as SYSDBA
+ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
+ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (PRIMARY KEY) COLUMNS;
+```
+
+## 4. Network and firewall configuration
+
+The EDB Postgres AI agent (packaged as `beacon-agent`) and the DMS agent act as the bridge. They must be able to "talk" to Oracle without interruption.
+
+### Listener accessibility
+
+Ensure the Oracle Listener is accepting connections from the IP address where you will install the agents.
+
+-  **Test:** From the Agent machine, try: `telnet <oracle_host> 1521`
+
+### Database service names
+
+Because you are likely using a PDB, ensure the `lsnrctl status` command on the Oracle server shows the PDB service as **READY**.
+
+-  **Hybrid Manager requirement:** You must use the **Service Name** (e.g., `ORCLPDB1`), not the SID, in the Hybrid Manager connection settings.
+
+## 6. System resource validation
+
+Oracle migrations are resource-intensive. Ensure the source has enough resources to handle the extra load of the migration agent.
+
+### Undo tablespace
+
+During the loading phase, the agent reads large amounts of data. If your `UNDO_RETENTION` is too low, the migration might fail with a "Snapshot too old" error.
+
+-  **Recommendation:** Set `UNDO_RETENTION` to at least 3600 (1 hour).
+
+### Process and session limits
+
+The migration agent may open multiple parallel connections to speed up the transfer.
+
+-  **Check:** `SELECT name, value FROM v$parameter WHERE name IN ('processes', 'sessions');`
+-  **Recommendation:** Ensure these values have at least 20% overhead remaining.
+
+## 7. Preparing the auxiliary machine (agent host)
+
+The agents don't run _on_ the Oracle server; it runs on a separate Linux machine that "watches" Oracle.
+
+1.  **Oracle Instant Client:** Install the Oracle Instant Client (Basic and SDK) on the agent machine. This provides the `oci.lib` files the agent needs to communicate.
+2.  **Clock Synchronization:** Ensure the time on the Oracle Server and the Agent Machine are synchronized (using NTP). Time drift can cause the DMS agent to miss log sequences.
+3.  **TNS_ADMIN (Optional):** If you use a `tnsnames.ora` file, ensure the `TNS_ADMIN` environment variable points to its directory.
