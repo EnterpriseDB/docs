@@ -272,152 +272,190 @@ group.
 
 ## Utility functions
 
-### `bdr.wait_slot_confirm_lsn`
+### `bdr.alter_node_kind`
 
-Allows you to wait until the last write on this session was replayed to one or all nodes.
-
-Waits until a slot passes a certain LSN. 
-If no position is supplied, the current write position is used on the local node.
-
-If no slot name is passed, it waits until all PGD slots pass the LSN.
-
-The function polls every 1000 ms for changes from other nodes.
-
-If a slot is dropped concurrently, the wait ends for that slot.
-If a node is currently down and isn't updating its slot, then the wait continues.
-You might want to set `statement_timeout` to complete earlier in that case.
-
-If you are using [Optimized Topology](/pgd/current/nodes/subscriber_only/optimizing-so/), we recommend using [`bdr.wait_node_confirm_lsn`](/pgd/latest/reference/tables-views-functions/functions#bdrwait_node_confirm_lsn) instead.
-)
+PGD5 introduced a concept of Task Manager Leader node. The node is selected by PGD, but for upgraded clusters, it's important to set the `node_kind` properly for all nodes in the cluster. Do this manually after upgrading to the latest PGD version by calling the `bdr.alter_node_kind()` SQL function for each node.
 
 #### Synopsis
 
-```sql
-bdr.wait_slot_confirm_lsn(slot_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
 ```
-
-#### Notes
-
-Requires `bdr_application` privileges to use.
-
-#### Parameters
-
-| Parameter    | Description                                                                 |
-| ------------ | --------------------------------------------------------------------------- |
-| `slot_name`  | Name of the replication slot to wait for. If NULL, waits for all PGD slots. |
-| `target_lsn` | LSN to wait for. If NULL, uses the current write LSN on the local node.     |
-
-### `bdr.wait_node_confirm_lsn`
-
-Wait until a node passes a certain LSN.
-
-This function allows you to wait until the last write on this session was replayed to one or all nodes.
-
-Upon being called, the function waits for a node to pass a certain LSN.
-If no LSN is supplied, the current wal_flush_lsn (using the `pg_current_wal_flush_lsn()` function) position is used on the local node.
-Supplying a node name parameter tells the function to wait for that node to pass the LSN. 
-If no node name is supplied (by passing NULL), the function waits until all the nodes pass the LSN.
-
-We recommend using this function if you are using [Optimized Topology](../../nodes/subscriber_only/optimizing-so) instead of [`bdr.wait_slot_confirm_lsn`](/pgd/6/reference/tables-views-functions/functions#bdrwait_slot_confirm_lsn).
-
-This is because in an Optimized Topology, not all nodes have replication slots, so the function `bdr.wait_slot_confirm_lsn` might not work as expected. `bdr.wait_node_confirm_lsn` is designed to work with nodes that don't have replication slots, using alternative strategies to determine the progress of a node.
-
-If a node is currently down, isn't updating, or simply can't be connected to, the wait will continue indefinitely. To avoid this condition, set the statement_timeout to the maximum amount of time you are prepared to wait.
-
-#### Synopsis
-
-```sql
-bdr.wait_node_confirm_lsn(node_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
+bdr.alter_node_kind(node_name text,
+                    node_kind text);
 ```
 
 #### Parameters
 
-| Parameter    | Description                                                                 |
-| ------------ | --------------------------------------------------------------------------- |
-| `node_name`  | Name of the node to wait for. If NULL, waits for all nodes.                 |
-| `target_lsn` | LSN to wait for. If NULL, uses the current wal_flush_lsn on the local node. |
+| Parameter | Description |
+| --- | --- |
+| `node_name` | Name of the node to change kind. |
+| `node_kind` | Kind of the node. |
 
-#### Notes
+### `bdr.alter_subscription_skip_changes_upto`
 
-Requires `bdr_application` privileges to use.
+Because logical replication can replicate across versions, doesn't replicate global changes like roles, and can replicate selectively, sometimes the logical replication apply process can encounter an error and stop applying changes.
 
-### `bdr.wait_for_apply_queue`
+Wherever possible, fix such problems by making changes to the target side. `CREATE` any missing table that's blocking replication, `CREATE` a needed role, `GRANT` a necessary permission, and so on. But occasionally a problem can't be fixed that way and it might be necessary to skip entirely over a transaction. Changes are skipped as entire transactions—all or nothing. To decide where to skip to, use log output to find the commit LSN, per the example that follows, or peek the change stream with the logical decoding functions.
 
-The function `bdr.wait_for_apply_queue` allows a PGD node to wait for
-the local application of certain transactions originating from a given
-PGD node. It returns only after all transactions from that peer
-node are applied locally. An application or a proxy can use this
-function to prevent stale reads.
+Unless a transaction made only one change, you often need to manually apply the transaction's effects on the target side, so it's important to save the problem transaction whenever possible, as shown in the examples that follow.
 
-For convenience, PGD provides a variant of this function for
-CAMO and the CAMO partner node. See
-[bdr.wait_for_camo_partner_queue](#bdrwait_for_camo_partner_queue).
+It's possible to skip over changes without `bdr.alter_subscription_skip_changes_upto` by using `pg_catalog.pg_logical_slot_get_binary_changes` to skip to the LSN of interest, so this is a convenience function. It does do a faster skip, although it might bypass some kinds of errors in logical decoding.
 
-In case a specific LSN is given, that's the point in the recovery
-stream from which the peer waits. You can use this
-with `bdr.last_committed_lsn` retrieved from that peer node on a
-previous or concurrent connection.
+This function works only on disabled subscriptions.
 
-If the given `target_lsn` is NULL, this function checks the local
-receive buffer and uses the LSN of the last transaction received from
-the given peer node, effectively waiting for all transactions already
-received to be applied. This is especially useful in case the peer
-node has failed and it's not known which transactions were sent.
-In this case, transactions that are still in transit or
-buffered on the sender side aren't waited for.
+The usual sequence of steps is:
+
+1.  Identify the problem subscription and LSN of the problem commit.
+2.  Disable the subscription.
+3.  Save a copy of the transaction using `pg_catalog.pg_logical_slot_peek_changes` on the source node, if possible.
+4.  `bdr.alter_subscription_skip_changes_upto` on the target node.
+5.  Apply repaired or equivalent changes on the target manually, if necessary.
+6.  Reenable the subscription.
+
+!!! Warning
+    It's easy to make problems worse when using this function. Don't do anything unless you're certain it's the only option.
+
 
 #### Synopsis
 
-```sql
-bdr.wait_for_apply_queue(peer_node_name TEXT, target_lsn pg_lsn)
+```
+  bdr.alter_subscription_skip_changes_upto(
+    subname text,
+    skip_upto_and_including pg_lsn
+  );
 ```
 
-#### Parameters
+#### Example
 
-| Parameter        | Description                                                                                                                                                          |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `peer_node_name` | The name of the peer node from which incoming transactions are expected to be queued and to wait for. If NULL, waits for all peer node's apply queue to be consumed. |
-| `target_lsn`     | The LSN in the replication stream from the peer node to wait for, usually learned by way of `bdr.last_committed_lsn` from the peer node.                             |
+Apply of a transaction is failing with an error, and you've determined that lower-impact fixes such as changes on the target side can't resolve this issue. You determine that you must skip the transaction.
 
-### `bdr.get_node_sub_receive_lsn`
+In the error logs, find the commit record LSN to skip to, as in this example:
 
-You can use this function on a subscriber to get the last LSN that was
-received from the given origin. It can be either unfiltered or filtered to take into
-account only relevant LSN increments for transactions to be applied.
-
-The difference between the output of this function and the output of
-`bdr.get_node_sub_apply_lsn()` measures the size of the corresponding
-apply queue.
-
-#### Synopsis
-
-```sql
-bdr.get_node_sub_receive_lsn(node_name name, committed bool default true)
+```
+ERROR:  XX000: CONFLICT: target_table_missing; resolver skip_if_recently_dropped returned an error: table does not exist
+CONTEXT:  during apply of INSERT from remote relation public.break_me in xact with commit-end lsn 0/300AC18 xid 131315
+committs 2021-02-02 15:11:03.913792+01 (action #2) (effective sess origin id=2 lsn=0/300AC18)
+while consuming 'I' message from receiver for subscription bdr_regression_bdrgroup_node1_node2 (id=2667578509)
+on node node2 (id=3367056606) from upstream node node1 (id=1148549230, reporiginid=2)
 ```
 
-#### Parameters
+In this portion of log, you have the information you need: the\_target\_lsn: **0/300AC18** the\_subscription: **bdr\_regression\_bdrgroup\_node1\_node2**
 
-| Parameter   | Description                                                                                                                                                                                        |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `node_name` | The name of the node that's the source of the replication stream whose LSN is being retrieved.                                                                                                     |
-| `committed` | The default (true) makes this function take into account only commits of transactions received rather than the last LSN overall. This includes actions that have no effect on the subscriber node. |
+Next, disable the subscription so the apply worker doesn't try to connect to the replication slot:
+
+```
+  SELECT bdr.alter_subscription_disable('the_subscription');
+```
+
+You can't skip only parts of the transaction: it's all or nothing. So we strongly recommend that you save a record of it by copying it out on the provider side first, using the subscription's slot name.
+
+```
+  \copy (SELECT * FROM pg_catalog.pg_logical_slot_peek_changes('the_slot_name',
+      'the_target_lsn', NULL, 'min_proto_version', '1', 'max_proto_version', '1',
+      'startup_params_format', '1', 'proto_format', 'json'))
+   TO 'transaction_to_drop.csv' WITH (FORMAT csv);
+```
+
+This example is broken into multiple lines for readability, but issue it in a single line. `\copy` doesn't support multi-line commands.
+
+You can skip the change by changing `peek` to `get`, but `bdr....skip_changes_upto` does a faster skip that avoids decoding and outputting all the data:
+
+```
+  SELECT bdr.alter_subscription_skip_changes_upto('subscription_name',
+      'the_target_lsn');
+```
+
+You can apply the same changes (or repaired versions of them) manually to the target node, using the dumped transaction contents as a guide.
+
+Finally, reenable the subscription:
+
+```
+  SELECT bdr.alter_subscription_enable('the_subscription');
+```
 
 ### `bdr.get_node_sub_apply_lsn`
 
-You can use this function on a subscriber to get the last LSN that was
-received and applied from the given origin.
+You can use this function on a subscriber to get the last LSN that was received and applied from the given origin.
 
 #### Synopsis
 
-```sql
+```
 bdr.get_node_sub_apply_lsn(node_name name)
 ```
 
 #### Parameters
 
-| Parameter   | Description                                                                                    |
-| ----------- | ---------------------------------------------------------------------------------------------- |
+| Parameter | Description |
+| --- | --- |
 | `node_name` | The name of the node that's the source of the replication stream whose LSN is being retrieved. |
+
+### `bdr.get_node_sub_receive_lsn`
+
+You can use this function on a subscriber to get the last LSN that was received from the given origin. It can be either unfiltered or filtered to take into account only relevant LSN increments for transactions to be applied.
+
+The difference between the output of this function and the output of `bdr.get_node_sub_apply_lsn()` measures the size of the corresponding apply queue.
+
+#### Synopsis
+
+```
+bdr.get_node_sub_receive_lsn(node_name name, committed bool default true)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `node_name` | The name of the node that's the source of the replication stream whose LSN is being retrieved. |
+| `committed` | The default (true) makes this function take into account only commits of transactions received rather than the last LSN overall. This includes actions that have no effect on the subscriber node. |
+
+### `bdr.global_lock_table`
+
+This function acquires a global DML locks on a given table. See 
+[DDL locking details](https://www.google.com/search?q=/pgd/current/ddl/ddl-locking/)
+ for information about global DML lock.
+
+#### Synopsis
+
+```
+bdr.global_lock_table(relation regclass)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `relation` | Name or oid of the relation to lock. |
+
+#### Notes
+
+This function acquires the global DML lock independently of the `ddl_locking` setting.
+
+The `bdr.global_lock_table` function requires `UPDATE`, `DELETE`, or `TRUNCATE` privilege on the locked `relation` unless `bdr.backwards_compatibility` is set to 30618 or lower.
+
+### `bdr.local_group_slot_name`
+
+Returns the name of the group slot on the local node.
+
+#### Example
+
+```
+pgddb=# SELECT bdr.local_group_slot_name();
+ local_group_slot_name
+-----------------------
+ bdr_pgddb_bdrgroup
+```
+
+### `bdr.node_group_type`
+
+Returns the type of the given node group. Returned value is the same as what was passed to `bdr.create_node_group()` when the node group was created, except `global` is returned if the `node_group_type` was passed as NULL when the group was created.
+
+#### Example
+
+```
+pgddb=# SELECT bdr.node_group_type('bdrgroup');
+ node_group_type
+-----------------
+ global
+```
 
 ### `bdr.replicate_ddl_command`
 
@@ -425,7 +463,7 @@ Function to replicate a DDL command to a group of nodes.
 
 #### Synopsis
 
-```sql
+```
 bdr.replicate_ddl_command(ddl_cmd text,
                           replication_sets text[],
                           ddl_locking text,
@@ -434,70 +472,55 @@ bdr.replicate_ddl_command(ddl_cmd text,
 
 #### Parameters
 
-| Parameter          | Description                                                                                                                                                                                                                                               |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ddl_cmd`          | DDL command to execute.                                                                                                                                                                                                                                   |
-| `replication_sets` | An array of replication set names to apply the `ddlcommand` to. If NULL (or the function is passed only the `ddlcommand`), this parameter is set to the active PGD groups's default replication set.                                                      |
-| `ddl_locking`      | A string that sets the [`bdr.ddl_locking`](/pgd/latest/reference/tables-views-functions/pgd-settings#bdrddl_locking) value while replicating. Defaults to the GUC value for `bdr.ddl_locking` on the local system that's running `replicate_ddl_command`. |
-| `execute_locally`  | A Boolean that determines whether the DDL command executes locally. Defaults to true.                                                                                                                                                                     |
+| Parameter | Description |
+| --- | --- |
+| `ddl_cmd` | DDL command to execute. |
+| `replication_sets` | An array of replication set names to apply the `ddlcommand` to. If NULL (or the function is passed only the `ddlcommand`), this parameter is set to the active PGD groups's default replication set. |
+| `ddl_locking` | A string that sets the <br/>[`bdr.ddl_locking`](https://www.google.com/search?q=/pgd/latest/reference/tables-views-functions/pgd-settings%23bdrddl_locking)<br/> value while replicating. Defaults to the GUC value for `bdr.ddl_locking` on the local system that's running `replicate_ddl_command`. |
+| `execute_locally` | A Boolean that determines whether the DDL command executes locally. Defaults to true. |
 
 #### Notes
 
 The only required parameter of this function is `ddl_cmd`.
 
-`bdr.replicate_ddl_command()` always replicates the command and is unaffected by the setting of [`bdr.ddl_replication`](./pgd-settings#bdrddl_replication).
+`bdr.replicate_ddl_command()` always replicates the command and is unaffected by the setting of 
+[`bdr.ddl_replication`](https://www.google.com/search?q=./pgd-settings%23bdrddl_replication)
+.
 
 ### `bdr.run_on_all_nodes`
 
 Function to run a query on all nodes.
 
 !!! Warning
-
-    This function runs an arbitrary query on a remote node with the
-    privileges of the user used for the internode connections as specified in the
-    node's DSN. Use caution when granting privileges to this function.
+    This function runs an arbitrary query on a remote node with the privileges of the user used for the internode connections as specified in the node's DSN. Use caution when granting privileges to this function.
 
 #### Synopsis
 
-```sql
+```
 bdr.run_on_all_nodes(query text)
 ```
 
 #### Parameters
 
-| Parameter | Description                 |
-| --------- | --------------------------- |
-| `query`   | Arbitrary query to execute. |
+| Parameter | Description |
+| --- | --- |
+| `query` | Arbitrary query to execute. |
 
 #### Notes
 
-This function connects to other nodes and executes the query, returning
-a result from each of them in JSON format. Multiple rows might be returned from
-each node, encoded as a JSON array. Any errors, such as being unable to
-connect because a node is down, are shown in the response field.
-No explicit statement_timeout or other runtime parameters are set, so
-defaults are used.
+This function connects to other nodes and executes the query, returning a result from each of them in JSON format. Multiple rows might be returned from each node, encoded as a JSON array. Any errors, such as being unable to connect because a node is down, are shown in the response field. No explicit statement\_timeout or other runtime parameters are set, so defaults are used.
 
-This function doesn't go through normal replication. It uses direct client
-connection to all known nodes. By default, the connection is created
-with `bdr.ddl_replication = off`, since the commands are already being sent
-to all of the nodes in the cluster.
+This function doesn't go through normal replication. It uses direct client connection to all known nodes. By default, the connection is created with `bdr.ddl_replication = off`, since the commands are already being sent to all of the nodes in the cluster.
 
-In PGD 6 and later, this function also sets `bdr.xact_replication=off` on the
-connection to ensure that transaction run locally only when the command is
-executed on another node.
+In PGD 6 and later, this function also sets `bdr.xact_replication=off` on the connection to ensure that transaction run locally only when the command is executed on another node.
 
-Be careful when using this function since you risk breaking replication
-and causing inconsistencies between nodes. Use either transparent DDL
-replication or `bdr.replicate_ddl_command()` to replicate DDL.
-DDL might be blocked in a future release.
+Be careful when using this function since you risk breaking replication and causing inconsistencies between nodes. Use either transparent DDL replication or `bdr.replicate_ddl_command()` to replicate DDL. DDL might be blocked in a future release.
 
 #### Example
 
-It's useful to use this function in monitoring, for example, as in the following
-query:
+It's useful to use this function in monitoring, for example, as in the following query:
 
-```sql
+```
 SELECT bdr.run_on_all_nodes($$
 	SELECT local_slot_name, origin_name, target_name, replay_lag_size
       FROM bdr.node_slots
@@ -544,314 +567,195 @@ This query returns something like this on a two-node cluster:
 ]
 ```
 
-### `bdr.run_on_nodes`
-
-Function to run a query on a specified list of nodes.
-
-!!! Warning
-
-    This function runs an arbitrary query on remote nodes with the
-    privileges of the user used for the internode connections as specified in the
-    node's DSN. Use caution when granting privileges to this function.
-
-#### Synopsis
-
-```postgresql
-bdr.run_on_nodes(node_names text[], query text)
-```
-
-#### Parameters
-
-| Parameter    | Description                                           |
-| ------------ | ----------------------------------------------------- |
-| `node_names` | Text ARRAY of node names where the query is executed. |
-| `query`      | Arbitrary query to execute.                           |
-
-#### Notes
-
-This function connects to other nodes and executes the query, returning
-a result from each of them in JSON format. Multiple rows can be returned from
-each node, encoded as a JSON array. Any errors, such as being unable to
-connect because a node is down, are shown in the response field.
-No explicit statement_timeout or other runtime parameters are set, so
-defaults are used.
-
-This function doesn't go through normal replication. It uses direct client
-connection to all known nodes. By default, the connection is created
-with `bdr.ddl_replication = off` to avoid replication issues when the same
-replicated DDL command is sent to multiple nodes.
-
-In PGD 6 and later, this function also sets `bdr.xact_replication=off` on the
-connection to ensure that transactions run locally only when the command is
-executed on another node.
-
-Be careful when using this function since you risk breaking replication
-and causing inconsistencies between nodes. For global schema changes, to
-replicate DDL, use
-either transparent DDL replication or `bdr.replicate_ddl_command()`.
-
 ### `bdr.run_on_group`
 
 Function to run a query on a group of nodes.
 
 !!! Warning
-
-    This function runs an arbitrary query on remote nodes with the
-    privileges of the user used for the internode connections as specified in the
-    node's DSN. Use caution when granting privileges to this function.
+    This function runs an arbitrary query on remote nodes with the privileges of the user used for the internode connections as specified in the node's DSN. Use caution when granting privileges to this function.
 
 #### Synopsis
 
-```postgresql
+```
 bdr.run_on_group(node_group_name text, query text)
 ```
 
 #### Parameters
 
-| Parameter         | Description                                         |
-| ----------------- | --------------------------------------------------- |
+| Parameter | Description |
+| --- | --- |
 | `node_group_name` | Name of the node group where the query is executed. |
-| `query`           | Arbitrary query to execute.                         |
+| `query` | Arbitrary query to execute. |
 
 #### Notes
 
-This function connects to other nodes and executes the query, returning
-a result from each of them in JSON format. Multiple rows can be returned from
-each node, encoded as a JSON array. Any errors, such as being unable to
-connect because a node is down, are shown in the response field.
-No explicit statement_timeout or other runtime parameters are set, so
-defaults are used.
+This function connects to other nodes and executes the query, returning a result from each of them in JSON format. Multiple rows can be returned from each node, encoded as a JSON array. Any errors, such as being unable to connect because a node is down, are shown in the response field. No explicit statement\_timeout or other runtime parameters are set, so defaults are used.
 
-This function doesn't go through normal replication. It uses direct client
-connection to all known nodes. By default, the connection is created
-with `bdr.ddl_replication = off` to avoid replication issues when the same
-replicated DDL command is sent to multiple nodes.
+This function doesn't go through normal replication. It uses direct client connection to all known nodes. By default, the connection is created with `bdr.ddl_replication = off` to avoid replication issues when the same replicated DDL command is sent to multiple nodes.
 
-In PGD 6 and later, this function also sets `bdr.xact_replication=off` on the
-connection to ensure that transactions run locally only when the command is
-executed on another node.
+In PGD 6 and later, this function also sets `bdr.xact_replication=off` on the connection to ensure that transactions run locally only when the command is executed on another node.
 
-Be careful when using this function since you risk breaking replication
-and causing inconsistencies between nodes in the group. For global schema changes, 
-to replicate DDL, use
-either transparent DDL replication or `bdr.replicate_ddl_command()`.
+Be careful when using this function since you risk breaking replication and causing inconsistencies between nodes in the group. For global schema changes, to replicate DDL, use either transparent DDL replication or `bdr.replicate_ddl_command()`.
 
-### `bdr.global_lock_table`
+### `bdr.run_on_nodes`
 
-This function acquires a global DML locks on a given table.
-See [DDL locking details](/pgd/current/ddl/ddl-locking/) for information
-about global DML lock.
+Function to run a query on a specified list of nodes.
+
+!!! Warning
+    This function runs an arbitrary query on remote nodes with the privileges of the user used for the internode connections as specified in the node's DSN. Use caution when granting privileges to this function.
 
 #### Synopsis
 
-```sql
-bdr.global_lock_table(relation regclass)
+```
+bdr.run_on_nodes(node_names text[], query text)
 ```
 
 #### Parameters
 
-| Parameter  | Description                          |
-| ---------- | ------------------------------------ |
-| `relation` | Name or oid of the relation to lock. |
+| Parameter | Description |
+| --- | --- |
+| `node_names` | Text ARRAY of node names where the query is executed. |
+| `query` | Arbitrary query to execute. |
 
 #### Notes
 
-This function acquires the global DML lock independently of the
-`ddl_locking` setting.
+This function connects to other nodes and executes the query, returning a result from each of them in JSON format. Multiple rows can be returned from each node, encoded as a JSON array. Any errors, such as being unable to connect because a node is down, are shown in the response field. No explicit statement\_timeout or other runtime parameters are set, so defaults are used.
 
-The `bdr.global_lock_table` function requires `UPDATE`, `DELETE`, or `TRUNCATE`
-privilege on the locked `relation` unless `bdr.backwards_compatibility` is
-set to 30618 or lower.
+This function doesn't go through normal replication. It uses direct client connection to all known nodes. By default, the connection is created with `bdr.ddl_replication = off` to avoid replication issues when the same replicated DDL command is sent to multiple nodes.
 
-### `bdr.wait_for_xid_progress`
+In PGD 6 and later, this function also sets `bdr.xact_replication=off` on the connection to ensure that transactions run locally only when the command is executed on another node.
 
-You can use this function to wait for the given transaction (identified
-by its XID) originated at the given node (identified by its node id)
-to make enough progress on the cluster. The progress is defined as the
-transaction being applied on a node and this node having seen all
-other replication changes done before the transaction is applied.
+Be careful when using this function since you risk breaking replication and causing inconsistencies between nodes. For global schema changes, to replicate DDL, use either transparent DDL replication or `bdr.replicate_ddl_command()`.
+
+### `bdr.stat_reset`
+
+Resets statistics for the specified category. Running this function clears the value of the column `stats_reset` in the [bdr.stat_reconcile_commit_scope](catalogs-visible#bdrstat_reconcile_commit_scope) view.
+
+Requires `bdr_superuser` privileges.
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| stats_tupe | The category of statistics to reset. Valid values are `commit_scope` and `reconcile_commit_scope`. If `NULL`, the function defaults to `commit_scope`. |
+
+### `bdr.wait_for_apply_queue`
+
+The function `bdr.wait_for_apply_queue` allows a PGD node to wait for the local application of certain transactions originating from a given PGD node. It returns only after all transactions from that peer node are applied locally. An application or a proxy can use this function to prevent stale reads.
+
+For convenience, PGD provides a variant of this function for CAMO and the CAMO partner node. See 
+[bdr.wait\_for\_camo\_partner\_queue](https://www.google.com/search?q=%23bdrwait_for_camo_partner_queue)
+.
+
+In case a specific LSN is given, that's the point in the recovery stream from which the peer waits. You can use this with `bdr.last_committed_lsn` retrieved from that peer node on a previous or concurrent connection.
+
+If the given `target_lsn` is NULL, this function checks the local receive buffer and uses the LSN of the last transaction received from the given peer node, effectively waiting for all transactions already received to be applied. This is especially useful in case the peer node has failed and it's not known which transactions were sent. In this case, transactions that are still in transit or buffered on the sender side aren't waited for.
 
 #### Synopsis
 
-```sql
+```
+bdr.wait_for_apply_queue(peer_node_name TEXT, target_lsn pg_lsn)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `peer_node_name` | The name of the peer node from which incoming transactions are expected to be queued and to wait for. If NULL, waits for all peer node's apply queue to be consumed. |
+| `target_lsn` | The LSN in the replication stream from the peer node to wait for, usually learned by way of `bdr.last_committed_lsn` from the peer node. |
+
+### `bdr.wait_for_xid_progress`
+
+You can use this function to wait for the given transaction (identified by its XID) originated at the given node (identified by its node id) to make enough progress on the cluster. The progress is defined as the transaction being applied on a node and this node having seen all other replication changes done before the transaction is applied.
+
+#### Synopsis
+
+```
 bdr.wait_for_xid_progress(origin_node_id oid, origin_topxid int4, allnodes boolean DEFAULT true)
 ```
 
 #### Parameters
 
-| Parameter        | Description                                                                                              |
-| ---------------- | -------------------------------------------------------------------------------------------------------- |
-| `origin_node_id` | Node id of the node where the transaction originated.                                                    |
-| `origin_topxid`  | XID of the transaction.                                                                                  |
-| `allnodes`       | If `true`, wait for the transaction to progress on all nodes. Otherwise, wait only for the current node. |
+| Parameter | Description |
+| --- | --- |
+| `origin_node_id` | Node id of the node where the transaction originated. |
+| `origin_topxid` | XID of the transaction. |
+| `allnodes` | If `true`, wait for the transaction to progress on all nodes. Otherwise, wait only for the current node. |
 
 #### Notes
 
-You can use the function only for those transactions that
-replicated a DDL command because only those transactions are tracked
-currently. If a wrong `origin_node_id` or `origin_topxid` is supplied,
-the function might wait forever or until `statement_timeout` occurs.
+You can use the function only for those transactions that replicated a DDL command because only those transactions are tracked currently. If a wrong `origin_node_id` or `origin_topxid` is supplied, the function might wait forever or until `statement_timeout` occurs.
 
-### `bdr.local_group_slot_name`
+### `bdr.wait_node_confirm_lsn`
 
-Returns the name of the group slot on the local node.
+Wait until a node passes a certain LSN.
 
-#### Example
+This function allows you to wait until the last write on this session was replayed to one or all nodes.
 
-```sql
-pgddb=# SELECT bdr.local_group_slot_name();
- local_group_slot_name
------------------------
- bdr_pgddb_bdrgroup
-```
+Upon being called, the function waits for a node to pass a certain LSN. If no LSN is supplied, the current wal\_flush\_lsn (using the `pg_current_wal_flush_lsn()` function) position is used on the local node. Supplying a node name parameter tells the function to wait for that node to pass the LSN. If no node name is supplied (by passing NULL), the function waits until all the nodes pass the LSN.
 
-### `bdr.node_group_type`
+We recommend using this function if you are using 
+[Optimized Topology](https://www.google.com/search?q=../../nodes/subscriber_only/optimizing-so)
+ instead of 
+[`bdr.wait_slot_confirm_lsn`](https://www.google.com/search?q=/pgd/6/reference/tables-views-functions/functions%23bdrwait_slot_confirm_lsn)
+.
 
-Returns the type of the given node group. Returned value is the same as what
-was passed to `bdr.create_node_group()` when the node group was created,
-except `global` is returned if the `node_group_type` was passed as NULL
-when the group was created.
+This is because in an Optimized Topology, not all nodes have replication slots, so the function `bdr.wait_slot_confirm_lsn` might not work as expected. `bdr.wait_node_confirm_lsn` is designed to work with nodes that don't have replication slots, using alternative strategies to determine the progress of a node.
 
-#### Example
-
-```sql
-pgddb=# SELECT bdr.node_group_type('bdrgroup');
- node_group_type
------------------
- global
-```
-
-### `bdr.alter_node_kind`
-
-PGD5 introduced a concept of Task Manager Leader node. The node is selected
-by PGD, but for upgraded clusters, it's important to set the
-`node_kind` properly for all nodes in the cluster.
-Do this manually after upgrading to the latest PGD version by calling the
-`bdr.alter_node_kind()` SQL function for each node.
+If a node is currently down, isn't updating, or simply can't be connected to, the wait will continue indefinitely. To avoid this condition, set the statement\_timeout to the maximum amount of time you are prepared to wait.
 
 #### Synopsis
 
-```sql
-bdr.alter_node_kind(node_name text,
-                    node_kind text);
+```
+bdr.wait_node_confirm_lsn(node_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
 ```
 
 #### Parameters
 
-| Parameter   | Description                      |
-| ----------- | -------------------------------- |
-| `node_name` | Name of the node to change kind. |
-| `node_kind` | Kind of the node.                |
+| Parameter | Description |
+| --- | --- |
+| `node_name` | Name of the node to wait for. If NULL, waits for all nodes. |
+| `target_lsn` | LSN to wait for. If NULL, uses the current wal\_flush\_lsn on the local node. |
 
-### `bdr.alter_subscription_skip_changes_upto`
+#### Notes
 
-Because logical replication can replicate across versions, doesn't replicate
-global changes like roles, and can replicate selectively, sometimes the logical
-replication apply process can encounter an error and stop applying changes.
+Requires `bdr_application` privileges to use.
 
-Wherever possible, fix such problems by making changes to the
-target side. `CREATE` any missing table that's blocking replication,
-`CREATE` a needed role, `GRANT` a necessary permission, and so on. But occasionally a
-problem can't be fixed that way and it might be necessary to skip entirely over a
-transaction.
-Changes are skipped as entire transactions—all or nothing. To decide where to
-skip to, use log output to find the commit LSN, per the example that follows, or peek
-the change stream with the logical decoding functions.
+### `bdr.wait_slot_confirm_lsn`
 
-Unless a transaction made only one change, you often need to manually
-apply the transaction's effects on the target side, so it's important to
-save the problem transaction whenever possible, as shown in the examples that follow.
+Allows you to wait until the last write on this session was replayed to one or all nodes.
 
-It's possible to skip over changes without
-`bdr.alter_subscription_skip_changes_upto` by using
-`pg_catalog.pg_logical_slot_get_binary_changes` to skip to the LSN of interest,
-so this is a convenience function. It does do a faster skip, although it
-might bypass some kinds of errors in logical decoding.
+Waits until a slot passes a certain LSN. If no position is supplied, the current write position is used on the local node.
 
-This function works only on disabled subscriptions.
+If no slot name is passed, it waits until all PGD slots pass the LSN.
 
-The usual sequence of steps is:
+The function polls every 1000 ms for changes from other nodes.
 
-1.  Identify the problem subscription and LSN of the problem commit.
-2.  Disable the subscription.
-3.  Save a copy of the transaction using `pg_catalog.pg_logical_slot_peek_changes` on the source node, if possible.
-4.  `bdr.alter_subscription_skip_changes_upto` on the target node.
-5.  Apply repaired or equivalent changes on the target manually, if necessary.
-6.  Reenable the subscription.
+If a slot is dropped concurrently, the wait ends for that slot. If a node is currently down and isn't updating its slot, then the wait continues. You might want to set `statement_timeout` to complete earlier in that case.
 
-!!! Warning
-
-    It's easy to make problems worse when using this function. Don't
-    do anything unless you're certain it's the only option.
+If you are using 
+[Optimized Topology](https://www.google.com/search?q=/pgd/current/nodes/subscriber_only/optimizing-so/)
+, we recommend using 
+[`bdr.wait_node_confirm_lsn`](https://www.google.com/search?q=/pgd/latest/reference/tables-views-functions/functions%23bdrwait_node_confirm_lsn)
+ instead.
 
 #### Synopsis
 
-```sql
-  bdr.alter_subscription_skip_changes_upto(
-    subname text,
-    skip_upto_and_including pg_lsn
-  );
+```
+bdr.wait_slot_confirm_lsn(slot_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
 ```
 
-#### Example
+#### Notes
 
-Apply of a transaction is failing with an error, and you've determined that
-lower-impact fixes such as changes on the target side can't resolve this
-issue. You determine that you must skip the transaction.
+Requires `bdr_application` privileges to use.
 
-In the error logs, find the commit record LSN to skip to, as in this
-example:
+#### Parameters
 
-```
-ERROR:  XX000: CONFLICT: target_table_missing; resolver skip_if_recently_dropped returned an error: table does not exist
-CONTEXT:  during apply of INSERT from remote relation public.break_me in xact with commit-end lsn 0/300AC18 xid 131315
-committs 2021-02-02 15:11:03.913792+01 (action #2) (effective sess origin id=2 lsn=0/300AC18)
-while consuming 'I' message from receiver for subscription bdr_regression_bdrgroup_node1_node2 (id=2667578509)
-on node node2 (id=3367056606) from upstream node node1 (id=1148549230, reporiginid=2)
-```
+| Parameter | Description |
+| --- | --- |
+| `slot_name` | Name of the replication slot to wait for. If NULL, waits for all PGD slots. |
+| `target_lsn` | LSN to wait for. If NULL, uses the current write LSN on the local node. |
 
-In this portion of log, you have the information you need:
-the_target_lsn: **0/300AC18**
-the_subscription: **bdr_regression_bdrgroup_node1_node2**
-
-Next, disable the subscription so the apply worker doesn't try to connect to the replication slot:
-
-```sql
-  SELECT bdr.alter_subscription_disable('the_subscription');
-```
-
-You can't skip only parts of the transaction: it's all or nothing. So
-we strongly recommend that you save a record of it by copying it out on the
-provider side first, using the subscription's slot name.
-
-```sql
-  \\copy (SELECT * FROM pg_catalog.pg_logical_slot_peek_changes('the_slot_name',
-      'the_target_lsn', NULL, 'min_proto_version', '1', 'max_proto_version', '1',
-      'startup_params_format', '1', 'proto_format', 'json'))
-   TO 'transaction_to_drop.csv' WITH (FORMAT csv);
-```
-
-This example is broken into multiple lines for readability,
-but issue it in a single line. `\copy` doesn't
-support multi-line commands.
-
-You can skip the change by changing `peek` to `get`, but
-`bdr....skip_changes_upto` does a faster skip that avoids decoding
-and outputting all the data:
-
-```sql
-  SELECT bdr.alter_subscription_skip_changes_upto('subscription_name',
-      'the_target_lsn');
-```
-
-You can apply the same changes (or repaired versions of them)
-manually to the target node, using the dumped transaction contents as a guide.
-
-Finally, reenable the subscription:
-
-```sql
-  SELECT bdr.alter_subscription_enable('the_subscription');
-```
 
 ## Global advisory locks
 
