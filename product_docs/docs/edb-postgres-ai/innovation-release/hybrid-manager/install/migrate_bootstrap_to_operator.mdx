@@ -91,6 +91,87 @@ The migration works by changing the `meta.helm.sh/release-name` annotation on al
 * Access to kubectl and helm CLI tools
 * `jq` command-line JSON processor installed
 
+The following script performs all migration steps in sequence. You can run it as a single script or execute each step manually.
+
+```bash
+#!/bin/bash
+set -e
+
+echo "Starting migration from Bootstrap to Operator installation..."
+
+echo "Step 1: Deleting bootstrap deployments..."
+kubectl delete deployments -n edbpgai-bootstrap --all
+
+echo "Step 2: Transferring Helm ownership of ServiceAccount..."
+kubectl annotate sa edb-hcp-operator-controller-manager \
+  meta.helm.sh/release-name=edb-hcp-operator \
+  --overwrite \
+  -n edbpgai-bootstrap
+
+echo "Step 3: Transferring Helm ownership of CRDs..."
+for line in $(kubectl get crd | grep edbpgai.edb.com | awk '{print $1}'); do
+  kubectl annotate crd $line \
+    meta.helm.sh/release-name=edb-hcp-operator \
+    --overwrite
+done
+
+echo "Step 4: Transferring Helm ownership of ClusterRoles..."
+for line in $(kubectl get clusterroles -o json | \
+  jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edbpgai-bootstrap") | .metadata.name'); do
+  kubectl annotate clusterrole $line \
+    meta.helm.sh/release-name=edb-hcp-operator \
+    --overwrite
+done
+
+echo "Step 5: Transferring Helm ownership of ClusterRoleBindings..."
+for line in $(kubectl get clusterrolebindings -o json | \
+  jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edbpgai-bootstrap") | .metadata.name'); do
+  kubectl annotate clusterrolebinding $line \
+    meta.helm.sh/release-name=edb-hcp-operator \
+    --overwrite
+done
+
+echo "Step 6: Transferring Helm ownership of Roles..."
+for line in $(kubectl get roles -n edbpgai-bootstrap -o json | \
+  jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edbpgai-bootstrap") | .metadata.name'); do
+  kubectl annotate role $line \
+    meta.helm.sh/release-name=edb-hcp-operator \
+    --overwrite \
+    -n edbpgai-bootstrap
+done
+
+echo "Step 7: Transferring Helm ownership of RoleBindings..."
+for line in $(kubectl get rolebindings -n edbpgai-bootstrap -o json | \
+  jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edbpgai-bootstrap") | .metadata.name'); do
+  kubectl annotate rolebinding $line \
+    meta.helm.sh/release-name=edb-hcp-operator \
+    --overwrite \
+    -n edbpgai-bootstrap
+done
+
+echo "Step 8: Transferring Helm ownership of Services..."
+for line in $(kubectl get svc -n edbpgai-bootstrap -o json | \
+  jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edbpgai-bootstrap") | .metadata.name'); do
+  kubectl annotate svc $line \
+    meta.helm.sh/release-name=edb-hcp-operator \
+    --overwrite \
+    -n edbpgai-bootstrap
+done
+
+echo "Step 9: Transferring Helm ownership of Webhook Configurations..."
+kubectl annotate mutatingwebhookconfiguration \
+  edb-hcp-operator-mutating-webhook-configuration \
+  meta.helm.sh/release-name=edb-hcp-operator \
+  --overwrite
+
+kubectl annotate validatingwebhookconfiguration \
+  edb-hcp-operator-validating-webhook-configuration \
+  meta.helm.sh/release-name=edb-hcp-operator \
+  --overwrite
+
+echo "migration completed successfully! Now the operator can be installed without conflicts."
+```
+
 ### Step 1: Delete bootstrap deployments
 
 Remove all deployments in the bootstrap namespace. This stops the bootstrap controllers:
@@ -298,78 +379,11 @@ kubectl get clusterroles -o json | \
   jq -r '.items[] | select(.metadata.annotations["meta.helm.sh/release-name"] == "edb-hcp-operator") | .metadata.name' | head -3
 ```
 
-### Step 11: Convert your configuration to HybridControlPlane CR
-
-Create a new `hybridcontrolplane.yaml` file based on your previous `values.yaml`. Use the mapping reference from the [Operator installation guide](./install_hm_operator#configuration-mapping-reference).
-
-Example conversion:
-
-**From values.yaml (Bootstrap):**
-```yaml
-system: eks
-containerRegistryURL: "docker.enterprisedb.com/pgai-platform"
-bootstrapImageTag: "2026.1.0"
-parameters:
-  global:
-    portal_domain_name: "portal.my-company.com"
-    storage_class: "gp3"
-```
-
-**To hybridcontrolplane.yaml (Operator):**
-```yaml
-apiVersion: edbpgai.edb.com/v1alpha1
-kind: HybridControlPlane
-metadata:
-  name: edbpgai
-  annotations:
-    edbpgai.com/ready-for-upgrade: "true"
-spec:
-  flavour: eks
-  imageRegistry: docker.enterprisedb.com/pgai-platform
-  version: "2026.1.0"
-  source:
-    remote: true
-  globalParameters:
-    portal_domain_name: "portal.my-company.com"
-    storage_class: "gp3"
-  # ... add other parameters
-```
-
-See the [complete HybridControlPlane example](./install_hm_operator#example-hybridcontrolplane-manifest) for all fields.
-
-### Step 12: Install the operator
-
-Install the operator helm chart. Because we've transferred ownership of existing resources, the operator will adopt them:
-
-```bash
-# Install the operator helm chart
-helm template \
-  --namespace edbpgai-bootstrap \
-  --install \
-  --version <OPERATOR_VERSION> \
-  --include-crds \
-  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
-  --set "controllerManager.manager.image.repository=docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager" \
-  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
-  --set "imagePullSecrets[0].name=edb-cred" \
-  | kubectl apply -f -
-
-# Verify operator is running
-kubectl get pods -n edbpgai-bootstrap
-```
-
-!!! Success Resource Adoption
-Because we transferred Helm ownership annotations, the operator helm chart will adopt the existing resources instead of trying to create new ones. This prevents the Helm ownership conflict error.
-!!!
-
-See the complete [Operator installation guide](./install_hm_operator) for more details on installing and configuring the operator.
-
 ## Support
 
 If you encounter issues during migration:
 
 * Check the [troubleshooting guide](../using_hybrid_manager/troubleshooting)
-* Review operator logs: `kubectl logs -n edbpgai-bootstrap deployment/edb-hcp-operator`
 * Contact EDB Support with migration logs and error messages
 * Consult EDB Professional Services for complex migration scenarios
 
