@@ -48,14 +48,15 @@ set PEM_SERVER_PASSWORD=edb
 
 | Option                          | Description                                                                                                                                                                                                                                                                       |
 |---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--pem-server`                  | The IP address of the PEM backend database server. This parameter is required.                                                                                                                                                                                                    |
+| `--pem-server`                  | The IP address of the PEM backend database server. This parameter is required unless `--pem-registration-conn-string` is specified.                                                                                                                                                                                                    |
 | `--pem-port`                    | The port of the PEM backend database server. The default value is `5432`.                                                                                                                                                                                                         |
-| `--pem-user`                    | The name of a database user with the pem_admin role and the `rolcreaterole` flag set on the PEM backend database server, or a superuser. This user will be used to connect to the PEM server to perform agent registration. This parameter is required.                                                                                                                                                         |
+| `--pem-user`                    | The name of a database user with the pem_admin role and the `rolcreaterole` flag set on the PEM backend database server (the latter is not required if you specify an existing user via `--pem-agent-user` or an agent connection string), or a superuser. This user will be used to connect to the PEM server to perform agent registration. This parameter is required unless `--pem-registration-conn-string` is specified.                                                                                                                                                         |
 | `--pem-agent-user`              | The name of a database user on the PEM backend database server. After registration, the agent will use this user to open connections to the PEM database server to write probe data, evaluate alerts, and so on. This parameter is optional. If omitted, the agent connects using a new user named `agent<N>` created during registration, where `<N>` is the agent ID.  |
 | `--pem-ssl-mode`                | The [SSL mode](https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-PROTECTION) for the PEM agent user to use (see above). The possible values are `prefer`, `require`, `disable`, `verify-CA`, and `verify-full`. The default value is `require`.                                                                                                              |
+| `--pem-registration-conn-string`| The connection string used to connect to the PEM server during registration. See [Using connection strings](#using-connection-strings). |
 | `--cert-path`                   | The complete path to a directory in which to store certificates. If you don't provide a path, certificates are created in `~/.pem` on Linux and `%APPDATA%/pem` on Windows.                                                                                                     |
 | `--config-dir`                  | The directory path for the configuration file. The default is `<pemworker path>/../etc`.                                                                                                                                                                                          |
-| `--display-name`                | A user-friendly name for the agent to display in the PEM browser tree. In PEM 9.6 and later, the default is the host's fully qualified domain name (FQDN), falling back to the hostname if this option isn't set. For releases earlier than PEM 9.6, the default is the hostname. |
+| `--display-name`                | A user-friendly name for the agent to display in the PEM browser tree. The default is the host's fully qualified domain name (FQDN), falling back to the hostname if this option isn't set. |
 | `--force-registration`          | Include the `force-registration` clause to register the agent with the arguments provided. This clause is useful if you're overriding an existing agent configuration. The default value is `Yes`.                                                                                |
 | `--group`                       | The name of a group in which to place the agent. This parameter is optional. If omitted, the agent isn't placed in a group.                                                                                                                                                                                                                            |
 | `--team`                        | The name of a database role on the PEM backend database server. Access to this agent is restricted to only the named role, the owner, and the pem_super_admin role. This parameter is optional. If omitted, no team is assigned, meaning all users can access this agent.                                                                                                                                                                       |
@@ -90,6 +91,7 @@ When invoking the pemworker utility, you must provide the password associated wi
 -   Set the `PEM_SERVER_PASSWORD` environment variable.
 -   Provide the password on the command line with the `PGPASSWORD` keyword.
 -   Create an entry in the `.pgpass` file.
+-   Include a password, or encrypted password, in `--pem-registration-conn-string`
 
 If you don't provide the password, a password authentication error occurs. After authentication succeeds, you're prompted for any other missing required information. When the registration is complete, the server confirms that the agent was successfully registered.
 
@@ -133,6 +135,56 @@ When invoking the pemworker utility, append command line options to the command 
 ## Advanced usage
 
 The following are some advanced options for PEM agent registration.
+
+### Using connection strings
+
+For finer control over how the PEM agent connects to the PEM backend database, you can specify connection strings.
+There are two connection strings you can specify, the *registration connection string and the *agent* connection string.
+These connection strings can be in either key-value or URI format and include any options supported by libpq with the exception of `dbname` which is hardcoded to `pem` and `target_session_attrs` which is hardcoded to `read-write`.
+
+#### The registration connection string
+
+The registration connection string, specified using `--pem-registration-conn-string`, is used for 'one time' privileged connections to the PEM backend to perform the following tasks.:
+
+- Agent registration (--register-agent)
+- Agent unregistration (--unregister-agent)
+- Server registration (--register-server)
+- Server unregistration (--unregister-server)
+
+The registration string must specify a user with the necessary permissions to perform these actions, specifically
+- `pem_admin` role
+- `rolcreaterole` unless you also specify an existing user via `--pem-agent-user` or an agent connection string (see below)
+
+The registration connection string itself is never stored, so must be entered whenever you wish to use it to perform one of these tasks.
+Note that the host and port will be extracted from the connection string used for agent registration and stored in the agent.cfg file so the agent knows where to find the PEM backend.
+
+You can also specify the registration connection string using the environment variable `PEM_REGISTRATION_CONN_STRING` The order of precedence is as follows:
+
+1. Command-line Argument (--pem-registration-conn-string) - Highest priority
+1. Environment Variable (PEM_REGISTRATION_CONN_STRING)
+1. Individual Parameters (--pem-server, --pem-port, --pem-user) - Lowest priority
+
+#### The agent connection string
+
+The agent connection string is used for the persistent connection used by the agent to connect to the PEM backend for ongoing data collection, etc.
+This is an override option, written directly to agent.cfg so must be specified using `-o agent_connection_string`.
+
+When the agent connection string is not set, the agent will use the individual parameters in `agent.cfg` (`pem_host`, `pem_port`, etc.), or the registry on Windows, to determine how and where to connect.
+
+When the agent connection string is set, these parameters are ignored. If the agent connection string is specified during agent registration, PEM will not attempt to create a user or a client certificate for the agent connection.
+If you supply a connection string, you must ensure that the specified user exists, can authenticate and has the `pem_agent` role.
+
+The agent connection string will be stored in `agent.cfg`, or the registry on Windows.
+If the string contains a `password` or `sslpassword` value, it will be encrypted and replaced with the custom `pemenc_password` or `pemenc_sslpassword` values respectively.
+Passwords containing special characters must be enclosed in single quotes (key-value style) or URL encoded (URI style).
+
+You can also specify the agent connection string using the environment variable `PEM_AGENT_CONN_STRING` The order of precedence is as follows:
+
+1. Command-line Argument (`-oagent_conn_string=...`) - Highest priority
+1. Environment Variable (`PEM_AGENT_CONN_STRING`)
+1. Configuration File/Registry (`agent_conn_string` / `AGENT_CONN_STRING`)
+1. Individual Parameters (`pem_host`, `pem_port`, `pem_ssl_mode`, etc.) - Lowest priority
+
 
 ### Setting the agent ID
 

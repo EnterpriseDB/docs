@@ -9,6 +9,8 @@ This example uses Patroni for cluster management, PostgreSQL 17 as the PEM backe
 Our operating system is RHEL 9 x86. 
 
 Please see [High Availability Patterns for PEM Deployment](../../considerations/ha_pem.mdx) to understand other options.
+
+Also refer to [Deciding on an SSL model](../../considerations/ssl_certs.mdx) to determine how you will provide SSL certificates and keys prior to starting installation.
     
 The examples that follow use these IP addresses:
 
@@ -21,6 +23,7 @@ The examples that follow use these IP addresses:
 -   172.16.161.111 - etcd-node-1
 -   172.16.161.112 - etcd-node-2
 -   172.16.161.113 - etcd-node-3
+
 
 ## Setting up a Distributed Consensus Store with etcd
 
@@ -75,7 +78,14 @@ Refer to [Getting started with repositories](/repos/getting_started/) for more d
 curl -1sLf  'https://downloads.enterprisedb.com/<token>/<repo>/setup.rpm.sh' | bash
 ```
 
-## Deploying the PEM backend
+## Create a Patroni cluster
+
+Before installing PEM, you should have a working Patroni cluster on the
+backend hosts. This section provides instructions to deploy such a
+cluster. You do not have to follow these steps if you have your own
+processes to provision Patroni clusters. However, if you plan to use
+sslutils you should ensure it is installed on your cluster before
+proceeding.
 
 ### Initial package installation and Postgres configuration
 
@@ -84,13 +94,11 @@ Perform the following steps on all backend nodes unless stated otherwise.
 1.  Install the following packages:
 
     -   [PostgreSQL](/supported-open-source/postgresql/installing/) (backend database for PEM Server)
-    -   [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites) (see Prerequisites in PEM server installation)
-    -   [PEM Server](/pem/latest/installing/)
     -   [Patroni](/supported-open-source/patroni/installing_patroni/)
 
     ```shell
     dnf -qy module disable postgresql
-    dnf -y --allowerasing install postgresql17-server postgresql17-contrib edb-pem sslutils_17 edb-patroni
+    dnf -y install postgresql17-server postgresql17-contrib edb-patroni
     ```
 
 1.  Initialize a Postgres database and start the service.
@@ -108,48 +116,20 @@ Perform the following steps on all backend nodes unless stated otherwise.
     firewall-cmd --reload      
     ```
 
-### Configure PEM on the primary backend node
+### Optional: install sslutils
 
-Configure the PEM database installation **on the primary backend server only**:
+If you wish PEM to act as a certificate authority and automatically issue client certificates, you will need to configure [sslutils](../linux_x86_64/pem_rhel_9/#prerequisites).
+If you plan to provide your own certificates, then you may skip this step.
 
-Perform the following steps on the primary.
+1.  Install the sslutils package on all backend hosts.
 
-1.  Create a superuser that can login using a password. This is the user we will use to install PEM.
-    It will also become the agent-server binding user for the agents running on PEM backend hosts.
-    ```shell
-    su - postgres -c "psql -c \"create role pemserver login superuser password 'your-password-here';\""
+    ```sh
+    dnf install sslutils_17
     ```
 
-1.  Run the PEM configuration script, specifying option 3 (Database) and the IPs of all three backend hosts as `pemserver` user.
-    Provide the loopback IP address rather than the external IP address for the primary.
-    If you are using PEM 10.3 or later, also specify the agent-server-binding host as the loopback IP.
+### Create Patroni users
 
-    ```shell
-    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
-                                             -ho '127.0.0.1,172.16.161.201,172.16.161.202' \
-                                             -su pemserver \
-                                             -asb-host-name '127.0.0.1'
-    ```
-    You will be prompted for various additional details. 
-    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
-
-1. Edit `/usr/edb/pem/share/.install-config`.
-   Change the value of `DB_UNIT_FILE` to `patroni`.
-   This ensures that future upgrades restart Patroni rather than attempting to restart the Postgres service, which is no longer used once Patroni is managing the cluster.
-
-1. Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](user_settings.md).
-   At this stage, you can only complete the backend configuration. 
-   We will configure the web application later.
-
-
-### Copy the configuration record to the standbys
-
-Copy the file `/usr/edb/pem/share/.install-config` from the primary to all standbys.
-This ensures you will be able to upgrade PEM from whichever node is the current primary in future.
-
-### Set up Patroni on the primary node
-
-#### Create Patroni users and generate a configuration file
+Perform the following steps on the primary backend host only.
 
 1.  Create the Patroni superuser, replication and rewind roles. Execute the following SQL as a superuser.
 
@@ -170,102 +150,75 @@ This ensures you will be able to upgrade PEM from whichever node is the current 
 
     Give the passwords of your choice.
 
-1.  Generate a Patroni configuration file from the current instance.
-    Ensure it is owned by the user `postgres`.
 
-    ```shell
-    patroni --generate-config --dsn 'host=localhost user=patroni_super dbname=postgres' /etc/patroni/patroni.yml
-    chown postgres:postgres /etc/patroni/patroni.yml
-    ```
+### Set up Patroni on the primary
 
-#### Edit the generated configuration file
-
-In the generated file:
-
-1.  Set the name of the cluster under `scope` and a unique name for the node under `name`.
-
-1.  Tell Patroni to use your etcd cluster as its DCS.
-    Add the following to the top-level file.
+1.  Create a file at `/etc/patroni/patroni.yml` and add the following content, 
+    adjusting the IP addresses to match your cluster and specifying 
+    the required cluster and node names.
 
     ```yaml
+    scope: cluster-name
+    name: node-name
+
+    restapi:
+        listen: 172.16.161.200:8008
+        connect_address: 172.16.161.200:8008
+
     etcd3:
       hosts:
         - 172.16.161.111:2379
         - 172.16.161.112:2379
         - 172.16.161.113:2379
-    ```
 
-1.  Add the details of the users you configured in step 1 under `postgresql.authentication`.
-    For example:
+    bootstrap:
+      dcs:
+        ttl: 30
+        loop_wait: 10
+        retry_timeout: 10
+        maximum_lag_on_failover: 1048576
+        postgresql:
+          use_pg_rewind: true
+          pg_hba:
+            - '# Allow our Patroni users to connect as required'
+            - host    all             patroni_super   127.0.0.1/32            scram-sha-256
+            - host replication        patroni_rep     127.0.0.1/32            scram-sha-256
+            - host all                patroni_rew     127.0.0.1/32            scram-sha-256
+            - host replication        patroni_rep     172.16.161.200/32       scram-sha-256
+            - host all                patroni_rew     172.16.161.200/32       scram-sha-256
+            - host replication        patroni_rep     172.16.161.201/32       scram-sha-256
+            - host all                patroni_rew     172.16.161.201/32       scram-sha-256
+            - host replication        patroni_rep     172.16.161.202/32       scram-sha-256
+            - host all                patroni_rew     172.16.161.202/32       scram-sha-256
+            - '# This is the default config for this PG package'
+            - local   all             all                                     peer
+            - host    all             all             127.0.0.1/32            scram-sha-256
+            - host    all             all             ::1/128                 scram-sha-256
+            - local   replication     all                                     peer
+            - host    replication     all             127.0.0.1/32            scram-sha-256
+            - host    replication     all             ::1/128                 scram-sha-256
+    
+      initdb:
+        - encoding: UTF8
+        - data-checksums
 
-    ```yaml
-    authentication:
-        replication:
-            username: patroni_rep
-            password: your-password-here
-        superuser:
-            username: patroni_super
-            password: your-password-here
-        rewind:
-            username: patroni_rew
-            password: your-password-here
-    ```
-
-1.  Change `postgresql.listen` to `'*:5432'`
-
-1.  Change `postgresql.bin_dir` to `/usr/pgsql-17/bin`. Add this line if it is not present.
-
-1.  Remove the entirety of the `postgresql.pg_hba` section, including the `pg_hba:` key itself.
-    If you have created any rules that you wish to keep, you may wish to take a copy for the next step.
-
-1.  Create a `pg_hba` section under `bootstrap.dcs.postgresql` and populate it with a common set of HBA rules for all nodes.
-    The example below provides all the access required for PEM and Patroni in this example.
-
-    ```yaml
-    # Allow users of the web interface to connect to pem and postgres databases
-    - hostssl pem      +pem_user   127.0.0.1/32      scram-sha-256
-    - hostssl postgres +pem_user   127.0.0.1/32      scram-sha-256
-    - hostssl pem      +pem_user   172.16.161.211/32  scram-sha-256
-    - hostssl postgres +pem_user   172.16.161.211/32  scram-sha-256
-    - hostssl pem      +pem_user   172.16.161.212/32  scram-sha-256
-    - hostssl postgres +pem_user   172.16.161.212/32  scram-sha-256
-    - hostssl pem      +pem_user   172.16.161.213/32  scram-sha-256
-    - hostssl postgres +pem_user   172.16.161.213/32  scram-sha-256
-   
-    # Allow the PEM server agents to register and connect to send data to PEM server
-    - hostssl pem      +pem_agent  127.0.0.1/32            cert
-    - hostssl pem      +pem_admin  172.16.161.200/32        scram-sha-256
-    - hostssl pem      +pem_agent  172.16.161.200/32        cert
-    - hostssl pem      +pem_admin  172.16.161.201/32        scram-sha-256
-    - hostssl pem      +pem_agent  172.16.161.201/32        cert
-    - hostssl pem      +pem_admin  172.16.161.202/32        scram-sha-256
-    - hostssl pem      +pem_agent  172.16.161.202/32        cert
-   
-    # Allow monitoring agents to connect to PEM
-    # Specify the subnet you selected during PEM configuration
-    - hostssl pem      +pem_user   0.0.0.0/0               scram-sha-256
-    - hostssl pem      +pem_agent  0.0.0.0/0               cert
-
-    # Allow our Patroni users to connect as required
-    # Superuser only requires local connection
-    - host    all             patroni_super     127.0.0.1/32            scram-sha-256
-    # Replication and rewind users require connection from other Patroni hosts
-    - hostssl replication     patroni_rep     127.0.0.1/32            scram-sha-256
-    - hostssl all             patroni_rew     127.0.0.1/32            scram-sha-256
-    - hostssl replication     patroni_rep     172.16.161.200/32        scram-sha-256
-    - hostssl all             patroni_rew     172.16.161.200/32        scram-sha-256
-    - hostssl replication     patroni_rep     172.16.161.201/32        scram-sha-256
-    - hostssl all             patroni_rew     172.16.161.201/32        scram-sha-256
-    - hostssl replication     patroni_rep     172.16.161.202/32        scram-sha-256
-    - hostssl all             patroni_rew     172.16.161.202/32        scram-sha-256
-
-    # This is the default config for this PG package
-    - local   all             all                                     peer
-    - host    all             all             127.0.0.1/32            scram-sha-256
-    - host    all             all             ::1/128                 scram-sha-256
-    - local   replication     all                                     peer
-    - host    replication     all             127.0.0.1/32            scram-sha-256
-    - host    replication     all             ::1/128                 scram-sha-256
+    postgresql:
+        listen: '*:5432'
+        connect_address: 172.16.161.200:5432
+        data_dir: /var/lib/pgsql/17/data
+        bin_dir: /usr/pgsql-17/bin
+        authentication:
+            replication:
+                username: patroni_rep
+                password: 'your-password-here'
+            superuser:
+                username: patroni_super
+                password: 'your-password-here'
+            rewind:
+                username: patroni_rew
+                password: 'your-password-here'
+        parameters:
+            unix_socket_directories: '/var/run/postgresql, /tmp'
     ```
 
 1.  Stop and disable the Postgres service and start Patroni
@@ -303,67 +256,329 @@ On each standby node:
     systemctl enable --now patroni
     ```
 
-### Register agents and servers on the standbys
+You should now have a functioning Patroni cluster, but without SSL or the specific HBA rules required for PEM.
+We will configure these in the next section.
 
-On each standby, perform the following steps.
+## Prepare the Patroni cluster for PEM installation
 
-1.  Register the PEM agent. Specify a multi-host string as the PEM server host and enable alert and notification handling.
-    For consistency with the primary, we provide the loopback IP address 127.0.0.1 for the local host.
-    For example, for Standby 1:
+Before installing PEM in HA mode, we must ensure that the cluster meets two requirements:
 
-    ```shell
-    export PEM_SERVER_PASSWORD=pemserver-password-here
-    /usr/edb/pem/agent/bin/pemworker --register-agent \
-                                     --pem-server '172.16.161.200,127.0.0.1,172.16.161.202' \
-                                     --pem-user pemserver \
-                                     --pem-port 5432 \
-                                     -o alert_threads=1 \
-                                     --enable-snmp true \
-                                     --enable-webhook true \
-                                     --enable-smtp true \
-                                     --max-webhook-retries 3
+- SSL is configured so that the `cert` auth method can be used for connections from PEM agents to the PEM backend database.
+- HBA rules are in place to allow agents and web application instances to connect to the PEM backend.
+
+### Prepare SSL files
+
+Follow the instructions in [Generating SSL files for HA PEM backend hosts](ssl.mdx).
+
+### Modify the Patroni cluster to add SSL and HBA rules
+
+1.  On any backend host, open the editing tool for your cluster using `patronictl edit-config`.
+    For example, the command for the cluster built in the previous section would be:
+
+    ```sh
+    patronictl -c /etc/patroni/patroni.yml edit-config
     ```
-    Enable and start the PEM agent service:
+1.  Add the following under `postgresql.parameters`:
 
-    ```shell
-    systemctl enable --now pemagent
+    ```yaml
+    ssl: on
+    ssl_ca_file: root.crt
+    ssl_cert_file: server.crt
+    ssl_key_file: server.key
     ```
-    See [Registering a PEM Agent](/pem/latest/registering_agent.mdx) for more information. 
 
-1.  Register the Postgres instance with PEM. 
-    The following command means the PEM web application will use the server's external IP when making a client connection to the database, 
-    but the PEM Agent will use the loopback interface to connect locally.
+    If you have a CRL, also set:
 
-    ```shell
-    export PEM_SERVER_PASSWORD=pemserver-password-here
-    export PEM_MONITORED_SERVER_PASSWORD=pemserver-password-here
-    /usr/edb/pem/agent/bin/pemworker --register-server \
-                                     --pem-user pemserver \
-                                     --server-addr 172.16.161.201 \
-                                     --server-port 5432 \
-                                     --server-database postgres \
-                                     --server-user pemserver \
-                                     --asb-host-name localhost  
+    ```yaml
+    ssl_crl_file: root.crl
     ```
-    
-    See [Registering a Postgres Server](/pem/latest/registering_database_server/) for more information
 
-### Register the standbys as PEM backends
+1.  Add the following HBA rules to the **top** of `postgresql.pg_hba` 
+    above the existing rules, adjusting the IP addresses to match your 
+    cluster.
 
-Perform the following step on the primary.
+    ```yaml
+    - '# Allow users of the web interface to connect to pem and postgres databases'
+    - hostssl pem      +pem_user   127.0.0.1/32           scram-sha-256
+    - hostssl postgres +pem_user   127.0.0.1/32           scram-sha-256
+    - hostssl pem      +pem_user   172.16.161.211/32      scram-sha-256
+    - hostssl postgres +pem_user   172.16.161.211/32      scram-sha-256
+    - hostssl pem      +pem_user   172.16.161.212/32      scram-sha-256
+    - hostssl postgres +pem_user   172.16.161.212/32      scram-sha-256
+    - hostssl pem      +pem_user   172.16.161.213/32      scram-sha-256
+    - hostssl postgres +pem_user   172.16.161.213/32      scram-sha-256
 
-Execute the following SQL on the `pem` database as a superuser, providing the correct server and port for each standby.
+    - '# Allow the PEM backend server agents to register and connect to send data to PEM server'
+    - hostssl pem      +pem_agent  127.0.0.1/32           cert
+    - hostssl pem      +pem_admin  172.16.161.200/32      scram-sha-256
+    - hostssl pem      +pem_agent  172.16.161.200/32      cert
+    - hostssl pem      +pem_admin  172.16.161.201/32      scram-sha-256
+    - hostssl pem      +pem_agent  172.16.161.201/32      cert
+    - hostssl pem      +pem_admin  172.16.161.202/32      scram-sha-256
+    - hostssl pem      +pem_agent  172.16.161.202/32      cert
+
+    - '# Allow the PEM web app server agents to register and connect to send data to PEM server'
+    - hostssl pem      +pem_admin   172.16.161.211/32    scram-sha-256
+    - hostssl pem      +pem_agent   172.16.161.211/32    scram-sha-256
+    - hostssl pem      +pem_admin   172.16.161.212/32    scram-sha-256
+    - hostssl pem      +pem_agent   172.16.161.212/32    scram-sha-256
+    - hostssl pem      +pem_admin   172.16.161.213/32    scram-sha-256
+    - hostssl pem      +pem_agent   172.16.161.213/32    scram-sha-256
+
+    - '# Allow our superuser to connect to perform cluster configuration'
+    - hostssl pem,postgres      pemsuper   172.16.161.202/32    scram-sha-256
+    - hostssl pem,postgres      pemsuper   172.16.161.201/32    scram-sha-256
+    - hostssl pem,postgres      pemsuper   172.16.161.213/32    scram-sha-256
+    - hostssl pem,postgres      pemsuper   172.16.161.211/32    scram-sha-256
+    - hostssl pem,postgres      pemsuper   172.16.161.200/32    scram-sha-256
+    - hostssl pem,postgres      pemsuper   172.16.161.212/32    scram-sha-256
+
+    - '# Allow monitoring agents to connect to PEM'
+    - '# Specify a subnet that includes all your monitored servers'
+    - '# Duplicate these lines for multiple subnets'
+    - hostssl pem      +pem_user   0.0.0.0/0               scram-sha-256
+    - hostssl pem      +pem_agent  0.0.0.0/0               cert
+    ```
+
+1.  If using a common agent user, add one additional line to allow the first agent to connect during PEM installation.
+    This line can be removed later if required.
+
+    ```yaml
+    - hostssl pem      common_agent_user  127.0.0.1/32           cert
+    ```
+
+1.  If you started with a non-SSL cluster, review the existing HBA rules
+    and consider converting `host` rules to `hostssl` rules to force
+    clients to use secure connections if appropriate.
+
+## Prepare agent users and certificates
+
+If you are providing your own SSL certificates, follow these steps to
+prepare for PEM deployment. If you are using sslutils, you may skip this
+section.
+
+<TabContainer syncKey="sslmodel2">
+
+<Tab title="Using a common agent user">
+
+On the primary, create the common agent user.
+Grant connect permission on `template1` to the common agent user. 
+This is only required temporarily and can be revoked later.
 
 ```sql
-SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.201' and port=5432;
-SELECT pem.register_pem_server(id) FROM pem.server WHERE server='172.16.161.202' and port=5432;
+CREATE USER common_agent_user;
+GRANT CONNECT ON DATABASE template1 TO common_agent_user;
 ```
 
-!!! Info
-In older versions of PEM, the PEM server and its local agent had to have ID 1. 
-This is no longer the case from PEM 10.1. Instead this SQL flags this server and agent as belonging to a PEM deployment, 
-which in turn enables important system jobs such as purging expired data when this server is the primary.
-!!!
+Generate a certificate and key pair for this user and save them on all
+the backend and web application hosts.
+
+</Tab>
+
+<Tab title="Using one certificate per agent">
+
+PEM will automatically generate unique, numbered Postgres users (agent1 through agent6) for your deployment across three backend and three frontend hosts.
+
+To support this configuration, you must manually generate six distinct certificate/key pairs—one for each specific agent user—and distribute them so that each host has its own unique pair.
+
+</Tab>
+
+</TabContainer>
+
+
+## Install PEM on the primary
+
+Perform the following steps on the primary host only.
+
+1.  Install the PEM package.
+
+    ```shell
+    dnf install edb-pem --allowerasing
+    ```
+
+1.  Create a superuser that can login using a password. This is the user we will use to install PEM.
+    It will also become the agent-server binding user for the agents running on PEM backend hosts.
+
+    ```shell
+    su - postgres -c "psql -c \"create role pemsuper login superuser password 'your-password-here';\""
+    ```
+
+1.  To configure the PEM server, run the configuration script using the Database option (Option 3) specifying the IPs of all three backend hosts.
+    Provide the loopback IP address rather than the external IP address for the primary.
+
+    To ensure the system is correctly set up for High Availability (HA), you must include the following flags:
+
+    - **`--replication-solution efm` & `--replication-role primary`**: These flags force the script into HA mode, ensuring compatibility with your failover manager.
+
+    - **`--skip-db-certificate`**: This prevents the script from attempting to automatically configure SSL, as you are managing certificates manually in an HA environment.
+
+    <TabContainer syncKey="sslmodel">
+
+    <Tab title="Using sslutils">
+    
+    When using sslutils you must include `--use-existing-sslutils`. This ensures that while the script skips the database SSL setup, it still utilizes the sslutils extension to 
+    handle agent certificate generation.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho '127.0.0.1,172.16.161.201,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution patroni \
+                                             --replication-role primary \
+                                             --skip-db-certificate \
+                                             --use-existing-sslutils \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --db-unitfile patroni
+    ```
+    
+    </Tab>
+
+    <Tab title="Using a common agent user">
+
+    When using a common agent user you must supply the username and path to the certificate and key generated for that user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho '127.0.0.1,172.16.161.201,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution patroni \
+                                             --replication-role primary \
+                                             --db-unitfile patroni \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --skip-db-certificate \
+                                             --use-agent-user 'common_agent_user' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key'
+    ```
+
+    After running this command, grant the common agent user the pem_agent role and revoke its permissions on `template1`.
+
+    ```sql
+    GRANT pem_agent to common_agent_user;
+    REVOKE CONNECT ON DATABASE template1 FROM common_agent_user;
+    ```
+    You may also remove the HBA rule we added for the common agent user at this stage if desired as it will now match the `+pem_agent` rules.
+
+    </Tab>
+
+    <Tab title="Using one certificate per agent">
+
+    When using your own certificate you should specify the agent_id as `1` and path to the certificate and key generated for the corresponding `agent1` user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho '127.0.0.1,172.16.161.201,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution patroni \
+                                             --replication-role primary \
+                                             --db-unitfile patroni \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --skip-db-certificate \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key' \
+                                             -aro agent_id=1
+
+    ```
+
+    </Tab>
+
+    </TabContainer>
+
+    You will be prompted for various additional details.
+    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+
+## Install PEM on the standbys
+
+Perform the following steps on the standby hosts only.
+
+1.  Install the PEM package.
+
+    ```shell
+    dnf install edb-pem --allowerasing
+    ```
+
+
+1.  To configure the PEM server, run the configuration script using the Database option (Option 3) and set the host to your Virtual IP (VIP).
+
+    To correctly enable High Availability (HA) mode, you must include the following specific flags:
+
+    - **`--replication-solution efm`**: Integrates the configuration with Enterprise Failover Manager (EFM).
+
+    - **`--replication-role standby`**: Designates this node's initial role within the HA cluster
+
+    <TabContainer syncKey="sslmodel">
+    
+    <Tab title="Using sslutils">
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho '172.16.161.200,127.0.0.1,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution patroni \
+                                             --replication-role standby \
+                                             --db-unitfile patroni \
+                                             --db-install-path '/usr/pgsql-17/'
+    ```
+    
+    </Tab>
+
+    <Tab title="Using a common agent user">
+
+    When using a common agent user, you must provide the username and path to the certificate and key generated for that user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho '172.16.161.200,127.0.0.1,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution patroni \
+                                             --replication-role standby \
+                                             --db-unitfile patroni \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --use-agent-user 'common_agent_user' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key'
+    ```
+
+    </Tab>
+
+    <Tab title="Using one certificate per agent">
+
+    When using your own certificate you should specify the agent_id as
+    the next integer `N` and path to the certificate and key generated
+    for the corresponding `agentN` user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 3 \
+                                             -ho '172.16.161.200,127.0.0.1,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --asb-host-name '127.0.0.1' \
+                                             --replication-solution patroni \
+                                             --replication-role standby \
+                                             --db-unitfile patroni \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key' \
+                                             -aro agent_id=2
+    ```
+
+    </Tab>
+
+    </TabContainer>
+
+    You will be prompted for various additional details.
+    For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
 
 ## Deploy the PEM Web Application
 
@@ -387,9 +602,59 @@ Perform the following steps on all web application hosts.
     ```
 
 1.  Configure the PEM web application. Provide a multi-host string including the primary and all standbys as the PEM server address.
+
+    <TabContainer syncKey="sslmodel">
+
+    <Tab title="Using sslutils">
+
     ```shell
-    /usr/edb/pem/bin/configure-pem-server.sh -t 2 -ho '172.16.161.200,172.16.161.201,172.16.161.202'
+    /usr/edb/pem/bin/configure-pem-server.sh -t 2 \
+                                             -ho '172.16.161.200,172.16.161.201,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --db-install-path '/usr/pgsql-17/'
     ```
+    
+    </Tab>
+
+    <Tab title="Using a common agent user">
+
+    When using a common agent user you must supply the username and path to the certificate and key generated for that user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 2 \
+                                             -ho '172.16.161.200,172.16.161.201,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --use-agent-user 'common_agent_user' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key'
+    ```
+
+    </Tab>
+
+    <Tab title="Using one certificate per agent">
+
+    When using your own certificate you should specify the agent_id as
+    the next integer `N` and path to the certificate and key generated
+    for the corresponding `agentN` user.
+
+    ```shell
+    /usr/edb/pem/bin/configure-pem-server.sh -t 2 \
+                                             -ho '172.16.161.200,172.16.161.201,172.16.161.202' \
+                                             -p 5432 \
+                                             -su pemsuper \
+                                             --db-install-path '/usr/pgsql-17/' \
+                                             --use-agent-sslcert '/path/to/agent/cert' \
+                                             --use-agent-sslkey '/path/to/agent/key' \
+                                             -aro agent_id=4
+    ```
+
+    </Tab>
+
+    </TabContainer>
+
     You will be prompted for various additional details. 
     For configuration options see, [Configuring the PEM server on Linux](/pem/latest/installing/configuring_the_pem_server_on_linux/).
 
@@ -399,10 +664,7 @@ Perform the following steps on all web application hosts.
     USE_NGINX=1 /usr/edb/pem/bin/configure-selinux.sh
     ```
 
-1.  You can now login to any of the web application instances using the `pemserver` superuser we created earlier.
+1.  You can now login to any of the web application instances using the `pemsuper` superuser we created earlier.
 
 1.  If you chose to synchronize PEM web application user preferences between instances,
-    complete the setup now by [configuring each web application instance to use the backend for user settings](user_settings.md#configure-the-pem-web-applications).
-
-1.  If you are using PEM 10.2 or 10.1, login to the PEM web application, right click the primary server in Object Explorer and navigate to `Properties > PEM Agent`.
-    If the value of **Host** is a multi-host string, change it to `localhost` or `127.0.0.1`.
+    complete the setup now by [configuring each web application instance to use the backend for user settings](user_settings.mdx#configure-the-pem-web-applications).
