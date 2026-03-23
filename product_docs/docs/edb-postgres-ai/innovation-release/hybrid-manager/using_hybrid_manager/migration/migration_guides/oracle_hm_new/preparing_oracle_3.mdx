@@ -1,0 +1,541 @@
+---
+title: Preparing your Oracle source
+navTitle: Preparing Oracle 3
+---
+
+Before you perform a migration of an Oracle source using Hybrid Manager (HM), you must configure the database configuration, as well as create a dedicated database user. These steps ensure that all migration components, including the EDB Postgres AI agent (`beacon-agent`) and the DMS agent (`cdcagent`), can establish a stable connection, discover your schemas, and perform schema and data extraction operations.
+
+## Prerequisites
+
+- Identify your Oracle architecture (CDB/PDB multitenant vs. non-CDB).
+- Collect the names of the schemas and tables you want to migrate.
+
+## Configure database logging
+
+For live migration (CDC), Oracle must be in `ARCHIVELOG` mode and have supplemental logging enabled at the database level.
+
+### Enable `ARCHIVELOG` mode
+
+Migration tools require the database to be in `ARCHIVELOG` mode to ensure that data changes are captured during the transfer.
+
+1.  Connect to the root container or database instance as SYSDBA:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    Connect to the root container:
+
+    ```shell
+    sqlplus <DBA_USER>/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    ```
+
+    For example: 
+
+    ```shell 
+    sqlplus sys/password123@//localhost:1521/ORCLCDB as sysdba
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    Connect to the database instance:
+
+    ```shell
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Verify the status:
+
+    ```sql
+    archive log list;
+    ```
+
+    If the status is `NOARCHIVELOG`, you must enable it. 
+
+1.  Configure the Fast Recovery Area (FRA) and enable logging:
+
+    !!!Tip
+    - Create a directory for Fast Recovery Area (FRA) in advance.
+    - Ensure the `db_recovery_file_dest_size` is large enough to hold at least 24 hours of redo logs during peak migration loads to prevent the database from hanging.
+    !!!
+
+    ```sql
+    ALTER SYSTEM SET db_recovery_file_dest_size = <RECOVERY_FILE_DEST_SIZE> SCOPE=BOTH;
+    ALTER SYSTEM SET db_recovery_file_dest = '<RECOVERY_FILE_DEST>' SCOPE=BOTH;
+    ```
+
+    !!! Note
+    Setting `db_recovery_file_dest` and `db_recovery_file_dest_size` configures Oracle's FRA, which is a required storage location for the archived logs Debezium reads.
+
+    These parameters are critical for database stability. Always consult your DBA before setting them in a production environment.
+    !!!
+
+
+1.  Restart the database and enable `ARCHIVELOG`:
+
+    ```sql
+    SHUTDOWN IMMEDIATE;
+    STARTUP MOUNT;
+    ALTER DATABASE ARCHIVELOG;
+    ALTER DATABASE OPEN;
+    ```
+
+1.  Confirm the change: 
+
+    ```sql
+    archive log list;
+    ```
+
+### Enable supplemental logging
+
+Supplemental logging ensures that the redo logs contain enough information for the DMS agent to identify changed rows.
+
+1.  Connect to the root container or database instance as SYSDBA:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    Connect to the root container:
+
+    ```shell
+    sqlplus <DBA_USER>/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    Connect to the database instance:
+
+    ```shell
+    sqlplus <DBA_USER>/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Enable supplemental logging:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    First enable at the CDB level:
+
+    ```sql
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    ```sql
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
+    ```
+
+    </Tab>
+    </TabContainer>
+
+## Enable table-level supplemental logging
+
+While database-level logging (enabled in the previous step) provides the foundation, you must also specify which individual tables require full column logging. This ensures that the DMS agent receives a _before_ and _after_ image of every row change.
+
+!!! Note
+- For Oracle, the terms *schema* and *user* are used interchangeably. When you run the SQL commands for data migration, to avoid errors, be sure to set the schema name to the correct user account.
+
+- For Oracle XE compatibility restrictions, see [limitations](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/limitations/#oracle-xe-compatibility-restrictions).
+!!!
+
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
+
+Table-level logging must be enabled within the Pluggable Database (PDB) where your data resides. Connect as SYSDBA.
+
+```sql
+sqlplus <DBA_USER>/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME> as sysdba
+```
+
+Enable logging for your specific tables. You must run this command for every table you intend to migrate:
+
+```sql
+ALTER TABLE <SCHEMA_NAME>.<TABLE_NAME> ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+```
+
+For example: 
+    
+```sql
+ALTER TABLE HR_APP.EMPLOYEES ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+ALTER TABLE FINANCE_APP.SALARIES ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+```
+
+</Tab>
+
+<Tab title="Non-CDB">
+
+Enable logging for your specific tables. You must run this command for every table you intend to migrate:
+
+```sql
+ALTER TABLE <SCHEMA_NAME>.<TABLE_NAME> ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+```
+
+For example: 
+
+For example: 
+    
+```sql
+ALTER TABLE HR_APP.EMPLOYEES ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+ALTER TABLE FINANCE_APP.SALARIES ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+```
+
+</Tab>
+</TabContainer>
+
+!!!tip Generating commands for a whole schema
+
+If you have dozens of tables, don't run them manually. You can generate the SQL commands for an entire schema by running this query (replace YOUR_SCHEMA_1 with your schema name):
+
+```sql
+SELECT 'ALTER TABLE ' || owner || '.' || table_name || ' ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;' 
+FROM dba_tables 
+WHERE owner = 'YOUR_SCHEMA_1';
+```
+
+Copy the output and execute it to update the entire schema at once.
+!!!
+
+<details><summary>More information...</summary> 
+
+Supplemental logging refers to the capture of additional information in Oracle redo logs, such as *before* state. This extra redo log information is needed for log-based applications like EDB DMS to capture change events. See Oracle's [Supplemental Logging documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/sutil/oracle-logminer-utility.html#GUID-D857AF96-AC24-4CA1-B620-8EA3DF30D72E) for more information.
+
+To use Debezium for data migration, you must enable supplemental logging at both the database and table levels. This is crucial for Debezium to correctly capture change data:
+
+- **Database-level supplemental logging** is the foundation for change data capture (CDC). It ensures that every change message includes a tracking number, which is typically the primary key of the modified row. This allows you to uniquely identify which specific record was changed. Without this, Debezium can't link a change event to its source row.
+
+- **Table-level supplemental logging** provides the detailed information. It ensures that the change message includes a before image of the entire row, that is, a complete copy of all columns before the change occurred. This is especially useful for understanding exactly what was changed, as Debezium can compare the before and after states. Without this, Debezium captures only the updated column and not the full context of the change.
+
+
+</details> 
+
+<br/>
+
+## Prepare tablespaces for the migration user
+
+The Data Migration Service (DMS) and the underlying Debezium engine require dedicated tablespaces to store internal metadata, log-mining details, and tracking offsets. This keeps migration-related overhead separate from your application data.
+
+**Initial size:** 25MB is the minimum for testing. Production environments typically require 512MB or more.
+
+**File paths:** Always consult your Database Administrator (DBA) to determine the correct directory for `.dbf` files on your server.
+
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
+
+In a multitenant environment, you must create a tablespace in the Root Container (CDB) for global log mining and a tablespace in the Pluggable Database (PDB) for table-specific tracking.
+
+1.  Connect as sysdba to the CDB: 
+
+    ```sql
+    sqlplus <DBA_USER>/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME> as sysdba
+    ```
+
+1.  Create the CDB tablespace:
+
+    ```sql
+    CREATE TABLESPACE <TS_NAME> 
+    DATAFILE '<CDB_PATH>/<TS_NAME>.dbf' 
+    SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+    ```
+
+1.  Switch to the PDB:
+
+    ```sql
+    ALTER SESSION SET CONTAINER = <PDB_NAME>;
+    ```
+
+1.  Create the PDB tablespace:
+
+    ```sql
+    CREATE TABLESPACE <TS_NAME> 
+    DATAFILE '<PDB_PATH>/<TS_NAME>.dbf' 
+    SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+    ```
+
+    !!!tip
+    Using the same name for both tablespaces (e.g., MIGRATOR_TS) simplifies configuration later.
+    !!!
+
+1.  Change the default tablespace in both the CDB and the PDB:
+
+    ```sql 
+    -- In the CDB ROOT
+    ALTER SESSION SET CONTAINER = CDB$ROOT;
+    ALTER USER C##MIG_USER DEFAULT TABLESPACE MIGRATOR_TS;
+    
+    -- In the PDB
+    ALTER SESSION SET CONTAINER = ORCLPDB1;
+    ALTER USER C##MIG_USER DEFAULT TABLESPACE MIGRATOR_TS;
+    ```
+
+    [not sure about the C##MIG_USER step, double-check order and requirement]: # 
+
+</Tab>
+<Tab title="Non-CDB">
+
+In a standalone environment, you only need to create a single tablespace to handle both log mining and metadata tracking.
+
+```sql
+CREATE TABLESPACE <TS_NAME> 
+DATAFILE '<PATH>/<TS_NAME>.dbf' 
+SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+
+ALTER USER MIG_USER QUOTA UNLIMITED ON <TS_NAME>;
+```
+
+Change the default tablespace:
+
+```sql 
+-- In the CDB ROOT
+ALTER SESSION SET CONTAINER = CDB$ROOT;
+ALTER USER C##MIG_USER DEFAULT TABLESPACE MIGRATOR_TS;
+```
+
+[not sure about the C##MIG_USER step, double-check order and requirement]: # 
+
+</Tab>
+</TabContainer>
+
+<details><summary>More information...</summary> 
+
+To perform data migration, both DMS and its underlying Debezium library require a ​​dedicated user​​. Before creating this user, set up the required tablespaces.
+
+For CDB architecture, you need two tablespaces:
+- **CDB-level tablespace** &mdash; This tablespace is for Debezium's internal processes. It's used for log mining and other management operations that must run at the container database level. 
+- **PDB-level tablespace** &mdash; This one is for Debezium operations that are specific to your pluggable database. It handles processes related to the individual tables you're capturing within that PDB.
+
+</details> 
+    
+<br/>
+
+## Creating a migration user
+
+To simplify the migration process, we recommend creating a single Common User (C## for multitenant CDB/PDB configurations) or a dedicated system user (for non-CDB configurations). This unified user handles both schema assessment via the EDB Postgres AI agent and live data migration via the DMS agent.
+
+1.  Connect to the root container or database instance as SYSDBA:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    Connect to the root container:
+
+    ```shell
+    sqlplus <DBA_USER>/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    ```
+
+    For example: 
+
+    ```shell 
+    sqlplus sys/password123@//localhost:1521/ORCLCDB as sysdba
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    Connect to the database instance:
+
+    ```shell
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Create a new user for migrations: 
+
+    ```sql
+    CREATE USER <C##_MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD> DEFAULT TABLESPACE LOGMINER_TBS QUOTA UNLIMITED ON LOGMINER_TBS CONTAINER=ALL;
+    ```
+
+1.  Grant all of the following privileges: 
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    ```sql
+    -- Grant core session and container privileges
+    GRANT CREATE SESSION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SET CONTAINER TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$DATABASE to <C##_MIGRATION_USER> CONTAINER=ALL;
+    GRANT CONNECT TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL;
+
+
+    -- Gran migration and log mining permissions
+    GRANT FLASHBACK ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT EXECUTE_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ANY TRANSACTION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ANY DICTIONARY TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT LOGMINING TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT CREATE TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT LOCK ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT CREATE SEQUENCE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT EXECUTE ON DBMS_LOGMNR TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO <C##_MIGRATION_USER> CONTAINER=ALL;
+
+    -- Grant access to system views:
+    GRANT SELECT ON V_$LOGMNR_LOGS TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$LOGFILE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$ARCHIVED_LOG TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$TRANSACTION TO <C##_MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$VERSION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$INSTANCE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$LICENSE TO <C##_MIGRATION_USER> CONTAINER=ALL;
+
+    -- Grant access to tables
+    GRANT CREATE TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    ALTER USER <C##_MIGRATION_USER> QUOTA UNLIMITED ON LOGMINER_TBS CONTAINER=ALL;
+    ```
+
+    Switch to the PDB:
+
+    ```
+    ALTER SESSION SET CONTAINER = <PDB_NAME>;
+    ```
+
+    Set the default tablespace for the user: 
+
+    ```sql
+    ALTER USER C##MIG_USER2 DEFAULT TABLESPACE LOGMINER_TBS;
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    ```sql
+    -- Grant core session and container privileges
+    GRANT CREATE SESSION TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$DATABASE to <C##_MIGRATION_USER>;
+    GRANT CONNECT TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL;
+
+    -- Gran migration and log mining permissions
+    GRANT FLASHBACK ANY TABLE TO <C##_MIGRATION_USER>;
+    GRANT SELECT ANY TABLE TO <C##_MIGRATION_USER>;
+    GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER>;
+    GRANT EXECUTE_CATALOG_ROLE TO <C##_MIGRATION_USER>;
+    GRANT SELECT ANY TRANSACTION TO <C##_MIGRATION_USER>;
+    GRANT SELECT ANY DICTIONARY TO <C##_MIGRATION_USER>;
+    GRANT LOGMINING TO <C##_MIGRATION_USER>;
+    GRANT CREATE TABLE TO <C##_MIGRATION_USER>;
+    GRANT LOCK ANY TABLE TO <C##_MIGRATION_USER>;
+    GRANT CREATE SEQUENCE TO <C##_MIGRATION_USER>;
+    GRANT EXECUTE ON DBMS_LOGMNR TO <C##_MIGRATION_USER>;
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO <C##_MIGRATION_USER>;
+
+    -- Grant access to system views:
+    GRANT SELECT ON V_$LOGMNR_LOGS TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$LOGFILE TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$ARCHIVED_LOG TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$TRANSACTION TO <C##_MIGRATION_USER>;
+    GRANT SELECT ON V_$VERSION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$INSTANCE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    GRANT SELECT ON V_$LICENSE TO <C##_MIGRATION_USER> CONTAINER=ALL;
+
+    -- Grant access to tables
+    GRANT CREATE TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
+    ALTER USER <C##_MIGRATION_USER> QUOTA UNLIMITED ON LOGMINER_TBS CONTAINER=ALL;
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Grant `SELECT` on source tables:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    Switch to the PDB:
+
+    ```sql
+    ALTER SESSION SET CONTAINER = <PDB_NAME>
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    Ensure you are connected to the database instance as sysdba. 
+
+    ```shell
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Grant SELECT permissions to your specific tables. You must run this command for every table you intend to migrate:
+
+    ```sql
+    GRANT SELECT ON <SCHEMA_NAME>.<TABLE_NAME> TO <C##_MIGRATION_USER>
+    ```
+
+1.  Exit sql, and perform a quick connection test with your migration user: 
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    ```sql
+    sqlplus <C##_MIGRATION_USER>/<MIGRATION_USER_PASSWORD>@//<HOST>:<HOST>/<PDB_NAME>
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    ```sql
+    sqlplus <C##_MIGRATION_USER>/<MIGRATION_USER_PASSWORD>@//<HOST>:<HOST>/<SID_OR_SERVICE>
+    ```
+
+    </Tab>
+    </TabContainer>
+
+[add another testing step, maybe with SELECT]: #
+
+## REDO logs
+
+[enter edited version of REDO logs here]: #
+
+## Validate your database and user
+
+Ensure your database configurations and created user meet all requirements to function with both agents: 
+
+1.  Navigate to the EDB DMS agent folder in `/opt/cdcagent/reader/`.
+
+1.  Create an array that contains the name of all the tables that need to be migrated in `<schema_name>.<table_name>` format. For example:
+
+    ```shell
+    arr=(test1.table1 test1.table2 test1.table3 test1.table4)
+    ```
+
+1.  Run the script with the necessary parameters. For example:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    ```sql
+    ODB_SYSDBA_USERNAME=sys ODB_SYSDBA_PASSWORD=password ODB_HOST=localhost ODB_PORT=1521 ORACLE_SID=ORCLPDB1 ODB_DBZ_USERNAME=C##MIG_USER2 ODB_DBZ_PASSWORD=migrator_password LOG_MINER_TBS_NAME=LOGMINER_TBS ./oracleConfigValidation.sh "${arr[@]}"
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    ```sql
+    ODB_SYSDBA_USERNAME=sys ODB_SYSDBA_PASSWORD=password ODB_HOST=localhost ODB_PORT=1521 ORACLE_SID=ORCL ODB_DBZ_USERNAME=MIG_USER2 ODB_DBZ_PASSWORD=migrator_password LOG_MINER_TBS_NAME=LOGMINER_TBS ./oracleConfigValidation.sh "${arr[@]}"
+    ```
+
+    </Tab>
+    </TabContainer>
+    
