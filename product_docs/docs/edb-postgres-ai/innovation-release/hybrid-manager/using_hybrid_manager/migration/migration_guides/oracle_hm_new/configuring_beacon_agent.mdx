@@ -1,0 +1,203 @@
+---
+title: Configuring the EDB Postgres AI agent to register your Oracle database
+navTitle: Configuring EDB Postgres AI agent
+description: Configure the EDB Postgres AI agent to connect to your Oracle database.
+---
+
+Configure the EDB Postgres AI agent (packaged as `beacon-agent`) to establish a secure connection with HM and retrieve schema and migration assessment data from your Oracle source.
+
+## Prerequisites
+
+- **Machine user**: [Create a machine user and access key with the `estate ingester` role](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_creating_machine_user/) assigned to it.
+
+- **Machine user access key**: Store the generated access key in an environment variable, e.g. `export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"`.
+
+<details><summary>Recommendations for setting environment variables</summary> 
+
+We recommend handling sensitive data, such as `$BEACON_AGENT_ACCESS_KEY` or `$DSN`, as environment variables managed through a secrets manager. This strategy prevents sensitive credentials from being stored in plaintext configuration files. If you use environment variables, make sure they're available to the EDB Postgres AI agent while it's running.
+
+Consult your organization's IT department on the safest approach for production environments.
+
+For short-lived migrations or testing and demo purposes, you can use the `export` command in an active terminal session.
+
+</details> 
+
+## Obtaining HM connection parameters
+
+The agent requires specific values from your HM installation. Contact your administrator for:
+
+-   **Beacon server hostname**: The internal endpoint for the `beacon_server`. 
+
+    When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Ask the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the EDB Postgres AI agent.
+
+-   **Root certificate path (if required)**: If your HM instance uses a self-signed or internal CA, obtain the `ca_public.crt` file. Store it on the agent machine (e.g., `/etc/beacon/ca_public.crt`).
+
+    The EDB Postgres AI agent requires a trusted connection to the `beacon_server` service in your HM instance. If the server running the EDB Postgres AI agent doesn't inherently trust HM's TLS certificate (managed by your organization's security infrastructure), ask the administrator or installer of your HM instance to provide the file with the certificate. Store this certificate on the machine running the EDB Postgres AI agent. You'll need to provide the directory path to this certificate later to configure the EDB Postgres AI agent.
+
+See [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) for more information about the `beacon_server` and root certificate.
+
+## Defining source database connection parameters 
+
+The Data Source Name (DSN) is the connection string for your Oracle source.
+
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
+
+Connect using a Common User (starting with C##) to a specific Pluggable Database (PDB) service.
+
+!!!note
+The # characters in the username must be URL-encoded as %23.
+!!!
+
+**Format:**
+
+```shell
+DSN="oracle://<C##_MIGRATION_USER>:<MIGRATION_USER_PASSWORD>@<HOST>:<PORT>/<PDB_SERVICE_NAME>"
+```
+      
+**Example:**
+
+```shell
+DSN="oracle://C%23%23_MIG:password@localhost:1521/ORCLPDB1"
+```
+
+</Tab>
+<Tab title="Non-CDB">
+
+Connect using a standard local user to the database instance SID or Service Name.
+
+**Format:**
+
+```shell
+DSN="oracle://<MIGRATION_USER>:<MIGRATION_USER_PASSWORD>@<HOST>:<PORT>/<SERVICE_NAME_OR_SID>"
+```
+      
+**Example:**
+
+```shell
+DSN="oracle://MIG_USER:password@localhost:1521/ORCL"
+```
+
+</Tab>
+</TabContainer>
+
+!!!Note Special characters
+If your password contains special characters (e.g., `@`, `#`, `!`), you must URL-encode them (e.g., `@` becomes `%40`).
+      
+```shell
+DSN="oracle://oracle:pa%24%24word@localhost:1521/ORCLPDB1"
+```
+
+!!!
+
+If you plan to connect to more than one database with the EDB Postgres AI agent, you can specify multiple such connection strings. For example, if you're using environment variables for the `database.dsn` settings, specify `$DSN1`, `$DSN2`.
+You can use any name you want for these variables because they'll be referenced by name in the configuration file.
+
+## Preparing a configuration file
+
+Prepare a configuration file for your agent. The agent searches for `beacon_agent.yaml` in `/etc/beacon/` or `${HOME}/.beacon/`.
+
+1.  Create an EDB Postgres AI agent configuration directory in your home directory:
+
+    ```shell
+    mkdir ${HOME}/.beacon
+    ```
+
+    !!!Note
+    The agent searches for `beacon_agent.yaml` in `/etc/beacon/` or `${HOME}/.beacon/`.
+    As a final fallback, it searches the directory from which it's executed.
+    !!!
+
+1.  Inside this directory, create a file `beacon_agent.yaml`:
+
+    ```shell
+    touch .beacon/beacon_agent.yaml
+    ```
+
+1.  Copy and paste the following template into the new file.
+
+    In this template, `$BEACON_AGENT_ACCESS_KEY` and `$DSN` are the environment variables you configured previously. Replace all `< >` placeholders in the template. See [Parameter reference](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/#parameter-reference) for details.
+
+    ```yaml
+    ---
+    agent:
+      access_key: $BEACON_AGENT_ACCESS_KEY
+      beacon_server: <beacon_server_hostname>:9443
+      project_id: <your_project_id>
+      providers:
+        - "onprem"
+        # what are other options here?
+      root_ca_path: ""
+      # Required if you have a self-signed cert.
+      schema_providers:
+        - "onprem-schema"
+        # what are other options here?
+    provider:
+      onprem:
+        databases:
+          - resource_id: "<database_resource_identifier>"
+            dsn: $DSN
+            schema:
+              enabled: true
+              poll_interval: 15s 
+            tags:
+              - "<tag_names>"
+    general:
+      logging:
+        level: debug
+    host:
+      metrics: {}
+      resource_id: "<host_resource_identifier>"
+    ```
+
+1.  Save the file. 
+
+## Running the EDB Postgres AI agent
+
+1.  Before starting the service, verify connectivity and syntax:
+
+    ```shell
+    beacon-agent validate
+    ```
+
+1.  Run the agent: 
+
+    ```
+    beacon-agent
+    ```
+
+    !!!tip
+    See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
+    !!!
+
+1.  Monitore the ingestion process as the agent starts sending data to Hybrid Manager (HM). Data should appear in the HM console under **Estate > Migrations** within a few minutes.
+
+!!!important
+The agent dynamically detects changes to tables and columns. However, changes to views, procedures, or functions require an agent restart to re-ingest metadata.
+!!!
+
+For production use, configure the agent to [run as a service](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/run_as_service.mdx).
+
+## Troubleshooting
+
+If the EDB Postgres AI agent logs report an error, or the Oracle source does not appear in the HM console, use the built-in validation tool to diagnose configuration issues.
+
+```shell
+beacon-agent validate
+```
+
+The validate command checks for the following common issues:
+
+- Connectivity: Verifies the agent can reach the `beacon_server` on port `9443`.
+
+- Authentication: Ensures the `access_key` is valid and the `project_id` matches your HM console project.
+
+- DSN syntax: Checks the Oracle connection string for correct URL encoding (e.g., %23%23 for C## users).
+
+- YAML structure: Identifies syntax errors.
+
+## Related topics
+
+-  For more granular control of schema ingestion (for example, to exclude or include schemas), see [Controlling schema ingestion](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/schema_ingestion/).
+
+-  If your administrator needs guidance on how to obtain the values for the root certificate and `beacon_server`, see [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/).
