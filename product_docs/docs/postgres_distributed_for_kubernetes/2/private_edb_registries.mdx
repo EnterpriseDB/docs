@@ -1,0 +1,205 @@
+---
+title: 'EDB''s private container registry'
+originalFilePath: 'src/private_edb_registries.md'
+---
+
+The images for the EDB Postgres® AI for CloudNativePG™ Global Cluster and EDB Postgres for
+Kubernetes operators, as well as various operands, are kept in a private
+container image registry under `docker.enterprisedb.com`.
+
+!!! Important
+    Access to the private registry requires an account with EDB and is
+    reserved for EDB customers with a valid [subscription plan](https://www.enterprisedb.com/products/plans-comparison#selfmanagedenterpriseplan).
+    Credentials are run through your EDB account.
+    These instructions are the same for trial subscriptions.
+
+## Repository information
+
+<span id="which-repository-to-choose"></span>
+
+Collect the following information:
+
+1.  Your [EDB account token](/repos/getting_started/with_web/get_your_token/)
+2.  The name of the repository, which will be `k8s`
+3.  The repository server, which will be `docker.enterprisedb.com`
+
+For clarity, the following examples assume your token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
+
+### Example with `docker login`
+
+You can log in via Docker from your terminal. In this context,
+
+-   The server is `docker.enterprisedb.com`
+-   The username is the repository, `k8s`
+-   The password is your EDB account token (stored in `$EDB_SUBSCRIPTION_TOKEN`)
+
+```sh
+docker login docker.enterprisedb.com  \
+  --username k8s \
+  --password "$EDB_SUBSCRIPTION_TOKEN"
+__OUTPUT__
+WARNING! Using --password via the CLI is insecure. Use --password-stdin.
+Login Succeeded
+```
+
+## Operand images
+
+### Operand distributions
+
+EDB CloudNativePG Global Cluster is an operator that supports running
+EDB Postgres Distributed (PGD) version 6 on three PostgreSQL distributions:
+
+-   PostgreSQL
+-   EDB Postgres Advanced Server (EPAS)
+-   EDB Postgres Extended (PGE)
+
+!!! Important
+    See [Choosing a Postgres distribution](/pgd/latest/planning/choosing_server/)
+    in the PGD documentation for details and a comparison of PGD on the
+    different supported PostgreSQL distributions.
+
+Due to the immutable application container adoption in EDB operators, the
+operator expects the container images to include all the binaries required
+to run the requested version of PGD on top of the required distribution and
+version of Postgres.
+
+These images follow the requirements and the conventions described in
+[Container image requirements](/postgres_for_kubernetes/latest/container_images/)
+in the PG4K documentation, adding the `bdr6`
+extension.
+
+The table shows the image name prefix for each Postgres distribution.
+
+| Postgres distribution | Versions | Image name                |
+| --------------------- | -------- | ------------------------- |
+| PostgreSQL            | 14 - 18  | postgresql-pgd            |
+| EDB Postgres Extended | 14 - 18  | edb-postgres-extended-pgd |
+| EDB Postgres Advanced | 14 - 18  | edb-postgres-advanced-pgd |
+
+### Identifying image names
+
+You can select a specific operand image version that's appropriate
+for your Postgres distribution.
+
+The operand image name is composed of the Postgres distribution and EDB Postgres Distributed keyword.
+
+| Postgres distribution        | Image name                  |
+| ---------------------------- | --------------------------- |
+| EDB Postgres Advanced Server | `edb-postgres-advanced-pgd` |
+| EDB Postgres Extended Server | `edb-postgres-extended-pgd` |
+| PostgreSQL                   | `postgresql-pgd`            |
+
+The operand image tag is composed of the Version numbers, PGD editions and Base image version. In the format of
+`<Postgres version>-pgd<PGD extension version>-[essential|expanded]-ubi[8|9]`
+
+**Version numbers:** The versions of the Postgres distribution and PGD extension, separated by a dash.
+
+**PGD editions:** essential or expanded
+
+**Base image version:** The Universal Base Image (UBI) version on which the operand is based.
+
+These identifiers, together with their versions, form the operand image name and tag. The table shows some examples.
+
+| Postgres version            | EDB Postgres Distributed version | edition   | Operand image name and tag                            |
+| --------------------------- | -------------------------------- | --------- | ----------------------------------------------------- |
+| EDB Postgres Advanced 17.7. | PGD 6.2.0                        | expanded  | edb-postgres-advanced-pgd:17.7-pgd620-expanded-ubi9   |
+| EDB Postgres Extended 15.15 | PGD 6.2.0                        | essential | edb-postgres-extended-pgd:15.15-pgd620-essential-ubi9 |
+| PostgreSQL 16.11            | PGD 6.2.0                        | expanded  | postgresql-pgd:16.11-pgd620-expanded-ubi9             |
+
+For an overview of Postgres compatibility, see [Platform compatibility](https://www.enterprisedb.com/resources/platform-compatibility).
+
+## Customize Operand images
+
+You can customize the default operand images for the EDB CloudNativePG Global Cluster operator,
+and these changes will apply to all future PGDGroup creations. Additionally,  you have the option to
+customize the operand for each individual PGDGroup deployment.
+
+### Customize Default Operand Images in Helm Chart Deployment
+
+Use the following Helm chart command to deploy the EDB CloudNativePG Global Cluster operator
+with customized operand names. Please note that all operand and operator images will be
+pulled from the same private repository defined by `global.repository`, by default,`global.repository`
+is `docker.enterprisedb.com/k8s`. For more information,
+visit the [Helm chart](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts) page.
+If we want to change the repository to something else, we can customize using `global.repository`:
+
+```sh
+helm upgrade --dependency-update \
+  --install edb-pg4k-pgd \
+  --namespace pgd-operator-system \
+  --create-namespace \
+  edb/edb-cloudnativepg-global-cluster \
+  --set global.repository=<new repository> \
+  --set global.pgdImageName=${EDB_PGD_IMAGE_NAME} \
+  --set image.imageCredentials.username=<username for new repository> \
+  --set image.imageCredentials.password=<password for new repository>
+```
+
+!!! Note
+    With the above installation, the default operand is configured in
+    the operator's ConfigMap `pgd-operator-controller-manager-config`. For more information,
+    please refer to the [Operator Configuration](operator_conf.md).
+
+We can also customize the default operand image in the default repository. Suppose
+we want to use EDB Postgres Advanced Server 15 plus latest PGD Expanded 6 as the default image
+for all newly created PGDGroups, we can customize like this:
+
+```sh
+helm upgrade --dependency-update \
+    --install edb-pg4k-pgd \
+    --namespace pgd-operator-system \
+    --create-namespace \
+    edb/edb-cloudnativepg-global-cluster \
+    --set global.pgdImageName=edb-postgres-advanced-pgd:15-pgd6-expanded-ubi9 \
+    --set image.imageCredentials.username=k8s \
+    --set image.imageCredentials.password=${EDB_SUBSCRIPTION_TOKEN}
+```
+
+### Update Default Operand Images for an Existing Operator
+
+You can modify the default operand images by updating the `pgd-operator-controller-manager-config`
+ConfigMap or Secret. For further details, please refer to the [Operator Configuration](operator_conf.md)
+documentation.
+
+### Customize Operand Images for Single PGDGroup Deployment
+
+You can also customize the operand image for a single PGDGroup deployment.
+In this case, it's necessary to create the image pull secrets in the target namespace.
+If you've already installed the EDB CloudNativePG Global Cluster operator from the
+private registry, you should have set up an image pull secret.
+
+```sh
+kubectl create secret docker-registry registry-pullsecret \
+  -n <CLUSTER-NAMESPACE> \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN}
+```
+
+As mentioned earlier, the `docker-username` corresponds to the private registry name, `k8s`,
+while the `docker-password` is the token
+obtained from the [EDB portal](/repos/getting_started/with_web/get_your_token/).
+
+After creating your pull secret, ensure you set the `imagePullSecrets` field
+in the PGD group manifest, along with the `imageName`. The manifest below will create
+a PGD group running PG Extended from the `k8s` repository.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-pge
+spec:
+  instances: 2
+  witnessInstances: 1
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-advanced-pgd:15-pgd6-expanded-ubi9
+  imagePullSecrets:
+  - name: registry-pullsecret
+  pgd:
+    parentGroup:
+      name: world
+      create: true
+  cnp:
+    storage:
+      size: 1Gi
+```

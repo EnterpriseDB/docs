@@ -1,0 +1,165 @@
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-monitoring
+spec:
+  instances: 2
+  witnessInstances: 1
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:17-pgd6-expanded-ubi9
+  imagePullSecrets:
+  - name: cs-pullsecret
+  pgd:
+    parentGroup:
+      name: world
+      create: true
+  cnp:
+    storage:
+      size: 1Gi
+    monitoring:
+      disableDefaultQueries: true
+      enablePodMonitor: true
+      customQueriesConfigMap:
+        - name: example-monitoring-configmap
+          key: custom-queries
+      customQueriesSecret:
+        - name: example-monitoring-secret
+          key: custom-queries
+  connectivity:
+    dns:
+      additional:
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-monitoring-configmap
+  labels:
+    k8s.enterprisedb.io/reload: ""
+data:
+  custom-queries: |
+    bdr_raft_leader:
+      predicate_query: |
+        SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='bdr')
+      query: |
+        SELECT
+          group_name,
+          leader_name,
+          1 as info
+        FROM
+          bdr.stat_raft_state;
+      metrics:
+        - group_name:
+            usage: "LABEL"
+            description: "Name of PGD group this info relates to"
+        - leader_name:
+            usage: "LABEL"
+            description: "Which node is considered to be the current leader by the local node"
+        - info:
+            usage: "GAUGE"
+            description: "Info-metric for current Raft leader name, see leader_name label"
+
+    bdr_rep_lag:
+      # Replication lag and rate (upstream view)
+      #
+      predicate_query: |
+         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='bdr')
+      query: |
+        SELECT target_name AS peer_name,
+          coalesce(extract(epoch from replay_lag), -1) as replay_lag_s,
+          coalesce(replay_lag_bytes,0) as replay_lag_bytes,
+          coalesce(apply_rate,0) as apply_rate,
+          coalesce(extract(epoch from catchup_interval),-1) as catchup_interval_s
+        FROM bdr.node_replication_rates;
+      metrics:
+        - peer_name:
+            usage: "LABEL"
+            description: "peer_name"
+        - replay_lag_s:
+            usage: "GAUGE"
+            description: "replay_lag_s"
+        - replay_lag_bytes:
+            usage: "GAUGE"
+            description: "replay_lag_bytes"
+        - apply_rate:
+            usage: "GAUGE"
+            description: "apply_rate estimate. Can be inaccurate when big txns are in progress."
+        - catchup_interval_s:
+            usage: "GAUGE"
+            description: "catchup_interval_s estimate. Can be inaccurate when big txns are in progress."
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: example-monitoring-secret
+  labels:
+    k8s.enterprisedb.io/reload: ""
+stringData:
+  custom-queries: |
+    bdr_routing_write:
+      predicate_query: |
+        SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='bdr')
+      query: |
+        SELECT
+          node_group_name AS group_name,
+          candidate_leader AS node_name,
+          (write_lead_name = candidate_leader)::integer AS lead
+        FROM bdr.stat_routing_state CROSS JOIN LATERAL unnest(write_candidate_names) AS candidate_leader;
+      metrics:
+        - group_name:
+            usage: "LABEL"
+            description: "Name of PGD group this info relates to"
+        - node_name:
+            usage: "LABEL"
+            description: "Name of the PGD write leader candidate node"
+        - lead:
+            usage: "GAUGE"
+            description: "1 if the node with this node_name label is the leader, 0 for leader-candidates that are not currently leaders"
+
+    bdr_rep_lag:
+      # Replication lag and rate (upstream view)
+      #
+      predicate_query: |
+         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='bdr')
+      query: |
+        SELECT target_name AS peer_name,
+          coalesce(extract(epoch from replay_lag), -1) as replay_lag_s,
+          coalesce(replay_lag_bytes,0) as replay_lag_bytes,
+          coalesce(apply_rate,0) as apply_rate,
+          coalesce(extract(epoch from catchup_interval),-1) as catchup_interval_s
+        FROM bdr.node_replication_rates;
+      metrics:
+        - peer_name:
+            usage: "LABEL"
+            description: "peer_name"
+        - replay_lag_s:
+            usage: "GAUGE"
+            description: "replay_lag_s"
+        - replay_lag_bytes:
+            usage: "GAUGE"
+            description: "replay_lag_bytes"
+        - apply_rate:
+            usage: "GAUGE"
+            description: "apply_rate estimate. Can be inaccurate when big txns are in progress."
+        - catchup_interval_s:
+            usage: "GAUGE"
+            description: "catchup_interval_s estimate. Can be inaccurate when big txns are in progress."
+

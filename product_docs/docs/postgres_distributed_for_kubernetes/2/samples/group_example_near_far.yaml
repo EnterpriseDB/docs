@@ -1,0 +1,103 @@
+# This sample only works with PGD version 6 and operator 2.x
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-near
+spec:
+  instances: 2
+  witnessInstances: 0
+  pgd:
+    parentGroup:
+      name: world
+      create: true
+    mutations:
+      - isApplied:
+          - |
+            SELECT EXISTS
+            (
+              SELECT * FROM bdr.node_group_config_summary
+              WHERE node_group_name='group-near' AND
+                    option_name='default_commit_scope' AND
+                    current_value='adaptive protect'
+            );
+        exec:
+          - |
+            SELECT bdr.alter_node_group_option('group-near',  'default_commit_scope',  'adaptive protect');
+  cnp:
+    storage:
+      size: 1Gi
+  connectivity:
+    dns:
+      additional:
+        - domain: alternate.domain
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+---
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-far
+spec:
+  instances: 1
+  witnessInstances: 0
+  pgd:
+    groupJoinMethod: physical
+    parentGroup:
+      name: world
+    discovery:
+      - host: group-near-1-node
+      - host: group-near-2-node
+    mutations:
+      - isApplied:
+          - |
+            SELECT EXISTS
+            (
+              SELECT * FROM bdr.node_group_config_summary
+              WHERE node_group_name='group-far' AND
+                    option_name='default_commit_scope' AND
+                    current_value='adaptive protect'
+            );
+        exec:
+          - |
+            SELECT bdr.alter_node_group_option('group-far',  'default_commit_scope',  'adaptive protect');
+  cnp:
+    storage:
+      size: 1Gi
+  connectivity:
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+

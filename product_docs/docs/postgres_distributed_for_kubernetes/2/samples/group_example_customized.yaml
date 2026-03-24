@@ -1,0 +1,75 @@
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-customized
+spec:
+  instances: 2
+  witnessInstances: 1
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:17-pgd6-expanded-ubi9
+  imagePullSecrets:
+  - name: registry-pullsecret
+  pgd:
+    parentGroup:
+      name: world
+      create: true
+    globalRouting: true
+  cnp:
+    initDBOptions:
+      encoding: UTF8
+      walSegmentSize: 64
+    storage:
+      size: 2Gi
+    postgresql:
+      parameters:
+        "bdr.global_lock_timeout": "20min"
+        "min_wal_size": "200"
+        "pgaudit.log": "all, -misc"
+        "pgaudit.log_catalog": "off"
+        "pgaudit.log_parameter": "on"
+        "pgaudit.log_relation": "on"
+        ## following are enable more postgres logs
+        "bdr.debug_level": log
+        "log_min_messages": debug5
+        "log_statement": all
+        "log_connections": "on"
+        "log_disconnections": "on"
+        "log_checkpoints": "on"
+    env:
+      - name: AWS_REQUEST_CHECKSUM_CALCULATION
+        value: when_required
+      - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+        value: when_required
+  witness:
+    initDBOptions:
+      encoding: UTF8
+      walSegmentSize: 16
+    storage:
+      size: 1Gi
+    postgresql:
+      parameters:
+        "bdr.global_lock_timeout": "20min"
+        "min_wal_size": "100"
+  connectivity:
+    dns:
+      additional:
+        - domain: alternate.domain
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
