@@ -24,7 +24,8 @@ export const process = async (filename, content) => {
     })
     .use(remarkFrontmatter)
     .use(mdx)
-    .use(linkRewriter);
+    .use(linkRewriter)
+    .use(nameReplacer);
 
   const output = await processor.process(
     toVFile({ path: filename, contents: content }),
@@ -73,3 +74,13 @@ function linkRewriter() {
   };
 }
 
+
+function nameReplacer() {
+  return async (tree, file) => {
+    visit(tree, ['text'], (node, index, parent) => {
+      node.value = node.value
+        .replace(/EDB\s+Postgres\s+for\s+Kubernetes/g, "{{name.ln}}")
+        .replace(/PG4K/g, "{{name.short}}");
+    });
+  };
+}
