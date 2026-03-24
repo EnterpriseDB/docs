@@ -1,0 +1,85 @@
+---
+title: Enabling usage reporting in the HM server
+navTitle: Usage report in HM server
+description: Learn how to enable usage reporting in the HM server.
+deepToC: true
+---
+
+The HM server can provide valuable usage data, helping EDB understand how customers are using our products and facilitating core-based licensing and entitlements. This functionality is available regardless of whether you're using Hybrid Manager (HM) for monitoring or are running an on-premises database server.
+
+Usage reporting with the HM server is an opt-in service, so it is not enabled by default. Data is only sent to EDB when you explicitly enable it. When enabled, the HM server sends a new report every 24 hours by default, starting with the first time the HM server runs.
+
+What type of data is collected?
+When configured to send usage data, the HM server generates a small report containing environment metadata and resource usage. This includes information like:
+
+- Operating system details
+- Memory and CPU usage
+- Installed database distribution (e.g., PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server) and version
+
+
+!!!important
+This report does not include sensitive data or user-identifiable information.
+!!!
+
+## Where is the data sent to?
+When configured, reporting data goes to https://hm-usage.enterprisedb.com, an EDB-managed endpoint.
+
+## How do I enable usage reporting with the EDB Postgres AI agent?
+If you are using the Hybrid Manager for centralized observability and monitoring, you can enable reporting as part of your EDB Postgres AI agent's configuration. See Enabling usage reporting in HM.
+
+If you have a standalone deployment of a database server (PostgreSQL, EPAS, PGE), and you don't wish to use the Hybrid Manager, see Enabling usage reporting for standalone databases.
+
+If you are operating in an air-gapped environment, you can create a usage report as a JSON file within the EDB Postgres AI agent's configuration page and upload it through the option PGAI Agent Reporting under the Tools section in the left side pane of the EDB Customer Portal.
+
+
+## Enabling HM server usage reporting
+
+1. Check if telemetry is already active by running:
+
+   `kubectl get configmap -n upm-beacon beacon-server-config -o yaml | yq '.data."beacon_server.yaml"' | yq '.general.metrics.usage'`
+
+   !!! important
+   Telemetry is not enabled if any of the following are true:
+   
+   - The result is null.
+   - `company_code or hybrid_manager_installation` is missing/unset.
+   - `output.http.enabled` is `false`.
+   - `output.http.url` is not set to `"https://hm-usage.enterprisedb.com"`.
+   !!!
+
+1. To enable usage reporting, edit the beacon-server-config resource:
+
+   `kubectl edit configmap -n upm-beacon beacon-server-config`.
+
+1. Locate the .data."beacon_server.yaml" section in the editor and update the usage configuration to match the structure below, replacing the placeholders with your actual identifiers:
+
+    ```yaml
+    general:
+      metrics:
+        usage:
+          company_code: "your-company-code"
+          hybrid_manager_installation: "hm-installation-identifier"
+          interval: "24h"
+          modules:
+            - "all"
+          output:
+            http:
+              enabled: true
+              url: "https://hm-usage.enterprisedb.com"
+    ```
+
+1. Restart the beacon-server Pod for the changes to take effect.
+
+1. List the pods in the upm-beacon namespace to identify the name of your server pod:
+
+  `kubectl get pods -n upm-beacon`
+
+  For example: `upm-beacon-server-...`
+
+1. Delete the Pod, which Kubernetes will automatically recreate with the updated configuration.
+
+   `kubectl delete pod -n upm-beacon <pod-name>`
+
+1. Verify that the Deployment has successfully recreated the Pod and that the status is **Running** and **Ready**:
+
+   `kubectl get pods -n upm-beacon`
