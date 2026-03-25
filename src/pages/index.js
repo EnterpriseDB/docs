@@ -196,26 +196,30 @@ const Page = () => {
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="AI Factory"
-              to="/edb-postgres-ai/latest/ai-factory"
+              headingText="Vector Engine"
+              to="/edb-postgres-ai/vector-engine"
             >
-              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/vector-engine/">
-                Vector Engine
+              <BannerCardLink to="/pg_extensions/pgfs">
+                PGFS
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/data-pipelines/">
                 AI Pipeline
+              <BannerCardLink to="/pg_extensions/pgvector">
+                pgvector
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/gen-ai/">
-                GenAI Builder
+              <BannerCardLink to="/pg_extensions/vectorchord">
+                VectorChord
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/langflow/">
-                Langflow
+              <BannerCardLink to="/pg_extensions/vectorchord_bm25">
+                VectorChord-BM25
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/knowledge-bases/">
                 Knowledge Bases
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/model/serving/">
                 Model Serving
+              <BannerCardLink to="/aidb/latest">
+                AI Database
               </BannerCardLink>
             </BannerSubCard>
 
