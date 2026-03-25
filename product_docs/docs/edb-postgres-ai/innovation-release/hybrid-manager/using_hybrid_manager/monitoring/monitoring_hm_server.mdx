@@ -1,6 +1,6 @@
 ---
 title: Enabling usage reporting in the HM server
-navTitle: Usage report
+navTitle: Usage report in HM server
 description: Learn how to enable usage reporting in the HM server.
 deepToC: true
 ---
@@ -34,64 +34,77 @@ If you have a standalone deployment of a database server (PostgreSQL, EPAS, PGE)
 If you are operating in an air-gapped environment, you can create a usage report as a JSON file within the EDB Postgres AI agent's configuration page and upload it through the option PGAI Agent Reporting under the Tools section in the left side pane of the EDB Customer Portal.
 
 
-## Enabling HM server usage reporting
+## Enabling HM server usage reporting through the operator
 
-1. Check if telemetry is already active by running:
+To enable telemetry and server metrics collection, you must configure the HybridControlPlane custom resource with your specific company and installation details.
+
+### Prerequisites
+
+- Access to the cluster where the Operator is installed.
+- Your unique company code.
+
+
+1. Open the HybridControlPlane resource for editing: Use kubectl to edit your existing control plane configuration:
 
    ```
-   kubectl get configmap -n upm-beacon beacon-server-config -o yaml | yq '.data."beacon_server.yaml"' | yq '.general.metrics.usage'
+   kubectl edit hybridcontrolplane <resource-name> -n <namespace>
+   
+   Add the Global Parameters: Under the spec section, ensure the globalParameters block includes your company code:
+   spec:
+     globalParameters:
+       company_code: "YOUR_COMPANY_CODE"
+   
+   Configure the Beacon Server: Add the hybridManagerInstallation field to the beaconServer section:
+   spec:
+     beaconServer:
+       hybridManagerInstallation: true
    ```
+
+1. The Operator will automatically detect the changes and begin initializing the telemetry services.
 
    !!! important
-   Telemetry is not enabled if any of the following are true:
+   If metrics are not appearing after configuration, note that telemetry is automatically disabled if:
    
-   - The result is null.
-   - `company_code` or `hybrid_manager_installation` is missing or unset.
-   - `output.http.enabled` is `false`.
-   - `output.http.url` is not set to `"https://hm-usage.enterprisedb.com"`.
+   - The company code lookup returns null: The system cannot verify the company_code against the global registry.
+   - The Beacon Server initialization fails: The hybridManagerInstallation flag is missing or incorrectly set to false.
    !!!
 
-1. To enable usage reporting, edit the `beacon-server-config` resource:
+## Enabling HM server usage reporting through the Helm chart
 
-   ```
-   kubectl edit configmap -n upm-beacon beacon-server-config
-   ```
+To enable telemetry and server metrics collection during a Helm deployment, you must define the global company identity and the beacon server status in your configuration.
 
-1. Locate the `.data."beacon_server.yaml"` section in the editor and update the usage configuration to match the structure below, replacing the placeholders with your actual identifiers:
+### Prerequisites
 
-    ```yaml
-    general:
-      metrics:
-        usage:
-          company_code: "your-company-code"
-          hybrid_manager_installation: "hm-installation-identifier"
-          interval: "24h"
-          modules:
-            - "all"
-          output:
-            http:
-              enabled: true
-              url: "https://hm-usage.enterprisedb.com"
-    ```
+- A functional Helm environment.
+- Your unique Company Code is provided by the administrator.
 
-1. Restart the `beacon-server` pod for the changes to take effect.
 
-1. List the pods in the `upm-beacon` namespace to identify the name of your server pod:
+1. Open your `values.yaml` file: Locate the configuration file used for your specific deployment.
 
-  ```
-  kubectl get pods -n upm-beacon
-  ```
+1. Configure Global Parameters: Under the `parameters.global` section, add your company code:
 
-  The name follows the format `upm-beacon-server-...`.
-
-1. Delete the pod. Kubernetes will automatically recreate it with the updated configuration.
-
-   ```
-   kubectl delete pod -n upm-beacon <pod-name>
+   ```Helm
+   parameters:
+     global:
+       company_code: "YOUR_COMPANY_CODE"
    ```
 
-1. Verify that the deployment has successfully recreated the pod and that the status is **Running** and **Ready**:
+1. Enable the Beacon Server: Set the `hybridManagerInstallation` flag to true to initiate the server metrics collector:
 
+   ```Helm
+   beaconServer:
+     hybridManagerInstallation: true
    ```
-   kubectl get pods -n upm-beacon
+
+1. Apply the changes using the helm install or helm upgrade command:
+
+   ```Helm
+   # For a new installation
+   helm install <release-name> <chart-path> -f values.yaml
    ```
+
+!!! important
+- Currently, no installation option is available for agent metrics. This feature is planned for a future release.
+
+- Telemetry will fail to initialize if the `company_code` lookup returns null or if the parameter is missing from `values.yaml`.
+!!!
