@@ -47,10 +47,10 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     !!!
 
     ```shell
-    export OLD_BUCKET=<old_bucket>
-    export OLD_BACKUP_ID=<old_environment_internal_backup_id>
-    export NEW_BUCKET=<new_bucket>
-    export NEW_REGION=<region_of_the_new_bucket>
+    export OLD_BUCKET=<old-bucket-name>
+    export OLD_BACKUP_ID=<old-environment-internal-backup-id>
+    export NEW_BUCKET=<new-bucket-name>
+    export NEW_REGION=<region-of-the-new-bucket>
     ```
 
     <details><summary>How do I obtain the old bucket values?</summary>
@@ -203,8 +203,8 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 8.  (Optional) If you were using HM to manage AI workloads, e.g. with the GenAI Builder, also copy the object store files and CORS configuration from the old bucket to the new one:
 
     ```shell
-    export OLD_BUCKET_DATALAKE=<old bucket>
-    export NEW_BUCKET_DATALAKE=<new bucket>
+    export OLD_BUCKET_DATALAKE=<old-bucket-name>
+    export NEW_BUCKET_DATALAKE=<new-bucket-name>
     ```
 
     <TabContainer syncKey="CSP">
@@ -333,7 +333,65 @@ After the old backups are available in the new bucket, you can restore the HM-in
     </Tab>
     </TabContainer>
 
-6.  Apply the YAML file for all the HM-internal database clusters to be re-created with the backup data:
+6.  Replace the `hm-portal-bootstrap` secret with the version from backup.
+
+    !!! Note
+        This step is only applicable to versions of HM from `2026.2` and later.
+
+        Run the command `kubectl get secret hm-portal-bootstrap -n default` against your new HM instance, and if the
+        secret doesn't exist, then you can skip this step because you are using a version of HM from before `2026.2`.
+
+    The `hm-portal-bootstrap` secret on the new HM instance needs to be replaced with the version that was on the old HM instance.
+    This secret contains a Fernet key used for encrypting sensitive configuration data, and the static passwords used for initial bootstrap access.
+    Without the correct Fernet key from the old environment, it isn't possible for HM to decrypt some of the data restored in the next step.
+
+    This step involves restoring a single secret found in the `default` namespace.
+    Velero doesn't support this well, as it is typically used to restore all resources of a given type for a given namespace.
+    Therefore, the only way to perform this restoration is to download the entire Velero backup and pull out a specific file.
+
+    To select a specific file, you first need to select a backup to use.
+    Start by listing out all the available backups with the following command:
+
+    ```shell
+    velero get backups -o json --selector velero.io/storage-location=recovery \
+    | jq -rc '(["Name", "Timestamp"]), (.items // [.] | .[] | [.metadata.name, .metadata.creationTimestamp]) | @tsv' \
+    | column -t -s "$(printf '\t')"
+
+    Select a backup from this list$mdash;typically the latest$mdash;and export the following variable pointing to the file's selected name.
+
+    ```shell
+    export BACKUP_NAME=<selected-name>
+    ```
+
+    Now download and extract the full backup:
+
+    ```shell
+    mkdir "${BACKUP_NAME}"
+    velero backup download "${BACKUP_NAME}" -o "${BACKUP_NAME}/backup.tar.gz"
+    tar -xzf "${BACKUP_NAME}/backup.tar.gz" -C "${BACKUP_NAME}"
+    ```
+
+    Confirm that the file `${BACKUP_NAME}/resources/secrets/namespaces/default/hm-portal-bootstrap.json` exists.  Now
+    delete the existing `hm-portal-boostrap` secret, and replace it with the one from the backup you just downloaded:
+
+    ```shell
+    kubectl delete secret hm-portal-bootstrap -n default
+    kubectl apply -f "${BACKUP_NAME}/resources/secrets/namespaces/default/hm-portal-bootstrap.json"
+    ```
+
+    Confirm the secret is there using the following command:
+    
+    ```shell
+    kubectl get secret hm-portal-bootstrap -n default
+    ```
+    
+    And you can now remove the local copy of the backup you downloaded, as you will not be needing these files again:
+
+    ```shell
+    rm -rf "${BACKUP_NAME}"
+    ```
+
+7.  Apply the YAML file for all the HM-internal database clusters to be re-created with the backup data:
 
     ```shell
     for CONFIG in $(find new-cluster-configs -type f)
@@ -369,16 +427,19 @@ The Velero plugin handles the transformation of Kubernetes resources during the 
 2.  Export the environment variables: 
 
     ```shell
-    export BACKUP_TIMESTAMP=<recovery date in YYYY–MM-DDTHH:MM:SSZ format>
-    export BACKUP_NAME=<selected name>
-    # These environment variables should already be available in your terminal
-    export OLD_BUCKET=<old bucket name>
-    export NEW_BUCKET=<new bucket name>
+    export BACKUP_TIMESTAMP=<recovery-date in YYYY–MM-DDTHH:MM:SSZ format>
+    # The BACKUP_NAME may already be available in your terminal from an earlier step.
+    export BACKUP_NAME=<selected-name>
+
+    # These environment variables should already be available in your terminal:
+    export OLD_BUCKET=<old-bucket-name>
+    export NEW_BUCKET=<new-bucket-name>
     ```
 
-    !!!note
-
-    The `BACKUP_TIMESTAMP` must be the exact ISO timestamp (e.g., `2024-12-16T15:44:03Z`) found in the previous step.
+    !!! Important
+    The `BACKUP_TIMESTAMP` must be the exact ISO timestamp found in the previous step.
+    
+    For example: `2024-12-16T15:44:03Z`.  
     !!!
 
 3.  Create and apply a `ConfigMap` to configure the Velero plugin:
