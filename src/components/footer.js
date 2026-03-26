@@ -22,7 +22,9 @@ const TimestampLink = ({ timestamp, fileRelativePath }) => {
     setHistoryRef(data.edbGit.sha);
   }, [data.edbGit.branch, data.edbGit.sha]);
 
-  const url = `${data.edbGit.docsRepoUrl}/commits/${historyRef}${fileRelativePath}`;
+  const url =
+    fileRelativePath &&
+    `${data.edbGit.docsRepoUrl}/commits/${historyRef}${fileRelativePath}`;
 
   if (timestamp) {
     return (
