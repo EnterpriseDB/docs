@@ -4,7 +4,7 @@ navTitle: Configuring
 deepToC: true
 ---
 
-To configure `PGFS`, install the extension using the `CREATE EXTENSION` command:
+To configure PGFS, install the extension using the `CREATE EXTENSION` command:
 
 ```sql
 edb=# CREATE EXTENSION pgfs;
@@ -22,43 +22,165 @@ __OUTPUT__
  pgfs             | 1.0.6   | pgfs       | pgfs: enables access to filesystem-like storage locations
 ```
 
-In addition to the `PGFS` extension listed in the output, other extensions are typically listed as well.
+In addition to the PGFS extension listed in the output, other extensions are typically listed as well.
 
-## PGFS components
+Once the PGFS extension is created, a `pgfs` schema, functions, metadata catalog tables and integration points for pipelines are created in the `pgfs` schema. For more information, see [Reference](reference.mdx).
 
-Once the `PGFS` extension is created, the following components are created or initialized:
+## Configuring Local File System access
 
-### pgfs schema
+You can manage how the PGFS extension interacts with your local data by adjusting its GUC (Grand Unified Configuration) settings. 
 
-To keep the database organized, all internal objects related to the file system are grouped under a dedicated `pgfs` schema. This prevents naming conflicts with your existing tables and functions.
+These are standard Postgres parameters that you can modify using the SET command.
 
-### Management functions
+**`pgfs.allowed_local_fs_paths`**
 
-A set of SQL functions is added to allow you to manage storage from within the `psql`:
+By default, PGFS is only able to access files in `/tmp/pgfs` of the local filesystem. This is a security measure to prevent the extension from accessing files it shouldn't.
 
-- **`pgfs.create_storage_location()`**: Used to define the connection string and credentials for an S3-comaptible bucket.
+If you want to allow PGFS to access files in other locations, you need to add those locations to a GUC setting, `pgfs.allowed_local_fs_paths`. This is a colon-separated list of paths that PGFS is allowed to access.
 
-- **`pgfs.list_files()`**: Allows you to browse the contents of the connected external storage.
+| Possible values          | Description                                                              |
+|--------------------------|--------------------------------------------------------------------------|
+| `'/tmp/pgfs'`            | The default location for PGFS to access files.                           |
+| `'/tmp/pgfs:/tmp/other'` | PGFS is able to access files in both `/tmp/pgfs` and `/tmp/other`.       |
+| `'/'`                    | PGFS is able to access all files on the system. This is not recommended. |
+| `''`                     | PGFS is not able to access any local files.                              |
 
-- **`pgfs.read_file()`**: Enables the database to pull specific data into a query.
+Use the Postgres `SET` command to change the setting. For example, to allow PGFS to access files in `/tmp/pgfs` and `/tmp/other`, you would run:
 
-### Metadata catalog tables
+```sql
+SET pgfs.allowed_local_fs_paths = '/tmp/pgfs:/tmp/other';
+```
 
-The extension creates internal catalog tables that can help track your storage locations. These tables store:
+## Authentication methods
 
-- **Endpoint URLS**: Where the storage is located. For example, AWS S3, Google Cloud Storage (GCP), or Azure Blob.
+PGFS supports following methods for authorizing access to your object storage:
 
-- **Authentication config**: References to the keys of IAM roles needed to access the data.
+### Static credentials
 
-- **Path mapping**: Definitions of which virtual paths in Postgres map to which physical paths in the cloud.
+Static credentials allow you to embed security keys directly within a storage location definition.
 
-### Integration points for Pipelines
+When you pass these secrets as the `credentials` parameter in `pgfs.create_storage_location`, PGFS stores them as a Postgres user mapping. This standard database security feature ensures that your secrets remain isolated and inaccessible to other database users.
 
-`PGFS` is a dependency for AI Accelerator Pipelines. It creates the hooks necessary for:
+While this method is highly convenient for testing and development, always ensure you manage these sensitive keys according to your organization's security policies.
 
-- **Volumes**: Virtual storage abstractions that Pipelines use as data sources.
+**Syntax for S3 storage**
 
-- **Format handlers**: The logic required to identify and process different data formats like `Text` or `Image` stored in the cloud.
+PGFS uses the `S3://` prefix to identify S3-compatible storage systems. Use the following structure to define a location with static credentials:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'storage_location_name',
+    's3://bucket_name',
+    options => '{ }',
+    credentials => '{ }'
+);
+```
+
+The parameters required for static authentication vary by storage provider. For S3-compatible systems, use the following JSON keys:
+
+- The `options` argument(JSON), that defines the connection behavior for the storage provider.
+
+  | Option           | Description                                                                                                                                      |
+  |------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+  | `region`         | The region of the S3-compatible storage system. If omitted, the client attempts auto-discovery.                                                  |
+  | `endpoint`       | The sepcific endpoint URL for the S3-compatible storage system.                                                                                  |
+  | `bucket`         | Used to explicitly provide the bucket name if it can't be passed in the URL.                                                                     |
+  | `allow_http`     | Set to `true` if your endpoint uses plain HTTP instead of HTTPS/TLS.                                                                             |
+  | `skip_signature` | Set to `true` to disable HMAC authentication (this method is used when you're not providing access_key_id/secret_access_key in the credentials.) |
 
 
-For more information on using these components, see [Using PGFS](./using/).
+- The `credentials` argument (JSON), that provides the actual authentication secrets.
+
+  | Option              | Description                                                             |
+  |---------------------|-------------------------------------------------------------------------|
+  | `access_key_id`     | HMAC credentials (often the username for non-AWS S3 providers).         |
+  | `secret_access_key` | HMAC credentials (often the password for non-AWS S3 providers).         |
+  | `session_token`     | A temporary session token that can be used instead of HMAC credentials. |
+
+
+### Environment variables
+
+PGFS can be configured to inherit authentication credentials directly from the operating system environment where Postgres is running. This method is particularly effective for managed environments, such as Google Kubernetes Engine (GKE), where credentials can be injected into the container.
+
+When using this method, PGFS automatically searches for relevant environment keys to authorize the connection, allowing you to simplify your SQL commands by omitting the credentials parameter.
+
+**Syntax for Google Cloud Storage (GCS)**
+
+PGFS uses the `gs://` prefix to identify Google Cloud Storage buckets. Use the following structure to define a location:
+
+    ```sql
+    SELECT pgfs.create_storage_location(
+        'storage_location_name', 
+        'gs://bucket_name'
+        credentials => '{}');
+    ```
+
+The `credentials` argument is optional. If you choose to pass credentials manually using JSON instead of environment variables, the following options are supported for GCS:
+
+| Option                          | Description                                              |
+|---------------------------------|----------------------------------------------------------|
+| `google_application_credentials`  | The file path to your application credentials JSON.      |
+| `google_service_account_key_file` | The file path to your specific service account key file. |
+
+See the [Google Cloud documentation](https://cloud.google.com/iam/docs/keys-create-delete#creating) for more information on how to manage service account keys.
+
+You can also set up these options via the equivalent environment variables to facilitate authentication in managed environments such as Google Kubernetes Engine.
+
+### Azure storage
+
+PGFS provides support for Azure Blob Storage and Azure Data Lake Storage Gen2 (ADLS Gen2). You can authenticate using either a shared access key or Azure Active Directory (ADD) client credentials. These credentials are encrypted and stored within the database as a standard Postgres user mapping to ensure secure, isolated access.
+
+**Syntax for Azure**
+
+```sql
+SELECT pgfs.create_storage_location(
+               'storage_location_name',
+               'prefix://bucket_name',
+               options => '{}',
+               credentials => '{}'
+       );
+```
+
+- PGFS recognizes several URL formats and prefixes to identify Azure resources:
+
+  - **Standard**: `az://`, `adl://`, or `azure://`
+
+  - **Filesystem (ADLS Gen2): `abs://` or `abfss://`
+
+  - **Direct HTTPS**: `https://<account>.blob.core.windows.net` or `https://<account>.blob.core.windows.net/<container>` or `https://<account>.dfs.core.windows.net`
+
+- The `options` argument(JSON), that defines the connection behavior for the storage provider.
+
+  | Option           | Description                                                    |
+  |------------------|----------------------------------------------------------------|
+  | `account_name`   | The unique identifier for your entire Azure storage resource.  |
+  | `container_name` | The specific name of the container within the storage account. |
+
+- The `credentials` argument (JSON), that provides the actual authentication secrets.
+  
+   - For shared access key:
+
+     | Option        | Description |
+     | ------------- | ----------- |
+     | `account_key` | The primary secret key used for shared access authentication. |
+   
+   - For clients credentials:
+
+     | Option          | Description                                                     |
+     |-----------------|-----------------------------------------------------------------|
+     | `client-id`     | The unique ID assigned to your app registration in Azure AD.    |
+     | `client-secret` | The secret key generated for your Azure app registration.       |
+     | `tenant-id`     | The unique identifier for your Azure Active Directory instance. |
+
+
+### IAM roles
+
+If your Postgres instance is running on cloud infrastructure, use Instance Profiles or IAM Roles. This is the most secure method as it uses temporary, rotating credentials. Attach an IAM policy directly to the underlying virtual machine or container. PGFS automatically detects the instance metadata and uses these temporary, rotating credentials to sign requests.
+
+```sql
+SELECT pgfs.create_storage_location(
+    'production_lake',
+    's3://my-analytics-bucket/',
+    '{"region": "us-east-1"}' 
+);
+```
