@@ -92,7 +92,7 @@ const products = {
   postgis: { name: "PostGIS", iconName: IconNames.GLOBE },
   postgresql: { name: "PostgreSQL", iconName: IconNames.POSTGRESQL_MONO },
   postgres_distributed_for_kubernetes: {
-    name: "EDB Postgres Distributed for Kubernetes",
+    name: "EDB Postgres® AI for CloudNativePG™ Global Cluster",
     iconName: IconNames.KUBERNETES,
   },
   postgres_for_kubernetes: {
