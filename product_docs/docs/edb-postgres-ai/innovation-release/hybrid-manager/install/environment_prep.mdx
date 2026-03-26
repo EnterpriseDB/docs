@@ -38,134 +38,29 @@ Now that your Kubernetes cluster is running, you must prepare it for the HM plat
 
 This involves establishing administrative access through a remote management workstation, staging required artifacts and secrets into the cluster, and translating your architectural decisions into the final configuration file.
 
-Preparing your environment, Phase 4, covers:
+## Creating secrets
 
-*  **Creating necessary infrastructure secrets and implementing TLS:**
+### Create image pull secret
 
-   * [Creating Kubernetes secrets for **Image Pull** credentials](#create-image-pull-secret) 
-   * [**Object Storage** access](#create-object-storage-secret).
-   * [Implementing your chosen TLS strategy](#implement-tls) (chosen in [Phase 2: Gathering your system requirements](./sys_reqs))
-     * [(A) self-managed Cert-Manager issuer](#option-a-custom-cert-manager-issuer)
-     * [(B) custom CA](#option-b-custom-certificate-authority-ca)
-     * [(C) custom certificate](#option-c-custom-certificate)
-     * [(D) self-signed default](#option-d-self-signed-certificates-default)
+Use `edbctl` to create the `ImagePullSecret`. It will give your Kubernetes cluster access to the EDB registry to pull images required for the installation. 
 
-* **Creating other necessary secrets**
+```shell
+edbctl image-pull-secret create
+```
 
-  * [Creating **GenAI Builder** secret](#creating-genai-builder-secrets) - requires Fernet secret and NGC key secrets.
-  * [Creating **Catalog** secret](#creating-catalog-secret) - requires confounding key secret.
-  * [Customizing secrets for the **Migration Portal**](#creating-catalog-secret) - requires secrets for service accounts.
+For more CLI options, see [edbctl image-pull-secret](/edbctl/latest/using/edbctl_image_pull_secret/).
 
-*  **Configuring advanced features:** 
+### Create component secrets
 
-  * [Defining **Multi-location** logic (SPIRE federation and object storage sync)](#configuring-multi-location-architecture)
-  * [Constructing complex YAML configurations for your **Identity Provider**](#configuring-identity-providers-idp).
-  * [Implementing **KMS** for Transparent Data Encryption (TDE)](#implementing-kms-for-tde).
+Use `edbctl` to create secrets required by all HM components (`core`, `ai`, `migration`, `analytics`).
 
-*  [**Completing environment preparation:**](/edb-postgres-ai/current/hybrid-manager/install/environment_prep/#completing-environmental-preparation)
+```shell
+edbctl setup create-install-secrets
+```
 
-   * Configuring the internal backup folder and securing the mandatory **User-0** admin account.
-
-*  [**Finalizing the cluster configuration (`values.yaml`):**](#finalizing-the-cluster-configuration-valuesyaml) 
-    * Assembling all the relevant above inputs into the final Helm chart `values.yaml` file.
-
-*  [**Validating the configuration file and runtime:**](#validating-the-configuration-file-and-runtime)
-   * Validating the `values.yaml` file and runtime environment, so that they are ready for HM installation.
-
-## Creating necessary secrets
-
-
-!!! Warning
-The following are not optional configurations.
-These preparatory steps **must be completed** in order to successfully complete your installation.
-This configurations do not require you utilize the associated features; it only prepares a secure implementation in case it's needed.
-!!!
-
-Create Kubernetes secrets for any required credentials, such as object storage credentials, database access tokens, or any other sensitive information.
-
-### Create Image Pull secret
-
-!!! Warning
-It is necessary to create an Image Pul secret for HM to install successfully.
-!!!
-
-#### Dependencies
-
-* k8s secret `edb-cred` (defaults to `edb-cred` in `values.yaml`)
-
-Use `edbctl` to create the `ImagePullSecret` namespace and required secrets.
-
-1.  Create the necessary namespaces and pull secrets:
-
-    ```bash
-    edbctl image-pull-secret create \
-      --username <container registry username> \
-      --password <container registry passowrd> \
-      --registry <local registry URI>
-    ```
-
-1.  When prompted with `Proceed? [y/N]` with the current Kubernetes context, select `y`.
-
-    You should see output similar to:
-    ```bash
-    2025/02/10 10:10:10 Creating Kubernetes Namespaces and ImagePullSecrets with the provided credentials...
-    2025/02/07 15:29:08 Namespaces and ImagePullSecrets creation completed
-    ```
-
-1.  Verify the secret creation:
-
-    ```bash
-    edbctl image-pull-secret list
-    ```
-    *Output example:*
-    ```text
-    Current Kubernetes context is: <your-KubeContext>
-    Namespace edbpgai-bootstrap: exists, all set!
-      Secret edb-cred: exists, all set!
-    Namespace upm-replicator: exists, all set!
-      Secret edb-cred: exists, all set!
-    ```
-
-#### Spot validation
-
-1. Check that the `edb-cred` secret exists in the target namespace:
-
-   ```
-   kubectl get secret edb-cred -n edbpgai-bootstrap
-   ```
-
-1. Check that the default service account references the `edb-cred` secret:
-
-   ```
-   kubectl get serviceaccount default -n edbpgai-bootstrap -o yaml | grep edb-cred
-   ```
-
-1. Deploy a test pod (lasso) to validate image pull:
-
-   ```bash
-   kubectl run lasso \
-     --rm -it \
-     --image=https://docker.enterprisedb.com/pgai-platform/lasso:latest \
-     --restart=Never \
-     -n edbpgai-bootstrap \
-     --image-pull-policy=Always \
-     -- bash
-   ```
-
-1. (Optional) Describe the pod to confirm imagePullSecrets are set:
-
-   ```
-   kubectl describe pod lasso -n edbpgai-bootstrap | grep -i imagepull
-   ```
+For more CLI options, see [edbctl setup](/edbctl/latest/using/edbctl_setup/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
 
 ### Create object storage secret
-
-!!! Warning
-It is necessary to create an object storage secret for HM to install successfully.
-Your object storage must be dedicated entirely to the HM. 
-Any prior data existing in your object storage interferes with the successful operation of the HM. 
-Similarly, if HM is removed and reinstalled, then the object storage must be emptied prior to beginning the new installation.
-!!!
 
 To implement the [object storage requirement](./sys_reqs), you must create a secret named `edb-object-storage` in the `default` namespace.
 
@@ -262,394 +157,16 @@ stringData:
     aws_region: <S3_REGION>
     # Set to true if server-side encryption is disabled on the bucket
     server_side_encryption_disabled: <true|false>
+    # often needed for on-premise storage, added in 2025.12
+    aws_request_checksum_calculation: when_required
+    aws_response_checksum_validation: when_required
 ```
 
-## Creating other necessary secrets
-
-The following configurations are scenario-dependent.
-
-- If using the `scenarios` parameter: These preparatory steps are mandatory only if your selected `scenarios` require them. If a required secret is missing for a chosen scenario, the installation will fail.
-
-- If NOT using the scenarios parameter: By default, all scenarios are enabled. In this case, all secrets are required to successfully complete the installation.
-
-### Creating GenAI Builder secrets
-
-GenAI Builder allows you to build AI agents.
-
-!!!note
-Required for deployments with the `ai` installation scenario enabled. This scenario is included by default unless it is manually excluded via the `spec.scenarios` parameter in `values.yaml`.
-!!!
-
-1.  One of the secrets you will create require an NGC API key. Create one following the [NVIDIA NGC documentation](https://docs.nvidia.com/ngc/gpu-cloud/ngc-user-guide/index.html#ngc-api-keys) to enable model image pulls.
-
-1.  You can create a Fernet key secret and NGC key secrets using the `edbctl` CLI.
-
-    - For manual installations, run this command and follow the interactive prompts:
-
-      ```bash
-      edbctl setup create-install-secrets --version <version> --scenario ai
-      ```
-
-    - If you are running the installation via a CI/CD pipeline, you must suppress interactive prompts. The method for achieving this depends on your `edbctl` version:
-
-      <TabContainer syncKey="edbctl version">
-      <Tab title="edbctl 1.2">
-
-      1.  Ensure the NGC API key you created above is available as a variable (`export EDB_AI_NVIDIA_NGC=<your-ngc-api-key>`).
-
-      1.  Use the `--non-interactive` flag to suppress confirmation prompts:
-  
-          ```bash
-          edbctl setup create-install-secrets --version <version> --scenario ai --non-interactive
-          ```
-
-      </Tab>
-
-      <Tab title="edbctl 1.3 and later">
-
-      In version 1.3.0, the `--non-interactive` flag was replaced by global configuration settings. You must disable both `interactive_mode` and `confirm_mode` for fully unattended execution.
-
-      1.  Ensure the NGC API key you created above is available as a variable.
-
-      1.  Configure `edbctl` for non-interactive behavior:
-
-          ```shell
-          edbctl config set interactive_mode off
-          edbctl config set confirm_mode off
-          ```
-
-      1.  Run the setup command:
-      
-          ```shell
-          edbctl setup create-install-secrets --version <version> --scenario ai
-          ```
-
-      </Tab>
-      </TabContainer>
-
-      This creates the Fernet key secret, as well as `nvidia-nim-secrets` and `ngc-cred` secrets in the `default` namespace with the appropriate replication annotations.
-
-      !!!note
-      [Fernet](https://github.com/fernet/spec/) is a cryptographic library used by Python. It provides symmetric encryption/decryption and is required to store secret data.
-      !!!
-
-1.  The HM administrator must keep the Fernet key safe and back it up. The secret name and namespace depend on the version of Hybrid Manager you are running.
-
-    For versions 2026.2 and earlier, the solution is based on Griptape. Use the following command to retrieve the secret:
-
-    ```shell
-    kubectl get secret -n upm-griptape fernet-secret -o yaml
-    ```
-
-    For versions 2026.3 and later, the solution shifted to LangFlow. The secret is now stored in the default namespace:
-
-    ```shell
-    kubectl get secret langflow-secret -n default -o yaml
-    ```
-
-    Store the key safely.
-
-1.  Configure DataLake object storage for GenAI builder by creating a DataLake bucket in the object storage you're using for your Hybrid Manager deployment. GenAI Builder uses it to store structures, tools, and indexed data.
-
-    <TabContainer>
-    <Tab title="AWS S3">
-
-    ```shell
-    aws s3 mb s3://<your-datalake-bucket-name> –region     <your-region>
-    ```
-
-    </Tab>
-
-    <Tab title="Google Cloud Storage (GCS)">
-
-    ```shell
-    gsutil mb -l <your-region> gs://<your-datalake-bucket-name>
-    ```
-
-    </Tab>
-
-    <Tab title="Other S3-compatible storage">
-
-    Use your provider’s management console or CLI to create a bucket with a unique name for your DataLake bucket.
-
-    </Tab>
-    </TabContainer>
-
-1.  Capture the following information for your bucket. You will need it later when you first use the GenAI launchpad application. The console will prompt you for your DataLake bucket configuration, which requires: 
-
-    -   `DATA_LAKE_ROOT_BUCKET`: The name of the bucket for use with DataLake. 
-
-    -   `DATA_LAKE_S3_ACCESS_KEY`: The access_key used to connect to the DataLake bucket.
-
-    -   `DATA_LAKE_S3_SECRET_ACCESS_KEY`: The secret_access_key used to connect to the DataLake bucket.
-
-    -   `DATA_LAKE_S3_ENDPOINT_UR`: The endpoint URL used to connect to the DataLake bucket.
-
-1.  Update the bucket's settings with the CORS configuration: 
-
-    <TabContainer>
-    <Tab title="AWS S3">
-
-    Update the bucket's settings to have the following [CORS configuration](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html):
-
-    ```txt
-    [
-        {
-            "AllowedHeaders": [
-                "*"
-            ],
-            "AllowedMethods": [
-                "PUT",
-                "POST",
-                "DELETE",
-                "GET",
-                "HEAD"
-            ],
-            "AllowedOrigins": [
-                "https://${PORTAL_DOMAIN_NAME}"
-            ],
-            "ExposeHeaders": []
-        }
-    ]
-    ```
-
-    Where `https://${PORTAL_DOMAIN_NAME}` is the domain configured for your Hybrid Manager.
-
-    </Tab>
-        
-    <Tab title="Google Cloud Storage (GCS)">
-    
-    The [S3 interoperability layer](https://cloud.google.com/storage/docs/aws-simple-migration) in GCS allows GenAI Builder to use GCS as an S3-compatible object store.
-    
-    1.  In the GCS console, under **Settings**, turn on the s3 interoperability. 
-    
-    2.  Update or [create a service account](https://cloud.google.com/iam/docs/service-accounts-create#creating_a_service_account) with the Storage Admin and Service Account Token Creator roles. 
-    
-    3.  Create an [HMAC key pair](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#console) for the service account.
-    
-    4.  Create a config file with a CORS configuration that points at the Hybrid Manager endpoint:
-    
-        ```txt
-        cat cors-config.json
-        [
-          {
-            "origin": ["https://${PORTAL_DOMAIN_NAME}"],
-            "method": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-            "responseHeader": ["*"],
-            "maxAgeSeconds": 3600
-          }
-        ]
-        ```
-    
-        Where `https://${PORTAL_DOMAIN_NAME}` is the domain configured for your Hybrid Manager.
-    
-    5.  Apply the CORS configuration to the previously created bucket:
-    
-        ```shell
-        gsutil cors set cors-config.json gs://<bucket name>
-        ```
-    
-    </Tab>
-        
-    <Tab title="Other S3-compatible storage">
-    
-    Use your provider’s management console or CLI to configure cross-origin resource sharing (CORS) with Hybrid Manager.
-    
-    </Tab>
-    </TabContainer>
-
-### Creating Catalog secret
-
-The Catalog secret is required to create encrypted storage credentials and manage Lakehouse data.
-
-!!!note
-Required for deployments with the `analytics` installation scenario enabled. This scenario is included by default unless it is manually excluded via the `spec.scenarios` parameter in `values.yaml`.
-!!!
-
-1.  You can create a confounding key secret with the `edbctl` CLI for environments with the `analytics` scenario enabled. 
-
-    - For manual installations, run this command and follow the interactive prompts:
-    
-      ```shell
-      edbctl setup create-install-secrets --version <version> --scenario analytics
-      ```
-    
-    - If you are running the installation via a CI/CD pipeline, you must suppress interactive prompts. The method for achieving this depends on your `edbctl` version:
-
-      <TabContainer syncKey="edbctl version">
-      <Tab title="edbctl 1.2">
-
-      1.  Use the `--non-interactive` flag to suppress confirmation prompts:
-  
-          ```bash
-          edbctl setup create-install-secrets --version <version> --scenario analytics --non-interactive
-          ```
-
-      </Tab>
-
-      <Tab title="edbctl 1.3 and later">
-
-      In version 1.3.0, the `--non-interactive` flag was replaced by global configuration settings. You must disable both `interactive_mode` and `confirm_mode` for fully unattended execution.
-
-      1.  Configure `edbctl` for non-interactive behavior:
-
-          ```shell
-          edbctl config set interactive_mode off
-          edbctl config set confirm_mode off
-          ```
-
-      1.  Run the setup command:
-      
-          ```shell
-          edbctl setup create-install-secrets --version <version> --scenario analytics
-          ```
-
-      </Tab>
-      </TabContainer>
-    
-    !!!note
-    
-    -   A confounding key is a randomized string that's at least 32 bytes long.
-    -   Create a confounding key for each Hybrid Manager deployment.
-    !!!
-
-1.  The Hybrid Manager administrator must keep the confounding key safe and back it up. 
-
-    !!! Warning
-    
-        The loss of the confounding key in a disaster scenario leads to a situation in which there's no mechanism for accessing the Lakehouse data managed by the Hybrid Manager data catalog. Instead, the administrator would have to create and store the new key, restart the `upm-lakekeeper`/`lakekeeper` workload, and rebuild all of the existing data catalogs carefully without deleting them. That procedure is very risky and would require support from EDB PG AI Professional Services team.    
-    
-    Fetch the key:
-    
-    ```shell
-    kubectl get secrets -n upm-lakekeeper pg-confounding-key -o yaml
-    ```
-    
-    Store the key safely.
-
-### Customizing Migration Portal secrets
-
-!!!note
-Required for deployments with the `migration` installation scenario enabled. This scenario is included by default unless it is manually excluded via the `spec.scenarios` parameter in `values.yaml`.
-!!!
-
-Migration Portal uses several secrets for internal component communication. While you can deploy Hybrid Manager with the default secrets for a quick, functioning installation, for production environments we strongly recommend creating custom secrets.
-
-Create custom secrets required for the Migration Portal: 
-
-- For manual installations, run this command and follow the interactive prompts:
-
-  ```shell
-  edbctl setup create-install-secrets --version <version> --scenario migration
-  ```
-
-- If you are running the installation via a CI/CD pipeline, you must suppress interactive prompts. The method for achieving this depends on your `edbctl` version:
-
-  <TabContainer syncKey="edbctl version">
-  <Tab title="edbctl 1.2">
-
-  1.  Use the `--non-interactive` flag to suppress confirmation prompts:
-  
-      ```bash
-      edbctl setup create-install-secrets --version <version> --scenario migration --non-interactive
-      ```
-
-  </Tab>
-
-  <Tab title="edbctl 1.3 and later">
-
-  In version 1.3.0, the `--non-interactive` flag was replaced by global configuration settings. You must disable both `interactive_mode` and `confirm_mode` for fully unattended execution.
-
-  1.  Configure `edbctl` for non-interactive behavior:
-
-      ```shell
-      edbctl config set interactive_mode off
-      edbctl config set confirm_mode off
-      ```
-
-  1.  Run the setup command:
-      
-      ```shell
-      edbctl setup create-install-secrets --version <version> --scenario migration
-      ```
-
-  </Tab>
-  </TabContainer>
-
-This creates the namespaces, custom secrets, and generates secure random passwords for all five service accounts: 
-
-   - `edb-migration-portal.db_secrets`
-   - `edb-migration-portal.db_superuser_secrets`
-   - `edb-migration-portal.copilot_secrets`
-   - `edb-migration-copilot.db_secrets`
-   - `edb-migration-copilot.metrics_auth_secrets`
-
-For more information on Migration Portal secrets, see [**Customizing Migration Portal secrets for secure internal communication**](/edb-postgres-ai/current/hybrid-manager/install/configuration/migration_portal_secrets/).
-
-### Implement TLS
+## Implementing TLS
 
 You must implement the TLS strategy chosen during the [Gathering your system requirements](./sys_reqs) phase, some of which require secrets to be created.
 
-#### Option A: Custom cert-manager issuer
-
-* **Use case:** You have an existing `ClusterIssuer` or `Issuer` (e.g., Let's Encrypt, HashiCorp Vault, or a corporate CA) running in the cluster.
-
-!!! Note
-For this option, you do not need to pass a secret to HM. 
-The existing Issuer already manages its own credentials.
-!!!
-
-##### Dependencies
-
-* Ensure your existing `ClusterIssuer` or `Issuer` is configured and available in the target cluster.
-
-* Specify the issuer name and kind in `values.yaml`:
-  * `parameters.global.portal_certificate_issuer_kind:<ClusterIssuer or Issuer>`
-  * `portal_certificate_issuer_name:<my_issuer>`
-
-* **SOP: [Set up a custom cert-manager issuer for the HM Portal](/edb-postgres-ai/current/hybrid-manager/install/configuration/cert-man/#set-up-a-custom-cert-manager-issuer-for-the-hm-portal)**
-
----
-
-#### Option B: Custom certificate authority (CA)
-
-* **Use case:** You want HM to create an cert-manager issuer for you and use your own corporate CA to sign certificates.
-
-##### Dependencies
-
-* Set up your own custom CA.
-
-* Create a Kubernetes secret for `<ca_secret_name>` containing your CA signing keypair (cert and key).
-
-* Specify the `<ca_secret_name>` in the `values.yaml`: `parameters.global.ca_secret_name:(<ca_secret_name)`.
-
-* **SOP: [Bring your own private certificate authority](/edb-postgres-ai/current/hybrid-manager/install/configuration/cert-man/#bring-your-own-private-certificate-authority).**
-
----
-
-#### Option C: Custom certificate
-
-**Use case:** You have your own x.509 certificate and would like to change it out for the default self-signed HM certificate
-
-##### Dependencies
-
-* Create a Kubernetes secret for `<my_portal_certificate>` including an export of the entire certificate chain in the public certificate file and the unencrypted private key.
-
-* Specify the `<my_portal_certificate>` in the  `values.yaml`: `parameters.global.portal_certificate_secret:<my_portal_certificate>`.
-
-* **SOP: [Set up a custom x.509 certificate for the Hybrid Manager Portal](/edb-postgres-ai/current/hybrid-manager/install/configuration/cert-man/#set-up-a-custom-x509-certificate-for-the-hybrid-manager-portal)**
-  
----
-
-#### Option D: Self-signed certificates (Default)
-
-* **Use case:** Non-production testing.
-
-HM automatically generates self-signed certificates by **default**.
-
-##### Dependencies
-
-N/A
+[Implementing TLS certificates](/edb-postgres-ai/latest/hybrid-manager/install/configuration/cert-man/) describes several implementation options.
 
 ## Configuring advanced features
 
@@ -669,17 +186,6 @@ You must establish trust domains, sync storage secrets, and configure the HM-int
 * [**SOP: Configuring multiple data centers for Hybrid Manager**](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/)
     * *Guidance: Detailed steps for setting up SPIRE federation and cross-DC wiring.*
 
-### Configuring identity providers (IdP)
-
-**Action:** Construct the `idpConnectors` configuration block.
-
-Configuring an IdP requires constructing a complex array in your `values.yaml`.
-
-You must gather specific values from your IdP provider (Okta, Active Directory, etc.) to populate the `portal.authentication.idpConnectors` section.
-
-* [**SOP: Configuring your own identity provider**](/edb-postgres-ai/current/hybrid-manager/install/configuration/byo_idp/)
-    * *Guidance: Detailed YAML examples for LDAP and SAML integration.*
-
 ### Implementing KMS for TDE
 
 If you require encryption at rest for your databases (TDE), you should enable the Key Management Service (KMS) provider and create your keys now.
@@ -696,44 +202,47 @@ Implement the configuration strategies decided upon during the [**Phase 1: Plann
 
 ## Completing environmental preparation
 
-### Set up an internal backup folder
+### Name your backup folder
 
-This is a universally unique folder name for the HM backups for disaster recovery.
+This is a unique folder used to store the HM backups for disaster recovery. Assign a unique folder name (e.g., using a UUID generator) and provide it in your `values.yaml` under `parameters.global.internal_backup_folder`. The string must be 12 characters comprised of letters and numbers i.e. `internal_backup_folder: "a7462dbc7106"`.
 
-#### Dependencies
+### Add required component configuration
 
-* `values.yaml` parameter `global.internal_backup_folder`.
+The following component-specific parameters should be added to your `values.yaml` under `parameters`:
 
-### Change mandatory static User-0 password
-
-#### Dependencies
-
-You must configure the following four values under `pgai.portal.authentication.staticPasswords` in your `values.yaml`:
-
-1.  **`userID`**: Must be set to `c5998173-a605-449a-a9a5-4a9c33e26df7`.
-1.  **`username`**: The login username for the admin account.
-1.  **`email`**: The email address associated with the admin account.
-1.  **`hash`**: The bcrypt hash of your desired password.
-
-##### Use a hash for your new password
-
-To generate the hash for your new password:
-
-**Option 1:**
-
-```bash
-bcrypt hash of the string "password": $(echo password | htpasswd -BinC 10 admin | cut -d: -f2)
+```yaml
+parameters:
+  edb-migration-portal:
+    enable_pdb: "false"
+  upm-api-pnxt-metric:
+    log_level: "info"
+    tsdb_host: "thanos-query.monitoring.svc.cluster.local"
+    tsdb_port: "9090"
+  upm-api-pnxt-pd:
+    log_level: "info"
+  upm-beaco-ff-base:
+    aes_key_rotation_interval: 2160h
+    usage_generator_interval: 24h
+  upm-beaco-usages:
+    usage_generator_interval: "24h"
+  upm-beacon:
+    beacon_location_id: <your-location-id>
+    server_host: <your-beacon-server-host>
+  upm-istio-gateway:
+    enable_server_session: "true"
+    openshift_console_domain_name: <your-openshift-console-domain>
+  upm-prometheus:
+    memory: "4Gi"
+  upm-thanos:
+    memcached_cpu: "500m"
+    memcached_memory: "2Gi"
+    query_frontend_cpu: "200m"
+    query_frontend_memory: "120Mi"
+  upm-trust-manager:
+    cert_manager_namespace: "cert-manager"
 ```
 
----
-
-**Option 2:**
-
-```bash
-echo 'password' | htpasswd -BinC 10 admin | cut -d: -f2
-```
-
-## Finalizing the cluster configuration (`values.yaml`)
+### Finalizing the cluster configuration (`values.yaml`)
 
 You now construct (or update if you have previously created) the final `values.yaml` file. 
 
@@ -744,61 +253,35 @@ Below is a template configuration with all of the keys you should have determine
 ```yaml
 system: <Kubernetes>
 bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
-bootstrapImageTag: <Version>
+bootstrapImageTag: <image-tag-version>
 containerRegistryURL: "<Container Registry Domain>/pgai-platform"
+scenarios: "core,migration,ai,analytics"
 parameters:
   global:
-    internal_backup_folder: <twelveCharacterString>
+    internal_backup_folder: "<twelveCharacterString>"
     portal_domain_name: <Portal Domain>
     storage_class: <Block Storage>
     portal_certificate_issuer_kind: <ClusterIssuer>
     portal_certificate_issuer_name: <my-issuer>
     trust_domain: <Portal Domain>
   upm-beacon:
-    beacon_location_id: <Location>
-    server_host: <Agent Domain>
-  transporter-rw-service:
-    domain_name: <Migration Domain>
-  transporter-dp-agent:
-    rw_service_url: https://<Migration Domain>/transporter
+    beacon_location_id: "<Location>"
+    server_host: <Beacon Server Domain>
 beaconAgent:
   provisioning:
-    imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+    openshift: <true | false>
+    imagesetDiscoveryAuthenticationType: <token | basic | eks_managed_identity>
     imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
   transparentDataEncryptionMethods:
-    - <available_encryption_method>
-pgai:
-  portal:
-    authentication:
-      idpConnectors:
-        - config:
-            caData: <base64 encyrption of Certificate Authority from SSO provider>
-            emailAttr: email
-            groupsAttr: groups
-            entityIssuer: https://<Portal Domain>/auth/callback
-            redirectURI: https://<Portal Domain>/auth/callback
-            ssoURL: [https://login.microsoft.com/](https://login.microsoft.com/)<azure service identifier>/saml2
-            usernameAttr: name
-          id: azure
-          name: Azure
-          type: saml
-      staticPasswords:
-        - email: <email>
-          hash: <hashed_password>
-          userID: c5998173-a605-449a-a9a5-4a9c33e26df7
-          username: <email-or-username>
+    - passphrase
+    - hashicorp_vault
+    # Additional options: aws_kms, azure_kms, gcp_kms
 resourceAnnotations:
   - name: istio-ingressgateway
     kind: Service
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internal
       service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
-spec:
-  scenarios:
-    - core
-    - <if required, migration>
-    - <if required, ai>
-    - <if required, analytics>
 ```
 
 ## Validating the configuration file and runtime
@@ -814,20 +297,25 @@ Replace `<your-registry-url>` with the registry you defined in `values.yaml` (e.
 ```bash
 helm template edb-pgai oci://<your-registry-url>/pgai-platform/edb-pgai \
   --values values.yaml \
-  --version <target-version> > /dev/null
+  --version <target-helm-version> > /dev/null
 ```
 
 If this command completes without error, your YAML syntax is valid.
 
 ### Validate secrets
 
-Ensure the secrets referenced in your configuration exist in the cluster.
+Ensure the secrets referenced in your configuration exist in the cluster. To list the image pull secrets: 
 
-```bash
-kubectl get secrets -n default
+```shell
+edbctl image-pull-secret list
 ```
 
-**Check for:** `edb-object-storage`, `edb-cred`, and your TLS secrets
+To list the component secrets:
+
+```shell
+edbctl setup list-install-secrets
+```
+
 
 ### Validate LoadBalancer
 
