@@ -569,7 +569,9 @@ function cleanup() {
       let test = normalizeUrl(url, metadata.canonical, metadata.index);
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
-      if (/\/current[\/#?]/.test(url)) {
+      const ext = path.posix.extname(test.pathname);
+      const isImageUrl = imageExts.includes(ext);
+      if (!isImageUrl && /\/current[\/#?]/.test(url)) {
         test = normalizeUrl(
           url.replace(/\/current([\/#?])/, "/" + metadata.version + "$1"),
           metadata.canonical,
