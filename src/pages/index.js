@@ -131,7 +131,7 @@ const BannerDivider = ({ headingText, iconName = "", toUrl = "" }) => {
     </>
   );
   const styles =
-    "fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1";
+    "fw-bold text-light bg-secondary bg-gradient homepage-banner-divider text-uppercase py-1 px-2 small d-block col-12 mx-1";
 
   return (
     <div>

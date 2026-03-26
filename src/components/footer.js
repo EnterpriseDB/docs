@@ -22,7 +22,9 @@ const TimestampLink = ({ timestamp, fileRelativePath }) => {
     setHistoryRef(data.edbGit.sha);
   }, [data.edbGit.branch, data.edbGit.sha]);
 
-  const url = `${data.edbGit.docsRepoUrl}/commits/${historyRef}${fileRelativePath}`;
+  const url =
+    fileRelativePath &&
+    `${data.edbGit.docsRepoUrl}/commits/${historyRef}${fileRelativePath}`;
 
   if (timestamp) {
     return (
@@ -52,7 +54,7 @@ const TimestampLink = ({ timestamp, fileRelativePath }) => {
 };
 
 const Footer = ({ timestamp, fileRelativePath }) => (
-  <footer className="mt-5 opacity-6 small text-center">
+  <footer className="mt-5 small text-center">
     <span className="text-muted mx-2">© EDB</span>·
     <Link className="text-muted mx-2" to="https://www.enterprisedb.com/gdpr">
       GDPR
