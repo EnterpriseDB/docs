@@ -17,11 +17,15 @@ deepToC: true
 
 * *A validated high-level inventory of compute, network, and storage infrastructure to be used in Phase 3: [Deploying your Kubernetes cluster](./k8s_install)*
 
-* *A number of requirements validated as ready for use in Phase 4 [Preparing your environment](environment_prep) and a number of inital inputs defined for the HM Helm chart `values.yaml` to start this file now, continue adding to it from Phase 1 if already started, or to use to populate the `values.yaml` at the end of Phase 4 ([Preparing your environment](environment_prep)).*
+* *A number of requirements validated as ready for use in Phase 4 [Preparing your environment](environment_prep) and initial inputs for the HM configuration — either a `values.yaml` file (Bootstrap method) or a `HybridControlPlane` Custom Resource manifest (Operator method, recommended).*
 
 !!! Note
-EDB's Sales Engineering and Professional Services are the primary resources for communicating and clarifying detailed deployment requirements during the sales cycle or via a Statement of Work (SoW). 
+EDB's Sales Engineering and Professional Services are the primary resources for communicating and clarifying detailed deployment requirements during the sales cycle or via a Statement of Work (SoW).
 The official documentation also provides comprehensive checklists.
+!!!
+
+!!! Note
+The tables in this guide reference `values.yaml` parameter names. If you are using the **Operator method (recommended)**, see the [Configuration mapping reference](./install_hm_operator#configuration-mapping-reference) for how these map to `HybridControlPlane` CR fields.
 !!!
 
 **Next phase:** Phase 3: [Deploying your Kubernetes cluster](./k8s_install)
@@ -630,12 +634,77 @@ You must prepare the following for the `values.yaml` for [Phase 4](./environment
 
 * **Auth Secrets:** If using `credentials` mode, specific Kubernetes Secrets must be provisioned with API keys. 
 
+<<<<<<< HEAD
 ### Example `values.yaml`
+=======
+## Impact on configuration
 
-According to the decisions made in previous steps, your `values.yaml`, if you have already started it, should reflect those choices.
+The infrastructure specifications detailed in this document—combined with your architecture decisions from Phase 1—dictate the values you use in the next phase.
 
-Here is an example of a production oriented `values.yaml` for installation which using all options "required for optimal experience".  
-If you are starting now, or have started your `values.yaml` already, your configuration file may be different if you are not employing the options "required for optimal experience above.
+Use this **Master Inventory** to ensure you have every required value before proceeding to Phase 3.
+
+### General & Platform
+
+| Source | Requirement | YAML Key | Condition |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | **K8s Flavor** | `system` | **Required** (e.g., `eks`, `gke`, `rhos`) |
+| **Phase 1** | **Provider** | `beaconAgent.provisioning.provider` | **Required** (e.g., `AWS`, `GCP`) |
+| **Phase 1** | **OpenShift** | `beaconAgent.provisioning.openshift` | **Required** if using RHOS (`true`) |
+| **Phase 1** | **Location** | `parameters.upm-beacon.beacon_location_id` | **Required** (String ID) |
+| **Phase 1** | **Installation scenarios** | `spec.scenarios` | **Optional**. All scenarios are enabled by default. To customize, specify `core` plus a combination of `migration`, `ai`, or `analytics`. |
+
+### Networking & ingress
+
+| Source | Requirement | YAML Key | Condition |
+| :--- | :--- | :--- | :--- |
+| **Phase 2** | **Portal Domain** | `global.portal_domain_name` | **Required** |
+| **Phase 2** | **Agent Domain** | `upm-beacon.server_host` | **Required** |
+| **Phase 2** | **Migration Domain** | `transporter-rw-service:domain_name` | **Required** |
+| **Phase 2** | **Migration URL** | `transporter-dp-agent:rw_service_url` | **Required** |
+| **Phase 2** | **Load Balancer** | `beaconAgent.provisioning.loadBalancersEnabled` | **Required** (`true` or `false`) |
+| **Phase 2** | **LB Annotations** | `resourceAnnotations` | **Required** if using CSP LB (e.g., AWS) |
+| **Phase 2** | **NodePort Domain** | `nodePortDomain` | Required if `loadBalancersEnabled` is `false` |
+
+### Storage & Registry
+
+| Source | Requirement | YAML Key | Condition |
+| :--- | :--- | :--- | :--- |
+| **Phase 2** | **Storage Class** | `parameters.global.storage_class` | **Required** |
+| **Phase 2** | **Global Registry** | `containerRegistryURL` | **Required** |
+| **Phase 2** | **Bootstrap Image** | `bootstrapImageName` | **Required** |
+| **Phase 2** | **Discovery Reg.** | `beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | **Required** |
+| **Phase 2** | **Registry Auth** | `beaconAgent.provisioning.imagesetDiscoveryAuthenticationType	` | **Required** |
+| **Phase 2** | **Insecure TLS** | `imagesetDiscoveryAllowInsecureRegistry` | Optional (If using self-signed registry) |
+
+### Security & Identity
+
+| Source | Requirement | YAML Key | Condition |
+| :--- | :--- | :--- | :--- |
+| **Phase 2** | **IDP Secret** | `pgai.portal.authentication.clientSecret` | **Required** (if using OIDC) |
+| **Phase 2** | **IDP Config** | `pgai.portal.authentication.idpConnectors` | **Required** (if using OIDC) |
+| **Phase 2** | **Static User** | `pgai.portal.authentication.staticPasswords.*` | **PoC Only** (if no IdP) |
+| **Phase 2** | **TDE Keys** | `beaconAgent.transparentDataEncryptionMethods` | Optional (if using TDE) |
+
+### Certificates (Choose One Strategy)
+
+Select **one** strategy (A, B, C, or D) and record the corresponding value(s).
+
+| Strategy | YAML Key | Description |
+| :--- | :--- | :--- |
+| **A. Cert Manager** | `parameters.global.portal_certificate_issuer_kind` | **Required.** The Resource Kind (e.g., `ClusterIssuer`). |
+| **A. Cert Manager** | `portal_certificate_issuer_name` | **Required.** The Resource Name (e.g., `letsencrypt-prod`). |
+| **B. BYO CA** | `parameters.global.ca_secret_name` | **Required.** The name of your CA Secret. |
+| **C. BYO Cert** | `parameters.global.portal_certificate_secret` | **Required.** The name of your Certificate Secret. |
+| **D. Self-signed** | N/A | **Default behavior.** (No configuration required). |
+
+### Example configurations
+>>>>>>> ec912a7f10 (docs: address comments)
+
+According to the decisions made in previous steps, your configuration file should reflect those choices. Examples are shown for both installation methods.
+
+#### Bootstrap method (`values.yaml`) — deprecated
+
+Here is an example of a production-oriented `values.yaml` using all options "required for optimal experience":
 
 ```yaml
 system: <Kubernetes>
@@ -667,11 +736,78 @@ resourceAnnotations:
     kind: Service
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+<<<<<<< HEAD
       service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8  
 ``` 
+=======
+      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+spec:
+  scenarios:
+    - core
+    - <if required, migration>
+    - <if required, ai>
+    - <if required, analytics>
+```
+
+#### Operator method (`HybridControlPlane` CR) — recommended
+
+Here is the equivalent configuration as a `HybridControlPlane` Custom Resource for the Operator installation method. For a complete field reference and mapping, see the [Configuration mapping reference](./install_hm_operator#configuration-mapping-reference).
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  flavour: <Kubernetes> # e.g., eks, gke, rhos, rke2
+  imageRegistry: <Container Registry Domain>/pgai-platform
+  version: <Version>
+
+  imagePullSecrets:
+    - name: edb-cred
+      namespace: edbpgai-bootstrap
+
+  globalParameters:
+    CONTAINER_REGISTRY_URL: <Container Registry Domain>/pgai-platform
+    portal_domain_name: <Portal Domain>
+    storage_class: <Block Storage>
+    portal_certificate_issuer_kind: <ClusterIssuer>
+    portal_certificate_issuer_name: <my-issuer>
+    trust_domain: <Portal Domain>
+
+  componentsParameters:
+    upm-beacon:
+      beacon_location_id: <Location>
+      server_host: <Agent Domain>
+    transporter-rw-service:
+      domain_name: <Migration Domain>
+    transporter-dp-agent:
+      rw_service_url: https://<Migration Domain>/transporter
+
+  beaconAgent:
+    provisioning:
+      imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+      imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+    transparentDataEncryptionMethods:
+      - <available_encryption_method>
+
+  scenarios:
+    - core
+    - <if required, migration>
+    - <if required, ai>
+    - <if required, analytics>
+
+  resourceAnnotations:
+    - name: istio-ingressgateway
+      kind: Service
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+        service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+```
+>>>>>>> ec912a7f10 (docs: address comments)
 
 ## Next phase
 
-You now have a complete inventory and deployment strategy, as well as some inputs to your HM Helm chart `values.yaml` to be added now if you are building your file as you go, or used as inputs to build the file at the end of [Phase 4: Preparing your environment](environment_prep).
+You now have a complete inventory and deployment strategy, as well as initial inputs for your HM configuration — either a `values.yaml` (Bootstrap method) or `HybridControlPlane` CR (Operator method). Continue building your configuration as you go, or use these inputs to assemble the file at the end of [Phase 4: Preparing your environment](environment_prep).
 
 **Proceed to [Phase 3: Deploying your Kubernetes cluster →](k8s_install) to provision and deploy your Kubernetes clsuter.**
