@@ -1,0 +1,98 @@
+---
+title: "Nagios"
+---
+
+The PEM server can send a passive alert result to Nagios network-alerting software when a user-defined alert is triggered. To instruct the PEM server to notify Nagios of a triggered alert, you must:
+
+-   Enable Nagios notification for each alert that triggers a notification from the PEM server to Nagios. You must configure PEM alerting before you create the `host.cfg` and `services.cfg` files.
+-   Configure Nagios-related behaviors of the PEM server.
+-   Create the `host.cfg` and `services.cfg` configuration files.
+-   If necessary, modify the Nagios configuration file and restart the Nagios server.
+-   Install the PEM agent on the system where the Nagios server is installed and register it with the PEM Server. Set `enable_nagios` configuration to `true` in the `agent.cfg` file for that agent, and restart the agent service.
+
+After configuring the server to enable Nagios alerting, any triggered alerts send a passive check result to the Nagios service. The syntax of a passive alert is:
+
+`<timestamp> PROCESS_SERVICE_CHECK_RESULT; <host_name> ; <service_name> ; <service_status> ;`
+
+Where:
+
+`timestamp` is the date and time that the alert was triggered.
+
+`host_name` is the name of the server or agent.
+
+`service_name` is the name of the alert.
+
+`service_status` is the numeric service status value:
+
+-  0 if the service status is OK
+-  1 if the service status is WARNING
+-  2 if the service status is CRITICAL
+-  3 if the service status is UNKNOWN
+
+The PEM server uses the following rules to evaluate the service status:
+
+-   If the PEM alert level is CLEARED, the warning message reads OK.
+-   If the PEM alert level is LOW, the warning message reads WARNING.
+-   If the `is_nagios_medium_alert_as_critical` flag (specified in the PEM server configuration dialog box) is set to FALSE and the alert level MEDIUM, the warning message reads WARNING.
+-   If the `is_nagios_medium_alert_as_critical` flag (specified in the PEM server configuration dialog box) is set to TRUE and the alert level is MEDIUM, the warning message reads CRITICAL.
+-   If the PEM alert level is HIGH, the warning message reads CRITICAL.
+
+## Enabling Nagios notification for an alert
+
+The PEM server maintains a unique set of notification properties for each enabled alert. Use the **Notification** tab of the **Manage Alerts** tab to specify that, when triggered, a given alert sends an alert notice to Nagios.
+
+To modify the notification properties of an alert, right-click the name of the object monitored by the alert, and select **Management > Alerts > Manage Alerts**. On the **Manage Alerts** tab, select **Edit** to the left of the alert name in the Alerts list. When the edit page opens, select the **Notification** tab.
+
+To enable Nagios notification, move the slider next to **Submit passive service check result to Nagios** to **Yes**. Then select **Save**.
+
+## Configuring Nagios-related behavior of the PEM Server
+
+You can use the Server Configuration dialog box to provide information about your Nagios configuration to the PEM server. To open dialog box, select **Management > Server Configuration**.
+
+Four server configuration parameters specify information about your Nagios installation and PEM server behavior related to Nagios:
+
+-   Use the `nagios_cmd_file_name` parameter to specify the location of the Nagios pipeline file that receives passive check alerts from PEM. The default value of this parameter is `/usr/local/nagios/var/rw/nagios.cmd`. If your `nagios.cmd` file resides elsewhere, specify the file location in the **Value** field.
+
+-   Move the slider in the `nagios_enabled` parameter to **Yes** to instruct the PEM server to send passive check alerts to Nagios.
+
+-   Use the `nagios_medium_alert_as_critical` slider to specify the warning severity that the PEM server passes to Nagios if a medium alert is triggered:
+
+    -   If the `is_nagios_medium_alert_as_critical` flag is set to **FALSE** and the alert level is **MEDIUM**, the warning message reads WARNING.
+
+    -   If the `is_nagios_medium_alert_as_critical` flag is set to **TRUE** and the alert level is **MEDIUM**, the warning message reads CRITICAL.
+
+-   Use the `nagios_spool_retention_time` parameter to specify the number of days of notification history to store on the PEM server. The default value is 7 days.
+
+After modifying parameter values, select **Save** in the upper-right corner of the dialog box.
+
+## Creating the hosts.cfg and services.cfg file
+
+The `templates.cfg` file (by default, located in `/usr/local/nagios/etc/objects`) specifies the properties of a generic host and generic service. The properties specify the parameters used in the `hosts.cfg` and `services.cfg` files.
+
+In most cases (when PEM is installed in a default configuration), you don't need to modify the `templates.cfg` file before creating the `hosts.cfg` and `services.cfg` files. If necessary, you can modify the `templates.cfg` file to specify alternative values for parameters or to create new templates.
+
+Before modifying the Nagios configuration file, use the following command to create a `hosts.cfg` file that contains information about the PEM hosts that reside on the local system:
+
+`psql -U postgres -p 5433 -d pem -A -t -c "select pem.create_nagios_host_config('generic-host')" > /usr/local/nagios/etc/objects/hosts.cfg`
+
+Then, use the following command to create a `services.cfg` file that contains information about the PEM services that reside on the local system:
+
+`psql -U postgres -p 5433 -d pem -A -t -c "select pem.create_nagios_service_config('generic-service')" > /usr/local/nagios/etc/objects/services.cfg`
+
+If you want to use a `custom template.cfg` file entry, specify the entry name in place of `generic-host` or `generic-service` in these commands.
+
+## Modifying the Nagios configuration file
+
+After creating the `host.cfg` and `services.cfg` files, you must specify their location in the Nagios configuration file (by default, `/usr/local/nagios/etc/nagios.cfg`). Modify the configuration file, adding entries that specify the location of the files:
+
+`cfg_file=/usr/local/etc/objects/hosts.cfg`
+
+`cfg_file=/usr/local/etc/objects/services.cfg`
+
+You can use the following command to confirm that Nagios is properly configured:
+
+`/usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg`
+
+After confirming that Nagios is configured correctly, restart the Nagios service:
+
+`/usr/local/nagios/bin/nagios -d /usr/local/nagios/etc/nagios.cfg`
