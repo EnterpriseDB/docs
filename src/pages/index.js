@@ -199,17 +199,19 @@ const Page = () => {
               headingText="Vector Engine"
               to="/edb-postgres-ai/vector-engine"
             >
-              <BannerCardLink to="/pg_extensions/pgfs">
-                PGFS
+              <BannerCardLink to="/aidb/latest">
+                AI Database (AIDB)
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/data-pipelines/">
                 AI Pipeline
               <BannerCardLink to="/pg_extensions/pgvector">
                 pgvector
               </BannerCardLink>
+              
               <BannerCardLink to="/pg_extensions/vectorchord">
                 VectorChord
               </BannerCardLink>
+              
               <BannerCardLink to="/pg_extensions/vectorchord_bm25">
                 VectorChord-BM25
               </BannerCardLink>
