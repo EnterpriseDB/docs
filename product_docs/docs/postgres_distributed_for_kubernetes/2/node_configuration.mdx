@@ -1,0 +1,371 @@
+---
+title: 'PGD Node management'
+originalFilePath: 'src/node_configuration.md'
+---
+
+The EDB Postgres® AI for CloudNativePG™ Global Cluster (PGD4K) operator relies on the PG4K operator
+to manage individual nodes.
+
+For each PGDGroup, a PGD node is represented as a single-instance PG4K cluster. The PGD4K operator reflects modifications
+made to the PGDGroup onto the CNP cluster and leverages the PG4K operator to handle these changes. These modifications are
+specific to the fields `spec.cnp` and `spec.witness` within the PGDGroup.
+
+By default, `spec.cnp` governs the settings for all nodes within the group. If you wish for the witness node to have different
+configurations from the data nodes, you can define `spec.witness`. Please note that once `spec.witness` is defined, you must
+explicitly specify all configuration parameters; any configurations not explicitly defined will default to the standard settings.
+
+## InitDB option
+
+You can specify the options passed to the initdb command within the `spec.[cnp|witness].initDBOptions` section.
+The following nodes will initialize from scratch using these options:
+
+-   All witness nodes
+-   Data nodes that use logical join
+-   The data node that is the first node in the [initial group](node_joins.md#the-initial-group)
+
+The supported initdb options within PGDGroup are:
+
+-   dataChecksums
+-   encoding
+-   walSegmentSize
+-   localeCollate
+-   localeCType
+-   localeProvider
+-   locale
+-   icuLocale
+-   icuRules
+-   builtinLocale
+
+PGDGroup passes these initdb options to the underlying PG4K cluster. For more details on supported
+initdb options, please refer to [Passing Options to initdb](/postgres_for_kubernetes/latest/bootstrap/#passing-options-to-initdb)
+in the PG4K documentation.
+
+## Managed configuration
+
+The PGD operator allows configuring the `managed` section of a PGD group through the `spec.cnp.managed` stanza.
+
+### Configure the managed roles
+
+From its inception, EDB CloudNativePG Global Cluster has managed the creation of specific roles
+required in PostgreSQL instances:
+
+-   Some reserved users, such as the `postgres` superuser, `streaming_replica`.
+-   The application user, set as the low-privilege owner of the application database
+
+The managed role defined in `.spec.cnp.managed` will be handled by the PGD4K operator directly. The operator will add the roles
+against the application database of the PGD data node, through connection to the write leader. So the managed role will only be
+available when the PGD group reaches the healthy phase and elects the write leader.
+
+The role specification in `.spec.cnp.managed` adheres to the
+[PostgreSQL structure and naming conventions](https://www.postgresql.org/docs/current/sql-createrole.html).
+
+A few points are worth noting:
+
+1.  The `ensure` attribute is **not** part of PostgreSQL. It enables declarative
+    role management to create and remove roles. The two possible values are
+    `present` (the default) and `absent`.
+2.  The `inherit` attribute is true by default, following PostgreSQL conventions.
+3.  The `connectionLimit` attribute defaults to -1, in line with PostgreSQL conventions.
+4.  Role membership with `inRoles` defaults to no memberships. If you define a list of `inRoles`
+    and grant other roles from the database, roles not in the `inRoles` will be revoked in the
+    next reconciliation cycle.
+
+Declarative role management ensures that PostgreSQL instances align with the
+spec. If a user modifies role attributes directly in the database, the
+PG4K operator will revert those changes during the next reconciliation
+cycle.
+
+In this example, a PGDGroup is configured to have a managed role named `foo` with the specified properties set up in postgres.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-managed
+spec:
+  [...]
+  cnp:
+    [...]
+    managed:
+      roles:
+        - name: foo
+          comment: Foo
+          ensure: present
+          connectionLimit: 100
+          login: true
+          superuser: true
+          createdb: true
+          createrole: true
+          replication: true
+```
+
+For more information about attributes in managed roles, see [Database role management](/postgres_for_kubernetes/latest/declarative_role_management/)
+in the PG4K documentation.
+
+!!! Note
+    The PGD4K operator also leverages the PG4K operator to handle managed configurations.
+    User and role definitions in the managed configuration are created or modified within
+    the `postgres` database.
+
+## Node Environment Variables
+
+The PGD operator allows configuring the `env` section of a PG4K cluster. The `spec.cnp.env` stanza
+is used for configuring the environment variables for the instance pod (node).
+
+In the following example, the `WORK_LOAD_TYPE` variable is set for data and witness nodes.
+If you need to configure additional environment variables for each node type, add them under the respective env maps.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-environment
+spec:
+  [...]
+  cnp:
+    [...]
+    env:
+      - name: WORK_LOAD_TYPE
+        value: data
+  witness:
+    [...]
+    env:
+      - name: WORK_LOAD_TYPE
+        value: witness
+```
+
+## Connection Manager
+
+The Connection Manager is a component of PGD version 6.0 that routes requests to the write leader
+of the nearest group. The Connection Manager is enabled by default and running on all data nodes.
+
+**Services to support Connection Manager**
+
+The PGD4K provides the following services to access the Connection Manager:
+
+The `<group name>-proxy` service is created for each PGDGroup, which routes the request to the `read_write_port` port of
+Connection Manager in all data nodes. You can connect to this service to access the write leader of the PGDGroup.
+
+The `<group name>-proxy-r` service is created for each PGDGroup, which routes the request to the `read_only_port` port of
+Connection Manager in all data nodes. You can connect to this service to access the read-only nodes of the PGDGroup.
+
+**Monitoring Connection Manager**
+
+The PGD4K operator will ensure the Connection Manager is live and ready on all `data nodes` before marking the PGDGroup as healthy.
+If the Connection Manager is not ready, the PGDGroup will be in the `PGD - Waiting for Connection Manager to be ready` phase,
+and the service may not be able to route the request to the write leader. You can check the PGDGroup status `.status.connMgr`
+to see in which `data node` the Connection Manager is not ready.
+
+```yaml
+status:
+  ...
+  connMgr:
+    - isLive: true
+      isReady: true
+      nodeName: sample-1
+      useHTTPS: true
+    - isLive: true
+      isReady: true
+      nodeName: sample-2
+      useHTTPS: true
+    - isLive: true
+      isReady: true
+      nodeName: sample-3
+      useHTTPS: true
+```
+
+!!! Note
+    For some corner cases, if the Connection Manager cannot become ready on a certain node, you can try to
+    reload or restart the Connection Manager by executing the following SQL by connecting to the PGD database:
+
+    -   reload: `SELECT bdr.connection_manager_refresh_pools()`
+    -   restart: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE backend_type = 'pgd connection_manager'`
+
+    For more information about the Connection Manager, please refer to the documentation on
+    [Connection Manager](/pgd/latest/connection-manager/).
+
+## Global routing
+
+By default, each PGD node belongs to two groups: the top-level PGDGroup and the subgroup.
+The top-level PGDGroup is the group name specified in the `spec.pgd.parentGroup.name` field,
+while the subgroup is the name specified in the `metadata.name` field of the PGDGroup YAML manifest.
+
+Both the top-level PGDGroup and subgroup have their own configuration. You can check the current
+configuration from the PGDGroup status: `status.PGD.globalNodeGroup` and `status.PGD.nodeGroup`.
+
+By default, the `routing` and `raft` are enabled for both top-level PGDGroup and subgroup. The Connection
+Manager of each data node will route the request to the write leader of the 'nearest' group, which is the subgroup
+in this case.
+
+This is the `.status.PGD` sample for a PGDGroup with subgroup routing:
+You can see the `enableRouting` is true for both top-level PGDGroup and subgroup, and the `routingStatus` is `current`,
+which means the Connection Manager is routing to the write leader of the current PGDGroup (`sample`).
+
+```yaml
+status:
+  ...
+  PGD:
+    extensionVersion: 6.2.0
+    globalNodeGroup:
+      connMgrReadOnlyMaxClientConn: -1
+      connMgrReadOnlyMaxServerConn: -1
+      connMgrReadWriteMaxClientConn: -1
+      connMgrReadWriteMaxServerConn: -1
+      enableRaft: true
+      enableRouting: true
+      name: global
+      routeReaderMaxLag: -1
+      routeWriterMaxLag: -1
+      uuid: a9744977-227d-11f1-9bb3-b802f3c20f81
+    nodeGroup:
+      connMgrReadOnlyMaxClientConn: -1
+      connMgrReadOnlyMaxServerConn: -1
+      connMgrReadWriteMaxClientConn: -1
+      connMgrReadWriteMaxServerConn: -1
+      enableRaft: true
+      enableRouting: true
+      name: sample
+      routeReaderMaxLag: -1
+      routeWriterMaxLag: -1
+      uuid: a97acea6-227d-11f1-0312-628b7495ee32
+    raftConsensusLastChangedMessage: Raft Consensus is working correctly
+    raftConsensusLastChangedStatus: OK
+    raftConsensusLastChangedTimestamp: 2026-03-19 04:01:43.365706Z
+    routingStatus: current
+    writeLeadLastDetected: sample-1
+```
+
+If you want to enable the global routing, you can set `spec.pgd.globalRouting` to true. This will disable
+the routing for the subgroup, the Connection Manager will route the request to the write leader of the top-level
+PGDGroup.
+
+This is the `.status.PGD` sample for a PGDGroup with global routing:
+You can see the `enableRouting` is false for the subgroup, and the `routingStatus` is `global`, which
+means the Connection Manager is routing to the write leader of the top-level PGDGroup.
+
+```yaml
+status:
+  ...
+  PGD:
+    extensionVersion: 6.2.0
+    globalNodeGroup:
+      connMgrReadOnlyMaxClientConn: -1
+      connMgrReadOnlyMaxServerConn: -1
+      connMgrReadWriteMaxClientConn: -1
+      connMgrReadWriteMaxServerConn: -1
+      enableRaft: true
+      enableRouting: true
+      name: global
+      routeReaderMaxLag: -1
+      routeWriterMaxLag: -1
+      uuid: a9744977-227d-11f1-9bb3-b802f3c20f81
+    globalWriteLeadLastDetected: sample-1
+    nodeGroup:
+      connMgrReadOnlyMaxClientConn: -1
+      connMgrReadOnlyMaxServerConn: -1
+      connMgrReadWriteMaxClientConn: -1
+      connMgrReadWriteMaxServerConn: -1
+      enableRaft: true
+      name: sample
+      routeReaderMaxLag: -1
+      routeWriterMaxLag: -1
+      uuid: a97acea6-227d-11f1-0312-628b7495ee32
+    raftConsensusLastChangedMessage: Raft Consensus is working correctly
+    raftConsensusLastChangedStatus: OK
+    raftConsensusLastChangedTimestamp: 2026-03-19 04:01:43.365706Z
+    routingStatus: global
+    writeLeadLastDetected: no write lead - routing is disabled
+```
+
+!!! Note
+    For more information about groups and subgroups, please refer to the documentation on
+    [groups and subgroups](/pgd/latest/node_management/groups_and_subgroups/).
+
+## Group Configuration
+
+Besides the global routing, you can also configure the following parameters at the PGDGroup level in the `spec.pgd` stanza.
+
+-   Define join method for nodes to join across groups
+
+    If you are creating PGD clusters with more than one PGDGroup, `groupJoinMethod` is used to determine the method for the first node in the second group to join the nodes in the first PGDGroup. The supported methods are `logical` and `physical`. For more information about group join methods, please refer to the documentation on
+    [Configure the join method for group join](node_joins.md#configure-the-join-method-for-group-join).
+
+-   Define how nodes discover other nodes in different PGDGroups
+
+    `discovery` defines how the nodes in the current PGDGroup discover nodes in other PGDGroups. Both the `logical` and
+    `physical` group join methods will leverage the value in this section to discover the nodes in other PGDGroups.
+     You can define the accessible `host` here for each available service. The PGD4K operator will combine the `host` with
+     the other values to generate the connection string.
+
+     If the `groupJoinMethod` is `logical`, the `discovery` should be configured for all PGDGroups including the initial group,
+     and the `discovery` section should include the `group` service for all PGDGroups. The initial group will use the `discovery` section to wait for the nodes in all PGDGroups to be ready and then create the initial group.
+
+     Here is a sample `discovery` configuration for a PGDGroup which uses the `logical` join method to join the existing groups.
+     The `discovery` section includes the `group` service for all available PGDGroups. The PGD4K operator will use these services to verify that PGD is installed and configured on the discovery nodes. For the initial group, the discovery job only waits for the discovery nodes to be ready. For non-initial groups, the discovery job additionally finds a fully joined node with the parent group available, creates the subgroup if needed, and performs the logical join  via `bdr.join_node_group.  `
+
+    ```yaml
+    apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+    kind: PGDGroup
+    metadata:
+      name: region-b
+    spec:
+      ...
+      pgd:
+        groupJoinMethod: logical
+        parentGroup:
+          name: world
+        discovery:
+          - host: region-a-group.region-a.svc.cluster.local
+          - host: region-b-group.region-b.svc.cluster.local
+          - host: region-c-group.region-c.svc.cluster.local
+    ```
+
+     If the `groupJoinMethod` is `physical`, only the non-initial group needs to configure the `discovery` section, and
+     the discovery section should include the `node` service which the current group is going to physically join. The PGD4K operator
+     will verify and choose one valid node from the `discovery` section to physically join.
+
+     Here is a sample `discovery` configuration for a PGDGroup `region-b` which uses the `physical` join method to join the nodes
+     in the `region-a` group. The `discovery` section includes all the `node` services in the `region-a` group,
+     and the PGD4K operator will verify each node in the `discovery` section, filtering out witness nodes and nodes that are not fully joined,
+     and select the first eligible data node with active Raft consensus to perform the physical join.
+
+    ```yaml
+    apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+    kind: PGDGroup
+    metadata:
+      name: region-b
+    spec:
+      ...
+      pgd:
+        parentGroup:
+          name: world
+        groupJoinMethod: physical
+        discovery:
+          - host: region-a-3-node.region-a.svc.cluster.local
+          - host: region-a-1-node.region-a.svc.cluster.local
+          - host: region-a-2-node.region-a.svc.cluster.local
+    ```
+
+    By default, during the physical join, the discovery job will try to validate the connection to the
+    node 30 times with a delay of 10 seconds between each try, and the timeout for each try is 300 seconds. You can
+    configure the `discoveryJob` section to change these default values.
+
+-   Configure the PGD group level settings
+
+    You can also configure group settings for the `subgroup` in the `nodeGroupSettings` section. If this section is not defined, PGD
+    defaults will be applied for the subgroup. For the global group, the group setting section is not configurable from
+    the PGDGroup YAML file, the PGD4K operator will ensure the `enable_routing` and `enable_raft` are always true, and the other
+    parameters will use the PGD default. If you want to update the group settings for the global group, you can update it through
+    the PGD database directly. For more information about the PGDGroup settings, please refer to the documentation on
+    [PGDGroup settings](/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option).
+
+-   Application database configuration
+
+    You can also configure the application database name, owner, and credentials in this section. By default, `app` will be used as
+    the application database name and owner, and the password will be auto-generated and stored in the secret `<pgdgroup name>-app`.
+
+    !!! Note
+        Since PGD version 6, the application user credentials are updated against the PGD application database directly
+        and PGD will sync the credentials to all the regions. If you are creating PGD clusters with multiple PGDGroups, it is
+        recommended to set the application database credentials in all the PGDGroups, and make sure to update the credentials
+        in all PGDGroups when you need to update the credentials.

@@ -1,0 +1,201 @@
+---
+title: 'Managing EDB Postgres Distributed (PGD) databases'
+originalFilePath: 'src/using_pgd.md'
+---
+
+As described in the [architecture document](architecture.md),
+EDB Postgres® AI for CloudNativePG™ Global Cluster is an operator created to deploy
+PGD databases.
+By leveraging the Kubernetes ecosystem, it can offer self-healing and
+declarative control.
+The operator is also responsible for the backup and restore operations.
+See [Backup](backup.md).
+
+However, many of the operations and control of PGD clusters aren't
+managed by the operator.
+The pods created by EDB CloudNativePG Global Cluster come with the
+[PGD CLI](/pgd/latest/reference/cli/) installed. You can use
+this tool, for example, to execute a switchover.
+
+## PGD CLI
+
+!!! Warning
+    Don't use the PGD CLI to create and delete resources.
+    Provisioning of resources is under the control of the operator, and manual
+    creation and deletion isn't supported.
+
+As an example, execute a switchover command.
+
+You can use the PGD CLI in any PGD instance pod. To list all instance pods that belong to a PGD group:
+
+```shell
+$ kubectl get pods -n my-namespace -l k8s.pgd.enterprisedb.io/group=group-name
+
+NAME                   READY   STATUS    RESTARTS      AGE
+location-a-1-1         1/1     Running   0             2h
+location-a-2-1         1/1     Running   0             2h
+location-a-3-1         1/1     Running   0             2h
+```
+
+Choose any one, and get a command
+prompt in it:
+
+```shell
+$ kubectl exec -n my-namespace -ti location-a-1-1 -- bash
+```
+
+You now have a bash session open with the instance pod. The `pgd` command
+is available:
+
+```shell
+$ pgd --help
+
+Usage: pgd [OPTIONS] <COMMAND>
+
+Commands:
+  cluster        Cluster-level commands
+  group          Group related commands
+  groups         Groups listing commands
+  node           Node related commands
+  nodes          Nodes listing commands
+  events         Event log commands
+  replication    Replication related commands
+  raft           Raft related commands
+  commit-scope   Commit scope management commands
+  commit-scopes  Commit scopes listing commands
+  assess         PGD compatibility assessment of Postgres server
+  completion     Generate the autocompletion script for pgd for the specified shell
+```
+
+Before using the PGD CLI, you need to configure the BDR database name in the PGD DSN. You can either use
+`--dsn "dbname=$APP_DATABASE"` in each command, or export `PGD_CLI_DSN=dbname=$APP_DATABASE`
+for the whole session.
+
+```shell
+$ pgd groups list --dsn "dbname=$APP_DATABASE"
+
+ Group Name | Parent Group Name | Group Type | Nodes
+------------+-------------------+------------+-------
+ location-a     | world             | data       | 3
+ location-b     | world             | data       | 3
+ location-c     | world             | data       | 1
+ world          |                   | global     | 0
+
+```
+
+You can use the `pgd group <group name> show` command to check the current write leader.
+
+```shell
+$ pgd group location-a show
+
+# Summary
+ Group Property    | Value
+-------------------+----------
+ Group Name        | location-a
+ Parent Group Name | world
+ Group Type        | data
+ Write Leader      | location-a-1
+ Commit Scope
+
+<- snipped ->
+```
+
+You can easily move your way through getting the information needed for the
+switchover:
+
+```shell
+pgd group set-leader --help
+
+$ pgd group location-a set-leader location-a-2
+Command executed successfully
+```
+
+```shell
+$ pgd nodes list
+ Node Name | Group Name | Node Kind | Join State | Node Status
+-----------+------------+-----------+------------+-------------
+ location-a-1  | location-a     | data      | ACTIVE     | Up
+ location-a-2  | location-a     | data      | ACTIVE     | Up
+ location-a-3  | location-a     | data      | ACTIVE     | Up
+```
+
+## Accessing the database
+
+The [Use cases](use_cases.md) section contains a discussion on using the
+database within the Kubernetes cluster versus from outside. In
+[Connectivity](connectivity.md), you can find a discussion on services,
+which is relevant for accessing the database from applications.
+
+However you implement your system, your applications must use the proxy
+service to connect and reap the benefits of PGD and
+of the increased self-healing capabilities added by the EDB Postgres Distributed
+for Kubernetes operator.
+
+!!! Important
+    As per the PG4K defaults, data nodes are
+    created with a database called `app` and owned by a user named `app`, in
+    contrast to the `bdrdb` database described in the EDB Postgres
+    Distributed documentation. You can configure these values
+    in the `cnp` section of the manifest.
+    For reference, see [Bootstrap](/postgres_for_kubernetes/latest/bootstrap/) in the PG4K
+    documentation.
+
+You might, however, want access to your PGD data nodes for administrative tasks,
+using the psql CLI.
+
+You can get a pod listing
+for your PGD cluster and `kubectl exec` into a data node:
+
+```shell
+kubectl exec -n my-namespace -ti location-a-1-1 -- psql
+```
+
+In the familiar territory of psql, remember that the default
+created database is named `app` (see previous warning).
+
+```terminal
+postgres=# \c app
+You are now connected to database "app" as user "postgres".
+app=# \x
+Expanded display is on.
+app=# select * from bdr.node_summary;
+-[ RECORD 1 ]---------------------------------------
+node_name              | location-a-1
+node_group_name        | location-a
+interface_connstr      | host=location-a-1-node user=streaming_replica sslmode=verify-ca port=5432 sslkey=/controller/certificates/streaming_replica.key sslcert=/controller/certificates/streaming_replica.crt sslrootcert=/controller/certificates/server-ca.crt application_name=location-a-1 dbname=app
+peer_state_name        | ACTIVE
+peer_target_state_name | ACTIVE
+
+<- snipped ->
+```
+
+For your applications, use the non-privileged role (`app`
+by default).
+
+You need the user credentials, which are stored in a Kubernetes secret:
+
+```shell
+kubectl get secrets
+
+NAME                     TYPE                       DATA   AGE
+<- snipped ->
+location-a-app           kubernetes.io/basic-auth   2      2h
+```
+
+This secret contains the username and password needed for the Postgres DSN,
+encoded in base64:
+
+```shell
+kubectl get secrets location-a-app -o yaml
+
+apiVersion: v1
+data:
+  password: <base64-encoded-password>
+  username: <base64-encoded-username>
+kind: Secret
+metadata:
+  creationTimestamp: <timestamp>
+  labels:
+
+<- snipped ->
+```

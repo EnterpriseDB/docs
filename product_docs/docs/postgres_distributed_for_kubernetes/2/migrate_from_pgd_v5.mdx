@@ -1,0 +1,128 @@
+---
+title: 'Upgrade from PGD5 to PGD6'
+originalFilePath: 'src/migrate_from_pgd_v5.md'
+---
+
+This document explains how to upgrade the operand across major
+PGD versions from PGD extension version 5 to PGD extension version 6.
+
+## Overview
+
+Upgrading from PGD extension version 5 to PGD extension version 6
+requires first upgrading the PGD4K operator to version 2.0.0 or later,
+which supports PGD6. After the operator upgrade, you can then upgrade
+the operand to PGD6. The operator will handle the upgrade of each node
+in the PGDGroup one by one, ensuring a smooth transition with minimal downtime.
+
+## Prerequisites
+
+Before upgrading the operand to PGD extension version 6, ensure the operator
+and operand images conform to the following version requirements:
+
+### PGD Version Requirements
+
+PGD extension has its own upgrade path and requirements. To upgrade from PGD5 to PGD6,
+please make sure the source PGD 5 and target PGD 6 are in the [upgrade path](/pgd/latest/lifecycle/upgrades/upgrade_paths/).
+
+### PGD4K Operator Requirements
+
+The PGD4K operator must be at version 1.2.0 or later before upgrading to 2.0.0.
+Both versions support the same PG4K LTS release (1.28.x), ensuring a compatible upgrade path.
+
+## Upgrade Steps
+
+Suppose you have a PGDGroup named `sample-group` running PGD 5.9.1, and you want
+to upgrade it to PGD 6.2.0 using PGD4K operator 2.0.0.
+
+### Step 1: Verify the PGDGroup is healthy and ready for upgrade
+
+```sh
+kubectl get pgdgroup sample-group
+NAME           DATA INSTANCES   WITNESS INSTANCES   PHASE                AGE
+sample-group   2                1                   PGDGroup - Healthy   15h
+```
+
+### Step 2: Verify Current PGD Version
+
+Check the `status.image` in the PGDGroup to ensure
+it's running PGD version 5.9 or later. If not, upgrade to PGD 5.9 first.
+
+```sh
+kubectl get pgdgroup sample-group -oyaml | yq .status.image.pgd
+docker.enterprisedb.com/k8s/postgresql-pgd:17.7-pgd591-ubi9
+```
+
+### Step 3: Verify the PGD4K operator and PG4K operator are in the supported versions
+
+-   PGD4K operator should be in version 1.2.0 or later
+-   PG4K operator should be in version 1.28.0 or later
+
+### Step 4: Upgrade PGD4K Operator to v2.0.0
+
+This can be done by applying the manifests of PGD4K operator v2.0.0 or by switching the channel in the OpenShift platform.
+
+After upgrading the operator to 2.0.0, the PGDGroup will pause in the phase of
+`Migration - Waiting for operand image upgrade to PGD-6`, waiting for the operand image to be upgraded to PGD6. At this moment, the operator is ready to support PGD6, but the operand is still running PGD5.
+
+```sh
+kubectl get pgdgroup sample-group
+NAME           DATA INSTANCES   WITNESS INSTANCES   PHASE                                                    AGE
+sample-group   2                1                   Migration - Waiting for operand image upgrade to PGD-6   17h
+```
+
+!!! Note
+    During the upgrade process in Step 4, the postgres pod may restart due to a rolling update from the PGDGroup
+    specification change after the operator upgrade.
+
+### Step 5: Review special cases
+
+Before upgrading the operand image, review the following significant changes introduced
+in operator 2.0.0.
+
+**Managed Roles**
+
+In operator 2.0.0 or later, PGD4K operator will handle the lifecycle of application users' secrets.
+As a result, the `managed.roles` section is cleaned up automatically on all PG4K clusters after
+the operator upgrade. Verify that the `managed.roles` section is empty on all clusters:
+
+```sh
+kubectl get cluster \
+  -l k8s.pgd.enterprisedb.io/group=sample-group \
+  -ojson | jq '.items[].spec.managed.roles'
+```
+
+See [Node Configuration](./node_configuration.md#configure-the-managed-roles)
+for more details on managed roles in the PGD4K operator.
+
+**OTEL Configuration**
+
+In operator 2.0.0 or later, OTEL is no longer supported. If the
+PGDGroup contains any OTEL-related configuration, remove it before
+upgrading the operand image.
+
+### Step 6: Upgrade the Operand Image
+
+Update the operand image in the PGDGroup by patching the resource, or
+you can also update the operand image by directly editing the PGDGroup resource.
+Make sure to switch to the PGD6 image, which includes the PGD extension version 6.
+
+```sh
+kubectl patch pgdgroup sample-group --type='json' \
+    -p='[{"op":"replace","path":"/spec/imageName","value":"docker.enterprisedb.com/k8s/postgresql-pgd:17.7-pgd620-expanded-ubi9"}]'
+```
+
+### Step 7: Monitor the Upgrade Process
+
+The PGDGroup will upgrade each instance node one by one from PGD5 to PGD6, all nodes will
+restart during this process. Once all the nodes are upgraded to PGD6, the operator will
+remove the legacy proxy resources from the PGDGroup.
+
+### Step 8: Verify Completion
+
+Finally, verify the PGDGroup has returned to a healthy state:
+
+```sh
+kubectl get pgdgroup sample-group
+NAME           DATA INSTANCES   WITNESS INSTANCES   PHASE                AGE
+sample-group   2                1                   PGDGroup - Healthy   18h
+```

@@ -14,7 +14,7 @@ export const process = async (filename, content) => {
   const processorInput = unified()
     .use(remarkParse)
     .use(admonitions, {
-      tag: ":::",
+      tag: "!!!",
       icons: "none",
       infima: true,
       customTypes: {
