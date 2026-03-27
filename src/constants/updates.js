@@ -18,10 +18,10 @@ export const updates = [
     moreUrl: "/pem/latest/pem_rel_notes/pem_10.4.0_rel_notes/",
   },
   {
-    title: "Analytics Accelerator 1.7",
+    title: "Analytics Accelerator 1.6 & 1.7",
     icon: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
     description:
-      "Adds support for Iceberg compaction maintenance, improves memory management and PGD replication performance and enables storage authentication.",
+      "1.6 added support for Spark RAPIDs plugins, native Azure support and more, then 1.7 built on this with support for Iceberg compaction maintenance, improved memory management, PGD replication performance and storage authentication.",
     url: "/pgaa/latest/",
     moreUrl: "/pgaa/latest/release_notes/",
   },
