@@ -1,0 +1,150 @@
+---
+title: "Always-On Architecture"
+navTitle: Always-On
+description: Learn about the PGD always-on architecture.
+---
+
+PGD's architectures have evolved over time to meet the needs of
+organizations. At it's core is the Always-on architecture, which is designed to
+provide high availability and disaster recovery for Postgres databases. Defined in
+PGD 4 and 5, the Always-on architecture been evolved to support PGD 6's new
+features and capabilities.
+
+Always-on architectures reflect EDB’s Trusted Postgres architectures. They
+encapsulate practices and help you to achieve the highest possible service
+availability in multiple configurations. These configurations range from
+single-location architectures to complex distributed systems that protect from
+hardware failures and data center failures. The architectures leverage EDB
+Postgres Distributed’s multi-master capability and its ability to achieve
+99.999% availability, even during maintenance operations.
+
+You can use EDB Postgres Distributed for architectures beyond the examples
+described here. Use-case-specific variations have been successfully deployed in
+production. However, these variations must undergo rigorous architecture review
+first.
+
+!!! Note 
+    This architecture is only available for PGD Expanded.
+
+## Standard EDB Always-on architectures
+
+EDB has identified a set of standardized architectures to support single- or
+multi-location deployments with varying levels of redundancy, depending on your
+recovery point objective (RPO) and recovery time objective (RTO) requirements.
+
+The Always-on architecture uses three database node groups as a basic building block.
+You can also use a five-node group for extra redundancy.
+
+EDB Postgres Distributed consists of the following major building blocks:
+
+- Bi-Directional Replication (BDR) &mdash; A Postgres extension that creates the
+  multi-master mesh network
+- Connection Manager &mdash; A connection router that makes sure the application is connected
+  to the right data nodes.
+
+All Always-on architectures protect an increasing range of failure situations.
+For example, a single active location with two data nodes protects against local
+hardware failure but doesn't provide protection from location (data
+center or availability zone) failure. Extending that architecture with a backup
+at a different location ensures some protection in case of the catastrophic
+loss of a location. However, you still must restore the database from backup first,
+which might violate RTO requirements. Adding a second
+active location connected in a multi-master mesh network ensures that service
+remains available even if a location goes offline. Finally, adding a third
+location (this can be a witness-only location) allows global Raft functionality
+to work even if one location goes offline. The global Raft is primarily
+needed to run administrative commands. Also, some features like DDL or
+sequence allocation might not work without it, while DML replication can
+continue to work even without global Raft.
+
+Each architecture can provide zero RPO, as data can
+be streamed synchronously to at least one local master, guaranteeing zero
+data loss in case of local hardware failure.
+
+Increasing the availability guarantee always drives added cost for hardware
+and licenses, networking requirements, and operational complexity. It's
+important to carefully consider the availability and compliance requirements
+before choosing an architecture.
+
+## Architecture details
+
+By default, application transactions don't require cluster-wide consensus for
+DML (selects, inserts, updates, and deletes), allowing for lower latency and
+better performance. However, for certain operations, such as generating new
+global sequences or performing distributed DDL, EDB Postgres Distributed
+requires an odd number of nodes to make decisions using a [Raft](https://raft.github.io)-based 
+consensus model. Thus, even the simpler architectures always have three nodes,
+even if not all of them are storing data.
+
+Applications connect to the standard Always-on architectures by way of multi-host
+connection strings, where each Connection Manager is a distinct entry in the
+multi-host connection string.
+
+Other connection mechanisms have been successfully deployed in production. However,
+they aren't part of the standard Always-on architectures.
+
+### Always-on Single Location
+
+![Always-on 1 Location, 3 Nodes Diagram](../images/1x3-cluster.svg)
+
+* Additional replication between data nodes 1 and 3 isn't shown but occurs as part of the replication mesh
+* Redundant hardware to quickly restore from local failures
+    * 3 PGD nodes
+        * Can be 3 data nodes (recommended) 
+        * Can be 2 data nodes and 1 witness that doesn't hold data (not depicted)
+    * Configuration and infrastructure symmetry of data nodes is expected to ensure proper resources are available to handle application workload when rerouted
+* Barman for backup and recovery (not depicted)
+    * Offsite is optional but recommended
+    * Can be shared by multiple PGD clusters
+* Postgres Enterprise Manager (PEM) for monitoring (not depicted)
+    * Can be shared by multiple PGD clusters
+
+### Always-on Multi-location
+
+ ![Always-on 2 Locations, 3 Nodes Per Location, Active/Active Diagram](../images/2x3-cluster.svg)
+
+* Application can be Active/Active in each location or can be Active/Passive or Active DR with only one location taking writes.
+* Additional replication between data nodes 1 and 3 isn't shown but occurs as part of the replication mesh.
+* Redundant hardware to quickly restore from local failures.
+    * 6 PGD nodes total, 3 in each location
+        * Can be 3 data nodes (recommended)
+        * Can be 2 data nodes and 1 witness which does not hold data (not depicted)
+    * Configuration and infrastructure symmetry of data nodes and locations is expected to ensure proper resources are available to handle application workload when rerouted
+* Barman for backup and recovery (not depicted).
+    * Can be shared by multiple PGD clusters
+* Postgres Enterprise Manager (PEM) for monitoring (not depicted).
+    * Can be shared by multiple PGD clusters
+* An optional witness node must be placed in a third region to increase tolerance for location failure.
+    * Otherwise, when a location fails, actions requiring global consensus are blocked, such as adding new nodes and distributed DDL.
+
+
+## Choosing your architecture
+
+All architectures provide the following:
+
+* Hardware failure protection
+* Zero downtime upgrades
+* Support for availability zones in public/private cloud
+
+Use these criteria to help you to select the appropriate Always-on architecture.
+
+|                                                      | Single-data location                                     | Two data locations                                       | Two data locations + witness                             | Three or more data locations                             |
+|------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------|
+| Locations needed                                     | 1                                                        | 2                                                        | 3                                                        | 3                                                        |
+| Fast restoration of local HA after data node failure | Yes - if 3 PGD data nodes <br/> No - if 2 PGD data nodes | Yes - if 3 PGD data nodes <br/> No - if 2 PGD data nodes | Yes - if 3 PGD data nodes <br/> No - if 2 PGD data nodes | Yes - if 3 PGD data nodes <br/> No - if 2 PGD data nodes |
+| Data protection in case of location failure          | No (unless offsite backup)                               | Yes                                                      | Yes                                                      | Yes                                                      |
+| Global consensus in case of location failure         | N/A                                                      | No                                                       | Yes                                                      | Yes                                                      |
+| Data restore required after location failure         | Yes                                                      | No                                                       | No                                                       | No                                                       |
+| Immediate failover in case of location failure       | No - requires data restore from backup                   | Yes - alternate Location                                 | Yes - alternate Location                                 | Yes - alternate Location                                 |
+| Cross-location network traffic                       | Only if backup is offsite                                | Full replication traffic                                 | Full replication traffic                                 | Full replication traffic                                 |
+| License cost                                         | 2 or 3 PGD data nodes                                    | 4 or 6  PGD data nodes                                   | 4 or 6 PGD data nodes                                    | 6+ PGD data nodes                                        |
+
+## Adding flexibility to the standard architectures
+
+To provide the data resiliency needed and proximity to applications and to the users maintaining the data, you can deploy the single-location architecture in as many locations as you want. While EDB Postgres Distributed has a variety of conflict-handling approaches available, do take care to minimize the number of expected collisions if allowing write activity from geographically disparate locations.
+
+You can also expand the standard architectures with two additional types of nodes:
+
+- *Subscriber-only nodes*, which you can use to achieve additional read scalability and to have data closer to users when the majority of an application’s workload is read intensive with infrequent writes. You can also leverage them to publish a subset of the data for reporting, archiving, and analytic needs.
+
+- *Logical standbys*, which receive replicated data from another node in the PGD cluster but don't participate in the replication mesh or consensus. They contain all the same data as the other PGD data nodes and can quickly be promoted to a master if one of the data nodes fails to return the cluster to full capacity/consensus. You can use them in environments where network traffic between data centers is a concern. Otherwise, three PGD data nodes per location is always preferred.
