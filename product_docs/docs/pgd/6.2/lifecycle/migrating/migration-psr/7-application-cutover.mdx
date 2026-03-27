@@ -1,0 +1,69 @@
+---
+title: Application cutover
+navTitle: Application cutover
+description: Finalize your migration by redirecting applications to the PGD cluster.
+---
+
+
+With the PGD cluster fully synchronized, this phase details the final transition from your Postgres Streaming Replication (PSR) environment to the Postgres Distributed (PGD) cluster.
+
+## Stopping application writes
+
+To prevent data divergence, stop all write traffic to the legacy PSR cluster at the application level. Ensure no new transactions are being initiated on the source node.
+
+## Performing lag verification
+
+Ensure that the PGD cluster has ingested all outstanding changes from the source node before shifting traffic. Run the following command on the seed node to ensure that replication lag on the migration subscription is zero:
+
+```sql
+DO $$
+DECLARE
+   wait_lsn pg_lsn := pg_current_wal_lsn();
+   current_flush_lsn pg_lsn;
+BEGIN
+  LOOP
+    current_flush_lsn := (SELECT MAX(flush_lsn) FROM pg_stat_replication WHERE application_name IN ('migration_seed_sub', 'migration_add_sub'));
+    IF wait_lsn <= current_flush_lsn THEN
+      EXIT;
+    END IF;
+    RAISE NOTICE 'Waiting for replication to catch up, current lag: %',  pg_wal_lsn_diff(wait_lsn, current_flush_lsn);
+    PERFORM pg_sleep(1);
+  END LOOP;
+END;$$;
+```
+
+## Disabling subscriptions
+
+Once the lag is zero, disable the logical subscriptions on all PGD nodes that connect back to the original PSR source. On all PGD nodes, run:
+
+```sql
+SET bdr.ddl_replication = off;
+ALTER SUBSCRIPTION migration_seed_sub DISABLE;
+```
+
+## Switching the application traffic
+
+With the PGD cluster confirmed as fully up-to-date and isolated from the old source, you can now redirect traffic and resume operations.
+
+Update the connection strings to point your application to the [Connection Manager](/pgd/latest/connection-manager). The specific method (e.g., updating DNS, Kubernetes ConfigMaps, or `.env` files) depends on your specific application architecture.
+
+Resume application traffic. The Connection Manager will now route requests to the correct PGD nodes.
+
+## Performing validation
+
+After the application is live on the PGD cluster, perform final verification checks to ensure the PGD mesh is healthy, receiving data from the application, and propagating across all nodes in the PGD cluster. This involves re-verifying the replication streams to confirm that writes are propagating across all nodes.
+
+1. Confirm that all nodes are in an 'active' state and that internal subscriptions are streaming correctly. On any PGD node, run:
+
+    ```sql
+    SELECT * FROM bdr.node_summary;
+    SELECT * FROM bdr.subscription_summary;
+    ```
+
+1. Check the replication rates to ensure the cluster is processing the new load without building up internal lag. On any PGD node, run:
+
+    ```sql
+    SELECT * FROM bdr.node_replication_rates;
+    ```
+
+Next step: [Clean up the environment](8-cleanup).

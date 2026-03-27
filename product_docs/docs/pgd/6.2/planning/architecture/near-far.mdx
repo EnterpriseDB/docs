@@ -1,0 +1,61 @@
+---
+title: Near/far architecture
+navTitle: Near/far
+description: Learn about the PGD near-far architecture.
+---
+
+In the near/far architecture, there are two data nodes in the primary location and one data node in a secondary location. The primary location is where the majority of the data is stored and where most of the client connections are made. The secondary location is used for disaster recovery and isn't used for client connections by default.
+
+The data nodes are all configured in a multi-master replication configuration, just like the standard architecture. The difference is that the node at the secondary location is fenced off from the other nodes in the cluster and doesn't receive client connections by default. In this configuration, the secondary location node has a complete replica of the data in the primary location.
+
+Using a PGD commit scope, the data nodes in the primary location are configured to synchronously replicate data to the other node in the primary location and to the node in the secondary location. This ensures that the data is replicated to all nodes before it's committed to on the primary location. In the case of a node going down, the commit scope rule detects the situation and degrades the replication to asynchronous replication. This behavior allows the system to continue to operate. 
+
+In the event of a partial failure at the primary location, the system switches to the other data node, also with a complete replica of the data, and continues to operate. It also continues replication to the secondary location. When the failed node at the primary location comes back, it rejoins and begins replicating data from the node that's currently primary.
+
+In the event of a complete failure in the primary location, the secondary location's database has a complete replica of the data. Depending on the failure, options for recovery include restoring the primary location from the secondary location or restoring the primary location from a backup of the secondary location. The secondary location can be configured to accept client connections, but this isn't the default configuration and requires some additional reconfiguration.
+
+## Synchronous replication in near/far architecture
+
+For best results, configure the near/far architecture with synchronous replication.
+This ensures that the data is replicated to the secondary location before it's committed to the primary location.
+
+## Manually Deploying PGD near-far architecture
+
+The following instructions describe how to manually deploy the PGD near-far architecture. This architecture is designed for a single location that needs to be reasonably highly available and needs to be able to recover from a disaster. It does this by having a two-data-node cluster in the primary location and a single data node in a secondary location.
+
+These instructions use the pgd command line tool to create the cluster and configure the nodes. They assume that you have already installed PGD and have access to the pgd command line tool. 
+
+The primary location is referred to as the `active` location and the secondary location as the `dr` location.
+
+## PGD configuration
+
+The primary location is configured with two data nodes, in their own group "active". This location is where the majority of the client connections will be made.
+
+The secondary location is configured with one data node, in its own group "dr".
+
+They are all members of the same cluster.
+
+Once created with pgd-cli, the routing and fencing of the nodes needs to be configured.
+
+First, disable the routing on both the "active" and "dr" groups:
+
+```shell
+pgd group dr set-option enable_routing off --dsn "host=localhost port=5432 dbname=pgddb user=pgdadmin"
+pgd group active set-option enable_routing off --dsn "host=localhost port=5432 dbname=pgddb user=pgdadmin"
+```
+
+Then, enable the routing on the "pgd" top-level group:
+
+```shell
+pgd group pgd set-option enable_routing on --dsn "host=localhost port=5432 dbname=pgddb user=pgdadmin"
+```
+
+Finally, enable the fencing on the "dr" group:
+
+```shell
+pgd group dr set-option enable_fencing on --dsn "host=localhost port=5432 dbname=pgddb user=pgdadmin"
+```
+
+This approach ensures that the "dr" group is fenced off from the other nodes in the cluster and doesn't receive client connections by default.
+The "active" group will continue to operate normally and will continue to replicate data to the "dr" group.
+
