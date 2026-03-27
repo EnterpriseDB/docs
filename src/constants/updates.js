@@ -2,6 +2,30 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EDB Postgres® AI for CloudNativePG™ 2.0.0",
+    icon: IconNames.KUBERNETES_MONO,
+    description:
+      "This release introduces support for EDB Postgres Distributed (PGD) 6 in Kubernetes, leveraging its integrated connection management and predefined commit scopes. Also adds support for upgrading from PGD 5 to PGD 6, default monitoring support and more.",
+    url: "/postgres_distributed_for_kubernetes/latest/",
+    moreUrl: "/postgres_distributed_for_kubernetes/latest/release_notes/",
+  },
+  {
+    title: "Postgres Enterprise Manager 10.4.0",
+    icon: IconNames.EDB_PEM,
+    description:
+      "PEM 10.4 brings new user-defined reports which can run on any monitored server or the PEM server, new options that enable more flexible installations, fully revised documentation for HA PEM deployments using new configuration options, support for SLES 15 SP7, a new REST API for profile management, and more.",
+    url: "/pem/latest/",
+    moreUrl: "/pem/latest/pem_rel_notes/pem_10.4.0_rel_notes/",
+  },
+  {
+    title: "Analytics Accelerator 1.7",
+    icon: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+    description:
+      "Adds support for Iceberg compaction maintenance, improves memory management and PGD replication performance and enables storage authentication.",
+    url: "/pgaa/latest/",
+    moreUrl: "/pgaa/latest/release_notes/",
+  },
+  {
     title: "EDB Postgres® AI for CloudNativePG™ Global Cluster 1.2.0",
     icon: IconNames.MODULE,
     description:
