@@ -1,0 +1,184 @@
+---
+title: Installing WEM
+navTitle: Installing WEM
+description: Learn how to install the WarehousePG Enterprise Manager service.
+deepToC: true
+---
+
+Install the WarehousePG Enterprise Manager (WEM) package on your designated host.
+
+## Downloading and installing WEM 
+
+1. Configure the the EDB repository on your host:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download whpg-enterprise-manager
+    ```
+
+1. Install the WEM package:
+
+    ```bash 
+    sudo dnf install -y whpg-enterprise-manager
+    ```
+
+## Performing post-installation setup
+
+To run WEM management commands (such as `setup`, `doctor`, or `verify`) from any location in your terminal, add the WEM binary directory to your system `PATH`. 
+
+Update your current session:
+
+```bash
+export PATH=/usr/local/greenplum-db/wem:$PATH
+```
+
+!!! tip
+    To make this change persistent, add the command above to your `~/.bashrc` or `~/.bash_profile` file.
+
+## Configuring WEM
+
+Configure the WEM service by editing `/etc/wem/wem.conf`.
+
+1. **Target cluster:** Set the values of `WHPG_HOST`, `WHPG_PORT`, `WHPG_DATABASE`, `WHPG_USER` , and `WHPG_PASSWORD` as per your WHPG cluster. For example:
+
+    ```ini
+    WHPG_HOST=whpg-coordinator-host
+    WHPG_PORT=5432
+    WHPG_DATABASE=postgres
+    WHPG_USER=gpadmin
+    WHPG_PASSWORD=postgres
+    ```
+
+    !!! Note
+        You can specify any database on your WHPG cluster. However, `WHPG_USER` must be a superuser.
+
+1. **Observability endpoints:** Set the URLs for your Prometheus and Loki instances. For example:
+
+    ```ini
+    PROMETHEUS_URL=http://prometheus.hostname:9090
+    LOKI_URL=http://loki.hostname:3100
+    ```
+
+1. **Application state (optional):** By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`. To use a dedicated database for WEM state, configure these optional parameters. For example:
+
+    ```ini
+    WEM_HOST=wem-db-hostname
+    WEM_PORT=5432
+    WEM_DATABASE=wem
+    WEM_USER=gpadmin
+    WEM_PASSWORD=postgres
+    ```
+
+1. **Alerting:** To enable centralized notifications, point WEM to your Alertmanager endpoint:
+
+    ```ini
+    ALERTMANAGER_URL= http://prometheus.hostname:9093
+    ```
+
+1. **AI Assistant:** To enable the AI Assistant for query writing and optimization, manually add the `ANTHROPIC_API_KEY` parameter (requires an active Anthropic account).
+
+    ```ini
+    ANTHROPIC_API_KEY=YOUR_API_KEY_HERE
+    ```
+
+1. **Advanced tuning:** Optionally, adjust these parameters to fine-tune logging and data intervals:
+
+    - `WEM_EXPORTER_LOG_LEVEL`: Sets the verbosity of Exporter logs (`debug`, `info`, `warn`, or `error`).
+
+    - `WEM_EXPORTER_REMOTE_WRITE_INTERVAL`: Frequency for pushing metrics. For example, 15s, 1m, 5m.
+
+    - `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT`: Maximum time allowed for a data push. For example, 30s, 1m, 2m.
+
+1. **WEM portal access:** By default, the WEM web portal listens on port 8080. To use a different port, set the `PORT` parameter. For example:
+
+    ```ini
+    PORT=8082
+    ```
+
+1. **Session security:** To secure user sessions, configure the cookie secret and transmission settings.
+
+    - Generate a unique 32-byte key using openssl rand -base64 32 and set it as the `WEM_COOKIE_SECRET`.
+    - If you aren't using HTTPS, you must also set `WEM_INSECURE_COOKIES` to `1`.
+
+    ```ini
+    WEM_COOKIE_SECRET=your-generated-secret-key
+    WEM_INSECURE_COOKIES=1
+    ```
+
+### Setting the administrator password
+
+Before initializing WEM, you must establish the initial administrative credentials. Choose one of the following methods:
+
+- **Interactive setup:** Skip editing the configuration file and provide the password directly when running `wem setup` in the following section.
+
+- **Static configuration:** Define the password in the WEM configuration file. This parameter is auto-generated if empty at install.
+
+    ```ini
+    WEM_ADMIN_PASSWORD=your-secure-password
+    ```
+
+- **File-based configuration:** For enhanced security in automated deployments, point WEM to an external password file.
+
+    1. Create a file containing your password:
+
+        ```bash
+       echo "your-secure-password" > /etc/wem/admin.pw
+        ```
+
+    1. Manually add the following parameter to the WEM configuration file:
+        
+        ```ini
+        WEM_ADMIN_PASSWORD_FILE=/etc/wem/admin.pw
+        ```
+
+!!! Note
+    After you initialize the WEM portal and log in for the first time, perform all user management, such as adding users and modifying roles, through the WEM interface.
+
+## Initializing WEM
+
+Initialize the database and internal configurations. Choose the method that fits your deployment style:
+
+- **Manual interactive setup:** Use this method if you want to provide configuration details, such as the admin password, during the process.
+
+    ```shell
+    /usr/local/greenplum-db/wem/wem setup
+    ```
+
+- ** Automated systemd setup:** Use this method for automated installations. When you start the service using `systemd`, the system automatically detects if a setup is required and executes it using the parameters defined in your configuration file.
+
+    ```shell
+    systemctl enable wem
+    systemctl start wem
+    ```
+
+## Verifying the installation
+
+Verify that the service is active:
+
+```bash
+sudo systemctl status wem
+```
+
+Use the following diagnostic tools to ensure all components are communicating correctly and the environment is healthy.
+
+- Validate your configuration settings:
+
+    ```bash
+    wem setup --verify
+    ```
+    See [wem setup command reference](../reference/commands#wem-setup) for details.
+
+- Perform a comprehensive check for configuration errors, missing dependencies, or connectivity issues:
+
+    ```bash
+    wem doctor
+    ```
+
+    See [wem doctor command reference](../reference/commands#wem-doctor) for details.
+
+
+!!! Note Post-installation changes: 
+    To modify your environment after the initial setup, see [Configuring WEM](../configuring).
+
