@@ -1,0 +1,53 @@
+---
+title: Managing system resources
+navTitle: Managing system resources
+description: Configure and monitor CPU, memory, and concurrency limits to optimize workload performance for resource groups and resource queues.
+---
+
+Govern cluster performance by controlling how system resources are distributed across different workloads using the **Resource Management** panel on the left sidebar. By implementing a resource management strategy, you prevent a single database tenant or poorly optimized query from exhausting cluster capacity and impacting other users.
+
+WarehousePG (WHPG) provides two primary strategies for resource management: resource groups and resource queues. They're controlled by the `gp_resource_manager` server configuration parameter. See [Managing resources](/supported-open-source/warehousepg/warehousepg/admin_guide/wlmgmt/) for details on how WHPG provides resource management.
+
+The WarehousePG Enterprise Manager (WEM) interface adapts based on two factors:
+
+1. The value of `gp_resource_manager`:
+    - `group`: Displays the Resource Groups interface.
+    - `queue`: Displays the Resource Queues interface.
+    - `none` (WHPG 7+): Disables resource management. 
+
+2. Your WHPG major version:
+The configuration options differ between WHPG 6 and WHPG 7 to reflect changes in the underlying engine's capabilities.
+
+## Governing workloads with resource groups
+
+To ensure high-priority processes remain isolated from ad-hoc queries, configure limits that match your cluster version and hardware capacity. WEM adjusts the **Configuration** tab to match the capabilities of your WHPG version.
+
+- Map database roles to groups with the **Role Assignments** tab. Assign ETL processes and administrative accounts to groups with higher priority to ensure they're never starved of resources.
+- Set CPU and memory boundaries using the **Configuration** tab:
+    - For WHPG 7, use **CPU Max %** to set a hard ceiling that the group can't exceed. Adjust **CPU Weight** to determine how much relative processing power a group receives during periods of high contention.
+    - For WHPG 6, use **CPU Rate %** and **Memory %** to define the fixed share of resources dedicated to a group.
+- Limit simultaneous activity to prevent too many queries from running at once by adjusting the value of **Concurrency**. If this limit is too high, individual queries could fail due to out-of-memory (OOM) errors.
+- Optimize memory-intensive tasks on a WHPG 6 cluster by adjusting the **Spill Ratio** to control when operations like large joins or sorts begin writing data to disk instead of consuming RAM.
+
+**Example scenario: resolving CPU contention**
+
+Suppose you notice that ad-hoc analytics queries are slowing down nightly production backups:
+
+- Check the **Distribution** charts. If you see the `analytics` group consuming 90% of the CPU, you must intervene. 
+- In the **Configuration** tab, lower the **CPU Max %** (WHPG 7) or **CPU Rate %** (WHPG 6) for the `analytics` group. This action immediately frees up processing cycles for the high-priority backup tasks.
+
+## Governing workloads with resource queues
+
+Resource queues are available on both WHPG 6 and 7, but they use a different management logic centered on query cost rather than OS-level cgroups. WEM adjusts the **Configuration** tab to match the capabilities of your WHPG version.
+
+- Reduce query queuing by monitoring the **Status** tab for a high **Queued** count. If queries are stuck in a waiting state, increase the queue concurrency or refine the query cost thresholds to allow more simultaneous executions.
+- Bypass limits for administrative tasks with the **Min Cost** threshold. Queries with an estimated cost lower than this value will skip the queue entirely, allowing small, routine maintenance tasks to always run instantly.
+
+## Troubleshooting waiting queries
+
+Assess and resolve bottlenecks caused by resource-based delays by comparing real-time consumption against your configured boundaries:
+
+- Identify the limit breach by checking the **Status** tab and determine if the delay is caused by a CPU cap, a memory shortage, or a concurrency ceiling.
+- If many queries are queued, determine if the group or queue is consistently hitting its maximum limit.
+- If a workload consistently requires more power than assigned, navigate to the **Configuration** tab and increase the relevant limits.
+- If a group is reaching its memory limit with only a few queries, investigate the queries themselves for missing indexes or inefficient joins that are causing excessive resource consumption.
