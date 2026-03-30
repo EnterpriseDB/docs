@@ -3,13 +3,50 @@ title: Using PGFS with S3-compatible storage
 navTitle: S3 storage
 ---
 
-Whether you are using Amazon S3 or an on-premises S3-compatible provider, PGFS provides seamless integration for object storage. The system adapts its security protocols based on the visibility of your data:
+PGFS provides support for AWS S3 or an on-premises S3-compatible provider using:
 
-- **Private Buckets**: Standard for sensitive or production-grade data, these require explicit authorization. The PGFS engine manages secure access by signing every request using IAM roles, environment variables, or static keys to ensure data integrity and restricted access.
+- **IAM roles**: If your Postgres instance is running on cloud infrastructure, use Instance Profiles or IAM Roles. This is the most secure method as it uses temporary, rotating credentials. Attach an IAM policy directly to the underlying virtual machine or container. PGFS automatically detects the instance metadata and uses these temporary, rotating credentials to sign requests.
 
-- **Public Buckets**: Designed for open-access scenarios like hosting benchmark datasets or public research repositories, these buckets skip the signing process entirely, allowing for unauthenticated, high-speed read access.
+- **Static credentials**: PGFS uses static crendentials method to embed security keys directly within a storage location definition for S3-compatible storage providers.
 
-## Example: AWS S3 public bucket
+## Syntax
+
+PGFS uses the `s3:` prefix for S3-compatible storage providers in static credentials method. Use the following structure to define a location for S3-compatible storage providers:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'storage_location_name',
+    's3://bucket_name',
+    options => '{ }',
+    credentials => '{ }'
+);
+```
+
+For S3-compatible systems, use the following JSON keys:
+
+- The `options` argument (JSON), which defines the connection behavior for the storage provider.
+
+  | Option           | Description                                                                                                                                      |
+  |------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+  | `region`         | The region of the S3-compatible storage system. If omitted, the client attempts auto-discovery.                                                  |
+  | `endpoint`       | The specific endpoint URL for the S3-compatible storage system.                                                                                  |
+  | `bucket`         | Used to explicitly provide the bucket name if it can't be passed in the URL.                                                                     |
+  | `allow_http`     | Set to `true` if your endpoint uses plain HTTP instead of HTTPS/TLS.                                                                             |
+  | `skip_signature` | Set to `true` to disable Hash-based Message Authentication Code (HMAC) authentication (this method is used when you're not providing `access_key_id`/`secret_access_key` in the `credentials` argument). |
+
+
+- The `credentials` argument (JSON), which provides the actual authentication secrets.
+
+  | Option              | Description                                                             |
+  |---------------------|-------------------------------------------------------------------------|
+  | `access_key_id`     | HMAC credentials (often the username for non-AWS S3 providers).         |
+  | `secret_access_key` | HMAC credentials (often the password for non-AWS S3 providers).         |
+  | `session_token`     | A temporary session token that can be used instead of HMAC credentials. |
+
+
+## Examples 
+
+### AWS S3 public bucket
 
 This example uses a public bucket on AWS S3. Public buckets don't require authentication.
 
@@ -19,7 +56,7 @@ SELECT pgfs.create_storage_location('edb_ai_example_images', 's3://public-ai-tea
        );
 ```
 
-## Example: AWS S3 private bucket:
+### AWS S3 private bucket
 
 This example uses a private bucket on AWS S3. Private buckets require authentication. The example uses HMAC credentials.
 
@@ -30,7 +67,7 @@ SELECT pgfs.create_storage_location('internal_ai_project', 's3://my-company-ai-i
        );
 ```
 
-## Example: Non-AWS S3 / S3-compatible with HTTPS:
+### Non-AWS S3 / S3-compatible with HTTPS
 
 This example uses an S3-compatible system like minIO. The `endpoint` must be provided in this case. You can omit it only when using AWS S3.
 
@@ -41,7 +78,7 @@ SELECT pgfs.create_storage_location('ai_images_local_minio', 's3://my-ai-images'
        );
 ```
 
-## Example: Non-AWS S3 / S3-compatible with HTTP:
+### Non-AWS S3 / S3-compatible with HTTP
 
 This example uses an S3-compatible system like minIO. The `endpoint` must be provided in this case. You can omit it only be when using AWS S3.
 
@@ -53,4 +90,16 @@ SELECT pgfs.create_storage_location('ai_images_local_minio',
                                     options => '{"endpoint": "http://minio-api.apps.local", "allow_http":"true"}',
                                     credentials => '{"access_key_id": "my_username", "secret_access_key":"my_password"}'
        );
+```
+
+### AWS S3 with IAM roles
+
+This example uses an AWS S3 URL to define a new storage location. By setting `auth.type` to `iam`, the driver inherits permissions from the host environment eliminating need for access keys.
+
+```sql
+SELECT pgfs.create_storage_location(
+    'production_lake',
+    's3://my-analytics-bucket/',
+    '{"region": "us-east-1", "auth": {"type": "iam"}}' 
+);
 ```
