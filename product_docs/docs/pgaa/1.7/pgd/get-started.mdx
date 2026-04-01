@@ -12,27 +12,30 @@ By configuring these settings at the node-group level, you ensure that every nod
 
 ## Prerequisites
 
-- **Cluster:** PGD version 6.1 or later with PGAA and PGFS extensions installed.
-- **Storage locations:** Local, S3, GCP, or Azure storage using Iceberg or Delta Lake formats.
-- **Catalog:** If using an external catalog service, only Iceberg REST catalogs are supported.
-- **Permissions:** The database user must have `CREATE`, `ALTER`, and `EXECUTE` privileges for the PGD and PGAA functions.
+-   **Cluster:** PGD version 6.1 or later with PGAA and PGFS extensions installed.
+-   **Storage locations:** Local, S3, GCP, or Azure storage using Iceberg or Delta Lake formats.
+-   **Catalog:** If using an external catalog service, only Iceberg REST catalogs are supported.
+-   **Permissions:** The database user must have `CREATE`, `ALTER`, and `EXECUTE` privileges for the PGD and PGAA functions.
 
 !!! Note
-    The credentials associated with a storage location or a catalog service must have both read and write permissions for the destination bucket. You can verify permissions by running the following functions, which return `NULL` if successful.
-    - For a storage location:
-      ```sql
-      SELECT pgaa.test_storage_location ('my_storage_location', true);
-      ```
-    - For a catalog service:
-      ```sql
-      SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
-      ```
 
-## Pointing to object storage 
+    The credentials associated with a storage location or a catalog service must have both read and write permissions for the destination bucket. You can verify permissions by running the following functions, which return `NULL` if successful.
+
+    -   For a storage location:
+        ```sql
+        SELECT pgaa.test_storage_location ('my_storage_location', true);
+        ```
+    -   For a catalog service:
+        ```sql
+        SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := FALSE);
+        ```
+
+## Pointing to object storage
 
 Before creating a tiered table, you must define the destination for the cold data. Because you are working within a distributed PGD cluster, you must wrap these configuration calls in `bdr.replicate_ddl_command` to ensure the settings are propagated to all nodes in the group.
 
-!!! Tip
+!!!Tip
+
   To view your node group, use `SELECT node_group_id FROM bdr.node_group;`.
 !!!
 
@@ -40,73 +43,68 @@ Before creating a tiered table, you must define the destination for the cold dat
 
 <Tab title="Using a storage location" active>
 
-1. Create a storage location using the [PGFS extension](/edb-postgres-ai/latest/ai-factory/pipeline/pgfs/functions/#creating-a-storage-location) and set it as the analytics storage for your node group.
+1.  Create a storage location using the [PGFS extension](//pg_extensions/pgfs/using/#creating-a-storage-location) and set it as the analytics storage for your node group.
 
-  ```sql
-  SELECT bdr.replicate_ddl_command($$
-    SELECT pgfs.create_storage_location(
-    'my-storage-location',
-    'protocol://my-bucket-name/path/',
-    '{"region": "region-name"}',
-    '{"access_key_id": "...", "secret_access_key": "..."}'
-    )
-  $$);
-  ```
+    ```sql
+    SELECT bdr.replicate_ddl_command($$
+      SELECT pgfs.create_storage_location(
+      'my-storage-location',
+      'protocol://my-bucket-name/path/',
+      '{"region": "region-name"}',
+      '{"access_key_id": "...", "secret_access_key": "..."}'
+      )
+    $$);
+    ```
 
-1. Clear `analytics_write_catalog`. This must be `NULL` before an `analytics_storage_location` can be assigned:
+2.  Clear `analytics_write_catalog`. This must be `NULL` before an `analytics_storage_location` can be assigned:
 
-  ```sql
-  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', NULL);
-  ```
+    ```sql
+    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', NULL);
+    ```
 
-1. Set the analytics storage location for your node group:
+3.  Set the analytics storage location for your node group:
 
-  ```sql
-  SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_storage_location', 'my-storage-location');
-  ```
-
+    ```sql
+    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_storage_location', 'my-storage-location');
+    ```
 
 </Tab>
 
 <Tab title="Using a catalog service">
 
-1. Configure a connection to an [external catalog](../catalog):
+1.  Configure a connection to an [external catalog](../catalog):
 
-      ```sql
-      SELECT bdr.replicate_ddl_command($$
-        SELECT pgaa.add_catalog(
-          'my-catalog-name',
-          'iceberg-rest',
-          '{
-            "url": "https://my-catalog-rest-endpoint.com",
-            "token": "MY_AUTH_TOKEN",
-           }'
-        )
-      );
-      ```
+    ```sql
+    SELECT bdr.replicate_ddl_command($$
+      SELECT pgaa.add_catalog(
+        'my-catalog-name',
+        'iceberg-rest',
+        '{
+          "url": "https://my-catalog-rest-endpoint.com",
+          "token": "MY_AUTH_TOKEN",
+         }'
+      )
+    );
+    ```
 
-1. Set the catalog as the default analytics write location:
+2.  Set the catalog as the default analytics write location:
 
-  ```sql
-  SELECT bdr.replicate_ddl_command($$  
-    SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', 'my-catalog-name')  
-  );
-  ```
-
+    ```sql
+    SELECT bdr.replicate_ddl_command($$  
+      SELECT bdr.alter_node_group_option('my-pgd-group', 'analytics_write_catalog', 'my-catalog-name')  
+    );
+    ```
 
 </Tab>
 
 </TabContainer>
 
-      
 ## Next steps
 
 Now that you have defined the storage target for your PGD cluster, you can determine how your tables interact with that storage based on your requirements for performance and capacity:
 
-- [Implement tiered tables:](tiered-tables) Establish a zero-touch data lifecycle by automatically transitioning partitions from local heap storage to your analytics storage targed based on an age threshold.
+-   [Implement tiered tables:](tiered-tables) Establish a zero-touch data lifecycle by automatically transitioning partitions from local heap storage to your analytics storage targed based on an age threshold.
 
-- [Replicate to analytics:](replicate) Maintain a local transactional heap table while simultaneously synchronizing a columnar copy to your storage target for heavy analytical processing.
+-   [Replicate to analytics:](replicate) Maintain a local transactional heap table while simultaneously synchronizing a columnar copy to your storage target for heavy analytical processing.
 
-- [Offload to analytics:](offload) Reclaim heap disk space from existing tables which are being replicated to analytics.
-
-
+-   [Offload to analytics:](offload) Reclaim heap disk space from existing tables which are being replicated to analytics.
