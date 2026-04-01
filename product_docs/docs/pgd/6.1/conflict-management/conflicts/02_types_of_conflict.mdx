@@ -71,14 +71,14 @@ Conflicts on the update of the primary key are [divergent conflicts](#divergent-
 
 Updating a primary key is possible in Postgres, but there are issues in both Postgres and PGD.
 
-A simple schema provides an example that explains:
+To see how these updates behave, create a basic table with a primary key and insert an initial row:
 
 ```sql
 CREATE TABLE pktest (pk integer primary key, val integer);
 INSERT INTO pktest VALUES (1,1);
 ```
 
-Updating the Primary Key column is possible, so this SQL succeeds:
+Updating a primary key column is technically possible. This command succeeds because the new value does not conflict with any existing data:
 
 ```sql
 UPDATE pktest SET pk=2 WHERE pk=1;
@@ -94,7 +94,10 @@ Some UPDATE operations succeed:
 
 ```sql
 UPDATE pktest SET pk=4 WHERE pk=3;
+```
 
+Confirm the changes to the table by selecting all rows. Notice that the primary key values have successfully shifted:
+```sql
 SELECT * FROM pktest;
  pk | val
 ----+-----
@@ -107,21 +110,34 @@ Other UPDATE operations fail with constraint errors:
 
 ```sql
 UPDATE pktest SET pk=4 WHERE pk=2;
+```
+
+Select all rows from the table and obvserve a standard constraint violation error:
+
+```sql
 ERROR:  duplicate key value violates unique constraint "pktest_pkey"
 DETAIL:  Key (pk)=(4) already exists
 ```
 
-So for Postgres applications that update primary keys, be careful to avoid runtime errors, even without PGD.
+Even without PGD, you must design your application to prevent these runtime errors, as Postgres strictly enforces primary key uniqueness.
 
-With PGD, the situation becomes more complex if UPDATE operations are allowed from multiple locations at same time.
+Distributed environments like PGD increase the complexity of primary key updates. When multiple nodes attempt to modify keys simultaneously, the results depend on whether the changes overlap or conflict.
 
-Executing these two changes concurrently works:
+If two nodes update different rows to different new primary key values, PGD can replicate the changes successfully:
 
 ```sql
-node1: UPDATE pktest SET pk=pk+1 WHERE pk = 2;
-node2: UPDATE pktest SET pk=pk+1 WHERE pk = 4;
+--node1:
+UPDATE pktest SET pk=pk+1 WHERE pk = 2;
 
+After replication, both nodes reflect the incremented values, maintaining a consistent state across the cluster:
+
+--node2:
+UPDATE pktest SET pk=pk+1 WHERE pk = 4;
+```
+
+```sql
 SELECT * FROM pktest;
+
  pk | val
 ----+-----
   3 |   1
@@ -129,17 +145,19 @@ SELECT * FROM pktest;
 (2 rows)
 ```
 
-Executing these next two changes concurrently causes a divergent error, since both changes are accepted. But applying the changes on the other node results in `update_missing` conflicts.
+Executing these next two changes concurrently causes a divergent error, since both changes are accepted. Both nodes accept their own local change, but applying the changes on the other node results in `update_missing` conflicts.
 
 ```sql
-node1: UPDATE pktest SET pk=1 WHERE pk = 3;
-node2: UPDATE pktest SET pk=2 WHERE pk = 3;
+--node1: 
+UPDATE pktest SET pk=1 WHERE pk = 3;
+--node2: 
+UPDATE pktest SET pk=2 WHERE pk = 3;
 ```
 
 This scenario leaves the data different on each node:
 
 ```sql
-node1:
+--node1:
 SELECT * FROM pktest;
  pk | val
 ----+-----
@@ -147,7 +165,7 @@ SELECT * FROM pktest;
   5 |   3
 (2 rows)
 
-node2:
+--node2:
 SELECT * FROM pktest;
  pk | val
 ----+-----
@@ -161,8 +179,10 @@ You can identify and resolve this situation using [LiveCompare](/livecompare/lat
 Concurrent conflicts present problems. Executing these two changes concurrently isn't easy to resolve:
 
 ```sql
-node1: UPDATE pktest SET pk=6, val=8 WHERE pk = 5;
-node2: UPDATE pktest SET pk=6, val=9 WHERE pk = 5;
+--node1: 
+UPDATE pktest SET pk=6, val=8 WHERE pk = 5;
+--node2: 
+UPDATE pktest SET pk=6, val=9 WHERE pk = 5;
 ```
 
 Both changes are applied locally, causing a divergence between the nodes. But the apply on the target fails on both nodes with a duplicate key-value violation error. This error causes the replication to halt and requires manual resolution.
