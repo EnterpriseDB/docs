@@ -17,23 +17,22 @@ Pipelines automates the journey from raw data to searchable insights. By managin
 
 - **Unified semantic search**: The Intelligent Knowledge Base feature allows you to query text and images using a single function call, regardless of whether the data lives in Postgres tables or S3-compatible object storage.
 
-## How Pipelines work
+## Pipeline architecture
 
 Data Pipelines in EDB Postgres AI automate the lifecycle of transforming raw data into vector-searchable insights. They abstract the complexity of cleaning, chunking, and embedding data, ensuring your knowledge bases remain synchronized with your source data.
 
-### Pipeline architecture
 
 The AIDB extension introduces the concept of a Pipeline that consists of one or more sequential steps:
 
-1. Creating a Pipeline
+1. Data processing configuration
 
-   The core building block of a pipeline is the data processing configuration. This step defines the blueprint for how data should be processed before it is indexed.
+   The core of every pipeline is a data processing configuration which defines how data should be processed before it is indexed.
 
    Depending on your data source, you can define the two types of processing steps:
 
-   - **Tables**: Use `aidb.create_table_preparer()` to source data from existing Postgres tables.
+   - **Table processing step**: Use `aidb.create_table_preparer()` to source data from existing Postgres tables.
 
-   - **Volumes**: Use `aidb.create_volume_preparer()` to source unstructured data like PDFs or images from an external object storage via PGFS.
+   - **Volume processing step**: Use `aidb.create_volume_preparer()` to source unstructured data like PDFs or images from an external object storage via PGFS.
 
    **Key configuration parameters**:
 
@@ -43,7 +42,7 @@ The AIDB extension introduces the concept of a Pipeline that consists of one or 
 
    - **Destination**: The knowledge base where the processed vectors will be stored and indexed.
 
-1. Pulling in data (PGFS)
+   **Pulling in data (PGFS)**
 
    To process files stored outside of Postgres, Pipelines utilize Postgres File System (PGFS) and volumes.
 
@@ -55,11 +54,9 @@ The AIDB extension introduces the concept of a Pipeline that consists of one or 
 
    Orchestration manages the execution of the pipeline, determining when and how data is processed.
 
-   - **Auto-processing**: Instead of manual triggers, you can set a pipeline to Auto-processing mode using `aidb.set_auto_preparer()`.
+   - **Auto-processing**: You can configure pipelines to run as background processes or keep them perfectly synchronized with your live data. This flexibility allows you to define custom batch sizes and triggers, choosing between synchronous (immediate) or asynchronous (delayed) processing modes depending on your performance needs.
 
-     - **Real-time updates**: As soon as a row is added to a table or a file is uploaded to an external bucket, the pipeline automatically kicks off the embedding process.
-
-     - **Consistency**: This eliminates hallucinations caused by stale embeddings, ensuring the AI always has access to the latest data.
+   To eliminate the need for manual intervention, use the `aidb.set_auto_preparer()` function to enable Auto-processing mode, which automatically manages the data flow as changes occur..
 
    - **Background workers**: The actual work of embedding and indexing is handled by Background workers.
 
@@ -67,25 +64,21 @@ The AIDB extension introduces the concept of a Pipeline that consists of one or 
 
      - **Continuous workers**: For ongoing updates, background workers poll the data processing configurations and handle rate-limiting and retries when communicating with external embeddings APIS.
 
-1. Step types & processing
+   - **Observability**: You can monitor the status and progress of each auto-processing mode.
 
-   The pipeline processes raw data through a series of modular transformation steps to convert unstructured files into structured, AI-ready vectors.
+1. Pipeline steps
 
-   - **PDF to Image & OCR**: For scanned documents or complex layouts, the pipeline can render PDF pages as images and then apply OCR (Optical Character Recognition). This ensures that text locked in images or non-selectable PDF layers is successfully extracted.
+   These transformation steps define the lifecycle of your raw data. You can ingest source data directly from Postgres tables using `aidb.create_table_preparer()` or from S3-compatible object storage via `aidb.create_volume_preparer()`.
 
-   - **Parsing**: Once text is accessible, the Parsing step identifies the structural elements of the document (headings, tables, and metadata). This helps the pipeline understand the hierarchy of the information before it is broken down.
+   The pipeline then moves this data through a series of modular stages, converting unstructured files into structured, AI-ready vectors.
 
-   - **Summarizing**: To provide better context for large documents, an optional Summarization step can generate a high-level overview of the content. This summary can be embedded alongside the raw text to improve retrieval accuracy during a RAG (Retrieval-Augmented Generation) flow.
+   For more information on data preparation pipeline steps, see
+   - [Text chunking](./pipeline-steps/chunk-text.mdx)
+   - [OCR](./pipeline-steps/perform-ocr.mdx)
+   - [Parsing](./pipeline-steps/parse.mdx)
+   - [Text summarization](./pipeline-steps/summarize-text.mdx)
+   - [Embedding](./pipeline-steps/embedding.mdx)
 
-   - **Chunking**: To fit within LLM context windows, the parsed text is divided into smaller segments.
-
-     - **Chunk Size**: Determines the length of each segment. Smaller chunks are better for precise fact retrieval.
-
-     - **Overlap**: A portion of text is repeated between adjacent chunks to ensure that context isn't lost at the "seams" of a document.
-
-   - **Embedding (Knowledge Base)**: The final output is stored in a Knowledge Base. This vector-indexed destination allows your applications to perform semantic searches, retrieving information based on conceptual meaning rather than simple keyword matching.
-
-
-### Supported models
+## Supported models
 
 The AIDB extension supports a diverse range of Open Encoder LLMs from HuggingFace (running locally on your Postgres node) and OpenAI Encoders (via cloud API). You can view all available options in the `aidb.model_providers` table.
