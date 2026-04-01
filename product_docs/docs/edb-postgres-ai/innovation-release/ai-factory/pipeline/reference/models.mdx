@@ -176,7 +176,7 @@ Gets models running on the Hybrid Manager.
 #### Example
 ```sql
 SELECT * FROM  aidb.get_hcp_models();
-                 name                  |                                       url                                        |               model                
+                 name                  |                                       url                                        |               model
 ---------------------------------------+----------------------------------------------------------------------------------+------------------------------------
  llama-3-1-8b-instruct-1xgpu-g6        | http://llama-3-1-8b-instruct-1xgpu-g6-predictor.default.svc.cluster.local        | meta/llama-3.1-8b-instruct
  llama-3-2-nv-embedqa-1b-v2            | http://llama-3-2-nv-embedqa-1b-v2-predictor.default.svc.cluster.local            | nvidia/llama-3.2-nv-embedqa-1b-v2
@@ -232,37 +232,78 @@ Encodes a batch of text using a model, generating a vector representation of a g
 
 ### `aidb.decode_text`
 
-Decodes text using a model, generating a vector representation of a given text input.
+Decodes text using a model, generating a text response from a given text input.
 
 #### Parameters
 
-| Parameter    | Type | Default | Description                      |
-| ------------ | ---- | ------- | -------------------------------- |
-| `model_name` | text |         | Name of the model to decode with |
-| `text`       | text |         | Text to decode                   |
+| Parameter          | Type | Default | Description                                                                                         |
+| ------------------ | ---- | ------- | --------------------------------------------------------------------------------------------------- |
+| `model_name`       | text |         | Name of the model to decode with                                                                    |
+| `text`             | text |         | Text prompt/input to decode                                                                         |
+| `inference_config` | json | NULL    | Optional runtime inference settings (use [`aidb.inference_config()`](#aidbinference_config) helper) |
 
 #### Returns
 
 | Column        | Type | Description      |
 | ------------- | ---- | ---------------- |
 | `decode_text` | text | The decoded text |
+
+#### Example
+
+```sql
+-- Basic usage
+SELECT aidb.decode_text('t5', 'translate to german: hello world');
+
+-- With inference configuration
+SELECT aidb.decode_text(
+    'llama',
+    'Explain quantum computing.',
+    aidb.inference_config(
+        system_prompt => 'Be concise and factual.',
+        temperature => 0.7,
+        max_tokens => 100
+    )::json
+);
+```
 
 ### `aidb.decode_text_batch`
 
-Decodes a batch of text using a model, generating a representation of a given text input.
+Decodes a batch of text using a model, generating text responses for each input.
 
 #### Parameters
 
-| Parameter    | Type     | Default | Description                      |
-| ------------ | -------- | ------- | -------------------------------- |
-| `model_name` | text     |         | Name of the model to decode with |
-| `text`       | text\[\] |         | Array of text to decode          |
+| Parameter          | Type     | Default | Description                                                                                         |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `model_name`       | text     |         | Name of the model to decode with                                                                    |
+| `input`            | text\[\] |         | Array of text inputs/prompts to decode                                                              |
+| `inference_config` | json     | NULL    | Optional runtime inference settings (use [`aidb.inference_config()`](#aidbinference_config) helper) |
 
 #### Returns
 
-| Column        | Type | Description      |
-| ------------- | ---- | ---------------- |
-| `decode_text` | text | The decoded text |
+| Column              | Type | Description      |
+| ------------------- | ---- | ---------------- |
+| `decode_text_batch` | text | The decoded text |
+
+#### Example
+
+```sql
+-- Basic usage
+SELECT * FROM aidb.decode_text_batch('t5', ARRAY[
+    'translate to german: hello',
+    'translate to german: goodbye'
+]);
+
+-- With inference configuration
+SELECT * FROM aidb.decode_text_batch(
+    't5',
+    ARRAY['summarize: a very long text goes here', 'summarize: another text'],
+    aidb.inference_config(
+        temperature => 0.3,
+        max_tokens => 50,
+        seed => 42
+    )::json
+);
+```
 
 ### `aidb.encode_image`
 
@@ -301,6 +342,91 @@ Reranks text using a model, generating a vector representation of a given text i
 | `logit_score` | double precision | Score/rank of this text                    |
 | `id`          | int              | index that the text had in the input array |
 
+
+## Inference configuration helper function
+
+### `aidb.inference_config`
+
+Creates a configuration JSON object for runtime inference settings. This helper allows you to override model defaults when calling `aidb.decode_text()`, `aidb.decode_text_batch()`, or `aidb.summarize_text()`.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                                                                                                                                    |
+| ---------------- | ---------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `system_prompt`  | TEXT             | NULL    | System prompt to control model behavior (overrides model's configured system prompt). Not supported by T5 models.                                              |
+| `temperature`    | DOUBLE PRECISION | NULL    | Sampling temperature (0.0 = deterministic, higher = more random). Typical range: 0.0 to 2.0                                                                    |
+| `max_tokens`     | INTEGER          | NULL    | Maximum number of tokens to generate                                                                                                                           |
+| `top_p`          | DOUBLE PRECISION | NULL    | Top-p (nucleus) sampling. Only samples from the smallest set of tokens whose cumulative probability exceeds p.                                                 |
+| `seed`           | BIGINT           | NULL    | Seed for random number generation (for reproducibility)                                                                                                        |
+| `repeat_penalty` | REAL             | NULL    | Penalty for repeating tokens (1.0 = no penalty, higher = more penalty). Not supported by NIM and OpenAI Completions.                                           |
+| `repeat_last_n`  | INTEGER          | NULL    | Number of most recent tokens to consider for repeat penalty. Not supported by NIM and OpenAI Completions.                                                      |
+| `thinking`       | BOOLEAN          | NULL    | Whether to show `<think>...</think>` tags in the response. `true` keeps thinking tags (shows reasoning), `false` strips them, `NULL` keeps tags (default).     |
+| `extra_args`     | JSONB            | NULL    | Extra arguments to pass to the LLM API, allowing provider-specific parameters. Example: `'{"stop": ["\n"], "logprobs": true}'`                                 |
+
+#### Returns
+
+JSONB configuration object for use with `aidb.decode_text()`, `aidb.decode_text_batch()`, or `aidb.summarize_text_config()`.
+
+#### Examples
+
+```sql
+-- Basic inference configuration
+SELECT aidb.decode_text(
+    'llama',
+    'Explain relativity.',
+    aidb.inference_config(
+        temperature => 0.7,
+        max_tokens => 200
+    )::json
+);
+
+-- Full configuration with system prompt
+SELECT aidb.decode_text(
+    'llama',
+    'What is machine learning?',
+    aidb.inference_config(
+        system_prompt => 'You are a computer science professor. Explain concepts clearly.',
+        temperature => 0.5,
+        max_tokens => 150,
+        top_p => 0.9,
+        seed => 42,
+        repeat_penalty => 1.1,
+        repeat_last_n => 64
+    )::json
+);
+
+-- With thinking tags control (for reasoning models)
+SELECT aidb.decode_text(
+    'reasoning_model',
+    'Solve this step by step: 2x + 5 = 15',
+    aidb.inference_config(
+        thinking => false,  -- Hide internal reasoning
+        temperature => 0.3
+    )::json
+);
+
+-- With provider-specific extra arguments
+SELECT aidb.decode_text(
+    'openai_model',
+    'List three colors.',
+    aidb.inference_config(
+        max_tokens => 50,
+        extra_args => '{"stop": ["\n\n"], "logprobs": true}'::jsonb
+    )::json
+);
+
+-- Use with summarize_text_config
+SELECT aidb.summarize_text(
+    'Long text to summarize...',
+    aidb.summarize_text_config(
+        't5',
+        inference_config => aidb.inference_config(
+            temperature => 0.3,
+            max_tokens => 100
+        )
+    )::json
+);
+```
 
 ## Model configuration helper functions
 
@@ -342,23 +468,43 @@ Creates configuration for completions model providers (`completions`, `openai_co
 
 #### Parameters
 
-| Parameter                | Type    | Default  | Description                                        |
-| ------------------------ | ------- | -------- | -------------------------------------------------- |
-| `model`                  | TEXT    | Required | The model identifier                               |
-| `api_key`                | TEXT    | NULL     | API key (can use credentials instead)              |
-| `basic_auth`             | TEXT    | NULL     | Basic auth credentials                             |
-| `url`                    | TEXT    | NULL     | Custom API URL                                     |
-| `max_concurrent_requests`| INTEGER | NULL     | Maximum concurrent requests                        |
-| `max_tokens`             | JSONB   | NULL     | Max tokens config (use `aidb.max_tokens_config()`) |
-| `is_hcp_model`           | BOOLEAN | NULL     | Whether this is an HCP (Hybrid Manager) model      |
+| Parameter                | Type             | Default  | Description                                                                                                                                                        |
+| ------------------------ | ---------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model`                  | TEXT             | Required | The model identifier                                                                                                                                               |
+| `api_key`                | TEXT             | NULL     | API key (can use credentials instead)                                                                                                                              |
+| `basic_auth`             | TEXT             | NULL     | Basic auth credentials                                                                                                                                             |
+| `url`                    | TEXT             | NULL     | Custom API URL                                                                                                                                                     |
+| `max_concurrent_requests`| INTEGER          | NULL     | Maximum concurrent requests                                                                                                                                        |
+| `max_tokens`             | JSONB            | NULL     | Max tokens config (use `aidb.max_tokens_config()`)                                                                                                                 |
+| `is_hcp_model`           | BOOLEAN          | NULL     | Whether this is an HCP (Hybrid Manager) model                                                                                                                      |
+| `system_prompt`          | TEXT             | NULL     | System prompt to control model behavior. Not supported by T5 models.                                                                                               |
+| `temperature`            | DOUBLE PRECISION | NULL     | Sampling temperature (0.0 = deterministic, higher = more random). Typical range: 0.0 to 2.0                                                                        |
+| `top_p`                  | DOUBLE PRECISION | NULL     | Top-p (nucleus) sampling. Only samples from the smallest set of tokens whose cumulative probability exceeds p.                                                     |
+| `seed`                   | BIGINT           | NULL     | Seed for random number generation (for reproducibility)                                                                                                            |
+| `thinking`               | BOOLEAN          | NULL     | Whether to show `<think>...</think>` tags in responses. `true` keeps thinking tags (shows reasoning), `false` strips tags and their contents, `NULL` keeps tags.   |
+| `extra_args`             | JSONB            | NULL     | Extra arguments to pass to the LLM API, allowing provider-specific parameters. Example: `'{"stop": ["\n"], "logprobs": true}'`                                     |
 
 #### Example
 
 ```sql
+-- Basic configuration
 SELECT aidb.create_model(
   'my_model',
   'openai_completions',
   aidb.completions_config(model => 'gpt-4o'),
+  '{"api_key": "sk-..."}'::JSONB
+);
+
+-- Configuration with default inference settings
+SELECT aidb.create_model(
+  'my_assistant',
+  'openai_completions',
+  aidb.completions_config(
+    model => 'gpt-4o',
+    system_prompt => 'You are a helpful assistant.',
+    temperature => 0.7,
+    top_p => 0.9
+  ),
   '{"api_key": "sk-..."}'::JSONB
 );
 ```
@@ -436,17 +582,18 @@ Creates configuration for the `t5_local` model provider.
 
 #### Parameters
 
-| Parameter       | Type             | Default | Description                   |
-| --------------- | ---------------- | ------- | ----------------------------- |
-| `model`         | TEXT             | Required| The model identifier          |
-| `revision`      | TEXT             | NULL    | Model revision                |
-| `temperature`   | DOUBLE PRECISION | NULL    | Sampling temperature          |
-| `seed`          | BIGINT           | NULL    | Random seed                   |
-| `max_tokens`    | INTEGER          | NULL    | Max tokens to generate        |
-| `repeat_penalty`| REAL             | NULL    | Repetition penalty            |
-| `repeat_last_n` | INTEGER          | NULL    | Tokens for repetition penalty |
-| `model_path`    | TEXT             | NULL    | Local model path              |
-| `cache_dir`     | TEXT             | NULL    | Cache directory path          |
+| Parameter       | Type             | Default | Description                                                                                |
+| --------------- | ---------------- | ------- | ------------------------------------------------------------------------------------------ |
+| `model`         | TEXT             | Required| The model identifier                                                                       |
+| `revision`      | TEXT             | NULL    | Model revision                                                                             |
+| `temperature`   | DOUBLE PRECISION | NULL    | Sampling temperature                                                                       |
+| `seed`          | BIGINT           | NULL    | Random seed                                                                                |
+| `max_tokens`    | INTEGER          | NULL    | Max tokens to generate                                                                     |
+| `repeat_penalty`| REAL             | NULL    | Repetition penalty                                                                         |
+| `repeat_last_n` | INTEGER          | NULL    | Tokens for repetition penalty                                                              |
+| `model_path`    | TEXT             | NULL    | Local model path                                                                           |
+| `cache_dir`     | TEXT             | NULL    | Cache directory path                                                                       |
+| `top_p`         | DOUBLE PRECISION | NULL    | Top-p (nucleus) sampling. Only samples from tokens whose cumulative probability exceeds p. |
 
 ### `aidb.gemini_config`
 
