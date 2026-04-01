@@ -1,0 +1,76 @@
+---
+title: Configuring PGFS
+navTitle: Configuring
+deepToC: true
+---
+
+To configure PGFS, install the extension using the `CREATE EXTENSION` command:
+
+```sql
+CREATE EXTENSION pgfs;
+```
+
+You can check whether the extension was installed by running the `\dx` command in `psql`:
+
+```sql
+\dx
+__OUTPUT__
+                                     List of installed extensions
+       Name       | Version |   Schema   |                        Description
+------------------+---------+------------+------------------------------------------------------------
+ pgfs             | 1.0.6   | pgfs       | pgfs: enables access to filesystem-like storage locations
+```
+
+In addition to the PGFS extension listed in the output, other extensions are typically listed as well.
+
+Once the PGFS extension is created, a `pgfs` schema, functions, metadata catalog tables, and integration points for pipelines are created in the `pgfs` schema. For more information, see [Reference](reference.mdx).
+
+## Authentication
+
+PGFS provides a seamless authentication framework for connecting to various object storage providers. The system adapts its security protocols based on the visibility and requirements of your target data.
+
+PGFS distinguishes between private and public storage to optimize for both security and performance:
+
+- **Private buckets**: Standard for sensitive or production-grade data, they require explicit authorization. The PGFS engine manages secure access by signing every request using IAM roles, environment variables, or static keys to ensure data integrity and restricted access.
+- **Public buckets**: Designed for open-access scenarios like hosting benchmark datasets or public research repositories, these buckets skip the signing process entirely, allowing for unauthenticated, high-speed read access.
+
+Authentication in PGFS is handled directly within the configuration settings for each storage location. This ensures that credentials remain mapped to the specific backend and simplifies multi-cloud or multi-account configurations.
+
+PGFS supports the following methods for authorizing access to your object storage:
+
+| Method                | Supported providers       | Description                                                  |
+|-----------------------|----------------|--------------------------------------------------------------|
+| Static credentials    | S3, Azure, GCS | Stores keys directly in the `auth` block.                    |
+| IAM roles             | AWS S3         | It uses host-level permissions only, and keys are not required for configuration.              |
+| Environment variables | GCS            | Credentials read dynamically from the environment variables. |
+| Managed identities    | Azure          | Uses client credentials for entra ID auth.                   |
+| System permissions    | Local          | Managed via OS-level folder permissions, no `auth` block.      |
+
+We recommend using IAM roles or environment variables wherever possible. These methods avoid persisting sensitive secrets in your database.
+
+If you must use static credentials, ensure the `auth` block is nested inside your specific provider settings to allow the driver to initialize correctly.
+
+### Static credentials
+
+Static credentials allow you to embed security keys directly within a storage location definition. When you pass these secrets as the `credentials` parameter in `pgfs.create_storage_location`, PGFS stores them as a Postgres user mapping. This standard database security feature ensures that your secrets remain isolated and inaccessible to other database users.
+
+While this method is highly convenient for testing and development, always ensure you manage these sensitive keys according to your organization's security policies.
+
+PGFS uses the `protocol://` prefix to identify storage providers (`s3:`, `gs:`, `file:`, `az:`, `adl:`, `adls:`, `azure:`, `abfs:`, or `abfss`). Use the following structure to define a location with static credentials:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'storage_location_name',
+    's3://bucket_name',
+    options => '{ }',
+    credentials => '{ }'
+);
+```
+
+The parameters required for static authentication vary by storage provider. For the storage provider specific syntax and usage see:
+ - [AWS S3/non-AWS S3-compatible](./using/s3.mdx) 
+ - [Goggle Cloud Storage (GCS)](./using/gcs.mdx)
+ - [Azure](./using/azure.mdx)
+
+
+

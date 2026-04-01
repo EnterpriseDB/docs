@@ -549,6 +549,10 @@ const Page = () => {
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/pgfs">
+              PGFS
+            </BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
