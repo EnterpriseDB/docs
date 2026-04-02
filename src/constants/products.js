@@ -133,6 +133,10 @@ const products = {
     name: "EDB Data Migration Service",
     iconName: IconNames.EDB_TRANSPORTER,
   },
+  warehousepg: {
+    name: "WarehousePG",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
 };
 
 module.exports = { products };

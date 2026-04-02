@@ -131,6 +131,10 @@ const sourceToPluginConfig = {
     name: "wait_states",
     path: "advocacy_docs/pg_extensions/wait_states",
   },
+  warehousepg: {
+    name: "warehousepg",
+    path: "product_docs/docs/warehousepg",
+  },
 };
 
 const externalSourcePlugins = () => {
