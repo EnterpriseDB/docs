@@ -69,12 +69,11 @@ kubectl create secret -n postgresql-operator-system docker-registry edb-pull-sec
 Now that the pull-secret has been added to the namespace, the operator can be installed like any other resource in Kubernetes,
 through a YAML manifest applied via `kubectl`.
 
-You can install the [latest operator manifest](https://get.enterprisedb.io/pg4k/pg4k-1.28.0.yaml)
-for this minor release as follows:
+You can install the manifest for the latest version of the operator by running:
 
 ```sh
 kubectl apply --server-side -f \
-  https://get.enterprisedb.io/pg4k/pg4k-1.28.1.yaml
+  https://get.enterprisedb.io/pg4k/pg4k-1.25.7.yaml
 ```
 
 You can verify that with:
@@ -87,7 +86,7 @@ kubectl rollout status deployment \
 ### Using the `cnp` plugin for `kubectl`
 
 You can use the `cnp` plugin to override the default configuration options
-that are in the static manifests. 
+that are in the static manifests.
 
 For example, to generate the default latest manifest but change the watch
 namespaces to only be a specific namespace, you could run:
@@ -98,8 +97,8 @@ kubectl cnp install generate \
   > cnp_for_specific_namespace.yaml
 ```
 
-See the ["`cnp` plugin"](./kubectl-plugin.md#generation-of-installation-manifests) documentation
-for a more comprehensive example. 
+Please refer to ["`cnp` plugin"](./kubectl-plugin.md#generation-of-installation-manifests) documentation
+for a more comprehensive example.
 
 !!!warning
 If you are deploying {{name.ln}} on GKE and get an error (`... failed to
@@ -164,6 +163,12 @@ some default options. For more information, please refer to the
 
 !!!warning CRITICAL WARNING: UPGRADING OPERATORS
 OpenShift users, or any customer attempting an operator upgrade, MUST configure the new unified repository pull secret (docker.enterprisedb.com/k8s) before running the upgrade. If the old, deprecated repository path is still in use during the upgrade process, image pull failure will occur, leading to deployment failure and potential downtime. Follow the [Central Migration Guide](/postgres_for_kubernetes/latest/migrating_edb_registries) first.
+!!!
+
+!!!info Important
+Please carefully read the [release notes](rel_notes)
+before performing an upgrade as some versions might require
+extra steps.
 !!!
 
 !!!info Important
@@ -283,11 +288,17 @@ only the operator itself.
 
 !!!info Important
 We strongly recommend that all {{name.ln}} users upgrade to version
-1.28.0, or at least to the latest stable version of your current minor release
-(e.g., 1.27.x).
+1.25.1 or at least to the latest stable version of the minor release you are
+currently using (namely 1.24.x).
 !!!
 
-### Upgrading to 1.27 from a previous minor version
+!!!warning
+Every time you are upgrading to a higher minor release, make sure you
+go through the release notes and upgrade instructions of all the
+intermediate minor releases. For example, if you want to move
+from 1.23.x to 1.25, make sure you go through the release notes
+and upgrade instructions for 1.24 and 1.25.
+!!!
 
 !!!info Important
 We strongly recommend that all {{name.ln}} users upgrade to version
@@ -334,38 +345,113 @@ section of the `Cluster` resource:
 -   `lastSuccessfulBackupByMethod`
 -   `lastFailedBackup`
 
-The following Prometheus metrics are also deprecated:
+For more information, please refer to
+the ["Distributed Topology" section for replica clusters](replica_cluster.md#distributed-topology).
 
--   `cnp_collector_first_recoverability_point`
--   `cnp_collector_last_failed_backup_timestamp`
--   `cnp_collector_last_available_backup_timestamp`
+## Verifying release assets
 
-!!!warning
-If you have migrated to a plugin-based backup and recovery solution such as
-Barman Cloud, these fields and metrics are no longer synchronized and will
-not be updated. Users still relying on the in-core support for Barman Cloud
-and volume snapshots can continue to use these fields for the time being.
+{{name.ln}} cryptographically signs all official release assets. Verifying these
+signatures ensures the assets originate from the official repository and were
+published through our automated release workflow.
+
+!!!info
+Refer to the ["Release integrity and supply chain" section](security.md#release-integrity-and-supply-chain)
+for more information.
 !!!
 
-Under the new plugin-based approach, multiple backup methods can operate
-simultaneously, each with its own timeline for backup and recovery. For
-example, some plugins may provide snapshots without WAL archiving, while others
-support continuous archiving.
+### Prerequisites
 
-Because of this flexibility, maintaining centralized status fields in the
-`Cluster` resource could be misleading or confusing, as they would not
-accurately represent the state across all configured backup methods.
-For this reason, these fields are being deprecated.
+-   **Signature verification:** [cosign](https://github.com/sigstore/cosign) CLI
+-   **SBOM and Provenance:** [Docker Buildx](https://docs.docker.com/build/install-buildx/)
+    (included in Docker Desktop and modern Docker versions)
 
-Instead, each plugin is responsible for exposing its own backup status
-information and providing metrics back to the instance manager for monitoring
-and operational awareness.
+### Verifying the Operator YAML Deployment
 
-#### Declarative Hibernation in the `cnp` plugin
+When installing via a direct YAML manifest, you should verify the manifest file
+using the corresponding bundle (the `.sigstore.json` file) provided on the
+[GitHub Release page](https://github.com/EnterpriseDB/cloud-native-postgres/releases).
 
-In this release, the `cnp` plugin for `kubectl` transitions from an imperative
-to a [declarative approach for cluster hibernation](declarative_hibernation.md).
-The `hibernate on` and `hibernate off` commands are now convenient shortcuts
-that apply declarative changes to enable or disable hibernation.
-The `hibernate status` command has been removed, as its purpose is now
-fulfilled by the standard `status` command.
+Run the following command:
+
+```bash
+cosign verify-blob \
+  postgresql-operator-{version}.yaml \
+  --bundle postgresql-operator-{version}.sigstore.json \
+  --certificate-identity-regexp "^https://github.com/EnterpriseDB/cloud-native-postgres/.github/workflows/release-publish.yml@refs/tags/v" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+```
+
+#### Verifying SLSA provenance
+
+To verify a release binary, download both the artifact and the provenance file
+(`multiple.intoto.jsonl`) from the
+[GitHub release](https://github.com/EnterpriseDB/cloud-native-postgres/releases),
+then run:
+
+```shell
+slsa-verifier verify-artifact <ARTIFACT> \
+  --provenance-path multiple.intoto.jsonl \
+  --source-uri github.com/EnterpriseDB/cloud-native-postgres
+```
+
+### Verifying the operator container images
+
+Run the following command to verify the signature of the {{name.ln}} operator
+images:
+
+```bash
+cosign verify docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg:{tag} \
+  --certificate-identity-regexp="^https://github.com/EnterpriseDB/cloud-native-postgres/.github/workflows/release-publish.yml@refs/tags/v" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+We provide OCI attestations for full transparency. To inspect the Software Bill
+of Materials (SBOM) or build provenance, use the `docker buildx imagetools`
+command:
+
+To view the Software Bill of Materials (SBOM) in SPDX format:
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg:{tag} \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+```
+
+To inspect the SLSA Provenance (build details):
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg:{tag} \
+  --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
+```
+
+!!!info
+Refer to ["Verifying SLSA provenance"](security.md#verifying-slsa-provenance)
+for SLSA Build Level 3 compliance verification.
+!!!
+
+### Verifying PostgreSQL operand images
+
+{{name.ln}} maintains container images for all supported PostgreSQL versions
+as part of the [`postgres-containers` project](https://github.com/enterprisedb/docker-postgres)
+(also called operand images).
+
+To verify the signature of a specific operand image:
+
+```bash
+cosign verify docker.enterprisedb.com/k8s_enterprise/postgresql:{tag} \
+  --certificate-identity-regexp="^https://github.com/enterprisedb/docker-postgres/" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+To view the Software Bill of Materials (SBOM) in SPDX format:
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s_enterprise/postgresql:{tag} \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+```
+
+To inspect the SLSA Provenance (Build details):
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s_enterprise/postgresql:{tag} \
+  --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
+```
