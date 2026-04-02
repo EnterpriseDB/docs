@@ -24,25 +24,17 @@ Data Pipelines in EDB Postgres AI automate the lifecycle of transforming raw dat
 
 The AIDB extension introduces the concept of a Pipeline that consists of one or more sequential steps:
 
-1. Data processing configuration
+1. Creating a pipeline
 
-   The core of every pipeline is a data processing configuration which defines how data should be processed before it is indexed.
+   The core of every pipeline is a data processing configuration which defines how data should be processed before it is indexed. You can create a pipeline using the `aidb.create_pipeline()` function, which allows you to specify the data source, the transformations to apply, and the destination for the processed data.
 
-   Depending on your data source, you can define the two types of processing steps:
+   - **Data source**:Depending on your data source, you can pull data directly from Postgres tables or from external cloud storage (like S3) using PGFS.
 
-   - **Table processing step**: Use `aidb.create_table_preparer()` to source data from existing Postgres tables.
+   - **Modular step configuration**: The power of a pipeline lies in its ability to chain atomic operations, known as steps. You can create simple single-step pipelines or complex multi-step pipelines that perform a series of transformations on your data.
 
-   - **Volume processing step**: Use `aidb.create_volume_preparer()` to source unstructured data like PDFs or images from an external object storage via PGFS.
+   - **Orchestration & destination**: Once the pipeline is defined, it manages the heavy lifting of AI processing. It automatically tracks which records have been processed and stores the final output, typically high dimensional vectors into a Knowledge base for semantic search.
 
-   **Key configuration parameters**:
-
-   - **Source**: The specific Postgres table or PGFS volume containing the raw input data.
-
-   - **Embedding model**: The specific model used to generate vectors (for example OpenAI, HuggingFace, or local models).
-
-   - **Destination**: The knowledge base where the processed vectors will be stored and indexed.
-
-   **Pulling in data (PGFS)**
+1. **Pulling in data (PGFS)**
 
    To process files stored outside of Postgres, Pipelines utilize Postgres File System (PGFS) and volumes.
 
@@ -54,21 +46,27 @@ The AIDB extension introduces the concept of a Pipeline that consists of one or 
 
    Orchestration manages the execution of the pipeline, determining when and how data is processed.
 
-   - **Auto-processing**: You can configure pipelines to run as background processes or keep them perfectly synchronized with your live data. This flexibility allows you to define custom batch sizes and triggers, choosing between synchronous (immediate) or asynchronous (delayed) processing modes depending on your performance needs.
+   - **Auto-processing**: Auto-processing defines the rules for how and when a pipeline stays synchronized with its source. While pipelines are disabled by default to allow for configuration, orchestration provides two primary execution paths:
+`
+     - **Manual triggering**: Using `aidb.run_pipeline()`, you can execute a one-time sync of all existing data, which is ideal for initial migrations or historical processing.
 
-   To eliminate the need for manual intervention, use the `aidb.set_auto_preparer()` function to enable Auto-processing mode, which automatically manages the data flow as changes occur..
+    - **Automated modes**: By using `aidb.update_pipeline()`, you can enable modes like Live or Background. This ensures the pipeline automatically reacts to source data changes, keeping Knowledge Bases up-to-date without manual intervention.
 
-   - **Background workers**: The actual work of embedding and indexing is handled by Background workers.
+   - **Background workers**: Orchestration leverages background infrastructure to handle the heavy lifting of AI tasks without impacting standard database performance.
 
-     - **Bulk processing**: For initial data loads, use `aidb.bulk_data_preparation()` to process large datasets in parallel.
+     - **Asynchronous Processing**: In Background mode, workers poll the source at defined `background_sync_interval` periods (ranging from 1 second to 2 days).
 
-     - **Continuous workers**: For ongoing updates, background workers poll the data processing configurations and handle rate-limiting and retries when communicating with external embeddings APIS.
+     - **Resource Management**: Workers manage the complexity of batch sizes and communication with AI models, ensuring that tasks like embedding generation or OCR are performed efficiently in the background.
 
-   - **Observability**: You can monitor the status and progress of each auto-processing mode.
+   - **Observability**: Observability provides the transparency needed to manage automated workflows through specialized views.
+
+     - **Health Monitoring**: Views like `aidb.pipeline_metrics` (or the alias pipem) allow you to track the real-time Status of a pipeline, such as UpToDate, Processing, or Failed.
+
+     - **Telemetry**: You can monitor specific metrics, including the count of unprocessed rows in a table's backlog or the number of scans completed for external volumes, ensuring every record is accounted for.
 
 1. Pipeline steps
 
-   These transformation steps define the lifecycle of your raw data. You can ingest source data directly from Postgres tables using `aidb.create_table_preparer()` or from S3-compatible object storage via `aidb.create_volume_preparer()`.
+   These transformation steps define the lifecycle of your raw data. You can ingest source data directly from Postgres tables using `aidb.create_pipeline()`.
 
    The pipeline then moves this data through a series of modular stages, converting unstructured files into structured, AI-ready vectors.
 
