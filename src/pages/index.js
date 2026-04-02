@@ -537,7 +537,8 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/pg_cron">pg_cron</BannerWideLink>
 
-
+            <BannerWideLink to="/pg_extensions/pg_ivm">pg_ivm</BannerWideLink>
+            
             <BannerWideLink to="/pg_extensions/pgtt">pgtt</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pgrouting">
