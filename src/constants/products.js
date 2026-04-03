@@ -135,7 +135,7 @@ const products = {
   },
   warehousepg: {
     name: "WarehousePG",
-    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+    iconName: IconNames.WHPG,
   },
 };
 
