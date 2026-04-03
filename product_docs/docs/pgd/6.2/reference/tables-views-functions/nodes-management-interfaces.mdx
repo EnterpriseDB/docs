@@ -333,6 +333,8 @@ on each node.
 
 Node join doesn't hold any locks in the PGD group.
 
+To reuse a node name while a parting process is still in progress, set `concurrent = true` when using `bdr.part_node`(requires Raft protocol version 6003 or above). This parameter allows the original name to be reused once the parting node reaches the `PARTING` state, at which point the node is automatically renamed to its UUID. 
+
 ## `bdr.part_node`
 
 Removes (parts) the node from the PGD group and eventually removes the parted node’s metadata from all nodes in the cluster.
@@ -380,6 +382,7 @@ bdr.part_node (
 | `node_name`           | Name of an existing node to part.                                                                                                                                                                                                                                   |
 | `wait_for_completion` | If `true`, the function doesn't return until the node is fully parted from the cluster. Otherwise, the function starts the parting procedure and returns immediately without waiting. Always set to `false` when executing on the local node or when using `force`. |
 | `force`               | Forces removal of the node on the local node. This sets the node state locally if consensus can't be reached or if the node-parting process is stuck.                                                                                                               |
+| `concurrent`          | If `true`, allows reuse of parting node name as soon as node is in `PARTING` state or above, without waiting for the node to reach the `PARTED` state and eventually being dropped. Default is `false`. This parameter is available when the cluster is at Raft protocol version 6003 or above. |
 
 !!! Warning
 
@@ -412,6 +415,10 @@ any missing data from the given node. The other nodes need to wait till group sl
 A forced parting completely skips this resynchronization and can leave the other nodes in an inconsistent state.
 
 The parting process doesn't hold any locks.
+
+When `concurrent = true`, the target state for a parting node is set to `PARTED_CONCURRENT`. Upon reaching the `PARTING` state, the node is renamed to its UUID. The process continues until the node reaches the `PARTED` state and is dropped. Consequently, all tracking for the node must use its UUID once it moves past the `PART_START` state.
+
+We recommend setting `wait_for_completion = false` when using `concurrent = true`. This configuration allows the function to return with a `Notice` as soon as the original node reaches the `PARTING` state. At this precise moment, the node is renamed to its UUID, freeing the original name for immediate reassignment or reuse in the cluster.
 
 ## `bdr.promote_node`
 
