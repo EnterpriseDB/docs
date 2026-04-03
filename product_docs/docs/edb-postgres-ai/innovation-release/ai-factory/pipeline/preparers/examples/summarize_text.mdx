@@ -236,3 +236,69 @@ __OUTPUT__
  weather  | Die Sonne scheint heute hell, es ist ein schöner Tag mit klarem blauen Himmel, die Temperatur ist warm und komfortabel, die Luft ist sanft und südlich, es gibt keinen Regen, es ist heute keinen Regen zu erwarten.
 (2 rows)
 ```
+
+## Summarization with inference configuration
+
+Fine-tune model behavior at runtime using the `inference_config` parameter. These settings provide direct control over parameters like `temperature`, `max_tokens`, and more without creating a new model.
+
+To apply custom inference settings to a single string, use `aidb.summarize_text()`:
+
+```sql
+-- Summarization with custom inference settings
+SELECT * FROM aidb.summarize_text(
+    input => 'I don''t want a babysitter. I am eleven years old. My babysitter is only three years older than I am," she loudly yelled to her Mom. Now, she really wished she had somebody with her as she heard the clicking, scratching noises outside of the living room window.',
+    options => aidb.summarize_text_config(
+        'llama',
+        NULL,
+        'create a brief summary',
+        NULL,
+        NULL,
+        aidb.inference_config(
+            temperature => 0.3,
+            max_tokens => 50,
+            seed => 42
+        )
+    )::json
+);
+
+__OUTPUT__
+                                                                      summarize_text
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+ A young girl named Lily was frustrated as she couldn't find a babysitter for her 11-year-old sister. She yelled to her mother, "I don't want a babysitter
+(1 row)
+```
+
+For large datasets, use `aidb.summarize_text_aggregate()`:
+
+```sql
+-- Aggregate with inference configuration
+SELECT
+    category,
+    aidb.summarize_text_aggregate(
+        content,
+        aidb.summarize_text_config(
+            'llama',
+            NULL,
+            'summarize the key points',
+            NULL,
+            NULL,
+            aidb.inference_config(
+                temperature => 0.2,
+                max_tokens => 100,
+                top_p => 0.9,
+                seed => 42
+            )
+        )::json ORDER BY id
+    ) AS summary
+FROM source_table__1952_agg
+WHERE category = 'weather'
+GROUP BY category;
+
+__OUTPUT__
+ category |                                                                                                                                                                               summary
+----------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ weather  | The sun is shining brightly and the temperature is warm and comfortable, with no rain expected today. Outdoor activities such as walking or jogging are recommended in this beautiful day with clear blue skies. The breeze from the south is gentle and refreshing, making it a perfect day for outdoor activities such as swimming or playing sports in the park.
+(1 row)
+```
+
+See the [aidb.inference_config reference](/edb-postgres-ai/current/ai-factory/pipeline/reference/models/#aidbinference_config) for a complete list of available parameters.
