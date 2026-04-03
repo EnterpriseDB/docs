@@ -372,10 +372,12 @@ const treeToNavigation = (treeNode, pageNode) => {
   // - this is an ancestor of the page, or
   // - this is the page, or
   // - this is a direct child of the page
+  // - this is rooted to the page
   if (
     rootNode.path &&
     (path.includes(rootNode.path) ||
-      (rootNode.path.includes(path) && rootNode.depth === depth + 1))
+      (rootNode.path.includes(path) && rootNode.depth === depth + 1) ||
+      treeNode.rootedTo === pageNode)
   ) {
     rootNode.items = treeNode.children
       .map((n) => {
