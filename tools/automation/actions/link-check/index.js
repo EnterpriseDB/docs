@@ -16,8 +16,10 @@ import remarkMdxEmbeddedHast from "./lib/mdast-embedded-hast.mjs";
 import mdast2string from "mdast-util-to-string";
 import GithubSlugger from "github-slugger";
 import toVfile from "to-vfile";
-import { url } from "inspector";
 const { read, write } = toVfile;
+import { exec, execSync } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(exec);
 
 const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];
 const resourceExts = [".sh", ".py"];
@@ -47,6 +49,23 @@ const args = yargs()
     default: false,
     description:
       "Set to update links that point to the same version of the product such that they use the 'current' version keyword",
+    implies: "fix",
+  })
+  .option("track-renames-since", {
+    type: "string",
+    description: "Set to track renames since the specified git tag or ref",
+    implies: "fix",
+  })
+  .option("force-relative-links", {
+    type: "boolean",
+    default: false,
+    description:
+      "Set to rewrite all links to be relative, even across directories",
+  })
+  .option("force-link-extensions", {
+    type: "boolean",
+    default: false,
+    description: "Set to ensure all links to .mdx files include the extension",
   })
   .help()
   .parse(hideBin(process.argv));
@@ -158,6 +177,10 @@ async function main() {
   const allValidUrlPaths = new Map();
   const ignoredUrlPaths = new Set();
 
+  const { mapRenames, mapNewPathToOld } = args.trackRenamesSince
+    ? await getRenames(args.trackRenamesSince)
+    : { mapRenames: {}, mapNewPathToOld: new Map() };
+
   // first pass: scan all source files to identify valid URLs, mapping redirects to canonical path
   console.log(
     `Scanning ${sourceFiles.length} pages for redirects and link targets`,
@@ -181,7 +204,12 @@ async function main() {
       allValidUrlPaths.set(latestVersionURLPath(sourcePath), metadata);
     }
     const input = await read(sourcePath);
-    input.data = { allValidUrlPaths, ignoredUrlPaths, metadata };
+    input.data = {
+      allValidUrlPaths,
+      ignoredUrlPaths,
+      mapNewPathToOld,
+      metadata,
+    };
     const ast = scanner.parse(input);
     await scanner.run(ast, input);
     for (let message of input.messages) {
@@ -313,7 +341,12 @@ async function main() {
     //if (ignoredUrlPaths.has(urlPath)) continue;
     const metadata = allValidUrlPaths.get(urlPath);
     const input = await read(sourcePath);
-    input.data = { metadata, ignoredUrlPaths, allValidUrlPaths };
+    input.data = {
+      metadata,
+      ignoredUrlPaths,
+      allValidUrlPaths,
+      mapNewPathToOld,
+    };
     let result = await processor.process(input); // should normally return input
     linksChecked += metadata.linksChecked || 0;
     const importMsgRegex = /!!ImportedFrom\((.+)\)/;
@@ -438,12 +471,73 @@ run \`npm run links:fix\` locally.`);
   }
 }
 
+async function getRenames(sinceRef) {
+  // Note that it's entirely possible for the list of renames to have the same
+  // files listed multiple times, forming a chain - that gets handled later
+  // For when I inevitably forget why I did it this way:
+  // - https://git-scm.com/docs/gitrevisions
+  // - https://git-scm.com/docs/git-log
+  let branch = "";
+  let renames = [];
+  try {
+    const { stdout: branch_stdout } = await execAsync(
+      "git rev-parse --abbrev-ref HEAD",
+      { cwd: basePath },
+    );
+    branch = branch_stdout.toString().trim();
+
+    const { stdout: log_stdout } = await execAsync(
+      `git log --diff-filter=R --find-renames=4 --name-status --pretty=format: ${sinceRef}..${branch} 
+      git diff --diff-filter=R --find-renames=4 --name-status --pretty=format: ${sinceRef}..${branch}`,
+      { cwd: basePath },
+    );
+    renames = log_stdout
+      .toString()
+      .split("\n")
+      .filter((l) => l.startsWith("R") && l.endsWith(".mdx"))
+      .map((l) => l.split("\t").slice(1));
+  } catch (e) {
+    throw new Error("Error running git: " + e.toString());
+  }
+
+  const mapRenames = [];
+  const mapNewPathToOld = new Map();
+  for (const [before, after] of renames) {
+    // handle chains of renames such that when:
+    // c->d
+    // b->c
+    // a->b
+    // mapNewPathToOld[d] = [c,b,a]
+    mapRenames.push({ before, after });
+    let current = after;
+    for (
+      let renameIndex = mapRenames.length - 1;
+      renameIndex >= 0;
+      renameIndex = mapRenames.findLastIndex(
+        (r, i) => r.before === current && i < renameIndex,
+      )
+    ) {
+      current = mapRenames[renameIndex].after;
+    }
+
+    if (!mapNewPathToOld.has(current)) {
+      const altPaths = [];
+      mapNewPathToOld.set(current, altPaths);
+      mapNewPathToOld.set(fsPathToURLPath(current), altPaths);
+    }
+    mapNewPathToOld.get(current).push(before);
+  }
+
+  return { mapRenames, mapNewPathToOld };
+}
+
 function index() {
   // grab and store:
   // - each redirect (normalized)
   // - each link target (slugs, id'd elements)
   return async (tree, file) => {
-    const { allValidUrlPaths, ignoredUrlPaths, metadata } = file.data;
+    const { allValidUrlPaths, ignoredUrlPaths, mapNewPathToOld, metadata } =
+      file.data;
     const slugger = new GithubSlugger();
 
     // handle imports from other MDX files
@@ -511,6 +605,18 @@ function index() {
         }
       }
     });
+
+    // add fake redirects if this file was renamed, so that links to the old path will still work (and be updated in the next step)
+    const relativePath = path.relative(basePath, file.path);
+    const redirectPaths =
+      mapNewPathToOld.get(relativePath) ||
+      mapNewPathToOld.get(fsPathToURLPath(relativePath)) ||
+      mapNewPathToOld.get(latestVersionURLPath(relativePath)) ||
+      [];
+    for (let redirect of redirectPaths) {
+      let urlPath = latestVersionURLPath(redirect);
+      metadata.redirects.push(urlPath);
+    }
   };
 }
 
@@ -520,9 +626,10 @@ function cleanup() {
   // - check for valid slug
   // - if path and slug are valid but path is redirect, update path
   return async (tree, file) => {
-    const { allValidUrlPaths, ignoredUrlPaths, metadata } = file.data;
+    const { allValidUrlPaths, ignoredUrlPaths, mapNewPathToOld, metadata } =
+      file.data;
 
-    const relativize = ({ canonical, latest, version, product }) => {
+    const relativize = ({ canonical, latest, version, product, source }) => {
       let relative = canonical;
       // if path is identical to current: strip all but hash
       if (relative === metadata.canonical) return "";
@@ -536,8 +643,9 @@ function cleanup() {
       // if dirname is identical to current: strip all but filename and hash
       // if dirname contains current dirname: relative path + hash
       if (
-        path.posix.dirname(relative).startsWith(currentDirname) &&
-        !rawExts.includes(ext)
+        (path.posix.dirname(relative).startsWith(currentDirname) &&
+          !rawExts.includes(ext)) ||
+        (args.forceRelativeLinks && !rawExts.includes(ext))
       )
         relative = path.posix.relative(currentDirname, relative);
       // if versioned and pointing to same product+version, use /current/ path (don't do this for image URLs)
@@ -552,7 +660,15 @@ function cleanup() {
       // if versioned and pointing to latest, use "latest" path
       else if (latest) relative = replacePathVersion(relative);
       // otherwise: full path
-      return relative.replace(/(?<=.)\/*$/, "/"); // ends with at most one slash, empty path ends with none
+
+      if (isImageUrl) return relative;
+      if (
+        args.forceLinkExtensions &&
+        source?.endsWith(".mdx") &&
+        !source.endsWith("index.mdx")
+      )
+        return relative ? relative.replace(/\/*$/, "") + ".mdx" : ""; // ends with .mdx extension, not slash; empty path stays empty)
+      return relative ? relative.replace(/\/*$/, "") + "/" : ""; // ends with at most one slash, empty path ends with none
     };
 
     const checkImportSource = (ancestors) => {
@@ -566,6 +682,15 @@ function cleanup() {
     };
 
     const mapUrlToCanonical = (url, position, ancestors) => {
+      // short-circuit: an empty URL is a reference to the current page, but we don't want empty URLs
+      if (!url) {
+        metadata.linksUpdated = (metadata.linksUpdated || 0) + 1;
+        return metadata.index
+          ? "./"
+          : path.posix.basename(metadata.canonical) +
+              (args.forceLinkExtensions ? ".mdx" : "");
+      }
+
       let test = normalizeUrl(url, metadata.canonical, metadata.index);
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
@@ -579,13 +704,52 @@ function cleanup() {
         );
       }
 
+      //
+      // check valid path (may be a redirect, don't care yet)
+      //
+
       metadata.linksChecked = (metadata.linksChecked || 0) + 1;
 
-      // check valid path (may be a redirect, don't care yet)
       let testPath = test.pathname
         .replace(/^\/docs/, "")
         .replace(/\/$/, "")
         .trim();
+
+      // handle renames
+      let renamedSource = false;
+      if (
+        testPath.length &&
+        !allValidUrlPaths.has(testPath) &&
+        mapNewPathToOld.has(path.relative(basePath, metadata.source))
+      ) {
+        const oldPaths = mapNewPathToOld.get(
+          path.relative(basePath, metadata.source),
+        );
+        // start with the oldest version of this path, work forward until we find a match or run out of old paths
+        for (let i = oldPaths.length - 1; i >= 0; --i) {
+          const oldPath = oldPaths[i];
+
+          const newTest = normalizeUrl(
+            url.replace(/\/current([\/#?])/, "/" + metadata.version + "$1"),
+            fsPathToURLPath(oldPath),
+            isIndex(oldPath),
+          );
+          const newTestPath = newTest.pathname
+            .replace(/^\/docs/, "")
+            .replace(/\/$/, "")
+            .trim();
+
+          //console.log(`Source renamed; trying alternate source file path: ${oldPath}` + (url !== testPath + "/" + test.hash ? ` (${testPath})` : ""));
+
+          if (allValidUrlPaths.has(newTestPath)) {
+            test = newTest;
+            testPath = newTestPath;
+            renamedSource = true;
+            break;
+          }
+        }
+      }
+
       if (testPath.length && !allValidUrlPaths.has(testPath)) {
         if (!noWarnPaths.includes(metadata.canonical))
           file.message(
@@ -637,7 +801,11 @@ function cleanup() {
       // check if path needs to be remapped. Must be:
       // - not the canonical URL, and
       // - not the "latest" version of canonical for a latest destination
-      // When remapping, if destination is the latest version then use "latest" path
+      // OR
+      // - if fixCurrent is enabled and the URL is an absolute path that points to the same version of the same product but doesn't use /current/
+      // OR
+      // - if the source was renamed and the URL matches the old path, update to new path
+      //   (this implicitly requires track-renames-since to have been set)
       const testPathIsLatestDest =
         testPath === replacePathVersion(destMetadata.canonical);
       const testPathIsCurrent =
@@ -655,10 +823,12 @@ function cleanup() {
         (args.fixCurrent &&
           originalUrlAbsolutePath &&
           testPathIsCurrent &&
-          !originalUrlIsCurrent)
+          !originalUrlIsCurrent) ||
+        renamedSource
       ) {
         let reason = "???";
-        if (!destMetadata.latest && testPathIsLatestDest)
+        if (renamedSource) reason = "file containing the link was renamed";
+        else if (!destMetadata.latest && testPathIsLatestDest)
           reason = "replaced latest with last available version";
         else if (
           testPath !== destMetadata.canonical &&
@@ -685,7 +855,24 @@ function cleanup() {
           }
         }
 
-        const newPath = relativize(destMetadata) + test.hash;
+        // docs links *act* like the filename is always present in the URL, even when it's not (filename is index.mdx)
+        // so we need to calculate the path such that it points to the directory when the target is an index file and to the file otherwise
+        // in particular, this means that a path like './' or '..' will do different things depending on whether the file that *contains*
+        // the link is named index.mdx or not
+        // - source file is index.mdx: link to ./ is a link to itself
+        // - source file is not index.mdx: link to ./ is a link to the parent directory (*effectively* a link to index.mdx, but this is not present in the path)
+        // additionally, we want to keep self-links as simple as possible: the common case for this is when a hash is present in the URL,
+        // in which case we don't really want a path at all - BUT if there is no hash then we want
+        // the path to be ./ for index files and the name of the file for non-index files. This makes the intent explicit while keeping the URL clean.
+
+        let newPath = relativize(destMetadata);
+        if (newPath === "" && !test.hash)
+          newPath = destMetadata.index
+            ? "./"
+            : path.posix.basename(destMetadata.canonical) +
+              (args.forceLinkExtensions ? ".mdx" : "");
+        newPath = newPath + test.hash;
+
         if (newPath !== url) {
           metadata.linksUpdated = (metadata.linksUpdated || 0) + 1;
           file.info(
@@ -785,6 +972,7 @@ function cleanup() {
             node.url = mapUrlToCanonical(node.url, node.position, ancestors);
         } catch (e) {
           file.message(e, node.position);
+          throw e;
         }
       },
     );
