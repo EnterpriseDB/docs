@@ -6,9 +6,12 @@ editTarget: originalFilePath
 
 ---
 
-Perform a minor version upgrade to a newer WarehousePG (WHPG) 7.x release. Because minor versions are binary-compatible, this process replaces the software binaries without requiring a full data migration.
+Perform a minor version upgrade to 7.4. Because minor versions are binary-compatible, this process replaces the software binaries without requiring a full data migration.
 
 An upgrade involves stopping the WHPG cluster, updating the software binaries across all nodes, and restarting the services.
+
+!!! Note
+    Starting from WarehousePG 7.4, the installation directory has been consolidated to `/usr/edb/whpg7`. For backward compatibility, the system automatically maintains a symbolic link at `/usr/local/greenplum-db` and `/usr/local/greenplum-db-clients`.
 
 In this guide:
 
@@ -41,7 +44,7 @@ These steps isolate the cluster from external traffic and automated scripts befo
 4.  Perform a backup of all databases: Execute a full backup. This is your final safety point before modifying the environment.
 
     ```bash
-    gpbackup --all-databases --leaf-partition-data
+    gpbackup --leaf-partition-data
     ```
 
 ## Clearing automation and system handover
@@ -50,7 +53,7 @@ Once data is secure and traffic has ceased, prepare the operating system environ
 
 1.  Hand over the for infrastructure maintenance: Coordinate with your Infrastructure or Platform team to perform any required pre-upgrade safety measures. This may include creating environment snapshots, initiating virtual machine checkpoints, or performing hardware-level health checks to ensure the underlying platform is stable.
 
-2.  Save and remove crontab entries: Perform these steps as the `root` user to prevent maintenance scripts from firing during the binary swap.
+2.  Save and remove crontab entries: Perform these steps as the `root` user on coordinator and standby nodes to prevent maintenance scripts from firing during the binary swap.
 
     -   Back up your `gpadmin` tasks from both the coordinator and standby nodes:
 
@@ -128,7 +131,7 @@ Perform a final cleanup of the running database instance.
 
 ## Replacing binaries and restarting WHPG
 
-Perform the following steps as the `gpadmin` user.
+Perform the following steps as the `gpadmin` user. When upgrading, the package manager will automatically remove old files in `/usr/local/greenplum-db-<version>` and install new files to `/usr/edb/whpg7`.
 
 1.  On the coordinator, back up old WHPG binaries:
 
@@ -141,6 +144,7 @@ Perform the following steps as the `gpadmin` user.
 
     ```bash
     scp <warehouse-pg-7.target.rpm> gpadmin@coordinator_host:/tmp
+    scp <warehouse-pg-7.target-clients.rpm> gpadmin@coordinator_host:/tmp
     ```
 
     Where `<warehouse-pg-7.target.rpm>` is the package of the WarehousePG version to install.
@@ -161,22 +165,23 @@ Perform the following steps as the `gpadmin` user.
     gpsync -f hostfile_without_coord <warehouse-pg-7.target.rpm> =:/tmp/binary
     ```
 
-5.  Install WHPG `7.target` on the coordinator and re-own directories:
+5.  Install WHPG `7.target` on the coordinator:
+
+    !!! Important 
+        Starting with WarehousePG 7.4, the `warehouse-pg-7-clients` package is mandatory and must be installed alongside the server package.
 
     -   For RHEL 8, RHEL 9:
 
         ```bash
         sudo rpm -U <warehouse-pg-7.target.rpm> -v
-        sudo chown -R gpadmin. /usr/local/greenplum-db
-        sudo chown -R gpadmin. /usr/local/greenplum-db-7.target-WHPG
+        sudo chown -R gpadmin. /usr/edb/whpg7
         ```
 
     -   For RHEL 7: 
 
         ```bash
         sudo yum install -y <warehouse-pg-7.target.rpm>
-        sudo chown -R gpadmin. /usr/local/greenplum-db
-        sudo chown -R gpadmin. /usr/local/greenplum-db-7.target-WHPG
+        sudo chown -R gpadmin. /usr/edb/whpg7
         ```
 
 6.  Install WHPG `7.target` on segments: From the coordinator, run:
@@ -186,8 +191,7 @@ Perform the following steps as the `gpadmin` user.
         ```bash
         source /home/gpadmin/.bashrc
         gpssh -f hostfile_without_coord -e "sudo rpm -U <warehouse-pg-7.target.rpm> -v"    
-        gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin. /usr/local/greenplum-db" 
-        gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin. /usr/local/greenplum-db-7.target-WHPG"    
+        gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin:gpadmin /usr/edb/whpg7"
         ```
 
     -   For RHEL 7: 
@@ -195,11 +199,10 @@ Perform the following steps as the `gpadmin` user.
         ```bash
         source /home/gpadmin/.bashrc
         gpssh -f hostfile_without_coord -e "sudo yum install -y <warehouse-pg-7.target.rpm>"    
-        gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin. /usr/local/greenplum-db" 
-        gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin. /usr/local/greenplum-db-7.target-WHPG"    
+        gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin:gpadmin /usr/edb/whpg7"  
         ```
 
-7.  Verify symbolic links: On the coordinator, ensure `/usr/local/greenplum-db` points to the new target directory across the cluster and that `gpadmin` is the owner of the installation directories:
+7.  Verify symbolic links: Ensure `/usr/local/greenplum-db` and `/usr/local/greenplum-db-clients` point to `/usr/edb/whpg7` across the cluster and that `gpadmin` is the owner of the installation directories:
 
     ```bash
     ll /usr/local/'| grep 'greenplum-db ->' | sort
