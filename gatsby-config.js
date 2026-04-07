@@ -448,6 +448,7 @@ module.exports = {
                 seealso: "note",
                 hint: "tip",
                 interactive: "interactive",
+                caution: "warning",
               },
             },
           ],
