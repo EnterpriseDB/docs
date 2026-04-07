@@ -36,6 +36,50 @@ Data defines the configuration for the data directory.
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
 | `pvcTemplate` *[PersistentVolumeClaimSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#persistentvolumeclaimspec-v1-core)* | Template to be used to generate the Persistent Volume Claim needed for the data folder,<br />containing base backups and WAL files. | True     |         |            |
 
+#### EmbeddedObjectMeta
+
+EmbeddedObjectMeta contains metadata for embedded objects.
+
+*Appears in:*
+
+-   [PodTemplateSpec](#podtemplatespec)
+
+| Field                                               | Description | Required | Default | Validation          |
+| --------------------------------------------------- | ----------- | -------- | ------- | ------------------- |
+| `labels` *object (keys:string, values:string)*      |             |          |         | Optional: {} <br /> |
+| `annotations` *object (keys:string, values:string)* |             |          |         | Optional: {} <br /> |
+
+#### FileReference
+
+FileReference specifies a file from a volume source.
+
+*Appears in:*
+
+-   [FileSource](#filesource)
+
+| Field                                                                                                                | Description                                      | Required | Default | Validation |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------- | ------- | ---------- |
+| `volume` *[VolumeSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#volumesource-v1-core)* | Volume is the volume source to mount.            | True     |         |            |
+| `path` *string*                                                                                                      | Path is the file path within the mounted volume. | True     |         |            |
+
+#### FileSource
+
+FileSource specifies a source for a file. This wrapper allows future
+alternatives to be added without breaking the API.
+
+*Validation:*
+
+-   ExactlyOneOf: [fileReference]
+
+*Appears in:*
+
+-   [Tier1Configuration](#tier1configuration)
+-   [Tier2Configuration](#tier2configuration)
+
+| Field                                             | Description                                          | Required | Default | Validation          |
+| ------------------------------------------------- | ---------------------------------------------------- | -------- | ------- | ------------------- |
+| `fileReference` *[FileReference](#filereference)* | FileReference specifies a file from a volume source. |          |         | Optional: {} <br /> |
+
 #### ImageConfiguration
 
 ImageConfiguration contains the information needed to download
@@ -76,9 +120,10 @@ PluginConfigurationSpec defines the desired state of client configuration.
 | `serverAddress` *string*                                                                                                 | ServerAddress is the address of the Klio server                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | True     |          | MinLength: 1 <br />Required: {} <br /> |
 | `tier1` *[Tier1PluginConfiguration](#tier1pluginconfiguration)*                                                          | Tier1 is the Tier 1 configuration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |          |          | Optional: {} <br />                    |
 | `tier2` *[Tier2PluginConfiguration](#tier2pluginconfiguration)*                                                          | Tier2 is the Tier 2 configuration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |          |          | Optional: {} <br />                    |
+| `walPrefetch` *[WALPrefetchConfiguration](#walprefetchconfiguration)*                                                    | WALPrefetch configures WAL prefetching behavior during recovery operations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |          |          | Optional: {} <br />                    |
 | `clientSecretName` *string*                                                                                              | ClientSecretName is the name of the secret containing the client credentials                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | True     |          | MinLength: 1 <br />Required: {} <br /> |
 | `serverSecretName` *string*                                                                                              | ServerSecretName is the name of the secret containing the server TLS certificate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | True     |          | MinLength: 1 <br />Required: {} <br /> |
-| `clusterName` *string*                                                                                                   | ClusterName is the name of the PostgreSQL cluster we are connecting to                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |          |          | Optional: {} <br />                    |
+| `clusterName` *string*                                                                                                   | ClusterName is the name of the PostgreSQL cluster we are connecting to                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | True     |          | MinLength: 1 <br />Required: {} <br /> |
 | `pprof` *boolean*                                                                                                        | Pprof enables the pprof endpoint for performance profiling                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |          |          | Optional: {} <br />                    |
 | `mode` *[ServerMode](#servermode)*                                                                                       | Mode selects the operation mode of the plugin.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | True     | standard | Enum: [standard read-only] <br />      |
 | `containers` *[Container](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#container-v1-core) array* | Containers allows defining a list of containers that will be merged with the Klio sidecar containers.<br />This enables users to customize the sidecars with additional environment variables, volume mounts,<br />resource limits, and other container settings without polluting the PostgreSQL container environment.<br />Merge behavior:<br />- Containers are matched by name (klio-plugin, klio-wal, klio-restore)<br />- User customizations serve as the base<br />- Klio required values (name, args, CONTAINER_NAME env var) always override user values<br />- User-defined environment variables and volume mounts are preserved<br />- Template defaults are applied only for fields not set by the user or Klio |          |          | MaxItems: 3 <br />Optional: {} <br />  |
@@ -90,6 +135,23 @@ PluginConfigurationStatus defines the observed state of ClientConfig.
 *Appears in:*
 
 -   [PluginConfiguration](#pluginconfiguration)
+
+| Field                                                                                                                    | Description                                                                                     | Required | Default | Validation          |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | -------- | ------- | ------------------- |
+| `conditions` *[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#condition-v1-meta) array* | Conditions represent the latest available observations of the<br />PluginConfiguration's state. |          |         | Optional: {} <br /> |
+
+#### PodTemplateSpec
+
+PodTemplateSpec describes the data a pod should have when created from a template.
+
+*Appears in:*
+
+-   [ServerSpec](#serverspec)
+
+| Field                                                                                                    | Description                                                     | Required | Default | Validation          |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | -------- | ------- | ------------------- |
+| `metadata` *[EmbeddedObjectMeta](#embeddedobjectmeta)*                                                   | Refer to Kubernetes API documentation for fields of `metadata`. |          |         | Optional: {} <br /> |
+| `spec` *[PodSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#podspec-v1-core)* |                                                                 |          |         | Optional: {} <br /> |
 
 #### Queue
 
@@ -130,16 +192,16 @@ S3Configuration is the configuration to a S3 defined tier 2.
 
 -   [Tier2Configuration](#tier2configuration)
 
-| Field                                                       | Description                                          | Required | Default | Validation          |
-| ----------------------------------------------------------- | ---------------------------------------------------- | -------- | ------- | ------------------- |
-| `bucketName` *string*                                       | BucketName is the name of the bucket                 | True     |         |                     |
-| `prefix` *string*                                           | Prefix is the prefix to be used for the stored files |          |         | Optional: {} <br /> |
-| `endpoint` *string*                                         | Endpoint is the endpoint to be used                  |          |         | Optional: {} <br /> |
-| `region` *string*                                           | Region is the region to be used                      |          |         | Optional: {} <br /> |
-| `accessKeyId` *[SecretKeySelector](#secretkeyselector)*     | The S3 access key ID                                 |          |         | Optional: {} <br /> |
-| `secretAccessKey` *[SecretKeySelector](#secretkeyselector)* | The S3 access key                                    |          |         | Optional: {} <br /> |
-| `sessionToken` *[SecretKeySelector](#secretkeyselector)*    | The S3 session token                                 |          |         | Optional: {} <br /> |
-| `customCaBundle` *[SecretKeySelector](#secretkeyselector)*  | A pointer to a custom CA bundle                      |          |         | Optional: {} <br /> |
+| Field                                                                                                                            | Description                                          | Required | Default | Validation          |
+| -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------- | ------- | ------------------- |
+| `bucketName` *string*                                                                                                            | BucketName is the name of the bucket                 | True     |         |                     |
+| `prefix` *string*                                                                                                                | Prefix is the prefix to be used for the stored files |          |         | Optional: {} <br /> |
+| `endpoint` *string*                                                                                                              | Endpoint is the endpoint to be used                  |          |         | Optional: {} <br /> |
+| `region` *string*                                                                                                                | Region is the region to be used                      |          |         | Optional: {} <br /> |
+| `accessKeyId` *[SecretKeySelector](https://pkg.go.dev/github.com/cloudnative-pg/machinery@v0.3.3/pkg/api#SecretKeySelector)*     | The S3 access key ID                                 |          |         | Optional: {} <br /> |
+| `secretAccessKey` *[SecretKeySelector](https://pkg.go.dev/github.com/cloudnative-pg/machinery@v0.3.3/pkg/api#SecretKeySelector)* | The S3 access key                                    |          |         | Optional: {} <br /> |
+| `sessionToken` *[SecretKeySelector](https://pkg.go.dev/github.com/cloudnative-pg/machinery@v0.3.3/pkg/api#SecretKeySelector)*    | The S3 session token                                 |          |         | Optional: {} <br /> |
+| `customCaBundle` *[SecretKeySelector](https://pkg.go.dev/github.com/cloudnative-pg/machinery@v0.3.3/pkg/api#SecretKeySelector)*  | A pointer to a custom CA bundle                      |          |         | Optional: {} <br /> |
 
 #### Server
 
@@ -188,7 +250,7 @@ ServerSpec defines the desired state of Server.
 | `tier1` *[Tier1Configuration](#tier1configuration)*                                                                                                  | Tier1 is the Tier 1 configuration                                                                                                                                                                                                                                                                                                         | True     |              |                                   |
 | `tier2` *[Tier2Configuration](#tier2configuration)*                                                                                                  | Tier2 is the Tier 2 configuration                                                                                                                                                                                                                                                                                                         | True     |              |                                   |
 | `queue` *[Queue](#queue)*                                                                                                                            | Queue is the configuration of the PVC that should host<br />the task queue.                                                                                                                                                                                                                                                               |          |              | Optional: {} <br />               |
-| `template` *[PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#podtemplatespec-v1-core)*                         | Template to override the default StatefulSet of the Klio server.<br />WARNING: Modifying this template may break the server functionality if not done carefully.<br />This field is primarily intended for advanced configuration such as telemetry setup.<br />Use at your own risk and ensure thorough testing before applying changes. |          |              | Optional: {} <br />               |
+| `template` *[PodTemplateSpec](#podtemplatespec)*                                                                                                     | Template to override the default StatefulSet of the Klio server.<br />WARNING: Modifying this template may break the server functionality if not done carefully.<br />This field is primarily intended for advanced configuration such as telemetry setup.<br />Use at your own risk and ensure thorough testing before applying changes. |          |              | Optional: {} <br />               |
 
 #### ServerStatus
 
@@ -220,11 +282,12 @@ Tier1Configuration is the tier 1 configuration.
 
 -   [ServerSpec](#serverspec)
 
-| Field                                                     | Description                                                                        | Required | Default | Validation |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------- | ------- | ---------- |
-| `cache` *[Cache](#cache)*                                 | Cache is the configuration of the PVC that should be<br />used for the cache       | True     |         |            |
-| `data` *[Data](#data)*                                    | Data is the configuration of the PVC that should be used<br />for the base backups | True     |         |            |
-| `encryptionKey` *[SecretKeySelector](#secretkeyselector)* | EncryptionKey is a reference to a secret containing the Klio password              | True     |         |            |
+| Field                                           | Description                                                                                         | Required | Default | Validation                           |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------ |
+| `cache` *[Cache](#cache)*                       | Cache is the configuration of the PVC that should be<br />used for the cache.                       | True     |         |                                      |
+| `data` *[Data](#data)*                          | Data is the configuration of the PVC that should be used<br />for the base backups.                 | True     |         |                                      |
+| `encryptionKeyFile` *[FileSource](#filesource)* | EncryptionKeyFile specifies the Age-encrypted encryption key file.                                  | True     |         | ExactlyOneOf: [fileReference] <br /> |
+| `identityFile` *[FileSource](#filesource)*      | IdentityFile specifies the Age identity (private key) file used to<br />decrypt the encryption key. | True     |         | ExactlyOneOf: [fileReference] <br /> |
 
 #### Tier1PluginConfiguration
 
@@ -246,11 +309,12 @@ Tier2Configuration is the tier 2 configuration.
 
 -   [ServerSpec](#serverspec)
 
-| Field                                                     | Description                                                                  | Required | Default | Validation |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------- | -------- | ------- | ---------- |
-| `cache` *[Cache](#cache)*                                 | Cache is the configuration of the PVC that should be<br />used for the cache | True     |         |            |
-| `s3` *[S3Configuration](#s3configuration)*                | S3 contains the configuration parameters for an S3-based tier 2              | True     |         |            |
-| `encryptionKey` *[SecretKeySelector](#secretkeyselector)* | EncryptionKey is a reference to a secret containing the Klio password        | True     |         |            |
+| Field                                           | Description                                                                                         | Required | Default | Validation                           |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------ |
+| `cache` *[Cache](#cache)*                       | Cache is the configuration of the PVC that should be<br />used for the cache.                       | True     |         |                                      |
+| `s3` *[S3Configuration](#s3configuration)*      | S3 contains the configuration parameters for an S3-based tier 2.                                    | True     |         |                                      |
+| `encryptionKeyFile` *[FileSource](#filesource)* | EncryptionKeyFile specifies the Age-encrypted encryption key file.                                  | True     |         | ExactlyOneOf: [fileReference] <br /> |
+| `identityFile` *[FileSource](#filesource)*      | IdentityFile specifies the Age identity (private key) file used to<br />decrypt the encryption key. | True     |         | ExactlyOneOf: [fileReference] <br /> |
 
 #### Tier2PluginConfiguration
 
@@ -265,3 +329,16 @@ Tier2PluginConfiguration configures tier2 backup and recovery settings.
 | `enableBackup` *boolean*                          | EnableBackup controls whether WAL and base backups should be stored in tier2         |          |         | Optional: {} <br /> |
 | `enableRecovery` *boolean*                        | EnableRecovery controls whether tier2 should be included in the recovery source list |          |         | Optional: {} <br /> |
 | `retention` *[RetentionPolicy](#retentionpolicy)* | RetentionPolicy defines how many backups we should keep                              |          |         | Optional: {} <br /> |
+
+#### WALPrefetchConfiguration
+
+WALPrefetchConfiguration configures WAL prefetching during recovery.
+
+*Appears in:*
+
+-   [PluginConfigurationSpec](#pluginconfigurationspec)
+
+| Field                              | Description                                                                                                 | Required | Default | Validation                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------- | ------- | ----------------------------------- |
+| `count` *integer*                  | Count is the number of WAL files to prefetch ahead during recovery.<br />A value of 0 disables prefetching. | True     | 2       | Maximum: 64 <br />Minimum: 0 <br /> |
+| `maxConcurrentDownloads` *integer* | MaxConcurrentDownloads is the maximum number of concurrent WAL downloads.                                   | True     | 4       | Maximum: 64 <br />Minimum: 1 <br /> |

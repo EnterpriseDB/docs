@@ -1,7 +1,7 @@
 ---
 title: OpenTelemetry Observability
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/opentelemetry.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.14/user/opentelemetry.md
 sidebar_position: 8
 
 ---
@@ -17,6 +17,7 @@ Klio automatically collects the following:
 
 -   Traces
     -   Distributed WAL streaming and processing
+    -   Backup lifecycle (backup, backup run, verification, maintenance)
 -   Metrics
     -   Server
         -   Backup operation metrics
@@ -33,7 +34,16 @@ Klio automatically collects the following:
         -   [Go runtime statistics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/runtime)
         -   [Host metrics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/host)
         -   [Controller runtime metrics](https://book.kubebuilder.io/reference/metrics-reference)
-    -   Client
+    -   Sidecar
+        -   Backup lifecycle metrics
+            -   Whether a backup is currently running
+            -   Timestamp of the most recent backup start
+            -   Timestamp of the most recent successful completion
+            -   Timestamp of the most recent failure
+            -   Duration of the most recent backup
+            -   Total number of successful backups
+            -   Total number of failed backups
+        -   Backup verification metrics
         -   [GRPC metrics](https://opentelemetry.io/docs/specs/semconv/rpc/rpc-metrics/)
         -   [Go runtime statistics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/runtime)
         -   [Host metrics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/host)
@@ -43,6 +53,84 @@ Klio automatically collects the following:
 
 Log exporters are not currently supported.
 !!!
+
+## Traces Reference
+
+### Backup lifecycle spans
+
+When a backup is triggered through CNPG-I, Klio creates
+the following spans under the `klio.backup` tracer:
+
+| Span Name            | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `backup`             | Root span covering the entire backup operation (run + verify + maintenance) |
+| `backup_run`         | Child span for the actual data backup execution                             |
+| `backup_verify`      | Child span for post-backup verification                                     |
+| `backup_maintenance` | Child span for post-backup maintenance                                      |
+
+The `backup` span includes the following attributes:
+
+| Attribute     | Type   | Description                 |
+| ------------- | ------ | --------------------------- |
+| `backup.name` | string | Name assigned to the backup |
+
+On failure, the span records the error and sets its status to
+`ERROR`.
+
+## Metrics Reference
+
+### Backup lifecycle metrics (sidecar)
+
+These metrics are emitted by the sidecar and track backup
+operations on each PostgreSQL instance:
+
+| Metric Name                           | Type    | Unit | Description                                                             |
+| ------------------------------------- | ------- | ---- | ----------------------------------------------------------------------- |
+| `klio.backup.running`                 | Gauge   | -    | Whether a backup is currently running (1) or not (0)                    |
+| `klio.backup.latest_start_time`       | Gauge   | s    | Unix epoch timestamp when the most recent backup started                |
+| `klio.backup.latest_completion_time`  | Gauge   | s    | Unix epoch timestamp when the most recent backup completed successfully |
+| `klio.backup.latest_failure_time`     | Gauge   | s    | Unix epoch timestamp when the most recent backup failed                 |
+| `klio.backup.latest_duration_seconds` | Gauge   | s    | Duration of the most recent backup in seconds                           |
+| `klio.backup.successes`               | Counter | -    | Total number of successful backups                                      |
+| `klio.backup.failures`                | Counter | -    | Total number of failed backups                                          |
+| `klio.backup.verifications`           | Counter | -    | Total number of backup verification attempts                            |
+| `klio.backup.verification_failures`   | Counter | -    | Total number of backup verification failures                            |
+
+### WAL server metrics (server)
+
+These metrics are emitted by the Klio server WAL component and track
+WAL file reception from PostgreSQL instances:
+
+| Metric Name             | Type    | Unit | Description                                   |
+| ----------------------- | ------- | ---- | --------------------------------------------- |
+| `klio.wal.written_size` | Counter | By   | Number of bytes written to disk for WAL files |
+| `klio.wal.written`      | Counter | -    | Number of WAL files written                   |
+
+### WAL consumer metrics (server)
+
+These metrics are emitted by the Klio server WAL consumer and track
+WAL archival to Tier 2 storage:
+
+| Metric Name                                 | Type    | Unit | Description                                                 |
+| ------------------------------------------- | ------- | ---- | ----------------------------------------------------------- |
+| `klio.consumer.written_size`                | Counter | By   | Number of bytes written to Tier 2 for WAL files             |
+| `klio.consumer.written`                     | Counter | -    | Number of WAL files written to Tier 2                       |
+| `klio.consumer.backup_verification_success` | Counter | -    | Number of successful backup verifications                   |
+| `klio.consumer.backup_verification_failure` | Counter | -    | Number of failed backup verifications (corruption detected) |
+
+### Base backup metrics (server)
+
+These metrics are emitted by the Klio server base backup component
+and track Kopia snapshot statistics:
+
+| Metric Name                       | Type  | Unit | Description                                                                    |
+| --------------------------------- | ----- | ---- | ------------------------------------------------------------------------------ |
+| `klio.base.snapshots`             | Gauge | -    | Total number of base snapshots                                                 |
+| `klio.base.latest_snapshot_size`  | Gauge | By   | Size of latest base snapshot in bytes (ignoring compression and deduplication) |
+| `klio.base.latest_snapshot_files` | Gauge | -    | Number of files in latest base snapshot                                        |
+| `klio.base.latest_snapshot_dirs`  | Gauge | -    | Number of directories in latest base snapshot                                  |
+| `klio.base.latest_snapshot_age`   | Gauge | s    | Age of latest base snapshot in seconds                                         |
+| `klio.base.oldest_snapshot_age`   | Gauge | s    | Age of oldest base snapshot in seconds                                         |
 
 ## Configuration
 

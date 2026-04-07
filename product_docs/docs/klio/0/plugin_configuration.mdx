@@ -1,7 +1,7 @@
 ---
 title: The Klio Plugin
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/plugin_configuration.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.14/user/plugin_configuration.md
 sidebar_position: 6
 
 ---
@@ -128,6 +128,45 @@ Even though the Klio plugin is used to archive WAL files on the Klio server,
 it does not use the `archiveCommand` parameter in the PostgreSQL configuration,
 as the WAL are streamed directly to the Klio server. Thus, you must not set
 `isWALArchiver: true` in the plugin configuration.
+!!!
+
+## Applying configuration changes
+
+Most changes to the `PluginConfiguration` resource are applied
+automatically. When you update a `PluginConfiguration`, the Klio
+operator detects the change and updates the corresponding
+`klio-config` Secret. The Klio sidecar containers monitor their
+configuration file for changes and **restart automatically** to apply
+the new configuration. This restart is intentional and expected.
+
+**What to expect during configuration updates:**
+
+-   The `klio-plugin`, `klio-wal`, and `klio-restore` sidecar containers
+    will restart to pick up the new configuration
+-   Container restart counts will increment - this is normal behavior and
+    indicates the configuration was successfully applied
+-   Restarts are graceful and brief (typically 5-10 seconds)
+-   No data loss occurs - PostgreSQL continues running and WAL streaming
+    resumes automatically after restart
+-   You can verify the configuration was applied by checking the
+    `ConfigurationApplied` condition in the PluginConfiguration status
+
+This automatic propagation applies to all configuration fields
+stored in the config file, including:
+
+-   Server address
+-   Tier 1 and Tier 2 settings (backup, recovery, retention)
+-   Operation mode (`standard` or `read-only`)
+-   Cluster name override
+-   WAL prefetch configuration
+
+!!!note
+
+Changes to container customizations (such as `image`,
+`resources`, or `securityContext`) and the `pprof` setting are
+not applied automatically. These fields affect the pod spec,
+which is managed by CloudNativePG. To apply these changes, use
+`kubectl cnpg restart` to roll the cluster pods.
 !!!
 
 ## Advanced configuration options
@@ -295,6 +334,28 @@ spec:
 
 See the [Architecture documentation](architectures.mdx#tier-2-secondary-storage-object-storage)
 for more details on Tier 2 storage.
+
+### WAL Prefetch Configuration
+
+During recovery operations, Klio can prefetch WAL files ahead of PostgreSQL's
+requests to speed up recovery. Configure prefetching using the `walPrefetch`
+section:
+
+```yaml
+spec:
+  walPrefetch:
+    count: 8
+    maxConcurrentDownloads: 16
+```
+
+#### Options
+
+-   **`count`**: The number of WAL files to prefetch ahead during recovery.
+    Set to `0` to disable prefetching. Default is `2`.
+
+-   **`maxConcurrentDownloads`**: The maximum number of concurrent WAL
+    downloads. Higher values can improve recovery speed on high-bandwidth
+    connections but use more resources. Default is `4`.
 
 ### Observability
 

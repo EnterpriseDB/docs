@@ -1,0 +1,115 @@
+---
+title: Upgrade Notes
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.14/user/upgrade_notes.md
+sidebar_position: 91
+
+---
+
+This page lists version-specific changes that may require
+manual action when upgrading Klio. For the upgrade procedure,
+see the [Helm chart page](helm_chart.mdx#upgrades).
+
+## Upgrading to 0.0.14
+
+### Encryption key management (breaking change)
+
+Previous versions of Klio stored the encryption key as a
+plaintext value in a Kubernetes Secret, referenced via the
+`encryptionKey` field (a `SecretKeySelector`). This field has
+been replaced by `encryptionKeyFile` and `identityFile`, which
+use [Age encryption](klio_server.mdx#age-encryption) to protect
+the key at rest.
+
+!!!warning
+
+This is a **breaking API change**. Existing `Server` resources
+using `encryptionKey` must be updated after upgrading the CRD.
+The underlying encryption key (used by Kopia) does **not**
+change — only how it is stored and delivered to Klio.
+!!!
+
+The steps below show the migration for `tier1`. If your
+Server also has `tier2` configured, repeat the same steps
+for `tier2` (replacing `.spec.tier1` with `.spec.tier2` in
+the commands, and updating the `tier2` section in the Server
+spec). Tier1 and tier2 may use different encryption keys and
+identity files.
+
+To migrate an existing deployment:
+
+1.  Extract the secret name and key from the Server resource:
+
+```bash
+SECRET_NAME=$(kubectl get server my-server \
+    -o jsonpath='{.spec.tier1.encryptionKey.name}')
+SECRET_KEY=$(kubectl get server my-server \
+    -o jsonpath='{.spec.tier1.encryptionKey.key}')
+```
+
+2.  Retrieve the current encryption key from the secret:
+
+```bash
+ENCRYPTION_KEY=$(kubectl get secret "$SECRET_NAME" \
+    -o jsonpath="{.data.${SECRET_KEY}}" | base64 -d)
+```
+
+3.  Generate an Age key pair:
+
+```bash
+age-keygen -o identity.txt
+# Note the public key from the output
+```
+
+4.  Encrypt the existing key with Age:
+
+```bash
+echo -n "$ENCRYPTION_KEY" | age \
+    -r <public-key-from-step-3> \
+    -o encryption-key.age --armor
+```
+
+5.  Create new Kubernetes Secrets:
+
+```bash
+kubectl create secret generic my-server-encryption-key \
+    --from-file=encryption-key.age
+kubectl create secret generic my-server-age-identity \
+    --from-file=identity.txt
+```
+
+6.  Update the `tier1` section of the `Server` resource,
+    replacing the old `encryptionKey` field with the new
+    fields:
+
+```yaml
+# Before (remove this):
+#   encryptionKey:
+#     name: my-server-encryption
+#     key: encryptionKey
+
+# After:
+encryptionKeyFile:
+  fileReference:
+    volume:
+      secret:
+        secretName: my-server-encryption-key
+    path: encryption-key.age
+identityFile:
+  fileReference:
+    volume:
+      secret:
+        secretName: my-server-age-identity
+    path: identity.txt
+```
+
+7.  Apply the updated `Server` resource, then verify the Klio
+    server pod restarts successfully.
+
+8.  Once verified, delete the old plaintext secret and the
+    local `identity.txt` file:
+
+```bash
+kubectl delete secret my-server-encryption
+rm identity.txt
+```

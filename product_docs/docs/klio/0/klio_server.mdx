@@ -1,7 +1,7 @@
 ---
 title: The Klio Server
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.12/user/klio_server.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.14/user/klio_server.md
 sidebar_position: 5
 
 ---
@@ -100,6 +100,64 @@ The queue PVC is required when Tier 1 is configured. It stores the NATS
 JetStream work queue used for retention policy enforcement and asynchronous
 Tier 2 replication.
 
+#### Queue Sizing Guidelines
+
+The queue stores only task metadata (cluster name and WAL filename), not the
+actual WAL content. This means queue size depends on the **number of WAL
+segments** generated, not the size of your database.
+
+**Sizing formula:**
+
+```
+Queue Size = WAL_segments_per_hour × max_backlog_hours × 300 bytes × 2
+```
+
+Where:
+
+-   **WAL_segments_per_hour**: How many WAL segments your database generates per
+    hour (check with `pg_stat_archiver` or monitor WAL production)
+-   **max_backlog_hours**: Maximum duration the Tier 2 WAL replication backlog
+    can grow before the queue fills up and tasks are lost. Backlog builds up
+    when Tier 2 replication falls behind Tier 1 ingestion — for example, during
+    Tier 2 outages or when object storage uploads are slower than local disk writes.
+-   **300 bytes**: Approximate storage per WAL task (message + JetStream overhead)
+-   **2**: Safety factor
+
+**Recommended sizes:**
+
+| Workload         | WAL Rate           | Recommended Size |
+| ---------------- | ------------------ | ---------------- |
+| Low write (OLTP) | ~60 segments/hour  | **10 MiB**       |
+| Medium write     | ~120 segments/hour | **25 MiB**       |
+| High write       | ~360 segments/hour | **50 MiB**       |
+| Very high write  | >500 segments/hour | **100 MiB**      |
+
+These recommendations assume a 24-hour backlog tolerance and include an
+additional **~10x safety margin** beyond the formula result. This margin accounts
+for:
+
+-   **Burst workloads**: WAL production can spike significantly above average rates
+-   **Multiple clusters**: A single Klio server may handle several CNPG clusters
+-   **Low cost of headroom**: Storage is cheap relative to the risk of queue
+    overflow, which causes WAL loss
+
+For shorter tolerance windows, you can reduce the queue size proportionally, but
+keep the safety margin.
+
+!!!tip
+
+Start with 50 MiB as a conservative default. Monitor queue usage with the
+`klio admin queue-status` command and adjust based on actual WAL production
+rates in your environment.
+!!!
+
+!!!note
+
+Large transactions that modify significant amounts of data will automatically
+generate multiple WAL segments (PostgreSQL rotates WAL files at ~16 MB by
+default). Account for this when estimating your WAL segment rate.
+!!!
+
 ## Setting up a new Klio server
 
 Setting up a Klio server involves creating a `Server` resource along with the
@@ -113,6 +171,8 @@ Before setting up a Klio server, ensure you have:
 -   `kubectl` configured to access your cluster
 -   [cert-manager](https://cert-manager.io/) installed for certificate
     management (recommended)
+-   [Age](https://github.com/FiloSottile/age) CLI installed locally
+    (for encrypting the backup encryption key)
 -   Enough storage resources for the data and cache PersistentVolumeClaims
 -   Enough storage resources for the queue PersistentVolumeClaim
 
@@ -122,37 +182,32 @@ A Klio server setup requires the following components:
 
 1.  **Server Resource**: The main `Server` custom resource
 2.  **TLS Certificate**: For secure communication
-3.  **Encryption Password**: For encrypting backup data at rest
+3.  **Encryption Key**: Age-encrypted key for backup data at rest
 4.  **CA Certificate**: For client authentication via mTLS
 5.  **Storage**: PersistentVolumeClaims for data, cache, and queue
 
 ### Step-by-step setup
 
-#### 1. Create the Encryption Key Secret
+#### 1. Create the Encryption Key
 
-The encryption key is used to encrypt backup data at rest:
+The encryption key is used to encrypt backup data at rest.
+Klio uses [Age](https://github.com/FiloSottile/age) encryption
+to protect the key, enabling credential rotation without
+touching the Kopia repository.
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: my-server-encryption
-  namespace: default
-type: Opaque
-data:
-  encryptionKey: "bXktc2VjdXJlLWtleQ==" # my-secure-key
-```
+See the [Age Encryption](#age-encryption) section for full
+setup details. In summary:
 
-Apply the secret:
-
-```bash
-kubectl apply -f encryption-secret.yaml
-```
+1.  Generate an Age key pair (`age-keygen -o identity.txt`)
+2.  Generate and encrypt a random key
+    (`openssl rand -hex 32 | age -r <pubkey> -o key.age`)
+3.  Create Kubernetes Secrets for both files
+4.  Reference them in the Server spec
 
 !!!tip
 
-Use a strong, randomly generated key. This key is critical for
-data security and recovery.
+Use a strong, randomly generated key. This key is critical
+for data security and recovery.
 !!!
 
 #### 2. Create CA Certificate
@@ -277,7 +332,7 @@ metadata:
   namespace: default
 spec:
   # Container image for the Klio server
-  image: docker.enterprisedb.com/k8s/klio:v0.0.12
+  image: docker.enterprisedb.com/k8s/klio:v0.0.14
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []  # Add image pull secrets if needed
 
@@ -312,13 +367,24 @@ spec:
         resources:
           requests:
             storage: 100Gi  # Adjust based on your backup needs
-    # Encryption key reference
-    encryptionKey:
-      name: my-server-encryption
-      key: encryptionKey
+    # Age-encrypted encryption key file
+    encryptionKeyFile:
+      fileReference:
+        volume:
+          secret:
+            secretName: my-server-encryption-key
+        path: encryption-key.age
+    # Age identity file for decryption
+    identityFile:
+      fileReference:
+        volume:
+          secret:
+            secretName: my-server-age-identity
+        path: identity.txt
 
   # Queue storage configuration (for NATS work queue)
   # Required when tier1 is configured
+  # See "Queue Sizing Guidelines" section for recommendations
   queue:
     pvcTemplate:
       storageClassName: standard  # Adjust to your storage class
@@ -326,7 +392,7 @@ spec:
         - ReadWriteOnce
       resources:
         requests:
-          storage: 10Gi  # Adjust based on queue volume needs
+          storage: 50Mi  # See Queue Sizing Guidelines; 50Mi suits most workloads
 
   # tier 2 configuration
   tier2:
@@ -338,10 +404,20 @@ spec:
             storage: 1Gi
         accessModes:
           - ReadWriteOnce
-    # Encryption key reference. Can differ from tier1 encryption key.
-    encryptionKey:
-      name: my-server-encryption
-      key: encryptionKey
+    # Age-encrypted encryption key file
+    encryptionKeyFile:
+      fileReference:
+        volume:
+          secret:
+            secretName: my-server-encryption-key
+        path: encryption-key.age
+    # Age identity file for decryption
+    identityFile:
+      fileReference:
+        volume:
+          secret:
+            secretName: my-server-age-identity
+        path: identity.txt
     # S3 access configuration
     s3:
       prefix: klio
@@ -431,7 +507,7 @@ spec:
   mode: read-only
 
   # Container image for the Klio server
-  image: docker.enterprisedb.com/k8s/klio:v0.0.12
+  image: docker.enterprisedb.com/k8s/klio:v0.0.14
   imagePullPolicy: IfNotPresent
 
   # TLS configuration
@@ -452,10 +528,20 @@ spec:
           requests:
             storage: 10Gi  # Only cache needed, no data storage
 
-    # Encryption key reference
-    encryptionKey:
-      name: dr-server-encryption
-      key: encryptionKey
+    # Age-encrypted encryption key file
+    encryptionKeyFile:
+      fileReference:
+        volume:
+          secret:
+            secretName: dr-server-encryption-key
+        path: encryption-key.age
+    # Age identity file for decryption
+    identityFile:
+      fileReference:
+        volume:
+          secret:
+            secretName: dr-server-age-identity
+        path: identity.txt
 
     # S3 access configuration
     # See Object Store section for authentication options
@@ -552,6 +638,155 @@ for details on node tainting.
 
 Refer to the [OpenTelemetry](opentelemetry.mdx#klio-server-with-opentelemetry)
 documentation for setting up monitoring and telemetry for the Klio server.
+
+## PVC Resize
+
+The Klio operator supports expansion of PersistentVolumeClaims (PVCs) for all
+storage components: data, cache (tier1 and tier2), and queue.
+
+### Prerequisites
+
+PVC expansion requires a StorageClass with `allowVolumeExpansion: true`.
+
+!!!warning User Responsibility
+
+Before attempting to resize PVCs, **you must verify** that your StorageClass
+supports volume expansion. The operator will attempt the resize operation
+directly—if the StorageClass does not support expansion, the Kubernetes API will
+reject the request and the operator will log an error.
+!!!
+
+To check if your StorageClass supports expansion:
+
+```bash
+kubectl get storageclass <your-storage-class> -o jsonpath='{.allowVolumeExpansion}'
+```
+
+If the output is not `true`, you need to either:
+
+1.  Update the StorageClass to enable volume expansion (if the underlying storage
+    provisioner supports it)
+2.  Use a different StorageClass that supports volume expansion
+3.  Migrate to a new PVC (see [Limitations](#limitations) for options)
+
+### Expanding PVC Size
+
+To expand a PVC, update the corresponding `pvcTemplate.resources.requests.storage`
+field in the Server spec with a larger value:
+
+```yaml
+apiVersion: klio.enterprisedb.io/v1alpha1
+kind: Server
+metadata:
+  name: my-server
+spec:
+  tier1:
+    data:
+      pvcTemplate:
+        resources:
+          requests:
+            storage: 200Gi  # Increased from 100Gi
+    cache:
+      pvcTemplate:
+        resources:
+          requests:
+            storage: 20Gi   # Increased from 10Gi
+  queue:
+    pvcTemplate:
+      resources:
+        requests:
+          storage: 20Gi     # Increased from 10Gi
+```
+
+Apply the updated Server resource:
+
+```bash
+kubectl apply -f klio-server.yaml
+```
+
+### What Happens During Resize
+
+When you update the Server spec with larger PVC sizes, the following occurs:
+
+1.  **PVC expansion**: The operator patches PVCs directly to the new size. This
+    modifies the PVC resources but does **not** update the StatefulSet—the
+    StatefulSet's VolumeClaimTemplates remain unchanged at this point.
+2.  **Temporary misalignment**: After the PVC patch, there is a brief period
+    where the PVCs have the new size but the StatefulSet VolumeClaimTemplates
+    still reflect the old size.
+3.  **StatefulSet recreation**: The operator detects that the expected
+    StatefulSet (with new VolumeClaimTemplates) differs from the current one.
+    Since VolumeClaimTemplates are immutable in Kubernetes, the StatefulSet is
+    deleted and recreated to align with the new spec.
+4.  **Pod restart**: The Klio server pod restarts and mounts the already-expanded
+    PVCs.
+
+!!!note Why explicit PVC patching is necessary
+
+VolumeClaimTemplates only define specs for *new* PVCs—they do not resize
+existing ones. Without explicit PVC patching by the operator, the StatefulSet
+would be recreated but the PVCs would remain at their original size, creating
+a permanent mismatch between the Server spec and actual storage.
+!!!
+
+### StatefulSet and PVC Alignment
+
+After the full resize operation completes:
+
+-   The **PVCs** have the new expanded size
+-   The **StatefulSet VolumeClaimTemplates** match the new size (after recreation)
+-   The **Server spec** is consistent with both
+
+This ensures no drift between the desired state and actual resources.
+
+### Monitoring Resize Progress
+
+The operator emits a `PVCExpanded` Kubernetes event on the Server resource when
+a PVC is successfully expanded. You can view these events with:
+
+```bash
+kubectl describe server my-server
+```
+
+Check the PVC status to monitor the resize operation:
+
+```bash
+kubectl get pvc -l klio.enterprisedb.io/klio-server=my-server
+```
+
+The PVC will show the new requested size in `spec.resources.requests.storage`.
+The actual capacity is reflected in `status.capacity.storage` once the resize
+completes.
+
+For detailed status, including any resize conditions:
+
+```bash
+kubectl describe pvc data-my-server-klio-0
+```
+
+### Limitations
+
+-   **Expansion only**: PVC shrinking is not supported by Kubernetes. Attempting
+    to reduce the storage size will be ignored and logged as a warning.
+-   **StorageClass support**: The StorageClass must have `allowVolumeExpansion:
+    true`. If the StorageClass does not support expansion, the resize will fail
+    and an error will be logged.
+-   **Pod restart required**: Due to StatefulSet VolumeClaimTemplates being
+    immutable, PVC expansion causes a brief pod restart.
+-   **Filesystem resize**: After the volume is expanded, the filesystem must also
+    be resized. Most modern storage providers handle this automatically.
+
+!!!warning No Automatic Fallback
+
+If your StorageClass does not support volume expansion, there is **no automatic
+fallback**. The operator will not delete and recreate PVCs to achieve a larger
+size, as this would result in **permanent data loss**. The only options in this
+case are:
+
+1.  Migrate to a StorageClass that supports volume expansion
+2.  Create a new Klio server with larger PVCs and restore from backup
+3.  Manually migrate data (requires downtime and careful planning)
+!!!
 
 ## Object Store
 
@@ -656,8 +891,9 @@ ensure data security throughout the backup lifecycle.
 
 ### Base Backups Encryption
 
-Base backups are encrypted by Kopia using the encryption password provided in
-the `encryptionKey` secret references. Kopia handles encryption transparently.
+Base backups are encrypted by Kopia using the encryption key
+decrypted from the Age-encrypted key file. Kopia handles
+encryption transparently.
 
 The encryption key is set during repository initialization and is required
 for all subsequent backup and restore operations.
@@ -686,20 +922,25 @@ then encrypted to ensure both space efficiency and security.
 The same encryption key used for base backups encrypts the WAL files,
 ensuring a unified security model across all backup artifacts.
 
-### Encryption Password Rotation
+### Encryption Credential Rotation
 
-Currently, encryption key rotation is not supported. To change the
-encryption key, you would need to:
+The underlying encryption key (used by Kopia and the WAL keychain)
+cannot be changed once set. However, you can rotate the Age identity
+without touching the encryption key or the repository:
 
-1.  Create a new Klio server with a new encryption key
-2.  Perform new base backups to the new server
-3.  Migrate to using the new server
+1.  Generate a new Age key pair
+2.  Re-encrypt the encryption key file with the new public key
+3.  Deploy the new identity file and re-encrypted key file
+
+This rotation only changes how the encryption key is protected,
+not the key itself. See [Rotating Age Credentials](#rotating-age-credentials)
+for step-by-step instructions.
 
 !!!tip
 
-Choose a strong encryption key from the start. Use a password manager or
-key management system to generate and store a cryptographically secure key
-(recommended: 32+ random characters).
+Choose a strong encryption key from the start. Use a password
+manager or key management system to generate and store a
+cryptographically secure key (recommended: 32+ random characters).
 !!!
 
 ### Encryption in Transit
@@ -720,6 +961,136 @@ The TLS certificate is configured via the `.spec.tlsSecretName` field in the
 Server resource, which references a Kubernetes secret containing the TLS
 certificate and private key. This provides end-to-end encryption, ensuring that
 backup data is protected both at rest and in transit.
+
+### Age Encryption
+
+[Age](https://github.com/FiloSottile/age) is a modern file
+encryption tool that Klio supports for protecting the encryption
+key. Instead of storing the plaintext encryption key in a
+Kubernetes Secret, you encrypt it with an Age public key and
+provide the corresponding Age identity (private key) to Klio.
+
+This enables:
+
+-   **Credential rotation** without touching the Kopia repository
+    or WAL data.
+-   **Multiple recipients** for disaster recovery or team access.
+-   **Offline operations** — re-encryption can be done with the
+    standard `age` CLI.
+
+#### Setup
+
+1.  Generate an Age key pair:
+
+```bash
+age-keygen -o identity.txt
+# Public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+```
+
+2.  Generate a random encryption key and encrypt it:
+
+```bash
+openssl rand -hex 32 | age \
+    -r age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p \
+    -o encryption-key.age
+```
+
+3.  Create Kubernetes Secrets for both files:
+
+```bash
+kubectl create secret generic klio-encryption-key-age \
+    --from-file=encryption-key.age
+kubectl create secret generic klio-age-identity \
+    --from-file=identity.txt
+```
+
+4.  Reference them in the Server spec:
+
+```yaml
+tier1:
+  encryptionKeyFile:
+    fileReference:
+      volume:
+        secret:
+          secretName: klio-encryption-key-age
+      path: encryption-key.age
+  identityFile:
+    fileReference:
+      volume:
+        secret:
+          secretName: klio-age-identity
+      path: identity.txt
+```
+
+The same configuration applies to `tier2`.
+
+!!!note
+
+Only standard Age identities (X25519 keys) are supported.
+Age plugins (e.g., `age-plugin-yubikey`) are not supported
+directly, but you can encrypt the key file to both a
+plugin-based recipient and a standard X25519 recipient.
+!!!
+
+#### Using External Secret Managers
+
+The `encryptionKeyFile` and `identityFile` fields accept any
+Kubernetes `VolumeSource`, not just Secrets. This enables
+integration with external secret management systems:
+
+```yaml
+tier1:
+  encryptionKeyFile:
+    fileReference:
+      volume:
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: klio-aws-secrets
+      path: encryption-key.age
+```
+
+#### Rotating Age Credentials
+
+To rotate the Age identity without touching the encryption key
+or the repository:
+
+1.  Generate a new Age key pair:
+
+```bash
+age-keygen -o new-identity.txt
+```
+
+2.  Re-encrypt the key file with the new public key:
+
+```bash
+age -d -i identity.txt encryption-key.age | \
+    age -r <new-public-key> -o encryption-key-new.age
+```
+
+3.  Update the Kubernetes Secrets:
+
+```bash
+kubectl create secret generic klio-encryption-key-age \
+    --from-file=encryption-key.age=encryption-key-new.age \
+    --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic klio-age-identity \
+    --from-file=identity.txt=new-identity.txt \
+    --dry-run=client -o yaml | kubectl apply -f -
+```
+
+4.  Restart the Klio server pod to pick up the new files.
+
+5.  Securely delete the old identity and plaintext files.
+
+!!!note
+
+If you are upgrading from a version that used the
+`encryptionKey` field (`SecretKeySelector`), see the
+[Upgrade Notes](upgrade_notes.mdx#encryption-key-management-breaking-change)
+for migration instructions.
+!!!
 
 ## Authentication
 
