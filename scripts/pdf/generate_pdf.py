@@ -39,7 +39,7 @@ def main(args):
         output = run(
                 [
                     "node",
-                    "--max-old-space-size=4096",
+                    "--max-old-space-size=16384",
                     BASE_DIR / "cleanup_combined_markdown.mjs",
                     mdx_file
                 ]
