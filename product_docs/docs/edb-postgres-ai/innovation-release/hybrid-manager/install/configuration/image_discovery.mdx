@@ -34,7 +34,7 @@ beaconAgent:
     imageDiscovery: true
     imagesetDiscoveryContainerRegistryURL: "<your-private-registry-uri>"
     # Set to true only for self-signed/internal CA scenarios
-    imagesetDiscoveryAllowInsecureRegistry: false 
+    imagesetDiscoveryAllowInsecureRegistry: false
 ```
 
 ### imageDiscovery
@@ -51,29 +51,54 @@ This option specifies the URL of the container registry from which to discover P
 | [EDB Repo 2.0](https://www.enterprisedb.com/docs/repos/) | `docker.enterprisedb.com/pgai-platform` | `docker.enterprisedb.com/pgai-platform` |
 | [Azure Container Registry (ACR)](https://azure.microsoft.com/en-us/products/container-registry) | `<registry-name>.azurecr.io`| `myregistry.azurecr.io` |
 | [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/) | `<aws-account-id>.dkr.ecr.<aws-region-id>.amazonaws.com` | `123456079902.dkr.ecr.us-east-1.amazonaws.com` |
-| [Google Artifact Registry (GAR)](https://docs.cloud.google.com/artifact-registry/docs) | `<gcp-region-id>-docker.pkg.dev` | `us-east1-docker.pkg.dev` |
----
+| [Google Artifact Registry (GAR)](https://cloud.google.com/artifact-registry/docs) | `<gcp-region-id>-docker.pkg.dev` | `us-east1-docker.pkg.dev` |
+| [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/) | `registry.gitlab.com` | `registry.gitlab.com` |
+| [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in) | `localhost:32000` | `localhost:32000` |
 
-## imagesetDiscoveryAllowInsecureRegistry
 
-If this option enabled, it allows establishing a TLS connection without certificate validation.. 
+### imagesetDiscoveryContainerRegistryProvider
+
+This option defines the provider for the registry located at `imagesetDiscoveryContainerRegistryURL`. It defaults to `oci`.
+
+| Provider | Description |
+| :--- | :--- |
+| `oci` | Set this if your container registry provider is fully [OCI compliant](https://github.com/opencontainers/distribution-spec/blob/main/spec.md), including the `/v2/_catalog` endpoint. |
+| `gitlab` | Set this if your container registry provider is [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/). |
+
+The recommended provider value per registry provider is as follows:
+
+| Registry provider | Provider value |
+| :--- | :--- |
+| [EDB Repo 2.0](https://www.enterprisedb.com/docs/repos/) | `oci` |
+| [Azure Container Registry (ACR)](https://azure.microsoft.com/en-us/products/container-registry) | `oci` |
+| [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/) | `oci` |
+| [Google Artifact Registry (GAR)](https://cloud.google.com/artifact-registry/docs) | `oci` |
+| [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/) | `gitlab` |
+| [Harbor Registry](https://goharbor.io/) | `oci` |
+| [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in) | `oci` |
+
+### imagesetDiscoveryAllowInsecureRegistry
+
+If this option is enabled, it allows establishing a TLS connection without certificate validation.
 It defaults to `false`.
 
 ## imagesetDiscoveryAuthenticationType
 
-The supported authentication type by registry provider is as follows:
+The supported authentication types by registry provider are as follows:
 
 | Registry provider | Supported | Recommended |
 | :--- | :--- | :--- |
 | [EDB Repo 2.0](https://www.enterprisedb.com/docs/repos/) | `token`| `token`|
 | [Azure Container Registry (ACR)](https://azure.microsoft.com/en-us/products/container-registry) | `token`, `basic` | `token` |
 | [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/) | `eks_managed_identity`| `eks_managed_identity`|
-| [Google Artifact Registry (GAR)](https://docs.cloud.google.com/artifact-registry/docs) | `token`, `basic` | `token`|
+| [Google Artifact Registry (GAR)](https://cloud.google.com/artifact-registry/docs) | `token`, `basic` | `basic` |
+| [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/) | `token` | `token` |
+| [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in) | `none` | `none` |
 
 
 ### image_discovery_credentials_secret_name
 
-This value is the name of the Kubernetes secret containing the credentials of registry for image discovery. 
+This value is the name of the Kubernetes secret containing the credentials of registry for image discovery.
 Defaults to "edb-cred".
 
 ---
@@ -92,9 +117,18 @@ Select your platform below to configure the necessary permissions.
 
 ### Generic / on-Premises (RKE2/OpenShift)
 
-If you are using a standard OCI registry (like Harbor, Quay, or Artifactory), ensure the username/password you provided when creating your [**Image Pull Secret*](/edb-postgres-ai/current/hybrid-manager/install/environment_prep/#create-image-pull-secret)* has `read` and `list` permissions on the target repositories.
+If you are using a standard OCI registry (like Harbor, Quay, or Artifactory), ensure the username or password you provided when creating your [**Image Pull Secret**](/edb-postgres-ai/current/hybrid-manager/install/environment_prep/#create-image-pull-secret) has `read` and `list` permissions on the target repositories.
 
-Refer to your registry's documentation (examples: [Quay.io Permissions](https://quay.io/)) to configure the service account.
+Refer to your registry's documentation (For example: [Quay.io Permissions](https://quay.io/)) to configure the service account.
+
+### Azure Container Registry (ACR)
+
+The ACR token used as a Kubernetes image pull secret must have the `_repositories_pull_metadata_read` scope-map.
+
+```bash
+az acr token create --name <token-name> --registry <registry-name> \
+    --scope-map "_repositories_pull_metadata_read"
+```
 
 ### AWS Elastic Container Registry (ECR)
 
@@ -173,13 +207,25 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
     --role="roles/browser"
 ```
 
+### GitLab Container Registry
+
+The [Personal access token](https://docs.gitlab.com/user/profile/personal_access_tokens/) used as a Kubernetes image pull secret must have the following scopes:
+
+* `read_registry` — allows read-only access to container registry images on private projects.
+* `read_api` — allows read access to projects and container repositories.
+
+For more details, see the [GitLab Personal access token scopes](https://docs.gitlab.com/user/profile/personal_access_tokens/#personal-access-token-scopes).
+
+!!! note
+    Only `legacy` tokens are supported.
+
 ---
 
 ## Configure Kubernetes Secret
 
 The final step is ensuring the Helm chart knows which Kubernetes Secret contains the credentials (if not using Cloud Identity).
 
-In your `values.yaml`, confirm the `image_discovery_credentials_secret_name`. 
+In your `values.yaml`, confirm the `image_discovery_credentials_secret_name` value.
 
 By default, this is set to `edb-cred`.
 
