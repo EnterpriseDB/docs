@@ -270,6 +270,7 @@ const iconNames = {
   US_CELLULAR: "logos/UsCellular",
   US_NAVY: "logos/UsNavy",
   VUE_JS: "logos/VueJs",
+  WHPG: "logos/Whpg",
   WINDOWS: "logos/Windows",
   WINDOWS_MONO: "logos/WindowsMono",
   YOUTUBE: "logos/Youtube",
@@ -277,8 +278,5 @@ const iconNames = {
   NOT_FOUND: "color/NotFound",
   SERVER_ERROR: "color/ServerError",
   SUN: "color/Sun",
-  EDB_POSTGRES_AI_LOOP: "edb_postgres_ai/LoopColor",
-  EDB_POSTGRES_AI_LOOP_BLACK: "edb_postgres_ai/LoopBlack",
-  EDB_POSTGRES_AI_LANDSCAPE_COLOR: "edb_postgres_ai/LandscapeColor",
 };
 export default iconNames;
