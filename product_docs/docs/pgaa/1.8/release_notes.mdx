@@ -1,24 +1,88 @@
 ---
-title: Analytics Accelerator 1.6 release notes
+title: Analytics Accelerator 1.8 release notes
 navTitle: Release notes
-description: Release notes for version 1.6 of Analytics Accelerator.
-deepToC: true
+description: Release notes for version 1.8 of Analytics Accelerator.
 ---
+
+The Postgres Analytics Accelerator (PGAA) 1.8 documentation describes the latest version of Analytics Accelerator. Release notes for all supported versions are also included below.
+
+| Version        | Release date |
+|----------------|--------------|
+| [1.8](#pgaa-18)    | 9 April 2026  |
+| [1.7](#pgaa-17)   | 5 March 2026  |
+| [1.6](#pgaa-16)    | 4 February 2026 |  
+
+## PGAA 1.8
+
+Released: 9 April 2026
+
+Analytics Accelerator 1.8 includes the following enhancements and bug fixes:
+
+### Features
+
+- **Partitioned table union views for storage location-based replication:** Union views over partitioned tables, previously supported only for REST catalogs, are now also supported for file-based storage location catalogs.
+- **Progress reporting for CTAS operations:** CTAS jobs now emit `NOTICE` messages every 1 million rows or 10 minutes, giving visibility into long-running query status.
+- **Improved query pushdown for EPAS:** Common EPAS-specific functions are now recognized by the Seafowl engine, enabling DirectScan acceleration for queries that previously fell back to CompatScan due to Oracle-compatible syntax.
+- **Improved replication of unsupported list types:** Several additional Postgres array types are now replicated natively to the data lake. Other unsupported array types are replicated as arrays of strings rather than being stringified into a single text value.
+- **`pgaa.seafowl_version()` function:** A new function that returns detailed Seafowl engine version information, including commit hash, build time, optimization level, and enabled features.
+### Bug fixes
+
+- Fixed an issue where CTAS queries returning zero rows didn't correctly create an empty table.
+- Fixed an equality delete predicate pushdown bug affecting query correctness on Iceberg tables with row-level deletes.
+- Fixed an issue where `pg_dump` incorrectly dumped the contents of PGAA-managed tables.
+- Fixed overly aggressive query pushdown that could produce wrong results for certain queries containing correlated subqueries.
+- PGAA now correctly infers the table format when creating tables using DDL for the PGAA access method.
+
+### Infrastructure & other changes
+
+- Upgraded to DataFusion 52, including backports for upstream issues DF-19049 and DF-21292.
+- Improved PGD initial load and CTAS performance by optimizing internal batch append operations.
+- Extended `pgaa._bench_replication()` to support catalog-based replication benchmarking in addition to storage location-based benchmarking.
+
+## PGAA 1.7
+
+Released: 5 March 2026
+Analytics Accelerator 1.7 includes the following enhancements and bug fixes:
+
+### Features
+
+- **Iceberg compaction maintenance:** Added support for compaction maintenance operations on Iceberg tables via the `pgaa.launch_task()` function. This workflow is handled natively by the PGAA background worker, removing the previous requirement for an external Spark Connect integration to execute compaction. This applies to both native PGAA tables and standard heap tables replicated with PGD.
+- **PGD replication performance:** Achieved a 2–2.5x increase in replication TPS to PGD by migrating the Seafowl-based sync writer with to the PGAA engine.
+- **Memory management:** Introduced the `pgaa.max_in_memory_mb` configuration parameter to allow granular control over size-related writer flush criteria.
+- **Storage authentication:** Enabled support for static credentials for storage backends that do not support automated credential vending.
+
+### Bug fixes
+
+- Resolved an issue where lingering transaction locations prevented the promotion of durable LSNs.
+- Fixed errors occurring during date and duration subtraction within the DirectScan engine.
+
+## Infrastructure & other changes
+
+- Added a synthetic pgbench-like replication benchmark, accessible via the `pgaa._bench_replication` SQL function.
+- Merge end-to-end benchmarking scripts into a single unified utility, `pgaabench.sh`.
+
+
+### Deprecations
+
+- The function `pgaa.execute_compaction()` is now deprecated and will be removed in a future release. Use `pgaa.launch_task()` for performing table maintenance. 
+
+
+## PGAA 1.6
 
 Released: 4 February 2026
 
 Analytics Accelerator 1.6 includes the following enhancements and bug fixes, reflecting all changes since version 1.3.1:
 
-## Highlights
+### Highlights
 
 - **GPU-accelerated analytics:** Support for the Spark RAPIDS plugin allows you to leverage GPU acceleration for heavy analytical workloads when using the Spark Connect executor.
 - **Native Azure support:** PGAA now officially supports Azure Blob Storage and Azure Data Lake Storage Gen2 (ADLS), allowing you to leverage Azure-based data lakes as primary storage locations for your analytical workloads.
 - **Expanded Parquet support:** The Parquet storage format is now supported for PGFS locations using both `file://` and `s3://` protocols. 
 - **Advanced query pushdown:** Significant performance gains for CompatScan with new support for offloading joins and group-by aggregations directly to the vectorized engine.
 
-## Features
+### Features
 
-### Performance & query optimization
+#### Performance & query optimization
 
 - Added general optimizations for the Iceberg storage format.
 - Enabled DirectScan for `HTAP` tables when an `analytics_storage_location` is set.
@@ -26,7 +90,7 @@ Analytics Accelerator 1.6 includes the following enhancements and bug fixes, ref
 - Updated DataFusion to version 51 for improved stability and query performance.
 - Added native support for `NOT LIKE` and `NOT ILIKE` operators.
 
-### Replication & data types
+#### Replication & data types
 
 - Added support for the Postgres UUID type during replication.
 - Added the following wrapper functions for easier PGD management: `pgaa.enable_analytics_replication`, `pgaa.disable_analytics_replication`, `pgaa.convert_to_analytics`, `pgaa.restore_from_analytics`, and `pgaa.convert_to_tiered_table`.
@@ -37,7 +101,7 @@ Analytics Accelerator 1.6 includes the following enhancements and bug fixes, ref
 - Added a fallback mechanism that converts unsupported types to `TEXT` to prevent replication failures.
 - Integrated the option `pgd.purge_analytics_target` into the `pgaa.enable_analytics_replication` and `pgaa.convert_to_tiered_table` functions to purge existing analytics before replicating. 
 
-### Catalog & storage management
+#### Catalog & storage management
 
 - Iceberg REST connections now support OAuth2 authentication.
 - Added `pgaa.execute_compaction` to improve the performance and storage efficiency of an analytical Iceberg table using a Spark Connect executor engine.
@@ -55,7 +119,7 @@ Analytics Accelerator 1.6 includes the following enhancements and bug fixes, ref
 - Added namespace filtering to `pgaa.import_catalog()`, allowing for selective schema imports.
 - Changed default value for configuration parameters such as `pgaa.tiered_table` and `pgaa.purge_data_if_exists` to `true` if specified without an explicit value.
 
-## Bug fixes
+### Bug fixes
 
 - Fix object store cache issues when reading from Iceberg REST catalog.
 - Fixed a lock-up issue where the PGAA `autoupgrade` worker could block PGD DDL replication.
@@ -77,7 +141,7 @@ Analytics Accelerator 1.6 includes the following enhancements and bug fixes, ref
 - Removed an unnecessary table existence warning from the CTAS hook.
 - Fixed a duplicate key error triggered when repeatedly setting the `tiered_table` option.
 
-## Infrastructure & other changes
+### Infrastructure & other changes
 
 - Added automated benchmarks for replication performance.
 - Updated `rustc` to 1.92.0.
@@ -85,7 +149,7 @@ Analytics Accelerator 1.6 includes the following enhancements and bug fixes, ref
 - Introduced ABI version 300, exposing new functionality including `pgaa_tabular_exists` and object purging.
 - Exposed the ability to purge data via the PGAA ABI v300.
 
-## Deprecations
+### Deprecations
 
 - Removed standalone metastore-agent.
 - Dropped support for PGD versions prior to 6.1.
