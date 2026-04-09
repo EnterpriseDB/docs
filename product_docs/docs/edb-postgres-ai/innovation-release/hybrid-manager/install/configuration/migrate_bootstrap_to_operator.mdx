@@ -56,6 +56,174 @@ The bootstrap installation manages CRDs (Custom Resource Definitions) that defin
 
 If these CRDs are deleted, Kubernetes automatically deletes **all instances** of these custom resources, rendering your HM platform non-functional.
 
+## Convert your configuration
+
+Before transferring Helm ownership, you must convert your existing `values.yaml` into a `HybridControlPlane` Custom Resource manifest. The operator does not read `values.yaml` — it requires a CR to define the desired state of your HM installation.
+
+### Configuration mapping reference
+
+The following table shows how `values.yaml` fields map to `HybridControlPlane` CR fields:
+
+| values.yaml field | HybridControlPlane field | Description |
+|-------------------|--------------------------|-------------|
+| `system` | `spec.flavour` | Kubernetes distribution (eks, aks, gke, rhos, etc.) |
+| `containerRegistryURL` | `spec.imageRegistry` | Container registry URL |
+| `bootstrapImageTag` | `spec.version` | HM version to install |
+| `imagePullSecrets` | `spec.imagePullSecrets[]` | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields. |
+| `disabledComponents` | `spec.disabledComponents[]` | Components to disable |
+| `parameters.global.*` | `spec.globalParameters` | Global configuration parameters |
+| `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters |
+| `beaconServer` | `spec.beaconServer` | Beacon server configuration |
+| `beaconAgent` | `spec.beaconAgent` | Beacon agent configuration |
+| `clusterGroups` | `spec.clusterGroups` | Multi-DC cluster topology |
+| `scenarios` | `spec.scenarios[]` | Installation scenarios (core, migration, ai, analytics). In `values.yaml` this is a comma-separated string (e.g., `"core,migration,ai"`). In the CR, it is a YAML list. |
+| `resourceAnnotations` | `spec.resourceAnnotations[]` | Custom resource annotations |
+| `source.remote` | `spec.source.remote` | Use remote bootstrap image for manifests |
+
+### Convert using the migration script
+
+Use the following script to automatically generate a `HybridControlPlane` CR from your existing `values.yaml`.
+
+**Prerequisites:** `yq` (version 4+) must be installed.
+
+```bash
+#!/bin/bash
+# convert-values-to-hcp.sh
+# Converts a Bootstrap values.yaml to a HybridControlPlane Custom Resource manifest.
+#
+# Usage: ./convert-values-to-hcp.sh <values.yaml> [output-file]
+#   If output-file is omitted, prints to stdout.
+
+set -euo pipefail
+
+VALUES_FILE="${1:?Usage: $0 <values.yaml> [output-file]}"
+OUTPUT_FILE="${2:-}"
+
+if [ ! -f "$VALUES_FILE" ]; then
+  echo "Error: File '$VALUES_FILE' not found." >&2
+  exit 1
+fi
+
+if ! command -v yq &> /dev/null; then
+  echo "Error: 'yq' (v4+) is required. Install from https://github.com/mikefarah/yq" >&2
+  exit 1
+fi
+
+# Build the HybridControlPlane CR using yq
+HCP=$(yq -n '
+  .apiVersion = "edbpgai.edb.com/v1alpha1" |
+  .kind = "HybridControlPlane" |
+  .metadata.name = "edbpgai" |
+  .metadata.annotations."edbpgai.com/ready-for-upgrade" = "true" |
+  .metadata.annotations."biganimal.enterprisedb.io/deletion-protect" = "enabled"
+')
+
+# Basic configuration mapping
+SYSTEM=$(yq '.system // ""' "$VALUES_FILE")
+[ -n "$SYSTEM" ] && HCP=$(echo "$HCP" | yq ".spec.flavour = \"$SYSTEM\"")
+
+REGISTRY=$(yq '.containerRegistryURL // ""' "$VALUES_FILE")
+[ -n "$REGISTRY" ] && HCP=$(echo "$HCP" | yq ".spec.imageRegistry = \"$REGISTRY\"")
+
+VERSION=$(yq '.bootstrapImageTag // ""' "$VALUES_FILE")
+[ -n "$VERSION" ] && HCP=$(echo "$HCP" | yq ".spec.version = \"$VERSION\"")
+
+# Source configuration
+SOURCE_REMOTE=$(yq '.source.remote // ""' "$VALUES_FILE")
+if [ -n "$SOURCE_REMOTE" ] && [ "$SOURCE_REMOTE" = "true" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.source.remote = true")
+else
+  HCP=$(echo "$HCP" | yq ".spec.source.useLocalKustomizations = true")
+fi
+
+# Image pull secrets
+PULL_SECRETS_COUNT=$(yq '.imagePullSecrets | length // 0' "$VALUES_FILE" 2>/dev/null || echo "0")
+if [ "$PULL_SECRETS_COUNT" -gt 0 ]; then
+  SECRETS_JSON=$(yq -o=json '.imagePullSecrets | [.[] | select(. != null and . != "") | {"name": ., "namespace": "edbpgai-bootstrap"}]' "$VALUES_FILE")
+  HCP=$(echo "$HCP" | yq ".spec.imagePullSecrets = $SECRETS_JSON")
+fi
+
+# Global parameters (parameters.global.* -> spec.globalParameters)
+GLOBAL_PARAMS=$(yq '.parameters.global // ""' "$VALUES_FILE")
+if [ -n "$GLOBAL_PARAMS" ] && [ "$GLOBAL_PARAMS" != "null" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.globalParameters = $(yq -o=json '.parameters.global' "$VALUES_FILE")")
+  [ -n "$REGISTRY" ] && HCP=$(echo "$HCP" | yq ".spec.globalParameters.CONTAINER_REGISTRY_URL = \"$REGISTRY\"")
+  [ -n "$VERSION" ] && HCP=$(echo "$HCP" | yq ".spec.globalParameters.HCP_VERSION = \"$VERSION\"")
+fi
+
+# Component-specific parameters (parameters.<component>.* -> spec.componentsParameters.<component>)
+COMPONENTS=$(yq '.parameters | keys | .[] | select(. != "global")' "$VALUES_FILE" 2>/dev/null || true)
+if [ -n "$COMPONENTS" ]; then
+  while IFS= read -r component; do
+    HCP=$(echo "$HCP" | yq ".spec.componentsParameters.[\"$component\"] = $(yq -o=json ".parameters.[\"$component\"]" "$VALUES_FILE")")
+  done <<< "$COMPONENTS"
+fi
+
+# Beacon server configuration
+BEACON_SERVER=$(yq '.beaconServer // ""' "$VALUES_FILE")
+if [ -n "$BEACON_SERVER" ] && [ "$BEACON_SERVER" != "null" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.beaconServer = $(yq -o=json '.beaconServer' "$VALUES_FILE")")
+fi
+
+# Beacon agent configuration
+BEACON_AGENT=$(yq '.beaconAgent // ""' "$VALUES_FILE")
+if [ -n "$BEACON_AGENT" ] && [ "$BEACON_AGENT" != "null" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.beaconAgent = $(yq -o=json '.beaconAgent' "$VALUES_FILE")")
+fi
+
+# Cluster groups
+CLUSTER_GROUPS=$(yq '.clusterGroups // ""' "$VALUES_FILE")
+if [ -n "$CLUSTER_GROUPS" ] && [ "$CLUSTER_GROUPS" != "null" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.clusterGroups = $(yq -o=json '.clusterGroups' "$VALUES_FILE")")
+fi
+
+# Installation scenarios
+SCENARIOS=$(yq '.scenarios // ""' "$VALUES_FILE")
+if [ -n "$SCENARIOS" ] && [ "$SCENARIOS" != "null" ]; then
+  SCENARIOS_JSON=$(echo "$SCENARIOS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | yq -o=json '[.[] | select(. != "")]' -)
+  HCP=$(echo "$HCP" | yq ".spec.scenarios = $SCENARIOS_JSON")
+fi
+
+# Disabled components
+DISABLED=$(yq '.disabledComponents // ""' "$VALUES_FILE")
+if [ -n "$DISABLED" ] && [ "$DISABLED" != "null" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.disabledComponents = $(yq -o=json '.disabledComponents' "$VALUES_FILE")")
+fi
+
+# Resource annotations
+ANNOTATIONS=$(yq '.resourceAnnotations // ""' "$VALUES_FILE")
+if [ -n "$ANNOTATIONS" ] && [ "$ANNOTATIONS" != "null" ]; then
+  HCP=$(echo "$HCP" | yq ".spec.resourceAnnotations = $(yq -o=json '.resourceAnnotations' "$VALUES_FILE")")
+fi
+
+# Output
+if [ -n "$OUTPUT_FILE" ]; then
+  echo "$HCP" > "$OUTPUT_FILE"
+  echo "HybridControlPlane CR written to: $OUTPUT_FILE"
+else
+  echo "$HCP"
+fi
+```
+
+**Usage:**
+
+```bash
+# Print the converted CR to stdout:
+chmod +x convert-values-to-hcp.sh
+./convert-values-to-hcp.sh values.yaml
+
+# Write to a file:
+./convert-values-to-hcp.sh values.yaml hybridmanager.yaml
+```
+
+!!! Important
+Review the generated manifest carefully before applying it:
+- **`spec.version`**: The bootstrap `bootstrapImageTag` may use a different versioning scheme than the operator `spec.version`.
+- **`spec.imagePullSecrets`**: The script assumes all secrets are in the `edbpgai-bootstrap` namespace. Adjust if your secrets are in a different namespace.
+!!!
+
+Once you have a validated `hybridmanager.yaml`, proceed with the Helm ownership transfer below. You will apply the CR after the transfer is complete.
+
 ## Helm ownership transfer
 
 This approach transfers Helm ownership of existing resources from the `edbpgai-bootstrap` release to the `edb-hcp-operator` release. 
