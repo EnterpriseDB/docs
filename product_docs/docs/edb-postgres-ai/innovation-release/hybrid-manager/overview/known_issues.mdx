@@ -170,6 +170,14 @@ kubectl create secret generic langflow-secret -n upm-beaco-ff-base --from-litera
 
 Once the secret exists, the `accm-server` pod will be able to mount the volume and transition to a **Running** state.
 
+### Marketplace apps pgAdmin4 and Superset fail to deploy on RHOS
+
+[UPM-88301]: #
+
+**Description:** In Red Hat OpenShift (RHOS) environments, deploying the pgAdmin4 and Superset marketplace applications fails due to OpenShift Security Context Constraint (SCC) violations. The upstream images for these apps run as specific user IDs (for example, `5050` for pgAdmin4 and `0` for Superset's init container) that fall outside the allowed UID ranges enforced by OpenShift's restricted SCC policies. This is an upstream image compatibility issue.
+
+**Workaround:** Don't deploy pgAdmin4 or Superset in RHOS environments until this issue is resolved upstream.
+
 ## Database cluster engine
 
 ### Failure to create 3-node PGD cluster when `max_connections` is non-default
@@ -214,6 +222,14 @@ Resolved in HM versions 2025.12 and later.
 **Description:** PGD clusters provisioned with the topology of two data groups and one witness group may fail to reach a healthy state upon creation. This failure is caused by an underlying conflict between the bdr extension (used for replication) and the edb_wait_states extension. The combination of these two extensions in this particular topology prevents the cluster from initializing successfully.
 
 [UPM-73217, backlog]: #
+
+### Read-only workload incorrectly allowed for single-node AHA clusters
+
+[UPM-88040]: #
+
+**Description:** For Advanced High Availability (AHA) clusters with only one data node, the HM console incorrectly allows users to enable a read-only workload. The resulting connection string doesn't work and returns a runtime error: `no nodes available`. A single-node AHA cluster cannot serve read-only workloads.
+
+**Workaround:** Don't enable read-only workloads for AHA clusters configured with only one data node.
 
 ## Backup and recovery
 
@@ -363,7 +379,7 @@ Resolved in HM versions 2025.11 and later.
 ### Model configuration settings reset after Innovation Release upgrade
 
 !!!tip
-HM now uses LangFlow instead of Griptape, so this issue is no longer applicable.
+HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
 !!!
 
 [GRIP-935, backlog]: #
@@ -375,7 +391,7 @@ HM now uses LangFlow instead of Griptape, so this issue is no longer applicable.
 ### Error page appears when editing knowledge base credentials
 
 !!!tip
-HM now uses LangFlow instead of Griptape, so this issue is no longer applicable.
+HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
 !!!
 
 [GRIP-934, backlog]: #
@@ -522,6 +538,37 @@ Execute the following SQL commands on the affected database:
 ```sql
 ALTER FUNCTION aidb.pipeline_background_trigger_handler OWNER TO visual_pipeline_user;
 ALTER FUNCTION aidb.pipeline_live_trigger_handler OWNER TO visual_pipeline_user;
+```
+
+### External cloud-hosted OCR models fail to register via the HM console
+
+[UPM-85678]: #
+
+**Description:** The `aidb.sync_hcp_models` function automatically appends a `/v1/infer` suffix to all model URLs during synchronization. While this suffix is required for local containerized NIM models, it breaks connectivity for external cloud-hosted models such as NVIDIA's PaddleOCR (which uses a URL path like `.../cv/baidu/paddleocr`). As a result, external OCR models cannot be successfully configured or used via the HM console.
+
+**Workaround:** Bypass the HM console registration flow and register the model directly in the database using SQL via the `aidb.create_model` function, providing the correct URL explicitly.
+
+Option 1 — use the built-in default URL for remote NVIDIA models:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
+Option 2 — explicitly set a custom full URL:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    config => '{"url":"https://ai.api.nvidia.com/v1/cv/baidu/paddleocr"}'::JSONB,
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
 ```
 
 ## Analytics and tiered tables
@@ -731,6 +778,14 @@ Resolved in HM versions 2026.2 and later.
 **Description:** When using the search functionality in the HM console, for example in the **Activity Log** section, the system performs a full-text search across all underlying data fields. As a result, search results may include resources or activity log entries where the visible **Activity Name** or other shown attributes don't appear to match the search term.
 
 **Workaround:** There is currently no workaround for this behavior as it is a result of the underlying search design. Users should be aware that search results are inclusive of internal action details not displayed in the primary log view.
+
+### Langflow MCP server components not supported in HM Flow Hosting
+
+[AID-1214]: #
+
+**Description:** Flows that include a Langflow MCP (Model Context Protocol) server component fail when executed via the Hybrid Manager Flow Hosting API with the following error: `Error building Component my_mcp: Error updating tool list: Langflow MCP server functionality is not available. This feature requires the full Langflow installation.` The HM Flow Hosting runtime (`lfx-runtime`) is a lightweight environment that does not include the full Langflow installation. Flows using MCP server components will appear to deploy successfully — the pod reports as healthy — but will fail at runtime when invoked via the REST API.
+
+**Workaround:** Avoid including Langflow MCP server components in flows intended for deployment via the HM Flow Hosting API. If MCP server functionality is required, use the full Langflow interactive environment instead.
 
 ## Migrations
 
