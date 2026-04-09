@@ -373,27 +373,12 @@ Install Vale with Homebrew:
 brew install vale
 ```
 
+[Alternate installation options](https://vale.sh/docs/install).
+
 ### Set up your local configuration
 
-The `vale/.vale.ini` file in this repo is a placeholder. To use it, copy it to your local Vale configuration directory and update the `StylesPath` to point to your local checkout of the `docs-editorial` directory:
-
-1. Create the Vale config directory if it doesn't exist:
-
-   ```shell
-   mkdir -p ~/Library/Application\ Support/vale
-   ```
-
-2. Copy the placeholder config:
-
-   ```shell
-   cp vale/.vale.ini ~/Library/Application\ Support/vale/.vale.ini
-   ```
-
-3. Open `~/Library/Application Support/vale/.vale.ini` and replace the value of `StylesPath` with the actual path to the `vale/styles` directory in your local checkout. For example:
-
-   ```
-   StylesPath = /Users/your_username/path/to/docs-editorial/vale/styles
-   ```
+The `.vale.ini` file in this repo contains the configuration appropriate for our docs and should work without changes. 
+If you find that changes to the default settings are useful or necessary, please create a PR to share them with the team!
 
 ### Styles
 
