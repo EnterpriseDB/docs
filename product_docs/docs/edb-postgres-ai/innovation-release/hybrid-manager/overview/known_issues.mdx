@@ -694,6 +694,18 @@ Resolved in HM versions 2026.4 and later.
 
 ## Clusters and upgrades
 
+### Upgrade to version 2026.4 fails due to immutable `fluent-bit-k8s-events` StatefulSet
+
+[UPM-88315]: #
+
+**Description:** When upgrading to HM 2026.4, the upgrade process may fail with a `Failed to install component` error for `upm-fluent-bit`. This occurs because the upgrade attempts to modify an immutable field in the `fluent-bit-k8s-events` StatefulSet spec, which the Kubernetes API server rejects. The error message is: `StatefulSet.apps "fluent-bit-k8s-events" is invalid: spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden`.
+
+**Workaround:** Before upgrading to 2026.4, manually delete the `fluent-bit-k8s-events` StatefulSet in the `edb-observability` namespace. The operator will recreate it with the correct configuration during the upgrade:
+
+```shell
+kubectl delete statefulset fluent-bit-k8s-events -n edb-observability
+```
+
 ### Major version upgrade fails for Advanced High Availability and Distributed High Availability (PGD) clusters with witness groups
 
 !!!tip
@@ -734,6 +746,20 @@ kubectl patch fluentbit/fluent-bit -n logging --type=merge -p '{"metadata":{"fin
 ```
 
 ## AI Factory
+
+### Knowledge base data isn't replicated to non-primary nodes on PGD clusters
+
+[AID-1235]: #
+
+**Description:** When using AI Factory with AIDB 7.3.0 on a PGD cluster, knowledge base data (visible via the `aidb.knowledge_bases_v6` view) is only present on the primary node and isn't automatically replicated to other nodes. This occurs because the `aidb.knowledge_base_registry` and `aidb.knowledge_base_pipeline` tables, introduced in AIDB 7, weren't included in the PGD setup script.
+
+**Workaround:** Before creating any knowledge bases, manually run the following SQL commands on the PGD cluster:
+
+```sql
+SELECT bdr.alter_sequence_set_kind('aidb.knowledge_base_registry_id_seq'::regclass, 'galloc', 1);
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_registry');
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_pipeline');
+```
 
 ### Index analysis actions fail due to missing `hypopg` extension
 
