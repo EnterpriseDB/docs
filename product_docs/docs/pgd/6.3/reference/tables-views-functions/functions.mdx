@@ -103,8 +103,19 @@ lower than the `timeout` for `TO ASYNC` otherwise.
 
 ### `bdr.consensus_disable`
 
+#### Synopsis
+
+```sql
+bdr.consensus_disable(node_group_name text DEFAULT NULL)
+```
+
 Disables the consensus worker on the local node until server restart or until
 it's reenabled using `bdr.consensus_enable` (whichever happens first).
+
+The `node_group_name` parameter is accepted for interface consistency but is
+currently a placeholder. The function disables the consensus worker
+database-wide, affecting all Raft instances on the node regardless of the value
+passed.
 
 !!! Warning
 
@@ -115,7 +126,18 @@ it's reenabled using `bdr.consensus_enable` (whichever happens first).
 
 ### `bdr.consensus_enable`
 
-Reenabled disabled consensus worker on local node.
+#### Synopsis
+
+```sql
+bdr.consensus_enable(node_group_name text DEFAULT NULL)
+```
+
+Re-enables a disabled consensus worker on the local node.
+
+The `node_group_name` parameter is accepted for interface consistency but is
+currently a placeholder. The function re-enables the consensus worker
+database-wide, affecting all Raft instances on the node regardless of the value
+passed.
 
 ### `bdr.consensus_proto_version`
 
@@ -128,7 +150,7 @@ Needed by the PGD group reconfiguration internal mechanisms.
 #### Synopsis
 
 ```sql
-bdr.consensus_snapshot_export(version integer DEFAULT NULL)
+bdr.consensus_snapshot_export(version integer DEFAULT NULL, raft_instance_id integer DEFAULT NULL)
 ```
 
 Generate a new PGD consensus snapshot from the currently committed-and-applied
@@ -137,6 +159,11 @@ state of the local node and return it as bytea.
 By default, a snapshot for the highest supported Raft version is
 exported. But you can override that by passing an explicit `version`
 number.
+
+The `raft_instance_id` parameter identifies which Raft instance to export the
+snapshot from. When `NULL` (the default), the top-level Raft instance is used.
+To target a specific node group's Raft instance, pass its instance ID, which
+you can look up via `bdr.raft_instances`.
 
 The exporting node doesn't have to be the current Raft leader, and it doesn't
 need to be completely up to date with the latest state on the leader. However, `bdr.consensus_snapshot_import()`
@@ -175,7 +202,7 @@ table and use that instead. Doing so doesn't require you to stop the consensus w
 #### Synopsis
 
 ```sql
-bdr.consensus_snapshot_import(snapshot bytea)
+bdr.consensus_snapshot_import(snapshot bytea, raft_instance_id integer DEFAULT NULL, node_name bdr.regnode DEFAULT NULL)
 ```
 
 Import a consensus snapshot that was exported by
@@ -187,6 +214,15 @@ field of the `bdr.local_consensus_snapshot` table on another node.
 
 This function is useful for resetting a PGD node's catalog state to a known good
 state in case of corruption or user error.
+
+The `raft_instance_id` parameter identifies which Raft instance to import the
+snapshot into. When `NULL` (the default), the top-level Raft instance is used.
+To target a specific node group's Raft instance, pass its instance ID, which
+you can look up via `bdr.raft_instances`.
+
+The `node_name` parameter attributes the snapshot to a specific source node,
+typically the leader node from which the snapshot was exported. When `NULL`
+(the default), no source node is attributed.
 
 You can import the snapshot if the importing node's `apply_index` is less than
 or equal to the snapshot-exporting node's `commit_index` when the
