@@ -12,6 +12,10 @@ Configure the EDB Postgres AI agent (packaged as `beacon-agent`) to establish a 
 
 - **Machine user access key**: Store the generated access key in an environment variable, e.g. `export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"`.
 
+!!!note
+Environment variables always take precedence over values defined in `beacon_agent.yaml`. If you set both `$BEACON_AGENT_ACCESS_KEY` as an environment variable and reference it in the YAML as `access_key: $BEACON_AGENT_ACCESS_KEY`, they are equivalent — the environment variable is simply substituted in both cases.
+!!!
+
 <details><summary>Recommendations for setting environment variables</summary> 
 
 We recommend handling sensitive data, such as `$BEACON_AGENT_ACCESS_KEY` or `$DSN`, as environment variables managed through a secrets manager. This strategy prevents sensitive credentials from being stored in plaintext configuration files. If you use environment variables, make sure they're available to the EDB Postgres AI agent while it's running.
@@ -126,14 +130,16 @@ Prepare a configuration file for your agent. The agent searches for `beacon_agen
       project_id: <your_project_id>
       providers:
         - "onprem"
-        # what are other options here?
       root_ca_path: ""
-      # Required if you have a self-signed cert.
+      # Required if your HM instance uses a self-signed or internal CA certificate.
       schema_providers:
         - "onprem-schema"
-        # what are other options here?
+        # Include "onprem-schema" to enable schema ingestion and migration assessment.
+        # Remove this section if you don't want schema information to be collected.
     provider:
       onprem:
+        host:
+          resource_id: "<host_resource_identifier>"
         databases:
           - resource_id: "<database_resource_identifier>"
             dsn: $DSN
@@ -145,9 +151,6 @@ Prepare a configuration file for your agent. The agent searches for `beacon_agen
     general:
       logging:
         level: debug
-    host:
-      metrics: {}
-      resource_id: "<host_resource_identifier>"
     ```
 
 1.  Save the file. 
@@ -170,7 +173,7 @@ Prepare a configuration file for your agent. The agent searches for `beacon_agen
     See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
     !!!
 
-1.  Monitore the ingestion process as the agent starts sending data to Hybrid Manager (HM). Data should appear in the HM console under **Estate > Migrations** within a few minutes.
+1.  Monitor the ingestion process as the agent starts sending data to Hybrid Manager (HM). Data should appear in the HM console under **Estate > Migrations** within a few minutes.
 
 !!!important
 The agent dynamically detects changes to tables and columns. However, changes to views, procedures, or functions require an agent restart to re-ingest metadata.
@@ -186,15 +189,13 @@ If the EDB Postgres AI agent logs report an error, or the Oracle source does not
 beacon-agent validate
 ```
 
-The validate command checks for the following common issues:
+The validate command checks for the following:
 
-- Connectivity: Verifies the agent can reach the `beacon_server` on port `9443`.
+- **Server connectivity**: Verifies the agent can connect and authenticate to the configured `beacon_server` (usually on port `9443`).
 
-- Authentication: Ensures the `access_key` is valid and the `project_id` matches your HM console project.
+- **Database connectivity**: Attempts to connect to each configured database DSN. This is a full connection test, not just a syntax or URL-encoding check.
 
-- DSN syntax: Checks the Oracle connection string for correct URL encoding (e.g., %23%23 for C## users).
-
-- YAML structure: Identifies syntax errors.
+- **Configuration display**: Shows TLS settings, project ID, providers, and per-database settings to help identify misconfiguration.
 
 ## Related topics
 

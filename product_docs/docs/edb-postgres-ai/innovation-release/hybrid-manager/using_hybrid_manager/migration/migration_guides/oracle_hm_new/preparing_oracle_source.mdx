@@ -27,7 +27,7 @@ Migration tools require the database to be in `ARCHIVELOG` mode to ensure that d
     Connect to the Root Container (CDB$ROOT) using the CDB service name:
 
     ```shell
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba
     ```
 
     For example: 
@@ -80,7 +80,6 @@ Migration tools require the database to be in `ARCHIVELOG` mode to ensure that d
     These parameters are critical for database stability. Always consult your DBA before setting them in a production environment.
     !!!
 
-
 1.  Restart the database and enable `ARCHIVELOG`:
 
     ```sql
@@ -108,7 +107,7 @@ Supplemental logging ensures that the redo logs contain enough information for t
     Connect to the Root Container (CDB$ROOT) using the CDB service name:
 
     ```shell
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba
     ```
 
     </Tab>
@@ -162,7 +161,7 @@ The lifetime of a change in the redo logs is limited. It's determined by the siz
     Connect to the root container:
 
     ```shell
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba
     ```
 
     </Tab>
@@ -256,7 +255,7 @@ To use Debezium for data migration, you must enable supplemental logging at both
     <TabContainer syncKey="db_type">
     <Tab title="CDB/PDB">
 
-    Table-level logging must be enabled within the Pluggable Database (PDB) where your data resides.Connect to the PDB where your data resides using the CDB service name as `SYSDBA`:
+    Table-level logging must be enabled within the Pluggable Database (PDB) where your data resides. Connect to the PDB where your data resides using the CDB service name as `SYSDBA`:
 
     ```sql
     sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME> as sysdba
@@ -342,7 +341,7 @@ In a multitenant environment, you must create a tablespace in the Root Container
     ```
 
     !!!tip
-    Using the same name for both tablespaces (e.g., MIGRATOR_TS) simplifies configuration later.
+    Using the same name for both tablespaces (for example, `LOGMINER_TBS`) simplifies configuration later.
     !!!
 
 </Tab>
@@ -355,8 +354,6 @@ Create a tablespace to handle both log mining and metadata tracking.
 CREATE TABLESPACE <TS_NAME> 
 DATAFILE '<PATH>/<TS_NAME>.dbf' 
 SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-
-ALTER USER MIG_USER QUOTA UNLIMITED ON <TS_NAME>;
 ```
 
 </Tab>
@@ -386,7 +383,7 @@ To simplify the migration process, we recommend creating a single Common User (C
     Connect to the Root Container (CDB$ROOT) using the CDB service name:
 
     ```shell
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_SERVICE_NAME> as sysdba
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba
     ```
 
     For example: 
@@ -435,14 +432,13 @@ To simplify the migration process, we recommend creating a single Common User (C
     -- Grant core session and container privileges
     GRANT CREATE SESSION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SET CONTAINER TO <C##_MIGRATION_USER> CONTAINER=ALL; 
-    GRANT SELECT ON V_$DATABASE to <C##_MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$DATABASE TO <C##_MIGRATION_USER> CONTAINER=ALL;
     GRANT CONNECT TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL;
 
-    -- Gran migration and log mining permissions
+    -- Grant migration and log mining permissions
     GRANT FLASHBACK ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
-    GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT EXECUTE_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ANY TRANSACTION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ANY DICTIONARY TO <C##_MIGRATION_USER> CONTAINER=ALL; 
@@ -464,9 +460,7 @@ To simplify the migration process, we recommend creating a single Common User (C
     GRANT SELECT ON V_$INSTANCE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ON V_$LICENSE TO <C##_MIGRATION_USER> CONTAINER=ALL;
 
-    -- Grant access to tables
-    GRANT CREATE TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
-    ALTER USER <C##_MIGRATION_USER> QUOTA UNLIMITED ON LOGMINER_TBS CONTAINER=ALL;
+    ALTER USER <C##_MIGRATION_USER> QUOTA UNLIMITED ON <TS_NAME> CONTAINER=ALL;
     ```
 
     Switch to the PDB:
@@ -478,23 +472,22 @@ To simplify the migration process, we recommend creating a single Common User (C
     Set the default tablespace for the user: 
 
     ```sql
-    ALTER USER C##MIG_USER2 DEFAULT TABLESPACE LOGMINER_TBS;
+    ALTER USER <C##_MIGRATION_USER> DEFAULT TABLESPACE <TS_NAME>;
     ```
 
     </Tab>
     <Tab title="Non-CDB">
 
     ```sql
-    -- Grant core session and container privileges
+    -- Grant core session privileges
     GRANT CREATE SESSION TO <MIGRATION_USER>;
     GRANT SELECT ON V_$DATABASE to <MIGRATION_USER>;
-    GRANT CONNECT TO <MIGRATION_USER> CONTAINER=ALL; 
-    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT CONNECT TO <MIGRATION_USER>; 
+    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER>;
 
-    -- Gran migration and log mining permissions
+    -- Grant migration and log mining permissions
     GRANT FLASHBACK ANY TABLE TO <MIGRATION_USER>;
     GRANT SELECT ANY TABLE TO <MIGRATION_USER>;
-    GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER>;
     GRANT EXECUTE_CATALOG_ROLE TO <MIGRATION_USER>;
     GRANT SELECT ANY TRANSACTION TO <MIGRATION_USER>;
     GRANT SELECT ANY DICTIONARY TO <MIGRATION_USER>;
@@ -512,14 +505,16 @@ To simplify the migration process, we recommend creating a single Common User (C
     GRANT SELECT ON V_$ARCHIVED_LOG TO <MIGRATION_USER>;
     GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO <MIGRATION_USER>;
     GRANT SELECT ON V_$TRANSACTION TO <MIGRATION_USER>;
-    GRANT SELECT ON V_$VERSION TO <MIGRATION_USER> CONTAINER=ALL; 
-    GRANT SELECT ON V_$INSTANCE TO <MIGRATION_USER> CONTAINER=ALL; 
-    GRANT SELECT ON V_$LICENSE TO <MIGRATION_USER> CONTAINER=ALL;
+    GRANT SELECT ON V_$VERSION TO <MIGRATION_USER>; 
+    GRANT SELECT ON V_$INSTANCE TO <MIGRATION_USER>; 
+    GRANT SELECT ON V_$LICENSE TO <MIGRATION_USER>;
 
-    -- Grant access to tables
-    GRANT CREATE TABLE TO <MIGRATION_USER> CONTAINER=ALL; 
-    ALTER USER <MIGRATION_USER> QUOTA UNLIMITED ON LOGMINER_TBS CONTAINER=ALL;
+    ALTER USER <MIGRATION_USER> QUOTA UNLIMITED ON <TS_NAME>;
     ```
+
+    !!!note Oracle 11g compatibility
+    The `GRANT LOGMINING` privilege was introduced in Oracle 12c. If you are using Oracle 11g, skip this grant. The DMS agent can still perform migrations on Oracle 11g without this privilege.
+    !!!
 
     </Tab>
     </TabContainer>
@@ -563,11 +558,11 @@ To simplify the migration process, we recommend creating a single Common User (C
     ```sql 
     -- In the CDB ROOT
     ALTER SESSION SET CONTAINER = CDB$ROOT;
-    ALTER USER <C##_MIGRATION_USER> DEFAULT TABLESPACE MIGRATOR_TS;
+    ALTER USER <C##_MIGRATION_USER> DEFAULT TABLESPACE <TS_NAME>;
     
     -- In the PDB
-    ALTER SESSION SET CONTAINER = ORCLPDB1;
-    ALTER USER <C##_MIGRATION_USER> DEFAULT TABLESPACE MIGRATOR_TS;
+    ALTER SESSION SET CONTAINER = <PDB_NAME>;
+    ALTER USER <C##_MIGRATION_USER> DEFAULT TABLESPACE <TS_NAME>;
     ```
     
     </Tab>
@@ -575,9 +570,7 @@ To simplify the migration process, we recommend creating a single Common User (C
     <Tab title="Non-CDB">
 
     ```sql 
-    -- In the CDB ROOT
-    ALTER SESSION SET CONTAINER = CDB$ROOT;
-    ALTER USER <MIGRATION_USER> DEFAULT TABLESPACE MIGRATOR_TS;
+    ALTER USER <MIGRATION_USER> DEFAULT TABLESPACE <TS_NAME>;
     ```
 
     </Tab>
@@ -602,7 +595,24 @@ To simplify the migration process, we recommend creating a single Common User (C
     </Tab>
     </TabContainer>
 
-[add another testing step, maybe with SELECT]: #
+1.  Verify the migration user can read data from the source tables:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    ```sql
+    SELECT * FROM <SCHEMA_NAME>.<TABLE_NAME> WHERE ROWNUM <= 5;
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    ```sql
+    SELECT * FROM <SCHEMA_NAME>.<TABLE_NAME> WHERE ROWNUM <= 5;
+    ```
+
+    </Tab>
+    </TabContainer>
 
 ## Validate your database and user configurations
 
