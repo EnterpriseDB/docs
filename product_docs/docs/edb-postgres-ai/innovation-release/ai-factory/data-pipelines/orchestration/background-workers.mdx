@@ -5,6 +5,8 @@ description: Background workers in EDB Postgres AI Pipelines enable asynchronous
 
 Background worker is the execution engine for asynchronous AI pipelines in EDB Postgres AI. It allows for high-volume data processing without blocking standard database transactions.
 
+A background worker is activated automatically when a pipeline is created or updated with `auto_processing => 'Background'`. No additional setup is required for basic use — the worker starts polling immediately based on the configured `background_sync_interval`. The sections below describe optional tuning and the Postgres-level prerequisite you may need to check.
+
 ## Core functionality
 
 - **Asynchronous execution**: When a pipeline is set to Background mode, processing occurs independently of the user session. This method ensures that queries or data modifications on the source table are not delayed by embedding generation or OCR tasks.
@@ -25,16 +27,24 @@ The background worker handles different source types using specific detection lo
 
 ## Configuration & constraints
 
-- **Postgres settings**: Each pipeline utilizing this mode requires its own dedicated background worker process. You must ensure the Postgres setting `max_worker_processes` is configured with a high enough value to support the total number of background pipelines.
+### Required
 
-- **Optimization**: For external volumes (like AWS S3), frequent polling can be expensive. We recommend setting a longer `background_sync_interval` (for example once per day) for these sources to control costs.
+- **Postgres `max_worker_processes`**: Each pipeline in Background mode requires its own dedicated background worker process. Before running multiple background pipelines, verify that the Postgres setting `max_worker_processes` is set high enough to accommodate them all.
+
+### Optional tuning
+
+- **`background_sync_interval`**: Controls how often the worker checks for new or changed data. For external volumes (like AWS S3), frequent polling can be expensive. Consider setting a longer interval (for example, once per day) to control costs.
 
 ## Monitoring and observability
 
-You can track the status and health of background workers using the `aidb.kbstat` (alias for `aidb.knowledge_base_stats`) view. Key metrics provided include:
+You can track the status and health of background workers using the `aidb.pipeline_metrics` view (also accessible as `aidb.pipem`). Key metrics include:
 
-- **Table backlog**: The number of unprocessed rows waiting in the change event queue.
+- **Table: unprocessed rows**: For table sources, the number of rows not yet processed.
 
-- **Volume scans**: The number of scans completed for external object storage.
+- **Volume: scans completed**: For volume sources, the number of full scans completed.
 
-- **Embedding count**: The total number of successful vectors currently stored in the destination.
+- **Count (source records)**: Total number of records in the source.
+
+- **Count (destination records)**: Total number of records in the destination.
+
+- **Status**: Current pipeline status.

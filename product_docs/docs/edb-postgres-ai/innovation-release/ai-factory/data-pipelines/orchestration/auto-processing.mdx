@@ -21,10 +21,38 @@ There are three main modes for managing how data moves through the pipeline:
 
 | Mode       | Description                                                                                                               | Pros                                                           | Cons                                                                |
 |------------|---------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|---------------------------------------------------------------------|
-| Live       | Uses Postgres triggers to process changes immediately within the same transaction that modifies the data.                 | Transactional guarantee, zero lag.                             | Can block/delay the original data modification transaction.         |
-| Background | Uses a Postgres background worker to process data asynchronously at a configurable interval (`background_sync_interval`). | Does not block user transactions and ideal for huge data sets. | Results are delayed by the sync interval.                           |
-| Disabled   | No automatic sync. Data must be processed manually using `aidb.run_pipeline()`.                                         | Full control over when resources are used.                     | High manual overhead, requires full reprocessing for table sources. |
+| `Live`       | Uses Postgres triggers to process changes immediately within the same transaction that modifies the data.                 | Transactional guarantee, zero lag.                             | Can block/delay the original data modification transaction.         |
+| `Background` | Uses a Postgres background worker to process data asynchronously at a configurable interval (`background_sync_interval`). | Does not block user transactions and ideal for huge data sets. | Results are delayed by the sync interval.                           |
+| `Disabled`   | No automatic sync. Data must be processed manually using `aidb.run_pipeline()`.                                           | Full control over when resources are used.                     | High manual overhead, requires full reprocessing for table sources. |
 
 ## Configuration
 
-Auto-processing can be configured during the creation of a pipeline via `aidb.create_pipeline()` or updated for existing ones using `aidb.update_pipeline()`.
+The auto-processing mode is set via the `auto_processing` parameter when creating or updating a pipeline.
+
+**Setting the mode at pipeline creation:**
+
+```sql
+SELECT aidb.create_pipeline(
+    name                     => 'my_pipeline',
+    source                   => 'my_source_table',
+    ...
+    auto_processing          => 'Background',
+    background_sync_interval => '5 minutes'
+);
+```
+
+**Changing the mode for an existing pipeline:**
+
+```sql
+SELECT aidb.update_pipeline(
+    'my_pipeline',
+    auto_processing          => 'Live'
+);
+```
+
+For more details on these functions and their full parameter lists, see [SQL reference](../reference).
+
+| Parameter                  | Type                              | Description                                                                                                                       |
+|----------------------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `auto_processing`          | `aidb.PipelineAutoProcessingMode` | Auto-processing mode: `Live`, `Background`, or `Disabled`.                                                                        |
+| `background_sync_interval` | `interval`                        | Interval between background executions. Must be between 1 second and 2 days. Only applies when `auto_processing` is `Background`. |
