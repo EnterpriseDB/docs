@@ -287,6 +287,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   const { nodes } = result.data.allMdx;
   const productVersions = buildProductVersions(nodes);
+  writeProductVersions(productVersions);
   const validPaths = preprocessPathsAndRedirects(nodes, productVersions);
 
   processFileNodes(result.data.allPublicFile.nodes, productVersions, actions);
@@ -564,6 +565,24 @@ const processFileNodes = (fileNodes, productVersions, actions) => {
       );
     }
   }
+};
+
+/**
+ *
+ * @param {Object} productVersions maps product short names to sorted version array
+ * @description Writes product versions to a JSON file in the public directory. This'll later be
+ * moved into the netlify edge function directory, so that it can be imported and used by the
+ * markdown source function to resolve "latest" versions in request paths.
+ */
+const writeProductVersions = (productVersions) => {
+  const productVersionsPath = path.join(
+    process.cwd(),
+    "public",
+    "lib",
+    "productVersions.json",
+  );
+  realFs.mkdirSync(path.dirname(productVersionsPath), { recursive: true });
+  realFs.writeFileSync(productVersionsPath, JSON.stringify(productVersions));
 };
 
 exports.sourceNodes = async ({
