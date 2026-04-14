@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.29.0",
+    icon: IconNames.MODULE,
+    description:
+      "EDB Postgres® AI for CloudNativePG™ Cluster 1.29.0 introduces PostgreSQL extensions in image catalogs, dynamic network access control via pod selectors, and shared ServiceAccount support.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_29_0_rel_notes/",
+  },
+  {
     title: "EDB Postgres® AI for CloudNativePG™ 2.0.0",
     icon: IconNames.KUBERNETES_MONO,
     description:
