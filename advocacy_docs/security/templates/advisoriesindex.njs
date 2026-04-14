@@ -26,6 +26,7 @@ navigation:{% for cve in cvesorted %}
 <span>
 &nbsp;&nbsp;<a href="{{ thiscve.filename }}">Read Advisory</a>
 {% if thiscve.open.last_updated %}&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open.last_updated }}</span>{% else %}&nbsp;&nbsp;Published: </span><span>{{ thiscve.open.first_published }}</span>{% endif %}
+&nbsp;&nbsp;Score: <span> {{thiscve.vulnerability_details.cvss_base_score}}</span>
 <h4>{{ thiscve.frontmatter.title }}</h4>
 <h5> {{ thiscve.frontmatter.affectedProducts }}</h5>
 </summary>
