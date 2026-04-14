@@ -4,15 +4,186 @@ title: "Monitoring event history"
 
 You can monitor the executed event details in the `pem.event_history` table. It provides the username, execution time of the event, type of the event occurred, and the details regarding the event. The fields in the table are:
 
-!!!Note
-Currently, `pem.event_history` table records only the alert blackout history.
-!!!
+| Field name    | Description                                                                                                                  | Example                                                             |
+|---------------|------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|
+| recorded_time | Records the execution time of the event. Displays the date and time along with the fractional seconds.                       | `2025‑11‑27 09:14:32`                                               |
+| user_name     | The username of the user who executed or scheduled the event.                                                                | `alice@company.com`                                                 |
+| component     | The specific PEM feature involved.                                                                                           | `profile / alert_blackout / HA Monitoring`.                         |
+| operation     | The action taken for the event.                                                                                              | `assign / disable_alert_blackout / Switchover`.                     |
+| message       | The description of the action taken for the event.                                                                           | `Enabled the alert blackout for the server`.                        |
+| details       | The JSON output of the event that occurred.                                                                                  | `{"ProfileId":42,"ServerId":10}`                                    |
 
-| Field name    | Description                                                                                                                                                                                            |
-|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| recorded_time | Records the execution time of the event. Displays the date and time along with the fractional seconds.                                                                                   |
-| user_name     | The username of the user who executed or scheduled the event.                                                                                                                                  |
-| component     | The event name.                                                                                                                                                                    |
-| operation     | The action taken for the event. For example, if the user has enabled an alert blackout, it displays `enable_alert_blackout`.                                                       |
-| message       | The description of the action taken for the event. For example, if the user has enabled an alert blackout for the server, it displays `Enabled the alert blackout for the server`. |
-| details       | The JSON output of the event that occurred.                                                                                                                                        |
+!!! Note
+    You do not need to be a JSON expert to use this feature. Think of the **details** field as a collection of "extra information" that automatically adjusts based on the specific action performed.
+
+## Why is it important?
+
+This `event_history` table helps you quickly answer key operational questions:
+
+* Who turned an alert blackout on or off?
+* When was a monitoring profile applied, removed, or changed?
+* Did the HA cluster switch leaders? When, and between which servers?
+
+## Core benefits
+
+* **Troubleshooting:** Quickly identify if missing alerts were due to an active blackout.
+* **Configuration tracking:** See exactly which profiles were recently applied to a server.
+* **HA visibility:** Audit role changes and failovers that occurred during off-hours.
+* **Accountability:** Identify the specific user or system process behind any change.
+
+## Supported functionalities
+
+Event history currently tracks changes and actions for the following PEM functionalities:
+
+### Profile management
+* **Assign Profile:** When a configuration profile is assigned to a server or agent.
+* **Remove Profile:** When a profile assignment is removed.
+* **Update Profile:** When profile settings or categories are modified.
+* **Delete Profile:** When a draft or published profile is deleted.
+* **Publish Profile:** When a draft profile is published for production use.
+
+### Alert blackout management
+* **Enable Alert Blackout:** When you silence alerts for a server (usually for planned maintenance).
+* **Disable Alert Blackout:** When you turn alerts back on so you can start receiving notifications again.
+* **Auto Alert Blackout:** When PEM automatically starts or stops a blackout based on a schedule you set.
+
+### High availability (HA) monitoring
+* **Switchover/Failover:** Planned or unplanned role changes in HA clusters (primary ↔ replica).
+
+Each recorded event includes:
+* **Timestamp** of when it occurred.
+* **User** who initiated the action (or `system` for automatic events).
+* **Affected resources** such as server IDs, agent IDs, or cluster names.
+* **Previous and new values,** where applicable.
+* **Additional context** stored in the JSON details field.
+
+## Typical operational scenarios
+
+The following entries are captured in the `event_history` log:
+
+* **Profile assignment:** Applying a monitoring profile (Production CPU & Memory) to a server. The log captures the user, the profile ID, and the exact time the configuration was applied.
+* **Alert blackout:** Enabling an alert blackout for a server or agent. This provides a clear audit record of why notifications were suppressed during a specific maintenance period.
+* **High availability (HA) transitions:** A standby node assuming the primary role. The event documents the role change, identifying both the previous and current roles of the servers involved.
+* **Administrative cleanup:** Deleting an obsolete or unused draft profile. A permanent record of the deletion is maintained to ensure a complete historical paper trail.
+
+## Event entry reference
+
+The following sections provide a breakdown of how different activities are recorded within the log:
+
+### 1. Profile assignment
+
+**Message:** "Assign profile 42 on server 10".
+
+When a monitoring profile (ID 42) is newly applied to a server (ID 10), the log generates the following entry:
+
+**`details` (JSON):**
+
+```json
+{
+  "ProfileId": 42,
+  "PreviousProfileId": null,
+  "ServerId": 10,
+  "TargetType": "server",
+  "ChangedCategories": ["assigned_profile"]
+}
+```
+
+### 2. Alert blackout enabled
+
+**Message:** "Enabled the alert blackout for the server".
+
+Alerting is suppressed for Server 10 until the blackout status is manually disabled.
+
+**`details` (JSON):**
+
+```json
+{
+  "AlertBlackoutValue": true,
+  "IsAgent": false,
+  "Ids": "10"
+}
+```
+
+### 3. HA switchover
+
+**Message:** "Switchover observed for cluster prod_patroni".
+
+Logs node role changes, which are essential for auditing high-availability and failover events.
+
+**`details` (JSON):**
+
+```json
+{
+  "ClusterType": "patroni",
+  "ClusterName": "prod_patroni",
+  "OldRole": "primary",
+  "NewRole": "replica",
+  "NodeIp": "10.2.3.15"
+}
+```
+
+## How to glance at recent activity
+
+You can run these queries from any SQL query window within PEM to quickly audit recent changes. These operations are read-only and won't modify your data.
+
+### Recent profile events
+Use this query to see the 20 most recent actions related to configuration profiles (assignments, updates, or deletions).
+
+```sql
+SELECT recorded_time, user_name, message
+FROM pem.event_history
+WHERE component = 'profile'
+ORDER BY recorded_time DESC
+LIMIT 20;
+```
+
+### Recent alert blackout changes
+
+Use this query to track when alert suppression was enabled or disabled for maintenance windows.
+
+```sql
+SELECT recorded_time, user_name, operation, message
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+ORDER BY recorded_time DESC
+LIMIT 20;
+```
+
+### Recent HA switchovers
+
+Use this query to identify when an HA cluster changed its leader (primary/replica roles).
+
+```sql
+SELECT recorded_time, message
+FROM pem.event_history
+WHERE component = 'HA Monitoring' AND operation = 'Switchover'
+ORDER BY recorded_time DESC
+LIMIT 10;
+```
+
+## Reading the details field
+
+If you need to extract a specific value from the JSON data, such as a `ProfileId`, you can use Postgres JSON operators to pull it out directly into its own column.
+
+```sql
+SELECT recorded_time,
+       details::json->>'ProfileId' AS profile_id,
+       message
+FROM pem.event_history
+WHERE component = 'profile'
+ORDER BY recorded_time DESC
+LIMIT 10;
+```
+
+!!! Note
+     `NULL` values in the results indicate that those specific events do not contain that particular key in their JSON data.
+
+## Considerations
+
+* **Monitor for change spikes:** A sudden increase in blackout toggles or profile changes may indicate configuration confusion or environment instability.
+* **Use meaningful names:** Assign clear, descriptive names to your profiles. This ensures the `message` column is easy to read at a glance, rather than relying solely on IDs.
+* **Data maintenance:** Periodically export or archive older rows if the table becomes exceptionally large. Consult your administrator for the best local policy.
+* **Maintain integrity:** Always treat the table as a permanent history. Avoid manually editing or modifying existing rows.
+* **Event deletion and auditing**: While deleting old events is possible, it is not recommended as it removes your audit trail. Instead, archive old data to a secondary storage location to maintain history while managing table size.
+* **System-generated events**: Events listing an `unknown` user typically indicate that PEM could not identify a specific user account. This commonly occurs with system-generated tasks or legacy migration scripts.
+* **Interpreting event data**: The `message` column provides the primary event details in plain English. You only need to parse the JSON data if you require specific, low-level technical details for a deep-dive analysis.
