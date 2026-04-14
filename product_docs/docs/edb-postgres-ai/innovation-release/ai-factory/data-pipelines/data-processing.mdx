@@ -1,45 +1,75 @@
 ---
-title: Data processing configuration
+title: Create a pipeline
 navTitle: Data processing
 description: Configure data processing steps in EDB Postgres AI Pipelines to transform raw text and images into structured, vector-searchable formats using built-in AI functions for parsing, chunking, and embedding.
 ---
 
-AI pipelines automate the lifecycle of transforming raw data into vector-searchable insights. They remove the manual overhead of cleaning, chunking, and embedding data, ensuring your embeddings (knowledge bases) stay synchronized with your source records.
+A pipeline defines how data moves from a source, through one or more transformation steps, to an AI-ready destination. 
+Creating a pipeline is the first step in making your data searchable — without one, there is no process to generate embeddings or keep your knowledge base in sync with your source data.
 
-## Creating a pipeline
+Use `aidb.create_pipeline()` to define a pipeline. Its parameters fall into four groups:
 
-Creating a pipeline in EDB Postgres AI is the process of defining a structured approach for how data moves from a source to an AI-ready destination. The `aidb.create_pipeline()` function allows you to set up this workflow by specifying the source of your data, the transformations it should undergo, and where the processed data should be stored.
+| Parameter group   | Parameters                                                         | More information                                                     |
+|-------------------|--------------------------------------------------------------------|----------------------------------------------------------------------|
+| **Source**        | `source`, `source_key_column`, `source_data_column`                | This page                                                            |
+| **Steps**         | `step_1` … `step_10`, `step_N_options`                             | [Pipeline steps](./pipeline-steps/pipeline-steps)                    |
+| **Orchestration** | `auto_processing`, `background_sync_interval`, `batch_size`        | [Orchestration](./orchestration/)                                    |
+| **Destination**   | `destination`, `destination_key_column`, `destination_data_column` | Set automatically by the `KnowledgeBase` step, or specify explicitly |
 
-### Data source
+## Table sources
 
-Pipelines can ingest data from two distinct types of sources:
+To read from a Postgres table, set the `source` parameter to the table name, `source_key_column` to the unique key column, and `source_data_column` to the column containing the data to process:
 
-- **Table sources**: Data is pulled directly from existing Postgres tables using the `source`, `source_key_column`, and `source_data_column` parameters.
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'my_pipeline',
+    source             => 'my_table',
+    source_key_column  => 'id',
+    source_data_column => 'content',
+    step_1             => 'KnowledgeBase',
+    step_1_options     => aidb.knowledge_base_config('my_model', 'Text')
+);
+```
 
-- **Volume sources**: For data in external cloud storage (like S3), the pipeline utilizes [Postgres File System (PGFS)](/pg_extensions/pgfs/). This requires a two-step setup: first defining the storage location and volume, then referencing that volume as the pipeline `source`.
+## Volume sources (PGFS)
 
-### Modular step configuration
+To process files stored in external cloud storage (S3, GCS, or Azure), pipelines use [Postgres File System (PGFS)](../pipeline/pgfs/). PGFS mounts external object storage as a volume that the pipeline can scan for files.
 
-The power of a pipeline lies in its ability to chain atomic operations, known as steps.
+### Step 1: Create a storage location
 
-- **Single-step**: A basic pipeline might simply point a source to a `KnowledgeBase` to generate embeddings.
+Define the external storage connection using `pgfs.create_storage_location`:
 
-- **Multi-step**: You can chain up to 10 operations — for example, `ParseHtml` followed by `ChunkText` — to transform complex, unstructured data into a more manageable format before embedding.
+```sql
+SELECT pgfs.create_storage_location(
+    name     => 'my_s3_location',
+    uri      => 's3://my-bucket/my-folder',
+    options  => '{"region": "us-east-1"}'
+);
+```
 
-- **Step options**: Each step is configured using specialized helper functions like `aidb.knowledge_base_config()` that pass a `JSONB` block of instructions to the underlying AI models.
+### Step 2: Create a volume
 
-### Orchestration & destination
+Create an [AIDB volume](../pipeline/volumes) that references the storage location. The pipeline will scan this volume for new or changed files:
 
-Once the pipeline is defined, it manages the execution of AI processing. It automatically tracks which records have been processed and stores the final output — typically high-dimensional vectors — in a knowledge base for semantic search.
+```sql
+SELECT aidb.create_volume(
+    name             => 'my_volume',
+    storage_location => 'my_s3_location'
+);
+```
 
-## Pulling in data (PGFS)
+### Step 3: Reference the volume as the pipeline source
 
-To process files stored outside of Postgres, pipelines utilize Postgres File System (PGFS) and volumes. PGFS acts as the file-system bridge that allows the database to mount external cloud storage as if it were a local directory.
+Set the `source` parameter to the volume name:
 
-- **PGFS integration**: You first define a storage location (S3, GCS, or Azure) using `pgfs.create_storage_location`. This establishes the connection and authentication via IAM roles, environment variables, or static credentials.
+```sql
+SELECT aidb.create_pipeline(
+    name       => 'my_pdf_pipeline',
+    source     => 'my_volume',
+    step_1     => 'ParsePdf',
+    step_2     => 'KnowledgeBase',
+    step_2_options => aidb.knowledge_base_config('my_model', 'Text')
+);
+```
 
-- **AIDB Volumes**: Once a PGFS location is defined, you create an AIDB volume. This volume allows the pipeline to scan the external storage, detect new files, and pull them into the processing stream.
-
-- **Unstructured data support**: This setup is specifically designed to pull in unstructured formats like PDFs, images, and text files that reside in object storage, making them available for downstream steps like OCR or chunking.
-
-For more information, see [PGFS documentation](/pg_extensions/pgfs/).
+For full PGFS reference, see [PGFS documentation](/pg_extensions/pgfs/).
