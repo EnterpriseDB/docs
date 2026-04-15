@@ -230,7 +230,12 @@ module.exports = {
       options: {
         mergeLinkHeaders: false,
         mergeCachingHeaders: false,
-        allPageHeaders: isProduction ? [] : ["X-Robots-Tag: noindex"],
+        allPageHeaders: isProduction
+          ? [
+              "Vary: Accept, Accept-Encoding",
+              "Netlify-Vary: header=accept|accept-encoding",
+            ]
+          : ["X-Robots-Tag: noindex"],
         headers: {
           "/docs/pdfs/*": [
             "X-Robots-Tag: noindex",

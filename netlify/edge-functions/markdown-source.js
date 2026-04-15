@@ -33,9 +33,9 @@ function normalizePath(url) {
     .replace(/^docs\//, "/") // strip leading "docs" segment
     .replace(/\.mdx?$/, "") // strip .md or .mdx suffix
     .replace(/\/$/, "") // strip trailing slash
-    .replace(/^\/([^\/]+)\/latest\//, function (fullMatch, product) {
+    .replace(/^\/([^\/]+)\/latest(?=\/|$)/, function (fullMatch, product) {
       if (productVersions[product]?.length) {
-        return `/${product}/${productVersions[product][0]}/`;
+        return `/${product}/${productVersions[product][0]}`;
       }
       return fullMatch;
     });
@@ -46,6 +46,11 @@ export default async function handler(request, context) {
   const url = new URL(request.url);
   const acceptHeader = request.headers.get("Accept") ?? "";
   const authPair = Netlify.env.get("AUTH_PAIR");
+  const sanctioned = ["cu", "ir", "kp", "sd", "ss", "sy", "by", "ru"].includes(
+    context.geo.country,
+  );
+
+  if (sanctioned) return;
 
   if (
     authPair &&
@@ -102,6 +107,9 @@ export default async function handler(request, context) {
     const body = await githubResponse.text();
     const headers = {
       "Content-Type": "text/markdown; charset=utf-8",
+      Vary: "Accept, Accept-Encoding",
+      "Netlify-Vary":
+        "header=accept|accept-encoding, country=by|cu|ir|kp|ru|sd|ss|sy", // ensure caching varies based on Accept header
       // Allow clients & CDN to cache, but revalidate when stale
       "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
       // Expose the resolved source URL for transparency / debugging
