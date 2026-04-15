@@ -1,0 +1,58 @@
+---
+title: Embedding (Knowledge base)
+navTitle: Embedding
+description: The embedding step transforms processed text or image data into vector representations using AI models, creating a searchable knowledge base for semantic retrieval in RAG applications.
+---
+
+
+The **Embedding** (Knowledge base) step serves as the final stage of an AI pipeline, responsible for transforming processed data into searchable vector embeddings.
+
+This step converts `TEXT` or image `BYTEA` data into high-dimensional vectors using a configured AI model. 
+
+- The knowledge base step must always be the last operation in a pipeline because its output is a `VECTOR` type, which can't be used as input by any subsequent pipeline operations.
+
+- Data is processed in efficient batches. If a specific batch fails, the system automatically retries items individually to isolate and bypass corrupt or bad records without halting the entire pipeline.
+
+- Knowledge bases are not created as standalone objects; they are registered automatically when you define a pipeline that includes a `KnowledgeBase` step.
+
+You configure this step using specific helper functions to define how the embeddings are generated and indexed.
+
+## Creating a new knowledge base
+
+Use `aidb.knowledge_base_config()` to set the foundational parameters:
+
+| Parameter             | Type    | Description                                                                          |
+|-----------------------|---------|--------------------------------------------------------------------------------------|
+| **model**             | `TEXT`  | Required. The embedding model name. For example, `bert`, `text-embedding-3-small`.     |
+| **data_format**       | `Enum`  | Required. Specifies if the input data is `'Text'` or `'Image'`.                  |
+| **distance_operator** | `Enum`  | The similarity metric. Defaults to `L2`; also supports `Cosine` or `InnerProduct`.   |
+| **vector_index**      | `JSONB` | Optional index configuration (e.g., HNSW or IVFFlat) to optimize search performance. |
+
+## Linking to an existing knowledge base
+
+To allow multiple pipelines to feed into the same knowledge base, use `aidb.knowledge_base_config_from_kb(data_format)`. This function ensures the new pipeline inherits the model and distance operator settings of the existing KB.
+
+The KnowledgeBase step automatically generates a destination table named `pipeline_<name>`.
+
+**Table schema:**
+
+| Column        | Type        | Description                                        |
+| ------------- | ----------- | -------------------------------------------------- |
+| `id`          | `BIGSERIAL` | Primary key.                                       |
+| `pipeline_id` | `INT`       | Reference to the originating pipeline.             |
+| `source_id`   | `TEXT`      | ID of the original source record.                  |
+| `part_ids`    | `BIGINT[]`  | Tracks segments if the data was chunked or parsed. |
+| `value`       | `vector`    | The pgvector embedding.                            |
+
+### Multi-pipeline integration
+
+A single knowledge base can aggregate data from multiple pipelines. The `knowledge_base_pipeline` junction table manages these mappings. When retrieving data via `retrieve_text()`, the output includes a `pipeline_name` column so you can identify the exact source of each result.
+
+
+### Monitoring and stats
+
+You can audit your knowledge bases through two primary views:
+
+- **`aidb.knowledge_bases` (alias `aidb.kbs`)**: Displays all KBs, their models, distance operators, and linked pipelines.
+
+- **`aidb.knowledge_base_stats` (alias `aidb.kbstat`)**: Provides real-time processing and storage statistics.

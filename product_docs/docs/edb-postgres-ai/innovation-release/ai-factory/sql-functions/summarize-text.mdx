@@ -1,0 +1,66 @@
+---
+title: Text summarizing
+description: The summarizing step generates concise summaries of long text passages using AI models, improving retrieval accuracy in RAG applications.
+#copied content from ai-factory/pipeline/preparers/primitives/#summarize-text
+---
+
+The `aidb.summarize_text()` function allows you to condense long passages into concise summaries. By leveraging specialized models like T5 or GPT, you can extract the most critical information from your records automatically.
+
+**Step 1: Register a model**
+
+```sql
+SELECT aidb.create_model('my_t5_model', 't5_local');
+```
+
+**Step 2: Summarize a specific text block**
+
+```sql
+SELECT * FROM aidb.summarize_text(
+    input => 'There are times when the night sky glows with bands of color. The bands may begin as cloud shapes and then spread into a great arc across the entire sky. They may fall in folds like a curtain drawn across the heavens. The lights usually grow brighter, then suddenly dim. During this time the sky glows with pale yellow, pink, green, violet, blue, and red. These lights are called the Aurora Borealis. Some people call them the Northern Lights. Scientists have been watching them for hundreds of years. They are not quite sure what causes them. In ancient times Long Beach City College WRSC Page 2 of 2 people were afraid of the Lights. They imagined that they saw fiery dragons in the sky. Some even concluded that the heavens were on fire.',
+    options => '{"model": "my_t5_model"}'
+);
+
+__OUTPUT__
+ create_model
+--------------
+ my_t5_model
+(1 row)
+
+                                                                                     summarize_text
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ the night sky glows with bands of color . they may begin as cloud shapes and then spread into a great arc across the entire sky . the lights usually grow brighter, then suddenly dim .
+(1 row)
+```
+
+## Configuration options
+
+- `model` (required): The name of the registered model to use for summarization. The model must support the `decode_text()` and `decode_text_batch()` interfaces.
+
+- `chunk_config` (optional): If your input exceeds the model's context window, you can provide configuration settings here to automatically [chunk the input text](chunk-text.mdx) before summarization.
+
+- `prompt` (optional): You can guide the AI with a custom prompt for example 'Summarize this for a 5th grader'. If omitted, a standard summarization prompt is used.
+
+- `strategy` (optional): The summarization strategy to use. Can be either `"append"` (default) or `"reduce"`:
+  
+  - `"append"`: Summarizes each chunk independently and concatenates the results.
+  
+  - `"reduce"`: Applies iterative summarization, repeatedly summarizing the accumulated text until it reaches the desired length.
+
+- `reduction_factor` (optional): Used with the `"reduce"` strategy. Controls how aggressively the text is reduced in each iteration. Higher values result in more aggressive reduction. Defaults to 3.
+
+### Aggregate function
+
+For datasets where information is spread across many records, use the `aidb.summarize_text_aggregate()` function. This function works like standard SQL aggregate functions and is used with a `GROUP BY` clause to summarize entire categories of data.
+
+```sql
+SELECT
+    category,
+    aidb.summarize_text_aggregate(
+        text_column,
+        '{"model": "my_t5_model"}'::json ORDER BY id
+    ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+The aggregate function accepts the same options as the regular `summarize_text()` function and processes rows in the order specified by the `ORDER BY` clause within the aggregate call.

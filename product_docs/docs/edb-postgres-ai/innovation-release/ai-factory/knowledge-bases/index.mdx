@@ -1,0 +1,80 @@
+---
+title: Knowledge bases
+navigation:
+- hybrid-search
+- vectorchord
+- example
+---
+
+A knowledge base is a vector-indexed store of embeddings, created automatically when a pipeline includes a [`KnowledgeBase` step](../data-pipelines/pipeline-steps/pipeline-steps/#knowledgebase). The pipeline handles embedding generation and indexing. The knowledge base is the resulting queryable store.
+
+Once a pipeline has run, you can query the knowledge base using the retrieval functions below. Both functions use vector similarity to find results based on meaning rather than exact keywords, and support both `TEXT` and `BYTEA` (image) queries.
+
+## Retrieval functions
+
+The `aidb` schema provides two primary functions for querying a knowledge base. Both functions support multi-modal retrieval, meaning they accept either `TEXT` or `BYTEA` (image) as the query input.
+
+### `aidb.retrieve_text()`
+
+Use this function when you need to retrieve the actual source text associated with the closest vector matches.
+
+- **Process**: The function embeds your query, performs a similarity search, and then executes a second phase to look up the source text from the original table using the `pipeline_id`.
+
+- **Returns**: A set of columns including:
+
+  - **key**: The identifier from the source table.
+
+  - **value**: The actual source text.
+
+  - **distance**: The similarity score. A lower usually indicates a closer match.
+
+  - **part_ids**: An array of IDs indicating which specific chunks or parts were matched.
+
+  - **pipeline_name**: The name of the pipeline that supplied the data.
+
+  - **intermediate_steps**: A JSONB column containing data from steps occurring before the knowledge base. For example, ChunkText.
+
+### `aidb.retrieve_key()`
+
+Use this function for high-performance searches where you only need the unique identifiers of the matches, rather than the full source content.
+
+- **Returns**: A set of columns including:
+
+  - **key**: The identifier from the source table.
+
+  - **distance**: The similarity score. A lower value usually indicates a closer match.
+
+  - **part_ids**: An array of IDs indicating which specific chunks or parts were matched.
+
+  - **pipeline_name**: The name of the pipeline that supplied the data.
+
+## Flow of retrieval functions
+
+When a retrieval function is called, the system performs the following steps internally:
+
+- **Embedding**: The input query (text or image) is converted into a vector using the specific embedding model configured for that knowledge base.
+
+- **Similarity search**: A vector similarity search is performed against the knowledge base's internal vector table to find the Top K nearest neighbors.
+
+- **Source lookup (text only)**: For `retrieve_text`, the system identifies the source table and retrieves the raw content corresponding to the matched keys.
+
+## Advanced querying: Joining intermediate steps
+
+For pipelines that include intermediate transformations such as ChunkText or ParseHtml, you can access specific transformed segments by joining retrieval results with intermediate pipeline tables using the `part_ids` column.
+
+### Example syntax:
+
+The following query joins the retrieval results with an intermediate step table to access specific chunked values:
+
+```sql
+SELECT 
+    r.key, 
+    r.value, 
+    r.distance, 
+    r.part_ids, 
+    int_step.value AS chunked_content
+FROM aidb.retrieve_text('my_kb', 'search query', 5) AS r
+JOIN pipeline_my_pipeline_step_1 AS int_step
+  ON int_step.source_id = r.key
+  AND int_step.part_ids = (r.part_ids)[:1];
+```
