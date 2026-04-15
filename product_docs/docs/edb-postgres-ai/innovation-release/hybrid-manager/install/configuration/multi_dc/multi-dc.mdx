@@ -45,11 +45,11 @@ This multi-DC setup follows a Hub and Spoke model, where a single Primary manage
 
 ### Collect the required information
 
-1. Prepare two (or three) copies of the HM installation configuration file (`values.yaml`). Name them `primary.yaml`, `secondary.yaml` if you are deploying in two locations, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` if you are deploying in three locations.
+1. Prepare two (or three) copies of your HM installation configuration file. Name them `primary.yaml`, `secondary.yaml` if you are deploying in two locations, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` if you are deploying in three locations. These files will be either `values.yaml` files (Bootstrap) or `HybridControlPlane` CR manifests (Operator), depending on your installation method.
 
 1. Domain names:
 
-   Each HM installation must be configured with a dedicated domain name, set in the HM installation configuration file as `portal_domain_name`. This parameter is used by the primary and secondaries.
+   Each HM installation must be configured with a dedicated domain name, set as `portal_domain_name` in the configuration. This parameter is used by the primary and secondaries.
 
    Create these domain names for the each of the HM installations (two or three installations, depending on your configuration), and record this information.
 
@@ -66,22 +66,53 @@ All HM installations must have an identical Kubernetes secret named `edb-object-
 
 Because the two or three clusters involved in this multi-data-center deployment are using the same object store, we must ensure that specific parameters are different between all clusters.
 
-| Parameter                                        | Requirement                                                         | Why it matters                                                                                  |
-|--------------------------------------------------|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| `parameters.upm-beacon.beacon_location_id`       | Must be unique per location.                                        | Human-readable location identifier. Identifies the specific location in the HM console and API. |
-| `parameters.global.internal_backup_folder`       | Must be unique per location AND match the format: `^[0-9a-z]{12}$`. | Separates database backups so that a restore doesn't pull the wrong data.                       |
-| `parameters.global.metrics_storage_prefix`       | Must be unique per location.                                        | Ensures observability data from each site is stored in its own directory.                       |
-| `parameters.upm-loki.logs_storage_prefix`        | Must be unique per location.                                        | Prevents logs from different locations from overwriting each other in shared storage.           |
+| Parameter | Operator CR path | Bootstrap values.yaml path | Requirement | Why it matters |
+|-----------|-----------------|---------------------------|-------------|----------------|
+| `beacon_location_id` | `spec.componentsParameters.upm-beacon.beacon_location_id` | `parameters.upm-beacon.beacon_location_id` | Must be unique per location. | Human-readable location identifier. Identifies the specific location in the HM console and API. |
+| `internal_backup_folder` | `spec.globalParameters.internal_backup_folder` | `parameters.global.internal_backup_folder` | Must be unique per location AND match the format: `^[0-9a-z]{12}$`. | Separates database backups so that a restore doesn't pull the wrong data. |
+| `metrics_storage_prefix` | `spec.globalParameters.metrics_storage_prefix` | `parameters.global.metrics_storage_prefix` | Must be unique per location. | Ensures observability data from each site is stored in its own directory. |
+| `logs_storage_prefix` | `spec.componentsParameters.upm-loki.logs_storage_prefix` | `parameters.upm-loki.logs_storage_prefix` | Must be unique per location. | Prevents logs from different locations from overwriting each other in shared storage. |
 
 ## Configure the multi-DC topology
 
 In this step, you define the Hub-and-Spoke relationship. The Hub (primary) must know about all its Spokes (secondaries), and each Spoke must know how to reach the Hub.
 
-Add the following stanza to each of your configuration files (`primary.yaml`, and `secondary.yaml`):
+Add the following stanza to each of your configuration files (`primary.yaml` and `secondary.yaml`). Fill in the `domainName` values using the `portal_domain_name` you previously set for each HM installation.
+
+In `primary.yaml`: Set role: `primary`. This cluster will act as the Hub.
+
+In `secondary.yaml`: Set role: `secondary`. This cluster will act as a Spoke and use the `primary.domainName` to find its manager.
+
+<TabContainer>
+<Tab title="Operator">
+
+Add the `clusterGroups` stanza under `spec` in each `HybridControlPlane` CR:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  clusterGroups:
+    # Set to 'primary' for your Hub, 'secondary' for your Spokes
+    role: (secondary|primary|standalone)
+    primary:
+      domainName: <primary portal domain>
+    secondaries:
+    - domainName: <secondary portal domain>
+      # Add an additional entry here for additional locations
+  # ... your other spec fields
+```
+
+</Tab>
+<Tab title="Bootstrap (Deprecated)">
+
+Add the `clusterGroups` stanza to each `values.yaml`:
 
 ```yaml
 clusterGroups:
-# Set to 'primary' for your Hub, 'secondary' for your Spokes
+  # Set to 'primary' for your Hub, 'secondary' for your Spokes
   role: (secondary|primary|standalone)
   primary:
     domainName: <primary portal domain>
@@ -90,23 +121,42 @@ clusterGroups:
     # Add an additional entry here for additional locations
 ```
 
-Fill in the missing domainName parameters using the `portal_domain_name` parameter you previously set in each HM installation configuration file.
-
-In `primary.yaml`: Set role: `primary`. This cluster will act as the Hub.
-
-In `secondary.yaml`: Set role: `secondary`. This cluster will act as a Spoke and use the `primary.domainName` to find its manager.
+</Tab>
+</TabContainer>
 
 ## Reduced set of components (Spoke clusters only)
 
 The HM consists of a number of different components, some of which are not necessary on the secondary locations. While the full set can be installed successfully on secondary locations, we recommend to reduce that list by setting the parameter `scenarios` to be just `core`, and disabling the HM console (UI).
 
-Add the following parameters in the values file for secondary locations:
+Add the following parameters to your secondary location configuration files:
+
+<TabContainer>
+<Tab title="Operator">
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  scenarios:
+    - core
+  disabledComponents:
+    - upm-ui
+  # ... your other spec fields
+```
+
+</Tab>
+<Tab title="Bootstrap (Deprecated)">
 
 ```yaml
 scenarios: 'core'
 disabledComponents: 
   - upm-ui
 ```
+
+</Tab>
+</TabContainer>
 
 1. Validation checklist:
 
@@ -122,11 +172,11 @@ disabledComponents:
 
 ## Hybrid Manager installation
 
-Using the HM installation configuration files `primary.yaml` and `secondary.yaml` (or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager through helm. 
+Using your configuration files (`primary.yaml` and `secondary.yaml`, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager on each cluster. Follow [Phase 5: Installing Hybrid Manager](../../install_guide/install_hm) for the full installation procedure using your chosen method (Operator or Bootstrap).
 
 ### Validate wiring
 
-Once the Helm installations are complete, verify the Hub and Spoke link.
+Once the installations are complete, verify the Hub and Spoke link.
 
 1. On the primary, list the managed secondary locations:
 

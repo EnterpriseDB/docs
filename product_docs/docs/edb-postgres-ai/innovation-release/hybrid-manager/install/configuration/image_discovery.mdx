@@ -23,10 +23,34 @@ It connects to your private container registry, scans for available Postgres ver
 
 Image discovery ensures that when you sync new database versions to your registry, they automatically become available for your users to provision without manual intervention.
 
-## Configure Helm Chart
+## Configure image discovery
 
-To enable this feature, you must update your `values.yaml` to tell the Beacon where to look.
+To enable this feature, you must configure the Beacon agent with your registry details.
 
+<TabContainer>
+<Tab title="Operator">
+
+Edit your `HybridControlPlane` CR to add the image discovery settings under `spec.beaconAgent`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  beaconAgent:
+    provisioning:
+      imageDiscovery: true
+      imagesetDiscoveryContainerRegistryURL: "<your-private-registry-uri>"
+      # Set to true only for self-signed/internal CA scenarios
+      imagesetDiscoveryAllowInsecureRegistry: false
+    # ... your other beaconAgent settings
+```
+
+</Tab>
+<Tab title="Bootstrap (Deprecated)">
+
+Edit your `values.yaml` to add the image discovery settings under `beaconAgent`:
 
 ```yaml
 beaconAgent:
@@ -34,8 +58,11 @@ beaconAgent:
     imageDiscovery: true
     imagesetDiscoveryContainerRegistryURL: "<your-private-registry-uri>"
     # Set to true only for self-signed/internal CA scenarios
-    imagesetDiscoveryAllowInsecureRegistry: false 
+    imagesetDiscoveryAllowInsecureRegistry: false
 ```
+
+</Tab>
+</TabContainer>
 
 ### imageDiscovery
 
@@ -177,11 +204,37 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 
 ## Configure Kubernetes Secret
 
-The final step is ensuring the Helm chart knows which Kubernetes Secret contains the credentials (if not using Cloud Identity).
+The final step is ensuring HM knows which Kubernetes Secret contains the registry credentials (if not using Cloud Identity).
 
-In your `values.yaml`, confirm the `image_discovery_credentials_secret_name`. 
+By default, `image_discovery_credentials_secret_name` is set to `edb-cred`.
 
-By default, this is set to `edb-cred`.
+<TabContainer>
+<Tab title="Operator">
+
+Confirm or update the credentials secret name in your `HybridControlPlane` CR under `spec.componentsParameters.upm-beacon`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  componentsParameters:
+    upm-beacon:
+      image_discovery_credentials_secret_name: "edb-cred"
+    # ... your other componentsParameters
+```
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+</Tab>
+<Tab title="Bootstrap (Deprecated)">
+
+Confirm or update the credentials secret name in your `values.yaml` under `parameters.upm-beacon`:
 
 ```yaml
 parameters:
@@ -189,7 +242,19 @@ parameters:
     image_discovery_credentials_secret_name: "edb-cred"
 ```
 
+Apply the change:
+
+```bash
+helm upgrade \
+    -n edbpgai-bootstrap \
+    --install \
+    -f my-values.yaml
+```
+
+</Tab>
+</TabContainer>
+
 **Verification:**
 
-After applying these changes via `helm upgrade`, check the logs of the **HM-internal beacon agent** pod. 
+After applying these changes, check the logs of the **HM-internal beacon agent** pod. 
 You should see messages indicating that it is scanning the registry and discovering image tags.
