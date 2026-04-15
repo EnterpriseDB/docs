@@ -9,12 +9,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-pages:
+  create-deployment:
     if: |
       (
         (github.event.action == 'labeled' && github.event.label.name == 'deploy') ||
         (contains(github.event.pull_request.labels.*.name, 'deploy'))
       ) && !github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-22.04
+    outputs:
+      deployment-id: ${{ steps.create-deployment.outputs.deployment-id }}
+    steps:
+      - name: create deployment
+        id: create-deployment
+        run: |
+          deployment_id=`gh api \
+            --method POST \
+            /repos/EnterpriseDB/docs/deployments \
+            -f "ref=${{ github.event.pull_request.head.sha }}" \
+            -f "description=Deploy draft on Netlify" \
+            -F 'required_contexts[]=null' \
+            -F "auto_merge=false" \
+            -f "environment=deploy-preview" --jq '.id'`
+          if [ -z "$deployment_id" ]; then
+            echo "::error::Failed to create deployment"
+            exit 1
+          fi
+          echo "deployment-id=$deployment_id" >> "$GITHUB_OUTPUT"
+          
+          gh api \
+            --method POST \
+            /repos/EnterpriseDB/docs/deployments/$deployment_id/statuses \
+            -f "state=in_progress" \
+            -f "environment_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f "description=Building pages ${{ (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'deploy-pdfs')) && 'and PDFs' || '' }}" \
+            -F "auto_inactive=false"
+        env:
+            GH_TOKEN: ${{ github.token }}            
+  build-pages:
+    needs: create-deployment
     uses: ./.github/workflows/build-pages.yml
     with:
       ref: ${{ github.head_ref }}
@@ -22,6 +54,7 @@ jobs:
     secrets: inherit
 
   build-pdfs:
+    needs: create-deployment
     if: |
       (
         (github.event.action == 'labeled' && github.event.label.name == 'deploy-pdfs') ||
@@ -40,8 +73,8 @@ jobs:
   # however, it will set an output - check-has-pdfs.steps.check.has-pdfs - true if PDFs were generated
   check-has-pdfs:
     runs-on: ubuntu-22.04
-    needs: build-pdfs
-    if: ${{ always() }}
+    needs: [build-pdfs, create-deployment]
+    if: ${{ !cancelled() && needs.create-deployment.result != 'skipped' }}
     outputs:
       cache-key: ${{ steps.check.outputs.cache-key }}
       has-pdfs: ${{ steps.check.outputs.has-pdfs }}
@@ -53,6 +86,24 @@ jobs:
           echo "has-pdfs=${{ needs.build-pdfs.result == 'success' }}" >> "$GITHUB_OUTPUT"
           exit ${{ needs.build-pdfs.result == 'failure' && 1 || 0 }}
   
+  update-deployment-status:
+    needs: [build-pages, check-has-pdfs, create-deployment]
+    # succeeded() (the default check) will be false at this point if PDFs were skipped
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' && needs.check-has-pdfs.result == 'success' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: update deployment status
+        run: |
+          gh api \
+            --method POST \
+            /repos/EnterpriseDB/docs/deployments/${{ needs.create-deployment.outputs.deployment-id }}/statuses \
+            -f "state=in_progress" \
+            -f "environment_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -f "description=Deploying to Netlify" \
+            -F "auto_inactive=false"
+        env:
+            GH_TOKEN: ${{ github.token }}            
+
   deploy-to-netlify:
     needs: [build-pages, check-has-pdfs]
     # succeeded() (the default check) will be false at this point if PDFs were skipped
@@ -67,3 +118,65 @@ jobs:
       NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN  }}
 
+  update-pull-request:
+    needs: deploy-to-netlify
+    if: ${{ !cancelled() && needs.deploy-to-netlify.result == 'success' && !!github.event.pull_request.number }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: pull tools repo
+        uses: actions/checkout@v3
+
+      - name: compose subdomain
+        run: |
+          subdomain="deploy-preview-${{ github.event.pull_request.number }}--edb-docs-staging"
+          echo "SUBDOMAIN=$subdomain" >> $GITHUB_ENV
+
+      - name: Update pull request with deployment info
+        uses: ./.github/actions/update-description
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          repo: docs
+          repo-owner: EnterpriseDB
+          github-token: ${{ github.token }}
+          message: |
+            > [!TIP]
+            > Draft deployment: https://${{ env.SUBDOMAIN }}.netlify.app/docs/
+
+  finalize-deployment-status:
+    needs: [check-has-pdfs, build-pages, deploy-to-netlify, create-deployment]
+    # only need to update the deployment status if we actually created a deployment
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: compose deployment status
+        run: |
+          if [ "${{ needs.check-has-pdfs.result == 'success' && needs.build-pages.result == 'success' && needs.deploy-to-netlify.result }}" == "success" ]; then
+            state=success
+            subdomain="deploy-preview-${{ github.event.pull_request.number }}--edb-docs-staging"
+
+            log_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            environment_url="https://${subdomain}.netlify.app/docs/"
+          elif [ -z "${{ (needs.check-has-pdfs.result == 'failure' || needs.build-pages.result == 'failure' || needs.deploy-to-netlify.result == 'failure') && '' }}" ]; then
+            state=failure
+            log_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            environment_url=""
+          else
+            state=inactive
+            log_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            environment_url=""
+          fi
+
+          echo "state=$state" >> $GITHUB_ENV
+          echo "log_url=$log_url" >> $GITHUB_ENV
+          echo "environment_url=$environment_url" >> $GITHUB_ENV
+      - name: update deployment status
+        if: ${{ needs.create-deployment.result == 'success' }}
+        run: |
+          gh api \
+            --method POST \
+            /repos/EnterpriseDB/docs/deployments/${{ needs.create-deployment.outputs.deployment-id }}/statuses \
+            -f "state=${{ env.state }}" \
+            -f "log_url=${{ env.log_url }}" \
+            -f "environment_url=${{ env.environment_url }}" \
+        env:
+            GH_TOKEN: ${{ github.token }}
