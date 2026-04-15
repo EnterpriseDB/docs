@@ -36,10 +36,16 @@ on:
         required: true
       NETLIFY_AUTH_TOKEN:
         required: true
-  
+    outputs:
+      deploy-url:
+        description: netlify deployment URL
+        value: ${{ jobs.deploy.outputs.deploy-url }}
+
 jobs:
   deploy:
     runs-on: docs-16c-64gb-600gb
+    outputs:
+      deploy-url: ${{ steps.netlify-deploy.outputs.NETLIFY_URL }}
     steps:
       - name: Pull pages cache
         uses: actions/cache/restore@v4
@@ -49,6 +55,7 @@ jobs:
             public/*
             !public/pdfs
             .cache
+            netlify
           key: ${{ inputs.pages-cache-key }}
 
       - name: Pull PDF cache
@@ -62,23 +69,43 @@ jobs:
             advocacy_docs/**/*.pdf-hash
           key: ${{ inputs.pdf-cache-key }}
 
-
       - name: Copy pdfs to build output
         run: |
           mkdir -p public/pdfs
           rsync -avm --filter="+ */" --filter="-! *.pdf" advocacy_docs/ public/pdfs/ || :
           rsync -avm --filter="+ */" --filter="-! *.pdf" product_docs/docs/ public/pdfs/ || :
+
+      - name: Copy lib to netlify edge functions
+        run: |
+          mkdir -p netlify/edge-functions/lib
+          cp -R public/lib/* netlify/edge-functions/lib/
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+
+      - name: Install Netlify CLI
+        run: |
+          npm install -g netlify-cli
             
       - name: Deploy to Netlify
         id: netlify-deploy
-        uses: nwtgck/actions-netlify@v3
-        with:
-          publish-dir: "./public"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-pull-request-comment: ${{ inputs.enable-pull-request-comment }}
-          enable-commit-comment: ${{ inputs.enable-commit-comment }}
-          alias: ${{ inputs.alias }}
-          production-deploy: ${{ inputs.production }}
+        # adapted from https://github.com/netlify/actions/blob/master/cli/entrypoint.sh
+        run: |
+            netlify deploy --dir=./public ${{!inputs.production && format('--alias={0}', inputs.alias) || ''}} ${{ inputs.production && '--prod' || ''}} | tee output.txt
+
+            NETLIFY_OUTPUT=$(cat output.txt)
+            NETLIFY_URL=$(grep -Eo '(http|https)://[a-zA-Z0-9./?=_-]*(--)[a-zA-Z0-9./?=_-]*' output.txt) 
+            NETLIFY_LOGS_URL=$(grep -Eo '(http|https)://app.netlify.com/[a-zA-Z0-9./?=_-]*' output.txt)
+            NETLIFY_LIVE_URL=$(grep -Eo '(http|https)://[a-zA-Z0-9./?=_-]*' output.txt | grep -Eov "netlify.com")
+
+            echo "NETLIFY_OUTPUT<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$NETLIFY_OUTPUT" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "NETLIFY_URL=$NETLIFY_URL" >> "$GITHUB_OUTPUT"
+            echo "NETLIFY_LOGS_URL<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$NETLIFY_LOGS_URL" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "NETLIFY_LIVE_URL=$NETLIFY_LIVE_URL" >> "$GITHUB_OUTPUT"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
