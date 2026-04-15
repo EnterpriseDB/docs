@@ -66,14 +66,14 @@ export default async function handler(request, context) {
 
   // Pass through requests that don't want Markdown
   if (!wantsMarkdown) {
-    return;
+    return; // passthrough
   }
 
   const contentPath = normalizePath(url);
 
   if (!contentPath) {
     console.log(`No markdown content for ${request.url}`);
-    return new Response("Not Found", { status: 404 });
+    return; // passthrough
   }
 
   // Try each GitHub URL template in order, returning the first that resolves
@@ -116,10 +116,7 @@ export default async function handler(request, context) {
 
   // None of the templates resolved
   console.log(`Markdown source not found for path: ${contentPath}`);
-  return new Response(`Markdown source not found for: ${contentPath}`, {
-    status: 404,
-    headers: { "Content-Type": "text/plain" },
-  });
+  return; // passthrough
 }
 
 export const config = {
