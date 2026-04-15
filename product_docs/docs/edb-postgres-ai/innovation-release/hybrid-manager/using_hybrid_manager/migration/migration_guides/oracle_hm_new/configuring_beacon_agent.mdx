@@ -8,9 +8,9 @@ Configure the EDB Postgres AI agent (packaged as `beacon-agent`) to establish a 
 
 ## Prerequisites
 
-- **Machine user**: [Create a machine user and access key with the `estate ingester` role](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_creating_machine_user/) assigned to it.
+- **Machine user**: [Create a machine user and access key with the `estate ingester` role](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/create_machine_user/) assigned to it.
 
-- **Machine user access key**: Store the generated access key in an environment variable, e.g. `export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"`.
+- **Machine user access key**: Store the access key generated in the HM console when you created a machine user in an environment variable, e.g. `export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"`.
 
 - **Oracle Instant Client with SQL*Plus**: The EDB Postgres AI agent uses `sqlplus` to extract DDL from your Oracle source. Ensure you install Oracle Instant Client and SQL*Plus and you configure the required environment variables on your auxiliary machine. See [Configuring an auxiliary machine](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_hm_new/auxiliary_machine/) for instructions.
 
@@ -183,25 +183,21 @@ Prepare a configuration file for your agent. The agent searches for `beacon_agen
     See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
     !!!
 
-1.  Monitor the ingestion process as the agent starts sending data to Hybrid Manager (HM). Data should appear in the HM console under **Estate > Migrations** within a few minutes.
-
-    If the agent reports errors during ingestion, refer to the following common issues:
-
-    | Error | Cause | Fix |
-    |-------|-------|-----|
-    | `sqlplus is not installed or not found in PATH` | Oracle Instant Client environment variables are not set or set incorrectly in the current session. | Set `PATH` and `LD_LIBRARY_PATH` to the Instant Client root directory and verify with `which sqlplus`. See [Configuring an auxiliary machine](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_hm_new/auxiliary_machine/). |
-    | `extractor permissions check failed: sqlplus execution failed: exit status 127` | `sqlplus` binary is found but cannot load its shared libraries. | Ensure `LD_LIBRARY_PATH` points to the Instant Client root directory (not a `lib/` subdirectory). |
-    | `rpc error: code = Unknown desc = no rows in result set` | The beacon-agent version is incompatible with the server. | Upgrade to beacon-agent v1.384.0 or later. |
+1.  Monitor the ingestion process as the agent starts sending data to Hybrid Manager (HM). After a few minutes, your Oracle database appears in the HM console under **Estate > Migrations**, which lists your external databases along with summarized database and migration information. Selecting the database provides a detailed migration assessment and migration capabilities.
 
 !!!important
 The agent dynamically detects changes to tables and columns. However, changes to views, procedures, or functions require an agent restart to re-ingest metadata.
 !!!
 
-For production use, configure the agent to [run as a service](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/run_as_service.mdx).
+For production use, see [Running the agent as a service](#running-the-agent-as-a-service) below.
 
 ## Troubleshooting
 
-If the EDB Postgres AI agent logs report an error, or the Oracle source does not appear in the HM console, use the built-in validation tool to diagnose configuration issues.
+There are several reasons why the agent might fail to connect to HM or your Oracle database. Here are some tools you can use for troubleshooting.
+
+### `beacon-agent validate` command 
+
+The `beacon-agent validate` command is a helpful step to identify common connectivity and configuration issues.
 
 ```shell
 beacon-agent validate
@@ -214,6 +210,91 @@ The validate command checks for the following:
 - **Database connectivity**: Attempts to connect to each configured database DSN. This is a full connection test, not just a syntax or URL-encoding check.
 
 - **Configuration display**: Shows TLS settings, project ID, providers, and per-database settings to help identify misconfiguration.
+
+### `beacon-agent` logs
+
+If the agent reports errors during ingestion, you can check the logs for more details. If you're running the agent in the foreground, logs will be printed to the terminal. If you set up the agent as a systemd service, use `journalctl` to view logs. 
+
+Here are some common error messages you might encounter in the logs:
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `sqlplus is not installed or not found in PATH` | Oracle Instant Client environment variables are not set or set incorrectly in the current session. | Set `PATH` and `LD_LIBRARY_PATH` to the Instant Client root directory and verify with `which sqlplus`. See [Configuring an auxiliary machine](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_hm_new/auxiliary_machine/). |
+| `extractor permissions check failed: sqlplus execution failed: exit status 127` | `sqlplus` binary is found but cannot load its shared libraries. | Ensure `LD_LIBRARY_PATH` points to the Instant Client root directory (not a `lib/` subdirectory). |
+| `rpc error: code = Unknown desc = no rows in result set` | The beacon-agent version is incompatible with the server. | Upgrade to beacon-agent v1.384.0 or later. |
+
+### Source validation script 
+
+If there are any errors associated with source database permissions, use the validation script provided with the DMS agent. See [Validating source database permissions](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_hm_new/preparing_oracle_source) for instructions on how to run the script and interpret the results.
+
+## Running the agent as a service
+
+For continuous metric streaming and to ensure your Oracle database remains visible in **HM console > Estate**, configure the agent to run as a systemd service. Running as a service ensures it starts automatically on system boot and restarts after any errors.
+
+Without a service, the agent streams metrics only while you run it manually. Your database will disappear from the HM estate 72 hours after the agent stops streaming.
+
+!!!note
+Ensure that any environment variables referenced in `beacon_agent.yaml` (for example, `$BEACON_AGENT_ACCESS_KEY` and `$DSN`) are accessible to the service at runtime.
+!!!
+
+1.  Create the service file. This example uses `vi`, but you can use any text editor:
+
+    ```shell
+    sudo vi /usr/lib/systemd/system/beacon-agent.service
+    ```
+
+    Default service file paths by operating system:
+
+    | Operating system | Default path                                         |
+    | ---------------- | ---------------------------------------------------- |
+    | RHEL             | `/usr/lib/systemd/system/beacon-agent.service`       |
+    | Rocky Linux      | `/usr/lib/systemd/system/beacon-agent.service`       |
+    | AlmaLinux        | `/usr/lib/systemd/system/beacon-agent.service`       |
+    | Ubuntu           | `/etc/systemd/system/beacon-agent.service`           |
+    | Debian           | `/lib/systemd/system/beacon-agent.service`           |
+
+1.  Paste the following template into the file and replace all `< >` placeholders:
+
+    ```ini
+    [Unit]
+    Description=Agent
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=<user>
+    WorkingDirectory=</home/user/>
+    Environment="PATH=</path/to/oracle/instantclient>:</user/binaries>:</system/binaries>"
+    Environment="ORACLE_HOME=</path/to/oracle/instantclient>"
+    ExecStart=</usr/local/bin/beacon-agent>
+    Restart=on-failure
+    RestartSec=60
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    | Setting             | Placeholder                                             | Description                                                                                                                                                |
+    | ------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `User=`             | `<user>`                                                | System user that runs the agent.                                                                                                                           |
+    | `WorkingDirectory=` | `</home/user/>`                                         | Directory where the `.beacon` folder is stored. The path depends on the operating system.                                                                  |
+    | `Environment=`      | `"PATH=</path/to/oracle/instantclient>:..."`            | All directories containing Oracle executables, so the agent can locate `sqlplus` for schema extraction at runtime.                                        |
+    | `Environment=`      | `"ORACLE_HOME=</path/to/oracle/instantclient>"`         | Root directory of the Oracle Instant Client, required by `sqlplus` for schema extraction.                                                                  |
+    | `ExecStart=`        | `</usr/local/bin/beacon-agent>`                         | Full path to the `beacon-agent` binary. The path depends on how and where the agent was installed.                                                         |
+
+1.  Reload systemd, then enable and start the service:
+
+    ```shell
+    sudo systemctl daemon-reload
+    sudo systemctl enable beacon-agent.service
+    sudo systemctl start beacon-agent.service
+    ```
+
+1.  Confirm the service started successfully by checking the logs:
+
+    ```shell
+    journalctl -u beacon-agent.service
+    ```
 
 ## Related topics
 
