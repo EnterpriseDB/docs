@@ -365,24 +365,38 @@ Content is indexed for search when the production site builds.
 
 [Vale](https://vale.sh) is a prose linter that checks documentation against EDB style rules. The configuration and custom rules live in the `vale/` directory.
 
-### Install Vale
+### Quickstart 
+
+1. Install Vale on your Mac
 
 Install Vale with Homebrew:
+  
+    ```shell
+    brew install vale
+    ```
 
-```shell
-brew install vale
-```
+1. Install the Vale extension in VS Code
+    1. Open VS Code and go to the Extensions view (**⌘⇧X**).
+    2. Search for **Vale VSCode**.
+    3. Select the extension by **Chris Chinchilla** and click **Install**.
 
-[Alternate installation options](https://vale.sh/docs/install).
 
-### Set up your local configuration
+**No additional VS Code configuration is needed.** The extension calls the Vale CLI in the background, and Vale automatically finds your config at `docs-editorial/vale/.vale.ini`.
 
-The `.vale.ini` file in this repo contains the configuration appropriate for our docs and should work without changes. 
-If you find that changes to the default settings are useful or necessary, please create a PR to share them with the team!
+The [Vale VS Code extension](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode) runs Vale in the background as you write and highlights rule violations inline, similar to a spell checker.     
+Flagged text is underlined with a squiggly line: red for errors, yellow for warnings, and blue for suggestions. Hovering over an underlined word or phrase shows the rule name and the suggested fix. 
 
-### Styles
+All issues also appear collected in the **Problems** panel (**View > Problems**, or **⌘⇧M**).
 
-The subdirectories `EDB` and `Custom` under `vale/styles` contain the rules Vale enforces:
+If the extension isn't picking up the rules, try restarting VS Code. 
+
+While the extension is useful for catching issues as you write, [running Vale from the terminal](#running-vale-from-the-terminal) gives you a complete, definitive list of all flagged items across a file or directory — useful before committing or submitting a PR. See [Basic usage](#basic-usage) above.
+
+### Viewing and configuring Vale styles
+
+The subdirectories `EDB` and `Custom` under `vale/styles` contain the rules Vale enforces. 
+
+Feel free to edit the rules if you come up with changes that will help the team, and commit them as part of your current PR.
 
 **EDB rules** (`vale/styles/EDB/`):
 
@@ -417,7 +431,7 @@ Other rules covering formatting, frontmatter validation, git conflict detection,
 | `PageLength` | Page exceeds 100,000 characters — consider splitting |
 
 
-### Basic usage
+### Running Vale from the terminal
 
 Run Vale against a file or a directory:
 
@@ -444,31 +458,11 @@ Run Vale with `--output=line` to easily identify the line where an issue is:
 vale --output=line product_docs/docs/pgaa/
 ```
 
-### Other options
-
 If one of the rules is getting too noisy, you can silence it in your local `~/Library/Application Support/vale/.vale.ini`. For example, to silence the active voice rule:
 
 ```
 EDB.ActiveVoice = NO
 ```
-
-### Use Vale in VS Code
-
-The [Vale VS Code extension](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode) runs Vale in the background as you write and highlights rule violations inline — similar to a spell checker. Flagged text is underlined with a squiggly line: red for errors, yellow for warnings, and blue for suggestions. Hovering over an underlined word or phrase shows the rule name and the suggested fix. All issues also appear collected in the **Problems** panel (**View > Problems**, or **⌘⇧M**).
-
-To install the extension:
-
-1. Open VS Code and go to the Extensions view (**⌘⇧X**).
-2. Search for **Vale VSCode**.
-3. Select the extension by **Chris Chinchilla** and click **Install**.
-
-Alternatively, the repo includes `.vscode/extensions.json` with the extension listed as a recommendation, so VS Code prompts you to install it automatically when you open the project.
-
-**No additional VS Code configuration is needed.** The extension calls the Vale CLI in the background, and Vale automatically finds your config at `~/Library/Application Support/vale/.vale.ini` — the same file you set up in the [local configuration step](#set-up-your-local-configuration) above. As long as that file is in place with the correct `StylesPath`, the extension enforces all the EDB and Custom rules as you type.
-
-> If the extension isn't picking up the rules, check that Vale is installed (`vale --version`) and that `~/Library/Application Support/vale/.vale.ini` exists with a valid `StylesPath`.
-
-While the extension is useful for catching issues as you write, running Vale from the terminal gives you a complete, definitive list of all flagged items across a file or directory — useful before committing or submitting a PR. See [Basic usage](#basic-usage) above.
 
 
 ## Contributions
