@@ -72,6 +72,7 @@ export default async function handler(request, context) {
   const contentPath = normalizePath(url);
 
   if (!contentPath) {
+    console.log(`No markdown content for ${request.url}`);
     return new Response("Not Found", { status: 404 });
   }
 
@@ -114,6 +115,7 @@ export default async function handler(request, context) {
   }
 
   // None of the templates resolved
+  console.log(`Markdown source not found for path: ${contentPath}`);
   return new Response(`Markdown source not found for: ${contentPath}`, {
     status: 404,
     headers: { "Content-Type": "text/plain" },
