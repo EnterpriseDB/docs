@@ -202,27 +202,14 @@ const Page = () => {
               <BannerCardLink to="/aidb/latest">
                 AI Database (AIDB)
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/data-pipelines/">
-                AI Pipeline
               <BannerCardLink to="/pg_extensions/pgvector">
                 pgvector
               </BannerCardLink>
-              
               <BannerCardLink to="/pg_extensions/vectorchord">
                 VectorChord
               </BannerCardLink>
-              
               <BannerCardLink to="/pg_extensions/vectorchord_bm25">
                 VectorChord-BM25
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/knowledge-bases/">
-                Knowledge Bases
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/model/serving/">
-                Model Serving
-              </BannerCardLink>
-              <BannerCardLink to="/aidb/latest">
-                AI Database
               </BannerCardLink>
             </BannerSubCard>
 
