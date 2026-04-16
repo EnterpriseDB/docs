@@ -1,3 +1,739 @@
 ---
-title: "Models"
+title: Models reference
+navTitle: Models
+description: API reference for AIDB model management, inference functions, and model configuration helpers.
 ---
+
+Reference for all model-related functions and views in AIDB. For guide-style documentation, see [Integrating models](../integrating-models).
+
+## Catalog views
+
+### `aidb.model_providers`
+
+Lists all available model providers registered in the system.
+
+| Column               | Type   | Description                     |
+|----------------------|--------|---------------------------------|
+| `server_name`        | name   | Name of the model provider      |
+| `server_description` | text   | Description of the provider     |
+| `server_options`     | text[] | Available configuration options |
+
+### `aidb.models`
+
+Lists all models in the registry, including built-in and user-created models.
+
+| Column     | Type  | Description                      |
+|------------|-------|----------------------------------|
+| `name`     | text  | User-defined name for the model  |
+| `provider` | text  | Model provider name              |
+| `options`  | jsonb | Configured options for the model |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.models;
+
+__OUTPUT__
+  name  |  provider  |    options
+--------+------------+---------------
+ bert   | bert_local | {"config={}"}
+ clip   | clip_local | {"config={}"}
+ t5     | t5_local   | {"config={}"}
+(3 rows)
+```
+
+---
+
+## Model management functions
+
+### `aidb.create_model`
+
+Registers a new model in the AIDB model registry.
+
+#### Parameters
+
+| Parameter             | Type    | Default  | Description                                                                           |
+|-----------------------|---------|----------|---------------------------------------------------------------------------------------|
+| `name`                | TEXT    | Required | Unique name for the model.                                                            |
+| `provider`            | TEXT    | Required | Provider name (see `aidb.model_providers`).                                           |
+| `config`              | JSONB   | `'{}'`   | Provider-specific configuration. Build with a [config helper](#model-config-helpers). |
+| `credentials`         | JSONB   | `'{}'`   | Provider credentials (for example, `{"api_key": "..."}`).                             |
+| `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
+
+#### TLS configuration
+
+To connect to HTTPS model endpoints, include a `tls_config` field inside `config`:
+
+```json
+"tls_config": {
+  "insecure_skip_verify": true,
+  "ca_path": "/etc/aidb/myCA.pem"
+}
+```
+
+#### Examples
+
+```sql
+-- Minimal registration
+SELECT aidb.create_model('my_t5', 't5_local');
+
+-- With config and credentials
+SELECT aidb.create_model(
+    name        => 'my_t5',
+    provider    => 't5_local',
+    config      => '{"param1": "value1"}'::JSONB,
+    credentials => '{"token": "abcd"}'::JSONB
+);
+
+-- Rotate credentials without re-creating
+SELECT aidb.create_model(
+    name                => 'my_openai',
+    provider            => 'openai_embeddings',
+    config              => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials         => '{"api_key": "<new-key>"}'::JSONB,
+    replace_credentials => true
+);
+```
+
+---
+
+### `aidb.get_model`
+
+Returns the configuration for a registered model.
+
+#### Parameters
+
+| Parameter    | Type | Description                    |
+|--------------|------|--------------------------------|
+| `model_name` | TEXT | Name of the model to retrieve. |
+
+#### Returns
+
+| Column     | Type  | Description        |
+|------------|-------|--------------------|
+| `name`     | text  | Model name         |
+| `provider` | text  | Provider name      |
+| `options`  | jsonb | Configured options |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_model('t5');
+
+__OUTPUT__
+ name | provider |    options
+------+----------+---------------
+ t5   | t5_local | {"config={}"}
+(1 row)
+```
+
+---
+
+### `aidb.delete_model`
+
+Removes a model from the registry. Does not affect pipelines or knowledge bases that reference it until they are next executed.
+
+#### Parameters
+
+| Parameter    | Type | Description                  |
+|--------------|------|------------------------------|
+| `model_name` | TEXT | Name of the model to delete. |
+
+#### Returns
+
+The name, provider, and options of the deleted model as JSONB.
+
+#### Example
+
+```sql
+SELECT aidb.delete_model('t5');
+
+__OUTPUT__
+     delete_model
+---------------------------------
+ (t5,t5_local,"{""config={}""}")
+(1 row)
+```
+
+---
+
+## HCP model functions
+
+These functions manage models running on EDB Hybrid Manager (HCP).
+
+### `aidb.list_hcp_models`
+
+Lists models currently running on the Hybrid Manager.
+
+#### Returns
+
+| Column  | Type | Description                |
+|---------|------|----------------------------|
+| `name`  | text | Model instance name on HCP |
+| `url`   | text | API endpoint URL           |
+| `model` | text | Model identifier           |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.list_hcp_models();
+
+__OUTPUT__
+             name              |                         url                          |            model
+-------------------------------+------------------------------------------------------+------------------------------
+ llama-3-1-8b-instruct-1xgpu   | http://llama-3-1-8b-predictor.default.svc.local      | meta/llama-3.1-8b-instruct
+(1 row)
+```
+
+---
+
+### `aidb.create_hcp_model`
+
+Registers an HCP-hosted model by referencing its running instance name.
+
+#### Parameters
+
+| Parameter        | Type | Description                                |
+|------------------|------|--------------------------------------------|
+| `name`           | TEXT | User-defined name for the model in AIDB.   |
+| `hcp_model_name` | TEXT | Name of the model instance running on HCP. |
+
+---
+
+### `aidb.sync_hcp_models`
+
+Synchronizes the AIDB model registry with models currently running on HCP. Creates entries for new HCP models and deletes entries for models no longer running there.
+
+#### Returns
+
+| Column   | Type | Description                                     |
+|----------|------|-------------------------------------------------|
+| `status` | text | `created`, `deleted`, `unchanged`, or `skipped` |
+| `model`  | text | Name of the synchronized model                  |
+
+---
+
+## Inference functions
+
+### `aidb.encode_text`
+
+Encodes a single text string into a vector using the specified model.
+
+#### Parameters
+
+| Parameter    | Type | Description                   |
+|--------------|------|-------------------------------|
+| `model_name` | TEXT | Name of the registered model. |
+| `text`       | TEXT | Text to encode.               |
+
+#### Returns
+
+`VECTOR` — the embedding for the input text.
+
+#### Example
+
+```sql
+SELECT aidb.encode_text('bert_local', 'The quick brown fox');
+```
+
+---
+
+### `aidb.encode_text_batch`
+
+Encodes an array of text strings into vectors in a single call.
+
+#### Parameters
+
+| Parameter    | Type   | Description                   |
+|--------------|--------|-------------------------------|
+| `model_name` | TEXT   | Name of the registered model. |
+| `text`       | TEXT[] | Array of strings to encode.   |
+
+#### Returns
+
+`TABLE(id INT, value VECTOR)` — one row per input, preserving input order via `id`.
+
+---
+
+### `aidb.encode_image`
+
+Encodes a binary image into a vector using a multimodal model (for example, CLIP).
+
+#### Parameters
+
+| Parameter    | Type  | Description                   |
+|--------------|-------|-------------------------------|
+| `model_name` | TEXT  | Name of the registered model. |
+| `image`      | BYTEA | Raw image bytes.              |
+
+#### Returns
+
+`VECTOR` — the embedding for the input image.
+
+#### Example
+
+```sql
+SELECT aidb.encode_image('clip_local', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
+```
+
+---
+
+### `aidb.decode_text`
+
+Generates a text response from a prompt using the specified model.
+
+#### Parameters
+
+| Parameter          | Type | Default  | Description                                                                         |
+|--------------------|------|----------|-------------------------------------------------------------------------------------|
+| `model_name`       | TEXT | Required | Name of the registered model.                                                       |
+| `text`             | TEXT | Required | Text prompt or input.                                                               |
+| `inference_config` | JSON | NULL     | Runtime inference settings. Use [`aidb.inference_config()`](#aidbinference_config). |
+
+#### Returns
+
+`TEXT` — the generated response.
+
+#### Examples
+
+```sql
+-- Basic usage
+SELECT aidb.decode_text('t5_local', 'translate to French: Hello, world.');
+
+-- With inference configuration
+SELECT aidb.decode_text(
+    'my_llama',
+    'Explain quantum computing in one sentence.',
+    aidb.inference_config(
+        system_prompt => 'Be concise and factual.',
+        temperature   => 0.7,
+        max_tokens    => 100
+    )::json
+);
+```
+
+---
+
+### `aidb.decode_text_batch`
+
+Generates text responses for an array of prompts in a single call.
+
+#### Parameters
+
+| Parameter          | Type   | Default  | Description                                                                         |
+|--------------------|--------|----------|-------------------------------------------------------------------------------------|
+| `model_name`       | TEXT   | Required | Name of the registered model.                                                       |
+| `input`            | TEXT[] | Required | Array of text prompts.                                                              |
+| `inference_config` | JSON   | NULL     | Runtime inference settings. Use [`aidb.inference_config()`](#aidbinference_config). |
+
+#### Returns
+
+`TABLE(id INT, value TEXT)` — one row per input prompt.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.decode_text_batch('t5_local', ARRAY[
+    'translate to German: hello',
+    'translate to German: goodbye'
+]);
+```
+
+---
+
+### `aidb.rerank_text`
+
+Scores and ranks a set of text inputs against a query using a reranking model.
+
+#### Parameters
+
+| Parameter    | Type   | Default  | Description                           |
+|--------------|--------|----------|---------------------------------------|
+| `model_name` | TEXT   | Required | Name of a registered reranking model. |
+| `query`      | TEXT   | Required | The query to rank inputs against.     |
+| `input`      | TEXT[] | `[]`     | Array of candidate texts to rank.     |
+
+#### Returns
+
+| Column        | Type             | Description                                   |
+|---------------|------------------|-----------------------------------------------|
+| `text`        | text             | The candidate text                            |
+| `logit_score` | double precision | Relevance score (higher = more relevant)      |
+| `id`          | int              | Original index of the text in the input array |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.rerank_text(
+    'my_reranker',
+    'How do I configure AIDB?',
+    ARRAY[
+        'AIDB requires shared_preload_libraries.',
+        'Postgres supports JSON natively.',
+        'Run CREATE EXTENSION aidb CASCADE to install.'
+    ]
+) ORDER BY logit_score DESC;
+```
+
+---
+
+## Inference configuration helper
+
+### `aidb.inference_config`
+
+Builds a JSONB configuration object for runtime inference settings. Pass the result (cast to `json`) to `aidb.decode_text()`, `aidb.decode_text_batch()`, or use it with `aidb.summarize_text_config()`.
+
+All parameters are optional — omit any you don't need.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                                                              |
+|------------------|------------------|---------|------------------------------------------------------------------------------------------|
+| `system_prompt`  | TEXT             | NULL    | System prompt prepended to the request. Not supported by T5 models.                      |
+| `temperature`    | DOUBLE PRECISION | NULL    | Sampling temperature. `0.0` is deterministic; higher values increase variety.            |
+| `max_tokens`     | INTEGER          | NULL    | Maximum tokens to generate.                                                              |
+| `top_p`          | DOUBLE PRECISION | NULL    | Nucleus sampling threshold.                                                              |
+| `seed`           | BIGINT           | NULL    | Random seed for reproducible outputs.                                                    |
+| `repeat_penalty` | REAL             | NULL    | Penalty for repeating tokens. `1.0` = no penalty. Not supported by NIM or OpenAI.        |
+| `repeat_last_n`  | INTEGER          | NULL    | Number of recent tokens considered for `repeat_penalty`. Not supported by NIM or OpenAI. |
+| `thinking`       | BOOLEAN          | NULL    | Controls `<think>` tag handling. `true`/`NULL` retains tags; `false` strips them.        |
+| `extra_args`     | JSONB            | NULL    | Additional provider-specific arguments passed directly to the API.                       |
+
+#### Returns
+
+`JSONB` — cast to `::json` before passing to inference functions.
+
+#### Examples
+
+```sql
+-- With temperature and token limit
+SELECT aidb.decode_text(
+    'my_llama',
+    'What is machine learning?',
+    aidb.inference_config(temperature => 0.5, max_tokens => 150)::json
+);
+
+-- Full configuration
+SELECT aidb.decode_text(
+    'my_llama',
+    'Explain relativity.',
+    aidb.inference_config(
+        system_prompt  => 'You are a physics professor. Be precise.',
+        temperature    => 0.3,
+        max_tokens     => 200,
+        top_p          => 0.9,
+        seed           => 42,
+        repeat_penalty => 1.1
+    )::json
+);
+
+-- Hide reasoning tags from a thinking model
+SELECT aidb.decode_text(
+    'my_reasoning_model',
+    'Solve: 2x + 5 = 15',
+    aidb.inference_config(thinking => false)::json
+);
+```
+
+---
+
+## Model config helpers
+
+These functions return a `JSONB` configuration object for the `config` parameter of `aidb.create_model()`. Each helper corresponds to a specific model provider.
+
+### `aidb.embeddings_config`
+
+For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
+
+| Parameter                 | Type    | Default  | Description                                |
+|---------------------------|---------|----------|--------------------------------------------|
+| `model`                   | TEXT    | Required | Model identifier.                          |
+| `api_key`                 | TEXT    | NULL     | API key.                                   |
+| `url`                     | TEXT    | NULL     | Endpoint URL override.                     |
+| `basic_auth`              | TEXT    | NULL     | Basic auth (`user:password`).              |
+| `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                   |
+| `max_batch_size`          | INTEGER | NULL     | Max inputs per batch.                      |
+| `input_type`              | TEXT    | NULL     | Input type hint (provider-specific).       |
+| `input_type_query`        | TEXT    | NULL     | Query input type hint (provider-specific). |
+| `tls_config`              | JSONB   | NULL     | TLS configuration.                         |
+| `is_hcp_model`            | BOOLEAN | NULL     | `true` if model runs on HCP.               |
+
+```sql
+SELECT aidb.create_model(
+    'my_embedder',
+    'openai_embeddings',
+    config => aidb.embeddings_config(
+        model   => 'text-embedding-3-small',
+        api_key => 'sk-...',
+        url     => 'https://api.openai.com/v1'
+    )
+);
+```
+
+---
+
+### `aidb.completions_config`
+
+For `openai_completions` and any OpenAI-compatible completions endpoint.
+
+| Parameter                 | Type             | Default  | Description                                         |
+|---------------------------|------------------|----------|-----------------------------------------------------|
+| `model`                   | TEXT             | Required | Model identifier.                                   |
+| `api_key`                 | TEXT             | NULL     | API key.                                            |
+| `url`                     | TEXT             | NULL     | Endpoint URL override.                              |
+| `basic_auth`              | TEXT             | NULL     | Basic auth (`user:password`).                       |
+| `system_prompt`           | TEXT             | NULL     | Default system prompt.                              |
+| `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                               |
+| `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                         |
+| `seed`                    | BIGINT           | NULL     | Random seed.                                        |
+| `thinking`                | BOOLEAN          | NULL     | `<think>` tag handling.                             |
+| `max_tokens`              | JSONB            | NULL     | Max tokens config (use `aidb.max_tokens_config()`). |
+| `max_concurrent_requests` | INTEGER          | NULL     | Max concurrent requests.                            |
+| `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.             |
+| `is_hcp_model`            | BOOLEAN          | NULL     | `true` if model runs on HCP.                        |
+
+```sql
+SELECT aidb.create_model(
+    'my_llm',
+    'openai_completions',
+    config => aidb.completions_config(
+        model       => 'gpt-4o',
+        api_key     => 'sk-...',
+        temperature => 0.2
+    )
+);
+```
+
+---
+
+### `aidb.max_tokens_config`
+
+Builds the `max_tokens` object for use with `aidb.completions_config()`.
+
+| Parameter | Type    | Default  | Description                                   |
+|-----------|---------|----------|-----------------------------------------------|
+| `size`    | INTEGER | Required | Maximum tokens to generate.                   |
+| `format`  | TEXT    | NULL     | Format: `'default'`, `'legacy'`, or `'both'`. |
+
+```sql
+SELECT aidb.completions_config(
+    model      => 'gpt-4o',
+    max_tokens => aidb.max_tokens_config(size => 1024, format => 'default')
+);
+```
+
+---
+
+### `aidb.bert_config`
+
+For the `bert_local` provider.
+
+| Parameter   | Type | Default  | Description                   |
+|-------------|------|----------|-------------------------------|
+| `model`     | TEXT | Required | HuggingFace model identifier. |
+| `revision`  | TEXT | NULL     | Model revision or branch.     |
+| `cache_dir` | TEXT | NULL     | Local cache directory.        |
+
+```sql
+SELECT aidb.create_model('my_bert', 'bert_local',
+    config => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2'));
+```
+
+---
+
+### `aidb.clip_config`
+
+For the `clip_local` provider.
+
+| Parameter    | Type    | Default  | Description                   |
+|--------------|---------|----------|-------------------------------|
+| `model`      | TEXT    | Required | HuggingFace model identifier. |
+| `revision`   | TEXT    | NULL     | Model revision or branch.     |
+| `cache_dir`  | TEXT    | NULL     | Local cache directory.        |
+| `image_size` | INTEGER | NULL     | Input image size in pixels.   |
+
+```sql
+SELECT aidb.create_model('my_clip', 'clip_local',
+    config => aidb.clip_config('openai/clip-vit-base-patch32'));
+```
+
+---
+
+### `aidb.llama_config`
+
+For the `llama_local` provider.
+
+| Parameter             | Type             | Default  | Description                                               |
+|-----------------------|------------------|----------|-----------------------------------------------------------|
+| `model`               | TEXT             | Required | Model identifier or HuggingFace path.                     |
+| `revision`            | TEXT             | NULL     | Model revision.                                           |
+| `cache_dir`           | TEXT             | NULL     | Local cache directory.                                    |
+| `model_path`          | TEXT             | NULL     | Explicit local path to model weights (overrides `model`). |
+| `system_prompt`       | TEXT             | NULL     | Default system prompt.                                    |
+| `temperature`         | DOUBLE PRECISION | NULL     | Sampling temperature.                                     |
+| `top_p`               | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                               |
+| `seed`                | BIGINT           | NULL     | Random seed.                                              |
+| `sample_len`          | INTEGER          | NULL     | Max tokens to generate.                                   |
+| `repeat_penalty`      | REAL             | NULL     | Repetition penalty.                                       |
+| `repeat_last_n`       | INTEGER          | NULL     | Tokens considered for repetition penalty.                 |
+| `use_flash_attention` | BOOLEAN          | NULL     | Enable flash attention.                                   |
+| `use_kv_cache`        | BOOLEAN          | NULL     | Enable KV cache.                                          |
+
+```sql
+SELECT aidb.create_model('my_llama', 'llama_local',
+    config => aidb.llama_config(
+        'meta-llama/Llama-3.2-3B-Instruct',
+        temperature => 0.5
+    )
+);
+```
+
+---
+
+### `aidb.t5_config`
+
+For the `t5_local` provider.
+
+| Parameter        | Type             | Default  | Description                               |
+|------------------|------------------|----------|-------------------------------------------|
+| `model`          | TEXT             | Required | Model identifier or HuggingFace path.     |
+| `revision`       | TEXT             | NULL     | Model revision.                           |
+| `model_path`     | TEXT             | NULL     | Explicit local path to model weights.     |
+| `cache_dir`      | TEXT             | NULL     | Local cache directory.                    |
+| `temperature`    | DOUBLE PRECISION | NULL     | Sampling temperature.                     |
+| `top_p`          | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.               |
+| `seed`           | BIGINT           | NULL     | Random seed.                              |
+| `max_tokens`     | INTEGER          | NULL     | Max tokens to generate.                   |
+| `repeat_penalty` | REAL             | NULL     | Repetition penalty.                       |
+| `repeat_last_n`  | INTEGER          | NULL     | Tokens considered for repetition penalty. |
+
+```sql
+SELECT aidb.create_model('my_t5', 't5_local',
+    config => aidb.t5_config('google/flan-t5-base'));
+```
+
+---
+
+### `aidb.gemini_config`
+
+For the `gemini` provider.
+
+| Parameter                 | Type    | Default  | Description                                                |
+|---------------------------|---------|----------|------------------------------------------------------------|
+| `api_key`                 | TEXT    | Required | Google API key.                                            |
+| `model`                   | TEXT    | NULL     | Gemini model identifier (for example, `gemini-2.0-flash`). |
+| `url`                     | TEXT    | NULL     | API endpoint override.                                     |
+| `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                                   |
+| `thinking_budget`         | INTEGER | NULL     | Extended thinking token budget (Gemini 2.x only).          |
+
+```sql
+SELECT aidb.create_model('my_gemini', 'gemini',
+    config => aidb.gemini_config('AIza...', model => 'gemini-2.0-flash'));
+```
+
+---
+
+### `aidb.nim_clip_config`
+
+For the `nim_clip` provider (NVIDIA NIM multimodal embeddings).
+
+| Parameter      | Type    | Default | Description                  |
+|----------------|---------|---------|------------------------------|
+| `api_key`      | TEXT    | NULL    | NIM API key.                 |
+| `model`        | TEXT    | NULL    | NIM CLIP model identifier.   |
+| `url`          | TEXT    | NULL    | NIM endpoint URL override.   |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials.      |
+| `is_hcp_model` | BOOLEAN | NULL    | `true` if model runs on HCP. |
+
+```sql
+SELECT aidb.create_model('my_nim_clip', 'nim_clip',
+    config => aidb.nim_clip_config(api_key => 'nvapi-...', model => 'nvidia/nvclip'));
+```
+
+---
+
+### `aidb.nim_ocr_config`
+
+For the `nim_ocr` provider (NVIDIA NIM OCR).
+
+| Parameter      | Type    | Default | Description                  |
+|----------------|---------|---------|------------------------------|
+| `api_key`      | TEXT    | NULL    | NIM API key.                 |
+| `model`        | TEXT    | NULL    | NIM OCR model identifier.    |
+| `url`          | TEXT    | NULL    | NIM endpoint URL override.   |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials.      |
+| `is_hcp_model` | BOOLEAN | NULL    | `true` if model runs on HCP. |
+
+```sql
+SELECT aidb.create_model('my_nim_ocr', 'nim_ocr',
+    config => aidb.nim_ocr_config(api_key => 'nvapi-...'));
+```
+
+---
+
+### `aidb.nim_reranking_config`
+
+For the `nim_reranking` provider.
+
+| Parameter      | Type    | Default | Description                     |
+|----------------|---------|---------|---------------------------------|
+| `api_key`      | TEXT    | NULL    | NIM API key.                    |
+| `model`        | TEXT    | NULL    | NIM reranking model identifier. |
+| `url`          | TEXT    | NULL    | NIM endpoint URL override.      |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials.         |
+| `is_hcp_model` | BOOLEAN | NULL    | `true` if model runs on HCP.    |
+
+```sql
+SELECT aidb.create_model('my_reranker', 'nim_reranking',
+    config => aidb.nim_reranking_config(
+        api_key => 'nvapi-...',
+        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
+    )
+);
+```
+
+---
+
+### `aidb.openrouter_chat_config`
+
+For the `openrouter_chat` provider.
+
+| Parameter                 | Type    | Default  | Description                                         |
+|---------------------------|---------|----------|-----------------------------------------------------|
+| `model`                   | TEXT    | Required | OpenRouter model identifier.                        |
+| `api_key`                 | TEXT    | NULL     | OpenRouter API key.                                 |
+| `url`                     | TEXT    | NULL     | API endpoint override.                              |
+| `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                            |
+| `max_tokens`              | JSONB   | NULL     | Max tokens config (use `aidb.max_tokens_config()`). |
+
+```sql
+SELECT aidb.create_model('my_or_chat', 'openrouter_chat',
+    config => aidb.openrouter_chat_config(
+        'anthropic/claude-3-5-haiku',
+        api_key => 'sk-or-...'
+    )
+);
+```
+
+---
+
+### `aidb.openrouter_embeddings_config`
+
+For the `openrouter_embeddings` provider.
+
+| Parameter                 | Type    | Default  | Description                             |
+|---------------------------|---------|----------|-----------------------------------------|
+| `model`                   | TEXT    | Required | OpenRouter embeddings model identifier. |
+| `api_key`                 | TEXT    | NULL     | OpenRouter API key.                     |
+| `url`                     | TEXT    | NULL     | API endpoint override.                  |
+| `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                |
+| `max_batch_size`          | INTEGER | NULL     | Max inputs per batch.                   |
+
+```sql
+SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
+    config => aidb.openrouter_embeddings_config(
+        'mistral/mistral-embed',
+        api_key => 'sk-or-...'
+    )
+);
+```

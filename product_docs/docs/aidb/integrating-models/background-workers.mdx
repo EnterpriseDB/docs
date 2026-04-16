@@ -1,0 +1,78 @@
+---
+title: Background workers and PG settings
+navTitle: Background workers / PG settings
+description: Postgres configuration required to enable asynchronous background pipeline processing in AIDB, including shared_preload_libraries and max_worker_processes.
+---
+
+Pipelines in Background mode run as dedicated Postgres background worker processes, separate from user sessions. 
+This allows high-volume AI workloads — embedding generation, OCR, PDF parsing — to run continuously without blocking queries or transactions on your source tables.
+
+Two Postgres settings are relevant: one is required, one is tunable.
+
+## Required: shared_preload_libraries
+
+AIDB must be registered as a preload library before background workers can start. This is set during initial configuration (see [Configuring AIDB](../install/configure#configure-shared_preload_libraries)), but it's worth confirming it is in place before enabling Background mode on any pipeline.
+
+In `postgresql.conf`:
+
+```ini
+shared_preload_libraries = 'aidb'
+```
+
+If other extensions are already listed, append `aidb` with a comma separator. Restart Postgres after making this change.
+
+Without this setting, creating a pipeline with `auto_processing => 'Background'` will not start a worker, and no background processing will occur.
+
+## Required: max_worker_processes
+
+Each pipeline in Background mode requires one dedicated Postgres background worker process. The Postgres setting `max_worker_processes` controls how many background worker processes are allowed across the entire cluster.
+
+The default value is `8`. If you plan to run multiple background pipelines, increase this value to accommodate them:
+
+```ini
+# postgresql.conf — allow up to 20 background worker processes
+max_worker_processes = 20
+```
+
+Restart Postgres after changing this setting. To check the current value:
+
+```sql
+SHOW max_worker_processes;
+```
+
+If `max_worker_processes` is exhausted, newly created background pipelines will not start a worker and will silently skip processing until capacity is freed.
+
+## Optional: background_sync_interval
+
+Each pipeline in Background mode has a `background_sync_interval` setting that controls how often the worker polls for new or changed data. This is configured per pipeline, not in `postgresql.conf`.
+
+```sql
+SELECT aidb.create_pipeline(
+    name                     => 'my_pipeline',
+    source                   => 'my_table',
+    auto_processing          => 'Background',
+    background_sync_interval => '30 seconds',
+    ...
+);
+```
+
+The default interval is suitable for most table sources. For volume sources backed by cloud object stores like AWS S3, each scan incurs a list operation which may have cost or rate-limit implications. In those cases, consider a longer interval:
+
+```sql
+SELECT aidb.update_pipeline(
+    'my_s3_pipeline',
+    background_sync_interval => '1 day'
+);
+```
+
+`background_sync_interval` accepts any Postgres interval value (`'5 minutes'`, `'1 hour'`, `'1 day'`, etc.).
+
+## Summary
+
+| Setting                             | Where                  | Required? | Notes                                                        |
+|-------------------------------------|------------------------|-----------|--------------------------------------------------------------|
+| `shared_preload_libraries = 'aidb'` | `postgresql.conf`      | Yes       | Background workers will not start without this.              |
+| `max_worker_processes`              | `postgresql.conf`      | Yes       | One process per background pipeline. Default is 8.           |
+| `background_sync_interval`          | Per-pipeline parameter | No        | Controls polling frequency. Tune for cost on volume sources. |
+
+For more on how background workers execute pipelines, see [Background workers](../data-pipelines/orchestration/background-workers).

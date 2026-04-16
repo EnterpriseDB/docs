@@ -1,0 +1,274 @@
+---
+title: External model connections
+navTitle: External model connections
+description: How to connect AIDB to external AI model providers, including OpenAI-compatible APIs, NVIDIA NIM, Google Gemini, and OpenRouter.
+---
+
+External models are API-based models hosted outside your Postgres instance. AIDB connects to them by registering a model with `aidb.create_model()`, supplying the provider name, a configuration object, and (where required) credentials such as an API key.
+
+Once registered, an external model is used exactly like a built-in local model — by name in any AIDB SQL function or pipeline step.
+
+## OpenAI-compatible endpoints
+
+AIDB supports any embedding or chat/completions service that implements the OpenAI API. This includes OpenAI itself, self-hosted servers like [Ollama](https://ollama.com), and any other compliant endpoint.
+
+### Embeddings
+
+Use the `openai_embeddings` provider with `aidb.embeddings_config()`. Override the `url` parameter to redirect requests to any OpenAI-compatible server:
+
+```sql
+-- OpenAI
+SELECT aidb.create_model(
+    'my_openai_embedder',
+    'openai_embeddings',
+    config => aidb.embeddings_config(
+        model   => 'text-embedding-3-small',
+        api_key => 'sk-...',
+        url     => 'https://api.openai.com/v1'
+    )
+);
+
+-- Local Ollama server
+SELECT aidb.create_model(
+    'my_ollama_embedder',
+    'openai_embeddings',
+    config => aidb.embeddings_config(
+        model => 'llama3.2',
+        url   => 'http://llama.local:11434/v1/embeddings'
+    )
+);
+```
+
+`aidb.embeddings_config()` parameters:
+
+| Parameter                 | Type    | Default  | Description                                             |
+|---------------------------|---------|----------|---------------------------------------------------------|
+| `model`                   | TEXT    | Required | Model identifier as expected by the API.                |
+| `api_key`                 | TEXT    | NULL     | API key for authentication.                             |
+| `url`                     | TEXT    | NULL     | API endpoint URL. Defaults to OpenAI's endpoint.        |
+| `basic_auth`              | TEXT    | NULL     | Basic auth credentials (`user:password`).               |
+| `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests to the endpoint.            |
+| `max_batch_size`          | INTEGER | NULL     | Maximum number of inputs per batch request.             |
+| `input_type`              | TEXT    | NULL     | Input type hint for encoding (provider-specific).       |
+| `input_type_query`        | TEXT    | NULL     | Input type hint for query encoding (provider-specific). |
+| `is_hcp_model`            | BOOLEAN | NULL     | Set to `true` if referencing a model running on HCP.    |
+
+### Chat completions
+
+Use the `openai_completions` provider with `aidb.completions_config()`. The `url` parameter works the same way — omit it for OpenAI, or override it for any other compliant server:
+
+```sql
+SELECT aidb.create_model(
+    'my_openai_llm',
+    'openai_completions',
+    config => aidb.completions_config(
+        model       => 'gpt-4o',
+        api_key     => 'sk-...',
+        temperature => 0.2
+    )
+);
+```
+
+`aidb.completions_config()` parameters:
+
+| Parameter                 | Type             | Default  | Description                                          |
+|---------------------------|------------------|----------|------------------------------------------------------|
+| `model`                   | TEXT             | Required | Model identifier.                                    |
+| `api_key`                 | TEXT             | NULL     | API key for authentication.                          |
+| `url`                     | TEXT             | NULL     | API endpoint URL. Defaults to OpenAI's endpoint.     |
+| `basic_auth`              | TEXT             | NULL     | Basic auth credentials (`user:password`).            |
+| `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                                |
+| `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                          |
+| `seed`                    | BIGINT           | NULL     | Random seed for reproducible outputs.                |
+| `system_prompt`           | TEXT             | NULL     | Default system prompt prepended to every request.    |
+| `max_tokens`              | JSONB            | NULL     | Max tokens config (from `aidb.max_tokens_config()`). |
+| `thinking`                | BOOLEAN          | NULL     | Enable extended reasoning (supported models only).   |
+| `max_concurrent_requests` | INTEGER          | NULL     | Maximum concurrent requests to the endpoint.         |
+| `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.              |
+| `is_hcp_model`            | BOOLEAN          | NULL     | Set to `true` if referencing a model running on HCP. |
+
+!!!Note
+When using pgvector indexing, be aware that [pgvector limits indexed vectors to 2000 dimensions](https://github.com/pgvector/pgvector?tab=readme-ov-file#what-if-i-want-to-index-vectors-with-more-than-2000-dimensions). If the model you choose produces more dimensions, use `aidb.vector_index_disabled_config()` in your pipeline step and manage the index manually.
+!!!
+
+## NVIDIA NIM
+
+AIDB supports NVIDIA NIM microservices hosted on [build.nvidia.com](https://build.nvidia.com) as well as NIM instances running in your own environment.
+
+### Text generation (NIM completions)
+
+Use the `nim_completions` provider with the model identifier and your NIM API key:
+
+```sql
+SELECT aidb.create_model(
+    'my_nim_llm',
+    'nim_completions',
+    '{"model": "meta/llama-3.3-70b-instruct"}'::JSONB,
+    '{"api_key": "<NIM API KEY>"}'::JSONB
+);
+```
+
+To use a NIM instance running in your own environment, add a `url` key to the config pointing at your NIM endpoint.
+
+After registering, run the model with `aidb.decode_text()`:
+
+```sql
+SELECT aidb.decode_text('my_nim_llm', 'Tell me a short, one sentence story');
+
+__OUTPUT__
+                                      decode_text
+----------------------------------------------------------------------------------
+ As the clock struck midnight, a single tear fell from the porcelain doll's eye.
+(1 row)
+```
+
+### Multimodal embeddings (NIM CLIP)
+
+Use the `nim_clip` provider with `aidb.nim_clip_config()` for joint text and image embeddings:
+
+```sql
+SELECT aidb.create_model(
+    'my_nim_clip',
+    'nim_clip',
+    config => aidb.nim_clip_config(
+        api_key => 'nvapi-...',
+        model   => 'nvidia/nvclip'
+    )
+);
+```
+
+`aidb.nim_clip_config()` parameters:
+
+| Parameter      | Type    | Default | Description                                       |
+|----------------|---------|---------|---------------------------------------------------|
+| `api_key`      | TEXT    | NULL    | API key for NIM authentication.                   |
+| `model`        | TEXT    | NULL    | NIM CLIP model identifier.                        |
+| `url`          | TEXT    | NULL    | NIM endpoint URL override.                        |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials.                           |
+| `is_hcp_model` | BOOLEAN | NULL    | Set to `true` if the model is running on HCP.     |
+
+### OCR (NIM OCR)
+
+Use the `nim_ocr` provider with `aidb.nim_ocr_config()` to extract text from images:
+
+```sql
+SELECT aidb.create_model(
+    'my_nim_ocr',
+    'nim_ocr',
+    config => aidb.nim_ocr_config(api_key => 'nvapi-...')
+);
+```
+
+`aidb.nim_ocr_config()` parameters:
+
+| Parameter      | Type    | Default | Description                                       |
+|----------------|---------|---------|---------------------------------------------------|
+| `api_key`      | TEXT    | NULL    | API key for NIM authentication.                   |
+| `model`        | TEXT    | NULL    | NIM OCR model identifier.                         |
+| `url`          | TEXT    | NULL    | NIM endpoint URL override.                        |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials.                           |
+| `is_hcp_model` | BOOLEAN | NULL    | Set to `true` if the model is running on HCP.     |
+
+### Reranking (NIM reranking)
+
+Use the `nim_reranking` provider with `aidb.nim_reranking_config()` to re-score search results by relevance. See [Reranking text](../sql-functions/rerank-text) for usage with `aidb.rerank_text()`:
+
+```sql
+SELECT aidb.create_model(
+    'my_reranker',
+    'nim_reranking',
+    config => aidb.nim_reranking_config(
+        api_key => 'nvapi-...',
+        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
+    )
+);
+```
+
+`aidb.nim_reranking_config()` parameters:
+
+| Parameter      | Type    | Default | Description                                       |
+|----------------|---------|---------|---------------------------------------------------|
+| `api_key`      | TEXT    | NULL    | API key for NIM authentication.                   |
+| `model`        | TEXT    | NULL    | NIM reranking model identifier.                   |
+| `url`          | TEXT    | NULL    | NIM endpoint URL override.                        |
+| `basic_auth`   | TEXT    | NULL    | Basic auth credentials.                           |
+| `is_hcp_model` | BOOLEAN | NULL    | Set to `true` if the model is running on HCP.     |
+
+To get a NIM API key, create an account at [build.nvidia.com](https://build.nvidia.com), select a model, and generate a key from the model's page.
+
+## Google Gemini
+
+Use the `gemini` provider with `aidb.gemini_config()`. Pass your Google API key as the first argument:
+
+```sql
+SELECT aidb.create_model(
+    'my_gemini',
+    'gemini',
+    config => aidb.gemini_config(
+        'AIza...',
+        model => 'gemini-2.0-flash'
+    )
+);
+```
+
+`aidb.gemini_config()` parameters:
+
+| Parameter                 | Type    | Default  | Description                                              |
+|---------------------------|---------|----------|----------------------------------------------------------|
+| `api_key`                 | TEXT    | Required | Google API key.                                          |
+| `model`                   | TEXT    | NULL     | Gemini model identifier (for example, `gemini-2.0-flash`). |
+| `url`                     | TEXT    | NULL     | API endpoint URL override.                               |
+| `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests to the API.                  |
+| `thinking_budget`         | INTEGER | NULL     | Extended thinking token budget (Gemini 2.x models only). |
+
+## OpenRouter
+
+[OpenRouter](https://openrouter.ai) provides a unified API gateway to 200+ models from multiple providers. AIDB supports both chat completions and embeddings via OpenRouter.
+
+### Chat completions
+
+```sql
+SELECT aidb.create_model(
+    'my_or_chat',
+    'openrouter_chat',
+    config => aidb.openrouter_chat_config(
+        'anthropic/claude-3-5-haiku',
+        api_key => 'sk-or-...'
+    )
+);
+```
+
+`aidb.openrouter_chat_config()` parameters:
+
+| Parameter                 | Type    | Default  | Description                                            |
+|---------------------------|---------|----------|--------------------------------------------------------|
+| `model`                   | TEXT    | Required | OpenRouter model identifier.                           |
+| `api_key`                 | TEXT    | NULL     | OpenRouter API key.                                    |
+| `url`                     | TEXT    | NULL     | API endpoint URL override.                             |
+| `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests.                           |
+| `max_tokens`              | JSONB   | NULL     | Max tokens config (from `aidb.max_tokens_config()`).   |
+
+### Embeddings
+
+```sql
+SELECT aidb.create_model(
+    'my_or_embedder',
+    'openrouter_embeddings',
+    config => aidb.openrouter_embeddings_config(
+        'mistral/mistral-embed',
+        api_key => 'sk-or-...'
+    )
+);
+```
+
+`aidb.openrouter_embeddings_config()` parameters:
+
+| Parameter                 | Type    | Default  | Description                                  |
+|---------------------------|---------|----------|----------------------------------------------|
+| `model`                   | TEXT    | Required | OpenRouter embeddings model identifier.      |
+| `api_key`                 | TEXT    | NULL     | OpenRouter API key.                          |
+| `url`                     | TEXT    | NULL     | API endpoint URL override.                   |
+| `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests.                 |
+| `max_batch_size`          | INTEGER | NULL     | Maximum inputs per batch request.            |
+
+See the [Pipelines API reference](../data-pipelines/reference#model-config-helpers) for full parameter details on all config helper functions.
