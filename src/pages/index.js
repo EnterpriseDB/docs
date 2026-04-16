@@ -220,6 +220,7 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/ai-factory/model/serving/">
                 Model Serving
+              </BannerCardLink>
               <BannerCardLink to="/aidb/latest">
                 AI Database
               </BannerCardLink>
