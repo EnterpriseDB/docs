@@ -1,0 +1,94 @@
+---
+title: Text reranking
+navTitle: Text reranking
+description: The rerank function scores and reorders a set of candidate text results by relevance to a query using a reranking model, improving the quality of retrieval results.
+---
+
+Use the `aidb.rerank_text()` function to reorder a set of candidate text passages by their relevance to a query. Reranking is typically applied as a post-retrieval step — after an initial set of candidates has been retrieved from a knowledge base — to surface the most relevant results at the top.
+
+**Step 1: Register a reranking model**
+
+```sql
+SELECT aidb.create_model(
+    'my_reranker',
+    'nim_reranking',
+    config => aidb.nim_reranking_config(
+        api_key => 'nvapi-...',
+        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
+    )
+);
+```
+
+**Step 2: Rerank a set of candidates**
+
+```sql
+SELECT * FROM aidb.rerank_text(
+    query   => 'What is retrieval-augmented generation?',
+    inputs  => ARRAY[
+        'RAG combines retrieval and generation to produce grounded answers.',
+        'Vector databases store high-dimensional embeddings for similarity search.',
+        'RAG systems retrieve relevant documents before generating a response.'
+    ],
+    options => '{"model": "my_reranker"}'
+)
+ORDER BY relevance_score DESC;
+
+__OUTPUT__
+ id | relevance_score
+----+-----------------
+  2 |        0.97
+  0 |        0.91
+  1 |        0.43
+(3 rows)
+```
+
+The `id` column corresponds to the zero-based index of each string in the `inputs` array, allowing you to join back to the original data.
+
+## Parameters
+
+| Parameter | Type     | Description                                                                      |
+|-----------|----------|----------------------------------------------------------------------------------|
+| `query`   | `TEXT`   | The search query to score candidates against.                                    |
+| `inputs`  | `TEXT[]` | Array of candidate text passages to rerank.                                      |
+| `options` | `JSONB`  | Configuration object. Must include `"model"`: the name of a registered reranking model. |
+
+## Returns
+
+A set of rows, one per candidate, with columns:
+
+| Column            | Type      | Description                                                         |
+|-------------------|-----------|---------------------------------------------------------------------|
+| `id`              | `INTEGER` | Zero-based index corresponding to the candidate's position in the `inputs` array. |
+| `relevance_score` | `FLOAT`   | A relevance score between 0 and 1. Higher values indicate greater relevance to the query. |
+
+## Using reranking after knowledge base retrieval
+
+A typical pattern is to retrieve an initial candidate set from a knowledge base and then rerank the results:
+
+```sql
+WITH candidates AS (
+    SELECT
+        source_id,
+        content
+    FROM aidb.retrieve_text('my_kb', 'What is RAG?', 20)
+    JOIN my_source_table ON source_id = id::TEXT
+)
+SELECT
+    c.source_id,
+    c.content,
+    r.relevance_score
+FROM candidates c
+JOIN aidb.rerank_text(
+    query   => 'What is RAG?',
+    inputs  => ARRAY(SELECT content FROM candidates),
+    options => '{"model": "my_reranker"}'
+) r ON r.id = (
+    SELECT array_position(ARRAY(SELECT content FROM candidates), c.content) - 1
+)
+ORDER BY r.relevance_score DESC
+LIMIT 5;
+```
+
+!!!Note
+Reranking models score passages against a query but don't generate text. To register a reranking model, use the appropriate [model config helper](../data-pipelines/reference#model-config-helpers) for your provider — for example, `aidb.nim_reranking_config()` for NVIDIA NIM reranking endpoints.
+!!!
