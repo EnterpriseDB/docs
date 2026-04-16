@@ -4,29 +4,59 @@ navTitle: Creating native users
 description: Create additional native users.
 ---
 
-For testing or demo environments, you can simplify operations by adding native users. For production deployments, we strongly recommend [configuring an external IdP](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/config_idp_hm).
+For testing or demo environments, you can simplify operations by adding native users. For production deployments, we strongly recommend [configuring an external IdP](/edb-postgres-ai/latest/hybrid-manager/install/configuration/byo_idp/config_idp_hm/).
 
-Currently, you can't create human users with the Hybrid Manager (HM) console. You can do so only by tweaking the HM configuration file.  
+Native user credentials are stored in the `hm-portal-bootstrap` Kubernetes secret. To add a new user, you append their credentials to this secret.
 
 ## Adding a native user
 
-Append new users to the `portal.authentication.staticPasswords` section during or after installation. Replace this value either in your `values.yaml` file or `HybridControlPlane` custom resource, depending on the installation method you use.
+1. Generate a unique user ID and bcrypt-hashed password for the new user:
 
-```yaml
-portal:
-  authentication:
-    staticPasswords:
-      - email: "owner@mycompany.com"
-        hash: "$2y$10$STTzuGJa3PydqHvlzi2z6OgDU1G/JLTqiuGblH.RemIutWxkztN5m"
-        username: "owner@mycompany.com"
-        userID: "c5998173-a605-449a-a9a5-4a9c33e26df7"
-     - email: "<userA@example.com>"          
-       hash: "<example_hashed_password>"
-       username: "<userA@example.com>"
-       userID: "<unique_user_id>"  
-```
+   ```shell
+   NEW_USER_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+   NEW_PASSWORD="your-secure-password"
+   NEW_HASH=$(echo -n "$NEW_PASSWORD" | htpasswd -BinC 10 admin | cut -d: -f2)
+   echo "User ID: $NEW_USER_ID"
+   echo "Password hash: $NEW_HASH"
+   ```
 
-The dex service will restart to apply the changes automatically after saving them.
+2. Retrieve the current secret content:
+
+   ```shell
+   kubectl get secret hm-portal-bootstrap -n default -o jsonpath='{.data.static-passwords\.yaml}' | base64 -d > static-passwords.yaml
+   ```
+
+3. Edit the `static-passwords.yaml` file and append the new user to the `staticPasswords` list:
+
+   ```yaml
+   staticPasswords:
+     - email: "owner@mycompany.com"
+       hash: "$2y$10$FWXeALAmT/axI/FIos/NtOVEldynfCx/bqDOAJ9EbiKeq5NuDR.XO"
+       username: "Owner MyCompany"
+       userID: "c5998173-a605-449a-a9a5-4a9c33e26df7"
+     - email: "newuser@example.com"
+       hash: "$2y$10$FIvL7GWymJtGZo5uTMrWsOTuifUmwJQg8JtHJQxuLkT3os2Ozpo1C"
+       username: "New User"
+       userID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+   ```
+
+4. Update the secret with the modified content:
+
+   ```shell
+   kubectl patch secret hm-portal-bootstrap -n default \
+     --type merge \
+     -p "{\"data\":{\"static-passwords.yaml\":\"$(base64 < static-passwords.yaml | tr -d '\n')\"}}"
+   ```
+
+5. The secret is automatically replicated to the `upm-dex` namespace, and the Dex deployment automatically restarts to apply the changes.
+
+6. Verify the Dex pods have restarted and are running:
+
+   ```shell
+   kubectl get pods -n upm-dex -l app=dex
+   ```
+
+The new user can now sign in to the HM console with their email and password.
 
 ### Parameters
 
