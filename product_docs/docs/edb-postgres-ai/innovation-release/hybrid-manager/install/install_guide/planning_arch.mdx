@@ -17,7 +17,7 @@ deepToC: true
 
 * *An Architectural Decision Record (ADR) defining the topology, locality, and redundancy model of your Hybrid Manager (HM) architecture. (at minimum: architecture diagrams with notes)*
 
-* *Initial inputs for the HM Helm chart configuration file: `values.yaml`.*
+* *Initial inputs for the HM configuration — either a `HybridControlPlane` Custom Resource manifest (Operator method, recommended) or a `values.yaml` file (Bootstrap method).*
 
 !!! Note
 You, as the customer, ultimately own your deployment architecture.
@@ -124,7 +124,7 @@ The customer is responsible for the full life cycle management of the Kubernetes
 The HM distributed reference architecture represents the ultimate goal for achieving the highest levels of scale and fastest SLAs. 
 It typically spans multiple data centers.
 
-![HM reference architecture](../images/HCP_reference_architectures-reference.svg)
+![HM reference architecture](../../images/HCP_reference_architectures-reference.svg)
 
 ### Diagram legend reference
 
@@ -156,7 +156,7 @@ This is fully functional for:
 * Database migration capabilities.
 * GenAI (limited capabilities due to lack of managed Postgres instances).
 
-![HM minimum](../images/HCP_reference_architectures-minimum.svg)
+![HM minimum](../../images/HCP_reference_architectures-minimum.svg)
 
 #### Internal architecture: HM Control Plane
 
@@ -196,13 +196,13 @@ Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual
 
 * Backup agents: Local tools (like Barman) managing WAL archiving to your Object Storage.
 
-![HM Data Plane](../images/HCP_reference_architectures-dbaas.svg)
+![HM Data Plane](../../images/HCP_reference_architectures-dbaas.svg)
 
 ### C. Fully featured deployment
 
 This view shows a fully capable HM deployment, including resources like GPU acceleration for AI workloads.
 
-![HM fully featured](../images/HCP_reference_architectures-full-featured.svg)
+![HM fully featured](../../images/HCP_reference_architectures-full-featured.svg)
 
 ### D. Multi-Location
 
@@ -212,9 +212,9 @@ The multi-location capability is a DBaaS offering following a hub and spoke mode
 2.  The primary HM controls the Secondary.
 3.  Connectivity is established using load-balanced endpoints&mdash;not a network mesh service, like Submariner for example.
 
-![HM multi-location](../images/HCP_reference_architectures-multi-location.svg)
+![HM multi-location](../../images/HCP_reference_architectures-multi-location.svg)
 
-## Installation scenarios
+## Choosing an installation scenario
 
 HM provides a comprehensive suite of capabilities by default. To meet strict security standards and organizational governance, HM supports a modular installation through "scenarios". This allows you to deploy a curated subset of features, effectively reducing the software footprint for security audits and streamlining the UI by removing unauthorized or unlicensed components.
 
@@ -245,7 +245,7 @@ When choosing which scenarios to install, consider the following architectural a
 
 Decide whether your environment requires a full installation or a targeted subset. 
 
-!!!important
+!!! Important
 Currently, modifying installation scenarios after deployment isn't supported. Ensure you install all required capabilities, as you cannot add or remove them once HM is deployed.
 !!!
 
@@ -253,28 +253,62 @@ Currently, modifying installation scenarios after deployment isn't supported. En
 
 The decisions made during this discovery process directly determine the some of the root parameters of your installation configuration.
 
-While you do not need to create the file yet, your **Architecture Decision Record** should specify the values for these keys. 
-The **SRE/Admin** builds on these inputs, either recording them or continuing/beginning the configuration file in [Phase 2: Gathering your system requirements](/edb-postgres-ai/current/hybrid-manager/install/sys_reqs/) and/or uses these specs to build the configuration file, `values.yaml` in **[Phase 3: Preparing your Environment](environment_prep)**.
+While you do not need to create the file yet, your **Architecture Decision Record** should specify the values for these keys.
+The **SRE/Admin** builds on these inputs, by either recording them or beginning/continuing the configuration file in [Phase 2: Gathering your system requirements](/edb-postgres-ai/current/hybrid-manager/install/install_guide/sys_reqs/) and/or uses these values to build the configuration file in **[Phase 4: Preparing your Environment](environment_prep)**.
+
+### Values needed for the two installation methods.
+
+As noted, HM supports two installation methods: the recommended Operator method and the legacy Bootstrap method.
+However, the information and field values you gather in Phases 1–2 are the same regardless of which method you choose. 
+The fields where you input the values are different, as final configuration file format differs depending on the installation method:
+
+- **Operator method (recommended):** Uses a `HybridControlPlane` Custom Resource manifest with the `edb-hcp-operator` helm chart. 
+- **Bootstrap method (deprecated):** Uses a `values.yaml` file with the `edbpgai-bootstrap` helm chart.
 
 ### Configuration details
 
-| Architecture decision | Config parameter (`values.yaml`) | Example value |
-| :--- | :--- | :--- |
-| **Kubernetes Platform** | `system` | `aks`, `eks`, `gke`, `rhos` |
-| **Target location** | `parameters.upm-beacon.beacon_location_id` | `aws-us-east-1` |
-| **OpenShift mode** | `beaconAgent.provisioning.openshift` | `true` (only for RHOS/ROSA) |
-
-!!!note Version tag formatting
-When executing the installation, note that the Helm `--version` flag uses the raw numeric format or `<helm-version>` (e.g., `2026.3.0`), whereas the `bootstrapImageTag` requires an `<image-tag-version>` with a `v` prefix (e.g., `v2026.3.0`).
-!!!
+| Architecture decision       | HybridControlPlane CR field (Operator) | Config parameter (`values.yaml`) (Bootstrap) | Example value               |
+| :-------------------------- | :------------------------------------- | :------------------------------------------- | :-------------------------- |
+| **Kubernetes Platform**     | `spec.flavour`                         | `system`                                     | `aks`, `eks`, `gke`, `rhos` |
+| **Target location**         | `spec.componentsParameters.upm-beacon.beacon_location_id` | `parameters.upm-beacon.beacon_location_id` | `aws-us-east-1` |
+| **Provisioning mode**       | `spec.beaconAgent.provisioning.provider` | `beaconAgent.provisioning.provider`         | `azure`, `aws`, or `gcp` |
+| **Installation scenarios**  | `spec.scenarios` (YAML list)           | `scenarios` (comma-separated string, e.g. `"core,migration,ai,analytics"`) | `core`, `migration`, `ai`, `analytics` |
 
 ### Impact on configuration file
 
-Here is how your decisions map to the final configuration file structure of the HM Helm chart `values.yaml` you create in Phase 3:
+The following YAML snippets show how your architectural decisions above map to the final configuration file structures. 
+There is an example for each installation type.
+
+#### Operator method (`HybridControlPlane` CR)
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  flavour: <Kubernetes_Flavor> # e.g., rhos, rke2, aks, eks, gke
+  imageRegistry: <Container_Registry_Domain>/pgai-platform
+  version: <Version>
+  scenarios: # Omit to install all scenarios by default
+    - core
+    - migration # remove if not needed
+    - ai        # remove if not needed
+    - analytics # remove if not needed
+  componentsParameters:
+    upm-beacon:
+      beacon_location_id: <Deployment_Location_Name>
+  beaconAgent:
+    provisioning:
+      provider: <Provider_Name> # Azure, AWS, GCP
+      openshift: <Boolean_Value> # Defaults to false, set to true if deploying on RHOS
+```
+
+#### Bootstrap method (`values.yaml`)
 
 ```yaml
 system: <Kubernetes_Flavor> # e.g., rhos, rke2, aks, eks, gke
-bootstrapImageName: [https://docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap-](https://docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap-)<Kubernetes_Flavor>
+bootstrapImageName: <Container_Registry_Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes_Flavor>
 bootstrapImageTag: <image-tag-version>
 scenarios: "core,migration,ai,analytics"
 parameters:
