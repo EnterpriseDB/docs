@@ -1,0 +1,211 @@
+---
+title: Functions reference
+navTitle: Functions
+description: API reference for AIDB standalone SQL functions — text chunking, HTML and PDF parsing, OCR, and text summarization.
+---
+
+Reference for AIDB standalone SQL functions that transform data directly in queries, without requiring a pipeline. For guide-style documentation and usage examples, see [SQL functions](../sql-functions).
+
+For AI inference functions (`encode_text`, `decode_text`, `rerank_text`, and related), see [Models reference](models#inference-functions).
+
+---
+
+## `aidb.chunk_text`
+
+Divides a text string into smaller, semantically coherent segments.
+
+### Parameters
+
+| Parameter | Type  | Description                         |
+|-----------|-------|-------------------------------------|
+| `input`   | TEXT  | The text to chunk.                  |
+| `options` | JSONB | Chunking configuration (see below). |
+
+**Options**
+
+| Key              | Type    | Default   | Description                                                                                                                                         |
+|------------------|---------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `desired_length` | integer | Required  | Target segment size. Acts as a strict upper limit if `max_length` is omitted.                                                                       |
+| `max_length`     | integer | NULL      | Upper bound for chunk size. Chunks extend past `desired_length` only to preserve semantic boundaries.                                               |
+| `overlap_length` | integer | `0`       | Amount of content to repeat between consecutive chunks, to preserve cross-boundary context.                                                         |
+| `strategy`       | text    | `'chars'` | Chunking unit: `'chars'` (character-based) or `'words'` (word-based). Determines the unit for `desired_length`, `max_length`, and `overlap_length`. |
+
+### Returns
+
+| Column    | Type    | Description               |
+|-----------|---------|---------------------------|
+| `part_id` | integer | Zero-based segment index. |
+| `chunk`   | text    | The text segment.         |
+
+### Example
+
+```sql
+SELECT * FROM aidb.chunk_text(
+    input   => 'Long text here...',
+    options => '{"desired_length": 120, "max_length": 150}'
+);
+```
+
+---
+
+## `aidb.parse_html`
+
+Extracts readable text from an HTML string, stripping tags while preserving structure.
+
+### Parameters
+
+| Parameter | Type  | Description                        |
+|-----------|-------|------------------------------------|
+| `html`    | TEXT  | The HTML string to parse.          |
+| `options` | JSONB | Parsing configuration (see below). |
+
+**Options**
+
+| Key      | Type | Default                 | Description                                                                                                                                      |
+|----------|------|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `method` | text | `'StructuredPlaintext'` | Parsing method: `'StructuredPlaintext'` (plain text extraction) or `'StructuredMarkdown'` (Markdown-like output that retains headers and lists). |
+
+### Returns
+
+`TEXT` — the extracted text content.
+
+### Example
+
+```sql
+SELECT aidb.parse_html(
+    html    => '<h1>Hello</h1><p>World</p>',
+    options => '{"method": "StructuredPlaintext"}'
+);
+```
+
+---
+
+## `aidb.parse_pdf`
+
+Extracts text from binary PDF data. Returns one row per page.
+
+### Parameters
+
+| Parameter | Type  | Description                        |
+|-----------|-------|------------------------------------|
+| `bytes`   | BYTEA | Raw PDF binary data.               |
+| `options` | JSONB | Parsing configuration (see below). |
+
+**Options**
+
+| Key                     | Type    | Default        | Description                                                                                                         |
+|-------------------------|---------|----------------|---------------------------------------------------------------------------------------------------------------------|
+| `method`                | text    | `'Structured'` | Parsing method. Currently `'Structured'` (spec-based text block extraction).                                        |
+| `allow_partial_parsing` | boolean | `true`         | When `true`, continues parsing when errors are encountered on individual pages, returning as much data as possible. |
+
+### Returns
+
+| Column    | Type    | Description                                                |
+|-----------|---------|------------------------------------------------------------|
+| `part_id` | integer | Page index (zero-based) from which the text was extracted. |
+| `text`    | text    | Extracted text for that page.                              |
+
+### Example
+
+```sql
+SELECT * FROM aidb.parse_pdf(
+    bytes   => pg_read_binary_file('/path/to/doc.pdf')::BYTEA,
+    options => '{"allow_partial_parsing": true}'
+);
+```
+
+---
+
+## `aidb.perform_ocr`
+
+Extracts text from image data using a registered OCR-capable model.
+
+### Parameters
+
+| Parameter | Type  | Description                    |
+|-----------|-------|--------------------------------|
+| `input`   | BYTEA | Raw binary image data.         |
+| `options` | JSONB | OCR configuration (see below). |
+
+**Options**
+
+| Key     | Type | Description                                                                             |
+|---------|------|-----------------------------------------------------------------------------------------|
+| `model` | text | Name of a registered OCR-capable model (for example, one using the `nim_ocr` provider). |
+
+### Returns
+
+| Column    | Type    | Description                                                                                                |
+|-----------|---------|------------------------------------------------------------------------------------------------------------|
+| `part_id` | integer | Text block index. A single image may produce multiple rows if the provider returns multiple text segments. |
+| `text`    | text    | Extracted text for that block.                                                                             |
+
+### Example
+
+```sql
+SELECT * FROM aidb.perform_ocr(
+    input   => pg_read_binary_file('/path/to/image.png')::BYTEA,
+    options => '{"model": "my_ocr_model"}'
+);
+```
+
+---
+
+## `aidb.summarize_text`
+
+Generates a concise summary of a text string using a registered language model.
+
+### Parameters
+
+| Parameter | Type  | Description                              |
+|-----------|-------|------------------------------------------|
+| `input`   | TEXT  | The text to summarize.                   |
+| `options` | JSONB | Summarization configuration (see below). |
+
+**Options**
+
+| Key                | Type    | Default           | Description                                                                                                                                                        |
+|--------------------|---------|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `model`            | text    | Required          | Name of a registered model that supports `decode_text`.                                                                                                            |
+| `prompt`           | text    | (standard prompt) | Custom instruction to guide the summary style, for example `'Summarize for a 5th grader'`.                                                                         |
+| `chunk_config`     | JSONB   | NULL              | Chunking configuration to apply before summarization when input exceeds the model's context window. Accepts the same keys as `aidb.chunk_text` options.            |
+| `strategy`         | text    | `'append'`        | Summarization strategy: `'append'` (summarize each chunk independently and concatenate) or `'reduce'` (iteratively summarize until the desired length is reached). |
+| `reduction_factor` | integer | `3`               | Used with the `'reduce'` strategy. Controls how aggressively each iteration reduces the text.                                                                      |
+
+### Returns
+
+`TEXT` — the generated summary.
+
+### Example
+
+```sql
+SELECT aidb.summarize_text(
+    input   => 'Long article text here...',
+    options => '{"model": "my_t5_model"}'
+);
+```
+
+---
+
+## `aidb.summarize_text_aggregate`
+
+Aggregate version of `aidb.summarize_text`. Summarizes text across multiple rows using a standard SQL aggregate pattern.
+
+### Usage
+
+```sql
+SELECT
+    category,
+    aidb.summarize_text_aggregate(
+        text_column,
+        '{"model": "my_t5_model"}'::jsonb ORDER BY id
+    ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+Accepts the same options as `aidb.summarize_text`. Rows are processed in the order specified by the `ORDER BY` clause inside the aggregate call.
+
+### Returns
+
+`TEXT` — the summary for the group.
