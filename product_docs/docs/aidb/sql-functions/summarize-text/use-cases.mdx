@@ -75,6 +75,54 @@ Same function. One string changed. Entirely new analysis — no code deployed, n
 
 **HR and talent** — `GROUP BY` department, tenure band, or role level across exit interview transcripts and employee survey responses. Surface the real reasons people leave.
 
+## How it works
+
+AIDB implements a true PostgreSQL aggregate using the database's native state-accumulation framework:
+
+- **State function** — accumulates text from each row in a group, maintaining per-group state in memory
+- **Finalize function** — sends the accumulated text to the configured LLM and returns the result
+- **Chunking engine** — automatically splits large text groups into manageable chunks (configurable by word count or character count, with overlap for context preservation)
+- **Reduction strategies** — `append` concatenates chunk summaries; `reduce` iteratively re-summarizes until the output converges — a true map-reduce pattern running inside the database
+- **Custom prompts** — each query can specify its own instruction: summarize, translate, extract sentiment, categorize, identify trends — making the same function infinitely flexible
+- **Model-agnostic** — works with any OpenAI-compatible endpoint (GPT-4o, Llama, Mistral, on-prem models) configurable per query
+
+## The wow moment
+
+Start with a table of customer preference data — 126 rows across 20 customers and 5 product categories. The raw data is a wall of unstructured text.
+
+Run this query:
+
+```sql
+SELECT name,
+       aidb.summarize_text_aggregate(
+           preferences,
+           aidb.summarize_text_config('gpt-4o')::json
+       ) AS style_profile
+FROM customer_preferences
+GROUP BY name;
+```
+
+In seconds, 126 rows become 20 rows — each a rich, coherent style profile synthesized from every data point for that customer. No pipeline. No engineering team. No data left the database.
+
+Now change the prompt:
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           preferences,
+           aidb.summarize_text_config(
+               'gpt-4o',
+               prompt => 'Identify the 3 strongest purchasing signals and recommend inventory actions'
+           )::json
+       ) AS buying_signals
+FROM customer_preferences
+GROUP BY category;
+```
+
+Same data. Same function. Different question. Different insight. The analyst changed one string and got an entirely new analysis — no code deployed, no pipeline modified, no ticket filed.
+
+That is the moment it clicks: the entire organization's unstructured data becomes queryable with natural language, using the tool analysts already know.
+
 ## Example with chunking and custom prompt
 
 For large text groups, combine chunking with a targeted prompt:
