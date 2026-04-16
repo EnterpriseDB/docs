@@ -1,0 +1,139 @@
+---
+title: Pipeline error log
+navTitle: Error log
+description: Inspect, clear, and retry failed pipeline records using the per-pipeline error log in EDB Postgres AI.
+---
+
+Each pipeline has an error log table. When a record fails at any step, the log captures the source record ID, which step failed, the operation type, and the error message. The rest of the batch keeps processing.
+
+## How it works
+
+- When a record fails, it's logged to `{source_schema}.pipeline_{pipeline_name}_errors` with the source ID, failing step number, operation type, and error message.
+- A single bad record doesn't block the pipeline. Other records in the batch continue through all remaining steps.
+- The error log table is created with the pipeline and dropped when the pipeline is deleted.
+- Errors get one of four `error_category` values:
+
+| Category            | Scope    | Blocks pipeline? | Description                                                         |
+|---------------------|----------|------------------|---------------------------------------------------------------------|
+| `RecordTemporary`   | Record   | No               | Transient failure for a single record. May succeed on retry.        |
+| `RecordPermanent`   | Record   | No               | Permanent failure for a single record (for example, corrupt data).  |
+| `PipelineTemporary` | Pipeline | Yes              | Transient failure that stopped the entire step (for example, a service outage). May resolve on retry. |
+| `PipelinePermanent` | Pipeline | Yes              | Permanent failure that stopped the entire step (for example, invalid model config). |
+
+`RecordTemporary` and `RecordPermanent` errors don't block the pipeline — other records keep processing. `PipelineTemporary` and `PipelinePermanent` errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration.
+
+## Querying errors
+
+Use `aidb.get_error_logs()` to inspect a pipeline's error log.
+
+```sql
+SELECT * FROM aidb.get_error_logs('my_pipeline');
+
+__OUTPUT__
+ id | source_id | part_ids | pipeline_step | step_operation | error_message                          | error_category    | failed_at                  | retry_count | last_retry_at
+----+-----------+----------+---------------+----------------+----------------------------------------+-------------------+----------------------------+-------------+---------------
+  3 | doc_99    | {0,2}    |             2 | ChunkText      | text segment exceeded maximum length   | RecordPermanent   | 2026-04-10 14:32:01.123+00 |           0 |
+  2 | doc_42    | {0}      |             1 | ParsePdf       | failed to extract text from page 0     | RecordPermanent   | 2026-04-10 14:31:58.456+00 |           0 |
+  1 | doc_7     |          |             1 | ParsePdf       | corrupt PDF header                     | RecordPermanent   | 2026-04-10 14:31:55.789+00 |           0 |
+(3 rows)
+```
+
+Filter by source record, step number, or error category:
+
+```sql
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_source_id => 'doc_42'
+);
+```
+
+```sql
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_pipeline_step  => 1::smallint,
+    p_error_category => 'RecordPermanent'
+);
+```
+
+Paginate with `p_limit` and `p_offset`:
+
+```sql
+SELECT * FROM aidb.get_error_logs('my_pipeline', p_limit => 20, p_offset => 40);
+```
+
+See the [Pipelines API reference](../reference#aidbget_error_logs) for full parameter and return type details.
+
+## Error summaries
+
+Get error counts grouped by step, operation, and category for one pipeline:
+
+```sql
+SELECT * FROM aidb.get_error_log_summary('my_pipeline');
+
+__OUTPUT__
+ pipeline_step | step_operation | error_category    | error_count | latest_failed_at
+---------------+----------------+-------------------+-------------+----------------------------
+             1 | ParsePdf       | RecordPermanent   |           2 | 2026-04-10 14:31:58.456+00
+             2 | ChunkText      | RecordPermanent   |           1 | 2026-04-10 14:32:01.123+00
+(2 rows)
+```
+
+Or get the same rollup across all pipelines at once:
+
+```sql
+SELECT * FROM aidb.get_all_error_summaries();
+
+__OUTPUT__
+ pipeline_name | pipeline_step | step_operation | error_category    | error_count | latest_failed_at
+---------------+---------------+----------------+-------------------+-------------+----------------------------
+ my_pipeline   |             1 | ParsePdf       | RecordPermanent   |           2 | 2026-04-10 14:31:58.456+00
+ my_pipeline   |             2 | ChunkText      | RecordPermanent   |           1 | 2026-04-10 14:32:01.123+00
+ pdf_ingester  |             1 | ParsePdf       | PipelinePermanent |           1 | 2026-04-10 15:00:12.000+00
+(3 rows)
+```
+
+## Clearing errors
+
+Delete specific error log entries by ID:
+
+```sql
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3]);
+
+__OUTPUT__
+ clear_error_logs
+------------------
+                2
+(1 row)
+```
+
+Returns the number of deleted rows. Clearing is ID-based — review entries with `get_error_logs()` before removing them.
+
+## Retrying failed records
+
+!!!Note
+`aidb.retry_pipeline_errors()` is not yet available. It will be included in a future release. See [Known issues](../../overview/known-issues).
+!!!
+
+When available, `aidb.retry_pipeline_errors()` will re-process specific error log entries from the step where they failed:
+
+```sql
+SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+
+__OUTPUT__
+ error_id | status   | error_message
+----------+----------+--------------------------------------------
+        1 | resolved |
+        2 | failed   | failed to extract text from page 0
+(2 rows)
+```
+
+Resolved entries are removed from the error log. Failed retries stay in the log with an incremented `retry_count` and updated `last_retry_at` timestamp.
+
+## Pipeline status integration
+
+Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline status reflects error severity:
+
+- `PartialErrors` — some records failed; the rest processed normally.
+- `BlockingErrors` — a pipeline-level error stopped the step entirely.
+
+See [Observability](observability) for more on monitoring pipeline health.
