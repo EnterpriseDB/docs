@@ -189,23 +189,51 @@ SELECT aidb.summarize_text(
 
 ## `aidb.summarize_text_aggregate`
 
-Aggregate version of `aidb.summarize_text`. Summarizes text across multiple rows using a standard SQL aggregate pattern.
+Aggregate version of `aidb.summarize_text`. Accumulates text from all rows in each group, then sends the combined result to the LLM for summarization. Returns one summary per `GROUP BY` group. Empty and NULL rows are skipped.
 
-### Usage
+### Parameters
 
-```sql
-SELECT
-    category,
-    aidb.summarize_text_aggregate(
-        text_column,
-        '{"model": "my_t5_model"}'::jsonb ORDER BY id
-    ) AS summary
-FROM my_table
-GROUP BY category;
-```
+| Parameter | Type | Required | Description                                                                                      |
+|-----------|------|----------|--------------------------------------------------------------------------------------------------|
+| `input`   | TEXT | Yes      | Text column from each row. Empty/NULL rows are skipped.                                          |
+| `options` | JSON | Yes      | Configuration object built with `aidb.summarize_text_config()`. Must contain `model` at minimum. |
 
-Accepts the same options as `aidb.summarize_text`. Rows are processed in the order specified by the `ORDER BY` clause inside the aggregate call.
+### Options
+
+Accepts the same options as `aidb.summarize_text` (see above). Note that `options` is **required** for the aggregate, not optional.
 
 ### Returns
 
 `TEXT` — the summary for the group.
+
+### Usage
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           text_column,
+           aidb.summarize_text_config('my_t5_model')::json ORDER BY id
+       ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+---
+
+## Parameter defaults quick reference
+
+| Function | Parameter | SQL default | Runtime default |
+|---|---|---|---|
+| `summarize_text` | `options` | `'{}'` | Must include `model` |
+| `summarize_text_aggregate` | `input` | — (required) | — |
+| `summarize_text_aggregate` | `options` | — (required) | — |
+| `summarize_text_config` | `model` | — (required) | — |
+| `summarize_text_config` | `chunk_config` | `NULL` | No chunking |
+| `summarize_text_config` | `prompt` | `NULL` | Standard summarize prompt |
+| `summarize_text_config` | `strategy` | `NULL` | `'append'` |
+| `summarize_text_config` | `reduction_factor` | `NULL` | `3` |
+| `summarize_text_config` | `inference_config` | `NULL` | Provider defaults |
+| `chunk_text_config` | `desired_length` | — (required) | — |
+| `chunk_text_config` | `max_length` | `NULL` | Same as `desired_length` |
+| `chunk_text_config` | `overlap_length` | `NULL` | `0` |
+| `chunk_text_config` | `strategy` | `NULL` | `'chars'` |

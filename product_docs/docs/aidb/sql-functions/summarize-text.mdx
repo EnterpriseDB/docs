@@ -1,10 +1,14 @@
 ---
-title: Text summarizing
-description: The summarizing step generates concise summaries of long text passages using AI models, improving retrieval accuracy in RAG applications.
-#copied content from ai-factory/pipeline/preparers/primitives/#summarize-text
+title: Text summarization
+navTitle: Summarization
+description: Use aidb.summarize_text() and aidb.summarize_text_aggregate() to generate concise summaries of text data using AI language models, with support for chunking, custom prompts, and iterative reduction.
 ---
 
-The `aidb.summarize_text()` function allows you to condense long passages into concise summaries. By leveraging specialized models like T5 or GPT, you can extract the most critical information from your records automatically.
+`aidb.summarize_text()` condenses a single text string into a concise summary using a registered language model. `aidb.summarize_text_aggregate()` is the SQL aggregate form — use it with `GROUP BY` to summarize text across multiple rows, returning one summary per group.
+
+For parameter tables and return types, see [Reference → Functions](../reference/functions#aidbsummarize_text).
+
+## aidb.summarize_text()
 
 **Step 1: Register a model**
 
@@ -12,55 +16,255 @@ The `aidb.summarize_text()` function allows you to condense long passages into c
 SELECT aidb.create_model('my_t5_model', 't5_local');
 ```
 
-**Step 2: Summarize a specific text block**
+**Step 2: Summarize a text string**
 
 ```sql
 SELECT * FROM aidb.summarize_text(
-    input => 'There are times when the night sky glows with bands of color. The bands may begin as cloud shapes and then spread into a great arc across the entire sky. They may fall in folds like a curtain drawn across the heavens. The lights usually grow brighter, then suddenly dim. During this time the sky glows with pale yellow, pink, green, violet, blue, and red. These lights are called the Aurora Borealis. Some people call them the Northern Lights. Scientists have been watching them for hundreds of years. They are not quite sure what causes them. In ancient times Long Beach City College WRSC Page 2 of 2 people were afraid of the Lights. They imagined that they saw fiery dragons in the sky. Some even concluded that the heavens were on fire.',
+    input   => 'There are times when the night sky glows with bands of color...',
     options => '{"model": "my_t5_model"}'
 );
 
 __OUTPUT__
- create_model
---------------
- my_t5_model
-(1 row)
-
-                                                                                     summarize_text
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- the night sky glows with bands of color . they may begin as cloud shapes and then spread into a great arc across the entire sky . the lights usually grow brighter, then suddenly dim .
+                                              summarize_text
+-------------------------------------------------------------------------------------------------------------------------
+ the night sky glows with bands of color . they may begin as cloud shapes and then spread into a great arc across the entire sky .
 (1 row)
 ```
 
-## Configuration options
+### Compatible providers
 
-- `model` (required): The name of the registered model to use for summarization. The model must support the `decode_text()` and `decode_text_batch()` interfaces.
+The model must support the `decode_text()` and `decode_text_batch()` operations. The following providers are compatible:
 
-- `chunk_config` (optional): If your input exceeds the model's context window, you can provide configuration settings here to automatically [chunk the input text](chunk-text.mdx) before summarization.
+| Provider               | Description                                     |
+|------------------------|-------------------------------------------------|
+| `completions`          | Any OpenAI-compatible chat/completions endpoint |
+| `openai_completions`   | OpenAI API (uses default OpenAI URL)            |
+| `nim_completions`      | NVIDIA NIM completions                          |
+| `openrouter_chat`      | OpenRouter chat                                 |
+| `gemini`               | Google Gemini API                               |
+| `t5_local`             | Built-in T5 model (no external endpoint)        |
+| `llama_instruct_local` | Built-in Llama model                            |
 
-- `prompt` (optional): You can guide the AI with a custom prompt for example 'Summarize this for a 5th grader'. If omitted, a standard summarization prompt is used.
+Embedding-only providers (`bert_local`, `*_embeddings`, `*_clip`, `*_reranking`) do not support summarization and will return an error if used.
 
-- `strategy` (optional): The summarization strategy to use. Can be either `"append"` (default) or `"reduce"`:
-  
-  - `"append"`: Summarizes each chunk independently and concatenates the results.
-  
-  - `"reduce"`: Applies iterative summarization, repeatedly summarizing the accumulated text until it reaches the desired length.
+### Strategies: append vs reduce
 
-- `reduction_factor` (optional): Used with the `"reduce"` strategy. Controls how aggressively the text is reduced in each iteration. Higher values result in more aggressive reduction. Defaults to 3.
+When `chunk_config` is set, the input is split into chunks before summarization. The `strategy` parameter controls how those chunk summaries are combined.
 
-### Aggregate function
+**Append (default)** — each chunk is summarized independently. Summaries are concatenated with newlines into the final result.
 
-For datasets where information is spread across many records, use the `aidb.summarize_text_aggregate()` function. This function works like standard SQL aggregate functions and is used with a `GROUP BY` clause to summarize entire categories of data.
+- Output length scales with the number of chunks
+- LLM calls: one per chunk
+- Good for: detailed summaries, meeting notes, comprehensive reviews
+
+**Reduce** — chunks are summarized with a target output of `desired_length / reduction_factor` words or characters. The summaries are then re-chunked and re-summarized iteratively until the combined output fits within `desired_length`.
+
+- Output is compressed to a fixed target size regardless of input length
+- LLM calls: more than append, depends on input size and `reduction_factor`
+- Good for: executive summaries, high-level overviews
+
+!!!Note
+The `reduce` strategy can fail if chunk sizes are too small. Use word-based chunking with at least 50 words per chunk for reliable results.
+!!!
+
+### Custom prompts and inference settings
+
+Guide the summarization with a custom prompt:
 
 ```sql
-SELECT
-    category,
-    aidb.summarize_text_aggregate(
-        text_column,
-        '{"model": "my_t5_model"}'::json ORDER BY id
-    ) AS summary
+SELECT aidb.summarize_text(
+    input   => 'Long article text...',
+    options => aidb.summarize_text_config(
+        'my_t5_model',
+        prompt => 'Summarize the key points for a non-technical audience'
+    )::json
+);
+```
+
+Control model behavior at runtime using `inference_config`:
+
+```sql
+SELECT * FROM aidb.summarize_text(
+    input   => 'Long article text...',
+    options => aidb.summarize_text_config(
+        'my_llm',
+        NULL,
+        'Create a brief summary',
+        NULL,
+        NULL,
+        aidb.inference_config(
+            temperature => 0.3,
+            max_tokens  => 50,
+            seed        => 42
+        )
+    )::json
+);
+```
+
+---
+
+## aidb.summarize_text_aggregate()
+
+`aidb.summarize_text_aggregate()` is a PostgreSQL aggregate function. As the database iterates rows in each group, it accumulates text separated by newlines. Empty and NULL rows are skipped. After all rows are collected, the combined text is sent to the LLM and one summary is returned per `GROUP BY` group.
+
+If `chunk_config` is set, the accumulated text is chunked before being sent (see [Strategies](#strategies-append-vs-reduce) above).
+
+### Basic example
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           content,
+           '{"model": "my_t5_model"}'::json ORDER BY id
+       ) AS summary
 FROM my_table
 GROUP BY category;
 ```
 
-The aggregate function accepts the same options as the regular `summarize_text()` function and processes rows in the order specified by the `ORDER BY` clause within the aggregate call.
+### Real-world example: customer feedback by product
+
+Register an LLM model, then summarize feedback grouped by product:
+
+```sql
+SELECT aidb.create_model(
+    'my-llm',
+    'completions',
+    '{"model": "llama3.2:3b", "url": "http://localhost:11434/v1/chat/completions"}'::JSONB
+);
+
+SELECT product_name,
+       count(feedback_id) AS feedback_count,
+       aidb.summarize_text_aggregate(
+           feedback_text,
+           aidb.summarize_text_config('my-llm')::json
+       ) AS summary
+FROM customer_feedback
+JOIN products ON customer_feedback.product_id = products.product_id
+GROUP BY product_name
+ORDER BY feedback_count DESC;
+```
+
+### Custom prompt: targeted analysis
+
+Change the prompt to extract different insights from the same data — no new pipeline or code needed:
+
+```sql
+-- What are customers saying?
+SELECT product_name,
+       aidb.summarize_text_aggregate(
+           feedback_text,
+           aidb.summarize_text_config('my-llm')::json
+       ) AS summary
+FROM customer_feedback
+JOIN products ON customer_feedback.product_id = products.product_id
+GROUP BY product_name;
+
+-- Why are we losing deals?
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               prompt => 'Analyze these sales notes: why are we losing deals? Provide specific, actionable insights.'
+           )::json
+       ) AS loss_analysis
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status IN ('lost', 'closed_lost')
+GROUP BY p.product_name;
+```
+
+### With chunking
+
+Use `chunk_config` to handle groups with large amounts of accumulated text:
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           content,
+           aidb.summarize_text_config(
+               'my_t5_model',
+               aidb.chunk_text_config(80, 80, 10, 'words')
+           )::json ORDER BY id
+       ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+### With reduce strategy
+
+Compress large text groups into a fixed-size executive summary:
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           content,
+           aidb.summarize_text_config(
+               'my_t5_model',
+               aidb.chunk_text_config(60, 60, 5, 'words'),
+               NULL,
+               'reduce',
+               5
+           )::json ORDER BY id
+       ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+### With inference configuration
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           content,
+           aidb.summarize_text_config(
+               'my_llm',
+               NULL,
+               'Summarize the key points',
+               NULL,
+               NULL,
+               aidb.inference_config(
+                   temperature => 0.2,
+                   max_tokens  => 100,
+                   top_p       => 0.9,
+                   seed        => 42
+               )
+           )::json ORDER BY id
+       ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+---
+
+## Model compatibility
+
+Using a provider that does not support `decode_text` returns an error immediately — at function call time for `summarize_text()` and at preparer creation time for pipeline use:
+
+```sql
+-- Register an embedding-only model
+SELECT aidb.create_model('bert_model', 'bert_local');
+
+-- Fails at call time
+SELECT * FROM aidb.summarize_text(
+    input   => 'Hello world',
+    options => aidb.summarize_text_config(model => 'bert_model')::json
+);
+
+__OUTPUT__
+ERROR: The requested adapter is not supported by the model provider: bert_local
+```
+
+---
+
+## Common errors
+
+| Error                                                                     | Cause                                               | Fix                                                                               |
+|---------------------------------------------------------------------------|-----------------------------------------------------|-----------------------------------------------------------------------------------|
+| `Model not found: X`                                                      | Model name not registered                           | Run `aidb.create_model()` first; check spelling                                   |
+| `Provider 'bert_local' does not support language operations`              | Embedding-only provider used for summarization      | Use `completions`, `openai_completions`, `t5_local`, or another language provider |
+| `Invalid parameters: 'desired_length' must be greater than 0`             | Invalid chunk config                                | Use a positive integer for `desired_length`                                       |
+| `Invalid parameters: 'max_length' must be >= 'desired_length'`            | `max_length` is smaller than `desired_length`       | Set `max_length >= desired_length`                                                |
+| `Invalid parameters: 'overlap_length' must be less than 'desired_length'` | Overlap too large                                   | Reduce `overlap_length` (10–20% of `desired_length` is typical)                   |
+| `Text summarization failed to reduce size`                                | `reduce` strategy produced output longer than input | Increase chunk size (use `>= 50 words` or `>= 800 chars`)                         |
