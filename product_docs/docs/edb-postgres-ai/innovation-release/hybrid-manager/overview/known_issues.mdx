@@ -261,15 +261,19 @@ Resolved in HM versions 2025.12 and later.
 
 **Description:** Azure enforces a hard limit of eight private link services per Standard Load Balancer (`PrivateLinkServicesPerLoadBalancerLimitReached`). Because each PGD data group with private access requires five Load Balancers (one per node, plus the group and proxy services), an AKS-based HM deployment can only host one PGD data group with private access per region.
 
-**Workaround:** Don't create more than one PGD data group with private access in the same AKS region. For additional data groups in the same region, use public access instead.
+**Workaround:** Don't create more than one PGD data group with private access in the same AKS region. For additional data groups requiring private access, deploy an additional HM instance in the same region.
 
-### Default network access type isn't preserved in cluster templates on RKE
+### Network access type defaults to `Private` when not explicitly selected on RKE
 
 [UPM-90375]: #
 
-**Description:** On RKE environments, the default `NetworkAccessTypeUnknown` value for the network access type field isn't correctly saved when creating or using cluster templates. The value is overridden to `Private`, which means clusters provisioned from templates on RKE may not reflect the intended network access configuration.
+**Description:** On RKE environments, two related network access type issues exist:
 
-**Workaround:** None. A fix is being tracked for a future release.
+- When a location has both **Public** and **Private** access enabled, the network access type field doesn't have a default selection. If you don't explicitly choose an option, the backend defaults to `Private`.
+
+- When a location has **NodePort** enabled, the backend correctly configures NodePort for the cluster, but the HM console displays the access type as `Private` instead.
+
+**Workaround:** Always explicitly select the intended network access type when creating a cluster on RKE. A fix is being tracked for a future release.
 
 ### CNPG operator enters an infinite reconcile loop when bootstrap `Job` creation is interrupted
 
@@ -752,9 +756,46 @@ Resolved in HM versions 2026.4 and later.
 
 [UPM-91745]: #
 
-**Description:** The CPU and memory usage metrics displayed for Asset Library apps incorrectly include pods in `Failed` or `Completed` states, such as pods spawned by jobs. This causes the displayed resource usage figures to be inflated or inaccurate.
+**Description:** The CPU and memory usage metrics displayed for Asset Library apps include pods in `Failed` or `Completed` states, such as pods spawned by jobs. These metrics are only available during the app's startup phase, so the displayed figures may not accurately reflect the app's current resource usage until the metrics stabilize.
 
-**Workaround:** None. A fix is being tracked for a future release.
+**Workaround:** Wait 30 minutes after app startup for the metrics to stabilize and reflect the correct state.
+
+### Deleting an app or flow gets stuck due to missing service account
+
+[UPM-91799]: #
+
+**Description:** When deleting an app or flow, the deletion sometimes gets stuck with the error `Delete failed: Preparing kapp: Getting service account: serviceaccounts "beacon-app-installer" not found`. This occurs because the `PackageInstall` resource's finalizer attempts to use a service account that no longer exists, preventing the app namespace from being deleted.
+
+**Workaround:** Identify the stuck namespace and manually remove the finalizer from the `PackageInstall` and its associated `App` resource.
+
+1. Find namespaces stuck in `Terminating`:
+
+   ```shell
+   kubectl get ns --field-selector status.phase=Terminating
+   ```
+
+   The app namespace matches the application ID, for example, `app-abc123xyz`.
+
+1. Identify the `PackageInstall` name:
+
+   ```shell
+   kubectl get packageinstall -n <app-namespace>
+   ```
+
+   The name follows the format `<app-namespace>-pkginstall`.
+
+1. Remove the finalizer from the `PackageInstall` and the associated `App` (the `App` name matches the `PackageInstall` name):
+
+   ```shell
+   kubectl patch packageinstall <name> -n <app-namespace> --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+   kubectl patch app <name> -n <app-namespace> --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+   ```
+
+1. Verify the namespace deletion completes:
+
+   ```shell
+   kubectl get ns <app-namespace>
+   ```
 
 ## Clusters and upgrades
 
@@ -935,7 +976,7 @@ Resolved in HM versions 2026.2 and later.
 
 **Description:** The `upm-ai-model-server-beaco` pod may enter a crashloop due to OOMKill in environments with significant AI workloads. The default memory allocation for this component is insufficient and isn't currently configurable via the standard Helm values or the `HybridControlPlane` CR.
 
-**Workaround:** Manually patch the Kubernetes deployment to increase the memory resource limits for the `upm-ai-model-server-beaco` pod.
+**Workaround:** Manually patch the Kubernetes deployment to increase the memory resource limits for the `upm-ai-model-server-beaco` pod from the default 256MB to 512MB, then monitor the pod to confirm stability.
 
 ## Migrations
 
