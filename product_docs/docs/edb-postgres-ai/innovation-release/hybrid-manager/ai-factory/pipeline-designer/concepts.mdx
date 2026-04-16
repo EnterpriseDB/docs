@@ -1,0 +1,157 @@
+---
+title: Pipeline Designer concepts
+navTitle: Concepts
+description: Core concepts for Pipeline Designer including pipeline structure, multi-step pipelines, step types, processing modes, and how data flows between steps.
+---
+
+This page introduces the core concepts behind Pipeline Designer. Understanding these concepts will help you design effective data pipelines for your AI workloads.
+
+## Pipeline structure
+
+A pipeline is a sequence of one to ten processing steps that transform data from a source table into a destination. Each step applies an AI or ML operation to the data, and the output of one step flows into the next.
+
+Every pipeline has three components:
+
+1.  **Source**: A PostgreSQL table containing the data to process. You specify a key column (unique identifier for each row) and a data column (the content to transform).
+2.  **Steps**: One to ten processing operations arranged in order. Each step transforms the data in a specific way (parsing, chunking, summarizing, embedding).
+3.  **Destination**: Where the final output is stored. For pipelines ending with a KnowledgeBase step, the destination is a vector table. For other pipelines, the destination is a regular PostgreSQL table.
+
+Pipeline names must be lowercase, start with a letter, and contain only letters, digits, and underscores. The maximum length is 46 characters.
+
+## Step types
+
+Pipeline Designer offers the following step types. Each step accepts a specific input type and produces a specific output type; the designer validates that consecutive steps are compatible.
+
+### ParsePDF
+
+Extracts text content from PDF documents stored as binary data.
+
+-   **Input**: Binary data (PDF files)
+-   **Output**: Plain text
+-   **Position**: Must be the first step in the pipeline
+-   **Configuration**: Uses structured extraction by default
+
+### PerformOCR
+
+Extracts text from images using optical character recognition.
+
+-   **Input**: Binary data (images)
+-   **Output**: Plain text
+-   **Position**: Must be the first step in the pipeline
+-   **Configuration**: Requires an OCR model
+
+### ParseHTML
+
+Cleans HTML content into plain text or structured markdown.
+
+-   **Input**: Text (HTML)
+-   **Output**: Plain text
+-   **Position**: Any position except immediately before a KnowledgeBase step as the last step in the chain
+-   **Configuration**: Output format can be plain text (default) or markdown
+
+### ChunkText
+
+Splits text into smaller segments suitable for embedding or further processing.
+
+-   **Input**: Text
+-   **Output**: Text (multiple chunks)
+-   **Position**: Any position except the last step (if followed by KnowledgeBase)
+-   **Configuration**: Requires a `desired_length` parameter specifying the target chunk size in characters. An optional `max_length` parameter sets an upper bound. Chunking strategies include character-based and recursive automatic splitting.
+
+### SummarizeText
+
+Generates text summaries using a language model.
+
+-   **Input**: Text
+-   **Output**: Text (summarized)
+-   **Position**: Any position except immediately before a KnowledgeBase step as the last step
+-   **Configuration**: Requires a text completion model. Optional parameters include a custom prompt, inference configuration, and summarization strategy (append or reduce).
+
+### KnowledgeBase
+
+Generates vector embeddings and stores them in a knowledge base for semantic search.
+
+-   **Input**: Text or binary data (images)
+-   **Output**: Vector embeddings
+-   **Position**: Must be the last step in the pipeline
+-   **Configuration**: Requires an embedding model and a data format (Text or Image). Optional parameters include the distance operator (L2, Cosine, Inner Product) and vector index type (HNSW or IVFFlat).
+
+### PdfToImage
+
+Converts PDF pages into images for subsequent OCR or image embedding.
+
+-   **Input**: Binary data (PDF files)
+-   **Output**: Binary data (images)
+-   **Position**: Must be the first step in the pipeline
+
+## Multi-step pipelines
+
+Pipelines can chain up to ten steps to build complex processing workflows. When designing a multi-step pipeline, keep these rules in mind:
+
+**Ordering constraints:**
+-   Steps that consume raw binary data (ParsePDF, PerformOCR, PdfToImage) must be placed first.
+-   The KnowledgeBase step, if present, must be placed last.
+-   Middle steps (ChunkText, SummarizeText, ParseHTML) can appear in any order between the first and last positions.
+
+**Type compatibility:**
+Each step produces output of a specific type (text or bytes), and the next step must accept that type as input. Pipeline Designer validates this automatically and prevents you from deploying incompatible step sequences. For example, you cannot place a ChunkText step (which expects text input) immediately after a PdfToImage step (which produces bytes output) without an intermediate OCR step to convert bytes to text.
+
+**Common multi-step patterns:**
+
+| Pattern | Steps | Use case |
+| ------- | ----- | -------- |
+| PDF to knowledge base | ParsePDF, ChunkText, KnowledgeBase | Index PDF documents for semantic search |
+| Image OCR to knowledge base | PerformOCR, ChunkText, KnowledgeBase | Extract and index text from scanned documents |
+| HTML processing | ParseHTML, ChunkText, SummarizeText | Clean, chunk, and summarize web content |
+| Full document pipeline | ParsePDF, ChunkText, SummarizeText, KnowledgeBase | Parse, chunk, summarize, and index documents |
+
+**Step limit**: A pipeline supports a maximum of 10 steps. Steps cannot be added, removed, or reordered after the pipeline is created. To change the step structure, delete the pipeline and create a new one.
+
+## Processing modes
+
+Processing modes control when and how a pipeline executes. You select the mode during pipeline creation and can change it later without recreating the pipeline.
+
+### Disabled (default)
+
+The pipeline does not process data automatically. You must trigger execution manually from the Pipeline Designer UI or through the API. This mode is useful for testing pipelines before enabling automatic processing, or for one-time batch operations.
+
+### Live
+
+The pipeline processes data in real time. A database trigger fires on every INSERT, UPDATE, or DELETE on the source table, and the pipeline processes the affected row immediately within the same transaction.
+
+**Considerations:**
+-   Processing is synchronous: a slow model call will block the triggering transaction.
+-   Not available for pipelines using volume sources.
+-   Suitable for low-volume, latency-sensitive workloads where data must be indexed immediately.
+
+### Background
+
+The pipeline processes data asynchronously in batches. A background worker periodically checks for unprocessed rows and processes them in configurable batches.
+
+**Configuration parameters:**
+-   **Batch size**: Number of rows processed per batch (default: 100).
+-   **Sync interval**: How often the background worker checks for new data (default: 30 seconds, range: 1 second to 2 days).
+
+Background mode is the recommended choice for most workloads. It balances throughput with resource consumption and does not block application transactions.
+
+## Data flow between steps
+
+When a pipeline executes, data flows through an internal envelope that carries the content from one step to the next. Each data item carries a lineage identifier composed of the source row's key and any part identifiers added by steps that split data (such as ChunkText).
+
+For example, if ChunkText splits a single source row into four chunks, each chunk carries the original source key plus a unique part identifier. When these chunks reach the KnowledgeBase step, each is embedded separately, and the resulting vectors retain the lineage information so that search results can be traced back to their source.
+
+Intermediate step results are not currently visible in the Pipeline Designer UI. You can inspect only the final output: the destination table for non-KB pipelines, or the knowledge base metrics and query results for KB pipelines.
+
+## Pipeline status
+
+Pipeline Designer displays a status indicator for each pipeline based on its processing state:
+
+| Status | Meaning |
+| ------ | ------- |
+| Up To Date | All source records have been processed |
+| Processing | The pipeline is actively processing data |
+| Stale | Unprocessed source records exist |
+| No Results | The pipeline exists but has not produced any output yet |
+| Has Errors | Some records encountered errors but the pipeline continues processing |
+| Failed | The pipeline encountered a blocking error and stopped |
+| Configuration Error | The pipeline configuration is invalid |

@@ -1,0 +1,108 @@
+---
+title: Knowledge bases
+navTitle: Knowledge bases
+description: Monitor knowledge bases created by Pipeline Designer, understand record counts and status indicators, and test knowledge base retrieval with the built-in query tool.
+---
+
+A knowledge base is a vector store created by a pipeline whose last step is KnowledgeBase. It holds embeddings generated from your source data and supports semantic similarity search for retrieval-augmented generation (RAG) and other AI workloads.
+
+## Knowledge base list
+
+Navigate to **AI Factory > Pipeline Designer > Knowledge Bases** to see all knowledge bases in your project. Each entry shows:
+
+-   **Name**: The knowledge base identifier, derived from the pipeline name.
+-   **Origin**: The cluster and database where the knowledge base resides.
+-   **Model**: The embedding model used to generate vectors.
+-   **Source**: The source table or volume feeding the pipeline.
+-   **Processing mode**: The pipeline's current processing mode (Disabled, Live, or Background).
+-   **Status**: The pipeline's processing status (Up To Date, Processing, Stale, and others as described in [Concepts: Pipeline status](concepts#pipeline-status)).
+
+## Knowledge base detail
+
+Click a knowledge base to view its detail page, which includes:
+
+### Record counts
+
+| Metric | Description |
+| ------ | ----------- |
+| Source records | Total rows in the source table |
+| Embeddings | Number of vector embeddings stored in the knowledge base |
+| Unprocessed records | Source rows that have not yet been processed |
+
+When the pipeline is operating normally, the unprocessed count should be zero (for Background and Live modes) or equal to the source count minus embeddings (for Disabled mode).
+
+### Associated pipeline
+
+The detail page shows the pipeline that feeds this knowledge base, including its step configuration and processing parameters. In the current release, each knowledge base is associated with exactly one pipeline (1:1 relationship).
+
+!!! Note "Future: multi-pipeline knowledge bases"
+    AIDB 7 introduces support for multiple pipelines feeding a single knowledge base (N:1 relationship). This capability is not yet available through Pipeline Designer but is planned for a future release. When available, the knowledge base detail page will list all associated pipelines.
+
+## Testing retrieval
+
+The knowledge base detail page includes a built-in query tool for testing semantic search without writing SQL.
+
+### Running a test query
+
+1.  On the knowledge base detail page, click **Query**.
+2.  Enter a text query describing what you want to find.
+3.  Optionally adjust the **Top K** parameter (the number of results to return; defaults to 5).
+4.  Click **Run**.
+
+The query tool encodes your text using the knowledge base's embedding model, performs a vector similarity search, and returns the top matching records with their distance scores. Lower distance scores indicate closer semantic matches.
+
+### Interpreting results
+
+Each result includes:
+
+-   **Source key**: The key column value from the original source row, allowing you to trace results back to source data.
+-   **Distance**: The similarity distance between the query vector and the result vector, using the knowledge base's configured distance operator (L2 by default).
+
+Test queries are useful for validating that your pipeline is producing meaningful embeddings and that the chunking strategy produces segments of appropriate granularity. If results seem poor, consider adjusting the ChunkText step's desired length or trying a different embedding model.
+
+## Knowledge base lifecycle
+
+Knowledge bases are created automatically when you deploy a pipeline with a KnowledgeBase terminal step. They cannot be created independently through Pipeline Designer.
+
+**Deletion**: When you delete a pipeline that has a KnowledgeBase step, the associated knowledge base and its vector table are also deleted. All stored embeddings are permanently removed.
+
+!!! Warning
+    Deleting a knowledge base is irreversible. All vector data is permanently removed. If the knowledge base is used by Langflow flows or other consumers, those integrations will break.
+
+## Using knowledge bases with Langflow
+
+Knowledge bases created through Pipeline Designer are accessible from the [Langflow-based Gen AI builder](/edb-postgres-ai/current/ai-factory/langflow/). The Langflow KB component connects to AIDB knowledge bases using the same `aidb.retrieve_key()` and `aidb.retrieve_text()` functions that power the Pipeline Designer query tool.
+
+To use a Pipeline Designer knowledge base in Langflow:
+
+1.  Create and populate a knowledge base through Pipeline Designer as described above.
+2.  In Langflow, add a KB component to your flow.
+3.  Configure the component to point to the knowledge base by name.
+4.  The component will query the knowledge base for semantically similar content based on the flow's input.
+
+## Troubleshooting
+
+### No embeddings after pipeline runs
+
+If the source record count is positive but the embedding count remains zero:
+
+1.  Check the pipeline status for errors. "Has Errors" or "Failed" status indicates processing problems.
+2.  Verify that the embedding model is available and responding. If using an HM-hosted model, confirm the KServe InferenceService is healthy.
+3.  Check that the source data column contains valid content for the configured pipeline steps.
+4.  Review the AIDB error log for detailed error messages. Connect to the database and query: `SELECT * FROM aidb.get_error_logs('your_pipeline_name');`
+
+### Unprocessed count not decreasing
+
+If the unprocessed count remains static:
+
+1.  Verify the processing mode is not Disabled. If Disabled, trigger a manual run or switch to Background or Live.
+2.  For Background mode, confirm the sync interval has elapsed since the last data change.
+3.  Check for pipeline-blocking errors that halt processing entirely.
+
+### Poor retrieval quality
+
+If test queries return irrelevant results:
+
+1.  Review your chunking strategy. Chunks that are too large or too small produce suboptimal embeddings.
+2.  Consider a different embedding model. Some models perform better on specific content types.
+3.  Verify that the source data is clean and relevant. HTML tags, boilerplate text, or corrupt content degrade embedding quality. Consider adding a ParseHTML step before chunking.

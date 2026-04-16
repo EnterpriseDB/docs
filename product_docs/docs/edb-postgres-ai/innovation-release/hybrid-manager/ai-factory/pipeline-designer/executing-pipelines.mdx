@@ -1,0 +1,105 @@
+---
+title: Executing pipelines
+navTitle: Executing pipelines
+description: How pipeline execution works across different cluster types, including HM-managed clusters, secondary locations, and self-managed PostgreSQL instances.
+---
+
+Pipeline execution is the process of reading source data, running it through the configured processing steps, and writing results to the destination. This page explains how execution works, how to trigger it, and how to run pipelines on different cluster types.
+
+## Execution flow
+
+When a pipeline executes (whether triggered automatically or manually), the following sequence occurs:
+
+1.  The beacon-agent on the target cluster opens a transaction and switches to the `visual_pipeline_user` role.
+2.  AIDB reads pending rows from the source table (for table sources) or loads all objects (for volume sources).
+3.  Each step processes the data sequentially. The output of one step becomes the input for the next.
+4.  If any step encounters a record-level error (for example, a malformed PDF), the error is logged and the pipeline continues with the remaining records. Pipeline-level errors (for example, model unreachable) halt execution.
+5.  The final output is written to the destination table, or to the knowledge base vector table if the last step is KnowledgeBase.
+
+## Manual execution
+
+You can trigger pipeline execution manually regardless of the processing mode:
+
+1.  Navigate to the pipeline detail page.
+2.  Click **Execute** (or **Run**).
+3.  The pipeline processes all pending source records.
+
+Manual execution is useful for:
+-   Testing a newly created pipeline before enabling automatic processing.
+-   Processing a backlog of records after re-enabling a previously Disabled pipeline.
+-   One-time batch operations where automatic processing is not needed.
+
+## Automatic execution modes
+
+### Live mode
+
+In Live mode, AIDB installs a trigger on the source table that fires on every INSERT, UPDATE, or DELETE. The pipeline processes the affected row within the triggering transaction.
+
+**Characteristics:**
+-   Processing is synchronous. The INSERT/UPDATE/DELETE statement does not return until the pipeline finishes processing the row.
+-   Suitable for low-volume, latency-sensitive scenarios where data must be embedded or processed immediately.
+-   A slow inference model call will block the triggering transaction, potentially causing application-visible latency.
+-   Not available for volume-based sources.
+
+### Background mode
+
+In Background mode, a background worker polls for unprocessed rows and processes them in batches.
+
+**Characteristics:**
+-   Processing is asynchronous. Application transactions complete immediately; the pipeline processes data on its own schedule.
+-   Batch size and sync interval are configurable (defaults: 100 rows per batch, 30-second interval).
+-   Recommended for most production workloads.
+-   The background worker runs on the database cluster, not in the HM control plane. On PGD clusters, it runs on the write leader node.
+
+## Primary HM clusters
+
+On primary HM-managed clusters (appliance clusters in your main data center), pipeline execution works with full access to all features:
+
+-   All HM-hosted KServe models are available for pipeline steps.
+-   External inference services are available.
+-   PGD clusters execute pipelines on the write leader node. Pipeline metadata (configuration, state, metrics) is replicated across all nodes through BDR logical replication, but execution occurs only on the write leader.
+-   PSR clusters execute pipelines on the single writable node.
+
+## Remote and self-managed clusters
+
+Pipeline Designer supports creating and running pipelines on clusters outside your primary HM location:
+
+### Secondary HM locations
+
+If your HM deployment spans multiple data centers, you can create pipelines targeting clusters in secondary locations. When creating the pipeline, select the secondary cluster from the estate dropdown. The pipeline executes on the remote cluster's write leader.
+
+### Self-managed PostgreSQL instances
+
+PostgreSQL instances registered with HM through a beacon-agent can host pipelines. Requirements:
+
+-   PostgreSQL 16 or later.
+-   AIDB extension installed and configured.
+-   A beacon-agent connected to the HM control plane.
+-   External inference services registered if models are needed (HM-hosted models are typically not reachable from self-managed instances).
+
+When you select a self-managed cluster in the pipeline wizard, Pipeline Designer discovers the available databases, schemas, and tables through the beacon-agent. Model discovery also runs through the agent, querying the local AIDB model registry.
+
+### Model availability on remote clusters
+
+The most important limitation for remote pipelines is model availability. HM-hosted KServe models run on the primary HM Kubernetes cluster, and their inference endpoints may not be network-reachable from remote locations or self-managed instances.
+
+For remote clusters:
+-   **External inference services** (OpenAI, AWS Bedrock) work because they are internet-accessible.
+-   **On-database models** (built-in AIDB models) work because they run locally within PostgreSQL.
+-   **HM-hosted KServe models** may appear in the model picker but will fail at pipeline execution time if the remote cluster cannot reach the KServe endpoint. See [Known issues: Inference routing on remote clusters](known-issues#inference-routing-on-remote-clusters).
+
+## Monitoring execution
+
+Pipeline execution status is visible in the pipeline list and detail pages:
+
+-   **Status indicator**: Shows whether the pipeline is Up To Date, Processing, Stale, Has Errors, or Failed.
+-   **Record counts**: Source records, destination records (or embeddings for KB pipelines), and unprocessed records.
+-   **Error log**: For detailed error information, query the AIDB error log directly:
+
+    ```sql
+    SELECT * FROM aidb.get_error_logs('your_pipeline_name');
+    ```
+
+    Errors are categorized as:
+    -   **RecordTemporary / RecordPermanent**: Errors affecting individual records. The pipeline continues processing other records.
+    -   **PipelineTemporary / PipelinePermanent**: Errors affecting the entire pipeline. Execution halts until the issue is resolved.

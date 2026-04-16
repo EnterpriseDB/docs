@@ -1,0 +1,70 @@
+---
+title: External inference services
+navTitle: External inference services
+description: Register and use external AI model providers such as OpenAI and AWS Bedrock with Pipeline Designer through Hybrid Manager's inference service proxy.
+---
+
+Pipeline Designer can use models from external AI providers in addition to HM-hosted models. External inference services let you connect to providers like OpenAI, AWS Bedrock, and other API-compatible model endpoints, making their models available for pipeline steps that require inference (KnowledgeBase embedding, SummarizeText, PerformOCR).
+
+## How external inference services work
+
+When you register an external inference service in Hybrid Manager, the platform creates a reverse proxy that routes inference requests from your database to the external provider. This architecture means:
+
+-   Your database does not connect directly to external APIs. All traffic flows through the HM inference service proxy.
+-   API credentials are stored and managed by HM's infrastructure, not in your database.
+-   External models appear alongside HM-hosted models in Pipeline Designer's model picker.
+
+After registration, HM synchronizes the external models into the AIDB model registry on your database using `aidb.sync_hcp_models()`. The models then become selectable when configuring pipeline steps.
+
+## Registering an external inference service
+
+1.  Navigate to **AI Factory > Model Serving** in your Hybrid Manager project.
+2.  Click **Register External Service** (or the equivalent action in the inference services panel).
+3.  Fill in the registration form:
+    -   **Service name**: A descriptive name for this service connection.
+    -   **Provider**: The external provider type (for example, OpenAI, AWS Bedrock, NVIDIA NIM).
+    -   **Endpoint URL**: The API endpoint for the external service.
+    -   **API Protocol Version**: The protocol version to use when communicating with the provider. Select the version that matches your provider's current API.
+    -   **Credentials**: The authentication credentials for the provider. This is typically an API key. For AWS Bedrock, this may include access key and secret.
+4.  Click **Register**.
+
+The service is registered and its models become available after the next model sync cycle (typically within a few minutes).
+
+## Using external models in pipelines
+
+Once an external inference service is registered, its models appear in Pipeline Designer's model picker when you configure a step that requires a model:
+
+-   **KnowledgeBase step**: External text embedding models (such as OpenAI's text-embedding-ada-002 or text-embedding-3-small) appear in the embedding model list.
+-   **SummarizeText step**: External text completion models (such as OpenAI's GPT-4 or GPT-3.5-turbo) appear in the language model list.
+-   **PerformOCR step**: External OCR models appear in the OCR model list, if the provider offers compatible endpoints.
+
+The model picker filters by function type, so only models compatible with the step being configured are shown.
+
+## External models on remote clusters
+
+External inference services are particularly important for pipelines running on self-managed PostgreSQL instances or secondary HM locations. HM-hosted KServe models may not be network-reachable from remote clusters, but external model providers (which are accessed through the internet) typically are.
+
+When creating a pipeline targeting a remote cluster:
+
+1.  Register the external inference service as described above.
+2.  In the pipeline creation wizard, select the remote cluster.
+3.  In the step configuration, the model picker will show models available on that specific AIDB instance, including any synced external models.
+
+See [Executing pipelines: Remote clusters](executing-pipelines#remote-and-self-managed-clusters) and [Known issues: Inference routing on remote clusters](known-issues#inference-routing-on-remote-clusters) for details on model availability limitations.
+
+## Managing external services
+
+From the AI Factory model serving interface, you can:
+
+-   **View registered services**: See all external inference service connections, including their status and activity logs.
+-   **Edit a service**: Update the endpoint URL, credentials, or API protocol version.
+-   **Deregister a service**: Remove the external service connection. This does not immediately remove models from AIDB; they are cleaned up during the next model sync cycle.
+
+!!! Warning
+    Deregistering an external service will cause any pipelines using that service's models to fail on their next execution. Before deregistering, ensure no active pipelines depend on the service's models, or update those pipelines to use alternative models.
+
+## Credential handling
+
+External service credentials (API keys, access tokens) are stored in HM's infrastructure and passed to the AIDB extension as Foreign Data Wrapper (FDW) user mappings. A registered provider's credentials are shared across all database users on a given cluster. There is no per-user credential isolation at the database level; any pipeline on the same database can use any registered external model.
+
+See [VPU and permissions](vpu-and-permissions) for a broader discussion of the Pipeline Designer permission model and its implications.
