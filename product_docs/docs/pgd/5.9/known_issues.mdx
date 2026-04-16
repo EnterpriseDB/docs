@@ -56,4 +56,28 @@ To modify a commit scope safely, use [`bdr.alter_commit_scope`](/pgd/5.9/referen
 - When running PGD on community PostgreSQL with Parallel Apply enabled, writer processes may terminate unexpectedly due to lock timeouts. This occurs because PGD sets a 30 second `lock_timeout` in the writer processes, which can be insufficient when one writer waits on a transaction lock held by another writer that is processing a large transaction. When the timeout is reached, the waiting writer exits, causing other writers and the receiver to terminate as well, which resets the replication process. 
     As a workaround, disable parallel apply by setting `bdr.enable_parallel_apply = off` or migrate to an EDB Postgres variant. This issue is resolved in PGD 6.3.
 
+-   In PGD 5.9.2, user login attributes aren't replicated to peer nodes after a `CREATE USER` statement. Users created on one node can log in on the originating node but are blocked on all other nodes because the login attribute is missing from the replicated role definition. This issue is resolved in PGD 5.9.3.
+
+    To identify affected roles, run the following command in psql:
+
+    ```
+    \du
+    ```
+
+    In the **Attributes** column, any role that should have login access but displays `Cannot login` is affected.
+
+    Alternatively, query the system catalog directly:
+
+    ```sql
+    SELECT rolname AS role_name, rolcanlogin
+    FROM pg_roles
+    WHERE rolcanlogin = false;
+    ```
+
+    To resolve the issue without upgrading, manually grant login access on each affected node:
+
+    ```sql
+    ALTER USER <username> WITH LOGIN;
+    ```
+
 Details of other design or implementation [limitations](planning/limitations) are also available.
