@@ -51,12 +51,12 @@ BM25 full-text filtering requires the `vchord_bm25` and [`pg_tokenizer`](/pg_ext
 
 ## Helper functions and metadata
 
-### `aidb.kb_encode()`
+### `aidb.kb_query_encode()`
 
 Encodes a text query using the embedding model configured for a specific knowledge base, without needing to look up the model name:
 
 ```sql
-SELECT aidb.kb_encode('my_kb', 'summer fashion');
+SELECT aidb.kb_query_encode('public.my_kb', 'test query');
 ```
 
 Use this in place of `aidb.encode_text('<model>', '<query>')` when constructing custom vector queries.
@@ -80,20 +80,13 @@ SELECT name, kb_table, distance_operator_sql
 FROM aidb.knowledge_bases;
 ```
 
-### `aidb.generate_retrieval_query()`
 
-Returns example SQL queries tailored to a specific knowledge base, showing vector-only, vector-with-source-join, and vector-with-filter patterns based on the KB's actual metadata:
 
-```sql
-SELECT query_type, example_sql
-FROM aidb.generate_retrieval_query('my_kb');
-```
 
-Returns 2–3 rows with `query_type` labels (`vector_search`, `vector_with_source`, `vector_filtered`) and copy-ready SQL you can adapt.
 
 ### `aidb.rerank_text()`
 
-After retrieving candidates, pass them to a reranking model for a final relevance-ordered result:
+**Optional:** After retrieving candidates, pass them to a reranking model for a final relevance-ordered result:
 
 ```sql
 SELECT aidb.rerank_text('my_reranking_model', 'query text', ARRAY['result1', 'result2', ...]);
@@ -113,11 +106,11 @@ Filter semantic search results by any column in the source table. The filter is 
 SET hnsw.iterative_scan = relaxed_order;
 
 SELECT s.id, s.description,
-       kb.value <=> aidb.kb_encode('my_kb', 'summer fashion') AS distance
+       kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion') AS distance
 FROM my_kb_vector kb
 JOIN my_source_table s ON s.id::TEXT = kb.source_id
 WHERE s.category_id = 2                          -- relational filter on source table
-ORDER BY kb.value <=> aidb.kb_encode('my_kb', 'summer fashion')
+ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')
 LIMIT 10;
 ```
 
@@ -129,11 +122,11 @@ Use a BM25 score threshold as a `WHERE` condition, then order results by vector 
 SET hnsw.iterative_scan = relaxed_order;
 
 SELECT s.id, s.description,
-       kb.value <=> aidb.kb_encode('my_kb', 'summer fashion') AS distance
+       kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')  AS distance
 FROM my_kb_vector kb
 JOIN my_source_table s ON s.id::TEXT = kb.source_id
 WHERE s.bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert')) < -1.0  -- BM25 filter
-ORDER BY kb.value <=> aidb.kb_encode('my_kb', 'summer fashion')
+ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion') 
 LIMIT 10;
 ```
 
@@ -144,9 +137,9 @@ Reciprocal Rank Fusion (RRF) runs semantic and keyword searches independently, t
 ```sql
 WITH semantic AS (
     SELECT source_id AS id,
-           ROW_NUMBER() OVER (ORDER BY value <=> aidb.kb_encode('my_kb', 'shoes')) AS rank
+           ROW_NUMBER() OVER (ORDER BY value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion') AS rank
     FROM my_kb_vector
-    ORDER BY value <=> aidb.kb_encode('my_kb', 'shoes')
+    ORDER BY value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion') 
     LIMIT 50
 ),
 fulltext AS (
@@ -174,13 +167,13 @@ Combine all three filtering mechanisms in a single query:
 SET hnsw.iterative_scan = relaxed_order;
 
 SELECT s.id, s.description,
-       kb.value <=> aidb.kb_encode('my_kb', 'summer fashion') AS distance,
+       kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')  AS distance,
        s.bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert')) AS bm25_score
 FROM my_kb_vector kb
 JOIN my_source_table s ON s.id::TEXT = kb.source_id
 WHERE s.category_id = 2                                                                    -- relational filter
   AND s.bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert')) < -1.0        -- BM25 filter
-ORDER BY kb.value <=> aidb.kb_encode('my_kb', 'summer fashion')
+ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion') 
 LIMIT 10;
 ```
 
@@ -263,7 +256,7 @@ SELECT vector.source_id, source.product_name, source.category
 FROM public.pipeline_food_products AS vector
 JOIN products AS source ON source.id::TEXT = vector.source_id
 WHERE source.category = 'vegetarian'                                                         -- relational filter
-ORDER BY vector.value <=> aidb.kb_encode('public.pipeline_food_products', 'fast food')
+ORDER BY vector.value <=> aidb.kb_query_encode('public.pipeline_food_products', 'fast food') 
 LIMIT 10;
 __OUTPUT__
  source_id | product_name  |  category
@@ -320,10 +313,10 @@ WITH semantic AS (
     SELECT source.id,
            source.product_name,
            source.category,
-           ROW_NUMBER() OVER (ORDER BY vector.value <=> aidb.kb_encode('public.pipeline_food_products', 'fast food')) AS rank
+           ROW_NUMBER() OVER (ORDER BY vector.value <=> aidb.kb_query_encode('public.pipeline_food_products', 'fast food') AS rank
     FROM public.pipeline_food_products AS vector
     JOIN products AS source ON source.id::TEXT = vector.source_id
-    ORDER BY vector.value <=> aidb.kb_encode('public.pipeline_food_products', 'fast food')
+    ORDER BY vector.value <=> aidb.kb_query_encode('public.pipeline_food_products', 'fast food')
     LIMIT 20
 ),
 keyword AS (

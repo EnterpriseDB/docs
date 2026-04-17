@@ -41,26 +41,29 @@ Also accessible as `aidb.kbs`. Lists all knowledge bases in the database with th
 
 Also accessible as `aidb.kbstat`. Provides current processing statistics for all knowledge base pipelines.
 
-| Column | Type | Description |
-|---|---|---|
-| `knowledge base` | text | Knowledge base name |
-| `auto processing` | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | Configured processing mode |
-| `table: unprocessed rows` | bigint | Backlog size (table sources) |
-| `volume: scans completed` | bigint | Full scans completed (volume sources) |
-| `count(source records)` | bigint | Total records in the source |
-| `count(embeddings)` | bigint | Total embeddings stored |
+\d aidb.knowledge_base_stats
+           View "aidb.knowledge_base_stats"
+   Column   |  Type   | Collation | Nullable | Default
+------------+---------+-----------+----------+---------
+ name       | text    |           |          |
+ pipelines  | integer |           |          | <- number of pipelines attached
+ embeddings | bigint  |           |          |  <-- this is the old "count(embeddings)"
+ status     | text    |           |          |  <-- the same status field we have in "aidb.pipeline_metrics" but we collect the "worst" status of all the connected pipelines
 
 #### Example
 
 ```sql
-SELECT * FROM aidb.kbstat;
+SELECT * from aidb.kbm;
 
 __OUTPUT__
-     knowledge base     | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(embeddings)
-------------------------+-----------------+-------------------------+-------------------------+-----------------------+-------------------
- kb_table_text_bg       | Background      |                       0 |                         |                    15 |                15
- kb_volume_text_bg      | Background      |                         |                       6 |                     7 |                 7
-(2 rows)
+                 name                 | pipelines | embeddings |  status
+--------------------------------------+-----------+------------+----------
+ public.pipeline_pipeline__7471a      |         1 |          5 | UpToDate
+ public.pipeline_pipeline__7471b      |         1 |          5 | UpToDate
+ public.pipeline_animal_facts_kb      |         1 |        372 | UpToDate
+ public.pipeline_animal_facts_kb_bert |         1 |        372 | UpToDate
+ public.mpkb_shared_vectors           |         2 |          4 | UpToDate
+(5 rows)
 ```
 
 ---
@@ -108,45 +111,6 @@ Auto-processing mode for a knowledge base pipeline.
 
 ## Knowledge base functions
 
-### `aidb.create_table_knowledge_base`
-
-Creates a knowledge base backed by a Postgres table source.
-
-#### Parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `name` | TEXT | Required | Name of the knowledge base. |
-| `model_name` | TEXT | Required | Registered model to use for embeddings. |
-| `source_table` | REGCLASS | Required | Source table. |
-| `source_data_column` | TEXT | Required | Column containing data to embed. |
-| `source_data_format` | [aidb.PipelineDataFormat](#aidbpipelinedataformat) | Required | Format of source data (`Text`, `Image`, `Pdf`). |
-| `source_key_column` | TEXT | `'id'` | Unique key column in the source table. |
-| `vector_table` | TEXT | NULL | Name for the embeddings table (auto-generated if NULL). |
-| `vector_data_column` | TEXT | `'embeddings'` | Embeddings column name. |
-| `vector_key_column` | TEXT | `'id'` | Key column in the embeddings table. |
-| `topk` | INTEGER | `1` | Default number of retrieve results. |
-| `distance_operator` | [aidb.DistanceOperator](#aidbdistanceoperator) | `'L2'` | Distance function for retrieval. |
-| `auto_processing` | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | `'Disabled'` | Auto-processing mode. |
-| `index_type` | TEXT | `'vector'` | Vector index type: `vector` (HNSW), `ivfflat`, or `disabled`. |
-| `batch_size` | INTEGER | `100` | Records processed per batch. |
-| `background_sync_interval` | INTERVAL | `'30 seconds'` | Background worker polling interval. |
-| `invoker_role` | TEXT | NULL | Role for table ownership and background execution. |
-
-The `vector` index type creates an HNSW index automatically. It supports up to 2000 dimensions. Use `disabled` for higher-dimensional models and manage the index manually.
-
-#### Example
-
-```sql
-SELECT aidb.create_table_knowledge_base(
-    name               => 'my_kb',
-    model_name         => 'bert_local',
-    source_table       => 'products',
-    source_data_column => 'description',
-    source_key_column  => 'product_id',
-    source_data_format => 'Text'
-);
-```
 
 ---
 
@@ -182,7 +146,6 @@ SELECT aidb.create_volume_knowledge_base(
 );
 ```
 
----
 
 ### `aidb.set_auto_knowledge_base`
 
@@ -205,30 +168,11 @@ SELECT aidb.set_auto_knowledge_base('my_kb', 'Background', background_sync_inter
 SELECT aidb.set_auto_knowledge_base('my_kb', 'Disabled', batch_size => 200);
 ```
 
----
-
-### `aidb.bulk_embedding`
-
-Processes all source records and stores embeddings in the destination table. Behavior depends on the auto-processing mode: Live and Disabled modes process records immediately; Background mode marks records for the background worker to process.
-
-#### Parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `knowledge_base_name` | TEXT | Required | Name of the knowledge base. |
-| `silent` | BOOL | `false` | Suppress progress log output. |
-
-#### Example
-
-```sql
-SELECT aidb.bulk_embedding('my_kb');
-```
-
----
 
 ### `aidb.retrieve_key`
 
 Returns the source record keys and distances for the top matching embeddings, without fetching source data.
+In `part_ids`, the call also returns, for each step in a multi-step pipeline, the IDs of the parts that match the query. For example if a single source record is split into 10 parts by a "ChunkText" step, then `part_ids` will indicate which chunk matched.
 
 #### Parameters
 
