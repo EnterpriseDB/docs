@@ -42,6 +42,77 @@ function normalizePath(url) {
   return path;
 }
 
+/**
+ * Rewrite relative URLs in markdown and HTML links/images to absolute URLs.
+ * Handles:
+ *   - Markdown links/images: [text](url) and ![alt](url), including optional titles
+ *   - HTML href and src attributes (double- and single-quoted)
+ */
+function rewriteRelativePaths(body, baseUrl, baseIsIndex) {
+  const splitPageUrl = baseUrl.pathname.split("/");
+  function resolveHref(href) {
+    if (!href || href.startsWith("#")) return null;
+    try {
+      new URL(href); // throws if not already absolute
+      return null;
+    } catch {
+      // if this looks like a versioned product link where the version is "current"...
+      // ...replace with the same version as the containing page IF the products match...
+      // ...else, replace with "latest"
+      const splitPath = href.split("/");
+      if (splitPath[2] === "current") {
+        const splitPageUrl = pageUrl.split("/");
+        if (splitPath[1] === splitPageUrl[1]) {
+          splitPath[2] = splitPageUrl[2];
+        } else {
+          splitPath[2] = "latest";
+        }
+        href = splitPath.join("/");
+      }
+
+      // if current page is an index page (thus, not present in the URL), resolve relative to the full URL path (e.g. "quickstart" on "/pgd/latest/" resolves to "/pgd/latest/quickstart/")
+      // otherwise, resolve relative to the parent directory in the page URL path (e.g. "quickstart" on "/pgd/latest/guide" resolves to "/pgd/latest/quickstart")
+      let base = new URL(baseUrl);
+      base.pathname = base.pathname
+        .replace(/\.mdx?$/, "") // strip .md or .mdx suffix
+        .replace(/\/$/, ""); // strip trailing slash
+      if (baseIsIndex) base.pathname += "/"; // ensure trailing slash if index page, so relative links resolve to the "directory" rather than sibling files
+
+      return new URL(href, base).href;
+    }
+  }
+
+  // Markdown links and images: [text](url) or [text](url "title") or ![alt](url)
+  body = body.replace(
+    /(!?\[(?:[^\]\\]|\\.)*\]\()(\S+?)((?:\s[^)]*)?\))/g,
+    (match, prefix, href, suffix) => {
+      const resolved = resolveHref(href);
+      return resolved ? `${prefix}${resolved}${suffix}` : match;
+    },
+  );
+
+  // HTML/JSX href and src attributes
+  body = body.replace(/(href|src)="([^"]+)"/g, (match, attr, href) => {
+    const resolved = resolveHref(href);
+    return resolved ? `${attr}="${resolved}"` : match;
+  });
+  body = body.replace(/(href|src)='([^']+)'/g, (match, attr, href) => {
+    const resolved = resolveHref(href);
+    return resolved ? `${attr}='${resolved}'` : match;
+  });
+
+  return body;
+}
+
+function insertReferenceToLLMsTxt(body) {
+  const llmsReference =
+    "\n\n> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).\n\n";
+  if (!body.includes("https://www.enterprisedb.com/docs/llms.txt")) {
+    body += llmsReference;
+  }
+  return body;
+}
+
 export default async function handler(request, context) {
   const url = new URL(request.url);
   const acceptHeader = request.headers.get("Accept") ?? "";
@@ -104,7 +175,13 @@ export default async function handler(request, context) {
       );
     }
 
-    const body = await githubResponse.text();
+    let body = await githubResponse.text();
+    body = rewriteRelativePaths(
+      body,
+      url,
+      githubResponse.url.endsWith("/index.mdx"),
+    );
+    body = insertReferenceToLLMsTxt(body, contentPath);
     const headers = {
       "Content-Type": "text/markdown; charset=utf-8",
       Vary: "Accept, Accept-Encoding",
@@ -114,6 +191,9 @@ export default async function handler(request, context) {
       "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
       // Expose the resolved source URL for transparency / debugging
       "X-Markdown-Source": githubUrl,
+      // these might be helpful, might just be a mintlify thing that no one cares about
+      link: '</docs/llms.txt>; rel="llms-txt"',
+      "x-llms-txt": "/docs/llms.txt",
     };
 
     return new Response(body, {
