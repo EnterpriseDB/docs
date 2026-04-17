@@ -281,7 +281,11 @@ Resolved in HM versions 2025.12 and later.
 
 **Description:** If a cluster reconciliation is interrupted after the PVC is created but before the bootstrap `Job` is created — for example, due to an optimistic locking conflict — subsequent reconciles enter an infinite loop. The operator waits for the PVC to reach a `Ready` status, but this can never occur without the `Job`, causing the loop to continue indefinitely.
 
-**Workaround:** None. This issue exists in the upstream CloudNativePG codebase and a fix is being tracked for a future release.
+**Workaround:** Delete the affected PVC to allow the operator to recreate it and break the loop. Because this issue only affects newly created PVCs, the PV won't contain any data yet and it's safe to delete.
+
+```shell
+kubectl delete pvc <pvc-name> -n <cluster-namespace>
+```
 
 ## Backup and recovery
 
@@ -744,6 +748,30 @@ Resolved in HM versions 2026.4 and later.
 
 **Workaround:** None. Manually browse the full app list to locate apps until this is resolved in a future release.
 
+### Metabase fails to deploy when using an EPAS cluster as its database backend
+
+[UPM-92303]: #
+
+**Description:** Deploying Metabase from the **Asset Library** fails when the selected database cluster is an EDB Postgres Advanced Server (EPAS) instance. Metabase enters a `CrashLoopBackOff` state with a Liquibase migration error: `ERROR: syntax error at or near "$"`. This occurs because Liquibase identifies EDB Postgres Advanced Server as a different database type than community PostgreSQL. As a result, property definitions scoped to `dbms="postgresql"` (such as `${TEXT.TYPE}` and `${TIMESTAMP_TYPE}`) are skipped, while dependent changesets still execute with unresolved placeholders, causing the SQL syntax error.
+
+**Workaround:** Use a community PostgreSQL cluster as Metabase's database backend instead of EDB Postgres Advanced Server. EDB Postgres Advanced Server clusters can still be connected to Metabase as data sources for analytics after deployment.
+
+### Editing cryptographic keys for Airflow or Superset causes the app to enter a failed state
+
+[UPM-92241]: #
+
+**Description:** Editing the `fernetKey` or `apiSecretKey` for Airflow, or the `secretKey` for Superset, through the Asset Library UI after initial deployment causes the app to enter a failed state. These keys are used for cryptographic operations — including encrypting connections, variables, sessions, and CSRF tokens — and the underlying Helm charts don't support key rotation. Changing these values after initial creation creates a mismatch between the new keys and data encrypted with the original keys, breaking the application.
+
+**Workaround:** Don't modify `fernetKey`, `apiSecretKey` (Airflow), or `secretKey` (Superset) after initial app creation. If the app has entered a failed state due to a key change, redeploy it with the original key values to restore functionality.
+
+### Superset deployment fails with `DuplicateTable` error
+
+[UPM-91925]: #
+
+**Description:** Deploying Superset from the Asset Library may fail with a `DuplicateTable` error: `psycopg2.errors.DuplicateTable: relation "idx_user_id" already exists`. This occurs when the selected backend database already contains tables from a previous Superset deployment.
+
+**Workaround:** Use a new, empty database when deploying Superset.
+
 ### Asset Library launch app always uses port 443 regardless of custom portal port
 
 [UPM-91790]: #
@@ -811,13 +839,6 @@ Resolved in HM versions 2026.4 and later.
 kubectl delete statefulset fluent-bit-k8s-events -n edb-observability
 ```
 
-### Asset Library fails to install during upgrade due to missing image manifest
-
-[UPM-91085]: #
-
-**Description:** In some environments, upgrading to HM 2026.4 may produce a `MANIFEST_UNKNOWN: Requested image not found` error when the `upm-kapp-marketplace` component attempts to sync the `kapp-marketplace/free` image. The error appears during deployment but resolves itself without any impact.
-
-**Workaround:** No action needed. The error is transient and the deployment completes successfully.
 
 ### Major version upgrade fails for Advanced High Availability and Distributed High Availability (PGD) clusters with witness groups
 
@@ -916,6 +937,14 @@ Affected actions and parameters:
 -   `explain_query` (`hypothetical_indexes`): Use tool mode to provide a valid list.
 
 [AID-852, backlog]: #
+
+### Some EDB Component tools are non-functional due to incompatible API request formatting
+
+[AID-1288]: #
+
+**Description:** Some tools within the EDB Component are currently non-functional due to incompatible API request formatting. By default, the component exposes too many tools, which can exceed API limits and trigger errors.
+
+**Workaround:** Enable tool mode and apply specific filters to limit the number of tools exposed by the component.
 
 ### Advanced high Availability and Distributed High Availability (PGD) witness groups appear in database selection lists
 
