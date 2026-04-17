@@ -179,8 +179,9 @@ In `part_ids`, the call also returns, for each step in a multi-step pipeline, th
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `knowledge_base_name` | TEXT | Required | Name of the knowledge base. |
-| `query_string` | TEXT | Required | Query text to search with. |
-| `number_of_results` | INTEGER | `0` | Number of results to return. Uses `topk` default if `0`. |
+| `query` | TEXT | Required | Query text to search with. |
+| `topk` | INTEGER | `1` | Number of results to return. |
+| `deduplicate` | BOOLEAN | `true` | Return each source result only once even if multiple "parts" (e.g. chunks/pages) match |
 
 #### Returns
 
@@ -188,18 +189,21 @@ In `part_ids`, the call also returns, for each step in a multi-step pipeline, th
 |---|---|---|
 | `key` | text | Source record key |
 | `distance` | double precision | Vector distance from the query |
+| `part_ids` |  bigint[] | Which parts i.e. pipeline step results match (chunk or page) |
+| `pipeline_name` | text | The name of the pipeline processing this source record |
 
 #### Example
 
 ```sql
-SELECT * FROM aidb.retrieve_key('my_kb', 'running shoes', 5);
+SELECT * FROM aidb.retrieve_key('public.pipeline_animal_facts_kb', 'birds', topk=>3);
 
 __OUTPUT__
-  key  |      distance
--------+--------------------
- 43941 | 0.2938963414490189
- 19337 | 0.3023805122617119
-(2 rows)
+ key |      distance      | part_ids |  pipeline_name
+-----+--------------------+----------+-----------------
+ 5   | 1.1931772046185758 | {0,0}    | animal_facts_kb
+ 93  | 1.1980633963685476 | {2,0}    | animal_facts_kb
+ 98  | 1.2150919866080878 | {2,0}    | animal_facts_kb
+(3 rows)
 ```
 
 ---
@@ -207,6 +211,8 @@ __OUTPUT__
 ### `aidb.retrieve_text`
 
 Returns source text and distances for the top matching embeddings by joining the embeddings table with the source table.
+In `part_ids`, the call also returns, for each step in a multi-step pipeline, the IDs of the parts that match the query. For example if a single source record is split into 10 parts by a "ChunkText" step, then `part_ids` will indicate which chunk matched.
+The return column `intermediate_steps` will contain the actual result text of the intermediate step results.
 
 #### Parameters
 
@@ -215,7 +221,10 @@ Returns source text and distances for the top matching embeddings by joining the
 | `knowledge_base_name` | TEXT | Required | Name of the knowledge base. |
 | `query_string` | TEXT | Required | Query text to search with. |
 | `number_of_results` | INTEGER | `0` | Number of results to return. Uses `topk` default if `0`. |
-
+| `knowledge_base_name` | TEXT | Required | Name of the knowledge base. |
+| `query` | TEXT | Required | Query text to search with. |
+| `topk` | INTEGER | `1` | Number of results to return. |
+| `deduplicate` | BOOLEAN | `true` | Return each source result only once even if multiple "parts" (e.g. chunks/pages) match |
 #### Returns
 
 | Column | Type | Description |
@@ -223,6 +232,9 @@ Returns source text and distances for the top matching embeddings by joining the
 | `key` | text | Source record key |
 | `value` | text | Source text content |
 | `distance` | double precision | Vector distance from the query |
+| `part_ids` |  bigint[] | Which parts i.e. pipeline step results match (chunk or page) |
+| `pipeline_name` | text | The name of the pipeline processing this source record |
+| `intermediate_steps` | jsonb | The matching results from the intermediate steps; i.e. the values belonging to "part_ids" |
 
 #### Example
 
@@ -241,7 +253,7 @@ __OUTPUT__
 
 ### `aidb.delete_knowledge_base`
 
-Removes a knowledge base and its configuration. Does not delete the underlying source table or embeddings table.
+Removes a knowledge base; i.e. its destination vector table and its configuration. Also removes all attached Pipelines. Does not delete the underlying source table.
 
 #### Parameters
 
@@ -250,10 +262,6 @@ Removes a knowledge base and its configuration. Does not delete the underlying s
 | `knowledge_base_name` | TEXT | Name of the knowledge base to delete. |
 
 #### Example
-
-```sql
-SELECT aidb.delete_knowledge_base('my_kb');
-```
 
 ---
 
