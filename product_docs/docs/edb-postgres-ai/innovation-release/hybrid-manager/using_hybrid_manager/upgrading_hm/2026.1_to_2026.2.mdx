@@ -1,0 +1,287 @@
+---
+title: Upgrading from 2026.1 to the 2026.2 Innovation Release
+navTitle: 2026.1 to 2026.2
+description: Follow the step-by-step procedures for upgrading from HM 2026.1 to HM 2026.2.
+deepToC: true
+---
+
+Upgrade from 2026.1 to 2026.2.
+
+> **Role:** Infrastructure Engineer
+
+## Prerequisites
+
+* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+* Access to the HM installation configuration file or `values.yaml` file used for the current installation. To save the contents of your current installation configuration:
+
+  ```shell
+  helm get values edbpgai-bootstrap -n edbpgai-bootstrap > values.yaml
+  ```
+
+* Required Tools:
+    * `helm` (Latest version recommended)
+    * `kubectl`, `yq`, `base64`, `jq`
+
+## Upgrade 2026.1 → 2026.2
+
+This release introduces a redesigned Identity Provider (IdP) configuration system and new Custom Resource Definitions (CRDs) that require manual pre- and post-upgrade steps.
+
+### IdP migration
+
+**What changed:**
+
+* `config.yaml`, previously loaded from the `upm-dex` secret, is now mounted from a ConfigMap. Static connector configurations are no longer supported — connectors must be provisioned using the IdP Management API. Env var values like `$DB_USER` and `$DB_PASSWORD` are now obtained from the `upm-db-url` secret, which is propagated to the `upm-dex` namespace automatically.
+* A new `hm-portal-bootstrap` secret must be created in the `default` namespace. It is replicated to the `upm-dex` namespace automatically via the reloader annotation. It contains:
+    * `fernet-key` — encryption key for sensitive connector config fields
+    * `static-passwords.yaml` — initial user accounts for bootstrap access
+* New CRDs are introduced in 2026.2 and must be applied manually before the upgrade, as Helm skips CRD changes.
+* After a successful migration, manually remove the `upm-dex` and `dex-fernet-key` secrets.
+
+1. Back up the current IdP settings
+
+    From the HM portal, log in with an owner account and go to `https://<portal_dns_name>/settings/identity-providers`. For each IdP, save all settings including fields that are only partially visible on screen.
+
+    !!!warning
+    The HM IdP API does not return sensitive fields such as `clientSecret` (OIDC) or `BindPassword` (LDAP). Retrieve these values directly from your actual Identity Provider (e.g., Okta, Google) before proceeding.
+    !!!
+
+    * For EDB Internal: back up the `upm-dex` secret directly:
+
+        ```shell
+        kubectl get secret upm-dex -n upm-dex -o yaml > upm-dex-backup.yaml
+        ```
+
+    * Optionally, export the IdP connector configuration from the CLI:
+
+        ```shell
+        kubectl get hcp edbpgai -o json | jq .spec.pgai.portal.authentication.idpConnectors > idps.json
+        ```
+
+1. Generate a certificate file from the existing IdP configuration
+
+    Extract the certificate from your existing IdP connector:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -o yaml \
+        | yq '.spec.pgai.portal.authentication.idpConnectors[0].config.caData' \
+        | base64 -d > okta-cert.pem
+    ```
+
+    !!!note
+    Adjust the array index if you have multiple connectors. Keep `okta-cert.pem` — you will need it in step 8.
+    !!!
+
+1. Extract the fernet key
+
+    Extract the fernet key from the `dex-fernet-key` secret:
+
+    ```shell
+    DEX_FERNET_KEY=$(kubectl get secret -n upm-dex dex-fernet-key \
+        -o jsonpath='{.data.fernet-key}' | base64 -d)
+    ```
+
+1. Extract static passwords
+
+    Extract the static user passwords from the `upm-dex` secret's decoded `config.yaml`:
+
+    ```shell
+    staticPasswords=$(kubectl get secret -n upm-dex upm-dex -o yaml \
+        | yq '.data."config.yaml"' | base64 -d \
+        | yq '.staticPasswords')
+    ```
+
+1. Create the `hm-portal-bootstrap` secret
+
+    Create the secret in the `default` namespace using the values from steps 3 and 4. The replicator annotation ensures it is propagated to the `upm-dex` namespace:
+
+    ```shell
+    kubectl create secret generic hm-portal-bootstrap \
+        --namespace default \
+        --from-literal=fernet-key="$DEX_FERNET_KEY" \
+        --from-literal=static-passwords.yaml="staticPasswords:
+    $staticPasswords"
+
+    # Add the replicator annotation
+    kubectl annotate secret hm-portal-bootstrap --namespace default \
+        replicator.v1.mittwald.de/replicate-to=upm-dex
+    ```
+
+1. Apply the new CRDs
+
+    !!!warning
+    Helm skips CRD changes during upgrades. These must be applied before upgrading.
+    !!!
+
+    * Apply the CRDs using the appropriate method for your environment:
+
+        <details><summary>If using Helm packages from the remote CS Helm repo:</summary>
+
+        ```shell
+        helm pull edbpgai/edb-hcp-operator --version 2026.2.0 --untar
+        kubectl apply -f edb-hcp-operator/crds/preflight-crd.yaml
+        kubectl apply -f edb-hcp-operator/crds/postflight-crd.yaml
+        ```
+
+        </details>
+
+        <br/>
+
+        <details><summary>For EDB Internal — ephemeral clusters:</summary>
+
+        ```shell
+        git clone -b 2026.2 git@github.com:EnterpriseDB/edb-hcp-operator.git
+        cd edb-hcp-operator/deploy/charts/edb-hcp-operator/crds
+        kubectl apply -f preflight-crd.yaml
+        kubectl apply -f postflight-crd.yaml
+        ```
+
+        </details>
+
+        <br/>
+
+    * Annotate the CRDs for Helm management:
+
+        ```shell
+        kubectl annotate crd preflights.edbpgai.edb.com postflights.edbpgai.edb.com \
+        meta.helm.sh/release-name=edbpgai-bootstrap \
+        meta.helm.sh/release-namespace=edbpgai-bootstrap \
+        --overwrite
+
+        kubectl label crd preflights.edbpgai.edb.com postflights.edbpgai.edb.com \
+        app.kubernetes.io/managed-by=Helm \
+        --overwrite
+        ```
+
+1. Perform the upgrade
+
+    #### For Helm-based installations
+
+    1.  Update your Helm repository:
+
+        ```shell
+        helm repo update
+        ```
+
+    1.  Perform the upgrade:
+
+        ```shell
+        helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+        --version 2026.2.0 \
+        --values values.yaml \
+        --namespace edbpgai-bootstrap \
+        --wait
+        ```
+
+    #### For operator-based (CRD) installations
+
+    For installations managed via the operator, you must update the version specification within your `HybridControlPlane` resource.
+
+    1.  Edit the `HybridControlPlane` resource:
+
+        ```shell
+        kubectl edit hybridcontrolplane <resource-name>
+        ```
+
+        Where `<resource-name>` is the name you assigned during installation.
+
+    1.  In the YAML editor, locate the `spec.version` (or equivalent version field) and update it to `2026.2.0`.
+
+    1.  Save the changes. Force a reconciliation by annotating the resource:
+
+        ```shell
+        kubectl annotate hybridcontrolplane <resource-name> --overwrite edbpgai.com/ready-for-upgrade=true
+        ```
+
+    1.  The operator will then detect the version change and begin the rolling update. You can monitor the progress with:
+
+        ```shell
+        kubectl get hybridcontrolplane <resource-name> -w
+        ```
+
+1. Delete the auto-discovered IdP configuration
+
+    After the upgrade, connect to the application database and run:
+
+    ```shell
+    kubectl exec svc/app-db-rw -c postgres -n upm-beaco-ff-base -- \
+      psql -U postgres upm -c \
+      "UPDATE upm_api_admin.idp SET deleted_at = NOW() WHERE deleted_at IS NULL;"
+    ```
+
+1. Migrate connectors using the IdP Management API
+
+    Before proceeding, confirm that `hm-portal-bootstrap` exists in the `upm-dex` namespace and that `upm-dex` pods are running:
+
+    ```shell
+    kubectl get pods -n upm-dex
+    ```
+
+    **Using the portal UI**
+
+    1.  Log in with native credentials and go to **Settings → Identity Providers**.
+
+    1.  Create a new IdP configuration with the following values:
+
+        | Field | Value |
+        |---|---|
+        | Name | `okta` *(ensures the existing user config is maintained)* |
+        | Assertion Consumer Service URL | `https://<Portal URL>/auth/callback/okta` |
+        | Audience URI | `https://<Portal URL>/auth/samlentity/okta` |
+        | Connector ID | `okta` |
+        | Single Sign-On URL | From your backup in step 1 |
+        | Signature Certificate File | `okta-cert.pem` — generated in step 2 |
+        | NameID Format | `PERSISTENT` |
+        | User Attribute | `name` |
+        | Email Attribute | `email` |
+
+    1.  Click **Save**.
+
+        !!!note
+        **Save & Test** will likely fail until IT updates the ACS URL and Audience URI in your IdP with the new `/okta` suffix. Raise a ticket with IT to request this update before testing.
+        !!!
+
+   **Using the REST API**
+
+    Use the settings saved in step 1 to populate the request body:
+
+    ```shell
+    curl -i -k -X POST 'https://<portal_url>/api/v1/idp' \
+    --header 'x-access-key: <HM_org_owner_access_key>' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "general": {
+        "name": "okta",
+        "description": "Okta Identity Provider",
+        "protocol": "OIDC"
+        },
+        "oidcSettings": {
+        "issuer": "https://<your_okta_domain>.okta.com",
+        "clientId": "your_client_id",
+        "clientSecret": "your_client_secret"
+        },
+        "dexConnectorId": "okta"
+    }'
+    ```
+
+1. Restart Dex
+
+    Restart the Dex deployment to apply all configuration changes:
+
+    ```shell
+    kubectl rollout restart deploy upm-dex -n upm-dex
+    ```
+
+1. Validate the migration
+
+    1.  Check that static user (native credentials) login works.
+
+    1.  Check that the IdP-configured login works.
+
+### Clean up
+
+After confirming both logins work, remove the old secrets:
+
+```shell
+kubectl delete secret upm-dex -n upm-dex
+kubectl delete secret dex-fernet-key -n upm-dex
+```
