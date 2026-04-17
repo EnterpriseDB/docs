@@ -8,15 +8,15 @@ navigation:
 - backup
 ---
 
-Postgres Analytics Accelerator (PGAA) extends WarehousePG with lakehouse capabilities, enabling distributed analytical queries against data in object storage without separate infrastructure or data movement. 
+Postgres Analytics Accelerator (PGAA) extends WarehousePG 7 with lakehouse capabilities, enabling distributed analytical queries against data in object storage without separate infrastructure or data movement. PGAA on WarehousePG requires WarehousePG 7.4 or later.
 
 ## Capabilities
 
-- **[Query object storage directly from Postgres](reading#querying-object-storage-directly):** Register an S3, Google Cloud Storage (GCS), or Azure path as a storage location, create a PGAA table pointing to it, and query Parquet, Delta Lake, or Iceberg files with standard SQL without the need for ETL or data import.
-- **[Connect to an Iceberg catalog](reading#connecting-to-an-iceberg-catalog):** Attach PGAA to an external Iceberg REST catalog for table discovery, schema and partition metadata, and authentication to the underlying object storage. When EDB Postgres Distributed (PGD) replicates data to object storage, WarehousePG can attach to the shared catalog and read that data at MPP scale, enabling a combined OLTP and analytical workload across both platforms.
-- **[Accelerate with Spark](reading#accelerating-with-spark):** For large workloads, or if you already operate a Spark cluster, route queries through Spark Connect instead of Seafowl. If your cluster includes GPU-enabled nodes, RAPIDS acceleration is available on top of Spark for even higher throughput on compute-intensive queries.
-- **[Back up and restore](backup):** Use `gpbackup` to capture PGAA table definitions and storage bindings. After a restore, tables immediately reference the correct object storage paths with no manual reconfiguration required.
-- **[Monitor and maintain](../monitoring):** Monitor table health and run maintenance operations such as compaction and vacuum on PGAA tables. On WarehousePG, maintenance workers run on the coordinator only.
+- **Query object storage directly from WarehousePG:** Register an S3, Google Cloud Storage (GCS), or Azure path as a storage location, create a PGAA table pointing to it, and query Parquet, Delta Lake, or Iceberg files with standard SQL without the need for ETL or data import. See [Querying object storage using storage locations](reading#querying-object-storage-using-storage-locations).
+- **Connect to an Iceberg catalog:** Attach PGAA to an external Iceberg REST catalog for table discovery, schema and partition metadata, and authentication to the underlying object storage. When EDB Postgres Distributed (PGD) replicates data to object storage, WarehousePG can attach to the shared catalog and read that data at MPP scale, enabling a combined OLTP and analytical workload across both platforms. See [Connecting to an Iceberg catalog](reading#connecting-to-an-iceberg-catalog).
+- **Accelerate with Spark:** For large workloads, or if you already operate a Spark cluster, route queries through Spark Connect instead of Seafowl. If your cluster includes GPU-enabled nodes, RAPIDS acceleration is available on top of Spark for even higher throughput on compute-intensive queries. See [Accelerating with Spark](reading#accelerating-with-spark).
+- **Back up and restore:** Use gpbackup to capture PGAA table definitions and storage bindings. After a restore, tables immediately reference the correct object storage paths with no manual reconfiguration required. See [Backing up and restoring](backup).
+- **Monitor and maintain:** Monitor table health and run maintenance operations such as compaction and vacuum on PGAA tables. On WarehousePG, maintenance workers run on the coordinator only. See [Monitoring and maintaining analytical tables](../monitoring).
 
 For current limitations, see [Known issues](../overview/known_issues#warehousepg).
 
@@ -89,21 +89,23 @@ Unlike native WarehousePG tables, whose data is fixed to specific segment hosts,
 
 PGAA executes queries through one of two engines: Seafowl, the default vectorized engine bundled with PGAA, or Spark, when you configure Spark Connect to point to a Spark cluster.
 
+When Spark is the active engine, the coordinator forwards the query to the Spark cluster via Spark Connect, without involving segment hosts. Spark handles its own planning and distribution independently of the Seafowl scan modes.
+
 When Seafowl is the active engine, PGAA selects one of two scan modes depending on the nature of the query:
 
 - **DirectScan:** PGAA offloads the query entirely to Seafowl on the coordinator, without involving the segment hosts.
 
-- **CompatScan:** Used when the query involves operations Seafowl cannot handle, such as a join with a native WarehousePG heap table. PGAA proposes two candidate execution plans to the WarehousePG planner, which picks the cheaper one:
+- **CompatScan:** Used when the query involves operations Seafowl can't handle, such as a join with a native WarehousePG heap table. For every table, PGAA proposes two candidate execution plans to the WarehousePG planner, which picks the cheaper one:
 
     - **Strewn locus (MPP):** the scan is distributed across all segment hosts, each reading a portion of the data in parallel.
-    - **General locus (coordinator-only):** the scan runs entirely on the coordinator. With [aggregation pushdown](../optimize_performance#configuring-compute-pushdowns) enabled, the coordinator processes aggregations before returning results, which is often cheaper than the MPP path.
+    - **General locus:** the whole table can be processed on the coordinator and every segment. With [aggregation pushdown](../optimize_performance#configuring-compute-pushdowns) enabled, the coordinator processes aggregations before returning results, which can further reduce the data sent back to the client.
 
-When Spark is the active engine, the coordinator forwards the query to the Spark cluster via Spark Connect, without involving segment hosts. Spark handles its own planning and distribution independently of the Seafowl scan modes.
+    Combining both strategies is particularly useful for joins between PGAA tables of different sizes. For example, when joining a small table against a large one, the planner can use General locus for the small table, scanning it in full on every segment and loading it into a local hash map, while using Strewn locus for the large table, where each segment reads only its portion. The join then runs locally on each segment without any data shuffling between hosts.
 
 | Engine | Scan mode | Execution |
 |---|---|---|
 | Seafowl | DirectScan | Coordinator only. |
-| Seafowl | CompatScan | Coordinator only (General locus) or MPP across segments (Strewn locus), based on cost. |
+| Seafowl | CompatScan | Coordinator and every segment scan the full table (General locus), or each segment reads a portion of the data in parallel (Strewn locus), based on cost. |
 | Spark | SparkDirectScan | Spark cluster via coordinator only. |
 
 For a deeper explanation of Seafowl scan modes, see [Understanding scan types](../optimize_performance/#understanding-scan-types).
