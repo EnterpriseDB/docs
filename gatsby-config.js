@@ -234,6 +234,8 @@ module.exports = {
           ? [
               "Vary: Accept, Accept-Encoding",
               "Netlify-Vary: header=accept|accept-encoding",
+              'link: </docs/llms.txt>; rel="llms-txt"',
+              "x-llms-txt: /docs/llms.txt",
             ]
           : ["X-Robots-Tag: noindex"],
         headers: {

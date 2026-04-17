@@ -7,6 +7,7 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 const util = require("node:util");
 const execAsync = util.promisify(exec);
+const nunjucks = require("nunjucks");
 
 const {
   replacePathVersion,
@@ -298,6 +299,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes, productVersions);
+  await generateLlmsTxt(treeRoot, productVersions);
   for (let curr of treeRoot) {
     // exit here if we're not dealing with an actual page
     if (!curr.mdxNode && !curr.path) continue;
@@ -371,6 +373,20 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     gitData.docsRepoUrl,
     productVersions,
   );
+};
+
+const generateLlmsTxt = async (treeRoot, productVersions) => {
+  const templateSource = await readFile(
+    path.join(__dirname, "src/templates/llms.txt.njk"),
+  );
+  nunjucks.configure({ autoescape: false });
+  const rendered = nunjucks.renderString(templateSource, {
+    treeRoot,
+    productVersions,
+  });
+  const outputPath = path.join(process.cwd(), "public/llms.txt");
+  realFs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, rendered);
 };
 
 const createDoc = (

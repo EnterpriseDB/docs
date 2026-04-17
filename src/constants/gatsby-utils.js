@@ -84,6 +84,15 @@ const mdxNodesToTree = (nodes, productVersions) => {
         yield* child;
       }
     }
+
+    find(product, version) {
+      return Iterator.from(this).find((node) => {
+        return (
+          node.mdxNode?.fields?.product === product &&
+          node.mdxNode?.fields?.version === version
+        );
+      });
+    }
   }
 
   Node.prototype.indexes = { rootedToPathToNodes: new Map() };
