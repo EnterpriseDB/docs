@@ -1,0 +1,134 @@
+---
+title: Configuring and running the EDB DMS agent
+navTitle: Configuring the DMS agent
+description: Create migration credentials, configure the EDB DMS agent in reader mode for your Oracle source, and verify the source appears in HM.
+deepToC: true
+---
+
+The EDB DMS agent handles data migration from your Oracle source. Before you can run it, you need to create migration credentials in HM and pass them to the agent alongside your Oracle connection details.
+
+## Creating migration credentials
+
+Migration credentials authenticate the DMS agent to Hybrid Manager (HM). You need one set of credentials per HM project.
+
+1.  In the HM console, select the project you're using for your migration.
+
+1.  Select **Migrate > Credentials**.
+
+1.  Select **Create Migration Credential**, enter a name, and select **Create Migration Credential**. A `credentials.zip` folder is downloaded to your machine.
+
+    !!!note
+    Ensure you store the credentials safely. If you lose them, you'll need to revoke this set and create new ones.
+    !!!
+
+1.  Unzip the downloaded file and copy the credentials folder to the auxiliary machine where you installed the DMS agent.
+
+    The folder contains:
+    - `int.crt`
+    - `int.truststore.p12`
+    - `client.keystore.p12`
+    - `client-key.pem`
+    - `client-cert.pem`
+
+## Configuring the DMS agent
+
+1.  Open `/opt/cdcagent/run-cdcagent.sh` with write permissions. 
+
+1.  Set the variables for your environment. Uncomment each line you edit. 
+
+    See the [parameter reference](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/) for full details.
+
+    ```shell
+    #!/bin/bash -e
+    # run_cdcagent.sh
+    
+    ##########################################
+    # DMS Agent General Configuration       #
+    ##########################################
+    
+    # Unique name for this source
+    export DBCONFIG_ID=<source_name_of_choice>
+    
+    # Run mode: 'reader' reads from source, 'writer' writes to destination
+    export RUN_MODE=reader
+    
+    # DMS backend service host — obtain from HM console under Migrate > Sources or Destinations
+    export RW_SERVICE_HOST=<rw_service_host>
+    
+    ##########################################
+    # DMS Agent TLS Configuration           #
+    ##########################################
+    
+    # Path to the credentials folder you downloaded from HM
+    export CREDENTIAL_DIRECTORY_PATH=$HOME/credentials
+    
+    ##########################################
+    # DMS Agent DB Configuration            #
+    ##########################################
+    
+    export DBCONFIG_DATABASES_0__TYPE=ORACLE
+    export DBCONFIG_DATABASES_0__HOSTNAME=<host>
+    export DBCONFIG_DATABASES_0__PORT=<1521>
+    # CATALOG is the database name (service name or SID)
+    export DBCONFIG_DATABASES_0__CATALOG=<source>
+    export DBCONFIG_DATABASES_0__USERNAME=<SYS>
+    export DBCONFIG_DATABASES_0__PASSWORD=<password>
+    # Must match the resource_id set in beacon_agent.yaml
+    #export DBCONFIG_DATABASES_0__RESOURCEID=1234567890abcdef
+    
+    # To configure additional databases, increment the index:
+    #export DBCONFIG_DATABASES_1__TYPE=ORACLE
+    #export DBCONFIG_DATABASES_1__HOSTNAME=localhost
+    #export DBCONFIG_DATABASES_1__PORT=1521
+    #export DBCONFIG_DATABASES_1__CATALOG=ORCLCDB/ORCLPDB1
+    #export DBCONFIG_DATABASES_1__USERNAME=oracle
+    #export DBCONFIG_DATABASES_1__PASSWORD=password
+    #export DBCONFIG_DATABASES_1__RESOURCEID=1234567890abcdef
+    
+    ##########################################
+    # Optional Parameters                    #
+    ##########################################
+    
+    #export FIPS_MODE=true
+    
+    # Logging — WARNING: DEBUG is extremely verbose
+    #export QUARKUS_LOG_LEVEL=DEBUG
+    #export QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL=DEBUG
+    
+    cd "$(dirname "$0")"
+    
+    echo "Starting in mode: $RUN_MODE"
+    
+    case "$RUN_MODE" in
+      reader)
+        java -jar ./reader/quarkus-run.jar
+        ;;
+      writer)
+        java -jar ./writer/quarkus-run.jar
+        ;;
+      *)
+        echo "Unknown RUN_MODE: $RUN_MODE"
+        exit 1
+        ;;
+    esac
+    ```
+
+!!!note
+`DBCONFIG_DATABASES_0__RESOURCEID` must match the `resource_id` you set for this database in `beacon_agent.yaml`. This is how HM correlates the DMS agent source with the registered database.
+!!!
+
+## Running the DMS agent
+
+```shell
+cdcagent
+```
+
+## Verifying the source in HM
+
+Once the agent is running, verify that your Oracle database appears as a source in HM:
+
+1.  In the HM console, select your project.
+
+1.  Select **Migrate > Sources**.
+
+Your Oracle database should be listed with its name, type, `cdcagent` ID, and status. For a description of all fields on this page, see [Sources](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/sources/).
