@@ -10,8 +10,8 @@ Pipeline execution is the process of reading source data, running it through the
 
 When a pipeline executes (whether triggered automatically or manually), the following sequence occurs:
 
-1.  The beacon-agent on the target cluster opens a transaction and switches to the `visual_pipeline_user` role.
-2.  AIDB reads pending rows from the source table (for table sources) or loads all objects (for volume sources).
+1.  Pipeline operations run under the `visual_pipeline_user` (VPU) role. The mechanism depends on how the pipeline is triggered: for manual execution and pipeline management operations, the EDB Postgres AI agent (`beacon-agent`) opens a transaction and switches to VPU using `SET LOCAL ROLE`. For Background mode, AIDB's background worker performs the role switch internally. For Live mode, trigger functions owned by VPU execute directly.
+2.  AIDB reads pending rows from the source table.
 3.  Each step processes the data sequentially. The output of one step becomes the input for the next.
 4.  If any step encounters a record-level error (for example, a malformed PDF), the error is logged and the pipeline continues with the remaining records. Pipeline-level errors (for example, model unreachable) halt execution.
 5.  The final output is written to the destination table, or to the knowledge base vector table if the last step is KnowledgeBase.
@@ -33,32 +33,31 @@ Manual execution is useful for:
 
 ### Live mode
 
-In Live mode, AIDB installs a trigger on the source table that fires on every INSERT, UPDATE, or DELETE. The pipeline processes the affected row within the triggering transaction.
+In Live mode, AIDB installs a trigger on the source table that fires on every INSERT, UPDATE, or DELETE. The pipeline processes the affected row within the triggering transaction, so the application writing to the source table incurs the full latency of pipeline processing before the write returns.
 
 **Characteristics:**
--   Processing is synchronous. The INSERT/UPDATE/DELETE statement does not return until the pipeline finishes processing the row.
--   Suitable for low-volume, latency-sensitive scenarios where data must be embedded or processed immediately.
--   A slow inference model call will block the triggering transaction, potentially causing application-visible latency.
--   Not available for volume-based sources.
+-   Writes to the source table are blocked until the pipeline finishes processing the affected row. The application pays the cost of pipeline processing on every write.
+-   A slow inference model call (for example, embedding or summarization) adds latency directly to the application's write path.
+-   Suitable for low-volume, latency-sensitive scenarios where data must be embedded or processed immediately after writing.
 
 ### Background mode
 
-In Background mode, a background worker polls for unprocessed rows and processes them in batches.
+In Background mode, AIDB's background worker (running inside the PostgreSQL instance) processes unprocessed rows in batches on a configurable schedule. Application transactions complete immediately; pipeline processing happens independently.
 
 **Characteristics:**
--   Processing is asynchronous. Application transactions complete immediately; the pipeline processes data on its own schedule.
+-   Application writes to the source table are unaffected by pipeline processing. There is a delay (determined by the sync interval) before results appear.
 -   Batch size and sync interval are configurable (defaults: 100 rows per batch, 30-second interval).
 -   Recommended for most production workloads.
 -   The background worker runs on the database cluster, not in the HM control plane. On PGD clusters, it runs on the write leader node.
 
-## Primary HM clusters
+## HM-managed clusters on the primary location
 
-On primary HM-managed clusters (appliance clusters in your main data center), pipeline execution works with full access to all features:
+On HM-managed clusters running on the primary HM location, pipeline execution works with full access to all features:
 
 -   All HM-hosted KServe models are available for pipeline steps.
 -   External inference services are available.
--   PGD clusters execute pipelines on the write leader node. Pipeline metadata (configuration, state, metrics) is replicated across all nodes through BDR logical replication, but execution occurs only on the write leader.
--   PSR clusters execute pipelines on the single writable node.
+-   PGD clusters execute pipelines on the write leader node. Pipeline metadata (configuration, state, metrics) is replicated across all nodes through BDR logical replication, but execution occurs only on the write leader. If a write leader switchover occurs, the new write leader resumes pipeline execution: in Background mode, AIDB's background worker starts on the new leader and picks up unprocessed rows; in Live mode, the trigger functions are replicated to all nodes and fire on the new write leader automatically. There may be a brief gap during the switchover while the new leader is elected.
+-   PSR clusters execute pipelines on the single writable node. On failover to a promoted standby, background processing resumes once the new primary is operational and AIDB's background worker starts. Live mode triggers are present on the promoted standby and fire normally. Rows written during the failover window (if any) are processed as part of the normal unprocessed-row backlog.
 
 ## Remote and self-managed clusters
 
@@ -66,18 +65,18 @@ Pipeline Designer supports creating and running pipelines on clusters outside yo
 
 ### Secondary HM locations
 
-If your HM deployment spans multiple data centers, you can create pipelines targeting clusters in secondary locations. When creating the pipeline, select the secondary cluster from the estate dropdown. The pipeline executes on the remote cluster's write leader.
+Pipelines can target any HM-managed cluster on any HM location (primary or secondary). When creating the pipeline, select the cluster on the secondary location from the estate dropdown. Execution happens on the writable node: the write leader for PGD clusters, or the primary for PSR clusters.
 
 ### Self-managed PostgreSQL instances
 
-PostgreSQL instances registered with HM through a beacon-agent can host pipelines. Requirements:
+PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`) can host pipelines. Requirements:
 
 -   PostgreSQL 16 or later.
 -   AIDB extension installed and configured.
--   A beacon-agent connected to the HM control plane.
+-   The EDB Postgres AI agent (`beacon-agent`) installed and connected to the HM control plane.
 -   External inference services registered if models are needed (HM-hosted models are typically not reachable from self-managed instances).
 
-When you select a self-managed cluster in the pipeline wizard, Pipeline Designer discovers the available databases, schemas, and tables through the beacon-agent. Model discovery also runs through the agent, querying the local AIDB model registry.
+When you select a self-managed cluster in the pipeline wizard, Pipeline Designer discovers the available databases, schemas, and tables through the EDB Postgres AI agent. Model discovery also runs through the agent, querying the local AIDB model registry.
 
 ### Model availability on remote clusters
 
