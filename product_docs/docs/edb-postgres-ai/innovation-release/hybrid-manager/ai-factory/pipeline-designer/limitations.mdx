@@ -1,0 +1,63 @@
+---
+title: Limitations
+navTitle: Limitations
+description: Current limitations and design constraints in Pipeline Designer for Hybrid Manager.
+---
+
+This page documents design constraints and limitations in Pipeline Designer. These are intentional boundaries of the current implementation, not transient bugs.
+
+For release-specific known issues and workarounds, see the [Hybrid Manager release notes](/edb-postgres-ai/innovation-release/hybrid-manager/rel_notes/).
+
+## Pipeline creation and structure
+
+### Steps cannot be modified after creation
+
+Once a pipeline is deployed, its step structure (step types, order, and configuration) is fixed. You cannot add, remove, or reorder steps. To change a pipeline's structure, delete it and create a new one.
+
+### Pipeline name length limit
+
+Pipeline names are limited to 46 characters. This is more restrictive than the 50-character limit shown in some AIDB documentation, because AIDB reserves up to 17 characters for internal object name suffixes (state tables, triggers, error logs).
+
+### Destination table name collision
+
+If a table named `pipeline_{your_pipeline_name}` already exists in the target schema and is not a registered knowledge base vector table, pipeline creation will fail. Either rename the existing table or choose a different pipeline name.
+
+## Multi-step pipelines
+
+### ChunkText overlap setting not available
+
+The `overlap_length` parameter for the ChunkText step (which controls how much text overlaps between consecutive chunks) is supported by AIDB but not yet configurable through Pipeline Designer. If you need chunk overlap, create the pipeline through SQL directly.
+
+## Inference routing on remote clusters
+
+### HM-hosted models may not work on remote clusters
+
+When creating pipelines on self-managed PostgreSQL instances or secondary HM locations, HM-hosted KServe models appear in the model picker but may fail at execution time. The inference endpoint runs on the primary HM Kubernetes cluster, and the network path from remote clusters to the KServe service may not be available.
+
+**Workaround**: Use external inference services (OpenAI, AWS Bedrock) or on-database AIDB models for pipelines running on remote clusters. External services are internet-accessible and do not depend on the HM internal network.
+
+## Processing modes
+
+### Live mode blocks application writes
+
+Live processing executes within the triggering transaction. An INSERT, UPDATE, or DELETE on the source table does not return until the pipeline finishes processing the affected row. For steps involving inference model calls (SummarizeText, KnowledgeBase embedding), this can add significant latency to the application's write path.
+
+**Recommendation**: Use Background mode for production workloads unless real-time processing is strictly required.
+
+### Background worker overhead
+
+The background processing worker polls all databases on the cluster for pipelines in Background mode. On deployments with many databases or many pipelines, this polling can create measurable overhead.
+
+## Knowledge bases
+
+### No standalone knowledge base creation
+
+Knowledge bases can only be created as a side effect of deploying a pipeline with a KnowledgeBase terminal step. There is no standalone "create knowledge base" operation in Pipeline Designer.
+
+Note that a KnowledgeBase step alone is rarely sufficient for useful results. Raw text data typically needs at least a ChunkText step before the KnowledgeBase step to split content into appropriately sized segments for embedding. A pipeline with only a KnowledgeBase step would attempt to embed entire source rows as single vectors, which may exceed model token limits or produce poor retrieval quality.
+
+## Model and access control
+
+### No per-user model isolation
+
+Model credentials are shared across all database users on a cluster. There is no per-user or per-pipeline credential isolation. See [VPU and permissions: Shared model credentials](vpu-and-permissions#shared-model-credentials) for details.
