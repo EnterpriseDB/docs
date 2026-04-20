@@ -50,42 +50,32 @@ In Background mode, AIDB's background worker (running inside the PostgreSQL inst
 -   Recommended for most production workloads.
 -   The background worker runs on the database cluster, not in the HM control plane. On PGD clusters, it runs on the write leader node.
 
-## HM-managed clusters on the primary location
+## Deployment types
 
-On HM-managed clusters running on the primary HM location, pipeline execution works with full access to all features:
+Pipeline Designer can create and manage pipelines on clusters across all three HM deployment types. Understanding these categories is useful because they determine which models and inference services a pipeline can reach.
 
--   All HM-hosted KServe models are available for pipeline steps.
--   External inference services are available.
--   PGD clusters execute pipelines on the write leader node. Pipeline metadata (configuration, state, metrics) is replicated across all nodes through BDR logical replication, but execution occurs only on the write leader. If a write leader switchover occurs, the new write leader resumes pipeline execution: in Background mode, AIDB's background worker starts on the new leader and picks up unprocessed rows; in Live mode, the trigger functions are replicated to all nodes and fire on the new write leader automatically. There may be a brief gap during the switchover while the new leader is elected.
--   PSR clusters execute pipelines on the single writable node. On failover to a promoted standby, background processing resumes once the new primary is operational and AIDB's background worker starts. Live mode triggers are present on the promoted standby and fire normally. Rows written during the failover window (if any) are processed as part of the normal unprocessed-row backlog.
+An HM **location** is a Kubernetes environment managed by the HM control plane. HM supports multiple locations in a hub-and-spoke topology:
 
-## Remote and self-managed clusters
+-   **Primary location.** The initial HM-managed environment where the full platform stack runs, including the control plane, KServe model serving, the external inference service proxy, and all AI Factory services. Clusters on the primary location have full access to every feature.
+-   **Secondary locations.** Additional HM-managed environments in a multi-datacenter deployment. Secondary locations run the `core` installation scenario: they host database clusters and essential services but typically do not run the AI scenario (KServe, model serving). They maintain control-plane connectivity back to the primary location.
+-   **Self-managed clusters.** Customer-managed PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`). Self-managed clusters are not provisioned by HM. Their connectivity to HM services varies: some have full network access to the primary location, while others are isolated and can only use AIDB-native capabilities (on-database models, no HM-mediated inference).
 
-Pipeline Designer supports creating and running pipelines on clusters outside your primary HM location:
+### Supported clusters
 
-### Secondary HM locations
+Pipeline Designer manages pipelines on HM-managed clusters (both primary and secondary locations) and on self-managed PostgreSQL instances. When you create a pipeline, you select the target cluster from the estate dropdown regardless of its deployment type. Pipeline Designer discovers databases, schemas, tables, and available models through the EDB Postgres AI agent on each cluster.
 
-Pipelines can target any HM-managed cluster on any HM location (primary or secondary). When creating the pipeline, select the cluster on the secondary location from the estate dropdown. Execution happens on the writable node: the write leader for PGD clusters, or the primary for PSR clusters.
+Self-managed clusters must meet additional prerequisites: PostgreSQL 16 or later, the AIDB extension installed and configured, and the EDB Postgres AI agent connected to the HM control plane.
 
-### Self-managed PostgreSQL instances
+### Model reachability
 
-PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`) can host pipelines. Requirements:
+HM-hosted KServe models run on the primary location. Secondary locations and self-managed clusters typically cannot reach these inference endpoints because secondaries run only the `core` scenario (which excludes KServe) and self-managed instances have no local HM infrastructure. For pipelines on these clusters, use external inference services (OpenAI, AWS Bedrock, or other internet-accessible providers) or on-database models (built-in AIDB models that run locally within PostgreSQL). See [Limitations: Inference routing on remote clusters](limitations#inference-routing-on-remote-clusters) for details.
 
--   PostgreSQL 16 or later.
--   AIDB extension installed and configured.
--   The EDB Postgres AI agent (`beacon-agent`) installed and connected to the HM control plane.
--   External inference services registered if models are needed (HM-hosted models are typically not reachable from self-managed instances).
+### Replication and failover
 
-When you select a self-managed cluster in the pipeline wizard, Pipeline Designer discovers the available databases, schemas, and tables through the EDB Postgres AI agent. Model discovery also runs through the agent, querying the local AIDB model registry.
+Pipeline execution behavior depends on the cluster architecture, not on the deployment type. The same mechanics apply whether the cluster is on the primary location, a secondary location, or self-managed.
 
-### Model availability on remote clusters
-
-The most important limitation for remote pipelines is model availability. HM-hosted KServe models run on the primary HM Kubernetes cluster, and their inference endpoints may not be network-reachable from remote locations or self-managed instances.
-
-For remote clusters:
--   **External inference services** (OpenAI, AWS Bedrock) work because they are internet-accessible.
--   **On-database models** (built-in AIDB models) work because they run locally within PostgreSQL.
--   **HM-hosted KServe models** may appear in the model picker but will fail at pipeline execution time if the remote cluster cannot reach the KServe endpoint. See [Limitations: Inference routing on remote clusters](limitations#inference-routing-on-remote-clusters).
+-   **PGD clusters** execute pipelines on the write leader node. Pipeline metadata (configuration, state, and metrics) replicates to all nodes through BDR logical replication, but execution occurs only on the write leader. On a write leader switchover, the new leader resumes execution: in Background mode, AIDB's background worker starts on the new leader and picks up unprocessed rows; in Live mode, trigger functions are replicated to all nodes and fire on the new write leader automatically. There may be a brief gap during the switchover while the new leader is elected.
+-   **PSR clusters** execute pipelines on the single writable node. On failover to a promoted standby, background processing resumes once the new primary is operational and AIDB's background worker starts. Live mode triggers are present on the promoted standby and fire normally. Rows written during the failover window (if any) are processed as part of the normal unprocessed-row backlog.
 
 ## Monitoring execution
 
