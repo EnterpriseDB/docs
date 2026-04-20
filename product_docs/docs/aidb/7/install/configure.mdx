@@ -1,0 +1,100 @@
+---
+title: Configuring AIDB
+navTitle: Configuring
+---
+
+To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, and verify the installation.
+
+## Configure shared_preload_libraries
+
+1. In the `postgresql.conf` file, add `aidb` to the `shared_preload_libraries` parameter:
+
+   ```ini
+   shared_preload_libraries = 'aidb'
+   ```
+
+   !!!Note
+   If `shared_preload_libraries` already has other extensions listed, append `aidb` using a comma separator. The order doesn't matter.
+   !!!
+
+1. Restart Postgres.
+
+## Create the extensions
+
+1. Create the AIDB extension in your database:
+
+   ```sql
+   CREATE EXTENSION aidb CASCADE;
+   ```
+
+   The `CASCADE` option automatically installs the required `vector` extension if it isn't already present.
+
+   !!!Note PGD users
+   If you're running EDB Postgres Distributed (PGD), run the following after creating the extension to register AIDB catalog tables in the replication set:
+
+   ```sql
+   SELECT aidb.bdr_setup();
+   ```
+   !!!
+
+1. If you plan to use external data sources such as S3-compatible object stores or local file system volumes, also install the Postgres File System (PGFS) extension:
+
+   ```sql
+   CREATE EXTENSION pgfs;
+   ```
+   
+   For more information, see [PGFS documentation](/pg_extensions/pgfs/).
+
+## Enable VectorChord (optional)
+
+If you installed VectorChord, create the extension in your database:
+
+```sql
+CREATE EXTENSION vectorchord;
+```
+
+To also enable hybrid search (BM25 + vector):
+
+```sql
+CREATE EXTENSION vectorchord_bm25;
+```
+
+VectorChord knowledge bases can then be configured at the knowledge base level — see [Knowledge bases](/aidb/latest/knowledge-bases/).
+
+## Proxy settings
+
+If your environment routes outbound HTTP traffic through a proxy, set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables in the Postgres environment file. On Ubuntu with community Postgres, this file is at `/etc/postgresql/<version>/main/environment`:
+
+```bash
+echo "HTTP_PROXY = 'http://<your-proxy-settings>/'" | sudo tee -a /etc/postgresql/16/main/environment
+echo "HTTPS_PROXY = 'http://<your-proxy-settings>/'" | sudo tee -a /etc/postgresql/16/main/environment
+```
+
+Then restart Postgres for the changes to take effect:
+
+```bash
+sudo systemctl restart postgresql@16-main
+```
+
+Replace `<your-proxy-settings>` with your proxy address, and `16` with your Postgres version. Consult the documentation for your Postgres distribution for the exact location of the environment file.
+
+!!!Note
+Air-gapped environments are not currently supported.
+!!!
+
+## Validate the installation
+
+Confirm that the extensions are installed by running `\dx` in psql and looking for `aidb`, `vector`, `pgfs` (if installed), and `vectorchord` and `vectorchord_bm25` (if those extensions were installed) in the output:
+
+```
+aidb=# \dx
+__OUTPUT__
+                                     List of installed extensions
+       Name            | Version |   Schema   |                        Description
+-----------------------+---------+------------+------------------------------------------------------------
+ aidb                  | 7.3.1   | aidb       | aidb: makes it easy to build AI applications with postgres
+ pgfs                  | 1.0.6   | pgfs       | pgfs: enables access to filesystem-like storage locations
+ vector                | 0.8.0   | public     | vector data type and ivfflat and hnsw access methods
+ vectorchord           | 0.3.0   | public     | vectorchord: fast vector search for postgres
+ vectorchord_bm25      | 0.1.0   | public     | vectorchord_bm25: bm25 full-text search for postgres
+```

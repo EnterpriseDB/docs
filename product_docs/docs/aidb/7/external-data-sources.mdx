@@ -1,0 +1,170 @@
+---
+title: Configuring external storage
+navTitle: External storage
+description: How to connect AIDB pipelines to external storage — S3-compatible object stores, Google Cloud Storage, Azure, and local file systems — using PGFS storage locations and AIDB volumes.
+---
+
+AIDB pipelines can read from two types of data source:
+
+- **Postgres tables** — reference a table directly by name using the `source` parameter in `aidb.create_pipeline()`. See [Creating pipelines](./data-pipelines/data-processing#table-sources).
+- **External storage volumes** — connect S3-compatible object stores, Google Cloud Storage, Azure, or local file systems via PGFS. The rest of this page covers how to set this up.
+
+External storage is accessed through the Postgres File System (PGFS) extension, which maps external storage into Postgres as *storage locations*. AIDB then wraps each storage location in a *volume* that pipelines reference by name.
+
+## How it works
+
+Connecting external storage to an AIDB pipeline involves two objects:
+
+- **PGFS storage location** — Defines the external storage provider: its URI, credentials, and connection options. Created with [pgfs.create_storage_location()](/pg_extensions/pgfs/reference/#pgfscreate_storage_location).
+- **AIDB volume** — Connects a PGFS storage location to AIDB. Specifies the data format (Text, Image, Pdf) and an optional sub-path within the storage location. Created with `aidb.create_volume()`.
+
+Once a volume exists, reference it as the `source` in `aidb.create_pipeline()` exactly as you would a Postgres table name.
+
+!!!Note
+The PGFS extension must be installed before creating storage locations. See [Configuring AIDB](./install/configure#create-the-extensions).
+!!!
+
+## Step 1: Create a storage location
+
+Use `pgfs.create_storage_location()` to define the connection to external storage. The `uri` parameter identifies the storage backend and path; the `options` JSONB object carries provider-specific settings such as region and credentials.
+
+### S3-compatible object store
+
+```sql
+-- Private S3 bucket with credentials
+SELECT pgfs.create_storage_location(
+    name    => 'my_s3_location',
+    uri     => 's3://my-bucket/my-folder',
+    options => '{"region": "us-east-1", "access_key_id": "<key>", "secret_access_key": "<secret>"}'
+);
+
+-- Public S3 bucket (no credentials required)
+SELECT pgfs.create_storage_location(
+    name    => 'my_public_bucket',
+    uri     => 's3://aidb-rag-app',
+    options => '{"region": "eu-central-1", "skip_signature": "true"}'
+);
+```
+
+### Local file system
+
+For local file system access, declare the allowed base paths in `postgresql.conf` before creating the storage location. PGFS restricts access to these paths for security.
+
+```ini
+# postgresql.conf
+pgfs.allowed_local_fs_paths = '/tmp/pgfs'
+```
+
+After restarting Postgres, create the storage location using a `file://` URI:
+
+```sql
+SELECT pgfs.create_storage_location(
+    name => 'local_tmp_pgfs',
+    uri  => 'file:///tmp/pgfs/'
+);
+```
+
+For full details on storage location options for S3, GCS, and Azure, see the [PGFS documentation](/pg_extensions/pgfs/).
+
+## Step 2: Create a volume
+
+Use `aidb.create_volume()` to attach a PGFS storage location to AIDB. The volume is what pipelines and SQL functions reference.
+
+```sql
+SELECT aidb.create_volume(
+    name             => 'my_volume',
+    server => 'my_s3_location',
+    path         => '/',
+    data_format      => 'Text'
+    );
+```
+
+Parameters:
+
+| Parameter          | Description                                                                                              |
+|--------------------|----------------------------------------------------------------------------------------------------------|
+| `name`             | Unique name for the volume. Used to reference it in pipelines.                                           |
+| `storage_location` | Name of the PGFS storage location to attach.                                                             |
+| `sub_path`         | Optional path within the storage location. Useful for pointing multiple volumes at different folders in the same bucket. |
+| `data_format`      | The type of data in this volume. One of `Text`, `Image`, or `Pdf`. Pipelines use this to choose the correct parsing step. |
+
+!!!Note
+`data_format` is metadata — it tells AIDB how to treat the objects, but does not filter them. Ensure the volume only contains objects of the declared format.
+!!!
+
+### Example: PDFs in S3
+
+```sql
+SELECT pgfs.create_storage_location(
+    'pdf_bucket',
+    's3://my-docs-bucket',
+    options => '{"region": "us-east-1", "access_key_id": "<key>", "secret_access_key": "<secret>"}'
+);
+
+SELECT aidb.create_volume('pdf_volume', 'pdf_bucket', '/', 'Pdf');
+```
+
+### Example: Images in a local directory
+
+```sql
+SELECT pgfs.create_storage_location('local_tmp_pgfs', 'file:///tmp/pgfs/');
+
+SELECT aidb.create_volume('ocr_input_volume', 'local_tmp_pgfs', 'ocr_input/', 'Image');
+```
+
+## Step 3: Use the volume as a pipeline source
+
+Set the `source` parameter in `aidb.create_pipeline()` to the volume name. Volume sources work the same as table sources from the pipeline's perspective:
+
+```sql
+SELECT aidb.create_pipeline(
+    name       => 'my_pdf_pipeline',
+    source     => 'pdf_volume',
+    step_1     => 'ParsePdf',
+    step_2     => 'ChunkText',
+    step_3     => 'KnowledgeBase',
+    step_3_options => aidb.knowledge_base_config('bert_local', 'Text')
+);
+```
+
+See [Create a pipeline](./data-pipelines/data-processing#volume-sources-pgfs) for a full walkthrough.
+
+## Managing volumes
+
+### List and delete
+
+List all volumes:
+
+```sql
+SELECT aidb.list_volumes();
+```
+
+Delete a volume:
+
+```sql
+SELECT aidb.delete_volume('my_volume');
+```
+
+!!!Note
+Deleting a PGFS storage location also deletes all volumes created on top of it.
+!!!
+
+### Inspect volume contents
+
+Use these functions to verify a volume before attaching it to a pipeline:
+
+```sql
+-- List all objects in the volume
+SELECT * FROM aidb.list_volume_content('my_volume');
+
+-- Read a specific file as BYTEA
+SELECT aidb.read_volume_file('my_volume', 'report.pdf');
+
+-- Read a plain text file as text
+SELECT convert_from(
+    aidb.read_volume_file('my_volume', 'notes.txt'),
+    'utf8'
+);
+```
+
+These direct access functions are also useful for building custom SQL queries against external storage, independent of any pipeline.

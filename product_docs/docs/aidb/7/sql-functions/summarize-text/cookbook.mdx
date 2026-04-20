@@ -1,0 +1,622 @@
+---
+title: Summarization cookbook
+navTitle: Cookbook
+description: Advanced recipes and optimization patterns for aggregate text summarization with aidb.summarize_text_aggregate().
+deepToC: true
+---
+
+Real-world recipes for using `aidb.summarize_text_aggregate()` beyond basic summarization. Each recipe is a self-contained pattern you can adapt to your data.
+
+All examples use a sales dataset with tables: `sales_notes` (`note_text`, `note_id`, `order_id`), `sales_orders` (`order_id`, `status`, `product_id`, `customer_id`), `products` (`product_id`, `product_name`), `customers` (`company_name`).
+
+## Recipes
+
+### 1. Summarize by category
+
+**When to use:** You want a summary of text grouped by any dimension — product, customer, region, time period.
+
+```sql
+SELECT p.product_name,
+       count(sn.note_id) AS note_count,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config('my-llm')::json
+       ) AS summary
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY p.product_name
+ORDER BY note_count DESC;
+```
+
+- Without chunking, all text in each group is sent as a single LLM call.
+- For groups with fewer than 500 notes (avg ~250 chars each), no chunking is fastest.
+- For larger groups, add chunking to avoid context window overflow (see [Recipe 7](#7-detailed-summaries-append-strategy)).
+
+### 2. Deal loss analysis
+
+**When to use:** You want to understand why deals are being lost, with actionable reasons.
+
+```sql
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               prompt => 'Analyze these sales notes and answer: Why are we losing deals? '
+                         'What are the top reasons for failure? '
+                         'Provide specific, actionable insights.'
+           )::json
+       ) AS loss_analysis
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status IN ('lost', 'closed_lost')
+GROUP BY p.product_name;
+```
+
+- Filter to lost deals only (`WHERE status IN ('lost', 'closed_lost')`) so the LLM focuses on failure patterns.
+- The prompt should be specific: "top reasons" gives better results than "analyze".
+- For more constrained output, see [Recipe 8](#8-reusable-config-wrapper-functions).
+
+### 3. Sentiment analysis
+
+**When to use:** You want to gauge overall sentiment (positive/negative/mixed) from grouped text.
+
+```sql
+-- Compare sentiment between won and lost deals
+SELECT p.product_name,
+       so.status AS deal_outcome,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               prompt => 'Analyze the overall sentiment of these entries. Provide: '
+                         '1) Overall sentiment (positive/negative/neutral/mixed), '
+                         '2) Key positive themes, '
+                         '3) Key negative themes, '
+                         '4) Notable concerns if any.'
+           )::json
+       ) AS sentiment
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status IN ('won', 'lost')
+GROUP BY p.product_name, so.status
+ORDER BY p.product_name, so.status;
+```
+
+- Comparing won vs lost sentiment side-by-side reveals what differentiates successful deals.
+- The numbered format in the prompt guides structured output, though LLM adherence varies at scale (see [Known limitations](#known-limitations)).
+
+### 4. Key insights extraction
+
+**When to use:** You want a concise list of the most important findings across many entries.
+
+```sql
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               prompt => 'Extract the top 5 key insights from these entries as a numbered list. '
+                         'Focus on actionable findings, patterns, and important trends.'
+           )::json
+       ) AS insights
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY p.product_name
+ORDER BY count(sn.note_id) DESC
+LIMIT 5;
+```
+
+- "Top N" and "numbered list" in the prompt constrain output length.
+- Works best with moderate group sizes (50–500 notes). Very large groups may cause the LLM to produce generic summaries instead of specific insights.
+
+### 5. Issue categorization
+
+**When to use:** You want to classify issues or themes into predefined buckets.
+
+```sql
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               prompt => 'Categorize these sales notes into the following categories: '
+                         'Pricing Concern, Technical Issue, Competitive Loss, '
+                         'Timing/Budget, Feature Gap, Relationship/Trust, Integration Challenge. '
+                         'For each category provide the count and percentage of entries that match, '
+                         'plus a brief description.'
+           )::json
+       ) AS categories
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status IN ('lost', 'closed_lost')
+GROUP BY p.product_name;
+```
+
+- Define your categories explicitly in the prompt — don't let the LLM choose.
+- Request counts/percentages to get quantitative output.
+- The LLM may not perfectly follow the requested format. For more reliable formatting, use wrapper functions ([Recipe 8](#8-reusable-config-wrapper-functions)).
+
+### 6. Executive summaries (reduce strategy)
+
+**When to use:** You need a short, compressed summary rather than a detailed one. Good for dashboards and reports.
+
+```sql
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               aidb.chunk_text_config(100, 100, 10, 'words'),
+               NULL,
+               'reduce',
+               3  -- reduction_factor: each chunk targets desired_length/3 words
+           )::json
+       ) AS executive_summary
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY p.product_name;
+```
+
+How it works: text is split into 100-word chunks; each chunk is summarized targeting `desired_length / reduction_factor` words (100/3 ≈ 33 words per chunk); the summaries are combined, re-chunked, and re-summarized until the final result fits within `desired_length`. Output is ~400–900 characters (highly compressed).
+
+- `reduction_factor=3` compresses each chunk to ~33% of its size; `rf=2` to ~50%.
+- Always use word-based chunking with reduce — char-based can fail (see [Known limitations](#known-limitations)).
+- Minimum safe chunk size: 50 words.
+
+### 7. Detailed summaries (append strategy)
+
+**When to use:** You want comprehensive coverage that preserves detail from all parts of the text.
+
+```sql
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               aidb.chunk_text_config(200, 200, 20, 'words'),
+               NULL,
+               'append'
+           )::json
+       ) AS detailed_summary
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY p.product_name;
+```
+
+How it works: text is split into 200-word chunks with 20-word overlap; each chunk is summarized independently; summaries are concatenated. Output is ~5,000–15,000 characters (verbose, detailed).
+
+- Larger chunks (200 words) = fewer LLM calls = faster, but less granular.
+- Smaller chunks (50 words) = more LLM calls = slower, but more detailed.
+- The 20-word overlap ensures context isn't lost at chunk boundaries.
+
+### 8. Reusable config wrapper functions
+
+**When to use:** You want consistent, repeatable analysis with constrained output formats.
+
+Create SQL functions that return a pre-built configuration, then pass them directly to `summarize_text_aggregate()`. This pattern wraps the prompt logic inside a function that returns JSON, so you can use it cleanly with `GROUP BY` without repeating long prompt strings.
+
+**Focused analysis**
+
+```sql
+CREATE OR REPLACE FUNCTION analyze_top_reasons_config(
+    p_question TEXT,
+    p_n        INTEGER DEFAULT 3,
+    p_model    TEXT    DEFAULT 'my-llm'
+) RETURNS JSON AS $$
+    SELECT aidb.summarize_text_config(
+        p_model,
+        prompt => format(
+            'Answer this question about the text: %s '
+            'Give exactly %s reasons, each as a single sentence. '
+            'No preamble, no extra commentary.',
+            p_question, p_n
+        )
+    )::json;
+$$ LANGUAGE sql;
+
+-- Usage: pass the config function directly to the aggregate
+SELECT product_name,
+       aidb.summarize_text_aggregate(
+           note_text,
+           analyze_top_reasons_config('Why are customers churning?', 3)
+       ) AS churn_reasons
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status = 'lost'
+GROUP BY product_name;
+```
+
+**Structured sentiment**
+
+```sql
+CREATE OR REPLACE FUNCTION analyze_sentiment_config(
+    p_model TEXT DEFAULT 'my-llm'
+) RETURNS JSON AS $$
+    SELECT aidb.summarize_text_config(
+        p_model,
+        prompt => 'Analyze sentiment. Respond ONLY in this format:
+OVERALL: [positive/negative/neutral/mixed]
+SCORE: [1-10]
+TOP_POSITIVE: [one sentence]
+TOP_NEGATIVE: [one sentence]
+TREND: [improving/declining/stable]'
+    )::json;
+$$ LANGUAGE sql;
+
+-- Usage
+SELECT product_name,
+       aidb.summarize_text_aggregate(note_text, analyze_sentiment_config()) AS sentiment
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY product_name;
+```
+
+**Issue categorizer**
+
+```sql
+CREATE OR REPLACE FUNCTION categorize_issues_config(
+    p_categories TEXT[]  DEFAULT ARRAY[
+        'pricing', 'technical', 'competition',
+        'timing', 'budget', 'feature_gap', 'other'],
+    p_model      TEXT    DEFAULT 'my-llm'
+) RETURNS JSON AS $$
+    SELECT aidb.summarize_text_config(
+        p_model,
+        prompt => format(
+            'Categorize the issues in this text into ONLY these categories: %s. '
+            'For each category, give a count and one representative example. '
+            'Format: CATEGORY: count - "example quote"',
+            array_to_string(p_categories, ', ')
+        )
+    )::json;
+$$ LANGUAGE sql;
+
+-- Usage
+SELECT product_name,
+       aidb.summarize_text_aggregate(note_text, categorize_issues_config()) AS categories
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status IN ('lost', 'closed_lost')
+GROUP BY product_name;
+```
+
+- Config wrapper functions give you a consistent interface and let you tune prompts without changing queries.
+- The return type must be `JSON` (not `JSONB`) to match `summarize_text_aggregate`'s parameter type.
+- "No preamble", "ONLY", "respond in this format" are effective steering phrases.
+
+### 9. Text scrubbing before summarization
+
+**When to use:** Your text data contains filler words, greetings, signatures, or boilerplate that waste LLM tokens.
+
+Create a cleanup function and apply it before the aggregate:
+
+```sql
+CREATE OR REPLACE FUNCTION clean_note_text(p_text TEXT)
+RETURNS TEXT AS $$
+BEGIN
+    RETURN regexp_replace(
+        regexp_replace(
+            regexp_replace(
+                regexp_replace(p_text,
+                    -- Remove email signatures
+                    E'(Best regards|Sincerely|Thanks|Cheers),?\\s*\\n.*$',
+                    '', 'gi'),
+                -- Remove greeting lines
+                E'^(Hi|Hello|Dear|Hey)\\s+[A-Za-z]+,?\\s*\\n',
+                '', 'gi'),
+            -- Remove filler phrases
+            E'\\b(basically|essentially|actually|literally|you know|I mean|sort of|kind of)\\b',
+            '', 'gi'),
+        -- Collapse whitespace
+        E'\\s+', ' ', 'g');
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Use it:
+SELECT product_name,
+       aidb.summarize_text_aggregate(
+           clean_note_text(note_text),
+           aidb.summarize_text_config('my-llm')::json
+       ) AS summary
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY product_name;
+```
+
+- `IMMUTABLE` lets PostgreSQL optimize repeated calls.
+- Customize the regex patterns for your data (e.g., internal jargon, standard headers).
+- Typical reduction: 15–30% fewer tokens, which means fewer chunks and faster processing.
+
+## Combining recipes: the full optimization stack
+
+For maximum speed and quality, combine scrubbing + filtering + a config wrapper:
+
+```sql
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           clean_note_text(sn.note_text),
+           analyze_top_reasons_config('Why are we losing these deals?', 3)
+       ) AS loss_reasons
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+WHERE so.status IN ('lost', 'closed_lost')
+GROUP BY p.product_name;
+```
+
+This pipeline: filters to relevant rows (lost deals); strips filler text per row via `clean_note_text()` (15–30% fewer tokens); accumulates all cleaned text, then sends it to the LLM; applies a constrained prompt via the config wrapper for shorter, focused output.
+
+## Performance benchmarks
+
+All data from a test suite run against a sales dataset (18,503 notes, avg 266 chars/note) using `granite4:1b` via Ollama on AIDB 6.1.0.
+
+### No-chunking performance
+
+With no chunking, all text in a group is sent as a single LLM call. Fast, but limited by the model's context window.
+
+| Group size      | Duration | Result size         | Notes                                          |
+|-----------------|----------|---------------------|------------------------------------------------|
+| 77–84 notes     | 21–28s   | 1,100–2,500 chars   | Safe range, full data processed                |
+| 100 notes       | 28s      | 2,200 chars         | ~26K chars input, well within context          |
+| 2,915 notes     | 98s      | 3,200 chars         | Exceeds 131K token context window (see below)  |
+| 3,248 notes     | 91s      | 1,700 chars         | Only partial data processed                    |
+
+### Chunking strategy comparison (50 notes)
+
+| Config                | Est. LLM calls | Duration | ms/call | Result chars | Status |
+|-----------------------|----------------|----------|---------|--------------|--------|
+| No chunking           | 1              | 12s      | 11,947  | 1,443        | PASS   |
+| words/50/append       | 32             | 152s     | 4,759   | 12,159       | PASS   |
+| words/100/append      | 16             | 77s      | 4,832   | 7,021        | PASS   |
+| words/200/append      | 8              | 48s      | 6,044   | 4,781        | PASS   |
+| words/50/reduce rf=2  | 63             | 217s     | 3,452   | 545          | PASS   |
+| words/100/reduce rf=2 | 31             | 102s     | 3,280   | 475          | PASS   |
+| words/200/reduce rf=2 | 15             | 51s      | 3,367   | 767          | PASS   |
+| words/50/reduce rf=3  | 50             | 170s     | 3,396   | 410          | PASS   |
+| words/100/reduce rf=3 | 25             | 72s      | 2,897   | 867          | PASS   |
+| words/200/reduce rf=3 | 12             | 44s      | 3,661   | 535          | PASS   |
+| chars/200/append      | 40             | 246s     | 6,154   | 16,355       | PASS   |
+| chars/400/append      | 20             | 137s     | 6,835   | 11,793       | PASS   |
+| chars/800/append      | 10             | 66s      | 6,584   | 5,897        | PASS   |
+| chars/200/reduce rf=2 | 81             | 971s     | 11,988  | —            | FAIL   |
+| chars/400/reduce rf=2 | 41             | 368s     | 8,967   | 441          | PASS   |
+| chars/800/reduce rf=2 | 21             | 144s     | 6,842   | 850          | PASS   |
+
+### Strategy efficiency summary
+
+| Strategy        | Avg LLM calls | Avg total time | Avg ms/call | Avg output     |
+|-----------------|---------------|----------------|-------------|----------------|
+| No chunking     | 1             | 12s            | 11,947      | 1,443 chars    |
+| Append          | 21            | 121s           | 5,868       | 9,668 chars    |
+| Reduce rf=2     | 34            | 176s           | 5,182       | 616 chars      |
+| Reduce rf=3     | 29            | 95s            | 3,318       | 604 chars      |
+
+### Projected scale
+
+| Scenario              | 100 notes          | 500 notes          | 1,000 notes                        |
+|-----------------------|--------------------|--------------------|------------------------------------|
+| No chunking           | 28s (1 call)       | ~60s (1 call)      | ~100s (1 call, partial data*)      |
+| words/100/append      | ~77s (16 calls)    | ~385s (80 calls)   | ~770s (160 calls)                  |
+| words/100/reduce rf=3 | ~72s (25 calls)    | ~180s (62 calls)   | ~240s (125 calls)                  |
+
+*No-chunking at 1,000+ notes may exceed the context window. Use chunking for completeness.
+
+## Recommended configurations
+
+| Use case                        | Config                    | Why                                                  |
+|---------------------------------|---------------------------|------------------------------------------------------|
+| Fastest possible (< 500 notes)  | No chunking               | Single LLM call, stays within context window         |
+| Fast + detailed                 | words/200/append          | Fewest calls for append, good detail                 |
+| Balanced detail                 | words/100/append          | More granular, moderate speed                        |
+| Executive summary               | words/100/reduce rf=3     | Compressed output, efficient reduce                  |
+| Maximum compression             | words/50/reduce rf=3      | Smallest output, most LLM calls                      |
+
+General guidance: start with no chunking; add chunking only if groups exceed ~500 notes. Always prefer word-based chunking over char-based. For reduce, prefer `rf=3` over `rf=2` — fewer total calls with similar output quality.
+
+## Known limitations
+
+### Context window overflow (silent)
+
+When the total input text exceeds the model's context window, the text is silently truncated. No error is raised — the LLM processes whatever fits and ignores the rest.
+
+For example: `granite4:1b` has a 131,072 token context window. A group of 3,248 notes (~806K chars, ~201K tokens) exceeds this by 53%. The result is a valid summary, but only of a fraction of the data.
+
+Safe limits (no chunking):
+
+| Avg note size | Safe note count | Total tokens  |
+|---------------|-----------------|---------------|
+| 250 chars     | ~500 notes      | ~33K tokens   |
+| 500 chars     | ~250 notes      | ~33K tokens   |
+| 1,000 chars   | ~125 notes      | ~33K tokens   |
+
+Workaround: use chunking for any group that might exceed these limits. Chunking processes all data regardless of context window size.
+
+```sql
+-- Safe for large groups:
+aidb.summarize_text_config(
+    'my-llm',
+    aidb.chunk_text_config(200, 200, 20, 'words'),
+    NULL,
+    'append'
+)::json
+```
+
+### Reduce fails with small chunks
+
+The `reduce` strategy requires each summarization round to produce output shorter than its input. With small chunk sizes, the LLM often generates summaries longer than the input, causing:
+
+```
+Text summarization failed to reduce size. The summarized output is larger than or equal to the input.
+Consider adjusting the chunking parameters.
+```
+
+Failure thresholds:
+
+| Chunk type      | Size      | Result      |
+|-----------------|-----------|-------------|
+| chars/200/reduce | 200 chars | Always fails |
+| chars/400/reduce | 400 chars | Unreliable  |
+| chars/800/reduce | 800 chars | Reliable    |
+| words/50/reduce  | 50 words  | Reliable    |
+| words/100/reduce | 100 words | Reliable    |
+| words/200/reduce | 200 words | Reliable    |
+
+Workaround: use word-based chunking with `reduce` (100% pass rate at all tested sizes). If you must use char-based, use `>= 800` chars.
+
+### Controlling temperature, max_tokens, and system prompt
+
+By default, the LLM uses its provider-default temperature (typically 0.7–1.0), which can cause high variance in output across runs. Control these parameters per call using `inference_config`:
+
+```sql
+-- Control temperature and max_tokens for more consistent, bounded output
+SELECT p.product_name,
+       aidb.summarize_text_aggregate(
+           sn.note_text,
+           aidb.summarize_text_config(
+               'my-llm',
+               NULL,
+               'Summarize the key points',
+               NULL,
+               NULL,
+               aidb.inference_config(
+                   temperature => 0.3,
+                   max_tokens  => 500
+               )
+           )::json
+       ) AS summary
+FROM sales_notes sn
+JOIN sales_orders so ON sn.order_id = so.order_id
+JOIN products p ON so.product_id = p.product_id
+GROUP BY p.product_name;
+
+-- Override the system prompt for non-summarization tasks
+SELECT aidb.summarize_text(
+    input   => 'Customer complained about slow response times and billing errors.',
+    options => aidb.summarize_text_config(
+        'my-llm',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        aidb.inference_config(
+            system_prompt => 'You are a customer support analyst. Classify issues by severity.',
+            temperature   => 0.2
+        )
+    )::json
+);
+```
+
+!!!Tip
+For best results, combine `inference_config` with constrained prompts. For example, set `max_tokens => 200` and use a prompt like `'Give exactly 3 bullet points, max 1 sentence each.'` — the token limit acts as a hard cap while the prompt guides the format.
+!!!
+
+### Empty results with no error
+
+In some cases the LLM returns an empty string after processing. AIDB stores this as a successful result with no error. Always check `length(result)` in your application code:
+
+```sql
+SELECT product_name,
+       CASE
+           WHEN length(summary) = 0  THEN 'ERROR: Empty result'
+           WHEN length(summary) < 50 THEN 'WARNING: Suspiciously short'
+           ELSE summary
+       END AS validated_summary
+FROM (
+    SELECT p.product_name,
+           aidb.summarize_text_aggregate(
+               sn.note_text,
+               aidb.summarize_text_config(
+                   'my-llm',
+                   prompt => 'Your prompt here'
+               )::json
+           ) AS summary
+    FROM sales_notes sn
+    JOIN sales_orders so ON sn.order_id = so.order_id
+    JOIN products p ON so.product_id = p.product_id
+    GROUP BY p.product_name
+) sub;
+```
+
+### Prompt adherence weakens at scale
+
+With large text volumes (1,000+ notes), the LLM tends to default to summarization behavior regardless of the custom prompt. Structured output requests (numbered lists, category formats, sentiment labels) are less reliably followed.
+
+Workarounds: reduce input volume using `LIMIT` or more aggressive filters; use chunking with `append` so each chunk receives the prompt independently against smaller input; use wrapper functions with very explicit format constraints; scrub text ([Recipe 9](#9-text-scrubbing-before-summarization)) to reduce noise before summarization.
+
+## Optimization patterns
+
+### 1. Text scrubbing
+
+Strip filler words, greetings, and boilerplate before summarization. See [Recipe 9](#9-text-scrubbing-before-summarization). Impact: 15–30% fewer tokens, proportionally faster processing.
+
+### 2. Constrained prompts
+
+Telling the LLM to produce specific, short-format output reduces token generation time (the slowest part of each call).
+
+```sql
+-- Slow (open-ended, LLM may generate 2,000+ chars):
+'Summarize these notes.'
+
+-- Fast (constrained, LLM generates ~200 chars):
+'Give exactly 3 bullet points, max 1 sentence each.'
+```
+
+### 3. Extractive pre-filtering
+
+For very large datasets, use SQL to pre-filter to the most relevant text before sending to the LLM:
+
+```sql
+-- Only send notes containing relevant keywords
+SELECT aidb.summarize_text_aggregate(
+    note_text,
+    aidb.summarize_text_config(
+        'my-llm',
+        prompt => 'What are the pricing concerns?'
+    )::json
+)
+FROM sales_notes
+WHERE note_text ILIKE '%price%'
+   OR note_text ILIKE '%cost%'
+   OR note_text ILIKE '%budget%'
+   OR note_text ILIKE '%expensive%'
+GROUP BY product_id;
+```
+
+Impact: dramatically fewer rows to process. The LLM sees only relevant text, improving both speed and quality.
+
+### 4. Choosing the right strategy
+
+```
+             ┌─ < 500 notes ──────> No chunking (fastest)
+             │
+Group size ──┤
+             │              ┌─ Need detail ──> words/200/append
+             └─ >= 500 notes ──┤
+                            └─ Need brief ───> words/100/reduce rf=3
+```
+
+### 5. Performance cost model
+
+The dominant cost is LLM call count. Each call takes 3–12 seconds depending on input size.
+
+| Step                | Time          |
+|---------------------|---------------|
+| Network overhead    | ~50ms         |
+| Prompt processing   | ~1–3s         |
+| Token generation    | ~2–8s         |
+| Response parsing    | ~10ms         |
+| **Total per call**  | **~3–12s**    |
+
+Prompt processing scales with input length, but token generation scales with output length. Since summaries are roughly fixed-size regardless of input volume, fewer, larger calls are more efficient than many small calls — up to the context window limit. This is why no-chunking is so effective for small groups: it maximizes text per call and minimizes the number of calls. The aggregate already accumulates all rows before processing, so the text is naturally batched.
