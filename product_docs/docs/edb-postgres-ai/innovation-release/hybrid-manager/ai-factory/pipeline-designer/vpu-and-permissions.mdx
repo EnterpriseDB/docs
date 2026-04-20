@@ -8,7 +8,7 @@ Pipeline Designer uses a dedicated PostgreSQL role called `visual_pipeline_user`
 
 ## What is VPU?
 
-`visual_pipeline_user` is a PostgreSQL role created automatically by the EDB Postgres AI agent (`beacon-agent`) when you first create a pipeline through Pipeline Designer. Every SQL operation that Pipeline Designer performs against AIDB (creating, updating, deleting, and executing pipelines) runs under this role using `SET LOCAL ROLE visual_pipeline_user`.
+`visual_pipeline_user` is a PostgreSQL role created automatically by the EDB Postgres AI agent (`beacon-agent`) when you first create a pipeline through Pipeline Designer. Pipeline management operations (creating, updating, and deleting pipelines) run under this role: the agent opens a transaction and switches identity using `SET LOCAL ROLE visual_pipeline_user`. Pipeline execution also runs as VPU, though the mechanism varies by processing mode (see [Executing pipelines: Execution flow](executing-pipelines#execution-flow) for details).
 
 VPU exists for two reasons:
 
@@ -22,13 +22,18 @@ When a pipeline is created through Pipeline Designer, AIDB stamps the pipeline's
 
 This has a direct consequence: **pipelines and knowledge bases created outside Pipeline Designer are not visible in the Portal.** If you create a pipeline through SQL (for example, using `psql` as the `edb_admin` role), it will function correctly at the database level but will not appear in Pipeline Designer's pipeline list or knowledge base views.
 
-There is no AIDB function to change a pipeline's `owner_role` after creation. If you need a SQL-created pipeline to appear in the Portal, you must create it while assuming the VPU role:
+There is no AIDB function to change a pipeline's `owner_role` after creation. If you need a SQL-created pipeline to appear in the Portal, you must create it while assuming the VPU role. Your PostgreSQL role must have been granted VPU (`GRANT visual_pipeline_user TO your_role`) to perform the role switch:
 
 ```sql
-SET ROLE visual_pipeline_user;
+-- SET LOCAL ROLE scopes the identity change to the current transaction.
+BEGIN;
+SET LOCAL ROLE visual_pipeline_user;
 SELECT aidb.create_pipeline(...);
-RESET ROLE;
+COMMIT;
 ```
+
+!!! Note
+    All pipelines created this way are stamped with `owner_role = 'visual_pipeline_user'`, regardless of which user executed the `SET LOCAL ROLE`. There is no per-user attribution in the pipeline metadata. Use `SET LOCAL ROLE` (transaction-scoped) rather than `SET ROLE` (session-scoped) to avoid accidentally running subsequent SQL as VPU.
 
 ## Granting VPU access to source tables
 
@@ -54,7 +59,21 @@ Replace `myschema` and `mytable` with your actual schema and table names.
 
 ### Tables on PGD clusters
 
-On PGD (AHA) clusters, BDR enforces that trigger owners must match the relation owner for replicated tables. For Live and Background processing modes, AIDB creates triggers on the source table under the VPU role. If VPU does not have appropriate permissions on the source table across all BDR nodes, trigger creation may fail. Ensure the grants are applied consistently across the cluster.
+On PGD (AHA) clusters, BDR enforces ownership constraints on trigger functions attached to replicated tables. When you enable Live or Background processing, AIDB creates a per-pipeline SECURITY DEFINER wrapper function and sets its owner to the pipeline's `owner_role` (which is `visual_pipeline_user` for Portal-created pipelines). BDR requires that this trigger function owner can satisfy replication constraints on the source table across all nodes.
+
+To ensure trigger creation succeeds on PGD clusters:
+
+1.  Grant VPU the required permissions on the source table on every BDR node, not just the write leader:
+
+    ```sql
+    -- Run on each BDR node (or use a replicated DDL mechanism):
+    GRANT USAGE ON SCHEMA myschema TO visual_pipeline_user;
+    GRANT SELECT ON myschema.mytable TO visual_pipeline_user;
+    ```
+
+2.  Verify that the source table's ownership is compatible with VPU's trigger function ownership. BDR checks that the trigger function owner satisfies the replication constraints for the relation; if VPU cannot satisfy these constraints, trigger creation will fail with a BDR-specific error.
+
+These grants must be consistent across all BDR nodes. A grant that exists on the write leader but is missing on a subscriber node will cause replication failures when the trigger fires on that node.
 
 ## Security and isolation considerations
 
@@ -76,7 +95,7 @@ When Pipeline Designer creates a pipeline, VPU becomes the owner of several data
 
 -   The pipeline's destination table (for example, `pipeline_my_pipeline`)
 -   The knowledge base vector table (if the pipeline includes a KnowledgeBase step)
--   Trigger functions (for Live and Background processing modes)
+-   Per-pipeline SECURITY DEFINER wrapper functions (for Live and Background processing modes). These wrappers call the actual AIDB trigger handler and are owned by VPU so that they execute with VPU's privileges regardless of the invoking role.
 -   Pipeline state tracking tables used internally by AIDB
 
 These objects persist until the pipeline is deleted through Pipeline Designer.
@@ -91,7 +110,7 @@ These objects persist until the pipeline is deleted through Pipeline Designer.
 ### Pipeline created via SQL does not appear in Portal
 
 **Cause**: The pipeline was created under a role other than `visual_pipeline_user`, so its `owner_role` does not match the Portal's filter.
-**Fix**: Recreate the pipeline using `SET ROLE visual_pipeline_user` before calling `aidb.create_pipeline()`.
+**Fix**: Recreate the pipeline using `SET LOCAL ROLE visual_pipeline_user` before calling `aidb.create_pipeline()`. See [How VPU affects visibility](#how-vpu-affects-visibility) for the full procedure.
 
 ### Pipeline works but knowledge base is not visible
 
@@ -99,5 +118,5 @@ These objects persist until the pipeline is deleted through Pipeline Designer.
 
 ### Trigger creation fails on PGD clusters
 
-**Cause**: BDR requires trigger function owners to match the source table owner on replicated tables. If the source table is not accessible to VPU across all nodes, the trigger creation fails.
-**Fix**: Ensure consistent GRANT statements are applied on all PGD nodes, or verify that the source table's ownership is compatible with VPU's access.
+**Cause**: When AIDB enables Live or Background processing, it creates a per-pipeline SECURITY DEFINER wrapper function owned by VPU. BDR requires that the trigger function owner satisfies replication constraints on the source table. If VPU lacks the necessary grants on any BDR node, trigger creation fails.
+**Fix**: Apply consistent GRANT statements on all PGD nodes as described in [Tables on PGD clusters](#tables-on-pgd-clusters).
