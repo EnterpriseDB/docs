@@ -1,22 +1,30 @@
 ---
 title: External inference services
 navTitle: External inference services
-description: Register and use external AI model providers such as OpenAI and AWS Bedrock with Pipeline Designer through Hybrid Manager's inference service proxy.
+description: How external AI model providers reach Pipeline Designer, including HM's external inference proxy and AIDB-native model registration.
 ---
 
-Pipeline Designer can use models from external AI providers in addition to HM-hosted models. External inference services let you connect to providers like OpenAI, AWS Bedrock, and other API-compatible model endpoints, making their models available for pipeline steps that require inference (KnowledgeBase embedding, SummarizeText, PerformOCR).
+Pipeline Designer can use models from external AI providers (OpenAI, AWS Bedrock, NVIDIA NIM, and other API-compatible endpoints) in addition to HM-hosted models. Two distinct mechanisms make external models available, and which one applies depends on whether the cluster has connectivity to the HM control plane.
 
-## How external inference services work
+This page first explains the platform mechanisms that deliver external models to AIDB, then describes how to use those models when configuring pipeline steps.
 
-When you register an external inference service in Hybrid Manager, the platform creates a reverse proxy that routes inference requests from your database to the external provider. This architecture means:
+## Background: how external models reach AIDB
 
--   Your database does not connect directly to external APIs. All traffic flows through the HM inference service proxy.
--   API credentials are stored in the database as FDW user mappings. HM manages the registration and synchronization of these credentials. See [Credential handling](#credential-handling) for details on credential sharing.
--   External models appear alongside HM-hosted models in Pipeline Designer's model picker.
+AIDB, the PostgreSQL extension that powers Pipeline Designer, maintains a model registry. Pipeline steps reference models by name from this registry. External models can enter the registry through two independent paths.
 
-After registration, the external models are automatically synchronized into the AIDB model registry on your databases, alongside any HM-hosted models. They then become selectable when configuring pipeline steps.
+### HM external inference service proxy
 
-## Registering an external inference service
+When you register an external inference service through the Hybrid Manager UI (AI Factory > Model Serving), HM creates a lightweight proxy container (a "proxymodel") deployed as a KServe InferenceService on the primary location's Kubernetes cluster. This proxymodel receives inference requests over a cluster-internal URL and forwards them to the external provider's API endpoint, injecting the provider's API credentials from a Kubernetes secret.
+
+From AIDB's perspective, the proxymodel looks identical to an HM-hosted KServe model: AIDB discovers it through the `upm-ai-model-server` API and stores the proxymodel's cluster-internal predictor URL. The fact that inference ultimately reaches an external provider is transparent to AIDB and to Pipeline Designer.
+
+Key characteristics of this path:
+
+-   **Managed by the HM control plane.** Registration, credential storage, and lifecycle management happen through the HM UI and backend services.
+-   **Credentials stored in Kubernetes secrets.** The API key (or equivalent) is injected into the proxymodel pod as an environment variable. AIDB does not handle external provider credentials directly.
+-   **Same reachability constraint as HM-hosted models.** Because the proxymodel runs on the primary location and AIDB addresses it via a cluster-internal URL, a database cluster must have network access to the primary location to use this path. The external provider itself is internet-accessible, but traffic from AIDB does not go to the internet directly; it goes to the proxymodel pod, which then contacts the provider. Clusters that cannot reach the primary location's Kubernetes network cannot use HM external inference service proxies, for the same reason they cannot use HM-hosted KServe models.
+
+#### Registering an external inference service in HM
 
 1.  Navigate to **AI Factory > Model Serving** in your Hybrid Manager project.
 2.  Click **Register External Service** (or the equivalent action in the inference services panel).
@@ -30,9 +38,47 @@ After registration, the external models are automatically synchronized into the 
 
 The service is registered and its models become available after the next model sync cycle (typically within a few minutes).
 
-## Using external models in pipelines
+#### Managing external services in HM
 
-Once an external inference service is registered, its models appear in Pipeline Designer's model picker when you configure a step that requires a model:
+From the AI Factory model serving interface, you can:
+
+-   **View registered services**: See all external inference service connections, including their status and activity logs.
+-   **Edit a service**: Update the endpoint URL, credentials, or API protocol version.
+-   **Deregister a service**: Remove the external service connection. Models are cleaned up during the next model sync cycle.
+
+!!! Warning
+    Deregistering an external service will cause any pipelines using that service's models to fail on their next execution. Before deregistering, ensure no active pipelines depend on the service's models, or update those pipelines to use alternative models.
+
+### AIDB-native model registration
+
+AIDB has its own model registration mechanism that works independently of HM. The `aidb.create_model()` SQL function creates a model entry backed by a Foreign Data Wrapper (FDW), pointing directly at an external provider's API endpoint. When a pipeline step uses an AIDB-native model, the PostgreSQL process contacts the provider directly, with no intermediary proxy.
+
+Key characteristics of this path:
+
+-   **SQL-level, works anywhere.** Any PostgreSQL cluster running the AIDB extension can register models this way, regardless of whether HM infrastructure is present or reachable.
+-   **Credentials stored as FDW user mappings.** API keys are stored using `CREATE USER MAPPING FOR PUBLIC`, making them accessible to all database users. Credentials are scoped to the provider (foreign server), not to individual models; all models using the same provider share a single set of credentials.
+-   **Direct network access required.** The PostgreSQL process must be able to reach the external provider's API endpoint. There is no proxy or intermediary.
+-   **No HM UI management.** Models registered this way do not appear in the HM model serving interface. They are managed entirely through SQL.
+
+For details on `aidb.create_model()`, provider types, and credential configuration, see the AIDB model registry reference documentation.
+
+### Which mechanism applies to your cluster
+
+Model reachability depends on HM control-plane connectivity, not on cluster type per se. The [deployment types](executing-pipelines#deployment-types) section in Executing Pipelines describes the three cluster categories and their connectivity characteristics. The following table summarizes how external models reach each:
+
+| Cluster connectivity                          | HM external inference proxy | AIDB-native registration |
+|-----------------------------------------------|-----------------------------|--------------------------| 
+| Primary location (full HM infrastructure)     | Yes                         | Yes                      |
+| Secondary location or self-managed with HM connectivity | Depends on network path to primary | Yes         |
+| Self-managed without HM connectivity          | No                          | Yes                      |
+
+Clusters without HM connectivity (typically isolated self-managed instances) must use AIDB-native model registration to access external providers. See [Limitations: Inference routing on remote clusters](limitations#inference-routing-on-remote-clusters) for additional context on model availability constraints.
+
+## Using external models in pipeline steps
+
+Regardless of which mechanism registered them, external models appear in Pipeline Designer's model picker alongside HM-hosted and on-database models. Pipeline Designer does not distinguish between registration paths; it shows every model in the AIDB model registry that is compatible with the step being configured.
+
+When configuring a step that requires a model:
 
 -   **KnowledgeBase step**: External text embedding models (such as OpenAI's text-embedding-ada-002 or text-embedding-3-small) appear in the embedding model list.
 -   **SummarizeText step**: External text completion models (such as OpenAI's GPT-4 or GPT-3.5-turbo) appear in the language model list.
@@ -40,29 +86,6 @@ Once an external inference service is registered, its models appear in Pipeline 
 
 The model picker filters by function type, so only models compatible with the step being configured are shown.
 
-## External models on remote clusters
-
-External inference services are particularly important for pipelines running on self-managed PostgreSQL instances or secondary HM locations. HM-hosted KServe models may not be network-reachable from remote clusters, but external model providers (which are accessed through the internet) typically are.
-
-When creating a pipeline targeting a remote cluster:
-
-1.  Register the external inference service as described above.
-2.  In the pipeline creation wizard, select the remote cluster.
-3.  In the step configuration, the model picker will show models available on that specific AIDB instance, including any synced external models.
-
-See [Executing pipelines: Remote clusters](executing-pipelines#remote-and-self-managed-clusters) and [Limitations: Inference routing on remote clusters](limitations#inference-routing-on-remote-clusters) for details on model availability limitations.
-
-## Managing external services
-
-From the AI Factory model serving interface, you can:
-
--   **View registered services**: See all external inference service connections, including their status and activity logs.
--   **Edit a service**: Update the endpoint URL, credentials, or API protocol version.
--   **Deregister a service**: Remove the external service connection. This does not immediately remove models from AIDB; they are cleaned up during the next model sync cycle.
-
-!!! Warning
-    Deregistering an external service will cause any pipelines using that service's models to fail on their next execution. Before deregistering, ensure no active pipelines depend on the service's models, or update those pipelines to use alternative models.
-
 ## Credential handling
 
-External service credentials are stored in the database as Foreign Data Wrapper (FDW) user mappings and are shared across all database users. There is no per-user or per-pipeline credential isolation. For a full discussion of the credential sharing model and its security implications, see [VPU and permissions: Shared model credentials](vpu-and-permissions#shared-model-credentials).
+External service credentials are shared across all database users, regardless of registration path. HM-registered external services store credentials in Kubernetes secrets (used by the proxymodel) and, after sync, as FDW user mappings in the database. AIDB-native models store credentials as FDW user mappings directly. In both cases, there is no per-user or per-pipeline credential isolation. For a full discussion of the credential sharing model and its security implications, see [VPU and permissions: Shared model credentials](vpu-and-permissions#shared-model-credentials).
