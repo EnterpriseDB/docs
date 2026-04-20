@@ -5,7 +5,33 @@ description: Background workers in EDB Postgres AI Pipelines enable asynchronous
 
 Background worker is the execution engine for asynchronous AI pipelines in EDB Postgres AI. It allows for high-volume data processing without blocking standard database transactions.
 
-A background worker is activated automatically when a pipeline is created or updated with `auto_processing => 'Background'`. Before enabling Background mode, confirm that the required Postgres server settings are in place — see [Background workers and PG settings](../../integrating-models/background-workers) for `shared_preload_libraries` and `max_worker_processes` configuration.
+A background worker is activated automatically when a pipeline is created or updated with `auto_processing => 'Background'`. Before enabling Background mode, confirm that the required Postgres server settings are in place.
+
+## Postgres prerequisites
+
+Two `postgresql.conf` settings must be in place before background pipelines can run.
+
+### shared_preload_libraries
+
+`shared_preload_libraries = 'aidb'` must be set in `postgresql.conf` before background workers can start. This is configured during AIDB installation — see [Configuring AIDB](../../install/configure). Confirm it is in place before enabling Background mode on any pipeline.
+
+### max_worker_processes
+
+Each pipeline in Background mode requires one dedicated Postgres background worker process. The `max_worker_processes` setting controls how many background worker processes are allowed across the entire cluster.
+
+The default value is `8`. If you plan to run multiple background pipelines, increase this value:
+
+```ini
+max_worker_processes = 20
+```
+
+Restart Postgres after changing this setting. To check the current value:
+
+```sql
+SHOW max_worker_processes;
+```
+
+If `max_worker_processes` is exhausted, newly created background pipelines will not start a worker and will silently skip processing until capacity is freed.
 
 ## Core functionality
 
@@ -33,7 +59,28 @@ The background worker handles different source types using specific detection lo
 
 ### Optional tuning
 
-- **`background_sync_interval`**: Controls how often the worker checks for new or changed data. For external volumes (like AWS S3), frequent polling can be expensive. Consider setting a longer interval (for example, once per day) to control costs.
+**`background_sync_interval`** controls how often the worker polls for new or changed data. This is configured per pipeline via `aidb.create_pipeline()` or `aidb.update_pipeline()`, not in `postgresql.conf`.
+
+```sql
+SELECT aidb.create_pipeline(
+    name                     => 'my_pipeline',
+    source                   => 'my_table',
+    auto_processing          => 'Background',
+    background_sync_interval => '30 seconds',
+    ...
+);
+```
+
+The default interval is suitable for most table sources. For volume sources backed by cloud object stores like AWS S3, each scan incurs a list operation which may have cost or rate-limit implications. In those cases, consider a longer interval:
+
+```sql
+SELECT aidb.update_pipeline(
+    'my_s3_pipeline',
+    background_sync_interval => '1 day'
+);
+```
+
+`background_sync_interval` accepts any Postgres interval value (`'5 minutes'`, `'1 hour'`, `'1 day'`, etc.).
 
 ## Monitoring and observability
 
