@@ -2,9 +2,10 @@
 title: VPU and permissions
 navTitle: VPU and permissions
 description: How the visual_pipeline_user role works, why it exists, how it affects what you see in Pipeline Designer, and how to grant the required permissions on your source tables.
+deepToC: true
 ---
 
-Pipeline Designer uses a dedicated PostgreSQL role called `visual_pipeline_user` (VPU) to execute all pipeline operations against the AIDB extension. Understanding how VPU works is important because it directly affects what pipelines are visible in the Portal, what tables pipelines can access, and how permissions must be configured.
+Pipeline Designer uses a dedicated PostgreSQL role called `visual_pipeline_user` (VPU) to execute all pipeline operations against the AIDB extension. Understanding how VPU works is important because it directly affects what pipelines are visible in the Pipeline Designer, what tables pipelines can access, and how permissions must be configured.
 
 ## What is VPU?
 
@@ -14,13 +15,13 @@ VPU exists for two reasons:
 
 1.  **Privilege isolation.** Pipeline SQL does not run with superuser or administrator privileges. If a pipeline operation triggers unexpected behavior in the AIDB extension, the blast radius is limited to what VPU is authorized to access.
 
-2.  **Portal visibility control.** Pipeline Designer displays only the pipelines and knowledge bases owned by VPU. This creates a clean separation between pipelines managed through the Portal and pipelines created through other means (SQL, scripts, third-party tools). The Portal does not attempt to manage pipelines it did not create, avoiding potential conflicts with incompatible configurations.
+1.  **Pipeline Designer visibility control.** Pipeline Designer displays only the pipelines and knowledge bases owned by VPU. This creates a clean separation between pipelines managed through the Pipeline Designer and pipelines created through other means (SQL, scripts, third-party tools). The Pipeline Designer does not attempt to manage pipelines it did not create, avoiding potential conflicts with incompatible configurations.
 
 ## How VPU affects visibility
 
-When a pipeline is created through Pipeline Designer, AIDB stamps the pipeline's `owner_role` as `visual_pipeline_user`. The EDB Postgres AI agent periodically collects pipeline and knowledge base data from AIDB and filters for `owner_role = 'visual_pipeline_user'`. Only matching objects are reported to the HM control plane and displayed in the Portal.
+When a pipeline is created through Pipeline Designer, AIDB stamps the pipeline's `owner_role` as `visual_pipeline_user`. The EDB Postgres AI agent periodically collects pipeline and knowledge base data from AIDB and filters for `owner_role = 'visual_pipeline_user'`. Only matching objects are reported to the HM control plane and displayed in the Pipeline Designer.
 
-This has a direct consequence: **pipelines and knowledge bases created outside Pipeline Designer are not visible in the Portal.** If you create a pipeline through SQL (for example, using `psql` as the `edb_admin` role), it will function correctly at the database level but will not appear in Pipeline Designer's pipeline list or knowledge base views.
+This has a direct consequence: **pipelines and knowledge bases created outside Pipeline Designer are not visible in the Pipeline Designer.** If you create a pipeline through SQL (for example, using `psql` as the `edb_admin` role), it will function correctly at the database level but will not appear in Pipeline Designer's pipeline list or knowledge base views.
 
 There is no AIDB function to change a pipeline's `owner_role` after creation. If you need a SQL-created pipeline to appear in the Portal, you must create it while assuming the VPU role. Your PostgreSQL role must have been granted VPU (`GRANT visual_pipeline_user TO your_role`) to perform the role switch:
 
@@ -41,7 +42,7 @@ VPU does not automatically have access to your data tables. When you create a pi
 
 ### Tables in the public schema
 
-For tables in the `public` schema on HM-managed clusters, VPU has sufficient access through the `aidb_users` role grant that is configured automatically. No additional grants are required. On self-managed clusters, additional setup may be needed to ensure the `aidb_users` role grant is in place; see the [AIDB installation documentation](/edb-postgres-ai/current/ai-factory/pipeline/) for details.
+For tables in the `public` schema on HM-managed clusters, VPU has sufficient access through the `aidb_users` role grant that is configured automatically. No additional grants are required. On self-managed clusters, additional setup may be needed to ensure the `aidb_users` role grant is in place; see the [AIDB installation documentation](/aidb/latest/install/configure) for details.
 
 ### Tables in user-created schemas
 
@@ -54,8 +55,9 @@ GRANT SELECT ON myschema.mytable TO visual_pipeline_user;
 
 Replace `myschema` and `mytable` with your actual schema and table names.
 
-!!! Important
-    Grant access on a per-table basis. Do not grant VPU membership in other roles (for example, `GRANT myrole TO visual_pipeline_user`), as this would give VPU access to all objects owned by that role, which may be broader than intended.
+!!!Important
+Grant access on a per-table basis. Do not grant VPU membership in other roles (for example, `GRANT myrole TO visual_pipeline_user`), as this would give VPU access to all objects owned by that role, which may be broader than intended.
+!!!
 
 ### Tables on PGD clusters
 
@@ -81,7 +83,7 @@ The preceding sections cover VPU setup and permissions grants. The topics below 
 
 ### Shared identity
 
-All pipelines created through Pipeline Designer run as the same PostgreSQL role. There is no per-HM-user isolation at the database level: HM user A's pipeline and HM user B's pipeline both execute as `visual_pipeline_user` and have access to the same set of tables. Isolation between users' pipelines is managed at the HM project level (through Portal access controls), not at the PostgreSQL level.
+All pipelines created through Pipeline Designer run as the same PostgreSQL role. There is no per-HM-user isolation at the database level: HM user A's pipeline and HM user B's pipeline both execute as `visual_pipeline_user` and have access to the same set of tables. Isolation between users' pipelines is managed at the HM project level (through Pipeline Designer access controls), not at the PostgreSQL level.
 
 This also means there is no per-user audit trail at the PostgreSQL level. All pipeline activity in the database logs appears as operations by `visual_pipeline_user`.
 
@@ -94,6 +96,7 @@ Model credentials (API keys for external inference services) are stored as FDW u
 When Pipeline Designer creates a pipeline, VPU becomes the owner of several database objects:
 
 -   The pipeline's destination table (for example, `pipeline_my_pipeline`)
+
 -   The knowledge base vector table (if the pipeline includes a KnowledgeBase step)
 -   Per-pipeline SECURITY DEFINER wrapper functions (for Live and Background processing modes). These wrappers call the actual AIDB trigger handler and are owned by VPU so that they execute with VPU's privileges regardless of the invoking role.
 -   Pipeline state tracking tables used internally by AIDB
@@ -105,18 +108,23 @@ These objects persist until the pipeline is deleted through Pipeline Designer.
 ### "Permission denied for table" during pipeline creation
 
 **Cause**: VPU does not have SELECT access to the source table.
+
 **Fix**: Grant the required permissions as described above.
 
-### Pipeline created via SQL does not appear in Portal
+### Pipeline created via SQL does not appear in Pipeline Designer
+
+**Cause**: The pipeline was created under a role other than `visual_pipeline_user`, so its `owner_role` does not match the Pipeline Designer's filter.
 
 **Cause**: The pipeline was created under a role other than `visual_pipeline_user`, so its `owner_role` does not match the Portal's filter.
+
 **Fix**: Recreate the pipeline using `SET LOCAL ROLE visual_pipeline_user` before calling `aidb.create_pipeline()`. See [How VPU affects visibility](#how-vpu-affects-visibility) for the full procedure.
 
 ### Pipeline works but knowledge base is not visible
 
-**Cause**: Same as above. The knowledge base inherits the `owner_role` from the pipeline. If the pipeline was not created under VPU, neither the pipeline nor the KB will appear in the Portal.
+**Cause**: Same as above. The knowledge base inherits the `owner_role` from the pipeline. If the pipeline was not created under VPU, neither the pipeline nor the KB will appear in the Pipeline Designer.
 
 ### Trigger creation fails on PGD clusters
 
 **Cause**: When AIDB enables Live or Background processing, it creates a per-pipeline SECURITY DEFINER wrapper function owned by VPU. BDR requires that the trigger function owner satisfies replication constraints on the source table. If VPU lacks the necessary grants on any BDR node, trigger creation fails.
+
 **Fix**: Apply consistent GRANT statements on all PGD nodes as described in [Tables on PGD clusters](#tables-on-pgd-clusters).

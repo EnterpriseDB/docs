@@ -2,27 +2,39 @@
 title: Executing pipelines
 navTitle: Executing pipelines
 description: How pipeline execution works across different cluster types, including HM-managed clusters, secondary locations, and self-managed PostgreSQL instances.
+deepToC: true
 ---
 
-Pipeline execution is the process of reading source data, running it through the configured processing steps, and writing results to the destination. This page explains how execution works, how to trigger it, and how to run pipelines on different cluster types.
+Pipeline execution is the process of reading source data, running it through the configured processing steps, and writing results to the destination. 
+This page explains how execution works, how to trigger it, and how to run pipelines on different cluster types.
 
 ## Execution flow
 
 When a pipeline executes (whether triggered automatically or manually), the following sequence occurs:
 
-1.  Pipeline operations run under the [`visual_pipeline_user` (VPU)](vpu-and-permissions) role. The mechanism depends on how the pipeline is triggered: for manual execution and pipeline management operations, the EDB Postgres AI agent (`beacon-agent`) opens a transaction and switches to VPU using `SET LOCAL ROLE`. For Background mode, AIDB's background worker connects to the database as the pipeline's owner role directly. For Live mode, per-pipeline SECURITY DEFINER wrapper functions owned by VPU execute with VPU's privileges regardless of the invoking session's role.
-2.  AIDB reads pending rows from the source table.
-3.  Each step processes the data sequentially. The output of one step becomes the input for the next.
-4.  If any step encounters a record-level error (for example, a malformed PDF), the error is logged and the pipeline continues with the remaining records. Pipeline-level errors (for example, model unreachable) halt execution.
-5.  The final output is written to the destination table, or to the knowledge base vector table if the last step is KnowledgeBase.
+1.  Pipeline operations run under the [`visual_pipeline_user` (VPU)](vpu-and-permissions) role. 
+    The mechanism depends on how the pipeline is triggered: 
+    - For manual execution and pipeline management operations, the EDB Postgres AI agent (`beacon-agent`) opens a transaction and switches to VPU using `SET LOCAL ROLE`. 
+    - For Background mode, AIDB's background worker connects to the database as the pipeline's owner role directly. 
+    - For Live mode, per-pipeline SECURITY DEFINER wrapper functions owned by VPU execute with VPU's privileges regardless of the invoking session's role.
+
+1.  AIDB reads pending rows from the source table.
+
+1.  Each step processes the data sequentially. The output of one step becomes the input for the next.
+
+1.  If any step encounters a record-level error (for example, a malformed PDF), the error is logged and the pipeline continues with the remaining records. Pipeline-level errors (for example, model unreachable) halt execution.
+
+1.  The final output is written to the destination table, or to the knowledge base vector table if the last step is KnowledgeBase.
 
 ## Manual execution
 
 You can trigger pipeline execution manually regardless of the processing mode:
 
 1.  Navigate to the pipeline detail page.
-2.  Click **Execute** (or **Run**).
-3.  The pipeline processes all pending source records.
+
+1.  Click **Execute**.
+
+1.  The pipeline processes all pending source records.
 
 Manual execution is useful for:
 -   Testing a newly created pipeline before enabling automatic processing.
@@ -57,7 +69,9 @@ Pipeline Designer can create and manage pipelines on clusters across all three H
 An HM **location** is a Kubernetes environment managed by the HM control plane. HM supports multiple locations in a hub-and-spoke topology:
 
 -   **Primary location.** The initial HM-managed environment where the full platform stack runs, including the control plane, KServe model serving, the external inference service proxy, and all AI Factory services. Clusters on the primary location have full access to every feature.
+
 -   **Secondary locations.** Additional HM-managed environments in a multi-datacenter deployment. Secondary locations run the `core` installation scenario, which includes database clusters and essential services but excludes the AI scenario (KServe, model serving). They maintain control-plane connectivity back to the primary location.
+
 -   **Self-managed clusters.** Customer-managed PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`). Self-managed clusters are not provisioned by HM and do not have access to the primary location's Kubernetes network unless explicitly configured. Without that network path, only AIDB-native and built-in models are available.
 
 ### Supported clusters
@@ -90,11 +104,11 @@ The `aidb.create_model()` SQL function registers a model directly in the AIDB mo
 
 ### Model availability by deployment type
 
-| Deployment type                                         | HM-hosted KServe (path 1) | HM external inference proxy (path 2) | AIDB-native registration (path 3) |
-|---------------------------------------------------------|---------------------------|--------------------------------------|------------------------------------|
-| Primary location                                        | Yes                       | Yes                                  | Yes                                |
-| Secondary location (or self-managed with HM network)    | No                        | No                                   | Yes                                |
-| Self-managed without HM network                         | No                        | No                                   | Yes                                |
+| Deployment type                                      | HM-hosted KServe (path 1) | HM external inference proxy (path 2) | AIDB-native registration (path 3) |
+|------------------------------------------------------|---------------------------|--------------------------------------|-----------------------------------|
+| Primary location                                     | Yes                       | Yes                                  | Yes                               |
+| Secondary location (or self-managed with HM network) | No                        | No                                   | Yes                               |
+| Self-managed without HM network                      | No                        | No                                   | Yes                               |
 
 Paths 1 and 2 are unavailable to clusters outside the primary location because both rely on cluster-internal Kubernetes URLs that are not routable from other networks. Path 3 works anywhere because the PostgreSQL process contacts the provider endpoint directly.
 
@@ -112,13 +126,19 @@ Pipeline execution behavior depends on the cluster architecture, not on the depl
 Pipeline execution status is visible in the pipeline list and detail pages:
 
 -   **Status indicator**: Shows whether the pipeline is Up To Date, Processing, Stale, Has Errors, or Failed.
+
 -   **Record counts**: Source records, destination records (or embeddings for KB pipelines), and unprocessed records.
+
 -   **Error log**: For detailed error information, query the AIDB error log directly:
 
     ```sql
     SELECT * FROM aidb.get_error_logs('your_pipeline_name');
     ```
 
+    For more on error log queries and error categories, see the [AIDB error log documentation](/aidb/latest/data-pipelines/orchestration/error-log).
+
     Errors are categorized as:
+    
     -   **RecordTemporary / RecordPermanent**: Errors affecting individual records. The pipeline continues processing other records.
+    
     -   **PipelineTemporary / PipelinePermanent**: Errors affecting the entire pipeline. Execution halts until the issue is resolved.
