@@ -1,0 +1,157 @@
+---
+title: Summarization use cases
+navTitle: Use cases
+description: Enterprise use cases and business value of in-database LLM summarization using aidb.summarize_text_aggregate().
+---
+
+`aidb.summarize_text_aggregate()` turns text summarization into a native SQL aggregate — the same `GROUP BY` semantics every analyst already knows. This page covers the business value and enterprise use cases.
+
+## The problem
+
+Enterprises store massive volumes of unstructured text inside PostgreSQL — customer feedback, support tickets, sales notes, compliance logs, clinical narratives. Extracting insight from this data traditionally requires a fragile pipeline: extract from the database, transform and batch it, send to an external LLM API, parse the response, then load results back. Every step introduces latency, failure modes, security exposure, and engineering cost.
+
+Analysts who know SQL are locked out entirely — they need a data engineer and an ML engineer just to answer a question like "what are customers in the Northeast complaining about?"
+
+## What AIDB does differently
+
+AIDB brings the LLM to the data instead of moving the data to the LLM. Summarization becomes a native SQL aggregate:
+
+```sql
+SELECT region,
+       aidb.summarize_text_aggregate(
+           customer_feedback,
+           aidb.summarize_text_config('gpt-4o')::json
+       ) AS feedback_summary
+FROM support_tickets
+WHERE created_at > NOW() - INTERVAL '7 days'
+GROUP BY region;
+```
+
+One query. No pipeline. No Python. No external orchestration. Each row contains an LLM-generated summary of all feedback for that region — returned directly to the SQL client.
+
+The same data, a different question, a different prompt:
+
+```sql
+SELECT region,
+       aidb.summarize_text_aggregate(
+           customer_feedback,
+           aidb.summarize_text_config(
+               'gpt-4o',
+               prompt => 'Identify the top 3 product issues and suggest fixes'
+           )::json
+       ) AS issues
+FROM support_tickets
+WHERE created_at > NOW() - INTERVAL '7 days'
+GROUP BY region;
+```
+
+Same function. One string changed. Entirely new analysis — no code deployed, no pipeline modified.
+
+## Business value
+
+**Data never leaves the database** — In regulated industries (healthcare, finance, government), moving sensitive data to an external API can require months of compliance review. AIDB keeps all data inside PostgreSQL. The LLM endpoint can be on-premise, in a private VPC, or running locally.
+
+**SQL is the universal interface** — There are roughly 10 million SQL-literate professionals worldwide. AIDB turns every analyst, DBA, and BI developer into an AI-powered analyst without new tools, notebooks, or API keys to manage.
+
+**Eliminates an entire category of infrastructure** — No Airflow DAGs, Lambda functions, SQS queues, or Kubernetes jobs. The database is the compute layer.
+
+**Real-time, ad-hoc intelligence** — Traditional NLP pipelines are batch-oriented. AIDB enables ad-hoc queries against live data. An executive can ask a new question at 3 PM and have the answer by 3:01 PM.
+
+**Scales with PostgreSQL** — Leverages PostgreSQL's mature query planner, parallel workers, connection pooling, and role-based access control. Enterprises already invested in PostgreSQL infrastructure get AI capabilities at zero marginal infrastructure cost.
+
+## Enterprise use cases
+
+**Retail and e-commerce** — `GROUP BY` product category across millions of reviews and feedback entries. Get per-category summaries of preferences, complaints, and emerging trends — updated in real time as new reviews arrive.
+
+**Financial services** — `GROUP BY` risk segment across loan officer notes, borrower communications, and underwriting comments. Surface patterns that quantitative models miss — narrative signals in free-text fields that precede defaults.
+
+**Healthcare and life sciences** — `GROUP BY` facility, department, or condition across patient feedback, clinical notes, and discharge summaries. Identify care quality variations without exposing PHI to external services.
+
+**Legal and compliance** — `GROUP BY` jurisdiction or regulation type across thousands of compliance documents, audit findings, and regulatory correspondence. Reduce weeks of manual review to a single query.
+
+**Sales and customer success** — `GROUP BY` sales rep, region, or deal stage across CRM notes, call transcripts, and email summaries. Extract win/loss patterns and coaching opportunities from the unstructured text in every CRM.
+
+**Manufacturing and supply chain** — `GROUP BY` supplier or component across procurement correspondence, quality reports, and shipment notes. Detect supply chain risks from narrative signals before they show up in delivery metrics.
+
+**HR and talent** — `GROUP BY` department, tenure band, or role level across exit interview transcripts and employee survey responses. Surface the real reasons people leave.
+
+## How it works
+
+AIDB implements a true PostgreSQL aggregate using the database's native state-accumulation framework:
+
+- **State function** — accumulates text from each row in a group, maintaining per-group state in memory
+- **Finalize function** — sends the accumulated text to the configured LLM and returns the result
+- **Chunking engine** — automatically splits large text groups into manageable chunks (configurable by word count or character count, with overlap for context preservation)
+- **Reduction strategies** — `append` concatenates chunk summaries; `reduce` iteratively re-summarizes until the output converges — a true map-reduce pattern running inside the database
+- **Custom prompts** — each query can specify its own instruction: summarize, translate, extract sentiment, categorize, identify trends — making the same function infinitely flexible
+- **Model-agnostic** — works with any OpenAI-compatible endpoint (GPT-4o, Llama, Mistral, on-prem models) configurable per query
+
+## The wow moment
+
+Start with a table of customer preference data — 126 rows across 20 customers and 5 product categories. The raw data is a wall of unstructured text.
+
+Run this query:
+
+```sql
+SELECT name,
+       aidb.summarize_text_aggregate(
+           preferences,
+           aidb.summarize_text_config('gpt-4o')::json
+       ) AS style_profile
+FROM customer_preferences
+GROUP BY name;
+```
+
+In seconds, 126 rows become 20 rows — each a rich, coherent style profile synthesized from every data point for that customer. No pipeline. No engineering team. No data left the database.
+
+Now change the prompt:
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           preferences,
+           aidb.summarize_text_config(
+               'gpt-4o',
+               prompt => 'Identify the 3 strongest purchasing signals and recommend inventory actions'
+           )::json
+       ) AS buying_signals
+FROM customer_preferences
+GROUP BY category;
+```
+
+Same data. Same function. Different question. Different insight. The analyst changed one string and got an entirely new analysis — no code deployed, no pipeline modified, no ticket filed.
+
+That is the moment it clicks: the entire organization's unstructured data becomes queryable with natural language, using the tool analysts already know.
+
+## Example with chunking and custom prompt
+
+For large text groups, combine chunking with a targeted prompt:
+
+```sql
+SELECT product_category,
+       aidb.summarize_text_aggregate(
+           review_text,
+           aidb.summarize_text_config(
+               'local-llama',
+               aidb.chunk_text_config(120, 120, 15, 'words'),
+               'Identify the top 3 quality issues and suggest improvements',
+               'reduce'
+           )::json
+       ) AS quality_analysis
+FROM product_reviews
+GROUP BY product_category;
+```
+
+## Competitive position
+
+| Capability            | Traditional ETL + LLM API  | AIDB in-database aggregate     |
+|-----------------------|----------------------------|--------------------------------|
+| Data movement         | Required (security risk)   | None (data stays in place)     |
+| User interface        | Python / custom app        | SQL (universal)                |
+| Infrastructure        | Airflow + queues + compute | PostgreSQL (existing)          |
+| Time to first insight | Days to weeks              | Minutes                        |
+| Ad-hoc queries        | Requires new pipeline      | Change the SQL                 |
+| Access control        | Separate system            | PostgreSQL RBAC / RLS          |
+| Audit trail           | Must be built              | PostgreSQL native logging      |
+| Compliance            | Requires separate review   | Inherits DB compliance posture |
+| Model flexibility     | Locked to provider         | Any OpenAI-compatible endpoint |

@@ -35,6 +35,12 @@ const products = {
     abbreviation: "PGAA",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
+  aidb: {
+    name: "EDB Postgres AI Database",
+    shortName: "AI Database",
+    abbreviation: "AIDB",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     shortName: "EDB Postgres Distributed",

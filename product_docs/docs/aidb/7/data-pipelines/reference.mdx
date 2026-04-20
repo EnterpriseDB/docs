@@ -1,0 +1,658 @@
+---
+title: "Pipelines API reference"
+navTitle: "Reference"
+description: "Reference documentation for the EDB AI pipelines API — types, views, core functions, and configuration helpers."
+deepToC: true
+indexCards: none
+---
+
+This page covers the full public API for AI pipelines: the types and enums used across the API, the views for inspecting pipeline state, the core CRUD and execution functions, and the configuration helper functions for pipeline steps and vector indexes. For model configuration helpers, see the [Models reference](../reference/models#model-config-helpers).
+
+## Types
+
+### `aidb.PipelineAutoProcessingMode`
+
+Controls how a pipeline automatically processes new or changed data.
+
+```sql
+CREATE TYPE PipelineAutoProcessingMode AS ENUM (
+    'Live',
+    'Background',
+    'Disabled'
+);
+```
+
+| Value        | Description                                                                 |
+| ------------ | --------------------------------------------------------------------------- |
+| `Live`       | Processes new data immediately as it arrives, using Postgres triggers.      |
+| `Background` | Continuously processes data in the background using Postgres workers.       |
+| `Disabled`   | No automated processing. Use `aidb.run_pipeline()` to trigger manually.    |
+
+### `aidb.PipelineDataFormat`
+
+Specifies the format of source data the pipeline processes.
+
+```sql
+CREATE TYPE PipelineDataFormat AS ENUM (
+    'Text',
+    'Image',
+    'Pdf'
+);
+```
+
+| Value   | Description |
+| ------- | ----------- |
+| `Text`  | Plain text data. |
+| `Image` | Image data (bytes). |
+| `Pdf`   | PDF documents. |
+
+### `aidb.PipelineSourceType`
+
+Indicates the type of data source a pipeline reads from.
+
+```sql
+CREATE TYPE PipelineSourceType AS ENUM (
+    'Table',
+    'Volume',
+    'Empty'
+);
+```
+
+| Value    | Description                                  |
+| -------- | -------------------------------------------- |
+| `Table`  | A Postgres table or view.                    |
+| `Volume` | A PGFS storage volume.                       |
+| `Empty`  | No source; the pipeline generates its own data. |
+
+### `aidb.PipelineDestinationType`
+
+Indicates the type of destination a pipeline writes to.
+
+```sql
+CREATE TYPE PipelineDestinationType AS ENUM (
+    'Table',
+    'Volume',
+    'Empty'
+);
+```
+
+| Value    | Description                             |
+| -------- | --------------------------------------- |
+| `Table`  | A Postgres table.                       |
+| `Volume` | A PGFS storage volume.                  |
+| `Empty`  | No destination; output is discarded.    |
+
+### `aidb.PipelineStepOperation`
+
+Defines the operation performed by a pipeline step.
+
+```sql
+CREATE TYPE PipelineStepOperation AS ENUM (
+    'ChunkText',
+    'SummarizeText',
+    'ParseHtml',
+    'ParsePdf',
+    'PerformOcr',
+    'KnowledgeBase',
+    'PdfToImage',
+    'SemanticKB'
+);
+```
+
+| Value          | Description                                           |
+| -------------- | ----------------------------------------------------- |
+| `ChunkText`    | Splits text into smaller chunks.                      |
+| `SummarizeText`| Summarizes text using a language model.               |
+| `ParseHtml`    | Extracts text content from HTML.                      |
+| `ParsePdf`     | Extracts text or images from PDFs.                    |
+| `PerformOcr`   | Runs optical character recognition on images.         |
+| `KnowledgeBase`| Computes and stores embeddings in a knowledge base.   |
+| `PdfToImage`   | Converts PDF pages to images.                         |
+| `SemanticKB`   | Indexes schema metadata into a semantic knowledge base.|
+
+### `aidb.PipelineStatus`
+
+Represents the current processing state of a pipeline.
+
+```sql
+CREATE TYPE PipelineStatus AS ENUM (
+Stale         
+Processing    
+UpToDate      
+NoResults     
+Failed        
+Unknown       
+PartialErrors 
+BlockingErrors
+);
+```
+
+| Value         | Description                                                    |
+| ------------- | -------------------------------------------------------------- |
+| `Stale`       | Source data has changed and the pipeline needs to run.         |
+| `Processing`  | The pipeline is currently executing.                           |
+| `UpToDate`    | All source data has been processed successfully.               |
+| `NoResults`   | Processing completed but produced no output.                   |
+| `Failed`      | The last execution failed.                                     |
+| `PartialErrors`   | Some records failed to process; others succeeded.              |
+| `BlockingErrors`   | The pipeline fails to run.              |
+| `Unknown`     | Status cannot be determined.                                   |
+
+### `aidb.DistanceOperator`
+
+Specifies the distance metric used for vector similarity search.
+
+```sql
+CREATE TYPE DistanceOperator AS ENUM (
+    'L2',
+    'InnerProduct',
+    'Cosine',
+    'L1',
+    'Hamming',
+    'Jaccard'
+);
+```
+
+| Value          | Description        |
+| -------------- | ------------------ |
+| `L2`           | Euclidean distance. |
+| `InnerProduct` | Inner product.      |
+| `Cosine`       | Cosine similarity.  |
+| `L1`           | L1 (Manhattan) distance. |
+| `Hamming`      | Hamming distance.   |
+| `Jaccard`      | Jaccard distance.   |
+
+---
+
+## Domains
+
+### `aidb.pipeline_name_50`
+
+A `TEXT` domain enforcing that pipeline names are no longer than 50 characters.
+
+### `aidb.background_sync_interval`
+
+An `INTERVAL` domain enforcing that background sync intervals are between `1 second` and `2 days` (inclusive).
+
+---
+
+## Views
+
+### `aidb.pipelines`
+
+Also accessible as `aidb.pipes`. Lists all registered pipelines and their configuration, including source, destination, processing mode, and step definitions.
+
+| Column                    | Type                                                 | Description                                                     |
+| ------------------------- | ---------------------------------------------------- | --------------------------------------------------------------- |
+| `id`                      | integer                                              | Internal pipeline identifier.                                   |
+| `name`                    | text                                                 | Name of the pipeline.                                           |
+| `source_type`             | [aidb.PipelineSourceType](#aidbpipelinesourcetype)   | Whether the source is a table or volume.                        |
+| `source_schema`           | text                                                 | Schema of the source table.                                     |
+| `source`                  | text                                                 | Name of the source table or volume.                             |
+| `source_key_column`       | text                                                 | Column used as the unique key in the source.                    |
+| `source_data_column`      | text                                                 | Column containing the data to process.                          |
+| `destination_type`        | [aidb.PipelineDestinationType](#aidbpipelinedestinationtype) | Whether the destination is a table or volume.         |
+| `destination_schema`      | text                                                 | Schema of the destination table.                                |
+| `destination`             | text                                                 | Name of the destination table or volume.                        |
+| `destination_key_column`  | text                                                 | Key column in the destination table.                            |
+| `destination_data_column` | text                                                 | Column in the destination where processed data is written.      |
+| `steps`                   | jsonb                                                | Ordered array of pipeline step definitions.                     |
+| `auto_processing`         | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | Auto-processing mode.                          |
+| `batch_size`              | integer                                              | Number of records processed per batch.                          |
+| `background_sync_interval`| interval                                             | Interval between executions in background mode.                 |
+| `owner_role`              | text                                                 | Postgres role that owns this pipeline.                          |
+
+#### Example
+
+```sql
+SELECT name, source, destination, auto_processing FROM aidb.pipelines;
+```
+
+### `aidb.pipeline_metrics`
+
+Also accessible as `aidb.pipem`. Shows current processing statistics for each pipeline.
+
+| Column                     | Type   | Description                                                                                   |
+| -------------------------- | ------ | --------------------------------------------------------------------------------------------- |
+| `pipeline`                 | text   | Name of the pipeline.                                                                         |
+| `auto processing`          | text   | Current auto-processing mode.                                                                 |
+| `table: unprocessed rows`  | bigint | For table sources: number of rows not yet processed.                                          |
+| `volume: scans completed`  | bigint | For volume sources: number of full scans completed.                                           |
+| `count(source records)`    | bigint | Total number of records in the source.                                                        |
+| `count(destination records)` | bigint | Total number of records in the destination.                                                 |
+| `Status`                   | text   | Current [pipeline status](#aidbpipelinestatus).                                               |
+| `count(record errors)` | bigint | Total number of records the failed processing.                                                 |
+| `count(blocking errors)`                   | bigint   | Total number of errors that prevent the pipeline from running.                                               |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.pipeline_metrics;
+
+__OUTPUT__
+       pipeline       | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(destination records) |  Status  | count(record errors) | count(blocking errors)
+----------------------+-----------------+-------------------------+-------------------------+-----------------------+----------------------------+----------+----------------------+------------------------
+ pipeline__7471a      | Background      |                       0 |                         |                     5 |                          5 | UpToDate |                    0 |                      0
+ pipeline__7471b      | Background      |                       0 |                         |                     5 |                          5 | UpToDate |                    0 |                      0
+ animal_facts_kb      | Disabled        |                       0 |                         |                    99 |                        372 | UpToDate |                    0 |                      0
+ animal_facts_kb_bert | Disabled        |                       0 |                         |                    99 |                        372 | UpToDate |                    0 |                      0
+ mpkb_pipe_int        | Disabled        |                       0 |                         |                     2 |                          4 | UpToDate |                    0 |                      0
+ mpkb_pipe_text       | Disabled        |                       0 |                         |                     2 |                          4 | UpToDate |                    0 |                      0
+(6 rows)
+```
+
+---
+
+## Functions
+
+### `aidb.create_pipeline`
+
+Creates a new pipeline with a source, up to 10 sequential processing steps, and an optional destination.
+
+#### Parameters
+
+| Parameter                  | Type                                                               | Default    | Description                                                                       |
+| -------------------------- | ------------------------------------------------------------------ | ---------- | --------------------------------------------------------------------------------- |
+| `name`                     | TEXT                                                               | Required   | Name of the pipeline. Max 50 characters.                                          |
+| `source`                   | TEXT                                                               | Required   | Name of the source table or volume.                                               |
+| `step_1`                   | [aidb.PipelineStepOperation](#aidbpipelinestepoperation)           | Required   | Operation for the first pipeline step.                                            |
+| `source_key_column`        | TEXT                                                               | NULL       | Unique key column in the source table.                                            |
+| `source_data_column`       | TEXT                                                               | NULL       | Column containing the data to process.                                            |
+| `destination`              | TEXT                                                               | NULL       | Name of the destination table or volume.                                          |
+| `auto_processing`          | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | NULL       | Auto-processing mode.                                                             |
+| `batch_size`               | INT                                                                | NULL       | Number of records to process per batch.                                           |
+| `background_sync_interval` | INTERVAL                                                           | NULL       | Interval between background executions. Must be between 1 second and 2 days.     |
+| `owner_role`               | TEXT                                                               | NULL       | Role to own and execute this pipeline.                                            |
+| `step_1_options`           | JSONB                                                              | NULL       | Configuration for step 1 (use the appropriate [step config helper](#pipeline-step-config-helpers)). |
+| `step_2` … `step_10`       | [aidb.PipelineStepOperation](#aidbpipelinestepoperation)           | NULL       | Operation for steps 2–10.                                                         |
+| `step_2_options` … `step_10_options` | JSONB                                                    | NULL       | Configuration for steps 2–10.                                                     |
+
+#### Returns
+
+| Column                    | Type | Description                           |
+| ------------------------- | ---- | ------------------------------------- |
+| `name`                    | text | Name of the created pipeline.         |
+| `destination_type`        | text | Type of the pipeline destination.     |
+| `destination_schema`      | text | Schema of the destination.            |
+| `destination`             | text | Name of the destination.              |
+| `destination_key_column`  | text | Key column in the destination.        |
+| `destination_data_column` | text | Data column in the destination.       |
+
+#### Example
+
+```sql
+-- Single-step pipeline: chunk text from a table into a destination table
+SELECT aidb.create_pipeline(
+    name                => 'my_chunker',
+    source              => 'source_docs',
+    source_key_column   => 'id',
+    source_data_column  => 'body',
+    destination         => 'chunked_docs',
+    step_1              => 'ChunkText',
+    step_1_options      => aidb.chunk_text_config(200, 250, 25),
+    auto_processing     => 'Live'
+);
+
+-- Multi-step pipeline: parse PDF, then embed into a knowledge base
+SELECT aidb.create_pipeline(
+    name                => 'pdf_to_kb',
+    source              => 'pdf_volume',
+    destination         => 'my_kb',
+    step_1              => 'ParsePdf',
+    step_1_options      => aidb.pdf_parse_config(),
+    step_2              => 'KnowledgeBase',
+    step_2_options      => aidb.knowledge_base_config('my_model', 'Text'),
+    auto_processing     => 'Background',
+    background_sync_interval => '60 seconds'
+);
+```
+
+### `aidb.update_pipeline`
+
+Updates the auto-processing settings for an existing pipeline.
+
+#### Parameters
+
+| Parameter                  | Type                                                               | Default | Description                                              |
+| -------------------------- | ------------------------------------------------------------------ | ------- | -------------------------------------------------------- |
+| `name`                     | TEXT                                                               | Required | Name of the pipeline to update.                         |
+| `auto_processing`          | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | NULL    | New auto-processing mode.                                |
+| `batch_size`               | INT                                                                | NULL    | New batch size.                                          |
+| `background_sync_interval` | INTERVAL                                                           | NULL    | New background sync interval.                            |
+
+#### Example
+
+```sql
+SELECT aidb.update_pipeline('my_chunker', auto_processing => 'Background', background_sync_interval => '5 minutes');
+```
+
+### `aidb.delete_pipeline`
+
+Deletes a pipeline and its configuration. Doesn't delete the source or destination tables.
+
+#### Parameters
+
+| Parameter | Type | Default  | Description                    |
+| --------- | ---- | -------- | ------------------------------ |
+| `name`    | TEXT | Required | Name of the pipeline to delete.|
+
+#### Example
+
+```sql
+SELECT aidb.delete_pipeline('my_chunker');
+```
+
+### `aidb.run_pipeline`
+
+Manually triggers a pipeline to execute immediately, regardless of its `auto_processing` mode.
+
+#### Parameters
+
+| Parameter       | Type | Default  | Description                   |
+| --------------- | ---- | -------- | ----------------------------- |
+| `pipeline_name` | TEXT | Required | Name of the pipeline to run.  |
+
+#### Example
+
+```sql
+SELECT aidb.run_pipeline('my_chunker');
+```
+
+---
+
+## Pipeline step config helpers
+
+These functions return a `JSONB` configuration object for use in `step_N_options` parameters of `aidb.create_pipeline`.
+
+### `aidb.chunk_text_config`
+
+Configures a `ChunkText` step to split text into smaller segments.
+
+#### Parameters
+
+| Parameter        | Type    | Default  | Description                                                              |
+| ---------------- | ------- | -------- | ------------------------------------------------------------------------ |
+| `desired_length` | INTEGER | Required | Target chunk size.                                                       |
+| `max_length`     | INTEGER | NULL     | Maximum allowed chunk size.                                              |
+| `overlap_length` | INTEGER | NULL     | Number of units to overlap between consecutive chunks.                   |
+| `strategy`       | TEXT    | NULL     | Chunking unit: `'chars'` (default) or `'words'`.                        |
+
+#### Example
+
+```sql
+-- Chunk into ~200 character segments, max 250, with 25-character overlap
+SELECT aidb.chunk_text_config(200, 250, 25, 'chars');
+```
+
+### `aidb.summarize_text_config`
+
+Configures a `SummarizeText` step to summarize text using a language model.
+
+#### Parameters
+
+| Parameter          | Type    | Default  | Description                                                                         |
+| ------------------ | ------- | -------- | ----------------------------------------------------------------------------------- |
+| `model`            | TEXT    | Required | Name of the model to use for summarization.                                         |
+| `chunk_config`     | JSONB   | NULL     | Optional chunking config (from `aidb.chunk_text_config`) applied before summarizing.|
+| `prompt`           | TEXT    | NULL     | Custom prompt to guide the summarization.                                           |
+| `strategy`         | TEXT    | NULL     | `'append'` (default) or `'reduce'`.                                                 |
+| `reduction_factor` | INTEGER | NULL     | With `'reduce'` strategy: aggressiveness of each reduction pass (default: 3).       |
+| `inference_config` | JSONB   | NULL     | Optional inference settings (from `aidb.inference_config`).                        |
+
+#### Example
+
+```sql
+SELECT aidb.summarize_text_config(
+    'my_llm',
+    chunk_config => aidb.chunk_text_config(100, 100, 10, 'words'),
+    prompt       => 'Summarize concisely',
+    strategy     => 'reduce',
+    reduction_factor => 4
+);
+```
+
+### `aidb.ocr_config`
+
+Configures a `PerformOcr` step to extract text from images using a model.
+
+#### Parameters
+
+| Parameter | Type | Default  | Description                           |
+| --------- | ---- | -------- | ------------------------------------- |
+| `model`   | TEXT | Required | Name of the OCR model to use.         |
+
+#### Example
+
+```sql
+SELECT aidb.ocr_config('my_ocr_model');
+```
+
+### `aidb.html_parse_config`
+
+Configures a `ParseHtml` step to extract text from HTML content.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                              |
+| --------- | ---- | ------- | -------------------------------------------------------- |
+| `method`  | TEXT | NULL    | Parsing method to use. If `NULL`, uses the default method. |
+
+#### Example
+
+```sql
+SELECT aidb.html_parse_config();
+```
+
+### `aidb.pdf_parse_config`
+
+Configures a `ParsePdf` step to extract content from PDF documents.
+
+#### Parameters
+
+| Parameter               | Type    | Default | Description                                                         |
+| ----------------------- | ------- | ------- | ------------------------------------------------------------------- |
+| `method`                | TEXT    | NULL    | Parsing method to use. If `NULL`, uses the default method.          |
+| `allow_partial_parsing` | BOOLEAN | NULL    | When `true`, returns partial results if some pages cannot be parsed.|
+
+#### Example
+
+```sql
+SELECT aidb.pdf_parse_config(allow_partial_parsing => true);
+```
+
+### `aidb.knowledge_base_config`
+
+Configures a `KnowledgeBase` step to compute and store embeddings.
+
+#### Parameters
+
+| Parameter           | Type                                                   | Default | Description                                                          |
+| ------------------- | ------------------------------------------------------ | ------- | -------------------------------------------------------------------- |
+| `model`             | TEXT                                                   | Required| Name of the embedding model to use.                                  |
+| `data_format`       | [aidb.PipelineDataFormat](#aidbpipelinedataformat)     | Required| Format of the data being embedded.                                   |
+| `distance_operator` | [aidb.DistanceOperator](#aidbdistanceoperator)         | NULL    | Distance function for similarity search. Defaults to `L2`.           |
+| `vector_index`      | JSONB                                                  | NULL    | Vector index configuration (from a [vector index config helper](#vector-index-config-helpers)). |
+
+#### Example
+
+```sql
+SELECT aidb.knowledge_base_config(
+    'my_embedding_model',
+    'Text',
+    distance_operator => 'Cosine',
+    vector_index      => aidb.vector_index_hnsw_config(m => 16, ef_construction => 64)
+);
+```
+
+### `aidb.knowledge_base_config_from_kb`
+
+Configures a `KnowledgeBase` step to attach a pipeline to an existing knowledge base rather than creating a new one.
+
+#### Parameters
+
+| Parameter     | Type                                               | Default  | Description                          |
+| ------------- | -------------------------------------------------- | -------- | ------------------------------------ |
+| `data_format` | [aidb.PipelineDataFormat](#aidbpipelinedataformat) | Required | Format of the data being embedded.   |
+
+#### Example
+
+```sql
+SELECT aidb.knowledge_base_config_from_kb('Text');
+```
+
+### `aidb.inference_config`
+
+Builds an inference configuration object for use with language model steps such as `SummarizeText`. All parameters are optional.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                                |
+| ---------------- | ---------------- | ------- | ---------------------------------------------------------- |
+| `system_prompt`  | TEXT             | NULL    | System prompt prepended to each request.                   |
+| `temperature`    | DOUBLE PRECISION | NULL    | Sampling temperature (higher = more random).               |
+| `max_tokens`     | INTEGER          | NULL    | Maximum number of tokens to generate.                      |
+| `top_p`          | DOUBLE PRECISION | NULL    | Nucleus sampling threshold.                                |
+| `seed`           | BIGINT           | NULL    | Random seed for reproducible outputs.                      |
+| `repeat_penalty` | REAL             | NULL    | Penalty for repeated tokens.                               |
+| `repeat_last_n`  | INTEGER          | NULL    | Number of recent tokens to apply repeat penalty over.      |
+| `thinking`       | BOOLEAN          | NULL    | Enable extended reasoning (supported models only).         |
+| `extra_args`     | JSONB            | NULL    | Additional provider-specific inference arguments.          |
+
+#### Example
+
+```sql
+SELECT aidb.inference_config(
+    system_prompt => 'You are a technical summarizer.',
+    temperature   => 0.3,
+    max_tokens    => 512
+);
+```
+
+---
+
+## Vector index config helpers
+
+These functions return a `JSONB` configuration for the `vector_index` parameter of `aidb.knowledge_base_config`.
+
+### `aidb.vector_index_hnsw_config`
+
+Configures an [HNSW](https://github.com/pgvector/pgvector?tab=readme-ov-file#hnsw) index (pgvector).
+
+#### Parameters
+
+| Parameter          | Type    | Default | Description                           |
+| ------------------ | ------- | ------- | ------------------------------------- |
+| `vector_data_type` | TEXT    | NULL    | Vector storage type.                  |
+| `m`                | INTEGER | NULL    | Maximum number of connections per node (default: 16). |
+| `ef_construction`  | INTEGER | NULL    | Build-time search depth (default: 64).|
+| `ef_search`        | INTEGER | NULL    | Query-time search depth.              |
+
+!!! note
+    HNSW supports a maximum of 2000 dimensions. For higher-dimensional vectors, use `aidb.vector_index_disabled_config()`.
+!!!
+
+The following table shows how each `distance_operator` value maps to a pgvector ops class:
+
+| `distance_operator` | Index ops class     |
+| ------------------- | ------------------- |
+| `L2`                | `vector_l2_ops`     |
+| `InnerProduct`      | `vector_ip_ops`     |
+| `Cosine`            | `vector_cosine_ops` |
+| `L1`                | `vector_l1_ops`     |
+
+#### Example
+
+```sql
+SELECT aidb.vector_index_hnsw_config(m => 16, ef_construction => 64);
+```
+
+### `aidb.vector_index_ivfflat_config`
+
+Configures a pgvector [IVFFlat](https://github.com/pgvector/pgvector?tab=readme-ov-file#ivfflat) index.
+
+#### Parameters
+
+| Parameter          | Type    | Default | Description                            |
+| ------------------ | ------- | ------- | -------------------------------------- |
+| `vector_data_type` | TEXT    | NULL    | Vector storage type.                   |
+| `lists`            | INTEGER | NULL    | Number of clusters (inverted lists).   |
+| `probes`           | INTEGER | NULL    | Number of clusters to search at query time. |
+
+#### Example
+
+```sql
+SELECT aidb.vector_index_ivfflat_config(lists => 100);
+```
+
+### `aidb.vector_index_chord_hnsw_config`
+
+Configures a VectorChord HNSW index.
+
+#### Parameters
+
+| Parameter          | Type             | Default | Description                                         |
+| ------------------ | ---------------- | ------- | --------------------------------------------------- |
+| `vector_data_type` | TEXT             | NULL    | Vector storage type.                                |
+| `m`                | INTEGER          | NULL    | Maximum connections per node.                       |
+| `ef_construction`  | INTEGER          | NULL    | Build-time search depth.                            |
+| `max_connections`  | INTEGER          | NULL    | Maximum connections in the graph.                   |
+| `ml`               | DOUBLE PRECISION | NULL    | Level multiplier controlling graph layer structure. |
+
+#### Example
+
+```sql
+SELECT aidb.vector_index_chord_hnsw_config(m => 16, ef_construction => 64);
+```
+
+### `aidb.vector_index_chord_vchordq_config`
+
+Configures a VectorChord Vchordq index.
+
+#### Parameters
+
+| Parameter            | Type    | Default | Description                                          |
+| -------------------- | ------- | ------- | ---------------------------------------------------- |
+| `vector_data_type`   | TEXT    | NULL    | Vector storage type.                                 |
+| `lists`              | TEXT    | NULL    | Number of clusters.                                  |
+| `spherical_centroids`| BOOLEAN | NULL    | Use spherical (normalized) centroids when clustering.|
+
+#### Example
+
+```sql
+SELECT aidb.vector_index_chord_vchordq_config(lists => '100', spherical_centroids => true);
+```
+
+### `aidb.vector_index_hsphere_optimized_config`
+
+Configures an HSphere Optimized index.
+
+#### Parameters
+
+| Parameter          | Type             | Default  | Description                        |
+| ------------------ | ---------------- | -------- | ---------------------------------- |
+| `clusters`         | INTEGER          | Required | Number of clusters.                |
+| `precision_val`    | DOUBLE PRECISION | Required | Indexing precision value.          |
+| `vector_data_type` | TEXT             | NULL     | Vector storage type.               |
+
+#### Example
+
+```sql
+SELECT aidb.vector_index_hsphere_optimized_config(clusters => 256, precision_val => 0.95);
+```
+
+### `aidb.vector_index_disabled_config`
+
+Disables automatic vector index creation. Use this when your embedding dimensions exceed 2000 or when you want to manage indexes manually.
+
+#### Example
+
+```sql
+SELECT aidb.vector_index_disabled_config();
+```
+
+---
+
+## Model config helpers
+
+Model config helpers have moved to the [Models reference](../reference/models#model-config-helpers) page.
+

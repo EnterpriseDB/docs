@@ -1,0 +1,157 @@
+---
+title: Local models
+navTitle: Local models
+description: Built-in local models available in every AIDB installation, and how to register custom variants of BERT, CLIP, T5, and Llama.
+---
+
+AIDB supports two kinds of local models — both run directly on your Postgres host without requiring an external API:
+
+- **Built-in models** — AIDB bundles a default variant of each supported model type and registers them automatically. No configuration is needed to start using them.
+- **Custom local models** — If you need a different model variant, a fine-tuned model, or a specific local path, you can register a custom version using `aidb.create_model()`.
+
+## Built-in models
+
+The following models are available in every AIDB installation without any configuration:
+
+| Model name   | Provider      | Use                                        |
+|--------------|---------------|--------------------------------------------|
+| `bert` | `bert_local`  | Text embeddings                            |
+| `clip` | `clip_local`  | Multimodal embeddings (text and image)     |
+| `t5`   | `t5_local`    | Text-to-text generation                    |
+| `llama`   | `llama_instruct_local`    | Text-to-text generation                    |
+| `dummy`      | `dummy`       | Testing and development (returns zeros)    |
+Use them directly by name in any AIDB SQL function or pipeline step configuration:
+
+```sql
+-- Text embedding with the built-in BERT model
+SELECT aidb.encode_text('bert', 'The quick brown fox');
+
+-- Image embedding with the built-in CLIP model
+SELECT aidb.encode_image('clip', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
+
+-- Text generation with the built-in T5 model
+SELECT aidb.decode_text('t5', 'Translate to French: Hello, world.');
+```
+
+## Custom local models
+
+Use `aidb.create_model()` to register a custom variant when you need a different model version, a fine-tuned model, or a specific local path:
+
+```sql
+SELECT aidb.create_model(
+    name     => 'my_model',
+    provider => '<provider>',
+    config   => <config_helper>(...)
+);
+```
+
+
+| Parameter  | Type  | Description                                                                        |
+|------------|-------|------------------------------------------------------------------------------------|
+| `name`     | TEXT  | A unique name for this model. Used to reference it in pipelines and SQL functions. |
+| `provider` | TEXT  | The model provider. Determines which inference engine AIDB uses.                   |
+| `config`   | JSONB | Provider-specific configuration, built with a config helper function.              |
+
+### BERT
+
+Use `aidb.bert_config()` to specify the HuggingFace model identifier, an optional revision, and an optional local cache directory:
+
+```sql
+SELECT aidb.create_model(
+    'my_bert',
+    'bert_local',
+    config => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2')
+);
+```
+
+| Parameter   | Type | Default  | Description                                  |
+|-------------|------|----------|----------------------------------------------|
+| `model`     | TEXT | Required | Model name or path (HuggingFace identifier). |
+| `revision`  | TEXT | NULL     | Model revision or branch.                    |
+| `cache_dir` | TEXT | NULL     | Local directory for caching model files.     |
+
+### CLIP
+
+Use `aidb.clip_config()` to configure a CLIP-based multimodal model for joint text and image embeddings:
+
+```sql
+SELECT aidb.create_model(
+    'my_clip',
+    'clip_local',
+    config => aidb.clip_config('openai/clip-vit-base-patch32')
+);
+```
+
+| Parameter    | Type    | Default  | Description                                  |
+|--------------|---------|----------|----------------------------------------------|
+| `model`      | TEXT    | Required | Model name or path (HuggingFace identifier). |
+| `revision`   | TEXT    | NULL     | Model revision or branch.                    |
+| `cache_dir`  | TEXT    | NULL     | Local directory for caching model files.     |
+
+### T5
+
+Use `aidb.t5_config()` to configure a T5 text-to-text model. T5 models support tasks like translation, summarization, and question answering depending on the variant:
+
+```sql
+SELECT aidb.create_model(
+    'my_t5',
+    't5_local',
+    config => aidb.t5_config('google/flan-t5-base')
+);
+```
+
+| Parameter    | Type | Default  | Description                                  |
+|--------------|------|----------|----------------------------------------------|
+| `model`      | TEXT | Required | Model name or path.                          |
+| `model_path` | TEXT | NULL     | Explicit local path to model weights (overrides `model`). |
+| `cache_dir`  | TEXT | NULL     | Local directory for caching model files.     |
+
+### Llama
+
+Use `aidb.llama_config()` to configure a Llama-family language model for text generation. Llama models support temperature, top-p sampling, context length, and other generation parameters:
+
+```sql
+SELECT aidb.create_model(
+    'my_llama',
+    'llama_instruct_local.',
+    config => aidb.llama_config(
+        'meta-llama/Llama-3.2-3B-Instruct',
+        temperature => 0.5
+    )
+);
+```
+
+| Parameter      | Type             | Default  | Description                                              |
+|----------------|------------------|----------|----------------------------------------------------------|
+| `model`        | TEXT             | Required | Model name or path.                                      |
+| `cache_dir`    | TEXT             | NULL     | Local directory for caching model files.                 |
+| `model_path`   | TEXT             | NULL     | Explicit local path to model weights (overrides `model`). |
+| `temperature`  | DOUBLE PRECISION | NULL     | Sampling temperature.                                    |
+| `top_p`        | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                              |
+| `seed`         | BIGINT           | NULL     | Random seed for reproducible outputs.                    |
+
+!!!Note
+Local model files are downloaded from HuggingFace and cached on first use. The Postgres process must have network access and write access to the cache directory. For air-gapped environments, pre-download the model files and use `model_path` or `cache_dir` to point to the local copy.
+!!!
+
+## Using a registered model
+
+Once registered, a model is referenced by its name in any AIDB function. Custom and built-in models are interchangeable:
+
+```sql
+-- Use a custom BERT model for embedding
+SELECT aidb.encode_text('my_bert', 'Hello world');
+
+-- Use a custom BERT model in a pipeline step
+SELECT aidb.create_pipeline(
+    'my_pipeline',
+    ...
+    step_1_operation => 'Embed',
+    step_1_options   => aidb.knowledge_base_config('my_bert', 'Text'),
+    ...
+);
+```
+
+See the [Pipelines API reference](../data-pipelines/reference#model-config-helpers) for full parameter details on all config helper functions.
+
+For a list of HuggingFace model variants that have been tested and verified to work with AIDB's local providers, see [Support matrix](support-matrix).
