@@ -14,15 +14,15 @@ AIDB, the PostgreSQL extension that powers Pipeline Designer, maintains a model 
 
 ### HM external inference service proxy
 
-When you register an external inference service through the Hybrid Manager UI (AI Factory > Model Serving), HM creates a lightweight proxy container (a "proxymodel") deployed as a KServe InferenceService on the primary location's Kubernetes cluster. This proxymodel receives inference requests over a cluster-internal URL and forwards them to the external provider's API endpoint, injecting the provider's API credentials from a Kubernetes secret.
+When you register an external inference service through the Hybrid Manager UI (AI Factory > Model Serving), HM deploys a managed proxy on the primary location that forwards inference requests to the external provider's API endpoint. HM manages the provider's API credentials; they are not stored in the database.
 
-From AIDB's perspective, the proxymodel looks identical to an HM-hosted KServe model: AIDB discovers it through the `upm-ai-model-server` API and stores the proxymodel's cluster-internal predictor URL. The fact that inference ultimately reaches an external provider is transparent to AIDB and to Pipeline Designer.
+From AIDB's perspective, the proxy is indistinguishable from an HM-hosted model: AIDB discovers it automatically and routes inference requests to it in the same way. The fact that inference ultimately reaches an external provider is transparent to AIDB and to Pipeline Designer.
 
 Key characteristics of this path:
 
 -   **Managed by the HM control plane.** Registration, credential storage, and lifecycle management happen through the HM UI and backend services.
--   **Credentials stored in Kubernetes secrets.** The API key (or equivalent) is injected into the proxymodel pod as an environment variable. AIDB does not handle external provider credentials directly.
--   **Same reachability constraint as HM-hosted models.** Because the proxymodel runs on the primary location and AIDB addresses it via a cluster-internal URL, a database cluster must have network access to the primary location to use this path. The external provider itself is internet-accessible, but traffic from AIDB does not go to the internet directly; it goes to the proxymodel pod, which then contacts the provider. Clusters that cannot reach the primary location's Kubernetes network cannot use HM external inference service proxies, for the same reason they cannot use HM-hosted KServe models.
+-   **Credentials managed by HM.** The provider's API key (or equivalent) is stored and injected by HM infrastructure. AIDB does not handle external provider credentials directly.
+-   **Same reachability constraint as HM-hosted models.** The proxy runs on the primary location, so a cluster needs network connectivity to the primary to use this path. The external provider itself is internet-accessible, but traffic from AIDB goes through the proxy, not to the provider directly. In a default deployment, secondary locations and self-managed clusters do not have this connectivity and must use AIDB-native registration instead.
 
 #### Registering an external inference service in HM
 
@@ -72,12 +72,14 @@ For details on `aidb.create_model()`, provider types, and credential configurati
 
 ### Which mechanism applies to your cluster
 
-The HM external inference proxy runs on the primary location and is addressed via a cluster-internal Kubernetes URL. Clusters outside the primary location cannot reach it. AIDB-native registration works on any cluster with the AIDB extension, because the PostgreSQL process contacts the provider directly.
+The HM external inference proxy runs on the primary location. Clusters outside the primary location can use it only if they have network connectivity to the primary's model-serving endpoints, which is not available by default. AIDB-native registration works on any cluster with the AIDB extension, because the PostgreSQL process contacts the provider directly.
 
 | Deployment type                                      | HM external inference proxy | AIDB-native registration |
 |------------------------------------------------------|-----------------------------|--------------------------| 
 | Primary location                                     | Yes                         | Yes                      |
-| Secondary location or self-managed                   | No                          | Yes                      |
+| Secondary location or self-managed                   | Not by default ¹            | Yes                      |
+
+¹ Requires network connectivity to the primary location's model-serving endpoints, which is not present in a default deployment.
 
 For the full model availability picture (including HM-hosted KServe models and built-in AIDB models), see [Executing pipelines: How models reach pipeline steps](executing-pipelines#how-models-reach-pipeline-steps).
 

@@ -72,7 +72,7 @@ An HM **location** is a Kubernetes environment managed by the HM control plane. 
 
 -   **Secondary locations.** Additional HM-managed environments in a multi-datacenter deployment. Secondary locations run the `core` installation scenario, which includes database clusters and essential services but excludes the AI scenario (KServe, model serving). They maintain control-plane connectivity back to the primary location.
 
--   **Self-managed clusters.** Customer-managed PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`). Self-managed clusters are not provisioned by HM and do not have access to the primary location's Kubernetes network unless explicitly configured. Without that network path, only AIDB-native and built-in models are available.
+-   **Self-managed clusters.** Customer-managed PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`). Self-managed clusters are not provisioned by HM and do not have network connectivity to the primary location by default. Without that connectivity, only AIDB-native and built-in models are available. See [How models reach pipeline steps](#how-models-reach-pipeline-steps) for details.
 
 ### Supported clusters
 
@@ -86,15 +86,15 @@ Pipeline steps that perform inference (KnowledgeBase, SummarizeText, PerformOCR)
 
 ### Path 1: HM-hosted KServe models
 
-Models deployed through HM's Model Serving run as KServe InferenceService pods on the primary location's Kubernetes cluster. AIDB discovers these models through the `upm-ai-model-server` API and stores each model's cluster-internal predictor URL (a `*.svc.cluster.local` address). When a pipeline step invokes such a model, AIDB makes an HTTP request to that cluster-internal URL.
+Models deployed through HM's Model Serving run on the primary location's Kubernetes cluster. AIDB automatically discovers and registers these models, making them available for use when creating pipeline steps. When a pipeline step invokes such a model, AIDB routes the inference request to the model's serving endpoint on the primary location.
 
-**Availability:** Primary-location clusters only. The predictor URLs are Kubernetes ClusterIP services, which are unreachable from outside the primary cluster's network. Secondary locations and self-managed clusters cannot resolve or route to these addresses.
+**Availability:** Available by default on the primary location. Clusters on secondary locations or self-managed instances can use these models only if they have network connectivity to the primary location's model-serving endpoints; this is not the case in a default deployment.
 
 ### Path 2: HM external inference service proxy
 
-When you register an external provider (OpenAI, AWS Bedrock, NVIDIA NIM) through the HM UI, HM deploys a lightweight proxy container ("proxymodel") as a KServe InferenceService on the primary location. The proxymodel receives inference requests over a cluster-internal URL and forwards them to the external provider, injecting API credentials from a Kubernetes secret. AIDB discovers and addresses the proxymodel exactly as it would a locally hosted model (path 1): by its cluster-internal predictor URL.
+When you register an external provider (OpenAI, AWS Bedrock, NVIDIA NIM) through the HM UI, HM deploys a managed proxy on the primary location that forwards inference requests to the external provider, handling credential management on the user's behalf. AIDB discovers and addresses this proxy exactly as it would a locally hosted model (path 1).
 
-**Availability:** Same constraint as path 1. Although the external provider itself is internet-accessible, AIDB's traffic goes to the proxymodel pod on the primary location, not to the internet directly. A cluster that cannot reach the primary location's Kubernetes network cannot use HM external inference service proxies. For registration and management details, see [External inference services: HM external inference service proxy](external-inference-services#hm-external-inference-service-proxy).
+**Availability:** Same constraint as path 1: the proxy runs on the primary location, so a cluster needs network connectivity to the primary to use it. Although the external provider itself is internet-accessible, AIDB's traffic goes through the proxy, not to the provider directly. For registration and management details, see [External inference services: HM external inference service proxy](external-inference-services#hm-external-inference-service-proxy).
 
 ### Path 3: AIDB-native model registration
 
@@ -107,10 +107,14 @@ The `aidb.create_model()` SQL function registers a model directly in the AIDB mo
 | Deployment type                                      | HM-hosted KServe (path 1) | HM external inference proxy (path 2) | AIDB-native registration (path 3) |
 |------------------------------------------------------|---------------------------|--------------------------------------|-----------------------------------|
 | Primary location                                     | Yes                       | Yes                                  | Yes                               |
-| Secondary location (or self-managed with HM network) | No                        | No                                   | Yes                               |
-| Self-managed without HM network                      | No                        | No                                   | Yes                               |
+| Secondary location (or self-managed with HM network) | Not by default ¹          | Not by default ¹                     | Yes                               |
+| Self-managed without HM network                      | Not by default ¹          | Not by default ¹                     | Yes                               |
 
-Paths 1 and 2 are unavailable to clusters outside the primary location because both rely on cluster-internal Kubernetes URLs that are not routable from other networks. Path 3 works anywhere because the PostgreSQL process contacts the provider endpoint directly.
+¹ Requires network connectivity to the primary location's model-serving endpoints, which is not present in a default deployment.
+
+Paths 1 and 2 require network connectivity to the primary location's model-serving endpoints, which is not present by default on secondary locations or self-managed clusters. Path 3 works anywhere because the PostgreSQL process contacts the provider endpoint directly.
+
+### Built-in models
 
 AIDB also ships with several built-in models (bert, clip, t5, llama) that run locally within the PostgreSQL process and require no network access. These are available on every cluster with the AIDB extension installed.
 
