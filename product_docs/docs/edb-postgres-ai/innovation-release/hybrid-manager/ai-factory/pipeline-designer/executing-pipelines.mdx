@@ -52,13 +52,13 @@ In Background mode, AIDB's background worker (running inside the PostgreSQL inst
 
 ## Deployment types
 
-Pipeline Designer can create and manage pipelines on clusters across all three HM deployment types. Understanding these categories is useful because they determine which models and inference services a pipeline can reach.
+Pipeline Designer can create and manage pipelines on clusters across all three HM deployment types. Understanding these categories is useful because they determine which model access paths are available. See [How models reach pipeline steps](#how-models-reach-pipeline-steps) below for the full breakdown.
 
 An HM **location** is a Kubernetes environment managed by the HM control plane. HM supports multiple locations in a hub-and-spoke topology:
 
 -   **Primary location.** The initial HM-managed environment where the full platform stack runs, including the control plane, KServe model serving, the external inference service proxy, and all AI Factory services. Clusters on the primary location have full access to every feature.
--   **Secondary locations.** Additional HM-managed environments in a multi-datacenter deployment. Secondary locations run the `core` installation scenario: they host database clusters and essential services but typically do not run the AI scenario (KServe, model serving). They maintain control-plane connectivity back to the primary location.
--   **Self-managed clusters.** Customer-managed PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`). Self-managed clusters are not provisioned by HM. Their connectivity to HM services varies: some have full network access to the primary location, while others are isolated and can only use AIDB-native capabilities (on-database models, no HM-mediated inference).
+-   **Secondary locations.** Additional HM-managed environments in a multi-datacenter deployment. Secondary locations run the `core` installation scenario, which includes database clusters and essential services but excludes the AI scenario (KServe, model serving). They maintain control-plane connectivity back to the primary location.
+-   **Self-managed clusters.** Customer-managed PostgreSQL instances registered with HM through the EDB Postgres AI agent (`beacon-agent`). Self-managed clusters are not provisioned by HM and do not have access to the primary location's Kubernetes network unless explicitly configured. Without that network path, only AIDB-native and built-in models are available.
 
 ### Supported clusters
 
@@ -66,11 +66,41 @@ Pipeline Designer manages pipelines on HM-managed clusters (both primary and sec
 
 Self-managed clusters must meet additional prerequisites: PostgreSQL 16 or later, the AIDB extension installed and configured, and the EDB Postgres AI agent connected to the HM control plane.
 
-### Model reachability
+## How models reach pipeline steps
 
-HM-hosted KServe models run on the primary location. Secondary locations and self-managed clusters typically cannot reach these inference endpoints because secondaries run only the `core` scenario (which excludes KServe) and self-managed instances have no local HM infrastructure. For pipelines on these clusters, use external inference services (OpenAI, AWS Bedrock, or other internet-accessible providers) or on-database models (built-in AIDB models that run locally within PostgreSQL). See [Limitations: Inference routing on remote clusters](limitations#inference-routing-on-remote-clusters) for details.
+Pipeline steps that perform inference (KnowledgeBase, SummarizeText, PerformOCR) reference a model by name from the AIDB model registry on the target database. Pipeline Designer does not distinguish between model sources at the pipeline level: the model picker shows every registered model whose function type matches the step being configured. However, models enter the registry through three distinct paths, each with different availability characteristics depending on where the pipeline's cluster sits in the deployment topology.
 
-### Replication and failover
+### Path 1: HM-hosted KServe models
+
+Models deployed through HM's Model Serving run as KServe InferenceService pods on the primary location's Kubernetes cluster. AIDB discovers these models through the `upm-ai-model-server` API and stores each model's cluster-internal predictor URL (a `*.svc.cluster.local` address). When a pipeline step invokes such a model, AIDB makes an HTTP request to that cluster-internal URL.
+
+**Availability:** Primary-location clusters only. The predictor URLs are Kubernetes ClusterIP services, which are unreachable from outside the primary cluster's network. Secondary locations and self-managed clusters cannot resolve or route to these addresses.
+
+### Path 2: HM external inference service proxy
+
+When you register an external provider (OpenAI, AWS Bedrock, NVIDIA NIM) through the HM UI, HM deploys a lightweight proxy container ("proxymodel") as a KServe InferenceService on the primary location. The proxymodel receives inference requests over a cluster-internal URL and forwards them to the external provider, injecting API credentials from a Kubernetes secret. AIDB discovers and addresses the proxymodel exactly as it would a locally hosted model (path 1): by its cluster-internal predictor URL.
+
+**Availability:** Same constraint as path 1. Although the external provider itself is internet-accessible, AIDB's traffic goes to the proxymodel pod on the primary location, not to the internet directly. A cluster that cannot reach the primary location's Kubernetes network cannot use HM external inference service proxies. For registration and management details, see [External inference services: HM external inference service proxy](external-inference-services#hm-external-inference-service-proxy).
+
+### Path 3: AIDB-native model registration
+
+The `aidb.create_model()` SQL function registers a model directly in the AIDB model registry, backed by a Foreign Data Wrapper (FDW) pointing at the provider's API endpoint. When a pipeline step invokes an AIDB-native model, the PostgreSQL process contacts the provider directly, with no intermediary proxy. Credentials are stored as FDW user mappings (`CREATE USER MAPPING FOR PUBLIC`).
+
+**Availability:** Any cluster running the AIDB extension, regardless of HM connectivity. This is the only model access path available to clusters that cannot reach the primary location. For details on providers, configuration, and credential management, see [External inference services: AIDB-native model registration](external-inference-services#aidb-native-model-registration) and the [AIDB model registry reference documentation](/edb-postgres-ai/current/ai-factory/pipeline/reference/models/).
+
+### Model availability by deployment type
+
+| Deployment type                                         | HM-hosted KServe (path 1) | HM external inference proxy (path 2) | AIDB-native registration (path 3) |
+|---------------------------------------------------------|---------------------------|--------------------------------------|------------------------------------|
+| Primary location                                        | Yes                       | Yes                                  | Yes                                |
+| Secondary location (or self-managed with HM network)    | No                        | No                                   | Yes                                |
+| Self-managed without HM network                         | No                        | No                                   | Yes                                |
+
+Paths 1 and 2 are unavailable to clusters outside the primary location because both rely on cluster-internal Kubernetes URLs that are not routable from other networks. Path 3 works anywhere because the PostgreSQL process contacts the provider endpoint directly.
+
+AIDB also ships with several built-in models (bert, clip, t5, llama) that run locally within the PostgreSQL process and require no network access. These are available on every cluster with the AIDB extension installed.
+
+## Replication and failover
 
 Pipeline execution behavior depends on the cluster architecture, not on the deployment type. The same mechanics apply whether the cluster is on the primary location, a secondary location, or self-managed.
 
