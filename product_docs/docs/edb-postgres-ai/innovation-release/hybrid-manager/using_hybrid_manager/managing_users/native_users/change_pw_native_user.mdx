@@ -4,28 +4,59 @@ navTitle: Changing password
 description: Change the password of native users.
 ---
 
-To avoid unauthorized access to your environment, change the password of the default native user during deployment or immediately after deployment. You can change the password for native users you manually added in the same way.
+Any native user's passwords can be changed in the case of a security breach.
 
-1.  Create a new bcrypt-hashed password. To generate this value, use:
+Native user credentials are stored in the `hm-portal-bootstrap` Kubernetes secret. To change a password, you update this secret with a new bcrypt-hashed password.
 
-    ```shell
-    echo ${password} | htpasswd -BinC 10 admin | cut -d: -f2
-    ```
+## Changing a native user password
 
-    Where the new password is stored behind the `${password}` variable.
+1. Generate a new bcrypt-hashed password, assuming the new password is stored in the `$password` variable:
 
-    The output prints the new hashed password, for example, `$2y$10$YDHMEnc8VZKnhvze538ePOLKol7dFH.S7IgpqC3.X3R/3P2Q9zRcG`.
+   ```shell
+   NEW_HASH=$(echo -n "${password}" | htpasswd -BinC 10 admin | cut -d: -f2)
+   echo "Password hash: $NEW_HASH"
+   ```
 
-1.  Replace the hash for the existing user: `owner@mycompany.com` in this example. Replace this value either in your `values.yaml` file or `HybridControlPlane` custom resource, depending on the installation method you use.
+   The output displays the new hashed password, for example:
 
-    ```yaml
-    portal:
-      authentication:
-        staticPasswords:
-          - email: "owner@mycompany.com"
-            hash: "$2y$10$YDHMEnc8VZKnhvze538ePOLKol7dFH.S7IgpqC3.X3R/    3P2Q9zRcG"
-            username: "owner@mycompany.com"
-            userID: "c5998173-a605-449a-a9a5-4a9c33e26df7"
-    ```
+   ```
+   Password hash: $2y$10$YDHMEnc8VZKnhvze538ePOLKol7dFH.S7IgpqC3.X3R/3P2Q9zRcG
+   ```
 
-1.  If you're modifying the parameter in an already deployed installation, the `dex` service will restart automatically to apply the changes after saving them.
+2. Retrieve the current secret content:
+
+   ```shell
+   kubectl get secret hm-portal-bootstrap -n default -o jsonpath='{.data.static-passwords\.yaml}' | base64 -d > static-passwords.yaml
+   ```
+
+3. Edit the `static-passwords.yaml` file and replace the `hash` value for the user you want to update:
+
+   ```yaml
+   staticPasswords:
+     - email: "owner@mycompany.com"
+       hash: "$2y$10$YDHMEnc8VZKnhvze538ePOLKol7dFH.S7IgpqC3.X3R/3P2Q9zRcG"
+       username: "Owner MyCompany"
+       userID: "0fa134d4-b3ee-4503-ad90-91044dc37061"
+   ```
+
+   !!! important
+   Do not change the `userID` value. Changing it creates a new user identity and orphans any existing data associated with the original user.
+   !!!
+
+4. Update the secret with the modified content:
+
+   ```shell
+   kubectl patch secret hm-portal-bootstrap -n default \
+     --type merge \
+     -p "{\"data\":{\"static-passwords.yaml\":\"$(base64 < static-passwords.yaml | tr -d '\n')\"}}"
+   ```
+
+5. The secret is automatically replicated to the `upm-dex` namespace, and the Dex deployment automatically restarts to apply the changes.
+
+6. Verify the Dex pods have restarted and are running:
+
+   ```shell
+   kubectl get pods -n upm-dex -l app.kubernetes.io/name=dex
+   ```
+
+The user can now sign in with the new password.
