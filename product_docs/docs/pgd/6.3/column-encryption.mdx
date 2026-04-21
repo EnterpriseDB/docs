@@ -1,0 +1,246 @@
+---
+title: Encrypting columns in PGD
+description: How to encrypt individual columns in EDB Postgres Distributed using pgcrypto or DBMS_CRYPTO, including PGD-specific considerations for indexing, performance, and key management.
+---
+
+Column encryption protects sensitive fields in a table by converting them into ciphertext, a scrambled and unreadable form, while leaving the rest of the record in its original, human-readable form. Because encryption happens at the SQL level during `INSERT` or `UPDATE`, only ciphertext ever reaches the Write-Ahead Log (WAL) and gets replicated across PGD nodes, keeping sensitive data protected at rest, in backups, and in transit.
+
+PGD supports column-level encryption through the following tools:
+
+- **pgcrypto**: Supported on standard PostgreSQL, EDB Postgres Extended (PGE), and EDB Postgres Advanced Server (EPAS).
+- **DBMS_CRYPTO**: An Oracle-compatibility package available exclusively on EDB Postgres Advanced Server (EPAS).
+
+Both tools are fully compatible with PGD replication. Because encryption occurs before data is written to the heap, PGD replicates the resulting ciphertext as standard data types:
+
+- **pgcrypto** typically uses `bytea`.
+- **DBMS_CRYPTO** uses `RAW`, `BLOB`, or `CLOB`.
+
+## Comparing column encryption to TDE and data redaction
+
+Column encryption provides field-level protection, but it's worth understanding how it compares to other common approaches:
+
+| Technique | Protection level | Key managed by | Primary threat mitigated |
+| --- | --- | --- | --- |
+| **Column encryption** | Field-level | Application/User | Compromised DBAs or system admins |
+| **TDE** | Block/storage-level | Database/KMIP | Physical disk theft or OS-level access |
+| **Data redaction** | Presentation-level | Database policy | Unauthorized app users |
+
+- **Vs. data redaction**: Redaction only masks data in the result set. The underlying data on disk is unchanged. For full protection, redaction must be paired with TDE or column encryption.
+- **Vs. Transparent Data Encryption (TDE)**: TDE is transparent to database users, meaning a DBA can still query data in plaintext. Column encryption requires a session-level key to decrypt, so a DBA without that key sees only ciphertext.
+
+!!! Note TDE availability
+    TDE is available in EDB Postgres Extended (PGE) and EDB Postgres Advanced Server (EPAS) and operates transparently alongside PGD replication.
+!!!
+
+## Planning for PGD-specific constraints
+
+### Handling indexing and search on encrypted columns
+
+By default, `pgp_sym_encrypt()` uses probabilistic (randomized) encryption, meaning encrypting the same plaintext multiple times produces a different ciphertext each time.
+
+Randomized encryption has two key implications:
+
+- **Index incompatibility**: A standard B-tree index on a ciphertext column cannot support plaintext equality lookups.
+- **Query failure**: The following common pattern returns zero results even if the record exists, because the newly generated ciphertext won't match the stored ciphertext:
+
+```sql
+-- This will NOT find the record due to randomized salting
+SELECT * FROM users 
+WHERE ssn = pgp_sym_encrypt('123-45-6789', 'your_key');
+```
+
+If equality search on encrypted data is required, use one of these strategies:
+
+1. **Deterministic encryption**: Configure the algorithm so that the same plaintext always maps to the same ciphertext.
+2. **Blind index (recommended)**: Store an additional column containing a one-way cryptographic hash (such as HMAC) of the plaintext.
+
+!!! Warning Search strategy trade-offs
+    Both deterministic encryption and blind indexes leak equality patterns. Because the same plaintext always produces the same ciphertext or hash, attackers can perform frequency or dictionary attacks. The risk is especially acute for low-entropy fields.
+!!!
+
+### Accounting for CPU overhead
+
+Encryption and decryption are computationally expensive operations that run on the database server. Ensure your nodes have sufficient CPU headroom. You can significantly reduce this impact by using algorithms that leverage hardware acceleration, such as AES on processors that support the AES-NI instruction set.
+
+### Planning for storage and WAL growth
+
+Ciphertext is larger than the original plaintext, which increases:
+
+- Table size
+- WAL volume
+- Replication bandwidth required for PGD to synchronize nodes
+
+Plan capacity accordingly.
+
+## Encrypting columns using pgcrypto (PostgreSQL, PGE, EPAS)
+
+```sql
+-- Create the extension
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Create users table 
+CREATE TABLE users (
+    user_id uuid DEFAULT uuidv7() PRIMARY KEY, 
+    username TEXT NOT NULL, 
+    ssn BYTEA NOT NULL
+);
+```
+
+A robust approach uses a **view** for transparent decryption and a **trigger** for automatic encryption on write.
+
+### Decrypting transparently with a view
+
+```sql
+-- Note: requires SET app.pgc_key = 'your_key' to be run in the session first
+CREATE OR REPLACE VIEW users_view AS
+SELECT 
+    user_id, 
+    username, 
+    pgp_sym_decrypt(ssn, current_setting('app.pgc_key')) AS ssn
+FROM users;
+```
+
+### Automating encryption with a trigger
+
+```sql
+CREATE OR REPLACE FUNCTION encrypt_ssn_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Ensure the key is set before proceeding
+    IF current_setting('app.pgc_key', true) IS NULL OR current_setting('app.pgc_key') = '' THEN
+        RAISE EXCEPTION 'Encryption key not set. Please run SET app.pgc_key = ...';
+    END IF;
+
+    IF (TG_OP = 'INSERT' OR NEW.ssn != OLD.ssn) THEN
+        NEW.ssn := pgp_sym_encrypt(
+            convert_from(NEW.ssn, 'utf8'), 
+            current_setting('app.pgc_key'), 
+            'cipher-algo=aes256'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_encrypt_ssn
+BEFORE INSERT OR UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION encrypt_ssn_trigger();
+```
+
+### Running the workflow
+
+```sql
+-- 1. Initialize session key
+SET app.pgc_key = 'your_secret_key';
+
+-- 2. Trigger handles encryption automatically
+INSERT INTO users (username, ssn) VALUES ('dolores', '123-456-7890');
+
+-- 3. View handles decryption automatically
+SELECT * FROM users_view;
+```
+
+## Encrypting columns using DBMS_CRYPTO (EPAS only)
+
+### Creating the table
+
+```sql
+CREATE TABLE epas_users (
+    user_id uuid DEFAULT uuidv7() PRIMARY KEY,
+    username TEXT NOT NULL,
+    ssn RAW(128) 
+);
+```
+
+### Decrypting transparently with a view
+
+This view allows users to query the plaintext SSN directly, provided the session key is set.
+
+```sql
+CREATE OR REPLACE VIEW epas_users_view AS
+SELECT 
+    user_id, 
+    username, 
+    UTL_I18N.RAW_TO_CHAR(
+        DBMS_CRYPTO.DECRYPT(
+            src => ssn, 
+            typ => 258 + 256 + 4096, -- AES256 + CBC + PKCS7
+            key => UTL_I18N.STRING_TO_RAW(current_setting('app.pgc_key'), 'AL32UTF8')
+        ), 
+        'AL32UTF8'
+    ) AS ssn
+FROM epas_users;
+```
+
+### Automating encryption with a trigger
+
+To ensure data is always encrypted before being stored and subsequently replicated by PGD, use a `BEFORE INSERT OR UPDATE` trigger.
+
+```sql
+CREATE OR REPLACE FUNCTION epas_encrypt_ssn_trigger()
+RETURNS TRIGGER AS $$
+DECLARE
+    l_typ INTEGER := 258 + 256 + 4096; -- AES256 + CBC + PKCS7
+    l_key RAW(32) := UTL_I18N.STRING_TO_RAW(current_setting('app.pgc_key'), 'AL32UTF8');
+BEGIN
+    IF (TG_OP = 'INSERT' OR NEW.ssn != OLD.ssn) THEN
+        NEW.ssn := DBMS_CRYPTO.ENCRYPT(
+            src => UTL_I18N.STRING_TO_RAW(convert_from(NEW.ssn, 'utf8'), 'AL32UTF8'), 
+            typ => l_typ, 
+            key => l_key
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_epas_encrypt_ssn
+BEFORE INSERT OR UPDATE ON epas_users
+FOR EACH ROW EXECUTE FUNCTION epas_encrypt_ssn_trigger();
+```
+
+### Running the workflow
+
+```sql
+-- 1. Initialize session key
+SET app.pgc_key = 'my_secure_32_byte_key_1234';
+
+-- 2. Trigger handles encryption automatically
+INSERT INTO epas_users (username, ssn) VALUES ('dolores', '123-456-7890');
+
+-- 3. View handles decryption automatically
+SELECT * FROM epas_users_view;
+```
+
+## Managing encryption keys securely
+
+PGD replicates data but not keys, so all nodes must have access to the same key material.
+
+### Avoiding hardcoded keys
+
+Never include keys directly in SQL scripts or `CREATE VIEW` definitions. These are stored in `pg_catalog` and are visible to anyone with access to system catalogs.
+
+### Passing keys at the session level using a GUC variable
+
+Use a GUC variable so the key exists only in the session's memory:
+
+```sql
+SET app.pgc_key = 'your_ultra_secure_aes_256_key_here';
+```
+
+!!! Important GUC variables in PGD clusters
+    GUC variables are local to the specific node and session where the command was executed. Because PGD operates as a multi-node cluster, your application must ensure the `SET` command is issued to the specific node handling the current connection. If your application switches nodes (for example, via Connection Manager), the key must be re-set on the new node before attempting to read or write encrypted data.
+!!!
+
+### Integrating with an external key management service
+
+For production deployments, integrate with an external key management service such as HashiCorp Vault or AWS KMS:
+
+- The application fetches the key from the KMS and provides it to PGD for the duration of the session.
+- Keys are never persisted to local disk on any PGD node.
+
+## Understanding the security benefits for PGD
+
+- **Node independence**: Applications can provide the key to any node for consistent decryption.
+- **Reduced attack surface**: Keys never enter the WAL in plaintext. Only ciphertext is replicated.
+- **Memory isolation**: Keys are cleared when the session closes.
