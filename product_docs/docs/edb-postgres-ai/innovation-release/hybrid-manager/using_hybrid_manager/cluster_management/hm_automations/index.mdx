@@ -7,18 +7,22 @@ navigation:
   - maintenance_windows
 ---
 
-You can automate routine database operations directly from Hybrid Manager. Instead of manually monitoring your clusters and reacting to issues, you configure rule-based automations that run on a schedule, detect conditions, and take action. If offers built-in controls to keep you in charge.
+You can automate routine database operations directly from Hybrid Manager (HM). Instead of manually monitoring your clusters and reacting to issues, you configure rule-based automated operations that run on a schedule, detect conditions, and take action. It offers built-in controls to keep you in charge.
 
 Automated operations are designed for teams managing production databases at scale. It reduces manual intervention, enforces consistent operations, and provides full visibility through the integrated **Task Manager**.
 
+To leverage automated operations, you must configure them on a per-cluster basis. In the case of multi-location clusters such as replica clusters or PGD clusters with multiple data groups, you configure the automation separately for each replica cluster or data group.
+
 ## Overview
 
-This feature provides a shared set of capabilities across all automation types:
+This feature provides a shared set of capabilities across all automated operations:
 
 - **Scheduled execution** — Define how often an automation runs using a configurable interval (for example, `5m`, `1h`).
-- **Cooldown periods** — Set a minimum time between successive executions to prevent rapid, repeated actions.
-- **Maintenance windows** — Restrict automation execution to a defined time window to align with your operational schedule.
+- **Cooldown periods** — Set a minimum time between successive executions to prevent rapid, repeated actions. The minimum cooldown period is 5 minutes.
+- **Optional maintenance windows** — If required, you can restrict automation execution to a defined time window to align with your operational schedule. Otherwise, the operation runs as soon as conditions are met.
 - **Human-in-the-loop approvals** — Optionally require a user to review and approve a task before it runs. Recommended for production environments.
+- **Role-based access control** — HM's RBAC system ensures only users with the appropriate permissions in the target database can approve tasks.
+- **Notifications integration** — Task events in the **Activity Log** trigger notifications to users or third-party systems. Refer to [Notifications](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/notifications) to learn how to configure project-level webhooks.
 - **Task Manager integration** — All automation activity is tracked in Task Manager, giving you a centralized audit trail of every action taken.
 - **Pause and resume** — Temporarily disable any automation without deleting its configuration.
 
@@ -33,12 +37,51 @@ Automating cluster operations is a good fit when:
 ## Available automations
 
 - [Database Storage Auto-Scaling](auto_increase_storage) — Automatically expand your cluster's storage when utilization exceeds a threshold, preventing disk full outages.
-- **Apply Index Recommendation** — Automatically applies the most beneficial pending index recommendation on a cluster.
+- **Apply Index Recommendation** — Automatically applies the most beneficial pending index recommendation on a cluster. The best recommendation is determined by the total time saved relative to write performance impact.
 - **Automatic Image Upgrade** — Automatically upgrades PostgreSQL to the latest available minor/patch image version.
 - **CPU Auto-Scaling** — Automatically scales CPU when average utilization exceeds a threshold.
 - **Memory Auto-Scaling** — Automatically scales memory when average utilization exceeds a threshold.
+
+## Configuring an automated operation
+
+You must configure automated operations after a cluster has been created, not during provisioning.
+
+1. Open the target cluster and navigate to the **Settings** tab.
+
+1. In the **Automations** section, select **Configure** next to the automation you want to set up.
+
+1. Fill in the general automation fields:
+
+   | Field | Description |
+   |---|---|
+   | **Display Name** | A descriptive name for this automation (for example, `Database storage auto-scaling – Production`). |
+   | **Interval** | How often HM evaluates disk utilization (for example, `5m`, `1h`). |
+   | **Cooldown Period** | Minimum time to wait after a scaling event before evaluating again. This prevents rapid back-to-back expansions during usage spikes. For AWS deployments, set this to at least `6h` due to a platform restriction on disk expansion frequency. |
+   | **Paused** | Toggle to temporarily disable the automation without deleting its configuration. |
+
+1. Refer to the specific automation's documentation for additional configuration parameters. For example, see [Database Storage Auto-Scaling](auto_increase_storage) for instructions on setting the disk utilization threshold and scaling method.
+
+1. Optionally, configure a **Maintenance Window** to restrict when the automated operation can run. See [Create a maintenance window](maintenance_windows) for instructions.
+
+1. Optionally, configure approval settings:
+
+   - **Approval Required** — The automation generates a pending task in **Task Manager** that a user must explicitly approve before the database operation runs. Recommended for production clusters.
+     - **Approval Settings > Approval Description** — A message shown to approvers that explains the purpose of the operation request.
+     - **Approval Settings > Approval Timeout** — How long to wait for approval before the task expires (for example, `24h`, `72h`).
+     - **Require Reason** — When enabled, approvers must provide a written reason when approving or declining.
+
+   - **Approval Not Required** — The task runs automatically without manual review.
+
+   You can combine a maintenance window with approval requirements. In that case, the task must be approved *and* fall within an open window before it executes.
+
+1. Select **Create Automation** to activate the automation.
 
 ## Shared configuration
 
 - [Maintenance windows](maintenance_windows) — Restrict when automation tasks are allowed to run by defining one-time or recurring time windows at the project level.
 - [Notifications](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/notifications) — Configure webhooks, email, or PagerDuty to receive automation activity events in your external tools.
+
+## Limitations
+
+- You can only configure automations after the cluster has been provisioned.
+- You currently can't edit nor delete automation tasks in the HM console after creation. You can only delete them via HM API.
