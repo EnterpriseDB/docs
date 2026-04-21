@@ -1,0 +1,60 @@
+---
+title: Choosing a geo-replication deployment pattern
+navTitle: Choosing a deployment pattern
+description: How to choose a PGD deployment pattern for geo-replication based on your location requirements, routing strategy, and RPO.
+---
+
+Before configuring geo-replication, decide on a deployment pattern. This choice affects how you configure routing, which commit scopes you can use across regions, how the cluster behaves during a location failure, and how much operational complexity you take on.
+
+The full description of each pattern is in [Deployment patterns](/pgd/current/planning/deployment-patterns/). This page covers the decisions that matter specifically for geo-replication.
+
+## Deciding on the number of active write locations
+
+The number of active write locations is the most fundamental decision. More active write locations means lower write latency for users in each region, but cross-region write conflicts become inevitable and conflict resolution must be part of your application design.
+
+PGD uses the Raft consensus algorithm to coordinate decisions across nodes, such as electing a write leader and performing DDL operations. Raft requires a quorum (a majority of nodes) to be available before it can make these decisions. In a geo-distributed cluster, this means that the number of active locations directly affects whether the cluster can maintain quorum during a location failure.
+
+- **Two active write locations:** The simplest geo-replication setup. Each location serves local reads and writes, but losing one location breaks Raft majority, which blocks DDL and global sequences until the location recovers. Adding a witness node in a third location resolves this limitation without the cost of a full third active location. The relevant patterns are [Two data groups, active-active](/pgd/current/planning/deployment-patterns/two-data-groups) and its witness variant.
+
+- **Three or more active write locations:** Maintain natural Raft majority even when one location fails, eliminating the quorum concern. The trade-off is higher operational complexity. The relevant deployment patterns are [Three data groups, active-active-active](/pgd/current/planning/deployment-patterns/three-data-groups) and [Multiple locations, data residency](/pgd/current/planning/deployment-patterns/data-residency) for the variant where sensitive data must stay within its origin region.
+
+## Choosing between local and global routing
+
+PGD supports two routing modes for write traffic. You configure your preferred routing mode by setting the [enable_routing](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) configuration option for your node group.
+
+- **Local routing:** Each location has its own write leader and routes writes locally. This approach gives the lowest write latency and means each location operates independently for most operations. However, cross-region conflicts are possible, and losing a location with only two groups breaks global consensus.
+
+- **Global routing:** The entire cluster has a single write leader regardless of location. All write traffic is routed to that leader, eliminating cross-region conflicts at the cost of added latency for writes originating in other regions. Even if multiple locations are capable of accepting writes, global routing constrains writes to a single leader across those locations. This mode works with three or more active write locations, or with two data groups with a witness location. If the primary location fails, the two remaining locations still have Raft majority and can elect a new write leader.
+
+For configuration steps, see [Configuring routing](routing).
+
+## Selecting a commit scope for your deployment pattern
+
+The commit scope you use depends on your deployment pattern and how many data nodes are in each group. See [Commit scopes](/pgd/current/commit-scopes) for the full reference.
+
+| Commit scope | Replication | When to use | Applicable patterns |
+|---|---|---|---|
+| **Majority protect** | Synchronous. Majority of nodes in the group must confirm before commit. | Zero data loss required and application can tolerate cross-region write latency. Recommended when each group has 3+ data nodes. | All patterns |
+| **Local protect** | Asynchronous. Changes replicate in the background after acknowledging to the client. | Lowest possible write latency, some data loss on location failure is acceptable. Not recommended for production use. | All patterns |
+| **Commit At Most Once** (CAMO) | Synchronous, with extra guarantees that a transaction is applied at most once during failover. | Application cannot handle duplicate transactions after node loss. | Two data groups with 2 data nodes + witness per group |
+| **Adaptive protect** | Synchronous when nodes are available, degrades to asynchronous after 10s on node loss | Synchronous durability under normal conditions, cluster must stay writable during partial failures | Multiple locations with 2 data nodes + witness per group |
+
+For configuration steps, see [Configuring commit scopes](commit-scopes).
+
+## Enforcing data residency requirements
+
+Regulations such as GDPR, CCPA, and national data localization laws require that personal or sensitive data stays within its origin region. 
+
+Data residency enforcement is built into the [Multiple locations, data residency](/pgd/current/planning/deployment-patterns/data-residency) deployment pattern. With local routing, each region's subgroup has its own write leader and applications connect to a local endpoint, so sensitive data stays in-region by default. Cross-region replication is selective: only global reference data (product catalogs, configuration, anonymized analytics) replicates between groups. Personal data, financial records, and other regulated data remain local to their origin group.
+
+You must design your schema to clearly separate local from global data, and configure your application to always write regional data to the correct local endpoint.
+
+## Comparison
+
+Each geo-replication deployment pattern makes different trade-offs across quorum resilience, routing options, conflict handling, and data residency.
+
+| Deployment pattern | Active write locations | Quorum during location failure | Supports global routing | Conflict resolution required | Supported commit scopes | Data residency enforcement |
+|---|---|---|---|---|---|---|
+| Two data groups, active-active | 2 | No (Yes with witness) | No (Yes with witness) | Yes | Majority protect, local protect, CAMO (with witness) | No |
+| Three data groups, active-active-active | 3+ | Yes | Yes | Yes | Majority protect, local protect | No |
+| Multiple locations, data residency | 2+ | Yes | Yes | Yes | Majority protect, local protect, adaptive protect (with witness) | Yes |

@@ -1,0 +1,112 @@
+---
+title: Controlling replication lag
+navTitle: Controlling replication lag
+description: Configuring lag control for cross-region replication and using subscriber-only nodes for regional reads.
+---
+
+Network latency between geographic locations means that replication across regions is inherently slower than within a single location. When left unmanaged, replication lag accumulates, putting your Recovery Point Objectives (RPO) at risk, consuming disk space on healthy nodes, and degrading cluster performance.
+
+PGD provides two complementary tools for managing cross-region lag: Lag Control, which throttles write throughput to keep remote nodes from falling behind, and subscriber-only nodes, which offload regional read traffic without adding to the replication mesh.
+
+## Lag Control
+
+Lag Control is a commit scope kind that automatically injects a small delay into write transactions on the origin node when replication lag exceeds defined limits. This slows the rate of incoming writes, giving downstream nodes time to catch up.
+
+The PGD commit delay starts at 0ms. If the lag on enough nodes stays within the configured limits, the delay remains at or near 0. If the limits are exceeded, the delay increases until the cluster catches up. The delay is applied after the transaction has committed and released its locks, so concurrent transactions aren't blocked.
+
+### Configuring Lag Control
+
+In most geo-replication deployments you already have a synchronous commit scope configured for the origin group. Add `LAG CONTROL` for the remote groups in the same rule using `AND`, so that synchronous durability applies locally while lag throttling applies cross-region:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'geo_scope_lag',
+    origin_node_group := '<top_group>',
+    rule := 'ALL ORIGIN_GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN_GROUP LAG CONTROL (max_commit_delay=500ms, max_lag_time=30s)',
+    wait_for_ready := true
+);
+```
+
+If you only want lag throttling without a synchronous commit requirement, use `LAG CONTROL` on both sides:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'geo_scope_lag_only',
+    origin_node_group := '<top_group>',
+    rule := 'ALL ORIGIN_GROUP LAG CONTROL (max_commit_delay=500ms, max_lag_time=30s) AND ANY 1 NOT ORIGIN_GROUP LAG CONTROL (max_commit_delay=500ms, max_lag_time=30s)',
+    wait_for_ready := true
+);
+```
+
+The key parameters are:
+
+- `max_commit_delay`: the maximum delay that can be injected into client write transactions. This is a hard ceiling; the delay never exceeds this value.
+- `max_lag_time`: the acceptable replication lag expressed as time. This is a soft limit.
+- `max_lag_size`: the acceptable replication lag expressed as WAL bytes. This is also a soft limit.
+
+### Monitoring lag
+
+```shell
+pgd --dsn "<node_dsn>" replication show --slots
+```
+
+Look for slots where `confirmed_flush_lsn` is significantly behind `restart_lsn`, which indicates accumulated lag. For slots associated with remote-location nodes, some lag is expected; the concern is when lag is growing rather than stable.
+
+### When Lag Control is not enough
+
+A commit delay that is consistently at the configured ceiling with lag still exceeding the limits indicates that write throughput is fundamentally too high for the available cross-region bandwidth. Consider:
+
+- Increasing cross-region network bandwidth.
+- Splitting large bulk load operations into smaller transactions with longer commit delays.
+- Reviewing whether all tables need to be replicated cross-region.
+
+
+## Subscriber-only nodes
+
+If users in a region mostly read data and rarely write, adding subscriber-only nodes to that region can significantly reduce read latency without the cost of a full active location.
+
+Subscriber-only nodes receive replicated changes from the cluster but don't originate writes and don't participate in the replication mesh or Raft consensus, making them lightweight and easy to add. 
+See [Subscriber-only nodes and groups](/pgd/current/nodes/subscriber_only/) for details.
+
+### Adding a subscriber-only node
+
+1. Create a subscriber-only subgroup under the top-level group:
+
+    ```sql
+    SELECT bdr.create_node_group(
+        node_group_name := '<read_region>',
+        parent_group_name := '<top_group>',
+        node_group_type := 'subscriber-only'
+    );
+    ```
+
+1. Create a new node as a subscriber-only node:
+
+    ```sql
+    SELECT bdr.create_node(
+        node_name := '<so_node>',
+        dsn := 'host=<so_host> dbname=<dbname> port=5444',
+        node_type := 'subscriber-only'
+    );
+    ```
+
+1. Join the new node to the subscriber-only subgroup, using the DSN of an active data node (not another subscriber-only node) as the entry point:
+
+    ```sql
+    SELECT bdr.join_node_group(
+        dsn := 'host=<data_node_host> dbname=<dbname> port=5444',
+        node_group_name := '<read_region>'
+    );
+    ```
+
+### Routing reads to subscriber-only nodes
+
+Connection Manager can route read-only traffic to subscriber-only nodes. Configure your application's connection string to use the read-only endpoint of nodes in the read region.
+
+See [Connection Manager](/pgd/current/deep-dive/connection-manager/) for details on configuring read-only routing.
+
+### Limitations of subscriber-only nodes
+
+- Subscriber-only nodes cannot accept writes. Attempts to write will fail.
+- They don't participate in Raft consensus, so they don't count toward quorum for commit scope confirmations.
+- Replication lag on subscriber-only nodes may be higher than on active nodes, depending on network conditions.

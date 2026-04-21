@@ -1,0 +1,103 @@
+---
+title: Configuring commit scopes for geo-replication
+navTitle: Configuring commit scopes
+description: How to create and configure commit scopes for cross-location durability in geo-distributed PGD clusters.
+deepToC: true
+---
+
+Commit scopes define the durability guarantees for transactions in your cluster. For geo-replication, they control whether transactions must be confirmed by remote locations before being acknowledged to the client, and how many nodes must confirm. For the full reference on commit scope syntax and options, see [Commit scopes](/pgd/current/commit-scopes).
+
+The deployment patterns that support geo-replication use the following commit scopes:
+
+- **Majority protect** — synchronous replication requiring a majority of nodes in the origin group to confirm before acknowledging to the client. Used when zero data loss is required and write latency is acceptable.
+- **Local protect** — asynchronous replication where changes replicate to remote locations in the background. Used when lowest write latency is the priority and some data loss on failure is acceptable.
+- **Adaptive protect** — synchronous under normal conditions, automatically degrades to asynchronous after 10 seconds if nodes become unavailable. Used when you want durability by default but need the cluster to stay writable during partial failures.
+- **Commit At Most Once** (CAMO) — synchronous replication with additional guarantees that a transaction is applied at most once during failover. Used when application-level duplicate detection isn't possible.
+
+For guidance on which scope suits your deployment pattern, see [Choosing a deployment pattern](topology).
+
+## Creating the commit scope
+
+Use the function `bdr.create_commit_scope()` once for each origin node group the rule applies to. For most geo-distributed deployments, using `ORIGIN_GROUP` is the recommended approach, as it lets you express the rule once at the top-level group, and `ORIGIN_GROUP` resolves dynamically to the subgroup of the node originating the transaction:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'geo_scope',
+    origin_node_group := '<top_group>',
+    rule := 'ALL ORIGIN_GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN_GROUP SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+If your locations have asymmetric durability requirements, create a separate rule per location instead:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'geo_scope',
+    origin_node_group := '<location_a>',
+    rule := 'ALL (<location_a>) SYNCHRONOUS COMMIT AND ANY 1 (<location_b>) SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'geo_scope',
+    origin_node_group := '<location_b>',
+    rule := 'ANY 1 (<location_a>) SYNCHRONOUS COMMIT AND ALL (<location_b>) SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+### CAMO
+
+If you are using CAMO, the rule uses the `CAMO` keyword instead of `SYNCHRONOUS COMMIT`. CAMO requires a designated partner node within the same subgroup that tracks transaction outcomes, so that if the origin node fails during commit, the application can query the partner to determine whether the transaction was applied:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'camo_scope',
+    origin_node_group := '<location_a>',
+    rule := 'ALL (<location_a>) CAMO DEGRADE ON (timeout=30s) TO ASYNC',
+    wait_for_ready := true
+);
+```
+
+Note that CAMO has higher overhead than other commit scope kinds and requires applications to handle transaction resolution after failover. See [CAMO](/pgd/current/commit-scopes/camo/) for full details.
+
+## Setting the commit scope as the default for each subgroup
+
+Set the commit scope as the default for each subgroup to apply it automatically to all transactions originating from a location:
+
+```sql
+SELECT bdr.alter_node_group_option(
+    node_group_name := '<location_a>',
+    config_key := 'default_commit_scope',
+    config_value := 'geo_scope'
+);
+
+SELECT bdr.alter_node_group_option(
+    node_group_name := '<location_b>',
+    config_key := 'default_commit_scope',
+    config_value := 'geo_scope'
+);
+```
+
+## Verifying the configuration
+
+Check that each subgroup has the correct default commit scope:
+
+```sql
+SELECT node_group_name, default_commit_scope
+FROM bdr.node_group;
+```
+
+Check the commit scope rules:
+
+```sql
+SELECT commit_scope_name, origin_node_group, rule
+FROM bdr.commit_scope;
+```
+
+If you are using CAMO, also verify that the partner node is ready before relying on it:
+
+```sql
+SELECT bdr.is_camo_partner_ready('<partner_node_name>');
+```

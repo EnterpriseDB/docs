@@ -1,0 +1,58 @@
+---
+title: Setting up your geo-replication topology
+navTitle: Setting up your topology
+description: How to plan node distribution and configure location subgroups for a geo-distributed PGD cluster.
+---
+
+Once you have chosen a deployment pattern, the next step is to configure the cluster topology. This involves planning your node distribution, creating location subgroups, and assigning nodes to those subgroups.
+
+## Planning your node distribution
+
+Before configuring the cluster, measure network latency and bandwidth between your locations. Cross-location latency directly affects replication lag, synchronous commit performance, and DDL duration.
+
+For quorum planning, ensure no single location holds a majority of voting nodes. For example, if three of five nodes sit in location A and two sit in location B, location A alone holds majority. Losing location A makes the cluster read-only even though location B is still running.
+
+For two-location deployments, a witness node in a third location is the standard solution. With two data nodes per location plus one witness you have five voters total, so either location can fail and the remaining nodes still hold a majority. Each location must have at least two data nodes for local high availability. 
+
+## Creating location subgroups
+
+PGD uses a group hierarchy to represent your physical topology. Each geographic location maps to a node subgroup, and all location subgroups sit under a single top-level group that spans the whole cluster. Create a subgroup for each location:
+
+```sql
+SELECT bdr.create_node_group(
+    node_group_name := '<location_a>',
+    parent_group_name := '<top_group>',
+    join_node_group := false
+);
+
+SELECT bdr.create_node_group(
+    node_group_name := '<location_b>',
+    parent_group_name := '<top_group>',
+    join_node_group := false
+);
+```
+
+Replace `<location_a>` and `<location_b>` with descriptive names for your locations (for example, `us_east` and `eu_west`), and `<top_group>` with the name of your top-level PGD group.
+
+To verify the subgroups were created:
+
+```sql
+SELECT node_group_name, parent_group_name
+FROM bdr.node_group
+ORDER BY parent_group_name;
+```
+
+## Assigning nodes to subgroups
+
+When joining a node to the cluster, specify the subgroup it belongs to:
+
+```sql
+SELECT bdr.join_node_group(
+    node_group_name := '<location_a>'
+);
+```
+
+Run this on each node so it is associated with its location subgroup. Connection Manager uses subgroup membership to route write traffic to the correct write leader for each location.
+
+Once subgroups are in place, configure routing and route priority for your deployment pattern. See [Configuring routing](routing).
+

@@ -1,0 +1,68 @@
+---
+title: Replication and sequence tuning
+navTitle: Tuning replication
+description: Node group settings for optimizing replication performance and sequence behavior in geo-distributed PGD clusters.
+---
+
+Geo-distributed clusters replicate changes across high-latency network links, which makes replication throughput and sequence uniqueness more important than in single-location setups. Configure these settings at the node group level to control how changes are applied on remote nodes and how sequences generate unique values across locations.
+
+## Parallel Apply
+
+[Parallel Apply](/pgd/current/parallelapply/) allows each node to apply incoming changes using multiple writer processes concurrently rather than sequentially, reducing apply lag under high write volumes. 
+It is enabled by default with `bdr.writers_per_subscription` set to 2 writers per node. Use `num_writers` at the node group level to set the number of writers per subgroup, within the limit set by `bdr.max_writers_per_subscription`.
+
+1. Increase throughput for your geo-distributed cluster by modifying the number of `num_writers` per location subgroup. Higher values improve throughput but increase memory usage. Repeat for each location subgroup.
+
+    ```sql
+    SELECT bdr.alter_node_group_option(
+        node_group_name := '<location_a>',
+        config_key := 'num_writers',
+        config_value := '4'
+    );
+    ```
+   
+1. Set `streaming_mode` to `writer` so that large transactions are sent directly to a writer process rather than being written to disk first, reducing I/O overhead on the receiving node:
+
+    ```sql
+    SELECT bdr.alter_node_group_option(
+        node_group_name := '<location_a>',
+        config_key := 'streaming_mode',
+        config_value := 'writer'
+    );
+    ```
+
+    The default is `auto`, which lets PGD choose between `file` and `writer` based on available resources. Setting `writer` explicitly is recommended for geo-distributed clusters with consistently high write volumes.
+
+## Apply delay
+
+Use `apply_delay` on subscriber-only subgroups to create a lagging read replica, giving you a recovery window against accidental data loss or logical corruption. The delay is measured from the transaction's original commit time at the origin. The default is `0s` (no delay).
+
+```sql
+SELECT bdr.alter_node_group_option(
+    node_group_name := '<delayed_read_replica_group>',
+    config_key := 'apply_delay',
+    config_value := '30min'
+);
+```
+
+!!! Note
+Don't set `apply_delay` on data node groups or the top-level group, as doing so introduces intentional replication lag into your active cluster.
+!!!
+
+## Sequences
+
+Standard Postgres sequences are local to each node and cause primary key conflicts when multiple locations write simultaneously. 
+Configure your geo-distributed cluster to use PGD global sequences, which guarantee uniqueness across all nodes. 
+The `bdr.default_sequence_kind` configuration parameter controls which type applies to newly created sequences and serial columns:
+
+- `snowflakeid` — generates unique values without inter-node communication, using a timestamp-based algorithm. Works only for 64-bit `bigint` or `bigserial` columns. Resilient to network partitions and cross-region latency.
+- `galloc` — allocates ranges of values from a cluster-wide counter, requiring quorum when a new range is needed. Supports `smallint`, `integer`, and `bigint`, but is sensitive to quorum availability.
+- `distributed` (default) — automatically uses `snowflakeid` for `bigint` sequences and `galloc` for `smallint` and `integer` sequences.
+
+For geo-distributed cluster, we recommend using the default `distributed` setting. It avoids the quorum dependency of `galloc` for large sequences where possible, while still supporting smaller integer types.
+
+!!! Note
+Avoid setting `bdr.default_sequence_kind = local` in a geo-distributed cluster with multiple write locations. Local sequences do not guarantee cluster-wide uniqueness and cause insert conflicts in multi-master replication.
+!!!
+
+See [Sequences](/pgd/current/sequences/) for full details on global sequence types and behavior.
