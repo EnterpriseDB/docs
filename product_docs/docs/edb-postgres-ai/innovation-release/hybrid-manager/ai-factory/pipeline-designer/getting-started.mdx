@@ -9,7 +9,7 @@ This page walks you through environment setup and two complete pipeline examples
 
 ## Setup prerequisites
 
-When you create your first pipeline through Pipeline Designer, beacon-agent creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17), and adds it to the `aidb_users` role. Whether the AIDB extension itself is pre-installed depends on the cluster type:
+When you create your first pipeline through Pipeline Designer, beacon-agent creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17; on 17 and later LOGIN is unnecessary because background worker authentication no longer requires it), and adds it to the `aidb_users` role. Whether the AIDB extension itself is pre-installed depends on the cluster type:
 
 | Deployment type    | Extension installed at provisioning | Model picker populated before first pipeline |
 |--------------------|-------------------------------------|----------------------------------------------|
@@ -44,7 +44,7 @@ shared_preload_libraries = 'aidb'
 
 See the [AIDB configuration documentation](/aidb/latest/install/configure) for the full self-managed configuration procedure.
 
-AIDB uses PostgreSQL background workers to execute pipelines in Background processing mode. The default `max_worker_processes` value (8) may be insufficient for workloads with multiple concurrent pipelines; insufficient worker slots cause pipelines to fail at runtime.
+AIDB uses PostgreSQL background workers to execute pipelines in Background processing mode. The default `max_worker_processes` value (8) may be insufficient for workloads with multiple concurrent pipelines; insufficient worker slots cause pipelines to silently fail to start. Pipeline Designer does not surface an error or retry, so the pipeline appears permanently stuck. If a pipeline is unexpectedly idle, check `max_worker_processes` early.
 
 On **managed clusters**, adjust `max_worker_processes` through the EDB Postgres AI portal cluster settings (edit the replica configuration). On **self-managed clusters**, set it in `postgresql.conf` and restart PostgreSQL:
 
@@ -73,19 +73,19 @@ CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
     SELECT aidb.bdr_setup();
     ```
 
-    On managed PGD clusters this runs automatically at provisioning. Re-run `bdr_setup()` after upgrading the AIDB extension with `ALTER EXTENSION aidb UPDATE`.
+    On managed PGD clusters this runs automatically at provisioning. Re-run `bdr_setup()` after upgrading the AIDB extension with `ALTER EXTENSION aidb UPDATE`. This is a no-op if the migration script already invoked it; running it unconditionally after each upgrade is safe.
 !!!
 
-VPU must be able to create pipeline destination tables and knowledge base vector tables in the `public` schema. Grant the required privilege by connecting to the database as an administrator and running:
+VPU must be able to create pipeline destination tables and knowledge base vector tables. Pipeline Designer creates destination tables in the same schema as the source table, so VPU needs `CREATE` on every schema that contains source tables. For the common case where source tables are in `public`, grant the required privilege by connecting to the database as an administrator and running:
 
 ```sql
 GRANT CREATE ON SCHEMA public TO visual_pipeline_user;
 ```
 
-Without this grant, pipeline creation will fail because VPU cannot create the objects it needs.
+For source tables in custom schemas, grant `CREATE` on those schemas as well (see [Per-source-table setup](#per-source-table-setup)). Without these grants, pipeline creation will fail because VPU cannot create the destination objects it needs.
 
 !!! Note "Self-managed clusters"
-    On self-managed clusters, beacon-agent performs the same automatic role and grant setup, but the database role used by beacon-agent must have SUPERUSER or equivalent DDL privileges. No privilege detection or graceful degradation exists: if DDL fails, AIDB features are silently disabled for that database. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
+    On self-managed clusters, beacon-agent performs the same automatic role and grant setup, but the database role used by beacon-agent must have SUPERUSER or equivalent DDL privileges. If DDL fails, beacon-agent logs the error but does not surface it through the Pipeline Designer UI; AIDB features remain non-functional for that database until the prerequisite DDL succeeds. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
 !!!
 
 ### Platform-level setup
@@ -96,7 +96,7 @@ Two HM roles control access to Pipeline Designer features:
 
 1.  **Pipeline editor project role.** Required to create, edit, and delete pipelines within a project.
 
-1.  **GenAI Builder User organization role.** Required to access the Settings tab, where external inference services are registered and managed.
+1.  **AI Model Manager organization role.** Required to access the Settings tab, where external inference services are registered and managed.
 
 Ensure the relevant users have been assigned these roles before they begin working with Pipeline Designer.
 
@@ -106,7 +106,7 @@ At least one inference service must be registered before you can create pipeline
 
 Grant VPU access each time you add a new source table to a pipeline, and update grants when schemas change (for example, when a table moves to a different schema or new tables are added).
 
-Each pipeline requires SELECT access on its source table. For tables in custom schemas, you must also grant USAGE on the schema. On PGD clusters, grants must be applied consistently on all BDR nodes. See [Granting VPU access to source tables](vpu-and-permissions#granting-vpu-access-to-source-tables) for the detailed grant commands for each scenario.
+Each pipeline requires SELECT access on its source table. For tables in custom schemas, you must also grant USAGE and CREATE on the schema (CREATE is needed because destination tables are created in the source table's schema, not unconditionally in `public`). On PGD clusters, grants must be applied consistently on all BDR nodes. See [Granting VPU access to source tables](vpu-and-permissions#granting-vpu-access-to-source-tables) for the detailed grant commands for each scenario.
 
 ### Per-pipeline setup
 
