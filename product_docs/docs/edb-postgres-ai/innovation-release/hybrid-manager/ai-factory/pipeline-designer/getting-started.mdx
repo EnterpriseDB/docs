@@ -1,0 +1,255 @@
+---
+title: Getting started with Pipeline Designer
+navTitle: Getting started
+description: Set up your environment and create your first pipeline with Pipeline Designer, including end-to-end examples for text summarization and knowledge base creation.
+deepToC: true
+---
+
+This page walks you through environment setup and two complete pipeline examples. By the end you will have created a text summarization pipeline and a knowledge base pipeline, covering the core Pipeline Designer workflow from source table preparation through result verification.
+
+## Setup prerequisites
+
+When you create your first pipeline through Pipeline Designer, beacon-agent creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17), and adds it to the `aidb_users` role. Whether the AIDB extension itself is pre-installed depends on the cluster type:
+
+| Deployment type    | Extension installed at provisioning | Model picker populated before first pipeline |
+|--------------------|-------------------------------------|----------------------------------------------|
+| PGD managed        | Yes                                 | Yes                                          |
+| PSR managed        | No                                  | No (empty until extension exists)            |
+| Self-managed (any) | No                                  | No (empty until extension exists)            |
+
+The steps below are grouped by operational scope, from cluster-wide settings through per-database, platform-level, and per-table configuration, so you can identify which steps apply when setting up a new database or adding a source table to an existing deployment.
+
+| Step                                    | Scope    | Applies to            | Re-run when                     |
+|-----------------------------------------|----------|-----------------------|---------------------------------|
+| `shared_preload_libraries`              | Instance | Self-managed          | PG major upgrade                |
+| `max_worker_processes`                  | Instance | All                   | Pipeline concurrency growth     |
+| `CREATE EXTENSION aidb CASCADE`         | Database | PSR managed, self-mgd | New database                    |
+| `aidb.bdr_setup()`                      | Database | PGD self-managed      | New database, extension upgrade |
+| `GRANT CREATE ON SCHEMA public`         | Database | All                   | New database                    |
+| beacon-agent DDL privileges             | Database | Self-managed          | New cluster registration        |
+| HM roles                                | Platform | All                   | New user onboarding             |
+| Inference service registration          | Platform | All                   | New model provider              |
+| Source table grants                     | Table    | All                   | New tables, schema changes      |
+| Pipeline object creation                | Pipeline | All                   | Automated (no manual action)    |
+
+### Cluster-level setup
+
+Cluster-level settings apply once per PostgreSQL instance. Revisit these settings after a PostgreSQL major upgrade or when scaling pipeline concurrency.
+
+On **self-managed clusters**, you must add `aidb` to `shared_preload_libraries` in `postgresql.conf` and restart PostgreSQL before creating the AIDB extension:
+
+```ini
+shared_preload_libraries = 'aidb'
+```
+
+See the [AIDB configuration documentation](/aidb/latest/install/configure) for the full self-managed configuration procedure.
+
+AIDB uses PostgreSQL background workers to execute pipelines in Background processing mode. The default `max_worker_processes` value (8) may be insufficient for workloads with multiple concurrent pipelines; insufficient worker slots cause pipelines to fail at runtime.
+
+On **managed clusters**, adjust `max_worker_processes` through the EDB Postgres AI portal cluster settings (edit the replica configuration). On **self-managed clusters**, set it in `postgresql.conf` and restart PostgreSQL:
+
+```ini
+max_worker_processes = 64
+```
+
+The recommended value depends on the number of concurrent pipelines and other extensions that consume background workers. A value of 64 is a reasonable starting point for Pipeline Designer workloads.
+
+### Per-database setup
+
+Repeat every step in this section for each database where you use Pipeline Designer. When you create a new database on an existing cluster, return here.
+
+On **PGD managed clusters**, the AIDB extension is created automatically during cluster provisioning. No manual extension installation is needed.
+
+On **PSR managed** and **self-managed clusters**, the extension is not created at provisioning. The model sync that populates the Pipeline Designer model picker needs the extension to discover available models; without it, the model picker is empty and pipeline creation cannot proceed. Install the extension manually before using Pipeline Designer:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
+```
+
+!!! Note "PGD self-managed clusters"
+    On self-managed PGD clusters, you must also initialize BDR support for AIDB after creating the extension:
+
+    ```sql
+    SELECT aidb.bdr_setup();
+    ```
+
+    On managed PGD clusters this runs automatically at provisioning. Re-run `bdr_setup()` after upgrading the AIDB extension with `ALTER EXTENSION aidb UPDATE`.
+!!!
+
+VPU must be able to create pipeline destination tables and knowledge base vector tables in the `public` schema. Grant the required privilege by connecting to the database as an administrator and running:
+
+```sql
+GRANT CREATE ON SCHEMA public TO visual_pipeline_user;
+```
+
+Without this grant, pipeline creation will fail because VPU cannot create the objects it needs.
+
+!!! Note "Self-managed clusters"
+    On self-managed clusters, beacon-agent performs the same automatic role and grant setup, but the database role used by beacon-agent must have SUPERUSER or equivalent DDL privileges. No privilege detection or graceful degradation exists: if DDL fails, AIDB features are silently disabled for that database. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
+!!!
+
+### Platform-level setup
+
+Platform configuration is performed in the EDB Postgres AI portal, not in PostgreSQL. These steps do not need to be repeated when you add databases or tables.
+
+Two HM roles control access to Pipeline Designer features:
+
+1.  **Pipeline editor project role.** Required to create, edit, and delete pipelines within a project.
+
+1.  **GenAI Builder User organization role.** Required to access the Settings tab, where external inference services are registered and managed.
+
+Ensure the relevant users have been assigned these roles before they begin working with Pipeline Designer.
+
+At least one inference service must be registered before you can create pipelines that use model-backed steps (such as SummarizeText or KnowledgeBase). Without a registered inference service, the model picker in Pipeline Designer has no models to offer. See [External inference services](external-inference-services) for the available registration paths (HM external inference proxy and AIDB-native registration).
+
+### Per-source-table setup
+
+Grant VPU access each time you add a new source table to a pipeline, and update grants when schemas change (for example, when a table moves to a different schema or new tables are added).
+
+Each pipeline requires SELECT access on its source table. For tables in custom schemas, you must also grant USAGE on the schema. On PGD clusters, grants must be applied consistently on all BDR nodes. See [Granting VPU access to source tables](vpu-and-permissions#granting-vpu-access-to-source-tables) for the detailed grant commands for each scenario.
+
+### Per-pipeline setup
+
+Pipeline-level database objects are managed automatically. When you create a pipeline through Pipeline Designer, beacon-agent handles all per-pipeline database operations: creating destination tables, knowledge base vector tables, trigger functions, and pipeline state tracking tables. No manual per-pipeline setup is required. For details on the objects VPU creates, see [Objects created by VPU](vpu-and-permissions#objects-created-by-vpu).
+
+## Example: Summarize text
+
+This example creates a single-step pipeline that takes text content from a source table, runs it through a text completion model for summarization, and writes the summaries to a destination table.
+
+### Create the source table
+
+Connect to your database and create a table with some sample text content:
+
+```sql
+CREATE TABLE source_table_st (
+    id INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    content TEXT NOT NULL
+);
+
+INSERT INTO source_table_st (content) VALUES
+('I don''t want a babysitter. I am eleven years old. My babysitter is only three years older than I am," she loudly yelled to her Mom. Now, she really wished she had somebody with her as she heard the clicking, scratching noises outside of the living room window. "This is silly. It''s probably the storm," the girl said. She regretted watching the horror show she had been tuned into for the last half hour. As she searched for the remote to turn off the vampire movie, the front door blew open with a thunderous noise. Carla whirled around to see a dark image.'),
+('There are times when the night sky glows with bands of color. The bands may begin as cloud shapes and then spread into a great arc across the entire sky. They may fall in folds like a curtain drawn across the heavens. The lights usually grow brighter, then suddenly dim. During this time the sky glows with pale yellow, pink, green, violet, blue, and red. These lights are called the Aurora Borealis. Some people call them the Northern Lights. Scientists have been watching them for hundreds of years. They are not quite sure what causes them. In ancient times people were afraid of the Lights. They imagined that they saw fiery dragons in the sky. Some even concluded that the heavens were on fire.');
+```
+
+Grant VPU access to the source table. For tables in the `public` schema on managed clusters, the default `aidb_users` grant is sufficient. For tables in custom schemas or on self-managed clusters, see [Granting VPU access to source tables](vpu-and-permissions#granting-vpu-access-to-source-tables).
+
+### Create the pipeline
+
+1.  Navigate to **Sovereign AI > Pipelines** and click **Create Pipeline**.
+
+1.  Enter a pipeline name, for example `summarize_demo`.
+
+1.  Select your **cluster** and **database**.
+
+1.  Set the **processing type** to **Disabled**. This lets you trigger execution manually so you can observe each step.
+
+1.  Click **Next**.
+
+1.  Select the **schema** (`public`), **table** (`source_table_st`), **key column** (`id`), and **data column** (`content`).
+
+1.  Click the **+** button on the arrow between the source and destination and select **SummarizeText**.
+
+1.  In the SummarizeText step configuration, select a **text completion model** from the model picker. The available models depend on which inference services you registered during [Platform-level setup](#platform-level-setup).
+
+1.  Click **Deploy**.
+
+The pipeline appears in the pipeline list with a "Creating" status that transitions to "Up To Date" once setup is complete.
+
+### Run and verify results
+
+With Disabled processing, the pipeline does not run automatically. Trigger a manual run:
+
+1.  Click the pipeline name in the pipeline list to open its detail page.
+
+1.  Click **Execute**.
+
+Once execution completes, verify the results by querying the destination table:
+
+```sql
+SELECT * FROM pipeline_summarize_demo;
+```
+
+The destination table contains one row per source record, with the `content` column replaced by the model's summary. For example, the passage about the Aurora Borealis produces a condensed summary capturing the key points about the Northern Lights, their appearance, and their history.
+
+## Example: Build a knowledge base
+
+This example creates a two-step pipeline that chunks product descriptions into segments, generates vector embeddings, and stores them in a knowledge base for semantic search. This is the standard pattern for building RAG-ready vector stores with Pipeline Designer.
+
+### Create the source table
+
+Connect to your database and create a table with product data:
+
+```sql
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    product_name TEXT NOT NULL,
+    description TEXT
+);
+
+INSERT INTO products (product_name, description) VALUES
+('Classic Burger', 'A juicy beef patty with lettuce, tomato, and pickles on a toasted sesame bun'),
+('Margherita Pizza', 'Wood-fired pizza with San Marzano tomatoes, fresh mozzarella, and basil'),
+('Caesar Salad', 'Crisp romaine lettuce with parmesan, croutons, and house-made Caesar dressing'),
+('Fish Tacos', 'Grilled mahi-mahi with cabbage slaw, lime crema, and pickled onions'),
+('Falafel Wrap', 'Crispy chickpea falafel with tahini, pickled turnips, and fresh herbs in warm pita'),
+('Pad Thai', 'Stir-fried rice noodles with shrimp, peanuts, bean sprouts, and tamarind sauce'),
+('Beef Burrito', 'Seasoned beef with rice, black beans, cheese, and salsa in a flour tortilla'),
+('Mushroom Risotto', 'Creamy arborio rice with mixed wild mushrooms, parmesan, and truffle oil'),
+('Lamb Kebab', 'Spiced lamb skewers with grilled vegetables, garlic yogurt, and crisp pitta');
+```
+
+Grant VPU access to the source table as described in [Per-source-table setup](#per-source-table-setup).
+
+### Create the pipeline
+
+1.  Navigate to **Sovereign AI > Pipelines** and click **Create Pipeline**.
+
+1.  Enter a pipeline name, for example `product_kb`.
+
+1.  Select your **cluster** and **database**.
+
+1.  Set the **processing type** to **Disabled**.
+
+1.  Click **Next**.
+
+1.  Select the **schema** (`public`), **table** (`products`), **key column** (`id`), and **data column** (`description`).
+
+1.  Click the **+** button and select **ChunkText**. Set the **desired chunk length** (for example, `200`). For short descriptions like these the chunking step passes them through without splitting, but it is good practice to include it for pipelines that may later process longer text.
+
+1.  Click the **+** button after the ChunkText step and select **KnowledgeBase**.
+
+1.  In the KnowledgeBase step configuration, select a **text embedding model** from the model picker and set the **data format** to **Text**.
+
+1.  Click **Deploy**.
+
+### Run and verify results
+
+Trigger a manual run from the pipeline detail page by clicking **Execute**. Once execution completes, verify the knowledge base using the built-in query tool:
+
+1.  Navigate to **Sovereign AI > Knowledge Bases**.
+
+1.  Click the knowledge base created by your pipeline (its name is derived from the pipeline name).
+
+1.  Click **Query**.
+
+1.  Enter a search term, for example `seafood` or `spicy`.
+
+1.  Click **Run**.
+
+The query tool returns the most semantically similar product descriptions with their distance scores. For example, searching for "seafood" should return the fish tacos entry as the closest match, even though the word "seafood" does not appear in its description. This demonstrates how vector embeddings capture semantic meaning rather than relying on keyword matching.
+
+You can also verify the raw pipeline output at the database level:
+
+```sql
+SELECT * FROM pipeline_product_kb;
+```
+
+The knowledge base is now available for use by downstream applications such as [Langflow](/edb-postgres-ai/innovation-release/ai-factory/langflow/) agents. See [Using knowledge bases with Langflow](knowledge-bases#using-knowledge-bases-with-langflow) for integration details.
+
+## Next steps
+
+-   [Concepts](concepts): Learn about pipeline structure, multi-step design constraints, and processing mode selection
+-   [Creating pipelines](creating-pipelines): Full reference for the pipeline creation wizard, including all step types and model selection
+-   [Knowledge bases](knowledge-bases): Monitor knowledge bases, understand record counts, and test retrieval
+-   [VPU and permissions](vpu-and-permissions): Understand the `visual_pipeline_user` role, grant details, and security considerations
+-   [Limitations](limitations): Current design constraints and known issues
