@@ -1,0 +1,314 @@
+---
+title: edbctl hybrid-manager
+navTitle: edbctl hybrid-manager
+description: Use the edbctl utility for Hybrid Manager management, monitoring, and diagnostics.
+deepToC: true
+---
+
+The `edbctl hybrid-manager` command manages Hybrid Manager (HM) instances, including lifecycle operations, setup, monitoring access, PostgreSQL diagnostics, and troubleshooting. These commands interact directly with the Kubernetes cluster via `kubectl` context. API credentials are not required.
+
+## Commands
+
+`edbctl hybrid-manager` command has the following options:
+
+-   [edbctl hybrid-manager create-install-secrets](#edbctl-hybrid-manager-create-install-secrets) — Create secrets needed to install Hybrid Manager on a Kubernetes cluster.
+-   [edbctl hybrid-manager diagnostic-container](#edbctl-hybrid-manager-diagnostic-container) — Launch a diagnostic container.
+-   [edbctl hybrid-manager get-pg-activity](#edbctl-hybrid-manager-get-pg-activity) — Display PG cluster activity history.
+-   [edbctl hybrid-manager get-pg-all](#edbctl-hybrid-manager-get-pg-all) — Run all PG cluster queries.
+-   [edbctl hybrid-manager get-pg-disk](#edbctl-hybrid-manager-get-pg-disk) — Display PG pod disk usage.
+-   [edbctl hybrid-manager get-pg-gucs](#edbctl-hybrid-manager-get-pg-gucs) — Display PostgreSQL GUC parameters.
+-   [edbctl hybrid-manager get-pg-info](#edbctl-hybrid-manager-get-pg-info) — Display PG cluster overview and instance status.
+-   [edbctl hybrid-manager get-pg-owner](#edbctl-hybrid-manager-get-pg-owner) — Display PG cluster owner.
+-   [edbctl hybrid-manager list-install-secrets](#edbctl-hybrid-manager-list-install-secrets) — List secrets needed to install Hybrid Manager on a Kubernetes cluster.
+-   [edbctl hybrid-manager open-alertmanager](#edbctl-hybrid-manager-open-alertmanager) — Open Alert manager UI.
+-   [edbctl hybrid-manager open-grafana](#edbctl-hybrid-manager-open-grafana) — Open Grafana UI.
+
+### edbctl hybrid-manager create-install-secrets
+
+Interactively creates secrets on a Kubernetes cluster in preparation for Hybrid Manager bootstrapping. You can also use the `edbctl hm` alias for this command.
+
+```
+edbctl hybrid-manager create-install-secrets --version <version> [--scenario <scenarios>] [--force] [options]
+```
+
+Where `options` are:
+
+```
+    --version string      The version of Hybrid Manager to install on the cluster (required).
+                          Use "latest" or "latest-ir" for the latest Innovation Release,
+                          or "latest-lts" for the latest LTS release.
+-s, --scenario strings    The scenarios to install secrets for (all scenarios if not specified).
+-f, --force               Force update of existing secrets.
+-I, --interactive         Execute command interactively.
+-y, --yes                 Auto-confirm all confirmations.
+-h, --help                Help for create-install-secrets.
+```
+
+These examples show how to create install secrets:
+
+```
+# Interactive mode (default): requires interactive_mode config set to on
+edbctl hm create-install-secrets --version v2026.2.0 --scenario core --scenario ai
+edbctl hm create-install-secrets --version v2026.2.0           # creates secrets for all scenarios
+edbctl hm create-install-secrets --version v2026.2.0 --force   # updates existing secrets
+edbctl hm create-install-secrets --version latest-ir            # resolves to the latest Innovation Release
+edbctl hm create-install-secrets --version latest-lts           # resolves to the latest LTS release
+
+# Skip confirmations: use --yes flag or set confirm_mode config to off
+edbctl hm create-install-secrets --version v2026.2.0 -y
+
+# Non-interactive mode (for CI/CD pipelines): set interactive_mode and confirm_mode config to off,
+# then provide credentials via environment variables (e.g. EDB_CORE_ADMIN_EMAIL1)
+# edbctl config set interactive_mode off
+# edbctl config set confirm_mode off
+# export EDB_CORE_ADMIN_EMAIL1=admin@example.com
+edbctl hm create-install-secrets --version v2026.2.0 --force
+```
+
+### edbctl hybrid-manager diagnostic-container
+
+Launches an ephemeral diagnostic container on a target pod or node for troubleshooting. Attaches an interactive TTY session to the debug container. The container is removed when the session ends.
+
+```
+edbctl hybrid-manager diagnostic-container --pod <pod> [--type pod|node] [--namespace <namespace>] [--version <version>] [--registry <registry>] [options]
+```
+
+Where `options` are:
+
+```
+    --pod string        Target pod or node name (required).
+-t, --type string       Target type: pod or node (default: pod).
+-n, --namespace string  Target namespace (required for pod targets).
+-v, --version string    Diagnostic image tag (omit to use the image default).
+-r, --registry string   Container registry URL (default "docker.enterprisedb.com/pgai-platform").
+-h, --help              Help for diagnostic-container.
+```
+
+These examples show how to launch a diagnostic container:
+
+```
+edbctl hybrid-manager diagnostic-container --pod my-pod -n my-namespace
+edbctl hybrid-manager diagnostic-container --pod my-node --type node
+edbctl hybrid-manager diagnostic-container --pod my-pod -n my-namespace --version 2026.2.0
+```
+
+### edbctl hybrid-manager get-pg-activity
+
+Queries the Beacon database for cluster activity records such as create and delete operations.
+
+```
+edbctl hybrid-manager get-pg-activity --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-c, --create            Show CREATE activities only.
+-d, --delete            Show DELETE activities only.
+-t, --timestamp-only    Show timestamps only.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-activity.
+```
+
+These examples show how to display PG cluster activity:
+
+```
+edbctl hybrid-manager get-pg-activity --pg-id p-abc123def
+edbctl hybrid-manager get-pg-activity --pg-id p-abc123def --create
+edbctl hybrid-manager get-pg-activity --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-all
+
+Retrieves all PostgreSQL cluster data in a single invocation: cluster info and instance status, GUC parameters, disk usage per pod, and activity history. Equivalent to running `get-pg-info`, `get-pg-gucs`, `get-pg-disk`, and `get-pg-activity` in sequence.
+
+```
+edbctl hybrid-manager get-pg-all --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-all.
+```
+
+These examples show how to run all PG cluster queries:
+
+```
+edbctl hybrid-manager get-pg-all --pg-id p-abc123def
+edbctl hybrid-manager get-pg-all --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-disk
+
+Shows filesystem usage, base size, temp size, and WAL size for a PostgreSQL pod. Use `--pg-id` to discover pods for a PG cluster automatically, or `--pod` to target a specific pod directly. Exactly one of `--pg-id` or `--pod` must be provided.
+
+```
+edbctl hybrid-manager get-pg-disk [--pg-id <cluster-id> | --pod <pod>] [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID (discovers pods automatically).
+    --pod string        Target a specific pod directly.
+-n, --namespace string  Override namespace (with --pod only; auto-detected if omitted).
+-a, --all               Show disk info for all pods in the cluster (with --pg-id only).
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-I, --interactive       Execute command interactively.
+-h, --help              Help for get-pg-disk.
+```
+
+These examples show how to display PG pod disk usage:
+
+```
+edbctl hybrid-manager get-pg-disk --pg-id p-abc123def
+edbctl hybrid-manager get-pg-disk --pg-id p-abc123def --all
+edbctl hybrid-manager get-pg-disk --pod p-abc123def-a-1
+edbctl hybrid-manager get-pg-disk --pod p-abc123def-a-1 -n custom-namespace
+edbctl hybrid-manager get-pg-disk --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-gucs
+
+Reads GUC (Grand Unified Configuration) parameters from the ClusterWrapper CRD per instance.
+
+```
+edbctl hybrid-manager get-pg-gucs --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-gucs.
+```
+
+These examples show how to display PostgreSQL GUC parameters:
+
+```
+edbctl hybrid-manager get-pg-gucs --pg-id p-abc123def
+edbctl hybrid-manager get-pg-gucs --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-info
+
+Retrieves cluster metadata and per-instance health from ClusterWrapper and CNP Cluster CRDs.
+
+```
+edbctl hybrid-manager get-pg-info --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-info.
+```
+
+These examples show how to display PG cluster overview and instance status:
+
+```
+edbctl hybrid-manager get-pg-info --pg-id p-abc123def
+edbctl hybrid-manager get-pg-info --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-owner
+
+Queries the Beacon database to find the user who created the PG cluster.
+
+```
+edbctl hybrid-manager get-pg-owner --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-owner.
+```
+
+These examples show how to display PG cluster owner:
+
+```
+edbctl hybrid-manager get-pg-owner --pg-id p-abc123def
+edbctl hybrid-manager get-pg-owner --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager list-install-secrets
+
+Provides a formatted list of secrets required for the given Hybrid Manager version and scenario set. You can also use the `edbctl hm` alias for this command.
+
+```
+edbctl hybrid-manager list-install-secrets --version <version> [--scenario <scenarios>] [options]
+```
+
+Where `options` are:
+
+```
+    --version string      The version of Hybrid Manager to list secrets for (required).
+                          Use "latest" or "latest-ir" for the latest Innovation Release,
+                          or "latest-lts" for the latest LTS release.
+-s, --scenario strings    The scenarios to list secrets for (all scenarios if not specified).
+-o, --output string       [table json yaml xml json-raw] (default "table").
+-h, --help                Help for list-install-secrets.
+```
+
+These examples show how to list install secrets:
+
+```
+edbctl hm list-install-secrets --version v2026.2.0 --scenario core --scenario ai
+edbctl hm list-install-secrets --version v2026.2.0      # lists secrets for all scenarios
+edbctl hm list-install-secrets --version latest-ir       # resolves to the latest Innovation Release
+edbctl hm list-install-secrets --version latest-lts      # resolves to the latest LTS release
+```
+
+### edbctl hybrid-manager open-alertmanager
+
+Opens the Alertmanager web UI via port-forward and browser. Sets up a port-forward to the `alertmanager-operated` service and opens the web UI in the default browser. Press `Ctrl+C` to stop.
+
+```
+edbctl hybrid-manager open-alertmanager [options]
+```
+
+Where `options` are:
+
+```
+-b, --background    Run port-forward in the background.
+-h, --help          Help for open-alertmanager.
+```
+
+These examples show how to open the Alertmanager UI:
+
+```
+edbctl hybrid-manager open-alertmanager
+edbctl hybrid-manager open-alertmanager --background
+```
+
+### edbctl hybrid-manager open-grafana
+
+Opens the Grafana web UI via port-forward and browser. Sets up a port-forward to the `grafana` service and opens the web UI in the default browser. Press `Ctrl+C` to stop.
+
+```
+edbctl hybrid-manager open-grafana [options]
+```
+
+Where `options` are:
+
+```
+-b, --background    Run port-forward in the background.
+-h, --help          Help for open-grafana.
+```
+
+These examples show how to open the Grafana UI:
+
+```
+edbctl hybrid-manager open-grafana
+edbctl hybrid-manager open-grafana --background
+```
