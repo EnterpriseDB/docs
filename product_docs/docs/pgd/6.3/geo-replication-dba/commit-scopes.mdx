@@ -30,10 +30,6 @@ Use the following questions to identify the right commit scope for your deployme
   - **Yes** — use adaptive protect
   - **No** — use majority protect
 
-- Do you need exactly-once transaction semantics?
-  - **Yes** — use CAMO
-  - **No** — use standard synchronous commit
-
 - Is cross-location write latency acceptable for all transactions?
   - **Yes** — add remote confirmation to the rule
   - **No** — use local durability with lag control
@@ -42,6 +38,7 @@ Use the following questions to identify the right commit scope for your deployme
   - **Yes** — use multiple scopes with session or transaction overrides
   - **No** — use a single default scope
 
+For workloads requiring exactly-once transaction semantics, CAMO provides additional guarantees but requires application-level changes to implement. See [CAMO](/pgd/current/commit-scopes/camo/) for details.
 
 ## Creating the commit scope
 
@@ -86,10 +83,12 @@ If you are using CAMO, the rule uses the `CAMO` keyword instead of `SYNCHRONOUS 
 SELECT bdr.create_commit_scope(
     commit_scope_name := 'camo_scope',
     origin_node_group := '<location_a>',
-    rule := 'ALL (<location_a>) CAMO DEGRADE ON (timeout=30s) TO ASYNC',
+    rule := 'ALL (<location_a>) CAMO DEGRADE ON (timeout=30s, require_write_lead=true) TO ASYNC',
     wait_for_ready := true
 );
 ```
+
+The `require_write_lead=true` option prevents degradation to async unless the node is the current write leader. Without it, a non-leader node can degrade on timeout and commit locally, risking data loss if the write leader is still up and accepting writes in the same group.
 
 CAMO has higher overhead than other commit scope kinds and requires application changes to handle transaction resolution after failover. See [CAMO](/pgd/current/commit-scopes/camo/) for full details.
 
@@ -101,13 +100,13 @@ Set the commit scope as the default for each subgroup to apply it automatically 
 SELECT bdr.alter_node_group_option(
     node_group_name := '<location_a>',
     config_key := 'default_commit_scope',
-    config_value := 'geo_scope'
+    config_value := 'majority_protect'
 );
 
 SELECT bdr.alter_node_group_option(
     node_group_name := '<location_b>',
     config_key := 'default_commit_scope',
-    config_value := 'geo_scope'
+    config_value := 'majority_protect'
 );
 ```
 
@@ -164,4 +163,3 @@ COMMIT;
 - **Add a witness node in a third location for two-location deployments.** Without one, losing a location breaks Raft quorum and the cluster can no longer elect a write leader.
 
 - **Use CAMO for workloads that can't tolerate duplicate transactions.** Without it, a node failure during commit can result in the transaction being applied twice after failover.
-
