@@ -17,6 +17,32 @@ VPU exists for two reasons:
 
 1.  **Pipeline Designer visibility control.** Pipeline Designer displays only the pipelines and knowledge bases owned by VPU. This creates a clean separation between pipelines managed through the Pipeline Designer and pipelines created through other means (SQL, scripts, third-party tools). The Pipeline Designer does not attempt to manage pipelines it did not create, avoiding potential conflicts with incompatible configurations.
 
+## Setup prerequisites
+
+Most of the VPU infrastructure is set up automatically. When you create your first pipeline through Pipeline Designer, beacon-agent installs the AIDB extension (`CREATE EXTENSION aidb CASCADE`), creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17), and adds it to the `aidb_users` role. You do not need to run any of these steps manually on HM-managed clusters.
+
+One manual step is required before you create your first pipeline. VPU must be able to create pipeline destination tables and knowledge base vector tables in the `public` schema. Grant the required privilege by connecting to the database as an administrator and running:
+
+```sql
+GRANT CREATE ON SCHEMA public TO visual_pipeline_user;
+```
+
+Without this grant, pipeline creation will fail because VPU cannot create the objects it needs.
+
+Each pipeline also requires SELECT access on its source table. The grants depend on where the table lives (public schema, custom schema, or PGD cluster). See [Granting VPU access to source tables](#granting-vpu-access-to-source-tables) below for the details.
+
+!!! Note "Self-managed clusters"
+    On self-managed clusters, beacon-agent performs the same automatic setup, but the operator must ensure that beacon-agent's database role has sufficient privileges to execute the setup SQL. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
+!!!
+
+In addition to the database-level prerequisites, two HM roles control access to Pipeline Designer features:
+
+1.  **Pipeline editor project role.** Required to create, edit, and delete pipelines within a project.
+
+1.  **GenAI Builder User organization role.** Required to access the Settings tab, where external inference services are registered and managed.
+
+Ensure the relevant users have been assigned these roles before they begin working with Pipeline Designer.
+
 ## How VPU affects visibility
 
 When a pipeline is created through Pipeline Designer, AIDB stamps the pipeline's `owner_role` as `visual_pipeline_user`. The EDB Postgres AI agent periodically collects pipeline and knowledge base data from AIDB and filters for `owner_role = 'visual_pipeline_user'`. Only matching objects are reported to the HM control plane and displayed in the Pipeline Designer.
