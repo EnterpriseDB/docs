@@ -19,9 +19,37 @@ VPU exists for two reasons:
 
 ## Setup prerequisites
 
-Most of the VPU infrastructure is set up automatically. When you create your first pipeline through Pipeline Designer, beacon-agent installs the AIDB extension (`CREATE EXTENSION aidb CASCADE`), creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17), and adds it to the `aidb_users` role. You do not need to run any of these steps manually on HM-managed clusters.
+When you create your first pipeline through Pipeline Designer, beacon-agent creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17), and adds it to the `aidb_users` role. Whether the AIDB extension itself is pre-installed depends on the cluster type:
 
-One manual step is required before you create your first pipeline. VPU must be able to create pipeline destination tables and knowledge base vector tables in the `public` schema. Grant the required privilege by connecting to the database as an administrator and running:
+| Deployment type    | Extension installed at provisioning | Model picker populated before first pipeline |
+|--------------------|-------------------------------------|----------------------------------------------|
+| PGD managed        | Yes                                 | Yes                                          |
+| PSR managed        | No                                  | No (empty until extension exists)            |
+| Self-managed (any) | No                                  | No (empty until extension exists)            |
+
+### AIDB extension installation
+
+On **PGD managed clusters**, the AIDB extension is created automatically during cluster provisioning. No manual extension installation is needed.
+
+On **PSR managed** and **self-managed clusters**, the extension is not created at provisioning. The model sync that populates the Pipeline Designer model picker needs the extension to discover available models; without it, the model picker is empty and pipeline creation cannot proceed. Install the extension manually before using Pipeline Designer:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
+```
+
+!!! Note "PGD self-managed clusters"
+    On self-managed PGD clusters, you must also initialize BDR support for AIDB after creating the extension:
+
+    ```sql
+    SELECT aidb.bdr_setup();
+    ```
+
+    On managed PGD clusters this runs automatically at provisioning.
+!!!
+
+### Schema and table grants
+
+VPU must be able to create pipeline destination tables and knowledge base vector tables in the `public` schema. Grant the required privilege by connecting to the database as an administrator and running:
 
 ```sql
 GRANT CREATE ON SCHEMA public TO visual_pipeline_user;
@@ -32,7 +60,7 @@ Without this grant, pipeline creation will fail because VPU cannot create the ob
 Each pipeline also requires SELECT access on its source table. The grants depend on where the table lives (public schema, custom schema, or PGD cluster). See [Granting VPU access to source tables](#granting-vpu-access-to-source-tables) below for the details.
 
 !!! Note "Self-managed clusters"
-    On self-managed clusters, beacon-agent performs the same automatic setup, but the operator must ensure that beacon-agent's database role has sufficient privileges to execute the setup SQL. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
+    On self-managed clusters, beacon-agent performs the same automatic role and grant setup, but the database role used by beacon-agent must have SUPERUSER or equivalent DDL privileges. No privilege detection or graceful degradation exists: if DDL fails, AIDB features are silently disabled for that database. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
 !!!
 
 In addition to the database-level prerequisites, two HM roles control access to Pipeline Designer features:
