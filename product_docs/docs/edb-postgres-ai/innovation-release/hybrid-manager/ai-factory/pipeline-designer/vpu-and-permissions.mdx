@@ -31,7 +31,17 @@ When you create your first pipeline through Pipeline Designer, beacon-agent crea
 
 On **PGD managed clusters**, the AIDB extension is created automatically during cluster provisioning. No manual extension installation is needed.
 
-On **PSR managed** and **self-managed clusters**, the extension is not created at provisioning. The model sync that populates the Pipeline Designer model picker needs the extension to discover available models; without it, the model picker is empty and pipeline creation cannot proceed. Install the extension manually before using Pipeline Designer:
+On **PSR managed** and **self-managed clusters**, the extension is not created at provisioning. The model sync that populates the Pipeline Designer model picker needs the extension to discover available models; without it, the model picker is empty and pipeline creation cannot proceed.
+
+On **self-managed clusters**, you must add `aidb` to `shared_preload_libraries` in `postgresql.conf` and restart PostgreSQL before creating the extension:
+
+```ini
+shared_preload_libraries = 'aidb'
+```
+
+See the [AIDB configuration documentation](/aidb/latest/install/configure) for the full self-managed configuration procedure.
+
+Install the extension manually before using Pipeline Designer:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
@@ -46,6 +56,18 @@ CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
 
     On managed PGD clusters this runs automatically at provisioning.
 !!!
+
+### Background worker configuration
+
+AIDB uses PostgreSQL background workers to execute pipelines in Background processing mode. The default `max_worker_processes` value (8) may be insufficient for workloads with multiple concurrent pipelines; insufficient worker slots cause pipelines to fail at runtime.
+
+On **managed clusters**, adjust `max_worker_processes` through the EDB Postgres AI portal cluster settings (edit the replica configuration). On **self-managed clusters**, set it in `postgresql.conf` and restart PostgreSQL:
+
+```ini
+max_worker_processes = 64
+```
+
+The recommended value depends on the number of concurrent pipelines and other extensions that consume background workers. A value of 64 is a reasonable starting point for Pipeline Designer workloads.
 
 ### Schema and table grants
 
@@ -70,6 +92,10 @@ In addition to the database-level prerequisites, two HM roles control access to 
 1.  **GenAI Builder User organization role.** Required to access the Settings tab, where external inference services are registered and managed.
 
 Ensure the relevant users have been assigned these roles before they begin working with Pipeline Designer.
+
+### Inference service registration
+
+At least one inference service must be registered before you can create pipelines that use model-backed steps (such as SummarizeText or KnowledgeBase). Without a registered inference service, the model picker in Pipeline Designer has no models to offer. See [External inference services](external-inference-services) for the available registration paths (HM external inference proxy and AIDB-native registration).
 
 ## How VPU affects visibility
 
@@ -130,6 +156,10 @@ To ensure trigger creation succeeds on PGD clusters:
 2.  Verify that the source table's ownership is compatible with VPU's trigger function ownership. BDR checks that the trigger function owner satisfies the replication constraints for the relation; if VPU cannot satisfy these constraints, trigger creation will fail with a BDR-specific error.
 
 These grants must be consistent across all BDR nodes. A grant that exists on the write leader but is missing on a subscriber node will cause replication failures when the trigger fires on that node.
+
+!!! Note "Trigger function ownership"
+    On PGD clusters, AIDB trigger handler functions may need their ownership adjusted for Live and Background processing to work correctly on replicated tables. See [Trigger function ownership on PGD clusters](limitations#trigger-function-ownership-on-pgd-clusters-aid-1076-aid-1136) for the current workaround.
+!!!
 
 ## Security and isolation considerations
 
