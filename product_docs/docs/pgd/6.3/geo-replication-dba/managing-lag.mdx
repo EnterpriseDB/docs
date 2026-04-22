@@ -8,7 +8,7 @@ Network latency between geographic locations means that replication across regio
 
 PGD provides two complementary tools for managing cross-region lag: Lag Control, which throttles write throughput to keep remote nodes from falling behind, and subscriber-only nodes, which offload regional read traffic without adding to the replication mesh.
 
-## Lag Control
+## Using lag control
 
 Lag Control is a commit scope kind that automatically injects a small delay into write transactions on the origin node when replication lag exceeds defined limits. This slows the rate of incoming writes, giving downstream nodes time to catch up.
 
@@ -44,14 +44,6 @@ The key parameters are:
 - `max_lag_time`: the acceptable replication lag expressed as time. This is a soft limit.
 - `max_lag_size`: the acceptable replication lag expressed as WAL bytes. This is also a soft limit.
 
-### Monitoring lag
-
-```shell
-pgd --dsn "<node_dsn>" replication show --slots
-```
-
-Look for slots where `confirmed_flush_lsn` is significantly behind `restart_lsn`, which indicates accumulated lag. For slots associated with remote-location nodes, some lag is expected; the concern is when lag is growing rather than stable.
-
 ### When Lag Control is not enough
 
 A commit delay that is consistently at the configured ceiling with lag still exceeding the limits indicates that write throughput is fundamentally too high for the available cross-region bandwidth. Consider:
@@ -60,6 +52,70 @@ A commit delay that is consistently at the configured ceiling with lag still exc
 - Splitting large bulk load operations into smaller transactions with longer commit delays.
 - Reviewing whether all tables need to be replicated cross-region.
 
+
+## Configuring routing thresholds
+
+Routing thresholds control when lagging nodes are removed from write and read routing. When a node's lag exceeds the configured threshold, Connection Manager stops routing traffic to it until it catches up. The default value for both thresholds is `-1`, which disables the check. Values are in bytes.
+
+Set `route_writer_max_lag` to remove a node from write leader eligibility when its lag exceeds the threshold:
+
+```sql
+SELECT bdr.alter_node_group_option(
+    node_group_name := '<group_name>',
+    config_key := 'route_writer_max_lag',
+    config_value := '16777216'
+);
+```
+
+Set `route_reader_max_lag` to remove a node from read routing when its lag exceeds the threshold:
+
+```sql
+SELECT bdr.alter_node_group_option(
+    node_group_name := '<group_name>',
+    config_key := 'route_reader_max_lag',
+    config_value := '16777216'
+);
+```
+
+Check current thresholds:
+
+```sql
+SELECT node_group_name, route_writer_max_lag, route_reader_max_lag
+FROM bdr.node_group_routing_config_summary;
+```
+
+## Tuning replication apply
+
+Applying changes faster reduces lag under high write volumes. Configure the number of parallel apply workers (`num_writers`), streaming mode (`streaming_mode`), and intentional apply delay (`apply_delay`) at the node group level. See [Tuning replication](/pgd/current/geo-replication-dba/replication-tuning) for details.
+
+## Monitoring replication lag
+
+Use the following views to check current lag across the cluster.
+
+- Check current replication rates and estimated catchup time per node:
+
+    ```sql
+    SELECT target_name, replay_lag, replay_lag_bytes, apply_rate, catchup_interval
+    FROM bdr.node_replication_rates;
+    ```
+
+- Check subscription status and last applied transaction timestamp per node:
+
+    ```sql
+    SELECT origin_name, target_name, subscription_status, last_xact_replay_timestamp
+    FROM bdr.subscription_summary;
+    ```
+
+- Check slot lag for detailed LSN-level information:
+
+    ```sql
+    SELECT target_name, state, replay_lag_bytes, replay_lag_size
+    FROM bdr.node_slots
+    ORDER BY replay_lag_bytes DESC;
+    ```
+
+The accuracy of lag information depends on `bdr.replay_progress_frequency`, a configuration parameter that controls how often each node broadcasts its replication position to the rest of the cluster. The default is 60 seconds. 
+Lower this value for more responsive lag monitoring, keeping in mind that more frequent updates add a small amount of network overhead.
 
 ## Subscriber-only nodes
 

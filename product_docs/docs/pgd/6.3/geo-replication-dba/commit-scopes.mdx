@@ -5,49 +5,80 @@ description: How to create and configure commit scopes for cross-location durabi
 deepToC: true
 ---
 
-Commit scopes define the durability guarantees for transactions in your cluster. For geo-replication, they control whether transactions must be confirmed by remote locations before being acknowledged to the client, and how many nodes must confirm. For the full reference on commit scope syntax and options, see [Commit scopes](/pgd/current/commit-scopes).
+Commit scopes control how PGD confirms transactions and how many nodes must acknowledge a write before it's considered committed. In geo-replication, the choice directly affects write latency and how much data you risk losing if a location fails.
 
 The deployment patterns that support geo-replication use the following commit scopes:
 
-- **Majority protect** — synchronous replication requiring a majority of nodes in the origin group to confirm before acknowledging to the client. Used when zero data loss is required and write latency is acceptable.
-- **Local protect** — asynchronous replication where changes replicate to remote locations in the background. Used when lowest write latency is the priority and some data loss on failure is acceptable.
-- **Adaptive protect** — synchronous under normal conditions, automatically degrades to asynchronous after 10 seconds if nodes become unavailable. Used when you want durability by default but need the cluster to stay writable during partial failures.
-- **Commit At Most Once** (CAMO) — synchronous replication with additional guarantees that a transaction is applied at most once during failover. Used when application-level duplicate detection isn't possible.
+| Commit scope | Description | Latency | Data loss risk | When to use | Supported topology patterns | Notes |
+|---|---|---|---|---|---|---|
+| **Majority protect** | Waits for a majority of nodes in the origin group to confirm before committing. | Medium | Low | Zero data loss required and write latency is acceptable.<br /> Recommended for most production workloads. | Any group with 3+ nodes | Survives minority node failures. |
+| **Local protect** | Commits locally without waiting for other nodes. <br />Changes replicate asynchronously. | Lowest | Highest | Lowest possible write latency and some data loss on failure is acceptable. | Any topology | Not recommended for production use. <br /> Data loss possible if a node fails before replication. |
+| **Adaptive protect** | Synchronous to a majority when available, degrades to asynchronous after a timeout (default 10s). | Variable | Low | Durability by default, but cluster must stay writable during partial failures. | Groups with 2 data nodes + witness | Balances durability and availability. <br /> Graceful degradation during node failures. |
+| **CAMO** | Synchronous replication with exactly-once semantics using a dedicated partner node. | Higher | None | Exactly-once transaction requirements where duplicate detection isn't possible at the application level. | Groups with exactly 2 data nodes | Prevents duplicate transactions after failover. <br /> Higher latency. Requires application changes. |
 
-For guidance on which scope suits your deployment pattern, see [Choosing a deployment pattern](topology).
+## Choosing a commit scope
+
+Choosing a commit scope is a critical decision that directly affects latency, durability, and behavior during failures.
+
+Use the following questions to identify the right commit scope for your deployment. Your answers depend on your topology, your Recovery Point Objectives (RPO) requirements, and whether your workloads have mixed durability needs.
+
+- Can the application tolerate data loss if a location fails?
+  - **Yes** — majority protect without remote confirmation is sufficient
+  - **No** — add remote node confirmation to the rule
+
+- Do you have 2 data nodes + witness per group?
+  - **Yes** — use adaptive protect
+  - **No** — use majority protect
+
+- Do you need exactly-once transaction semantics?
+  - **Yes** — use CAMO
+  - **No** — use standard synchronous commit
+
+- Is cross-location write latency acceptable for all transactions?
+  - **Yes** — add remote confirmation to the rule
+  - **No** — use local durability with lag control
+
+- Do you have mixed workloads with different durability needs?
+  - **Yes** — use multiple scopes with session or transaction overrides
+  - **No** — use a single default scope
+
 
 ## Creating the commit scope
 
-Use the function `bdr.create_commit_scope()` once for each origin node group the rule applies to. For most geo-distributed deployments, using `ORIGIN_GROUP` is the recommended approach, as it lets you express the rule once at the top-level group, and `ORIGIN_GROUP` resolves dynamically to the subgroup of the node originating the transaction:
+Once you have chosen a commit scope, use `bdr.create_commit_scope()` for each origin node group the rule applies to. For most geo-distributed deployments, `ORIGIN_GROUP` is the recommended approach. It resolves dynamically to the subgroup of the node originating the transaction, so you only need one rule for the entire cluster. For example, to create a majority protect scope:
 
 ```sql
 SELECT bdr.create_commit_scope(
-    commit_scope_name := 'geo_scope',
+    commit_scope_name := 'majority_protect',
     origin_node_group := '<top_group>',
-    rule := 'ALL ORIGIN_GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN_GROUP SYNCHRONOUS COMMIT',
+    rule := 'MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT',
     wait_for_ready := true
 );
 ```
 
-If your locations have asymmetric durability requirements, create a separate rule per location instead:
+If your locations have asymmetric durability requirements, you can create a separate rule per location instead. See [Creating a commit scope](/pgd/latest/commit-scopes/commit-scopes/creating-a-commit-scope) for full details.
 
-```sql
-SELECT bdr.create_commit_scope(
-    commit_scope_name := 'geo_scope',
-    origin_node_group := '<location_a>',
-    rule := 'ALL (<location_a>) SYNCHRONOUS COMMIT AND ANY 1 (<location_b>) SYNCHRONOUS COMMIT',
-    wait_for_ready := true
-);
+When using majority protect in a multi-group deployment, you can extend the `rule` parameter in `bdr.create_commit_scope()` with cross-location options to control how remote nodes participate in the commit:
 
-SELECT bdr.create_commit_scope(
-    commit_scope_name := 'geo_scope',
-    origin_node_group := '<location_b>',
-    rule := 'ANY 1 (<location_a>) SYNCHRONOUS COMMIT AND ALL (<location_b>) SYNCHRONOUS COMMIT',
-    wait_for_ready := true
-);
-```
+- **Local durability only** — commits as soon as a majority of nodes in the origin group confirm. Changes replicate to remote locations asynchronously.
 
-### CAMO
+    ```sql
+    MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT
+    ```
+
+- **Remote confirmation** — adds a requirement for at least one remote node to confirm before committing. Ensures data survives a complete location failure at the cost of cross-location round-trip time on every write.
+
+    ```sql
+    MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN_GROUP SYNCHRONOUS COMMIT
+    ```
+
+- **Lag control** — commits locally at full speed but throttles transactions if remote lag exceeds the configured threshold. Prevents the remote location from falling too far behind without requiring synchronous confirmation.
+
+    ```sql
+    MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT AND ALL NOT ORIGIN_GROUP LAG CONTROL (max_lag_time = 30s)
+    ```
+
+### Creating a CAMO scope
 
 If you are using CAMO, the rule uses the `CAMO` keyword instead of `SYNCHRONOUS COMMIT`. CAMO requires a designated partner node within the same subgroup that tracks transaction outcomes, so that if the origin node fails during commit, the application can query the partner to determine whether the transaction was applied:
 
@@ -60,11 +91,11 @@ SELECT bdr.create_commit_scope(
 );
 ```
 
-Note that CAMO has higher overhead than other commit scope kinds and requires applications to handle transaction resolution after failover. See [CAMO](/pgd/current/commit-scopes/camo/) for full details.
+CAMO has higher overhead than other commit scope kinds and requires application changes to handle transaction resolution after failover. See [CAMO](/pgd/current/commit-scopes/camo/) for full details.
 
-## Setting the commit scope as the default for each subgroup
+## Setting the default commit scope
 
-Set the commit scope as the default for each subgroup to apply it automatically to all transactions originating from a location:
+Set the commit scope as the default for each subgroup to apply it automatically to all transactions originating from that location.
 
 ```sql
 SELECT bdr.alter_node_group_option(
@@ -80,24 +111,57 @@ SELECT bdr.alter_node_group_option(
 );
 ```
 
+You can override the default for a specific session or transaction without changing the group configuration:
+
+```sql
+-- Session-level override
+SET bdr.commit_scope = 'majority_protect';
+
+-- Transaction-level override
+BEGIN;
+SET LOCAL bdr.commit_scope = 'camo_scope';
+-- ...
+COMMIT;
+```
+
 ## Verifying the configuration
 
-Check that each subgroup has the correct default commit scope:
+- Check that each subgroup has the correct default commit scope:
 
-```sql
-SELECT node_group_name, default_commit_scope
-FROM bdr.node_group;
-```
+    ```sql
+    SELECT node_group_name, default_commit_scope
+    FROM bdr.node_group_summary;
+    ```
 
-Check the commit scope rules:
+- Check the commit scope rules:
 
-```sql
-SELECT commit_scope_name, origin_node_group, rule
-FROM bdr.commit_scope;
-```
+    ```sql
+    SELECT commit_scope_name, commit_scope_origin_node_group, commit_scope_rule
+    FROM bdr.commit_scopes;
+    ```
 
-If you are using CAMO, also verify that the partner node is ready before relying on it:
+- Check the active commit scope for the current session:
 
-```sql
-SELECT bdr.is_camo_partner_ready('<partner_node_name>');
-```
+    ```sql
+    SHOW bdr.commit_scope;
+    ```
+
+- If you are using CAMO, verify that the partner node is connected and ready before relying on it:
+
+    ```sql
+    SELECT bdr.is_camo_partner_connected();
+    SELECT bdr.is_camo_partner_ready();
+    ```
+
+## Avoiding common pitfalls
+
+- **Use majority protect for production workloads.** Local protect commits without waiting for any other node. A node failure before replication completes results in data loss.
+
+- **Use local durability with lag control for high-latency connections.** Waiting for remote confirmation on every transaction causes write timeouts when cross-location latency is high.
+
+- **Use multiple scopes for mixed workloads.** Non-critical writes shouldn't pay the same latency cost as critical ones. Override at the session or transaction level for workloads that don't need strong durability guarantees.
+
+- **Add a witness node in a third location for two-location deployments.** Without one, losing a location breaks Raft quorum and the cluster can no longer elect a write leader.
+
+- **Use CAMO for workloads that can't tolerate duplicate transactions.** Without it, a node failure during commit can result in the transaction being applied twice after failover.
+
