@@ -2,28 +2,32 @@
 title: Implementing tiered tables
 navTitle: Implementing tiered tables
 description: Configure automated data lifecycle management to transition data from local heap storage to the analytical data lake.
+redirects:
+- /pgaa/latest/pgd/tiered-tables
+- /pgaa/1.8/pgd/tiered-tables
+- /pgaa/1.3/pgd/tiered-tables
 ---
-
 
 Tiered tables provide a unified storage architecture by combining Postgres Distributed (PGD) AutoPartition with Postgres Analytics Accelerator (PGAA) to create an automated data lifecycle. When a standard heap table is converted to a tiered structure, the system manages the transition of data from transactional to analytical storage without manual intervention, providing zero-touch data lifecycle management that optimizes storage costs.
 
-![tiered_tables](../images/tiered_tables.png)
+![tiered_tables](images/tiered_tables.png)
 
 In this architecture, queries span both hot and cold data tiers seamlessly, providing a single point of access for the entire dataset regardless of its physical location. Recent data remains in local heap partitions for high-performance transactional processing, while older cold partitions are offloaded to object storage transparently once they cross a defined age threshold. 
 
 By calling `pgaa.convert_to_tiered_table()`, a standard heap table is transformed into a hybrid partitioned structure:
-- **Hot tier:** Recent data stays in local heap partitions, or Hybrid Analytics and Transactional Processing (HTAP) tables if replication is enabled. For HTAP, PGAA uses Iceberg Merge-on-Read (MoR) to capture updates and deletes as lightweight "delete files." This keeps the cloud tier synchronized without the overhead of rewriting large data blocks.
 
-- **Cold tier:** Once partitions cross a the age threshold defined by `analytics_offload_period`, they are automatically converted to PGAA tables in the data lake. Local storage is reclaimed, but the data remains transparently queryable through the same table interface.
+-   **Hot tier:** Recent data partitions stay in local heap partitions, or become Hybrid Transactional and Analytics Processing (HTAP) tables if replication is enabled. For HTAP, PGAA uses Iceberg Merge-on-Read (MoR) to capture updates and deletes as lightweight "delete files." This keeps the cloud tier synchronized without the overhead of rewriting large data blocks.
+
+-   **Cold tier:** Once partitions cross the age threshold defined by `analytics_offload_period`, they are automatically converted to PGAA tables in the data lake. Local storage is reclaimed, but the data remains transparently queryable through the same table interface.
 
 ## Process overview
 
 To convert a heap table into a tiered table, follow these steps:
 
-1. [Meet the prerequisites and point to object storage](get-started) by choosing either a storage location or a catalog service.
-1. Use the `pgaa.convert_to_tiered_table()` function to [convert a heap table to a tiered table](#converting-a-heap-table-to-a-tiered-table).
-1. [Verify and monitor](#monitoring-tiered-tables) the automated offloading.
-1. [Modify or disable](#modifying-and-disabling-tiered-tables) settings as your storage needs evolve.
+1.  [Meet the prerequisites and point to object storage](initial-config) by choosing either a storage location or a catalog service.
+1.  Use the `pgaa.convert_to_tiered_table()` function to [convert a heap table to a tiered table](#converting-a-heap-table-to-a-tiered-table).
+1.  [Verify and monitor](#monitoring-tiered-tables) the automated offloading.
+1.  [Modify or disable](#modifying-and-disabling-tiered-tables) settings as your storage needs evolve.
 
 ## Converting a heap table to a tiered table
 
@@ -47,23 +51,23 @@ CALL pgaa.convert_to_tiered_table(
 
 Where:
 
-- `relation`: The name of the heap table to convert to tiered table.
-- `range_partition_column`: The column used for range partitioning. It must be `DATE` or `TIMESTAMP`, and it must also be included in the primary key.
-- `partition_increment`: The time interval defining the size of each partition. 
-- `analytics_offload_period`: The threshold age at which a partition is moved from local storage to the cold tier in the data lake.
-- `initial_lower_bound`: The starting value for the first partition's lower bound.
-- `retention_period`: The period after which data is purged from the cold tier.
-- `enable_replication`:  If `true`, enables real-time replication to object storage for active partitions (as an HTAP table). If `false`, the hot partitions remain as heap tables.
-- `minimum_advance_partitions`: Minimum number of future partitions to maintain. 
-- `maximum_advance_partitions`: Maximum number of future partitions to maintain.
-- `drop_after_retention_period`: Whether to drop the partition locally after the retention period expires.
-- `purge_analytics_target`: If `true`, any pre-existing tables in the object store directory or catalog entry are deleted. If set to `false` and pre-existing tables are detected, the command will fail with an error (Supported in PGD 6.3 and later).
+-   `relation`: The name of the heap table to convert to tiered table.
+-   `range_partition_column`: The column used for range partitioning. It must be `DATE` or `TIMESTAMP`, and it must also be included in the primary key.
+-   `partition_increment`: The time interval defining the size of each partition. 
+-   `analytics_offload_period`: The threshold age at which a partition is moved from local storage to the cold tier in the data lake.
+-   `initial_lower_bound`: The starting value for the first partition's lower bound.
+-   `retention_period`: The period after which data is purged from the cold tier.
+-   `enable_replication`:  If `true`, enables real-time replication to object storage for active partitions (as an HTAP table). If `false`, the hot partitions remain as heap tables.
+-   `minimum_advance_partitions`: Minimum number of future partitions to maintain. 
+-   `maximum_advance_partitions`: Maximum number of future partitions to maintain.
+-   `drop_after_retention_period`: Whether to drop the partition locally after the retention period expires.
+-   `purge_analytics_target`: If `true`, any pre-existing tables in the object store directory or catalog entry are deleted. If set to `false` and pre-existing tables are detected, the command will fail with an error (Supported in PGD 6.3 and later).
 
-!!! Note 
+!!! Note
+
     The column used for range partitioning must be a primary key.
 
     Tables with sequences or foreign key constraints are not supported with tiered tables. You must drop the sequence or constraint before converting to a tiered table.
-
 
 Tiered tables create a unified view that performs a `UNION` of all partitions, giving you a single query interface across the full data lifecycle. You can enable the `bdr.prefer_analytics_engine` parameter to route queries on the entire tiered table to the Seafowl engine:
 
@@ -75,11 +79,11 @@ If `enable_replication` is `true`, this setting enables DirectScan for the entir
 
 !!! Note
     When using storage location-based replication, union views over partitioned tables are only supported by the Seafowl engine and are not accessible via Spark. When using a catalog service, union views are accessible via both Seafowl and Spark.
+!!!
 
 ## Monitoring tiered tables
 
 The `pgaa.list_tiered_tables()` function provides a high-level overview of all tables currently undergoing automated lifecycle management. Its output is useful for identifying which heap tables have been successfully converted to tiered tables, what partitioning logic is being applied, and the current balance between between local storage and object storage (tiered and untiered data size).
-
 
 ```sql
 SELECT * FROM pgaa.list_tiered_tables();
@@ -127,63 +131,61 @@ $$);
 
 See [AutoPartition in PGD](/pgd/latest/autopartition/) for details.
 
-!!! Warning
+!!!Warning
+
   Modifying these settings only affects new partitions and does not reorganize existing data. If you increase the partition size, the system will not merge your current small partitions; it will only begin creating larger partitions once the current set is exhausted. While new offload timing applies to all partitions, the physical structure created under previous settings remains unchanged.
 !!!
 
 **Modifying replication status**
 
-If you wish to change the current setting for `enable_replication`, you must manage the replication status of the partitions.
-
-Use the `pgaa.enable_analytics_replication()` or `pgaa.disable_analytics_replication()` functions against the parent table to ensure consistency across the hierarchy:
+To change the current setting for `enable_replication`, use the `pgaa.enable_analytics_replication()` or `pgaa.disable_analytics_replication()` functions. When called on the parent table, these functions propagate the change to all existing and future child partitions:
 
 ```sql
 CALL pgaa.enable_analytics_replication('my-transactional-table'::regclass);
 ```
 
-Using `ALTER TABLE` against the parent table only sets the value of `enable_replication` for future partitions; it does not retroactively update existing child partitions. You must manually run the `ALTER TABLE` command on every existing partition to ensure consistency across your data.
+You can also enable or disable replication on individual partitions directly. However, you cannot disable replication on a child partition if it is already enabled on the parent table, and you cannot enable it on a child partition if the parent already has it enabled.
 
 **Disabling tiered tables**
 
 To revert to a standard partitioned heap table:
 
-1. If `enable_replication` was active, stop replication on the parent table:
+1.  If `enable_replication` was active, stop replication on the parent table:
 
-  ```sql
-  CALL pgaa.disable_analytics_replication('my-transactional-table'::regclass);
-  ```
+    ```sql
+    CALL pgaa.disable_analytics_replication('my-transactional-table'::regclass);
+    ```
 
-1. Restore cold partitions. For each cold partition, run:
+1.  Restore cold partitions. For each cold partition, run:
 
-  ```sql
-  pgaa.restore_from_analytics('partition_name');
-  ```
+    ```sql
+    pgaa.restore_from_analytics('partition_name');
+    ```
 
-  Or use `ALTER TABLE partition_name SET ACCESS METHOD heap;`.
+    Or use `ALTER TABLE partition_name SET ACCESS METHOD heap;`.
 
-1. Remove the tiered table flag from the parent table:
+1.  Remove the tiered table flag from the parent table:
 
-  ```sql
-  ALTER TABLE my-transactional-table SET (pgaa.tiered_table = 'false');
-  ```
+    ```sql
+    ALTER TABLE my-transactional-table SET (pgaa.tiered_table = 'false');
+    ```
 
-1. Stop AutoPartition (optional). To stop the table from creating new partitions entirely, run:
+1.  Stop AutoPartition (optional). To stop the table from creating new partitions entirely, run:
 
-  ```sql
-  bdr.drop_autopartition('my-transactional-table');
-  ```
+    ```sql
+    bdr.drop_autopartition('my-transactional-table');
+    ```
 
-1. Verify that the table is not listed as a tiered table anymore with `SELECT * FROM pgaa.list_tiered_tables()`. 
+1.  Verify that the table is not listed as a tiered table anymore with `SELECT * FROM pgaa.list_tiered_tables()`. 
 
-1. Verify that all partitions list `heap` as their access method:
+1.  Verify that all partitions list `heap` as their access method:
 
-  ```sql
-  SELECT 
-      c.relname AS partition_name,
-      a.amname AS access_method
-  FROM pg_class c
-  JOIN pg_am a ON c.relam = a.oid
-  WHERE c.relname LIKE 'my-transactional-table%' 
-    AND c.relkind = 'r';
-  ```
-
+    ```sql
+    SELECT 
+        c.relname AS partition_name,
+        a.amname AS access_method
+    FROM pg_class c
+    JOIN pg_am a ON c.relam = a.oid
+    WHERE c.relname LIKE 'my-transactional-table%' 
+      AND c.relkind = 'r';
+    ```

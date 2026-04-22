@@ -1,13 +1,8 @@
 ---
 title: Replicating with PGD
 navTitle: Replicating with PGD
-description: Understand how writing Postgres data to lakehouse tables enables cost-efficient data lifecycle management
+description: Understand how PGD and PGAA work together to enable cost-efficient data lifecycle management with tiered storage.
 deepToC: true
-navigation:
-- get-started
-- tiered-tables
-- replicate
-- offload
 ---
 
 Integrate Postgres Distributed (PGD) and Postgres Analytics Accelerator (PGAA) to manage the complete data lifecycle within a unified architecture. PGD provides the high-availability transactional backbone for hot data, while PGAA delivers the vectorized engine and cloud-native handlers for cold data in object storage.
@@ -31,7 +26,7 @@ This architecture implements two distinct storage tiers: the hot tier (local SSD
 | Table type | Storage location |  Behavior | 
 | ---------- | --------------- |  -------- | 
 | Heap | Local disk only | Standard transactional table in the hot tier. |
-| Hybrid Analytics and Transactional Processing (HTAP) | Local + object storage | A heap table mapped to an analytical copy. PGD replicates all changes in near real-time. |
+| Hybrid Transactional and Analytics Processing (HTAP) | Local + object storage | A heap table mapped to an analytical copy. PGD replicates all changes in near real-time. |
 | PGAA | Object storage only | A purely analytical cold table, available in the Delta or Iceberg format. |
 
 ## Tiered storage strategies
@@ -44,17 +39,23 @@ This method leverages **PGD AutoPartition** to automate the lifecycle of high-vo
   - **Hot partitions:** Recent data remains as heap (or HTAP if `enable_replication` is enabled) for active processing.
   - **Cold partition:** Once partitions cross an age threshold, PGD bulk-copies them to object storage, converts them to PGAA tables, and reclaims local disk space, maintaining the data queryable.
 
+For details, see [Implementing tiered tables](/pgd/latest/tiered-storage/tiered-tables/) in the PGD documentation.
+
 ### Replicating to analytics
 
 This method continuously synchronizes a table with an analytical copy in object storage. A heap table is converted into an HTAP table. To the user, it appears as a standard transactional table, but an analytical copy is maintained in the background.
 
 To ensure near real-time synchronization without taxing your transactional throughput, PGAA uses Iceberg Merge-on-Read (MoR). This records changes in small "delete files" rather than rewriting entire data blocks, keeping the data lake fresh with minimal overhead.
 
+For details, see [Replicating to analytics](/pgd/latest/tiered-storage/replicate/) in the PGD documentation.
+
 ### Offloading to analytics
 
 This method offers a one-time, surgical way to immediately reclaim local disk space for HTAP tables, leaving only the copy in object storage (PGAA table). The local heap copy is truncated, and the table access method is altered to `PGAA`, which now points to object storage.
 
 If you need to bring your data back for transactional writes, you can restore the table back from object storage into the local Postgres heap.
+
+For details, see [Offloading to analytics](/pgd/latest/tiered-storage/offload/) in the PGD documentation.
 
 Method | Purpose | Use case | Origin Table | Destination table 
 ----------|-----------------------------|---------------- | ----- | -------
@@ -67,6 +68,6 @@ Offload | Selective<br /> archiving | One-time, surgical removal and<br /> archi
 
 PGAA supports two methods for managing object store metadata when integrating with PGD:
 
-- **No-catalog offload**: Store metadata alongside data files using [storage locations](../read_no_catalog#creating-a-storage-location) to connect directly to object storage.
-- **Catalog-managed offload**: Decouple data from the metadata [using a centralized catalog service](../catalog) like Iceberg REST. 
+- **No-catalog offload**: Store metadata alongside data files using [storage locations](/pgaa/latest/read_no_catalog/#creating-a-storage-location) to connect directly to object storage.
+- **Catalog-managed offload**: Decouple data from the metadata [using a centralized catalog service](/pgaa/latest/catalog) like Iceberg REST. 
 
