@@ -73,12 +73,8 @@ function rewriteRelativePaths(body, baseUrl, baseIsIndex) {
       // otherwise, resolve relative to the parent directory in the page URL path (e.g. "quickstart" on "/pgd/latest/guide" resolves to "/pgd/latest/quickstart")
       let base = new URL(baseUrl);
 
-      console.log(base.hostname);
       // base URL will be netlify in production due to proxy on EDB.com - rewrite to intended host
-      if (
-        base.hostname === "edb-docs.netlify.app" ||
-        base.hostname === "edb-docs-staging.netlify.app"
-      )
+      if (base.hostname === "edb-docs.netlify.app")
         base.hostname = "www.enterprisedb.com";
       base.pathname = base.pathname
         .replace(/\.mdx?$/, "") // strip .md or .mdx suffix
