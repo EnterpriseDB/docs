@@ -9,28 +9,29 @@ This page walks you through environment setup and two complete pipeline examples
 
 ## Setup prerequisites
 
-When you create your first pipeline through Pipeline Designer, beacon-agent creates the `visual_pipeline_user` role, grants it LOGIN (on PostgreSQL versions before 17; on 17 and later LOGIN is unnecessary because background worker authentication no longer requires it), and adds it to the `aidb_users` role. Whether the AIDB extension itself is pre-installed depends on the cluster type:
+Pipeline Designer requires a dedicated PostgreSQL role called `visual_pipeline_user` (VPU). This role is not created automatically; you must create it manually before using Pipeline Designer. The model picker queries the AIDB model registry as VPU, so if the role does not exist, the model picker is empty and pipeline creation cannot proceed. See [VPU role creation](#vpu-role-creation) below for the setup steps. Whether the AIDB extension itself is pre-installed depends on the cluster type:
 
-| Deployment type    | Extension installed at provisioning | Model picker populated before first pipeline |
-|--------------------|-------------------------------------|----------------------------------------------|
-| PGD managed        | Yes                                 | Yes                                          |
-| PSR managed        | No                                  | No (empty until extension exists)            |
-| Self-managed (any) | No                                  | No (empty until extension exists)            |
+| Deployment type    | Extension installed at provisioning | Model picker populated before first pipeline          |
+|--------------------|-------------------------------------|-------------------------------------------------------|
+| PGD managed        | Yes                                 | No (empty until VPU exists)                           |
+| PSR managed        | No                                  | No (empty until extension and VPU exist)              |
+| Self-managed (any) | No                                  | No (empty until extension and VPU exist)              |
 
 The steps below are grouped by operational scope, from cluster-wide settings through per-database, platform-level, and per-table configuration, so you can identify which steps apply when setting up a new database or adding a source table to an existing deployment.
 
-| Step                                    | Scope    | Applies to            | Re-run when                     |
-|-----------------------------------------|----------|-----------------------|---------------------------------|
-| `shared_preload_libraries`              | Instance | Self-managed          | PG major upgrade                |
-| `max_worker_processes`                  | Instance | All                   | Pipeline concurrency growth     |
-| `CREATE EXTENSION aidb CASCADE`         | Database | PSR managed, self-mgd | New database                    |
-| `aidb.bdr_setup()`                      | Database | PGD self-managed      | New database, extension upgrade |
-| `GRANT CREATE ON SCHEMA public`         | Database | All                   | New database                    |
-| beacon-agent DDL privileges             | Database | Self-managed          | New cluster registration        |
-| HM roles                                | Platform | All                   | New user onboarding             |
-| Inference service registration          | Platform | All                   | New model provider              |
-| Source table grants                     | Table    | All                   | New tables, schema changes      |
-| Pipeline object creation                | Pipeline | All                   | Automated (no manual action)    |
+| Step                                             | Scope    | Applies to            | Re-run when                     |
+|--------------------------------------------------|----------|-----------------------|---------------------------------|
+| `shared_preload_libraries`                       | Instance | Self-managed          | PG major upgrade                |
+| `max_worker_processes`                           | Instance | All                   | Pipeline concurrency growth     |
+| `CREATE EXTENSION aidb CASCADE`                  | Database | PSR managed, self-mgd | New database                    |
+| `CREATE ROLE visual_pipeline_user` + `aidb_users` grant | Instance | All                   | Never (one-time)                |
+| `aidb.bdr_setup()`                              | Database | PGD self-managed      | New database, extension upgrade |
+| `GRANT CREATE ON SCHEMA public`                  | Database | All                   | New database                    |
+| beacon-agent DDL privileges                      | Database | Self-managed          | New cluster registration        |
+| HM roles                                         | Platform | All                   | New user onboarding             |
+| Inference service registration                   | Platform | All                   | New model provider              |
+| Source table grants                              | Table    | All                   | New tables, schema changes      |
+| Pipeline object creation                         | Pipeline | All                   | Automated (no manual action)    |
 
 ### Cluster-level setup
 
@@ -79,8 +80,30 @@ CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
 VPU must be able to read source data, create destination tables, and (for Live and Background processing) install triggers. See [Configuring VPU permissions](vpu-and-permissions#configuring-vpu-permissions) for the full set of required grants. Without these grants, pipeline creation or execution will fail with a permission error.
 
 !!! Note "Self-managed clusters"
-    On self-managed clusters, beacon-agent performs the same automatic role and grant setup, but the database role used by beacon-agent must have SUPERUSER or equivalent DDL privileges. If DDL fails, beacon-agent logs the error but does not surface it through the Pipeline Designer UI; AIDB features remain non-functional for that database until the prerequisite DDL succeeds. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
+    On self-managed clusters, the database role used by beacon-agent must have SUPERUSER or equivalent DDL privileges for beacon-agent to perform pipeline management operations. If DDL fails, beacon-agent logs the error but does not surface it through the Pipeline Designer UI; AIDB features remain non-functional for that database until the prerequisite DDL succeeds. See the [AIDB installation documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
 !!!
+
+### VPU role creation
+
+The `visual_pipeline_user` role is a cluster-wide PostgreSQL role that Pipeline Designer uses for all pipeline operations. It must exist before you open Pipeline Designer, because the model picker queries the AIDB model registry as VPU; if the role is missing, the model picker is empty and pipeline creation cannot proceed.
+
+Create the role once per PostgreSQL instance, after the AIDB extension has been created in at least one database (the `aidb_users` role that VPU must join is created by the extension).
+
+On **PostgreSQL 16 and earlier**, VPU requires `LOGIN` because background worker authentication uses role-based login:
+
+```sql
+CREATE ROLE visual_pipeline_user LOGIN;
+GRANT aidb_users TO visual_pipeline_user;
+```
+
+On **PostgreSQL 17 and later**, `LOGIN` is not required because background worker authentication no longer depends on it:
+
+```sql
+CREATE ROLE visual_pipeline_user;
+GRANT aidb_users TO visual_pipeline_user;
+```
+
+This is a one-time, instance-level step that applies to all deployment types (PGD managed, PSR managed, and self-managed). You do not need to repeat it when adding databases or tables. For the full set of per-table grants that VPU needs, see [Configuring VPU permissions](vpu-and-permissions#configuring-vpu-permissions).
 
 ### Platform-level setup
 
