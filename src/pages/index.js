@@ -183,7 +183,7 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Analytics"
-              to="/pgaa/latest/"
+              to="/edb-postgres-ai/analytics"
             >
               <BannerCardLink to="/pgaa/latest/">
                 Analytics Accelerator (PGAA)
@@ -532,7 +532,7 @@ const Page = () => {
             <BannerWideLink to="/pg_extensions/pg_cron">pg_cron</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pg_ivm">pg_ivm</BannerWideLink>
-            
+
             <BannerWideLink to="/pg_extensions/pgtt">pgtt</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pgrouting">
@@ -545,9 +545,7 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
 
-            <BannerWideLink to="/pg_extensions/pgfs">
-              PGFS
-            </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/pgfs">PGFS</BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
