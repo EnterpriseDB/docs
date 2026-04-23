@@ -1,0 +1,109 @@
+---
+title: Choosing commit scopes
+navTitle: Choosing commit scopes
+description: How to choose and set commit scopes to match each operation's durability requirements in a geo-distributed PGD cluster.
+---
+
+Your DBA [configures commit scopes](/pgd/current/geo-replication-dba/commit-scopes/) and sets a default at the group or subgroup level. Override the group default for operations that need stronger or weaker durability guarantees, setting the scope per session or per transaction. Choosing the right scope means understanding what each one costs in latency and what happens if the node fails before replication completes.
+
+To see the default commit scope your DBA has configured for each node group:
+
+```sql
+SELECT node_group_name, default_commit_scope
+FROM bdr.node_group_summary;
+```
+
+## Picking the right scope
+
+Each scope makes a different promise about what happens after a write commits. The right choice depends on what your application can tolerate if a node fails before replication completes.
+
+### Local protect
+
+Use local protect for data where losing a recent write is acceptable, such as high-throughput event streams, analytics ingestion, or any workload where write latency matters more than durability. Transactions commit locally and replicate to other nodes asynchronously, so a node failure before replication completes means the write is lost. Reads on a different node can return slightly stale data while replication catches up.
+
+### Majority protect
+
+Use majority protect for writes that can't be lost but where added latency is acceptable, such as account updates, customer records, and most transactional data. The commit waits for a majority of nodes in the origin group to confirm before returning, so the write is durable across multiple nodes before the application proceeds. The cost is added round-trip latency per write, typically tens to hundreds of milliseconds for a multi-region cluster.
+
+### Adaptive protect
+
+Use adaptive protect for two-node-plus-witness groups where strict majority protect fails if one data node becomes unreachable. Adaptive protect behaves like majority protect when a majority of nodes are available, but degrades gracefully to asynchronous replication after a configurable timeout during transient network issues, at the cost of temporarily weaker durability.
+
+### CAMO
+
+Use CAMO for payments, fund transfers, and any operation where applying the same transaction twice causes incorrect results. The commit waits for a dedicated partner node and guarantees the transaction is applied exactly once. Even if the connection drops during commit, the application can query the transaction's fate and decide whether to retry. CAMO requires application code changes beyond just setting the scope. See [Handling retries and failures](application-patterns#camo-retry-workflow) for the retry pattern.
+
+CAMO requires exactly two data nodes in the CAMO group and adds higher commit latency than majority protect. It's not appropriate for high-throughput workloads where that latency is unacceptable.
+
+## Setting the scope
+
+Use the group default for most operations, and override to a stronger scope only for writes that require it.
+
+Set the scope per session when all operations on a connection share the same durability requirement, for example a dedicated connection used exclusively for payment processing. Set it per transaction when a single connection handles mixed workloads and only specific operations need a stronger guarantee.
+
+- **Per session:** Set `bdr.commit_scope` at the session level to apply a scope to all transactions in that connection:
+
+    ```sql
+    SET bdr.commit_scope = 'majority_protect';
+    ```
+
+    All subsequent transactions in the session use this scope until you change it or the session ends.
+
+- **Per transaction:** Use `SET LOCAL` inside a transaction to override the scope for that transaction only. The session-level setting is restored when the transaction ends:
+
+    ```sql
+    BEGIN;
+    SET LOCAL bdr.commit_scope = 'majority_protect';
+    -- critical write operations
+    COMMIT;
+    ```
+
+To check which commit scope is active in the current session:
+
+```sql
+SHOW bdr.commit_scope;
+```
+
+## Other considerations
+
+### Bulk operations
+
+Avoid using a synchronous scope for high-throughput bulk operations. The added round-trip latency per transaction multiplies across large batches and can make bulk loads significantly slower. Split bulk operations by scope: use a strong scope for critical records and the default for the rest.
+
+### Timed-out commits
+
+If a commit scope requires remote confirmation and the remote location is unreachable, the transaction fails. Retry logic handles transient network failures, but timed-out commits require extra care: if a commit times out, the outcome is unknown. The transaction could have committed on some nodes before the timeout. For operations where duplicate application is not acceptable, use CAMO. See [Handling retries and failures](application-patterns#camo-retry-workflow).
+
+### Reading your own writes
+
+Regardless of commit scope, if your application writes on one connection and immediately reads on another, the read can land on a node that hasn't yet received the replication. To guarantee that a subsequent read reflects a prior write in the same session, call `bdr.wait_slot_confirm_lsn(NULL, NULL)` after the write:
+
+```sql
+-- Insert a new transaction using an existing active account
+INSERT INTO transactions (transaction_id, account_id, direction, amount, balance_after, description, channel, initiated_at)
+SELECT
+    uuidv7(),
+    account_id,
+    'D',
+    250.00,
+    balance - 250.00,
+    'Online purchase',
+    'ONLINE',
+    NOW()
+FROM accounts
+WHERE status = 'active'
+LIMIT 1
+RETURNING account_id, transaction_id, balance_after;
+
+-- Wait for replication to all nodes before proceeding
+SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
+
+-- This read now reflects the insert, regardless of which node serves it
+SELECT balance_after
+FROM transactions
+WHERE account_id = (SELECT account_id FROM accounts WHERE status = 'active' LIMIT 1)
+ORDER BY initiated_at DESC
+LIMIT 1;
+```
+
+`bdr.wait_slot_confirm_lsn(NULL, NULL)` blocks until all PGD replication slots have confirmed the current LSN. The delay is proportional to network latency to the farthest node in the cluster. Use it selectively for operations that genuinely need it, not on every query.
