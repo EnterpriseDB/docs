@@ -3968,6 +3968,29 @@ SvgWebinar.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
+var _excluded$Analytics = ["title", "titleId"];
+var SvgAnalytics = function SvgAnalytics(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$Analytics);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M2 20h4v-6H2zM10 20h4v-12h-4zM18 20h4v-18h-4zM0 21h24v1H0z"
+  }));
+};
+SvgAnalytics.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+exports.Analytics = SvgAnalytics;
 exports.Alert = SvgAlert;
 exports.Announce = SvgAnnounce;
 exports.ArrowDown = SvgArrowDown;
