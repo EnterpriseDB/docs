@@ -1,5 +1,4 @@
 const iconNames = {
-  ANALYTICS: "Analytics",
   ALERT: "Alert",
   ANNOUNCE: "Announce",
   ARROW_DOWN: "ArrowDown",
