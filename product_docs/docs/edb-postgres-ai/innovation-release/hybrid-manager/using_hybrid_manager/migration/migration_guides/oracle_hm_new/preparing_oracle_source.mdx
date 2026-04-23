@@ -1,10 +1,11 @@
 ---
 title: Preparing Oracle source
 navTitle: Preparing Oracle
+description: Configure ARCHIVELOG mode, supplemental logging, tablespaces, and a dedicated migration user on your Oracle source database.
 deepToC: true
 ---
 
-Before you perform a migration of an Oracle source using Hybrid Manager (HM), you must configure the database configuration, as well as create a dedicated database user. These steps ensure that all migration components, including the EDB Postgres AI agent (`beacon-agent`) and the DMS agent (`cdcagent`), can establish a stable connection, discover your schemas, and perform schema and data extraction operations.
+Before you perform a migration of an Oracle source using Hybrid Manager (HM), you must complete several database configuration steps and create a dedicated migration user. These steps ensure that all migration components, including the EDB Postgres AI agent (`beacon-agent`) and the DMS agent (`cdcagent`), can establish a stable connection, discover your schemas, and perform schema and data extraction operations.
 
 ## Prerequisites
 
@@ -16,8 +17,6 @@ Before you perform a migration of an Oracle source using Hybrid Manager (HM), yo
 ### Enable `ARCHIVELOG` mode
 
 Migration tools require the database to be in `ARCHIVELOG` mode to ensure that data changes are captured during the transfer.
-
-`<DB_IDENTIFIER>` is, for CDB, the container database name (for example, CDB1). For non-CDB, this is either the service name (recommended) or SID (for example, ORCL).
 
 1.  Connect to the database as `SYSDBA` to perform administrative tasks:
 
@@ -64,7 +63,7 @@ Migration tools require the database to be in `ARCHIVELOG` mode to ensure that d
 
 1.  Configure the Fast Recovery Area (FRA) and enable logging:
 
-    !!!Tip
+    !!!tip
     - Create a directory for Fast Recovery Area (FRA) in advance.
     - Ensure the `db_recovery_file_dest_size` is large enough to hold at least 24 hours of redo logs during peak migration loads to prevent the database from hanging.
     !!!
@@ -124,26 +123,13 @@ Supplemental logging ensures that the redo logs contain enough information for t
 
 1.  Enable supplemental logging:
 
-    <TabContainer syncKey="db_type">
-    <Tab title="CDB/PDB">
-
     ```sql
     ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
     ```
-
-    </Tab>
-    <Tab title="Non-CDB">
-
-    ```sql
-    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
-    ```
-
-    </Tab>
-    </TabContainer>
 
 ### (Optional) Ensure adequate redo log space is available for better performance
 
-<details><summary>Why should I increase redo log space?</summary>
+<details><summary>More information...</summary>
 
 The data migration process consists of two main phases: a consistent snapshot of the data, followed by a continuous stream of changes. This change stream is powered by LogMiner and the Oracle database redo logs.
 
@@ -315,7 +301,7 @@ In a multitenant environment, you must create a tablespace in the Root Container
 1.  Connect as sysdba to the CDB: 
 
     ```sql
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME> as sysdba;
+    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba;
     ```
 
 1.  Create the CDB tablespace:
@@ -410,14 +396,14 @@ To simplify the migration process, we recommend creating a single Common User (C
     <Tab title="CDB/PDB">
 
     ```sql
-    CREATE USER <C##_MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD> DEFAULT TABLESPACE LOGMINER_TBS QUOTA UNLIMITED ON LOGMINER_TBS CONTAINER=ALL;
+    CREATE USER <C##_MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD> DEFAULT TABLESPACE <TS_NAME> QUOTA UNLIMITED ON <TS_NAME> CONTAINER=ALL;
     ```
 
     </Tab>
     <Tab title="Non-CDB">
 
     ```sql
-    CREATE USER <MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD> DEFAULT TABLESPACE LOGMINER_TBS QUOTA UNLIMITED ON LOGMINER_TBS;
+    CREATE USER <MIGRATION_USER> IDENTIFIED BY <MIGRATION_USER_PASSWORD> DEFAULT TABLESPACE <TS_NAME> QUOTA UNLIMITED ON <TS_NAME>;
     ```
 
     </Tab>
@@ -573,7 +559,7 @@ To simplify the migration process, we recommend creating a single Common User (C
     GRANT SELECT ON <SCHEMA_NAME>.<TABLE_NAME> TO <C##_MIGRATION_USER/MIGRATION_USER>
     ```
 
-1.  Change the default namespace:
+1.  Set the default tablespace:
 
     <TabContainer syncKey="db_type">
     <Tab title="CDB/PDB">
@@ -606,15 +592,15 @@ To simplify the migration process, we recommend creating a single Common User (C
     <TabContainer syncKey="db_type">
     <Tab title="CDB/PDB">
 
-    ```sql
-    sqlplus <C##_MIGRATION_USER>@//<HOST>:<HOST>/<PDB_NAME>
+    ```shell
+    sqlplus <C##_MIGRATION_USER>@//<HOST>:<PORT>/<PDB_NAME>
     ```
 
     </Tab>
     <Tab title="Non-CDB">
 
-    ```sql
-    sqlplus <MIGRATION_USER>/<MIGRATION_USER_PASSWORD>@//<HOST>:<HOST>/<SID_OR_SERVICE>
+    ```shell
+    sqlplus <MIGRATION_USER>/<MIGRATION_USER_PASSWORD>@//<HOST>:<PORT>/<SID_OR_SERVICE>
     ```
 
     </Tab>
@@ -656,7 +642,7 @@ Ensure your database configurations and created user meet all requirements to fu
     <TabContainer syncKey="db_type">
     <Tab title="CDB/PDB">
 
-    ```sql
+    ```shell
     ODB_SYSDBA_USERNAME=sys ODB_SYSDBA_PASSWORD=password ODB_HOST=localhost ODB_PORT=1521 ORACLE_SID=ORCLPDB1 ODB_DBZ_USERNAME=C##MIG_USER2 ODB_DBZ_PASSWORD=migrator_password LOG_MINER_TBS_NAME=LOGMINER_TBS ./oracleConfigValidation.sh "${arr[@]}"
     ```
 
@@ -667,7 +653,7 @@ Ensure your database configurations and created user meet all requirements to fu
     </Tab>
     <Tab title="Non-CDB">
 
-    ```sql
+    ```shell
     ODB_SYSDBA_USERNAME=sys ODB_SYSDBA_PASSWORD=password ODB_HOST=localhost ODB_PORT=1521 ORACLE_SID=ORCL ODB_DBZ_USERNAME=MIG_USER2 ODB_DBZ_PASSWORD=migrator_password LOG_MINER_TBS_NAME=LOGMINER_TBS ./oracleConfigValidation.sh "${arr[@]}"
     ```
 
@@ -725,12 +711,9 @@ Ensure your database configurations and created user meet all requirements to fu
     
     Your database is ready for CDC migration.
 
-!!! Note 
-    Address any `[Failed]` or `[Suggestion]` statuses by modifying the source database settings as recommended here. `[Failed]` checks are blocking issues that you must resolve before the DMS can execute the data migration. `[Suggestion]` checks allow migration but can negatively affect performance if left unaddressed.
-
-## SSL configuration
-
-Ensure you configure your source database server to accept SSL connections to allow the EDB DMS Reader to connect to it. You must create a server certificate and a server private key to enable this configuration. You can use a tool like OpenSSL to create the key.
+!!!note
+Address any `[Failed]` or `[Suggestion]` statuses by modifying the source database settings as recommended here. `[Failed]` checks are blocking issues that you must resolve before the DMS can execute the data migration. `[Suggestion]` checks allow migration but can negatively affect performance if left unaddressed.
+!!!
 
 ## More information
 
