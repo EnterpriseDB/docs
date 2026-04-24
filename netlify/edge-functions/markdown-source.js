@@ -61,7 +61,6 @@ function rewriteRelativePaths(body, baseUrl, baseIsIndex) {
       // ...else, replace with "latest"
       const splitPath = href.split("/");
       if (splitPath[2] === "current") {
-        const splitPageUrl = pageUrl.split("/");
         if (splitPath[1] === splitPageUrl[1]) {
           splitPath[2] = splitPageUrl[2];
         } else {
@@ -73,6 +72,10 @@ function rewriteRelativePaths(body, baseUrl, baseIsIndex) {
       // if current page is an index page (thus, not present in the URL), resolve relative to the full URL path (e.g. "quickstart" on "/pgd/latest/" resolves to "/pgd/latest/quickstart/")
       // otherwise, resolve relative to the parent directory in the page URL path (e.g. "quickstart" on "/pgd/latest/guide" resolves to "/pgd/latest/quickstart")
       let base = new URL(baseUrl);
+
+      // base URL will be netlify in production due to proxy on EDB.com - rewrite to intended host
+      if (base.hostname === "edb-docs.netlify.app")
+        base.hostname = "www.enterprisedb.com";
       base.pathname = base.pathname
         .replace(/\.mdx?$/, "") // strip .md or .mdx suffix
         .replace(/\/$/, ""); // strip trailing slash

@@ -1,0 +1,208 @@
+---
+title: Operations reference
+navTitle: Operations
+description: API reference for AIDB pipeline error log functions — inspecting, clearing, and retrying failed pipeline records.
+---
+
+Reference for pipeline error log functions. For guide-style documentation, see [Pipeline error log](../data-pipelines/orchestration/error-log).
+
+## Error log functions
+
+Each pipeline maintains an error log table at `{source_schema}.pipeline_{pipeline_name}_errors`. These functions provide a consistent interface for querying and managing that log.
+
+---
+
+### `aidb.get_error_logs`
+
+Returns error log entries for a pipeline, with optional filters.
+
+#### Parameters
+
+| Parameter          | Type     | Default  | Description                                                                                            |
+|--------------------|----------|----------|--------------------------------------------------------------------------------------------------------|
+| `pipeline_name`    | TEXT     | Required | Name of the pipeline.                                                                                  |
+| `p_source_id`      | TEXT     | NULL     | Filter to a specific source record ID.                                                                 |
+| `p_pipeline_step`  | SMALLINT | NULL     | Filter to a specific pipeline step number.                                                             |
+| `p_error_category` | TEXT     | NULL     | Filter by category: `RecordTemporary`, `RecordPermanent`, `PipelineTemporary`, or `PipelinePermanent`. |
+| `p_limit`          | INTEGER  | NULL     | Maximum number of rows to return.                                                                      |
+| `p_offset`         | INTEGER  | NULL     | Number of rows to skip (for pagination).                                                               |
+
+#### Returns
+
+| Column           | Type               | Description                                           |
+|------------------|--------------------|-------------------------------------------------------|
+| `id`             | bigint             | Error log entry ID                                    |
+| `source_id`      | text               | Source record that failed                             |
+| `part_ids`       | bigint[]           | Part identifiers (for chunked records)                |
+| `pipeline_step`  | smallint           | Step number where the failure occurred                |
+| `step_operation` | text               | Operation name (for example, `ParsePdf`, `ChunkText`) |
+| `error_message`  | text               | Error description                                     |
+| `error_category` | aidb.ErrorBlocking | Error category                                        |
+| `failed_at`      | timestamptz        | Timestamp of the failure                              |
+| `retry_count`    | integer            | Number of retry attempts                              |
+| `last_retry_at`  | timestamptz        | Timestamp of the last retry                           |
+
+#### Examples
+
+```sql
+-- All errors for a pipeline
+SELECT * FROM aidb.get_error_logs('my_pipeline');
+
+-- Filter by source record
+SELECT * FROM aidb.get_error_logs('my_pipeline', p_source_id => 'doc_42');
+
+-- Filter by step and category
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_pipeline_step  => 1::smallint,
+    p_error_category => 'RecordPermanent'
+);
+
+-- Paginate
+SELECT * FROM aidb.get_error_logs('my_pipeline', p_limit => 20, p_offset => 40);
+```
+
+---
+
+### `aidb.get_error_log_summary`
+
+Returns aggregated error counts for a single pipeline, grouped by step, operation, and category.
+
+#### Parameters
+
+| Parameter       | Type | Description           |
+|-----------------|------|-----------------------|
+| `pipeline_name` | TEXT | Name of the pipeline. |
+
+#### Returns
+
+| Column             | Type        | Description                    |
+|--------------------|-------------|--------------------------------|
+| `pipeline_step`    | smallint    | Step number                    |
+| `step_operation`   | text        | Operation name                 |
+| `error_category`   | text        | Error category                 |
+| `error_count`      | bigint      | Number of errors in this group |
+| `latest_failed_at` | timestamptz | Most recent failure timestamp  |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_error_log_summary('my_pipeline');
+
+__OUTPUT__
+ pipeline_step | step_operation | error_category  | error_count | latest_failed_at
+---------------+----------------+-----------------+-------------+----------------------------
+             1 | ParsePdf       | RecordPermanent |           2 | 2026-04-10 14:31:58.456+00
+             2 | ChunkText      | RecordPermanent |           1 | 2026-04-10 14:32:01.123+00
+(2 rows)
+```
+
+---
+
+### `aidb.get_all_error_summaries`
+
+Returns the same rollup as `aidb.get_error_log_summary()` but across all pipelines at once.
+
+#### Returns
+
+| Column             | Type        | Description                    |
+|--------------------|-------------|--------------------------------|
+| `pipeline_name`    | text        | Pipeline name                  |
+| `pipeline_step`    | smallint    | Step number                    |
+| `step_operation`   | text        | Operation name                 |
+| `error_category`   | text        | Error category                 |
+| `error_count`      | bigint      | Number of errors in this group |
+| `latest_failed_at` | timestamptz | Most recent failure timestamp  |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_all_error_summaries();
+
+__OUTPUT__
+ pipeline_name | pipeline_step | step_operation | error_category    | error_count | latest_failed_at
+---------------+---------------+----------------+-------------------+-------------+----------------------------
+ my_pipeline   |             1 | ParsePdf       | RecordPermanent   |           2 | 2026-04-10 14:31:58.456+00
+ pdf_ingester  |             1 | ParsePdf       | PipelinePermanent |           1 | 2026-04-10 15:00:12.000+00
+(2 rows)
+```
+
+---
+
+### `aidb.clear_error_logs`
+
+Deletes specific error log entries by ID. Review entries with `aidb.get_error_logs()` before clearing.
+
+#### Parameters
+
+| Parameter       | Type     | Description                             |
+|-----------------|----------|-----------------------------------------|
+| `pipeline_name` | TEXT     | Name of the pipeline.                   |
+| `error_ids`     | BIGINT[] | Array of error log entry IDs to delete. |
+
+#### Returns
+
+`INTEGER` — the number of rows deleted.
+
+#### Example
+
+```sql
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3]);
+
+__OUTPUT__
+ clear_error_logs
+------------------
+                2
+(1 row)
+```
+
+---
+
+### `aidb.retry_pipeline_errors`
+
+!!!Note
+`aidb.retry_pipeline_errors()` is not yet available. It will be included in a future release. See [Known issues](../overview/known-issues).
+!!!
+
+Re-processes specific error log entries from the step where they originally failed.
+
+#### Parameters
+
+| Parameter       | Type     | Description                            |
+|-----------------|----------|----------------------------------------|
+| `pipeline_name` | TEXT     | Name of the pipeline.                  |
+| `error_ids`     | BIGINT[] | Array of error log entry IDs to retry. |
+
+#### Returns
+
+| Column          | Type   | Description                        |
+|-----------------|--------|------------------------------------|
+| `error_id`      | bigint | Error log entry ID                 |
+| `status`        | text   | `resolved` or `failed`             |
+| `error_message` | text   | Failure reason (empty if resolved) |
+
+Resolved entries are removed from the error log. Failed retries remain with an incremented `retry_count` and updated `last_retry_at`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+
+__OUTPUT__
+ error_id | status   | error_message
+----------+----------+----------------------------------
+        1 | resolved |
+        2 | failed   | failed to extract text from page 0
+(2 rows)
+```
+
+---
+
+## Error categories
+
+| Category            | Scope         | Blocks pipeline? | Description                                                                                  |
+|---------------------|---------------|------------------|----------------------------------------------------------------------------------------------|
+| `RecordTemporary`   | Single record | No               | Transient failure for one record. May succeed on retry.                                      |
+| `RecordPermanent`   | Single record | No               | Permanent failure for one record (for example, corrupt data).                                |
+| `PipelineTemporary` | Entire step   | Yes              | Transient failure that stopped the step (for example, service outage). May resolve on retry. |
+| `PipelinePermanent` | Entire step   | Yes              | Permanent failure that stopped the step (for example, invalid model config).                 |

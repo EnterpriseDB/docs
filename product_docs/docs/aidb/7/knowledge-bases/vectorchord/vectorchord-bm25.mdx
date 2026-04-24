@@ -1,0 +1,132 @@
+---
+title: VectorChord-BM25
+navTitle: VectorChord-BM25
+description: "How to use the VectorChord-BM25 extension for sparse keyword search alongside AI pipelines."
+---
+
+VectorChord-BM25 brings Best Matching 25 (BM25) keyword search into Postgres using the same high-performance framework as VectorChord. Where VectorChord handles dense semantic search on AI embeddings, VectorChord-BM25 handles sparse keyword search — finding documents that contain the right words, ranked by statistical relevance.
+
+For installation, configuration, and full technical reference, see [VectorChord-BM25  documentation](/pg_extensions/vectorchord_bm25/).
+
+## When to use VectorChord-BM25
+
+BM25 keyword search complements dense vector search in knowledge base pipelines. Use VectorChord-BM25 when:
+
+- Users search with precise terminology, product names, or technical identifiers that semantic models may not rank highly.
+- You want to build a hybrid retrieval pipeline that combines keyword relevance with semantic similarity.
+- Your corpus is large and you need fast, indexed keyword lookup rather than sequential text scanning.
+
+## How it works
+
+VectorChord-BM25 introduces a `bm25vector` data type and a `bm25` index. Text is tokenized into a sparse vector representation using a tokenizer (such as BERT), stored as a `bm25vector`, indexed with a BM25 index, and queried using the `<&>` distance operator.
+
+Unlike dense vector search, which requires an embedding model at query time, BM25 scoring is entirely statistical — no model inference is needed at retrieval time.
+
+## Using VectorChord-BM25 alongside pipelines
+
+VectorChord-BM25 is not a pipeline step operation itself. Instead, it operates as a **parallel search layer** alongside your dense knowledge base. The typical pattern is:
+
+1. Your pipeline populates a dense knowledge base (embedding-indexed table) via the `KnowledgeBase` step.
+2. A separate BM25-indexed table stores the same or related content, tokenized with `tokenize()`.
+3. At query time, results from both indexes are merged and re-ranked.
+
+### Step 1: Set up the tokenizer
+
+Initialize a tokenizer before creating your BM25 table. BERT is the most common choice:
+
+```sql
+SELECT create_tokenizer('bert', $$
+model = "bert_base_uncased"
+$$);
+```
+
+### Step 2: Create the BM25 table
+
+Create a table with a `bm25vector` column alongside your pipeline's source or destination table:
+
+```sql
+CREATE TABLE documents_bm25 (
+    id     serial PRIMARY KEY,
+    source_id bigint,         -- references the pipeline source key
+    passage   text,
+    embedding bm25vector
+);
+```
+
+### Step 3: Populate and index
+
+Load content, tokenize it, and build the BM25 index:
+
+```sql
+-- Tokenize text into bm25vector
+UPDATE documents_bm25
+SET embedding = tokenize(passage, 'bert');
+
+-- Create the BM25 index
+CREATE INDEX documents_embedding_bm25
+ON documents_bm25
+USING bm25 (embedding bm25_ops);
+```
+
+### Step 4: Query with BM25
+
+Use the `<&>` operator and `to_bm25query()` to retrieve keyword-ranked results:
+
+```sql
+SELECT
+    id,
+    source_id,
+    passage,
+    embedding <&> to_bm25query(
+        'documents_embedding_bm25',
+        tokenize('PostgreSQL full-text search', 'bert')
+    ) AS bm25_score
+FROM documents_bm25
+ORDER BY bm25_score
+LIMIT 10;
+```
+
+## Combining BM25 with a dense knowledge base
+
+The most effective retrieval pattern is hybrid search: running both a dense (semantic) query and a BM25 (keyword) query, then merging the result sets. This example runs both searches and unions the top results for downstream re-ranking:
+
+```sql
+-- Dense semantic results from the pipeline knowledge base
+WITH dense_results AS (
+    SELECT key, distance AS score, 'dense' AS source
+    FROM aidb.retrieve_key('my_knowledge_base', 'PostgreSQL full-text search', 10)
+),
+
+-- BM25 keyword results from the BM25 table
+bm25_results AS (
+    SELECT source_id::text AS key,
+           embedding <&> to_bm25query(
+               'documents_embedding_bm25',
+               tokenize('PostgreSQL full-text search', 'bert')
+           ) AS score,
+           'bm25' AS source
+    FROM documents_bm25
+    ORDER BY score
+    LIMIT 10
+)
+
+SELECT key, score, source
+FROM dense_results
+UNION ALL
+SELECT key, score, source
+FROM bm25_results
+ORDER BY score;
+```
+
+The merged results can then be passed to a re-ranking model (via `aidb.rerank_text()`) for a final relevance-ordered response.
+
+## Relationship to hybrid search
+
+VectorChord-BM25 is one of the building blocks for the hybrid search pattern described in [Hybrid search](../hybrid-search). Dense search with VectorChord provides semantic breadth; BM25 provides keyword precision. Together they reduce both false positives (off-topic semantic matches) and false negatives (missed exact-match results).
+
+## Further reading
+
+- [VectorChord-BM25 documentation](/pg_extensions/vectorchord_bm25/) — installation, tokenizer configuration, reference, and release notes
+- [VectorChord](vectorchord-extension) — dense vector indexing with pipelines
+- [Hybrid search](../hybrid-search) — combining dense and sparse search
+- [Pipeline step config helpers](/edb-postgres-ai/innovation-release/ai-factory/data-pipelines/reference#pipeline-step-config-helpers) — `KnowledgeBase` step configuration reference

@@ -62,6 +62,14 @@ The DMS supports running multiple data migrations from one source to one destina
 
   DMS agent in writer mode (external destination): Each migration requires its own instance of the DMS agent in writer mode, even if the migration shares the same destination as another migration.
 
+### Postgres-specific schema object types aren't migrated by DMS at schema migration time
+
+[ET-5334]: #
+
+**Description:** Postgres schema migration support is limited to simple databases with tables only. DMS is currently unable to migrate some object types and has issues with the order in which objects are migrated.
+
+**Workaround:** Migrate the schema manually and use DMS in data-only migration mode.
+
 ## Oracle limitations
 
 ### Unsupported Oracle data types
@@ -112,19 +120,23 @@ Oracle XE (Express Edition) does not support enabling supplemental logging at th
 
 ### Unsupported domain type definitions in columns
 
-[ET-4363]: #
+!!!tip 
+Partially resolved in HM versions 2026.4 and later.
+!!!
+
+[ET-4363, partially resolved, follow-up ticket pending]: #
 
 The EDB DMS doesn't support migrating tables with columns that have user-defined domains as data types for the following data type domains:
 
--   DATE
--   TIME
--   TIMESTAMP
--   INTERVAL
--   UUID
+-   DATE (Support added in Innovation Release HM 2026.4)
+-   TIME (Support added in Innovation Release HM 2026.4)
+-   TIMESTAMP (Support added in Innovation Release HM 2026.4)
+-   INTERVAL (Support added in Innovation Release HM 2026.4)
+-   UUID (Support added in Innovation Release HM 2026.4)
 -   ENUM
--   JSON
--   XML
--   POINT
+-   JSON (Support added in Innovation Release HM 2026.4)
+-   XML (Support added in Innovation Release HM 2026.4)
+-   POINT (Support added in Innovation Release HM 2026.4)
 -   LTREE
 -   TSVECTOR
 
@@ -244,7 +256,7 @@ In versions 2025.12 and earlier, when the automatic creation of a Migration Port
 
 ### Automatic Migration Portal project creation fails with invalid `resource_id` characters
 
-[MIG-7763]: #
+[MIG-7763, solution is the workaround]: #
 
 The automatic creation of Migration Portal projects fails (with error message **Failed to create**) if the `resource_id` specified for the registered Oracle database contains characters that are invalid.
 
@@ -308,6 +320,10 @@ After the cluster is updated, retry the connection test in the Migration Portal 
 
 ### Automatic Migration Portal project creation fails with "UNAVAILABLE: unresolved address"
 
+!!!tip
+Resolved in HM versions 2026.4 and later.
+!!!
+
 [MIG-7969]: # 
 
 **Description:** The automatic creation of Migration Portal projects may fail with an internal server error: `rpc error: code = Internal desc = Internal server error occurred: UNAVAILABLE: unresolved address`. This is typically caused by a transient network resolution issue between the Hybrid Manager components and the Migration Portal service.
@@ -317,6 +333,26 @@ After the cluster is updated, retry the connection test in the Migration Portal 
 - Manual creation: Wait 20–40 minutes for network states to stabilize, then manually create the Migration Portal project through the HM console.
 
 - Resource ID reset: Modify the `resource_id` in your `beacon_agent.yaml` configuration file (to any new ID assigned by yourself) and restart the EDB Postgres AI agent, or create a new project and map the agent to that new project to trigger a fresh synchronization.
+
+### Upgrade to version 2026.4 fails due to immutable `ragchew-ai-vendor-secrets` secret
+
+[MIG-8373]: #
+
+**Description:** When upgrading HM to version 2026.4, the upgrade process may fail with a `Failed to install component` error for `edb-migration-copilot`. This occurs because the upgrade attempts to change the `type` field of the existing `ragchew-ai-vendor-secrets` Kubernetes Secret in the `edb-migration-copilot` namespace. The `type` field is immutable once a Secret is created, causing the Kubernetes API server to reject the update with the error: `Secret "ragchew-ai-vendor-secrets" is invalid: type: Invalid value: "Opaque": field is immutable`.
+
+**Workaround:** Before upgrading to 2026.4, manually delete the secret `ragchew-ai-vendor-secrets` in the `edb-migration-copilot` namespace. The operator will recreate it with the correct type during the upgrade:
+
+```shell
+kubectl delete secret ragchew-ai-vendor-secrets -n edb-migration-copilot
+```
+
+### SQL file assessment defaults to `Oracle_19c` as the source database type
+
+[MIG-8590]: #
+
+**Description:** When uploading a SQL file for an Application Migration assessment, the HM console doesn't associate the source database resource ID with the uploaded file. Because no resource ID is provided, `upm-beacon` sends the assessment request to the Migration Portal with the source database version set to `UNKNOWN`. The Migration Portal then defaults to `Oracle_19c` as the source database type when processing the assessment. As a result, assessments may not accurately reflect the compatibility rules for your actual source database version. Additionally, at least one project must exist in the Migration Portal for the application SQL assessment to complete without errors.
+
+**Workaround:** Ensure at least one project exists in the Migration Portal before initiating an Application Migration assessment via SQL file upload. A fix that associates source database resource IDs with uploaded SQL files is being tracked for a future release.
 
 ## Other known issues
 
