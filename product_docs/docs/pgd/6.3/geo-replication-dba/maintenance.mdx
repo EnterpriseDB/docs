@@ -181,4 +181,33 @@ After the partition heals, verify recovery before resuming operations:
 
 Geo-replication increases conflict potential because the same row can be updated in different locations simultaneously. By default, PGD resolves conflicts using last-update-wins.
 
-Check `bdr.conflict_history_summary` regularly and escalate a high conflict rate to the application team. Persistent conflicts can indicate application design issues or a need for location-based data partitioning, and may require changes that are outside the scope of database administration.
+Check `bdr.conflict_history_summary` regularly for tables with high conflict rates:
+
+```sql
+SELECT nspname, relname, conflict_type, count(*)
+FROM bdr.conflict_history_summary
+GROUP BY nspname, relname, conflict_type
+ORDER BY count(*) DESC;
+```
+
+A persistent high conflict rate on a specific table points to an access pattern worth revisiting with the application team. Persistent conflicts are usually a design issue. Location-based data partitioning, append-only patterns, or switching to CRDT data types are more effective long-term than adjusting conflict resolution.
+
+### Configuring conflict resolvers
+
+If changing the access pattern isn't feasible and last-update-wins produces the wrong outcome for a specific table, configure a custom resolver using `bdr.alter_node_set_conflict_resolver()`. The available strategies are `update_if_newer` (default), `skip`, and `error`. The function call isn't replicated, so run it on each node in the cluster. Check the node name first using `SELECT node_name FROM bdr.node_summary`:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver(
+    node_name         => 'node1',
+    conflict_type     => 'update_update',
+    conflict_resolver => 'error'
+);
+```
+
+To verify the current resolver configuration across all conflict types:
+
+```sql
+SELECT * FROM bdr.node_conflict_resolvers;
+```
+
+See [Conflict resolution](/pgd/current/conflict-management/conflicts/04_conflict_resolution/) for the full list of conflict types and resolvers.
