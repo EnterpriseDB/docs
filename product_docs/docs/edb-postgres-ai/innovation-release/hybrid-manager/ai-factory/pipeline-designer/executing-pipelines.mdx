@@ -15,7 +15,7 @@ When a pipeline executes (whether triggered automatically or manually), the foll
 1.  Pipeline operations run under the [`visual_pipeline_user` (VPU)](vpu-and-permissions) role. 
     The mechanism depends on how the pipeline is triggered.
     - For manual execution and pipeline management operations, the EDB Postgres AI agent (`beacon-agent`) opens a transaction and switches to VPU using `SET LOCAL ROLE`. 
-    - For Background mode, AIDB's background worker connects to the database as the pipeline's owner role directly. 
+    - For Background mode, the AI Database (AIDB) background worker connects to the database as the pipeline's owner role directly. 
     - For Live mode, per-pipeline SECURITY DEFINER wrapper functions owned by VPU execute with VPU's privileges regardless of the invoking session's role.
 
 1.  AIDB reads pending rows from the source table.
@@ -64,11 +64,11 @@ In Background mode, AIDB's background worker (running inside the PostgreSQL inst
 -   Application writes to the source table are unaffected by pipeline processing. There is a delay (determined by the sync interval) before results appear.
 -   Batch size and sync interval are configurable (defaults: 500 rows per batch, 15-hour interval).
 -   Recommended for most production workloads.
--   The background worker runs on the database cluster, not in the HM control plane. On PGD clusters, it runs on the write leader node.
+-   The background worker runs on the database cluster, not in the HM control plane. On Postgres Distributed (PGD) clusters, it runs on the write leader node.
 
 ## Deployment types
 
-Pipeline Designer can create and manage pipelines on clusters across all three HM deployment types. Understanding these categories is useful because they determine which model access paths are available. See [How models reach pipeline steps](#how-models-reach-pipeline-steps) below for the full breakdown.
+Pipeline Designer can create and manage pipelines on clusters across all three Hybrid Manager (HM) deployment types. Understanding these categories is useful because they determine which model access paths are available. See [How models reach pipeline steps](#how-models-reach-pipeline-steps) below for the full breakdown.
 
 An HM **location** is a Kubernetes environment managed by the HM control plane. HM supports multiple locations in a hub-and-spoke topology:
 
@@ -126,8 +126,8 @@ AIDB also ships with several built-in models (bert, clip, t5, llama) that run lo
 
 Pipeline execution behavior depends on the cluster architecture, not on the deployment type. The same mechanics apply whether the cluster is on the primary location, a secondary location, or self-managed.
 
--   **PGD clusters** execute pipelines on the write leader node. Pipeline metadata (configuration, state, and metrics) replicates to all nodes through BDR logical replication, but execution occurs only on the write leader. On a write leader switchover, the new leader resumes execution: in Background mode, AIDB's background worker starts on the new leader and picks up unprocessed rows; in Live mode, trigger functions are replicated to all nodes and fire on the new write leader automatically. There may be a brief gap during the switchover while the new leader is elected.
--   **PSR clusters** execute pipelines on the single writable node. On failover to a promoted standby, background processing resumes once the new primary is operational and AIDB's background worker starts. Live mode triggers are present on the promoted standby and fire normally. Rows written during the failover window (if any) are processed as part of the normal unprocessed-row backlog.
+-   **PGD clusters** execute pipelines on the write leader node. Pipeline metadata (configuration, state, and metrics) replicates to all nodes through BDR (Bi-Directional Replication) logical replication, but execution occurs only on the write leader. On a write leader switchover, the new leader resumes execution: in Background mode, AIDB's background worker starts on the new leader and picks up unprocessed rows; in Live mode, trigger functions are replicated to all nodes and fire on the new write leader automatically. There may be a brief gap during the switchover while the new leader is elected.
+-   **Primary/Standby Replication (PSR) clusters** execute pipelines on the single writable node. On failover to a promoted standby, background processing resumes once the new primary is operational and AIDB's background worker starts. Live mode triggers are present on the promoted standby and fire normally. Rows written during the failover window (if any) are processed as part of the normal unprocessed-row backlog.
 
 ## Monitoring execution
 
