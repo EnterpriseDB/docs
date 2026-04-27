@@ -1,0 +1,197 @@
+---
+title: Securing inter-node connections
+navTitle: Securing inter-node connections
+description: How to configure SSL/TLS encryption and authentication for replication connections between PGD nodes.
+deepToC: true
+redirects:
+  - /pgd/latest/node_management/connections_dsns_and_ssl/
+  - /pgd/latest/reference/node_management/connections_dsns_and_ssl/
+---
+
+PGD nodes connect directly to each other over the network to replicate changes. Without SSL, replication traffic is unencrypted and unauthenticated, leaving it exposed to interception and allowing unauthorized nodes to join the cluster. Configure SSL on each node to encrypt replication traffic and prevent unauthorized nodes from joining the cluster.
+
+## Setting up an authentication method
+
+PGD supports two approaches for authenticating inter-node connections.
+
+!!! Note
+Connection Manager reads the same `server.crt` configured for inter-node SSL. Using certificates that don't meet Connection Manager's requirements will prevent it from starting. See [Meeting SSL certificate requirements](client-connections#meeting-ssl-certificate-requirements) for details.
+!!!
+
+We recommend certificate authentication as it provides mutual authentication alongside encryption. If certificates aren't available in your environment, SCRAM-SHA-256 with CA verification provides password-based authentication while still encrypting the connection.
+
+### Authenticating with certificates
+
+Certificate authentication is the recommended approach. Client certificates provide both encryption and mutual authentication. Each node presents a certificate to prove its identity, and all traffic is encrypted in transit.
+
+#### Provisioning certificates
+
+Because each PGD node both accepts incoming replication connections and initiates outgoing ones, every node acts as both a server and a client. Each node needs server-side certificate files to accept connections and client-side certificate files to initiate them.
+
+Make sure the following files are present in the data directory on each node. See [SSL certificate setup](https://www.postgresql.org/docs/current/ssl-tcp.html) in the PostgreSQL documentation for guidance on generating them.
+
+- `server.crt` and `server.key` — the node's server certificate and private key.
+- `bdr_client.crt` — the client certificate for the node.
+- `bdr_client.key` — the private key for the client certificate. This file must not be world-readable.
+- `root.crt` — the CA certificate used to verify both client and server certificates.
+
+The certificates must also meet these requirements:
+
+- The server's SSL certificate must be directly or indirectly signed by the CA in `root.crt`.
+- The hostname or IP address in the connection must match the certificate's subject alternative name (SAN) or common name (CN).
+- The CN of the client certificate must match the Postgres user making the PGD connection, which is usually `postgres`.
+
+!!! Note
+Postgres doesn't currently support subject alternative names for IP addresses. If nodes connect by IP address rather than hostname, the IP address must match the CN field of the certificate.
+!!!
+
+#### Configuring certificate authentication
+
+1. Enable SSL in `postgresql.conf` on each node:
+
+    ```ini
+    ssl = on
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    ```
+
+    Restart Postgres on each node to apply the change:
+
+    ```bash
+    pg_ctl restart -D "$PGDATA"
+    ```
+
+1. Check the current connection string for each node:
+
+    ```sql
+    SELECT node_name, interface_connstr FROM bdr.node_summary;
+    ```
+
+1. Use [`bdr.alter_node_interface()`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_interface) to update each node's connection string with the SSL parameters. The function replaces the entire connection string, so include all existing parameters alongside the new SSL ones. Run it on every node in the group, including the node being changed. For example:
+
+    ```sql
+    SELECT bdr.alter_node_interface(
+      'node-1',
+      'host=host-1 port=5432 dbname=pgddb user=postgres sslmode=verify-full sslcert=bdr_client.crt sslkey=bdr_client.key sslrootcert=root.crt'
+    );
+    ```
+
+1. Add entries to each node's `pg_hba.conf` to permit the connection for both regular and replication connections:
+
+    ```ini
+    hostssl all         postgres <node_subnet>/24 cert
+    hostssl replication postgres <node_subnet>/24 cert
+    ```
+
+    Replace `<node_subnet>` with the actual subnet or IP range of your PGD nodes.
+
+1. Reload Postgres on each node to apply the `pg_hba.conf` changes:
+
+    ```bash
+    pg_ctl reload -D "$PGDATA"
+    ```
+
+### Authenticating with SCRAM-SHA-256 and CA verification
+
+If client certificates aren't available, use password authentication while still encrypting the connection and verifying the server's certificate against a Certificate Authority (CA).
+
+#### Provisioning certificates and credentials
+
+Make sure the following are in place on each node:
+
+- `server.crt` and `server.key` in the data directory — the node's server certificate and private key. See [SSL certificate setup](https://www.postgresql.org/docs/current/ssl-tcp.html) in the PostgreSQL documentation for guidance on generating them.
+- `root.crt` in the data directory — the CA certificate used to verify the server's SSL certificate.
+- A [`.pgpass`](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the home directory of the Postgres process user, containing the correct password for each node.
+
+#### Configuring SCRAM-SHA-256 authentication
+
+1. Enable SSL in `postgresql.conf` on each node:
+
+    ```ini
+    ssl = on
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    ```
+
+    Restart Postgres on each node to apply the change:
+
+    ```bash
+    pg_ctl restart -D "$PGDATA"
+    ```
+
+1. Use [`bdr.alter_node_interface()`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/) to update each node's connection string. The function replaces the entire connection string, so include all existing parameters alongside the new SSL ones. Run it on every node in the group, including the node being changed.
+
+    ```sql
+    SELECT bdr.alter_node_interface(
+      'node-1',
+      'host=host-1 port=5432 dbname=pgddb user=postgres sslmode=verify-ca sslrootcert=root.crt'
+    );
+    ```
+
+1. Add entries to each node's `pg_hba.conf` for both regular and replication connections:
+
+    ```ini
+    hostssl all         postgres <node_subnet>/24 scram-sha-256
+    hostssl replication postgres <node_subnet>/24 scram-sha-256
+    ```
+
+    Replace `<node_subnet>` with the actual subnet or IP range of your PGD nodes.
+
+1. Reload Postgres on each node to apply the `pg_hba.conf` changes:
+
+    ```bash
+    pg_ctl reload -D "$PGDATA"
+    ```
+
+## Verifying the configuration
+
+After configuring SSL, confirm that replication connections are encrypted and that all nodes are active. Run these queries on any node in the cluster.
+
+- Verify that replication connections are using SSL:
+
+    ```sql
+    SELECT pid, ssl, version, cipher, bits
+    FROM pg_stat_ssl
+    JOIN pg_stat_replication USING (pid);
+    __OUTPUT__
+    pid | ssl | version |         cipher         | bits 
+    -----+-----+---------+------------------------+------
+    51 | t   | TLSv1.3 | TLS_AES_256_GCM_SHA384 |  256
+    50 | t   | TLSv1.3 | TLS_AES_256_GCM_SHA384 |  256
+    (2 rows)
+    ```
+
+    A successful result shows one row per replication connection, with `ssl` set to `t`. This output confirms encryption is active, but doesn't show which authentication method is in use. 
+    
+    
+- Confirm the authentication method configured in `pg_hba.conf`:
+
+    ```sql
+    SELECT type, database, user_name, address, auth_method
+    FROM pg_hba_file_rules
+    WHERE auth_method IN ('cert', 'scram-sha-256');
+    __OUTPUT__
+    type   |   database    | user_name  |  address   |  auth_method  
+    ---------+---------------+------------+------------+---------------
+    hostssl | {all}         | {postgres} | 172.20.0.0 | scram-sha-256
+    hostssl | {replication} | {postgres} | 172.20.0.0 | scram-sha-256
+    (2 rows)
+    ```
+
+    The rows you added appear with the `auth_method` you configured, for example `cert` or `scram-sha-256`. 
+
+- Confirm all nodes are still replicating normally:
+
+    ```sql
+    SELECT node_name, peer_state_name, peer_target_state_name 
+    FROM bdr.node_summary;
+    __OUTPUT__
+    node_name | peer_state_name | peer_target_state_name 
+    -----------+-----------------+------------------------
+    node-1    | ACTIVE          | ACTIVE
+    node-3    | ACTIVE          | ACTIVE
+    node-2    | ACTIVE          | ACTIVE
+    (3 rows)
+    ```
+
+    All nodes appear as `ACTIVE` in both state columns.

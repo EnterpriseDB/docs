@@ -1,0 +1,125 @@
+---
+title: Securing client application connections
+navTitle: Configuring client connections
+description: How to configure SSL, authentication, and endpoints for client application access to a PGD cluster.
+deepToC: true
+---
+
+All client application traffic to PGD passes through Connection Manager. Without encryption, application traffic is exposed to interception. Without authentication controls, unauthorized clients can connect to your database. Enable SSL and provision server certificates, configure authentication, and adjust endpoint ports and limits if the defaults don't suit your deployment.
+
+## Enabling SSL
+
+To use SSL for client connections, the following files must be present in the data directory on each node. See [SSL certificate setup](https://www.postgresql.org/docs/current/ssl-tcp.html) in the PostgreSQL documentation for guidance on generating them.
+
+- `server.crt` and `server.key` — the node's server certificate and private key.
+- `root.crt` — the CA certificate, required if using `cert` authentication for clients.
+
+Enable SSL in `postgresql.conf` on each node:
+
+```ini
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file = 'server.key'
+```
+
+Restart Postgres on each node to apply the change:
+
+```bash
+pg_ctl restart -D "$PGDATA"
+```
+
+### Meeting SSL certificate requirements
+
+Connection Manager uses rustls for TLS, which enforces stricter certificate requirements than OpenSSL. Certificates that don't meet these requirements will prevent Connection Manager from starting. The requirements apply to the same `server.crt` file used by Postgres.
+
+Server certificates must:
+
+- Be X.509 v3
+- Include `basicConstraints: CA:FALSE`
+- Include a `subjectAltName` with the node's hostname or IP address
+- Include `extKeyUsage: serverAuth`
+
+Client certificates used for `cert` authentication must additionally include `extKeyUsage: clientAuth`.
+
+Certificates must use RSA or ECDSA keys with SHA-256 or stronger. DSA keys and MD5 or SHA-1 signatures are not supported.
+
+Unlike OpenSSL, rustls does not fall back to the common name (CN) for hostname validation. The `subjectAltName` extension is required.
+
+## Configuring authentication
+
+Connection Manager supports the same authentication methods as Postgres. Configure authentication by adding rules to [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) on each node, then reload Postgres to apply them.
+
+For the full list of connection types, authentication methods, and Connection Manager-specific constraints, see [Connection Manager authentication](../connection-manager/authentication).
+
+Add rules to `pg_hba.conf` on each node to control which clients can connect and how they authenticate. For example, to require password authentication from application servers:
+
+```ini
+hostssl   all   all   10.0.0.0/8   scram-sha-256
+```
+
+After editing `pg_hba.conf`, reload Postgres to apply the changes:
+
+```bash
+pg_ctl reload -D "$PGDATA"
+```
+
+!!! Note
+Where a `pg_hba.conf` rule is not supported by Connection Manager, it is logged as a warning and ignored. Review the Postgres server log after any `pg_hba.conf` change to check for unsupported rules.
+!!!
+
+## Configuring endpoints
+
+Connection Manager exposes three endpoints: a read-write endpoint that routes traffic to the primary node, a read-only endpoint that load balances across replicas, and an HTTP endpoint for the REST management API. Configure these values if the default ports conflict with other services in your environment, if you need to cap connection counts to protect the database, or if you want to secure the HTTP endpoint with HTTPS.
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `read_write_port` | Postgres port + 1000 (usually 6432) | Read-write connections |
+| `read_only_port` | `read_write_port` + 1 (usually 6433) | Read-only connections |
+| `http_port` | `read_write_port` + 2 (usually 6434) | HTTP REST API |
+
+Configure these using `pgd group set-option`:
+
+```bash
+pgd group set-option --group-name <group_name> read_write_port <port>
+```
+
+### Enabling HTTPS on the HTTP endpoint
+
+By default, the HTTP management endpoint uses plain HTTP. To enable HTTPS:
+
+1. Set `use_https` to `true`:
+
+   ```bash
+   pgd group set-option --group-name <group_name> use_https true
+   ```
+
+2. Connection Manager uses the same `server.crt` and `server.key` configured in the [Enabling SSL](#enabling-ssl) section. Make sure SSL is enabled on each node before enabling HTTPS.
+
+!!! Note
+HTTPS can be enabled even if `ssl = on` is not set globally in Postgres. If either certificate file is missing, Connection Manager falls back to plain HTTP regardless of the `use_https` setting.
+!!!
+
+### Setting connection limits
+
+Connection Manager enforces separate limits for client and server connections on each endpoint, defaulting to `max_connections` from `postgresql.conf`. To override a limit:
+
+```bash
+pgd group set-option --group-name <group_name> read_write_max_client_connections <value>
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `read_write_max_client_connections` | `max_connections` | Maximum client connections on the read-write port |
+| `read_write_max_server_connections` | `max_connections` | Maximum server connections for read-write traffic |
+| `read_only_max_client_connections` | `max_connections` | Maximum client connections on the read-only port |
+| `read_only_max_server_connections` | `max_connections` | Maximum server connections for read-only traffic |
+
+### Setting consensus timeout
+
+When Connection Manager loses quorum, it refuses connections immediately by default. To give the cluster a grace period to recover before refusing connections:
+
+```bash
+pgd group set-option --group-name <group_name> read_write_consensus_timeout <seconds>
+```
+
+Read-write connections accepted during this grace period will block or fail if consensus doesn't recover in time.
