@@ -9,7 +9,7 @@ Pipeline Designer uses a dedicated PostgreSQL role called `visual_pipeline_user`
 
 ## What is VPU?
 
-`visual_pipeline_user` is a PostgreSQL role that you create manually as a prerequisite before using Pipeline Designer. The role is not created automatically; see [Getting started: VPU role creation](getting-started#vpu-role-creation) for the setup steps. The role has basic connectivity once created, but it does not have the grants needed to read your data or create pipeline objects; you must configure those permissions yourself (see [Configuring VPU permissions](#configuring-vpu-permissions)). Pipeline management operations (creating, updating, and deleting pipelines) run under this role: the agent opens a transaction and switches identity using `SET LOCAL ROLE visual_pipeline_user`. Pipeline execution also runs as VPU, though the mechanism varies by processing mode (see [Executing pipelines: Execution flow](executing-pipelines#execution-flow) for details).
+`visual_pipeline_user` is a Postgres role that you create manually as a prerequisite before using Pipeline Designer. The role is not created automatically; see [Getting started: VPU role creation](getting-started#vpu-role-creation) for the setup steps. The role has basic connectivity once created, but it does not have the grants needed to read your data or create pipeline objects; you must configure those permissions yourself (see [Configuring VPU permissions](#configuring-vpu-permissions)). Pipeline management operations (creating, updating, and deleting pipelines) run under this role: the agent opens a transaction and switches identity using `SET LOCAL ROLE visual_pipeline_user`. Pipeline execution also runs as VPU, though the mechanism varies by processing mode (see [Executing pipelines: Execution flow](executing-pipelines#execution-flow) for details).
 
 VPU exists for two reasons:
 
@@ -27,9 +27,9 @@ For environment setup steps (extension installation, cluster configuration, plat
 
 When a pipeline is created through Pipeline Designer, AIDB stamps the pipeline's `owner_role` as `visual_pipeline_user`. The EDB Postgres AI agent periodically collects pipeline and knowledge base data from AIDB and filters for `owner_role = 'visual_pipeline_user'`. Only matching objects are reported to the Hybrid Manager (HM) control plane and displayed in the Pipeline Designer.
 
-This has a direct consequence: **pipelines and knowledge bases created outside Pipeline Designer aren't visible in Pipeline Designer.** If you create a pipeline through SQL (for example, using `psql` as the `edb_admin` role), it will function correctly at the database level but won't appear in Pipeline Designer's pipeline list or knowledge base views.
+This has a direct consequence: pipelines and knowledge bases created outside Pipeline Designer aren't visible in Pipeline Designer. If you create a pipeline through SQL (for example, using `psql` as the `edb_admin` role), it will function correctly at the database level but won't appear in Pipeline Designer's pipeline list or knowledge base views.
 
-There is no AIDB function to change a pipeline's `owner_role` after creation. If you need a SQL-created pipeline to appear in the Portal, you must create it while assuming the VPU role. Your PostgreSQL role must have been granted VPU (`GRANT visual_pipeline_user TO your_role`) to perform the role switch:
+There is no AIDB function to change a pipeline's `owner_role` after creation. If you need a SQL-created pipeline to appear in the Portal, you must create it while assuming the VPU role. Your Postgres role must have been granted VPU (`GRANT visual_pipeline_user TO your_role`) to perform the role switch:
 
 ```sql
 -- SET LOCAL ROLE scopes the identity change to the current transaction.
@@ -58,7 +58,7 @@ The subsections below show the exact `GRANT` statements for each topology.
 
 ### Tables in the public schema
 
-On PostgreSQL 15 and later, `CREATE` on the `public` schema is no longer granted to `PUBLIC` by default. VPU therefore needs an explicit `CREATE ON SCHEMA public` grant regardless of whether the cluster is managed or self-managed. The `aidb_users` role grants access to AIDB extension objects but doesn't cover `SELECT` on user-created tables, schema-level `CREATE`, or table-level `TRIGGER`.
+On Postgres 15 and later, `CREATE` on the `public` schema is no longer granted to `PUBLIC` by default. VPU therefore needs an explicit `CREATE ON SCHEMA public` grant regardless of whether the cluster is managed or self-managed. The `aidb_users` role grants access to AIDB extension objects but doesn't cover `SELECT` on user-created tables, schema-level `CREATE`, or table-level `TRIGGER`.
 
 Connect to the database as an administrator and run:
 
@@ -121,9 +121,9 @@ The preceding sections cover VPU setup and permissions grants. The topics below 
 
 ### Shared identity
 
-All pipelines created through Pipeline Designer run as the same PostgreSQL role. There's no per-HM-user isolation at the database level. HM user A's pipeline and HM user B's pipeline both execute as `visual_pipeline_user` and have access to the same set of tables. Isolation between users' pipelines is managed at the HM project level (through Pipeline Designer access controls), not at the PostgreSQL level.
+All pipelines created through Pipeline Designer run as the same Postgres role. There's no per-HM-user isolation at the database level. HM user A's pipeline and HM user B's pipeline both execute as `visual_pipeline_user` and have access to the same set of tables. Isolation between users' pipelines is managed at the HM project level (through Pipeline Designer access controls), not at the PostgreSQL level.
 
-This also means there is no per-user audit trail at the PostgreSQL level. All pipeline activity in the database logs appears as operations by `visual_pipeline_user`.
+This also means there is no per-user audit trail at the Postgres level. All pipeline activity in the database logs appears as operations by `visual_pipeline_user`.
 
 ### Shared model credentials
 
@@ -133,9 +133,9 @@ Model credentials (API keys for external inference services) are stored as FDW u
 
 When Pipeline Designer creates a pipeline, VPU becomes the owner of several database objects:
 
--   The pipeline's destination table (for example, `pipeline_my_pipeline`)
+-   The pipeline's destination table (for example, `pipeline_my_pipeline`).
 
--   The knowledge base vector table (if the pipeline includes a KnowledgeBase step)
+-   The knowledge base vector table (if the pipeline includes a KnowledgeBase step).
 -   Per-pipeline SECURITY DEFINER wrapper functions (for Live and Background processing modes). These wrappers call the actual AIDB trigger handler and are owned by VPU so that they execute with VPU's privileges regardless of the invoking role.
 -   Pipeline state tracking tables used internally by AIDB
 
@@ -145,7 +145,7 @@ These objects persist until the pipeline is deleted through Pipeline Designer.
 
 ### "Permission denied for table" during pipeline creation
 
-**Cause**: VPU is missing one or more of the required permissions (SELECT, CREATE ON SCHEMA, or TRIGGER) for the source table or its schema.
+**Cause**: VPU is missing one or more of the required permissions (`SELECT`, `CREATE ON SCHEMA`, or `TRIGGER`) for the source table or its schema.
 
 **Fix**: Grant the required permissions as described in [Configuring VPU permissions](#configuring-vpu-permissions).
 
@@ -163,4 +163,4 @@ These objects persist until the pipeline is deleted through Pipeline Designer.
 
 **Cause**: When AIDB enables Live or Background processing, it creates a per-pipeline SECURITY DEFINER wrapper function owned by VPU. BDR requires that the trigger function owner satisfies replication constraints on the source table. If VPU lacks the necessary grants on any BDR node, trigger creation fails.
 
-**Fix**: Apply consistent GRANT statements on all PGD nodes as described in [Tables on PGD clusters](#tables-on-pgd-clusters). If the narrow `TRIGGER` grant is insufficient due to BDR replication constraints, see the [Trigger handler ownership on PGD clusters](#trigger-handler-ownership-on-pgd-clusters) fallback.
+**Fix**: Apply consistent `GRANT` statements on all PGD nodes as described in [Tables on PGD clusters](#tables-on-pgd-clusters). If the narrow `TRIGGER` grant is insufficient due to BDR replication constraints, see the [Trigger handler ownership on PGD clusters](#trigger-handler-ownership-on-pgd-clusters) fallback.
