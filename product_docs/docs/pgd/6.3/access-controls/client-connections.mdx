@@ -5,14 +5,13 @@ description: How to configure SSL, authentication, and endpoints for client appl
 deepToC: true
 ---
 
-All client application traffic to PGD passes through Connection Manager. Without encryption, application traffic is exposed to interception. Without authentication controls, unauthorized clients can connect to your database. Enable SSL and provision server certificates, configure authentication, and adjust endpoint ports and limits if the defaults don't suit your deployment.
+Connection Manager is the entry point for client application connections to PGD, providing read-write and read-only routing endpoints. Without encryption, application traffic is exposed to interception. Without authentication controls, unauthorized clients can connect to your database. Enable SSL and provision server certificates, configure authentication, and adjust endpoint ports and limits if the defaults don't suit your deployment.
 
 ## Enabling SSL
 
 To use SSL for client connections, the following files must be present in the data directory on each node. See [SSL certificate setup](https://www.postgresql.org/docs/current/ssl-tcp.html) in the PostgreSQL documentation for guidance on generating them.
 
 - `server.crt` and `server.key` — the node's server certificate and private key.
-- `root.crt` — the CA certificate, required if using `cert` authentication for clients.
 
 Enable SSL in `postgresql.conf` on each node:
 
@@ -39,17 +38,15 @@ Server certificates must:
 - Include a `subjectAltName` with the node's hostname or IP address
 - Include `extKeyUsage: serverAuth`
 
-Client certificates used for `cert` authentication must additionally include `extKeyUsage: clientAuth`.
-
 Certificates must use RSA or ECDSA keys with SHA-256 or stronger. DSA keys and MD5 or SHA-1 signatures are not supported.
 
 Unlike OpenSSL, rustls does not fall back to the common name (CN) for hostname validation. The `subjectAltName` extension is required.
 
 ## Configuring authentication
 
-Connection Manager supports the same authentication methods as Postgres. Configure authentication by adding rules to [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) on each node, then reload Postgres to apply them.
+Connection Manager supports most of the authentication methods available in Postgres. Configure authentication by adding rules to [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) on each node, then reload Postgres to apply them.
 
-For the full list of connection types, authentication methods, and Connection Manager-specific constraints, see [Connection Manager authentication](../connection-manager/authentication).
+For the supported authentication methods, see [Connection Manager authentication methods](../connection-manager/authentication#connection-manager-authentication-methods).
 
 Add rules to `pg_hba.conf` on each node to control which clients can connect and how they authenticate. For example, to require password authentication from application servers:
 
@@ -64,12 +61,12 @@ pg_ctl reload -D "$PGDATA"
 ```
 
 !!! Note
-Where a `pg_hba.conf` rule is not supported by Connection Manager, it is logged as a warning and ignored. Review the Postgres server log after any `pg_hba.conf` change to check for unsupported rules.
+Where a `pg_hba.conf` rule is not supported by Connection Manager, it is logged as a warning and ignored. Connection Manager continues to operate using the rules it does support. Review the Postgres server log after any `pg_hba.conf` change to check for unsupported rules.
 !!!
 
 ## Configuring endpoints
 
-Connection Manager exposes three endpoints: a read-write endpoint that routes traffic to the primary node, a read-only endpoint that load balances across replicas, and an HTTP endpoint for the REST management API. Configure these values if the default ports conflict with other services in your environment, if you need to cap connection counts to protect the database, or if you want to secure the HTTP endpoint with HTTPS.
+Connection Manager exposes three endpoints: a read-write endpoint that routes traffic to the primary node, a read-only endpoint that load balances across replicas, and an HTTP endpoint for the REST management API. Configure endpoint ports if the defaults conflict with other services in your environment. You can also cap connection counts to protect the database, or enable HTTPS on the HTTP endpoint.
 
 | Option | Default | Purpose |
 |--------|---------|---------|
@@ -81,6 +78,12 @@ Configure these using `pgd group set-option`:
 
 ```bash
 pgd group set-option --group-name <group_name> read_write_port <port>
+```
+
+Port changes take effect after restarting Connection Manager. Restart Postgres on each affected node to apply the change:
+
+```bash
+pg_ctl restart -D "$PGDATA"
 ```
 
 ### Enabling HTTPS on the HTTP endpoint
