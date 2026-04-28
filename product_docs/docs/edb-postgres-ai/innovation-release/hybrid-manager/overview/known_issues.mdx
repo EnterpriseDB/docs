@@ -137,7 +137,7 @@ Resolved in HM versions 2025.12 and later.
 
 ### IdP configuration fails after upgrade to version 2026.2
 
-[UPM-78482, backlog]: #
+[UPM-78482, limitation]: #
 
 **Description:** In some cases, upgrading from version 2026.1 to 2026.2 can cause your Identity Provider (IdP) configuration to display the **Expiring Soon** status in the HM console. This is caused by a race condition during the migration process. While this issue doesn't occur in every environment, it prevents users from successfully authenticating via their IdP provider if triggered.
 
@@ -169,6 +169,58 @@ kubectl create secret generic langflow-secret -n upm-beaco-ff-base --from-litera
 ```
 
 Once the secret exists, the `accm-server` pod will be able to mount the volume and transition to a **Running** state.
+
+### No `kapp-controller` support in Hybrid Manager app to pull images
+
+**Description:** The `kapp-controller` doesn't support Managed Identity/IAM Roles for pulling images.
+
+**Workaround:** Users must manually configure the `PackageRepository` using a `SecretRef` (Kubernetes Secret) for registry authentication, as cloud-native managed identities are currently not supported.
+
+### EPAS not supported as Metabase backend database
+
+**Description:** Metabase's Liquibase component includes DBMS detection logic that is incompatible with EDB Postgres Advanced Server (EPAS). Using EPAS as the backend database causes failures during configuration.
+
+**Workaround:** Use a community PostgreSQL database as the backend database when configuring the Metabase application.
+[UPM-92303]: #
+### Beacon server enters a crashloop when spire is broken
+
+[UPM-85995]: #
+
+**Description:** The `upm-beacon-server` enters a crashloop when the spire component is broken or unavailable. Because spire is required for all HM deployments — which are configured to support secondary locations — a broken spire component prevents the deployment of Postgres clusters.
+
+**Workaround:** As an administrator with `kubectl` access, edit the beacon server configmap to disable spire integration. Run:
+
+```shell
+kubectl edit cm -n upm-beacon beacon-server-config
+```
+
+Then set the following two spiffe-related config items:
+
+```yaml
+general:
+  spiffe:
+    enabled: false
+  spiffeid_controller:
+    disabled: true
+```
+
+Revert these settings before connecting a secondary location.
+
+### SPIRE agent fails to start on RKE2 with SELinux enabled
+
+[UPM-87539, UPM-87538]: #
+
+**Description:** On RKE2 clusters running on RHEL (or other Linux distributions with SELinux in enforcing mode), the SPIRE agent pod enters a `CrashLoopBackOff` state with the error `create UDS listener: listen unix /tmp/spire-agent/public/spire-agent.sock: bind: permission denied`. This occurs because SELinux blocks the container process from creating a Unix domain socket on the `HostPath` volume `/run/spire/agent-sockets`. Environments without SELinux (such as Ubuntu-based RKE2 clusters) aren't affected.
+
+**Workaround:** Disable SELinux on all RKE2 cluster nodes. For this, set `SELINUX=disabled` in `/etc/selinux/config` and reboot the nodes. After reboot, verify that `getenforce` shows `Disabled`. The SPIRE agent pods will recover automatically, though pods already in `CrashLoopBackOff` state may take several minutes due to the backoff timer.
+
+### Image library discovery fails when duplicate operand images share the same tags and SHA
+
+[UPM-92874]: #
+
+**Description:** If two sets of EDB official PostgreSQL operand images are uploaded with the same tags and SHA digest but different repository names, the image library discovery process fails and no images are available for cluster provisioning.
+
+**Workaround:** Delete one set of the duplicated operand images. The image library will discover the remaining set successfully.
 
 ## Database cluster engine
 
@@ -215,6 +267,38 @@ Resolved in HM versions 2025.12 and later.
 
 [UPM-73217, backlog]: #
 
+### AKS deployments limited to one PGD data group with private access per region
+
+[UPM-91061]: #
+
+**Description:** Azure enforces a hard limit of eight private link services per Standard Load Balancer (`PrivateLinkServicesPerLoadBalancerLimitReached`). Because each PGD data group with private access requires five Load Balancers (one per node, plus the group and proxy services), an AKS-based HM deployment can only host one PGD data group with private access per region.
+
+**Workaround:** Don't create more than one PGD data group with private access in the same AKS region. For additional data groups requiring private access, deploy an additional HM instance in the same region.
+
+### Network access type defaults to `Private` when not explicitly selected on RKE
+
+[UPM-90375]: #
+
+**Description:** On RKE environments, two related network access type issues exist:
+
+- When a location has both **Public** and **Private** access enabled, the network access type field doesn't have a default selection. If you don't explicitly choose an option, the backend defaults to `Private`.
+
+- When a location has **NodePort** enabled, the backend correctly configures NodePort for the cluster, but the HM console displays the access type as `Private` instead.
+
+**Workaround:** Always explicitly select the intended network access type when creating a cluster on RKE. A fix is being tracked for a future release.
+
+### CNPG operator enters an infinite reconcile loop when bootstrap `Job` creation is interrupted
+
+[UPM-91096]: #
+
+**Description:** If a cluster reconciliation is interrupted after the PVC is created but before the bootstrap `Job` is created — for example, due to an optimistic locking conflict — subsequent reconciles enter an infinite loop. The operator waits for the PVC to reach a `Ready` status, but this can never occur without the `Job`, causing the loop to continue indefinitely.
+
+**Workaround:** Delete the affected PVC to allow the operator to recreate it and break the loop. Because this issue only affects newly created PVCs, the PV won't contain any data yet and it's safe to delete.
+
+```shell
+kubectl delete pvc <pvc-name> -n <cluster-namespace>
+```
+
 ## Backup and recovery
 
 ### Replica cluster creation fails when using volume snapshot recovery across regions
@@ -245,6 +329,14 @@ Resolved in HM versions 2025.12 and later.
 **Workaround:** Manually edit the `objectstores.barmancloud.cnpg.io` Kubernetes resource for the specific backup object store and increase the `wal.maxParallel` value (for example, to 20) to accelerate archiving.
 
 [UPM-65033, backlog]: #
+
+### Enabling the VectorChord extension breaks volume snapshot backup and restore
+
+[UPM-87277]: #
+
+**Description:** Enabling the VectorChord extension on a cluster breaks volume snapshot backup and restore. This occurs because the CNPG cleanup process for temporary files during volume restoration may fail if a non-empty `pgsql_tmp/` directory exists, which VectorChord creates.
+
+**Workaround:** If you enable the VectorChord extension, set the default backup method to Barman and ensure all on-demand backups also use Barman instead of volume snapshots.
 
 ### `transporter-db` disaster recovery (DR) process may fail due to WAL gaps
 
@@ -362,19 +454,27 @@ Resolved in HM versions 2025.11 and later.
 
 ### Model configuration settings reset after Innovation Release upgrade
 
+!!!tip
+HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
+!!!
+
+[GRIP-935]: #
+
 **Description:** After upgrading HM from the `2025.11` to the `2025.12` Innovation Release, the existing model configuration settings are unintentionally reset to empty. This results in a `model_not_found` error, preventing access to AI services and causing issues like knowledge bases (KBs) failing to display in the HM console.
 
 **Workaround:** In the HM console, manually reenter or set your required model configurations to restore functionality.
 
-[GRIP-935, backlog]: #
-
 ### Error page appears when editing knowledge base credentials
+
+!!!tip
+HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
+!!!
+
+[GRIP-934]: #
 
 **Description:** When editing a knowledge base (KB) that was created from a pipeline in the HM console, skipping the username field and immediately navigating to the password field triggers a client-side JavaScript error (Cannot read properties of null), which results in an **Unexpected Application Error!** page.
 
 **Workaround:** To prevent the error page from appearing, fill in the **Username** field immediately after selecting **Edit KB** and before attempting to enter the password.
-
-[GRIP-934, backlog]: #
 
 ### Missing aidb_users role on PGD witness node prevents AI functionality
 
@@ -516,6 +616,37 @@ ALTER FUNCTION aidb.pipeline_background_trigger_handler OWNER TO visual_pipeline
 ALTER FUNCTION aidb.pipeline_live_trigger_handler OWNER TO visual_pipeline_user;
 ```
 
+### External cloud-hosted OCR models fail to register via the HM console
+
+[UPM-85678]: #
+
+**Description:** The `aidb.sync_hcp_models` function automatically appends a `/v1/infer` suffix to all model URLs during synchronization. While this suffix is required for local containerized NIM models, it breaks connectivity for external cloud-hosted models such as NVIDIA's PaddleOCR (which uses a URL path like `.../cv/baidu/paddleocr`). As a result, external OCR models cannot be successfully configured or used via the HM console.
+
+**Workaround:** Bypass the HM console registration flow and register the model directly in the database using SQL via the `aidb.create_model` function, providing the correct URL explicitly.
+
+Option 1 — use the built-in default URL for remote NVIDIA models:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
+Option 2 — explicitly set a custom full URL:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    config => '{"url":"https://ai.api.nvidia.com/v1/cv/baidu/paddleocr"}'::JSONB,
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
 ## Analytics and tiered tables
 
 ### Updating tiered, partitioned tables fails with PGAA error
@@ -588,6 +719,10 @@ Resolved in HM versions 2026.3 and later.
 
 ### Missing notifications for task and cluster lifecycle events
 
+!!!tip
+Resolved in HM versions 2026.4 and later. However, the workaround still applies to upgrades towards 2026.3.
+!!!
+
 [UPM-81668]: #
 
 **Description:** After upgrading to version 2026.3, users may stop receiving in-app and webhook notifications for cluster lifecycle events and automation tasks (such as triggered scaling or maintenance). This issue is caused by a failed database migration (`005_activity_processor_setting.sql`) where orphaned tables from previous versions conflict with the new schema, preventing the activity processor from initializing. Fresh installations are not affected.
@@ -605,7 +740,149 @@ INSERT INTO upm_notification_system.activity_processor_settings (last_processed_
 VALUES (NOW());
 ```
 
+### WAL storage percent metric displays incorrect values on the monitoring page
+
+!!!tip
+Resolved in HM versions 2026.4 and later.
+!!!
+
+**Description:** The WAL storage percent metric displayed on the cluster monitoring page used an incorrect PromQL query, causing the displayed values to be inaccurate or unclear.
+
+**Workaround:** n/a
+
+[UPM-84969]: #
+
+### GUC settings aren't applied until after a restart
+
+[UPM-87281]: #
+
+**Description:** GUC settings configured in the HM console, such as `shared_preload_libraries`, aren't applied immediately. The settings remain in their previous state until at least one restart has been performed.
+
+**Workaround:** After applying GUC changes in the HM console, trigger a restart to ensure the new settings take effect.
+
+### Alert threshold updates intermittently fail to take effect
+
+[UPM-94011]: #
+
+**Description:** After saving a new alert threshold value in the HM console — for example, reducing the memory usage alert threshold from 90% to 85% — the change is intermittently not applied and the threshold reverts to the previous value.
+
+**Workaround:** In the alert settings, verify that the **Notify After** field is set to a value greater than 0. If it's currently set to 0, update it to a non-zero value and save.
+
+### Asset Library apps require Project Owner or Project Editor role
+
+[UPM-92900]: #
+
+**Description:** All Asset Library apps require users to have at least the **Project Editor** role to access, deploy, or manage them. Users with lower-privilege roles, such as **Project Viewer**, can't access Asset Library apps. This role requirement applies to all Asset Library apps and isn't currently configurable on a per-app basis.
+
+**Workaround:** Ensure that any user who needs to access or manage Asset Library apps is assigned at least the **Project Editor** role for the relevant project. Role assignments can be managed by a Project Owner or organization owner in the project settings.
+
+### Asset Library apps sorted by package name instead of display name
+
+[UPM-91053]: #
+
+**Description:** In the **Asset Library**, apps are sorted by their internal package name rather than their display name. This causes apps to appear in unexpected positions when browsing alphabetically — for example, Apache Airflow and Apache Superset may not appear together as expected.
+
+**Workaround:** None. Manually browse the full app list to locate apps until this is resolved in a future release.
+
+### Metabase fails to deploy when using an EPAS cluster as its database backend
+
+[UPM-92303]: #
+
+**Description:** Deploying Metabase from the **Asset Library** fails when the selected database cluster is an EDB Postgres Advanced Server (EPAS) instance. Metabase enters a `CrashLoopBackOff` state with a Liquibase migration error: `ERROR: syntax error at or near "$"`. This occurs because Liquibase identifies EDB Postgres Advanced Server as a different database type than community PostgreSQL. As a result, property definitions scoped to `dbms="postgresql"` (such as `${TEXT.TYPE}` and `${TIMESTAMP_TYPE}`) are skipped, while dependent changesets still execute with unresolved placeholders, causing the SQL syntax error.
+
+**Workaround:** Use a community PostgreSQL cluster as Metabase's database backend instead of EDB Postgres Advanced Server. EDB Postgres Advanced Server clusters can still be connected to Metabase as data sources for analytics after deployment.
+
+### Asset Library apps pgAdmin4 and Apache Superset fail to deploy on RHOS
+
+[UPM-88301]: #
+
+**Description:** In Red Hat OpenShift (RHOS) environments, deploying the pgAdmin4 and Apache Superset Asset Library applications fails due to OpenShift Security Context Constraint (SCC) violations. The upstream images for these apps run as specific user IDs (for example, `5050` for pgAdmin4 and `0` for Apache Superset's init container) that fall outside the allowed UID ranges enforced by OpenShift's restricted SCC policies. This is an upstream image compatibility issue.
+
+**Workaround:** Don't deploy pgAdmin4 or Apache Superset in RHOS environments until this issue is resolved upstream.
+
+### Editing cryptographic keys for Airflow or Superset causes the app to enter a failed state
+
+[UPM-92241]: #
+
+**Description:** Editing the `fernetKey` or `apiSecretKey` for Airflow, or the `secretKey` for Superset, through the Asset Library UI after initial deployment causes the app to enter a failed state. These keys are used for cryptographic operations — including encrypting connections, variables, sessions, and CSRF tokens — and the underlying Helm charts don't support key rotation. Changing these values after initial creation creates a mismatch between the new keys and data encrypted with the original keys, breaking the application.
+
+**Workaround:** Don't modify `fernetKey`, `apiSecretKey` (Airflow), or `secretKey` (Superset) after initial app creation. If the app has entered a failed state due to a key change, redeploy it with the original key values to restore functionality.
+
+### Superset deployment fails with `DuplicateTable` error
+
+[UPM-91925]: #
+
+**Description:** Deploying Superset from the Asset Library may fail with a `DuplicateTable` error: `psycopg2.errors.DuplicateTable: relation "idx_user_id" already exists`. This occurs when the selected backend database already contains tables from a previous Superset deployment.
+
+**Workaround:** Use a new, empty database when deploying Superset.
+
+### Asset Library launch app always uses port 443 regardless of custom portal port
+
+[UPM-91790]: #
+
+**Description:** When HM is configured with a custom `portal_port` value other than 443, app or flow URLs in the **Estate** use port 443 instead of the configured port. This causes the launched app or flow to be unreachable in environments where the HM portal isn't exposed on the standard HTTPS port.
+
+**Workaround:** Manually replace port 443 with your configured `portal_port` in the app or flow URL to access it.
+
+### Asset Library app CPU and memory metrics include failed and completed pod states
+
+[UPM-91745]: #
+
+**Description:** The CPU and memory usage metrics displayed for Asset Library apps include pods in `Failed` or `Completed` states, such as pods spawned by jobs. These metrics are only available during the app's startup phase, so the displayed figures may not accurately reflect the app's current resource usage until the metrics stabilize.
+
+**Workaround:** Wait 30 minutes after app startup for the metrics to stabilize and reflect the correct state.
+
+### Deleting an app or flow gets stuck due to missing service account
+
+[UPM-91799]: #
+
+**Description:** When deleting an app or flow, the deletion sometimes gets stuck with the error `Delete failed: Preparing kapp: Getting service account: serviceaccounts "beacon-app-installer" not found`. This occurs because the `PackageInstall` resource's finalizer attempts to use a service account that no longer exists, preventing the app namespace from being deleted.
+
+**Workaround:** Identify the stuck namespace and manually remove the finalizer from the `PackageInstall` and its associated `App` resource.
+
+1. Find namespaces stuck in `Terminating`:
+
+   ```shell
+   kubectl get ns --field-selector status.phase=Terminating
+   ```
+
+   The app namespace matches the application ID, for example, `app-abc123xyz`.
+
+1. Identify the `PackageInstall` name:
+
+   ```shell
+   kubectl get packageinstall -n <app-namespace>
+   ```
+
+   The name follows the format `<app-namespace>-pkginstall`.
+
+1. Remove the finalizer from the `PackageInstall` and the associated `App` (the `App` name matches the `PackageInstall` name):
+
+   ```shell
+   kubectl patch packageinstall <name> -n <app-namespace> --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+   kubectl patch app <name> -n <app-namespace> --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+   ```
+
+1. Verify the namespace deletion completes:
+
+   ```shell
+   kubectl get ns <app-namespace>
+   ```
+
 ## Clusters and upgrades
+
+### Upgrade to version 2026.4 fails due to immutable `fluent-bit-k8s-events` StatefulSet
+
+[UPM-88315]: #
+
+**Description:** When upgrading to HM 2026.4, the upgrade process may fail with a `Failed to install component` error for `upm-fluent-bit`. This occurs because the upgrade attempts to modify an immutable field in the `fluent-bit-k8s-events` StatefulSet spec, which the Kubernetes API server rejects. The error message is: `StatefulSet.apps "fluent-bit-k8s-events" is invalid: spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden`.
+
+**Workaround:** Before upgrading to 2026.4, manually delete the `fluent-bit-k8s-events` StatefulSet in the `edb-observability` namespace. The operator will recreate it with the correct configuration during the upgrade:
+
+```shell
+kubectl delete statefulset fluent-bit-k8s-events -n edb-observability
+```
+
 
 ### Major version upgrade fails for Advanced High Availability and Distributed High Availability (PGD) clusters with witness groups
 
@@ -623,6 +900,10 @@ Resolved in HM versions 2026.2 and later.
 ### Upgrade to version `2026.3` fails due to logging namespace termination
 
 [UPM-81449]: #
+
+!!!tip
+Resolved in HM versions 2026.4 and later. However, the workaround still applies to upgrades towards 2026.3.
+!!!
 
 **Description:** When upgrading from Hybrid Manager version 2026.2 to 2026.3, the upgrade process may hang or fail while attempting to delete the `logging` namespace. This occurs because the `fluent-bit` Custom Resource (CR) within that namespace is orphaned with a finalizer that blocks the namespace from being deleted. Consequently, the operator times out waiting for the namespace to terminate.
 
@@ -643,6 +924,20 @@ kubectl patch fluentbit/fluent-bit -n logging --type=merge -p '{"metadata":{"fin
 ```
 
 ## AI Factory
+
+### Knowledge base data isn't replicated to non-primary nodes on PGD clusters
+
+[AID-1235]: #
+
+**Description:** When using AI Factory with AIDB 7.3.0 on a PGD cluster, knowledge base data (visible via the `aidb.knowledge_bases_v6` view) is only present on the primary node and isn't automatically replicated to other nodes. This occurs because the `aidb.knowledge_base_registry` and `aidb.knowledge_base_pipeline` tables, introduced in AIDB 7, weren't included in the PGD setup script.
+
+**Workaround:** Before creating any knowledge bases, manually run the following SQL commands on the PGD cluster:
+
+```sql
+SELECT bdr.alter_sequence_set_kind('aidb.knowledge_base_registry_id_seq'::regclass, 'galloc', 1);
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_registry');
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_pipeline');
+```
 
 ### Index analysis actions fail due to missing `hypopg` extension
 
@@ -687,6 +982,14 @@ Affected actions and parameters:
 
 [AID-852, backlog]: #
 
+### Some EDB Component tools are non-functional due to incompatible API request formatting
+
+[AID-1288]: #
+
+**Description:** Some tools within the EDB Component are currently non-functional due to incompatible API request formatting. By default, the component exposes too many tools, which can exceed API limits and trigger errors.
+
+**Workaround:** Enable tool mode and apply specific filters to limit the number of tools exposed by the component.
+
 ### Advanced high Availability and Distributed High Availability (PGD) witness groups appear in database selection lists
 
 !!!tip
@@ -707,6 +1010,62 @@ Resolved in HM versions 2026.2 and later.
 **Description:** When using the search functionality in the HM console, for example in the **Activity Log** section, the system performs a full-text search across all underlying data fields. As a result, search results may include resources or activity log entries where the visible **Activity Name** or other shown attributes don't appear to match the search term.
 
 **Workaround:** There is currently no workaround for this behavior as it is a result of the underlying search design. Users should be aware that search results are inclusive of internal action details not displayed in the primary log view.
+
+### Langflow MCP server components not supported in HM Flow Hosting
+
+[AID-1214]: #
+
+**Description:** Flows that include a Langflow MCP (Model Context Protocol) server component fail when executed via the Hybrid Manager Flow Hosting API with the following error: `Error building Component my_mcp: Error updating tool list: Langflow MCP server functionality is not available. This feature requires the full Langflow installation.` The HM Flow Hosting runtime (`lfx-runtime`) is a lightweight environment that does not include the full Langflow installation. Flows using MCP server components will appear to deploy successfully — the pod reports as healthy — but will fail at runtime when invoked via the REST API.
+
+**Workaround:** Avoid including Langflow MCP server components in flows intended for deployment via the HM Flow Hosting API. If MCP server functionality is required, use the full Langflow interactive environment instead.
+
+### EDB Knowledge Base component returns a 403 error when dragged into Langflow
+
+[AID-1611]: #
+
+**Description:** When dragging the EDB Knowledge Base component into Langflow, an error appears in the bottom left corner: `API call to .../projects/None/clusters returned 403`. This occurs because the project ID is missing from the API call at the time the component is loaded.
+
+**Workaround:** Select the **Hybrid Manager Project** dropdown on the component and select **Refresh list** to load the available projects. Once the project ID is populated, the error clears.
+
+### EDB Knowledge Base component fails to connect when using a global variable for the database user
+
+[AID-1612]: #
+
+**Description:** When configuring the EDB Knowledge Base component in Langflow with a global variable for the database user field, the connection attempt fails. Global variable values aren't resolved correctly for this field during the initial connection setup.
+
+**Workaround:** Enter the database username as a raw text value instead of a global variable.
+
+### Running a test query against an empty knowledge base returns a 500 error
+
+[UPM-91738]: #
+
+**Description:** When running a test query from the **Knowledge Bases** list view against a knowledge base whose underlying embeddings table is empty — for example, while the KB pipeline is still in a `Processing` state — the API returns an HTTP 500 error: `ERROR: Query returned no data. Hint: The "<pipeline_name>" table is likely empty`. The API should return an empty result set instead.
+
+**Workaround:** Wait until the knowledge base pipeline finishes processing before running test queries. The pipeline status changes from `Processing` to an active state once data has been indexed and the embeddings table is populated.
+
+### Flow Hosting deployment fails intermittently with `FlowValidationError`
+
+[AID-1277]: #
+
+**Description:** When deploying a flow via HM Flow Hosting, the `lfx-runtime` pod may intermittently enter a `CrashLoopBackOff` state with a `FlowValidationError` indicating that `load_from_db` isn't set to `true` for secret inputs. This issue is intermittent and doesn't occur on every deployment attempt.
+
+**Workaround:** Retry the deployment. The issue is intermittent and subsequent attempts typically succeed.
+
+### EDB Model Server component causes agent failures when used with the EDB Airman MCP component
+
+[AID-1614]: #
+
+**Description:** When building an agent flow in Langflow that uses the EDB Model Server component together with the EDB Airman MCP component, the agent may fail with an error similar to: `messages with role 'tool' must be a response to a preceding message with 'tool_calls'`. This issue is intermittent and doesn't occur when using other model provider components.
+
+**Workaround:** Use the OpenAI component or the generic model component in place of the EDB Model Server component. Flows using these alternative model providers aren't affected by this issue.
+
+### `upm-ai-model-server-beaco` OOMKills due to insufficient memory limits
+
+[AID-1243]: #
+
+**Description:** The `upm-ai-model-server-beaco` pod may enter a crashloop due to OOMKill in environments with significant AI workloads. The default memory allocation for this component is insufficient and isn't currently configurable via the standard Helm values or the `HybridControlPlane` CR.
+
+**Workaround:** Manually patch the Kubernetes deployment to increase the memory resource limits for the `upm-ai-model-server-beaco` pod from the default 256MB to 512MB, then monitor the pod to confirm stability.
 
 ## Migrations
 
