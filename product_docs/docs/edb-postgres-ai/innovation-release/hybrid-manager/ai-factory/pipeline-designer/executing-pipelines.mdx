@@ -36,13 +36,16 @@ You can trigger pipeline execution manually regardless of the processing mode:
 
 1.  The pipeline processes all pending source records.
 
-!!! Note
-    Pipeline Designer doesn't currently provide a UI button for manual execution. Use the SQL function above to trigger pipeline runs on demand.
+!!!Note
+Pipeline Designer doesn't currently provide a UI button for manual execution. Use the SQL function above to trigger pipeline runs on demand.
 !!!
 
 Manual execution is useful for:
+
 -   Testing a newly created pipeline before enabling automatic processing.
+
 -   Processing a backlog of records after re-enabling a previously On Demand pipeline.
+
 -   One-time batch operations where automatic processing isn't needed.
 
 ## Automatic execution modes
@@ -52,8 +55,11 @@ Manual execution is useful for:
 In Live mode, AIDB installs a trigger on the source table that fires on every `INSERT`, `UPDATE`, or `DELETE`. The pipeline processes the affected row within the triggering transaction, so the application writing to the source table incurs the full latency of pipeline processing before the write returns.
 
 **Characteristics:**
+
 -   Writes to the source table are blocked until the pipeline finishes processing the affected row. The application pays the cost of pipeline processing on every write.
+
 -   A slow inference model call (for example, embedding or summarization) adds latency directly to the application's write path.
+
 -   Suitable for low-volume, latency-sensitive scenarios where data must be embedded or processed immediately after writing.
 
 ### Background mode
@@ -61,9 +67,13 @@ In Live mode, AIDB installs a trigger on the source table that fires on every `I
 In Background mode, AIDB's background worker (running inside the Postgres instance) processes unprocessed rows in batches on a configurable schedule. Application transactions complete immediately. Pipeline processing happens independently.
 
 **Characteristics:**
+
 -   Application writes to the source table are unaffected by pipeline processing. There is a delay (determined by the sync interval) before results appear.
+
 -   Batch size and sync interval are configurable (defaults: 500 rows per batch, 15-hour interval).
+
 -   Recommended for most production workloads.
+
 -   The background worker runs on the database cluster, not in the HM control plane. On Postgres Distributed (PGD) clusters, it runs on the write leader node.
 
 ## Deployment types
@@ -104,7 +114,7 @@ When you register an external provider (OpenAI, AWS Bedrock, NVIDIA NIM) through
 
 The `aidb.create_model()` SQL function registers a model directly in the AIDB model registry, backed by a Foreign Data Wrapper (FDW) pointing at the provider's API endpoint. When a pipeline step invokes an AIDB-native model, the Postgres process contacts the provider directly, with no intermediary proxy. Credentials are stored as FDW user mappings (`CREATE USER MAPPING FOR PUBLIC`).
 
-**Availability:** Any cluster running the AIDB extension, regardless of HM connectivity. This is the only model access path available to clusters that can't reach the primary location. For details on providers, configuration, and credential management, see [External inference services: AIDB-native model registration](external-inference-services#aidb-native-model-registration) and the [AIDB model registry reference documentation](/edb-postgres-ai/current/ai-factory/pipeline/reference/models/).
+**Availability:** Any cluster running the AIDB extension, regardless of HM connectivity. This is the only model access path available to clusters that can't reach the primary location. For details on providers, configuration, and credential management, see [External inference services: AIDB-native model registration](external-inference-services#aidb-native-model-registration) and the [AIDB model registry reference documentation](/aidb/latest/integrating-models/integrated-models).
 
 ### Model availability by deployment type
 
@@ -127,6 +137,7 @@ AIDB also ships with several built-in models (bert, clip, t5, llama) that run lo
 Pipeline execution behavior depends on the cluster architecture, not on the deployment type. The same mechanics apply whether the cluster is on the primary location, a secondary location, or self-managed.
 
 -   **PGD clusters** execute pipelines on the write leader node. Pipeline metadata (configuration, state, and metrics) replicates to all nodes through BDR (Bi-Directional Replication) logical replication, but execution occurs only on the write leader. On a write leader switchover, the new leader resumes execution: in Background mode, AIDB's background worker starts on the new leader and picks up unprocessed rows; in Live mode, trigger functions are replicated to all nodes and fire on the new write leader automatically. There may be a brief gap during the switchover while the new leader is elected.
+
 -   **Primary/Standby Replication (PSR) clusters** execute pipelines on the single writable node. On failover to a promoted standby, background processing resumes once the new primary is operational and AIDB's background worker starts. Live mode triggers are present on the promoted standby and fire normally. Rows written during the failover window (if any) are processed as part of the normal unprocessed-row backlog.
 
 ## Monitoring execution

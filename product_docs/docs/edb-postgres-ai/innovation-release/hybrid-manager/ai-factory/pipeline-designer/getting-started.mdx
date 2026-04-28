@@ -12,7 +12,7 @@ Follow the setup steps and two complete pipeline examples below to get Pipeline 
 Pipeline Designer requires a dedicated Postgres role called `visual_pipeline_user` (VPU) - the role Pipeline Designer uses to execute all pipeline operations, including querying the model registry, creating destination tables, and running pipeline steps. 
 This role isn't created automatically. You must create it manually before using Pipeline Designer. 
 The model picker queries the AI Database (AIDB) model registry as VPU, so if the role doesn't exist, the model picker is empty and pipeline creation can't proceed.
-See [VPU role creation](#vpu-role-creation) for the setup steps. The AIDB extension may or may not be pre-installed, depending on the cluster type:
+See [VPU role creation](#creating-vpu-role) for the setup steps. The AIDB extension may or may not be pre-installed, depending on the cluster type:
 
 | Deployment type    | Extension installed at provisioning | Model picker populated before first pipeline          |
 |--------------------|-------------------------------------|-------------------------------------------------------|
@@ -20,18 +20,17 @@ See [VPU role creation](#vpu-role-creation) for the setup steps. The AIDB extens
 | Primary/Standby Replication (PSR) managed | No                                  | No (empty until extension and VPU exist)              |
 | Self-managed (any) | No                                  | No (empty until extension and VPU exist)              |
 
-The steps below are grouped by operational scope, from cluster-wide settings through per-database, platform-level, and per-table configuration, 
-so you can identify which steps apply when setting up a new database or adding a source table to an existing deployment.
+The steps below are ordered by dependency, so you can identify which steps apply when setting up a new database or adding a source table to an existing deployment.
 
 | Step                                                    | Scope    | Applies to            | Re-run when                     |
 |---------------------------------------------------------|----------|-----------------------|---------------------------------|
-| `CREATE ROLE visual_pipeline_user` + `aidb_users` grant | Instance | All                   | Never (one-time)                |
 | `shared_preload_libraries`                              | Instance | Self-managed          | PG major upgrade                |
 | `max_worker_processes`                                  | Instance | All                   | Pipeline concurrency growth     |
 | `CREATE EXTENSION aidb CASCADE`                         | Database | PSR managed, self-mgd | New database                    |
 | `aidb.bdr_setup()`                                      | Database | PGD self-managed      | New database, extension upgrade |
 | `GRANT CREATE ON SCHEMA public`                         | Database | All                   | New database                    |
 | beacon-agent DDL privileges                             | Database | Self-managed          | New cluster registration        |
+| `CREATE ROLE visual_pipeline_user` + `aidb_users` grant | Instance | All                   | Never (one-time)                |
 | Hybrid Manager (HM) roles                               | Platform | All                   | New user onboarding             |
 | Inference service registration                          | Platform | All                   | New model provider              |
 | Source table grants                                     | Table    | All                   | New tables, schema changes      |
@@ -39,31 +38,9 @@ so you can identify which steps apply when setting up a new database or adding a
 
 If this is your first time setting up Pipeline Designer, follow all sections below in order. 
 
-If you are adding Pipeline Designer to a new database on an existing cluster, start at [Per-database setup](#per-database-setup) and skip [Cluster-level setup](#cluster-level-setup) unless pipeline concurrency has changed. 
+If you are adding Pipeline Designer to a new database on an existing cluster, start at [Cluster-level setup](#cluster-level-setup) if pipeline concurrency has changed, then proceed through [Per-database setup](#per-database-setup). Skip [VPU role creation](#creating-vpu-role) if the role already exists on the instance. 
 
 If you are only adding a new source table to an existing pipeline deployment, go directly to [Per-source-table setup](#per-source-table-setup).
-
-### VPU role creation
-
-The `visual_pipeline_user` role is a cluster-wide Postgres role that Pipeline Designer uses for all pipeline operations. It must exist before you open Pipeline Designer, because the model picker queries the AIDB model registry as VPU. If the role is missing, the model picker is empty and pipeline creation can't proceed.
-
-Create the role once per Postgres instance, after the AIDB extension has been created in at least one database (the `aidb_users` role that VPU must join is created by the extension).
-
-On **Postgres 16 and earlier**, VPU requires `LOGIN` privileges because background worker authentication uses role-based login:
-
-```sql
-CREATE ROLE visual_pipeline_user LOGIN;
-GRANT aidb_users TO visual_pipeline_user;
-```
-
-On **Postgres 17 and later**, `LOGIN` isn't required because background worker authentication no longer depends on it:
-
-```sql
-CREATE ROLE visual_pipeline_user;
-GRANT aidb_users TO visual_pipeline_user;
-```
-
-This step is one-time and instance-level, applying to all deployment types (PGD managed, PSR managed, and self-managed). You don't need to repeat it when adding databases or tables. For the full set of per-table grants that VPU needs, see [Configuring VPU permissions](vpu-and-permissions#configuring-vpu-permissions).
 
 ### Cluster-level setup
 
@@ -97,9 +74,9 @@ The recommended value depends on the number of concurrent pipelines and other ex
 
 Repeat every step in this section for each database where you use Pipeline Designer. When you create a new database on an existing cluster, return here.
 
-On **PGD managed clusters**, the AIDB extension is created automatically during cluster provisioning. No manual extension installation is needed.
+On PGD managed clusters, the AIDB extension is created automatically during cluster provisioning. No manual extension installation is needed.
 
-On **PSR managed** and **self-managed clusters**, the extension isn't created at provisioning. The model sync that populates the Pipeline Designer model picker needs the extension to discover available models. Without it, the model picker is empty and pipeline creation can't proceed. Install the extension manually before using Pipeline Designer:
+On PSR managed and self-managed clusters, the extension isn't created at provisioning. The model sync that populates the Pipeline Designer model picker needs the extension to discover available models. Without it, the model picker is empty and pipeline creation can't proceed. Install the extension manually before using Pipeline Designer:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
@@ -133,6 +110,28 @@ If DDL fails, beacon-agent logs the error but doesn't surface it through the Pip
 AIDB features remain non-functional for that database until the prerequisite DDL succeeds. 
 See the [AIDB documentation](/aidb/latest/install/configure) for self-managed configuration requirements.
 !!!
+
+### Creating VPU role
+
+The `visual_pipeline_user` role is a cluster-wide Postgres role that Pipeline Designer uses for all pipeline operations. It must exist before you open Pipeline Designer, because the model picker queries the AIDB model registry as VPU. If the role is missing, the model picker is empty and pipeline creation can't proceed.
+
+Create the role once per Postgres instance. The `aidb_users` role that VPU must join is created by the AIDB extension, so the extension must exist in at least one database first.
+
+On **Postgres 16 and earlier**, VPU requires `LOGIN` privileges because background worker authentication uses role-based login:
+
+```sql
+CREATE ROLE visual_pipeline_user LOGIN;
+GRANT aidb_users TO visual_pipeline_user;
+```
+
+On **Postgres 17 and later**, `LOGIN` isn't required because background worker authentication no longer depends on it:
+
+```sql
+CREATE ROLE visual_pipeline_user;
+GRANT aidb_users TO visual_pipeline_user;
+```
+
+This step is one-time and instance-level, applying to all deployment types (PGD managed, PSR managed, and self-managed). You don't need to repeat it when adding databases or tables. For the full set of per-table grants that VPU needs, see [Configuring VPU permissions](vpu-and-permissions#configuring-vpu-permissions).
 
 ### Platform-level setup
 
