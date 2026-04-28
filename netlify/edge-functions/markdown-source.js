@@ -199,6 +199,8 @@ export default async function handler(request, context) {
       "x-llms-txt": "/docs/llms.txt",
     };
 
+    if ( !acceptHeader.includes("text/markdown") ) headers["Content-Type"] = "text/plain; charset=utf-8";
+
     return new Response(body, {
       status: 200,
       headers,
