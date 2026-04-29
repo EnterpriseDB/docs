@@ -8,7 +8,13 @@ redirects:
   - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/preparing_source_oracle_db/
 ---
 
-Before you perform a migration of an Oracle source using Hybrid Manager (HM), you must complete several database configuration steps and create a dedicated migration user. These steps ensure that all migration components, including the EDB Postgres AI agent (`beacon-agent`) and the DMS agent (`cdcagent`), can establish a stable connection, discover your schemas, and perform schema and data extraction operations.
+Configure your Oracle source database and create a dedicated migration user before starting your migration. How much you need to configure depends on what you plan to do:
+
+- **Schema ingestion and assessment only** (EDB Postgres AI agent): You only need to create a migration user with read access to Oracle data dictionary views — no database-level changes are required. If this is your goal, for example to evaluate a large Oracle estate before committing to migration, skip directly to [Configuring the migration user](#configuring-the-migration-user).
+
+- **Data migration** (DMS agent): Requires additional database-level configuration — `ARCHIVELOG` mode, supplemental logging, dedicated tablespaces, and expanded LogMiner privileges on the migration user. Complete all sections on this page.
+
+If you plan to run both schema assessment and data migration, complete all sections. The migration user you create here serves both agents.
 
 ## Prerequisites
 
@@ -16,6 +22,10 @@ Before you perform a migration of an Oracle source using Hybrid Manager (HM), yo
 - Collect the names of the schemas and tables you want to migrate.
 
 ## Configuring the database
+
+!!!note Data migration only
+This section is required for data migration. If you are performing schema assessment only, skip to [Configuring the migration user](#configuring-the-migration-user).
+!!!
 
 ### Enabling `ARCHIVELOG` mode
 
@@ -216,6 +226,10 @@ Always consult your DBA to determine the appropriate redo log size for your prod
 !!!
 
 ## Configuring tables
+
+!!!note Data migration only
+This section is required for data migration. If you are performing schema assessment only, skip to [Configuring the migration user](#configuring-the-migration-user).
+!!!
 
 ### Enabling table-level supplemental logging
 
@@ -421,20 +435,22 @@ To simplify the migration process, we recommend creating a single Common User (C
 
     ```sql
     -- Grant core session and container privileges
+    -- These grants are required for schema ingestion and assessment via the EDB Postgres AI agent.
     GRANT CREATE SESSION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SET CONTAINER TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ON V_$DATABASE TO <C##_MIGRATION_USER> CONTAINER=ALL;
     GRANT CONNECT TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL;
+    GRANT CREATE TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL;
 
     -- Grant migration and log mining permissions
+    -- These additional grants are required for data migration via the DMS agent.
     GRANT FLASHBACK ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT EXECUTE_CATALOG_ROLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ANY TRANSACTION TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT SELECT ANY DICTIONARY TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT LOGMINING TO <C##_MIGRATION_USER> CONTAINER=ALL; 
-    GRANT CREATE TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT LOCK ANY TABLE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT CREATE SEQUENCE TO <C##_MIGRATION_USER> CONTAINER=ALL; 
     GRANT EXECUTE ON DBMS_LOGMNR TO <C##_MIGRATION_USER> CONTAINER=ALL; 
@@ -474,19 +490,21 @@ To simplify the migration process, we recommend creating a single Common User (C
 
     ```sql
     -- Grant core session privileges
+    -- These grants are required for schema ingestion and assessment via the EDB Postgres AI agent.
     GRANT CREATE SESSION TO <MIGRATION_USER>;
     GRANT SELECT ON V_$DATABASE to <MIGRATION_USER>;
     GRANT CONNECT TO <MIGRATION_USER>; 
     GRANT SELECT_CATALOG_ROLE TO <MIGRATION_USER>;
+    GRANT CREATE TABLE TO <MIGRATION_USER>;
 
     -- Grant migration and log mining permissions
+    -- These additional grants are required for data migration via the DMS agent.
     GRANT FLASHBACK ANY TABLE TO <MIGRATION_USER>;
     GRANT SELECT ANY TABLE TO <MIGRATION_USER>;
     GRANT EXECUTE_CATALOG_ROLE TO <MIGRATION_USER>;
     GRANT SELECT ANY TRANSACTION TO <MIGRATION_USER>;
     GRANT SELECT ANY DICTIONARY TO <MIGRATION_USER>;
     GRANT LOGMINING TO <MIGRATION_USER>;
-    GRANT CREATE TABLE TO <MIGRATION_USER>;
     GRANT LOCK ANY TABLE TO <MIGRATION_USER>;
     GRANT CREATE SEQUENCE TO <MIGRATION_USER>;
     GRANT EXECUTE ON DBMS_LOGMNR TO <MIGRATION_USER>;
@@ -516,7 +534,7 @@ To simplify the migration process, we recommend creating a single Common User (C
     </Tab>
     </TabContainer>
 
-1.  Verify the migration user can see your source tables from the CDB root. If this returns no rows, the grants were not applied with `CONTAINER=ALL` — regrant all privileges as shown above.
+1.  Verify the migration user can see your source tables from the CDB root. If this returns no rows, the grants weren't applied with `CONTAINER=ALL` — regrant all privileges as shown above.
 
     <TabContainer syncKey="db_type">
     <Tab title="CDB/PDB">
@@ -637,6 +655,10 @@ To simplify the migration process, we recommend creating a single Common User (C
     </TabContainer>
 
 ## Validating your database and user configurations
+
+!!!note Data migration only
+This section is required for data migration. If you are performing schema assessment only, this validation isn't needed.
+!!!
 
 Ensure your database configurations and created user meet all requirements to function with the agents: 
 
