@@ -143,6 +143,8 @@ export default async function handler(request, context) {
     url.pathname.endsWith(".md") ||
     url.pathname.endsWith(".mdx");
 
+  console.log(`Request for markdown version of ${url.pathname}`);
+
   // Pass through requests that don't want Markdown
   if (!wantsMarkdown) {
     return; // passthrough
