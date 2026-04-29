@@ -1,0 +1,76 @@
+---
+title: Preparing your application for PGD
+navTitle: Preparing your application
+description: Design decisions, conflict avoidance strategies, and replication behaviors that affect PGD applications.
+---
+
+PGD's distributed nature introduces design decisions that don't arise with single-node Postgres, whether you're porting an existing application or building from scratch.
+
+## Understanding your workload
+
+Before making any design decisions, understand your application's read-to-write ratio. Reads can be routed to different nodes to spread load and fully offload it from write leader nodes.
+
+Avoid using object-relational mappers (ORMs) where possible. ORMs add a layer of abstraction that hides the original intent of database operations, and the engineering and operational complexity this abstraction introduces is amplified in a distributed environment like PGD.
+
+## Planning your write strategy
+
+Design your application to avoid write conflicts as the primary goal. Write transactions replicate to all data nodes in the cluster, so conflicts have a higher cost than on a single-node database.
+
+If your application can cleanly partition write traffic by geography or user group with no overlapping writes between partitions, local routing with multiple write leaders in separate regions is the right fit. Keeping writes local to a region eliminates cross-region conflicts and improves throughput. If that clean separation can't be guaranteed, the conflict rate rises as write volume scales. In that case, global routing, where all writes go to a single write leader, is the safer choice. The routing configuration itself is a DBA task, but understanding your application's write patterns determines which model fits.
+
+For unavoidable per-row contention, use [galloc sequences](/pgd/current/sequences/) to reduce `INSERT` conflicts, or [CRDTs](/pgd/current/conflict-management/crdt/) for commutative updates that need to merge without conflict.
+
+For details on conflict detection and resolution, see [Conflict management](/pgd/current/conflict-management/).
+
+## Planning your read strategy
+
+Route read traffic to the Connection Manager's read-only port, which distributes connections across all nodes rather than directing them to the write leader. HAProxy can also balance read traffic across nodes using the Connection Manager's read-only port. See [Load balancing](/pgd/current/connection-manager/load-balancing/) for configuration examples.
+
+With read traffic spread across nodes, consider where consistency matters. Stale reads are acceptable for some data, such as aggregate counts or social metrics. Other data needs to be immediately visible to the user who just wrote it, such as a recently placed order or an updated account balance. For stricter consistency, [synchronous commit](/pgd/current/commit-scopes/) ensures immediate visibility on a configurable number of nodes before a write completes.
+
+## Designing your schema for replication
+
+Define a `PRIMARY KEY`, `UNIQUE` constraint, or explicit `REPLICA IDENTITY` on every table that receives `UPDATE` or `DELETE` operations. Both `PRIMARY KEY` and `UNIQUE` constraints back their identity with a unique index, which PGD uses to locate rows during replication. Without any of these identifiers, PGD generates a warning and blocks updates and deletes. The exception is `REPLICA IDENTITY FULL`, which doesn't require a unique index. In that case, PGD uses the first applicable non-unique index, or falls back to a sequential scan.
+
+Use base tables as replication targets. Base tables are standard heap or storage tables created with `CREATE TABLE`, as opposed to views, materialized views, or foreign tables. Views, materialized views, and foreign tables can't receive replicated changes. DML through updatable views resolves to the underlying base table on the origin and is applied to the same base table on the target.
+
+PGD supports partitioned tables transparently. Use `bdr.replication_set_add_table` on the parent table to include the entire partitioned table in a replication set. Changes to any partition are replicated downstream automatically. See [Replication sets](/pgd/current/repsets/) for details.
+
+Use global sequences in a PGD cluster. Local sequences generate conflicting values across nodes. See [Sequences](/pgd/current/sequences/) for details on global sequences and global locking.
+
+Ensure all collations used in the schema are available on all nodes, and that the default collation is the same across nodes. Row replication itself isn't affected, since PGD uses equality searches on replica identity values. However, unique indexes defined with nonmatching collation qualifiers can behave unexpectedly, and row filters that use collatable expressions can produce inconsistent results if collations differ between nodes.
+
+## Accounting for replication behavior
+
+PGD replicates only the final result of each statement, after all triggers and rules are processed. An `INSERT ... ON CONFLICT UPDATE` sends either an insert or an update, whichever occurred on the origin. If an update or delete affects zero rows, nothing is replicated.
+
+The following behaviors differ from a single-node database and require attention during development:
+
+- Triggers execute only on the origin node by default. Use `ALTER TABLE ... ENABLE ALWAYS TRIGGER` to run a trigger on both the origin and at apply time, or `ALTER TABLE ... ENABLE REPLICA TRIGGER` to run it only at apply time. Statement-level triggers (`FOR EACH STATEMENT`) and per-column `UPDATE` triggers (`UPDATE OF column_name`) are never executed on apply, regardless of setting. When writing trigger functions, use fully qualified object references or set the search path explicitly with `ALTER FUNCTION ... SET search_path = ...`. PGD apply uses the system-level default `search_path`, so functions that assume a different path fail on apply.
+
+- Rules execute only on the origin and are ignored during apply, even if enabled for replicas.
+
+- Row-level locks from `SELECT ... FOR UPDATE/FOR SHARE` and advisory locks aren't replicated. `SERIALIZABLE` isolation is supported, but transactions aren't serialized across nodes, and concurrent transactions on multiple nodes can still conflict.
+
+- `TRUNCATE` replicates without needing a replica identity. When truncating tables connected by foreign keys, PGD truncates the same group of tables on the subscriber. If any of those tables have foreign-key links to tables outside the replication set, the truncate fails on the subscriber. See [Replication sets](/pgd/current/repsets/).
+
+- Binary data in `BYTEA` columns replicates without special handling, up to 1 GB. The [PostgreSQL large object](https://www.postgresql.org/docs/current/largeobjects.html) facility isn't supported in PGD.
+
+- `TOAST` is handled transparently. `TOAST` chunk IDs may differ between nodes for the same row, but this difference doesn't cause any problems.
+
+- Avoid volatile functions in `CHECK` constraints. PGD reexecutes `CHECK` constraints on apply, and if the result differs from the original execution, data divergence occurs.
+
+- Don't mark `REPLICA IDENTITY` columns as external. Cascading foreign keys are supported.
+
+## Avoiding data anomalies
+
+PGD uses replica identity values to identify rows and table names to identify tables. Reusing an identifier after deletion, or a table name after dropping, creates ambiguity that PGD can't resolve. This ambiguity is the [ABA problem](https://en.wikipedia.org/wiki/ABA_problem), where PGD can't determine whether an identifier refers to the current object, the previous one, or an older one.
+
+To avoid data anomalies and divergence:
+
+-   Use unique identifiers for rows on `INSERT`.
+-   Don't modify unique identifiers on `UPDATE`.
+-   Don't reuse deleted unique identifiers.
+-   Don't reuse dropped object names.
+
+Violations can lead to data anomalies across nodes. While unlikely, they aren't impossible. A deleted row's identifier is safe to reuse only after the `DELETE` has replayed on all nodes, including any that were down. Under good conditions that takes under a second, but can take days if a node is severely degraded.
