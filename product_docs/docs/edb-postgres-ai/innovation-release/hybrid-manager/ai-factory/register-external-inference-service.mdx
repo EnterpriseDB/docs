@@ -1,0 +1,216 @@
+---
+title: Register an external inference service
+navTitle: Register external inference service
+description: How to register a remote model endpoint (OpenAI, Google Gemini, Anthropic Claude, NVIDIA NIM, or any OpenAI-compatible API) in Hybrid Manager so that chatbots, AIDB pipelines, and Gen AI Builder can proxy calls to it.
+deepToC: true
+---
+
+**Register an external inference service to let Hybrid Manager proxy calls from its chatbot, AIDB pipelines, and Gen AI Builder to a remote model provider.**
+
+Hybrid Manager (HM) enforces one allowed model name per service, injects your API key into outbound requests, and reverse-proxies traffic to the upstream endpoint — credentials are stored in Kubernetes secrets, not in your application or database.
+
+## View the Inference Services list
+
+Open the Inference Services list page from the **Estate → Inference Services ** menu in your Hybrid Manager project.
+
+The list displays each service's name, model, and current status.
+
+| Status | Meaning |
+|--------|---------|
+| Ready | The service is healthy and accepting requests. |
+| Failed | The service is unhealthy. Open the service detail to inspect the error. |
+| Unknown | Health check not yet completed — typically seen immediately after creation. |
+
+Status is refreshed every 30 seconds by a background health check.
+
+## Prerequisites
+
+Before registering, confirm you have:
+
+- The provider's **base URL** (scheme and host, without a trailing `/v1`).
+- The **model name** exactly as the provider expects it (case-sensitive).
+- A valid **API key** for the provider.
+- Network reachability from the HM cluster to the upstream hostname. Your HM administrator may need to allow egress to the provider's domain.
+
+## Open the registration form
+
+Navigate to **Estate → Quick Actions → Register External Inference Service** in your Hybrid Manager project.
+
+!!!Tip
+You can also reach the form from the Inference Services list page via the **Quick Actions** menu.
+!!!
+
+## Fill in the form
+
+### External Service Name _(required)_
+
+A unique identifier for this service within HM. Must follow DNS-style naming rules:
+
+- Lowercase letters and digits only.
+- Hyphens (`-`) are allowed within segments but not at the start or end.
+- Dots (`.`) are allowed as segment separators.
+- No uppercase letters, underscores, or spaces.
+- Maximum **63 characters**.
+
+Example: `openai-gpt-4o-mini`, `azure.gpt-4o.prod`.
+
+!!!Note
+The service name is locked after registration. To change it, delete the service and re-register with the new name.
+!!!
+
+### Tags _(optional)_
+
+Reuse existing HM tags to group and filter services. Tags have no effect on request routing or authentication.
+
+### Model Name _(required)_
+
+The exact identifier the upstream provider expects, as documented by the provider. This value is **case-sensitive**.
+
+| Provider | Example model name |
+|----------|--------------------|
+| OpenAI | `gpt-4o-mini` |
+| Google Gemini | `gemini-2.5-pro` |
+| Anthropic | `claude-sonnet-4-5` |
+| NVIDIA NIM | `meta/llama-3.1-8b-instruct` |
+| OpenRouter | `openai/gpt-4o-mini` |
+
+!!!Warning
+The model name is locked at registration. Any call requesting a different model name returns **HTTP 403 `model_not_allowed`**. Delete and re-register the service to change the model name.
+!!!
+
+### API Key _(required for most providers)_
+
+The API key only — do not include the `Authorization: Bearer …` prefix. HM adds the correct auth header automatically based on the **API Protocol Version** you select.
+
+### Model Base URL _(required)_
+
+The scheme and host (plus any required path prefix) for the provider's API. **Do not include `/v1`** — consumer applications append `/v1` (or `/v1beta` for Gemini) themselves. Including `/v1` here causes duplicated paths such as `/v1/v1/chat/completions`, which returns a 404.
+
+| Provider | Model Base URL |
+|----------|---------------|
+| OpenAI | `https://api.openai.com` |
+| OpenRouter | `https://openrouter.ai/api` |
+| Google Gemini | `https://generativelanguage.googleapis.com` |
+| Anthropic | `https://api.anthropic.com` |
+| NVIDIA NIM | `https://integrate.api.nvidia.com` |
+| Self-hosted / vLLM | Your internal service URL, e.g. `http://vllm-svc.inference:8000` |
+
+!!!Warning
+The base URL is locked at registration. Delete and re-register the service to change it.
+!!!
+
+**How the proxy uses this URL:** when a client sends a request to HM (for example, `POST /v1/chat/completions`), the proxy forwards it to `<Model Base URL>/v1/chat/completions`. No path transformation is applied — the request path is appended as-is to the base URL you provide here.
+
+### Functions _(optional, multi-select)_
+
+Capability tags that consumer applications filter on when discovering available models. Use the predefined values below for HM's built-in consumers; for your own applications, any string is valid.
+
+| Built-in consumer | Required function tag |
+|-------------------|-----------------------|
+| HM chatbot | `openai-chat-completions` |
+| AIDB pipeline step | The matching `aidb-*` tag (see your AIDB pipeline documentation) |
+
+Leave this field empty if you are exposing the service exclusively to custom applications that perform their own model selection.
+
+!!!Note
+Functions can be updated after registration without deleting and re-registering the service.
+!!!
+
+### API Protocol Version _(required)_
+
+Controls both the request body format and the outbound authentication header. Choose the option that matches the provider's native API.
+
+| Option | Request body shape | Auth header sent | Use for |
+|--------|--------------------|------------------|---------|
+| `OPENAI_V1` | OpenAI Chat Completions | `Authorization: Bearer <key>` | OpenAI, NVIDIA NIM, vLLM, OpenRouter, any OpenAI-compatible endpoint |
+| `GEMINI_V1_BETA` | Google Gemini | `x-goog-api-key: <key>` | Google Gemini native API only |
+| `ANTHROPIC_V1` | Anthropic Messages | `x-api-key: <key>` + `anthropic-version: 2023-06-01` | Anthropic Claude |
+
+!!!Warning
+Choosing the wrong protocol sends an incompatible request body **and** auth header to the upstream. Symptoms: HTTP 400 from OpenAI or Anthropic when given a Gemini-shape body; HTTP 401 from Google when given `Bearer`; a missing-`anthropic-version` error from Anthropic when the service is registered as `OPENAI_V1`.
+!!!
+
+!!!Note
+The API Protocol Version can be updated after registration without deleting and re-registering the service.
+!!!
+
+### Allow Insecure Connection _(optional, default off)_
+
+Disables TLS certificate verification on outbound calls to the upstream. Enable this only if the upstream uses a self-signed certificate or a certificate signed by a CA not trusted by the HM cluster.
+
+!!!Warning
+**This setting is create-only.** You cannot toggle it after registration. If you need to change it, delete the service and re-register. Only enable this for development environments or trusted self-signed certificates — disabling TLS verification reduces security.
+!!!
+
+## After clicking Register
+
+HM validates the endpoint before creating any infrastructure. For services using `OPENAI_V1`, `ANTHROPIC_V1`, or `GEMINI_V1_BETA`, HM performs a live connectivity probe against the upstream. If the endpoint is unreachable or the API key is rejected, registration fails immediately with an error — no Kubernetes resources are created.
+
+!!!Note
+Services using an unspecified protocol are not probed at registration time.
+!!!
+
+Once validation passes, HM creates the necessary Kubernetes namespace, secret, `ServingRuntime`, and `InferenceService` backing the new external inference service. The service appears in the Inference Services list.
+
+The **status** displayed (Ready, Failed) is refreshed every 30 seconds by a background health check.
+
+## View a registered service
+
+Click a service name in the Inference Services list to open its detail view, which shows the service's configuration, current status, and available actions.
+
+The detail view displays the following fields:
+
+| Field | Description |
+|-------|-------------|
+| External Service Name | The unique identifier assigned at registration. |
+| Model Name | The model identifier forwarded to the upstream provider. |
+| Model Base URL | The upstream endpoint the proxy routes requests to. |
+| API Protocol Version | The request format and authentication header in use (`OPENAI_V1`, `GEMINI_V1_BETA`, or `ANTHROPIC_V1`). |
+| Functions | The capability tags currently assigned to the service. |
+| Allow Insecure Connection | Whether TLS certificate verification is disabled for outbound calls. |
+| Status | Current health of the service: **Ready**, **Failed**, or **Unknown**. |
+
+## Use the service after registration
+
+Once the service is ready, it is available to:
+
+- **HM chatbot** — the chatbot picks up services tagged with `openai-chat-completions` automatically.
+- **Pipeline Designer** — registered external models appear in the model picker alongside HM-hosted models. For details, see [External inference services in Pipeline Designer](pipeline-designer/external-inference-services).
+- **Gen AI Builder** — models are available as inference targets in Gen AI Builder pipelines once registered.
+
+## Update a registered service
+
+To edit a registered service, either open the service detail page and select **Quick Actions → Edit Service**, or click the pencil icon on the Inference Services list. 
+
+The following fields can be updated without deleting and re-registering:
+
+- **Functions** — add or remove capability tags at any time.
+- **API Protocol Version** — change the request format and auth header, for example if you migrate to a different provider API.
+- **API Key** — replace the key at any time. HM deletes the existing Kubernetes secret and creates a new one automatically.
+
+!!!Note
+HM runs a connectivity probe before applying the update. If the endpoint is unreachable or the new API key is rejected, the update fails and no changes are applied.
+!!!
+
+The following fields are **locked after registration** and cannot be updated. Delete and re-register the service to change them:
+
+- External Service Name
+- Model Name
+- Model Base URL
+- Allow Insecure Connection
+
+## Deregister an external service
+
+!!!Warning
+Deregister is permanent. All associated Kubernetes resources (namespace, secret, `ServingRuntime`, `InferenceService`) are removed immediately. This action cannot be undone.
+!!!
+
+To delete a service, either open the service detail page and select **Quick Actions → Deregister External Inference Service**, or click the trash icon on the Inference Services list.
+
+HM blocks deletion if the service is currently referenced by one or more **pipelines**. Remove or update those pipelines first, then retry.
+
+When deletion succeeds, HM:
+
+1. Removes all Kubernetes resources backing the service (including the API key secret).
+2. Removes the service record from the database.
+3. Clears all tags associated with the service.
