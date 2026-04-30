@@ -804,12 +804,15 @@ function cleanup() {
       // - not the canonical URL, and
       // - not the "latest" version of canonical for a latest destination
       // OR
+      // - url ends with /index/
+      // OR
       // - if fixCurrent is enabled and the URL is an absolute path that points to the same version of the same product but doesn't use /current/
       // OR
       // - if the source was renamed and the URL matches the old path, update to new path
       //   (this implicitly requires track-renames-since to have been set)
       const testPathIsLatestDest =
         testPath === replacePathVersion(destMetadata.canonical);
+      const originalUrlHasIndex = /\/index(?:\.mdx)?\/?(#|$)/.test(url);
       const testPathIsCurrent =
         destMetadata.product &&
         destMetadata.version &&
@@ -822,6 +825,7 @@ function cleanup() {
       if (
         (testPath !== destMetadata.canonical &&
           !(destMetadata.latest && testPathIsLatestDest)) ||
+        originalUrlHasIndex ||
         (args.fixCurrent &&
           originalUrlAbsolutePath &&
           testPathIsCurrent &&
@@ -837,8 +841,13 @@ function cleanup() {
           !(destMetadata.latest && testPathIsLatestDest)
         )
           reason = "redirected";
-        else if (testPathIsCurrent && !originalUrlIsCurrent)
+        else if (
+          originalUrlAbsolutePath &&
+          testPathIsCurrent &&
+          !originalUrlIsCurrent
+        )
           reason = "replaced version with /current/";
+        else if (originalUrlHasIndex) reason = "URL ends with /index/";
         // check for latest / non-latest mismatch: that's a link in an older version using a "latest"
         // path in a link. That might be intentional, but if we're hitting a redirect there's a good chance
         // the intent was to link to a page in the older version, back when it was current
