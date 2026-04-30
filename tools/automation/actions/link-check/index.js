@@ -9,6 +9,7 @@ import mdx from "remark-mdx";
 import unified from "unified";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkStringify from "remark-stringify";
+import remarkFootnotes from "remark-footnotes";
 import admonitions from "remark-admonitions";
 import glob from "fast-glob";
 import { visitParents } from "unist-util-visit-parents";
@@ -151,6 +152,7 @@ const pipeline = unified()
   .use(remarkParse)
   .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
   .use(remarkMdxEmbeddedHast)
+  .use(remarkFootnotes)
   .use(admonitions, {
     tag: "!!!",
     icons: "none",
