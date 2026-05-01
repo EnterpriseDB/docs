@@ -9,7 +9,7 @@ import {
   appendFileSync,
   existsSync,
 } from "fs";
-import core from "@actions/core";
+import * as core from "@actions/core";
 import { load, dump } from "js-yaml";
 import SourceMap from "js-yaml-source-map";
 import Ajv from "ajv";
