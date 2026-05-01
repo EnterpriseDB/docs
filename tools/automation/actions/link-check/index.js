@@ -76,8 +76,7 @@ const basePath =
   core?.getInput("content-path") ||
   path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../..");
 
-let ghCore = core;
-
+let ghCore;
 if (!process.env.GITHUB_REF) {
   ghCore = {
     getInput: (key) => undefined,
@@ -138,11 +137,13 @@ if (!process.env.GITHUB_REF) {
   let branch = process.env.GITHUB_HEAD_REF;
   // if this process was otherwise triggered by a GH action, use the current branch name
   if (!branch) branch = process.env.GITHUB_REF;
-
-  ghCore.context = (filePath, line, column) => {
-    console.log(
-      `in https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${branch}/${filePath}?plain=1#L${line}`,
-    );
+  ghCore = {
+    ...core,
+    context: (filePath, line, column) => {
+      console.log(
+        `in https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${branch}/${filePath}?plain=1#L${line}`,
+      );
+    },
   };
 }
 

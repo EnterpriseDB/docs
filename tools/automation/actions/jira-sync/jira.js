@@ -5,8 +5,7 @@ import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import { visit } from "unist-util-visit";
 
-let ghCore = core;
-
+let ghCore;
 if (!process.env.GITHUB_REF) {
   ghCore = {
     getInput: (key) => undefined,
@@ -23,6 +22,10 @@ if (!process.env.GITHUB_REF) {
     error: (message, properties) => {
       console.warn(message, properties);
     },
+  };
+} else {
+  ghCore = {
+    ...core,
   };
 }
 
