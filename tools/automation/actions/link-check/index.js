@@ -1,5 +1,5 @@
-import core, { summary } from "@actions/core";
-import github from "@actions/github";
+import * as core from "@actions/core";
+import * as github from "@actions/github";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import yaml from "js-yaml";
