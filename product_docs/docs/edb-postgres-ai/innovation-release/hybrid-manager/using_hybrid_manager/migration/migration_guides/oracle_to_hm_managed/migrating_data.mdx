@@ -1,0 +1,102 @@
+---
+title: Migrating data from Oracle to an HM-managed database
+navTitle: Migrating data
+description: Create and run an EDB DMS migration, monitor progress, finalize streaming, and apply post-migration constraints.
+deepToC: true
+redirects:
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/creating_migration/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/monitoring_migration/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/finalizing_migration/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/applying_constraints/
+---
+
+With your schema imported and the EDB DMS agent running in reader mode, you're ready to create a migration in the HM console. This page walks through the full data migration lifecycle: creating the migration, monitoring its progress, finalizing it, and applying the constraints you deferred from the schema import.
+
+## Creating a migration
+
+A migration establishes a sync between your Oracle source and a destination database cluster managed by HM.
+
+1.  In the HM console, select the project you're using for the migration.
+
+1.  Select **Migrate > Migrations**.
+
+1.  Select **Create Migration**.
+
+1.  Assign a meaningful name to the migration — for example, `oracle-prod-migration`.
+
+1.  Select the source of the migration. This corresponds to the `DBCONFIG_ID` you set when configuring the DMS agent.
+
+1.  Since you already migrated the schema, in **Scope**, select **Data only**.
+
+1.  Select the migration type:
+    - [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) — copies data once and completes. Use this for a one-time, offline migration.
+    - [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) — copies an initial snapshot, then continuously streams changes from the source. Use this to minimize downtime.
+
+1.  Under **Destination Type**, select **HM-managed Postgres** and select your destination database cluster and database. Then select **Next**.
+
+1.  Select the tables and columns to migrate. Modify table and column names if needed.
+
+1.  Select **Create Migration**.
+
+The HM console displays the new migration. If you chose **Snapshot + Streaming**, the EDB DMS agent streams data changes continuously while the migration shows a **Running** state.
+
+!!!note
+The EDB DMS agent streams data changes only — not DDL changes (schema modifications).
+!!!
+
+## Monitoring progress
+
+### Migration list view
+
+The **Migrations** page shows a summary of all migrations in the project. The **Migration progress** column displays three metrics per migration:
+
+- **Total number of tables** — total tables included in this migration
+- **Snapshot tables completed** — tables that have finished the snapshot stage
+- **Migrated rows** — cumulative rows migrated across all tables
+
+### Migration details view
+
+Select a migration from the list to open the details page, which has three tabs:
+
+- **Overview** — shows the current migration state and general information about the source and destination databases. For **Snapshot + Streaming** migrations, the migration is caught up when the status is **Streaming**. For **Snapshot** migrations, it's finished when the status is **Completed**.
+
+- **Tables** — shows all tables selected for migration. For each table, you can see source and destination table and schema names, snapshot status, mapped columns, migrated rows, and migration rate. Select the **+** icon to expand a table and view column-level mappings.
+
+- **Error history** — lists all errors logged for this migration. Select the **i** icon to open the full error log for a specific error. For stuck or failed migrations, active errors here indicate where to start troubleshooting.
+
+## Finalizing a streaming migration
+
+!!!note
+This step applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, the DMS marks the migration as completed automatically.
+!!!
+
+The EDB DMS agent continues streaming updates from your Oracle source until you explicitly stop it. Before stopping, ensure that no new writes are occurring on the source, and verify that the last known writes have been synchronized to the destination.
+
+When you're ready to cut over:
+
+1.  In the HM console, select **Migrate > Migrations** in your project.
+
+1.  Select the checkmark next to your migration to mark it as completed, or open the migration details page and select **Mark as Completed**.
+
+This stops the streaming process.
+
+## Applying deferred constraints and verifying data
+
+### Reapplying foreign key, check, and exclusion constraints
+
+During the schema import, you excluded foreign key, check, and exclusion constraints to avoid performance overhead during data migration. Now that migration is complete, connect to the destination database and reapply those constraints.
+
+Primary key, unique, and NOT NULL constraints were already applied before migration and don't require any action.
+
+### Deduplicating rows when needed
+
+For tables that had no primary key or unique constraints, the EDB DMS agent provides at-least-once delivery, which can result in duplicate rows. Perform deduplication as part of your verification step.
+
+### Verifying migrated data
+
+Compare the source and destination databases to confirm all data was migrated successfully. You can use [LiveCompare](/livecompare/latest/) for this.
+
+## Related topics
+
+- [LiveCompare](/livecompare/latest/) — row-level data comparison tool for verifying migration completeness
+- [Migration terminology](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/) — definitions for snapshot, streaming, and other migration concepts
