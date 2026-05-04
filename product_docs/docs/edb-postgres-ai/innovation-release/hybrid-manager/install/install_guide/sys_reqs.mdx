@@ -248,7 +248,8 @@ kubectl get svc
 
 ## 5. Ingress
 
-You must choose an ingress strategy that matches your infrastructure capabilities. 
+You must choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own Portal and services, as well as individual load balancers and NodePorts for each Postgres database you create.
+
 The table below defines the supported combinations of DNS Management, Endpoint Types, and SSL Termination.
 
 | Scenario | DNS Management | Endpoint Type | Portal SSL/TLS Termination |
@@ -267,18 +268,31 @@ Examples of load balancer controllers range from the AWS Load Balancer controlle
 
 **General requirements**
 
-* **TCP:** The load balancer must be configured for **TCP passthrough (TCP-only)** and must **not** terminate SSL. SSL is terminated by the HM Ingress Gateway.
-
 * **Firewall Annotations:** If using a specific provider scheme (e.g., AWS Internet Facing), you know the correct `resourceAnnotations` to provision the load balancer correctly:
 
 *AWS example annotation*: 
 
 ```yaml
+globalParameters:
+  load_balancer_mode: public
+  load_balancer_provider: aws
 resourceAnnotations:
   - name: istio-ingressgateway
     kind: Service
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+```
+
+*MetalLB example annotation*:
+
+```yaml
+globalParameters:
+  load_balancer_mode: custom-only
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      metallb.io/address-pool: production-public-ips
 ```
 
 **Configuration dependencies**
@@ -288,6 +302,12 @@ resourceAnnotations:
 | **Enable LB** | `spec.globalParameters.load_balancer_mode` | `parameters.global.load_balancer_mode` | `"public"`, `"private"`, or `"disabled"` |
 | **Provider** | `spec.globalParameters.load_balancer_provider` | `parameters.global.load_balancer_provider` | `aws`, `azure`, or `gcp` |
 | **Annotations** | `spec.resourceAnnotations[]` | `resourceAnnotations` | Provider-specific list (see below). |
+
+
+The `load_balancer_mode` parameter lets you instruct HM to create a load balancer service for both the Portal and the Postgres databases. If set to 
+`disabled`, both the Portal and the Postgres databases use NodePorts; otherwise, they use a load balancer. The `public` and `private` values only
+ affect the Postgres databases and have no impact on the Portal load balancer. Similarly, the `load_balancer_provider` parameter applies only to Postgres clusters.
+  The `resourceAnnotations` parameter is relevant only for the HM Portal.
 
 **Spot validation**
 
@@ -319,6 +339,14 @@ With a proper load balancer setup, the following are Postgres ports:
 | :--- | :--- | :--- |
 | **5432** | TCP | Default PSQL |
 | **6432** | TCP | PGD Connection Manager PSQL |
+
+
+**SSL Termination**
+
+HM is exposed through the Istio Gateway using TLS. If you are using a load balancer in front of Istio to access HM, you have two options:
+
+1. **SSL passthrough**: Configure the load balancer to forward TCP traffic without modification.
+2. **TLS termination**: Terminate the TLS session from the client at the load balancer, then have the load balancer establish a new TLS connection with Istio.
 
 #### 5.1.2 NodePort alternative
 
