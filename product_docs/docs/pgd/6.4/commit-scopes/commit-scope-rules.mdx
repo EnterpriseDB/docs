@@ -17,17 +17,17 @@ commit_scope_group [ confirmation_level ] commit_scope_kind
 
 A full formal syntax diagram is available in the [Commit scopes](/pgd/latest/reference/tables-views-functions/commit-scopes/#commit-scope-syntax) reference.
 
-A typical commit scope rule, such as `ANY 2 (group) GROUP COMMIT`, can be broken down into its components. `ANY 2 (group)` is the commit scope group specifying, for the rule, which nodes need to respond and confirm they processed the transaction. In this example, any two nodes from the named group must confirm.
+A typical commit scope rule, such as `MAJORITY ORIGIN_GROUP QUORUM COMMIT ABORT ON (timeout = 10s)`, can be broken down into its components. `MAJORITY ORIGIN_GROUP` is the commit scope group, specifying which nodes need to respond and confirm they processed the transaction. In this example, a majority of nodes in the origin node's group must confirm.
 
-No confirmation level is specified, which means that the default is used. You can think of the rule in full, then, as:
+No confirmation level is specified, which means that the default is used. You can think of the rule in full as:
 
 ```
-ANY 2 (group) ON visible GROUP COMMIT
+MAJORITY ORIGIN_GROUP ON visible QUORUM COMMIT ABORT ON (timeout = 10s)
 ```
 
-The `visible` setting means the nodes can confirm once all the transaction's changes are flushed to disk and visible to other transactions.
+The `visible` setting means nodes can confirm once all the transaction's changes are flushed to disk and are visible to other transactions.
 
-The last part of this operation is the commit scope kind, which in this example is `GROUP COMMIT`. `GROUP COMMIT` is a synchronous two-phase commit that's confirmed when any two nodes in the named group confirm they've flushed the transactions changes and made them visible.
+The last part of this operation is the commit scope kind, which in this example is `QUORUM COMMIT`. `QUORUM COMMIT` is a synchronous two-phase commit that coordinates across all participating nodes before any node commits. The `ABORT ON` clause is mandatory and sets how long to wait for quorum before aborting the transaction.
 
 ## The commit scope group
 
@@ -63,7 +63,7 @@ If you're familiar with PostgreSQL's `synchronous_standby_names` feature, be awa
 
 ## The commit scope kinds
 
-Currently, there are four commit scope kinds. The following is a summary, with links to more details.
+Currently, there are five commit scope kinds. The following is a summary, with links to more details.
 
 ### `SYNCHRONOUS COMMIT`
 
@@ -71,15 +71,11 @@ Synchronous Commit is a commit scope option that's designed to behave like the n
 
 For more details, see [`SYNCHRONOUS COMMIT`](synchronous_commit).
 
-### `GROUP COMMIT`
+### `QUORUM COMMIT`
 
-Group Commit is a synchronous, two-phase commit that's confirmed according to the requirements of the commit scope group. `GROUP COMMIT` has options that control:
+Quorum Commit is a synchronous two-phase commit that coordinates across all participating nodes before any node commits. All participating nodes commit together or roll back together. Before any node can commit locally, Quorum Commit uses eager conflict resolution to prevent inconsistencies rather than resolving them after the fact. Supported commit scope groups are `ALL`, `MAJORITY ORIGIN_GROUP`, `MAJORITY CLUSTER`, and `MAJORITY FOR EACH GROUP`.
 
-- Whether to track transactions over interruptions (Boolean, defaults to off) 
-- How to resolve conflicts (`async` or `eager`, defaults to `async`)
-- How to obtain a consensus (`group`, `partner` or `raft`, defaults to `group`)
-
-For more details, see [`GROUP COMMIT`](group-commit).
+For more details, see [`QUORUM COMMIT`](quorum-commit).
 
 ### `CAMO`
 
@@ -92,6 +88,16 @@ For more details, see [`CAMO`](camo).
 With Lag Control, when the system's replication performance exceeds specified limits, a commit delay can be automatically injected into client interaction with the database, providing a back pressure on clients. Lag Control has parameters to set the maximum commit delay that can be exerted. It also has limits in terms of time to process or queue size that trigger increases in that commit delay.
 
 For more details, see [`LAG CONTROL`](lag-control).
+
+### `GROUP COMMIT`
+
+Group Commit is a synchronous, two-phase commit that's confirmed according to the requirements of the commit scope group. `GROUP COMMIT` has options that control:
+
+- Whether to track transactions over interruptions (Boolean, defaults to off) 
+- How to resolve conflicts (`async` or `eager`, defaults to `async`)
+- How to obtain a consensus (`group`, `partner` or `raft`, defaults to `group`)
+
+For more details, see [`GROUP COMMIT`](group-commit).
 
 ## Combining rules
 

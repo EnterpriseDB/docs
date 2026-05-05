@@ -40,6 +40,7 @@ confirmation_level:
 
 commit_scope_kind:
 { GROUP COMMIT [ ( group_commit_parameter = value [, ... ] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value [, ... ] ) TO commit_scope_degrade_operation ]
+  | QUORUM COMMIT [ ( commit_decision = { group | raft } ) ] ABORT ON ( timeout = value )
   | CAMO [ DEGRADE ON ( degrade_on_parameter = value [, ... ] ) TO ASYNC ]
   | LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
   | SYNCHRONOUS COMMIT [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ] }
@@ -112,7 +113,7 @@ Example: `ALL (left_dc)`
 
 A transaction under this commit scope group will be considered committed if all of the nodes in the `left_dc` group confirm they processed the transaction. 
 
-When `ALL` is used with [`GROUP COMMIT`](#group-commit), the [`commit_decision`](#commit_decision-settings) setting must be set to `raft` to avoid reconciliation issues.
+When `ALL` is used with [`GROUP COMMIT`](#group-commit), the [`commit_decision`](#group-commit-commit_decision-settings) setting must be set to `raft` to avoid reconciliation issues.
 
 ### ALL NOT
 
@@ -122,7 +123,7 @@ A transaction under this commit scope group will be considered committed if all 
 
 ## Confirmation level
 
-The confirmation level sets the point in time when a remote PGD node confirms that it reached a particular point in processing a transaction. 
+The confirmation level sets the point in time when a remote PGD node confirms that it reached a particular point in processing a transaction. `QUORUM COMMIT` only supports `durable` and `visible`.
 
 ### ON received
 
@@ -145,9 +146,10 @@ This is the default visibility. A transaction is confirmed after all of its chan
 More details of the commit scope kinds and details of their parameters:
 
 -   [Synchronous Commit](#synchronous-commit)
--   [Group Commit](#group-commit)  
+-   [Quorum Commit](#quorum-commit)
 -   [CAMO (Commit At Most Once)](#camo)  
 -   [Lag Control](#lag-control) 
+-   [Group Commit](#group-commit)
 
 !!!Note Parameter values
 
@@ -173,70 +175,39 @@ These set the conditions on which the commit scope rule will degrade to a less r
 
 The `commit_scope_degrade_operation` must be `SYNCHRONOUS COMMIT` with a less restrictive commit scope group—or must be asynchronous (`ASYNC`).
 
-## GROUP COMMIT
+## QUORUM COMMIT
 
-Allows commits to be confirmed by a consensus of nodes, controls conflict resolution settings, and, like [`SYNCHRONOUS COMMIT`](#synchronous-commit), has optional rule-degredation parameters.
+Provides distributed transaction consistency by coordinating commit decisions across all participating nodes before any node commits.
+
+See [Quorum Commit](../../commit-scopes/quorum-commit) for more details.
 
 ```
-GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
+QUORUM COMMIT [ ( commit_decision = { group | raft } ) ] ABORT ON ( timeout = value )
 ```
 
-### GROUP COMMIT parameters
+Supported commit scope groups are `ALL`, `MAJORITY ORIGIN_GROUP`, `MAJORITY CLUSTER`, and `MAJORITY FOR EACH GROUP`. `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
 
-| Parameter              | Type    | Default   | Description                                                                                                                         |
-| ---------------------- | ------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `transaction_tracking` | Boolean | Off/False | Specifies whether to track status of transaction. See [transaction_tracking settings](#transaction_tracking-settings).              |
-| `conflict_resolution`  | enum    | async     | Specifies how to handle conflicts. (`async`\|`eager` ).  See [conflict_resolution settings](#conflict_resolution-settings).         |
-| `commit_decision`      | enum    | group     | Specifies how the COMMIT decision is made. (`group`\|`partner`\|`raft`). See [commit_decision settings](#commit_decision-settings). |
+Only the `durable` and `visible` confirmation levels are supported with `QUORUM COMMIT`. Using `received` or `replicated` results in an error.
 
-### ABORT ON parameters
+### QUORUM COMMIT parameters
 
-| Parameter            | Type     | Default | Description                                                                                                 |
-| -------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units). (0 means not set.)                                           |
-| `require_write_lead` | Boolean  | False   | CAMO only. If set, then for a transaction to switch to local (async) mode, a consensus request is required. |
+| Parameter         | Type | Default | Description                                                                           |
+| ----------------- | ---- | ------- | ------------------------------------------------------------------------------------- |
+| `commit_decision` | enum | group   | Specifies how the commit decision is made. (`group` \| `raft`). See [commit_decision settings](#commit_decision-settings). |
 
-### DEGRADE ON parameters
+### ABORT ON parameters (QUORUM COMMIT)
 
-| Parameter            | Type     | Default | Description                                                                                      |
-| -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------ |
-| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation degrades. (0 means not set.) |
-| `require_write_lead` | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to degraded operation.      |
+`ABORT ON` is mandatory for Quorum Commit.
 
-### transaction_tracking settings
-
-When set to true, two-phase commit transactions:
-
--   Look up commit decisions when a writer is processing a PREPARE message.
--   When recovering from an interruption, look up the transactions prepared before the interruption. When found, it then looks up the commit scope of the transaction and any corresponding RAFT commit decision. Suppose the node is the origin of the transaction and doesn't have a RAFT commit decision, and `transaction_tracking` is on in the commit scope. In that case, it periodically looks for a RAFT commit decision for this unresolved transaction until it's committed or aborted.
-
-### conflict_resolution settings
-
-The value `async` means resolve conflicts asynchronously during replication using the conflict resolution policy.
-
-The value `eager` means that conflicts are resolved eagerly during COMMIT by aborting one of the conflicting transactions. 
-
-Eager is only available with `MAJORITY` or `ALL` commit scope groups.
-
-When used with the `ALL` commit scope group, the [`commit_decision`](#commit_decision-settings) must be set to `raft` to avoid reconcilation issue.
-
-See ["Conflict resolution" in Group Commit](../../commit-scopes/group-commit/#conflict-resolution).
+| Parameter | Type     | Default | Description                                                 |
+| --------- | -------- | ------- | ----------------------------------------------------------- |
+| `timeout` | interval | 0       | Time to wait for quorum before aborting. (0 means not set.) |
 
 ### commit_decision settings
 
-The value `group` means the preceding `commit_scope_group` specification also affects the COMMIT decision, not just durability. 
+The value `group` means the origin node decides to commit once it receives the required confirmations from the commit scope group.
 
-The value `partner` means the partner node decides whether transactions can be committed. This value is allowed only on groups with 2 data nodes. 
-
-The value `raft` means the decision makes use of PGD's built-in Raft consensus. Once all the nodes in the selected commit scope group have confirmed the transaction, to ensure that all the nodes in the PGD cluster have noted the transaction, it is noted with the all-node Raft.
-
-This option must be used when the `ALL` commit scope group is being used to ensure no divergence between the nodes over the decision. This option may have low performance.
-
-See ["Commit decisions" in Group Commit](../../commit-scopes/group-commit/#commit-decisions).
-
-### commit_scope_degrade_operation settings
-
-The `commit_scope_degrade_operation` must be `GROUP_COMMIT` with a less restrictive commit scope group—or must be asynchronous (`ASYNC`).
+The value `raft` means the commit decision goes through PGD's built-in Raft consensus. This is slower than `group` but may be required for certain multi-group topologies.
 
 ## CAMO
 
@@ -305,3 +276,68 @@ Where:
     computed.
 -   `diff_secs` is the delta in seconds from the last time the apply rate
     was calculated.
+
+## GROUP COMMIT
+
+Allows commits to be confirmed by a consensus of nodes, controls conflict resolution settings, and, like [`SYNCHRONOUS COMMIT`](#synchronous-commit), has optional rule-degredation parameters.
+
+```
+GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
+```
+
+### GROUP COMMIT parameters
+
+| Parameter              | Type    | Default   | Description                                                                                                                         |
+| ---------------------- | ------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `transaction_tracking` | Boolean | Off/False | Specifies whether to track status of transaction. See [transaction_tracking settings](#transaction_tracking-settings).              |
+| `conflict_resolution`  | enum    | async     | Specifies how to handle conflicts. (`async`\|`eager` ).  See [conflict_resolution settings](#conflict_resolution-settings).         |
+| `commit_decision`      | enum    | group     | Specifies how the COMMIT decision is made. (`group`\|`partner`\|`raft`). See [commit_decision settings](#group-commit-commit_decision-settings). |
+
+### ABORT ON parameters
+
+| Parameter            | Type     | Default | Description                                                                                                 |
+| -------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units). (0 means not set.)                                           |
+| `require_write_lead` | Boolean  | False   | CAMO only. If set, then for a transaction to switch to local (async) mode, a consensus request is required. |
+
+### DEGRADE ON parameters
+
+| Parameter            | Type     | Default | Description                                                                                      |
+| -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation degrades. (0 means not set.) |
+| `require_write_lead` | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to degraded operation.      |
+
+### transaction_tracking settings
+
+When set to true, two-phase commit transactions:
+
+-   Look up commit decisions when a writer is processing a PREPARE message.
+-   When recovering from an interruption, look up the transactions prepared before the interruption. When found, it then looks up the commit scope of the transaction and any corresponding RAFT commit decision. Suppose the node is the origin of the transaction and doesn't have a RAFT commit decision, and `transaction_tracking` is on in the commit scope. In that case, it periodically looks for a RAFT commit decision for this unresolved transaction until it's committed or aborted.
+
+### conflict_resolution settings
+
+The value `async` means resolve conflicts asynchronously during replication using the conflict resolution policy.
+
+The value `eager` means that conflicts are resolved eagerly during COMMIT by aborting one of the conflicting transactions. 
+
+Eager is only available with `MAJORITY` or `ALL` commit scope groups.
+
+When used with the `ALL` commit scope group, the [`commit_decision`](#group-commit-commit_decision-settings) must be set to `raft` to avoid reconcilation issue.
+
+See ["Conflict resolution" in Group Commit](../../commit-scopes/group-commit/#conflict-resolution).
+
+### GROUP COMMIT commit_decision settings
+
+The value `group` means the preceding `commit_scope_group` specification also affects the COMMIT decision, not just durability. 
+
+The value `partner` means the partner node decides whether transactions can be committed. This value is allowed only on groups with 2 data nodes. 
+
+The value `raft` means the decision makes use of PGD's built-in Raft consensus. Once all the nodes in the selected commit scope group have confirmed the transaction, to ensure that all the nodes in the PGD cluster have noted the transaction, it is noted with the all-node Raft.
+
+This option must be used when the `ALL` commit scope group is being used to ensure no divergence between the nodes over the decision. This option may have low performance.
+
+See ["Commit decisions" in Group Commit](../../commit-scopes/group-commit/#commit-decisions).
+
+### commit_scope_degrade_operation settings
+
+The `commit_scope_degrade_operation` must be `GROUP_COMMIT` with a less restrictive commit scope group—or must be asynchronous (`ASYNC`).

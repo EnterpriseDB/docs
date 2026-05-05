@@ -1,0 +1,149 @@
+---
+title: Quorum Commit
+description: How to use Quorum Commit, a commit scope kind that guarantees distributed transaction consistency in PGD.
+redirects:
+  - /pgd/latest/commit-scopes/quorum-commit/
+deepToC: true
+---
+
+Commit scope kind: `QUORUM COMMIT`
+
+## Overview
+
+Quorum Commit is a commit scope kind that guarantees distributed transaction consistency. Before any node commits, all participating nodes must agree on the transaction outcome. Either all nodes commit together, or the transaction is rolled back everywhere.
+
+Quorum Commit differs from standard synchronous replication, which confirms that a remote node received data but doesn't prevent two nodes from independently committing conflicting changes. Unlike legacy synchronous replication, if the cluster can't reach agreement, Quorum Commit rolls back the transaction rather than persisting data to the Write-Ahead Log (WAL) and leaving nodes in an inconsistent state.
+
+## When to use Quorum Commit
+
+Use Quorum Commit for workloads where inconsistencies can't be resolved after they occur, such as payments and core banking, which have traditionally required proprietary databases for their strict consistency guarantees. With Quorum Commit, Postgres delivers the same distributed consistency these workloads demand. A transaction that can't be confirmed across the cluster doesn't commit anywhere.
+
+For workloads that tolerate eventual consistency, or where conflict rates are high enough to make retries costly, asynchronous replication is a better fit.
+
+## How Quorum Commit works
+
+Quorum Commit requires all participating nodes to agree before any node commits, using eager conflict resolution to prevent inconsistencies rather than resolving them after the fact.
+
+### Consistency guarantees
+
+With Quorum Commit:
+
+- A transaction commits only when the required number of nodes have committed. When the application sees a commit, all required nodes hold the same resulting data.
+- A read from the write leader after a commit always returns the latest results, including after a leader change.
+- When a transaction aborts, it aborts everywhere. No partial state is visible on any node.
+- When the write leader changes, the new leader accepts transactions immediately, without interference from in-flight transactions of the old leader.
+- No data divergence or broken replication occurs on any node.
+
+### Eager conflict resolution
+
+Rather than detecting conflicts after the fact, Quorum Commit aborts one of the conflicting transactions during the quorum phase, before either commits. Eager conflict resolution is always active with Quorum Commit and can't be disabled. Configure your application to handle serialization errors at commit time and retry failed transactions. See [Writing applications for Quorum Commit](#writing-applications-for-quorum-commit).
+
+### Transaction lifecycle
+
+Quorum Commit uses [two-phase commit (2PC)](/pgd/current/overview/terminology/#two-phase-commit-2pc) internally. No node commits until quorum is achieved. In the prepare phase, the origin node prepares the transaction locally, making the data durable but not yet visible to other transactions. The prepared transaction is replicated to all participating nodes, each of which prepares its own local copy.
+
+The origin node then collects confirmations from the required commit scope group. Once it receives the required number, it makes the commit decision and propagates it to all participating nodes, which then all commit together. When Raft consensus is used for the commit decision, PGD's built-in Raft makes the decision rather than the origin node.
+
+Configure [`max_prepared_transactions`](/pgd/current/postgres-configuration/#max_prepared_transactions) high enough to handle all Quorum Commit transactions originating per node.
+
+### Transaction reconciliation
+
+When the origin node fails after logging a pre-commit decision, the new write leader reconciles any prepared transactions to ensure it reaches the same commit decision the origin would have made. Without reconciliation, the origin and the new write leader may reach different conclusions about whether a transaction committed or rolled back.
+
+When Raft consensus is used for the commit decision, Raft handles reconciliation automatically. Unresolved prepared transactions are safely aborted, since any commit decision already logged through Raft takes precedence.
+
+When the origin node makes the commit decision directly, the new write leader acts as the reconciliator. It checks which nodes received the prepared transaction and determines whether the quorum requirement was met before the origin failed.
+
+### Commit latency
+
+The pre-commit coordination adds roughly two network round trips compared to asynchronous replication. If one or more nodes are lagging, the delay in getting confirmations can be significant. Before a peer node can confirm, it also needs to apply the transaction locally, which adds latency proportional to the transaction size.
+
+Logical standby nodes and nodes still joining or catching up aren't included in the quorum but eventually receive changes.
+
+### Handling timeouts
+
+If quorum isn't reached within the configured timeout, the transaction is aborted via Raft and rolled back on all participating nodes. A partial commit isn't possible. Either all nodes commit, or none do. Once aborted, the transaction isn't resubmitted when the network recovers.
+
+If a node fails during the quorum phase, the remaining nodes wait until the timeout expires before aborting. If the failed node recovers before the timeout, the quorum attempt can still succeed. Disconnected nodes keep their transactions in a prepared state and reconcile with the majority decision once they reconnect.
+
+## Creating a commit scope
+
+!!!Note
+All nodes in the cluster must be running PGD 6.4.0 or later, including during a rolling upgrade.
+!!!
+
+The Quorum Commit syntax is:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := '<scope_name>',
+    origin_node_group := '<node_group>',
+    rule := '<commit_scope_group> [ ON { durable | visible } ] QUORUM COMMIT
+        [ ( commit_decision = { group | raft } ) ]
+        ABORT ON ( timeout = <value> )',
+    wait_for_ready := true
+);
+```
+
+The `rule` parameter accepts the following options:
+
+- **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN_GROUP`, `MAJORITY CLUSTER`, or `MAJORITY FOR EACH GROUP`.
+
+    `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
+
+- **`commit_decision`:** Optional. Controls how the commit decision is reached. When using `ALL` as the commit scope group, set `commit_decision` to `raft`.
+
+  - `group` (default): The origin node decides to commit once it receives the required confirmations from the commit scope group.
+  - `raft`: The commit decision goes through PGD's built-in Raft consensus. Slower than `group`, but required for certain multi-group topologies.
+
+- **`ON { durable | visible }`:** Optional. Sets the confirmation level, which is the point at which a remote node confirms it has processed the transaction.
+
+  - `durable`: Confirms after all changes are flushed to disk.
+  - `visible` (default): Confirms after all changes are flushed to disk and are visible to concurrent transactions.
+
+- **`ABORT ON ( timeout = <value> )`:** Mandatory. Sets how long to wait for quorum before aborting. If consensus isn't reached within this period, the transaction is aborted via Raft and rolled back on all nodes. It won't be resubmitted when the network recovers. Set `<value>` to an interval, for example `10s`. For full details on timeout behavior, see [Handling timeouts](#handling-timeouts).
+
+### Examples
+
+A majority of nodes in the origin node's group must confirm that changes are flushed to disk before any node commits. If consensus isn't reached within 10 seconds, the transaction is aborted and rolled back on all participating nodes.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'banking_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY ORIGIN_GROUP ON durable QUORUM COMMIT ABORT ON (timeout = 10s)',
+    wait_for_ready := true
+);
+```
+
+For multi-data-center deployments where each data center is a PGD subgroup, the `MAJORITY FOR EACH GROUP` syntax requires a majority within each participating group before the transaction commits. A network partition between data centers causes transactions to wait up to 30 seconds before aborting.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'geo_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY FOR EACH GROUP (dc_east, dc_west) QUORUM COMMIT ABORT ON (timeout = 30s)',
+    wait_for_ready := true
+);
+```
+
+## Writing applications for Quorum Commit
+
+Because Quorum Commit uses eager conflict resolution, applications encounter serialization errors more often than with asynchronous replication. Wrap transactions in a retry loop to handle serialization errors:
+
+```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'banking_scope';
+-- ... application queries ...
+COMMIT;
+```
+
+If `COMMIT` returns a serialization error, re-execute the transaction from `BEGIN`. The retry rate depends on the workload. Large transactions that modify many rows or overlap heavily with concurrent transactions retry more often.
+
+## Using Quorum Commit with Parallel Apply
+
+Quorum Commit is compatible with [Parallel Apply](/pgd/current/parallelapply/). You don't need to disable Parallel Apply when using Quorum Commit.
+
+## Limitations
+
+See the Quorum Commit section of [Known issues and limitations](/pgd/current/overview/known_issues/#quorum-commit).
