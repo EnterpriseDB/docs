@@ -18,6 +18,15 @@ PGD supports two approaches for authenticating inter-node connections.
 Connection Manager reads the same `server.crt` configured for inter-node SSL. Using certificates that don't meet Connection Manager's requirements will prevent it from starting. See [Meeting SSL certificate requirements](client-connections#meeting-ssl-certificate-requirements) for details.
 !!!
 
+As a best practice, use a dedicated database role for inter-node connections rather than the `postgres` superuser. Create a role and grant it `bdr_superuser`:
+
+```sql
+CREATE ROLE pgd_replication LOGIN;
+GRANT bdr_superuser TO pgd_replication;
+```
+
+Use this role in the connection strings and `pg_hba.conf` rules shown in the following sections.
+
 We recommend certificate authentication as it provides mutual authentication alongside encryption. If certificates aren't available in your environment, SCRAM-SHA-256 with CA verification provides password-based authentication while still encrypting the connection.
 
 ### Authenticating with certificates
@@ -39,7 +48,7 @@ The certificates must also meet these requirements:
 
 - The server's SSL certificate must be directly or indirectly signed by the CA in `root.crt`.
 - The hostname or IP address in the connection must match the certificate's subject alternative name (SAN) or common name (CN).
-- The CN of the client certificate must match the Postgres user making the PGD connection, which is usually `postgres`.
+- The CN of the client certificate must match the Postgres user making the PGD connection.
 
 !!! Note
 Postgres doesn't currently support subject alternative names for IP addresses. If nodes connect by IP address rather than hostname, the IP address must match the CN field of the certificate.
@@ -72,21 +81,18 @@ Postgres doesn't currently support subject alternative names for IP addresses. I
     ```sql
     SELECT bdr.alter_node_interface(
       'node-1',
-      'host=host-1 port=5432 dbname=pgddb user=postgres sslmode=verify-full sslcert=bdr_client.crt sslkey=bdr_client.key sslrootcert=root.crt'
+      'host=host-1 port=5432 dbname=pgddb user=pgd_replication sslmode=verify-full sslcert=bdr_client.crt sslkey=bdr_client.key sslrootcert=root.crt'
     );
     ```
 
-1. Add an entry to each node's `pg_hba.conf` to permit replication connections:
+1. Add entries to each node's `pg_hba.conf` to permit inter-node connections:
 
     ```ini
-    hostssl replication postgres <node_subnet>/24 cert
+    hostssl all         pgd_replication <node_subnet>/24 cert
+    hostssl replication pgd_replication <node_subnet>/24 cert
     ```
 
     Replace `<node_subnet>` with the actual subnet or IP range of your PGD nodes.
-
-    !!! Note
-    Avoid applying `cert` authentication to a broader rule that covers all databases, as Connection Manager doesn't support certificate authentication and will be unable to connect.
-    !!!
 
 1. Reload Postgres on each node to apply the `pg_hba.conf` changes:
 
@@ -127,14 +133,15 @@ Make sure the following are in place on each node:
     ```sql
     SELECT bdr.alter_node_interface(
       'node-1',
-      'host=host-1 port=5432 dbname=pgddb user=postgres sslmode=verify-ca sslrootcert=root.crt'
+      'host=host-1 port=5432 dbname=pgddb user=pgd_replication sslmode=verify-ca sslrootcert=root.crt'
     );
     ```
 
-1. Add an entry to each node's `pg_hba.conf` for replication connections:
+1. Add entries to each node's `pg_hba.conf` for inter-node connections:
 
     ```ini
-    hostssl replication postgres <node_subnet>/24 scram-sha-256
+    hostssl all         pgd_replication <node_subnet>/24 scram-sha-256
+    hostssl replication pgd_replication <node_subnet>/24 scram-sha-256
     ```
 
     Replace `<node_subnet>` with the actual subnet or IP range of your PGD nodes.
