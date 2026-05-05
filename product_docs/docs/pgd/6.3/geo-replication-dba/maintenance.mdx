@@ -38,7 +38,9 @@ Schema changes and routine maintenance behave differently in a geo-distributed c
 
 ### Running DDL
 
-DDL operations, such as `ALTER TABLE`, `CREATE INDEX`, and `DROP TABLE`, acquire locks across all nodes in the cluster. In a geo-distributed cluster, lock acquisition time is approximately equal to the sum of all node round-trip times. Long-running DDL blocks replication while the lock is held, and failed DDL may leave an inconsistent state across locations.
+DDL operations acquire cluster-wide locks, but the lock type and timing differ by operation. Schema changes such as `ALTER TABLE` and `CREATE INDEX` acquire global DDL locks simultaneously across all nodes, with lock acquisition time approximately equal to the round-trip time to the most distant node. Operations such as `DROP TABLE` acquire a global DML lock that also flushes replication, with completion time depending on current replication lag rather than network latency alone.
+
+In both cases, long-running DDL blocks replication while the lock is held, and failed DDL may leave an inconsistent state across locations.
 
 To reduce risk, keep DDL transactions minimal and avoid combining multiple DDL changes in a single transaction. Test DDL timing in a staging environment that simulates your actual cross-location latency. Schedule DDL during maintenance windows and use `bdr.replicate_ddl_command()` for safer DDL execution across the cluster.
 
@@ -46,10 +48,10 @@ To reduce risk, keep DDL transactions minimal and avoid combining multiple DDL c
 
 `VACUUM` and `ANALYZE` run locally on each node and are not replicated. Autovacuum operates independently on each node, so no special coordination is needed across locations.
 
-The PGD-specific concern is replication slot lag. Slots for offline or lagging nodes hold back the catalog `xmin`, preventing VACUUM from cleaning catalog tables and causing bloat to accumulate on the origin node. Check slot lag regularly to catch this early:
+The PGD-specific concern is replication slot lag. Slots for offline or lagging nodes hold back `catalog_xmin`, preventing VACUUM from cleaning catalog tables and causing bloat to accumulate on the origin node. Check slot lag regularly to catch this early:
 
 ```sql
-SELECT target_name, state, replay_lag_bytes, replay_lag_size
+SELECT target_name, state, replay_lag_bytes, replay_lag_size, xmin, catalog_xmin
 FROM bdr.node_slots
 ORDER BY replay_lag_bytes DESC;
 ```
