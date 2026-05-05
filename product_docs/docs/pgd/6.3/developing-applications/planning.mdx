@@ -6,6 +6,10 @@ description: Design decisions, conflict avoidance strategies, and replication be
 
 PGD's distributed nature introduces design decisions that don't arise with single-node Postgres, whether you're porting an existing application or building from scratch. This guidance assumes the full database schema and all data are replicated to all nodes.
 
+!!! Note
+PGD also supports selective replication through [replication sets](/pgd/current/repsets/), which let you control which tables are replicated to which nodes.
+!!!
+
 ## Understanding your workload
 
 Before making any design decisions, understand your application's read-to-write ratio. Reads can be routed to different nodes to spread load and fully offload it from write leader nodes.
@@ -18,7 +22,7 @@ Design your application to avoid write conflicts as the primary goal. Write tran
 
 If your application can cleanly partition write traffic by geography or user group with no overlapping writes between partitions, local routing with multiple write leaders in separate regions is the right fit. Keeping writes local to a region eliminates cross-region conflicts and improves throughput. If that clean separation can't be guaranteed, the conflict rate rises as write volume scales. In that case, global routing, where all writes go to a single write leader, is the safer choice. The routing configuration itself is a database administrator (DBA) task, but understanding your application's write patterns determines which model fits.
 
-PGD uses global sequences by default. For most sequence types, the default is `galloc`, which allocates ranges of values per node and produces gaps in IDs as a result. Don't assume gap-free sequences in your application. See [Sequences](/pgd/current/sequences/) for details on sequence kinds and their tradeoffs. For commutative updates that need to merge without conflict, use [conflict-free replicated data types (CRDTs)](/pgd/current/conflict-management/crdt/).
+PGD uses global sequences by default. `int4` and `int2` sequences use `galloc`, which allocates ranges of values per node. `int8` sequences use `snowflakeid`. Both produce gaps in IDs. Don't assume gap-free sequences in your application. See [Sequences](/pgd/current/sequences/) for details on sequence kinds and their tradeoffs. For commutative updates that need to merge without conflict, use [conflict-free replicated data types (CRDTs)](/pgd/current/conflict-management/crdt/).
 
 For details on conflict detection and resolution, see [Conflict management](/pgd/current/conflict-management/).
 
@@ -26,7 +30,7 @@ For details on conflict detection and resolution, see [Conflict management](/pgd
 
 Route read traffic to the Connection Manager's read-only port, which distributes connections across all nodes rather than directing them to the write leader. HAProxy can also balance read traffic across nodes using the Connection Manager's read-only port. See [Load balancing](/pgd/current/connection-manager/load-balancing/) for configuration examples.
 
-With read traffic spread across nodes, consider where consistency matters. Stale reads are acceptable for some data, such as aggregate counts or social metrics. Other data needs to be immediately visible to the user who just wrote it, such as a recently placed order or an updated account balance. For stricter consistency, PGD's [commit scopes](/pgd/current/commit-scopes/) let you configure how many nodes must confirm a write before it completes.
+For reads where a user must immediately see their own writes, such as a recently placed order or an updated account balance, route those reads to the write leader or use stricter [commit scopes](/pgd/current/commit-scopes/) to ensure the write is visible on enough nodes before it completes. For reads where stale data is acceptable, such as aggregate counts or social metrics, use the read-only port.
 
 ## Designing your schema for replication
 
