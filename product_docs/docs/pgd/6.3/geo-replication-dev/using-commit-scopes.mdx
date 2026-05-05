@@ -44,7 +44,7 @@ Set the scope per session when all operations on a connection share the same dur
 - **Per session:** Set `bdr.commit_scope` at the session level to apply a scope to all transactions in that connection:
 
     ```sql
-    SET bdr.commit_scope = 'majority_protect';
+    SET bdr.commit_scope = 'majority protect';
     ```
 
     All subsequent transactions in the session use this scope until you change it or the session ends.
@@ -53,7 +53,7 @@ Set the scope per session when all operations on a connection share the same dur
 
     ```sql
     BEGIN;
-    SET LOCAL bdr.commit_scope = 'majority_protect';
+    SET LOCAL bdr.commit_scope = 'majority protect';
     -- critical write operations
     COMMIT;
     ```
@@ -76,9 +76,12 @@ If a commit scope requires remote confirmation and the remote location is unreac
 
 ### Reading your own writes
 
-Regardless of commit scope, if your application writes on one connection and immediately reads on another, the read can land on a node that hasn't yet received the replication. To guarantee that a subsequent read reflects a prior write in the same session, call `bdr.wait_slot_confirm_lsn(NULL, NULL)` after the write:
+If your application writes on one connection and immediately reads on another, the read can land on a node that hasn't yet received the replication. To guarantee that a subsequent read reflects a prior write, use a synchronous commit scope on the write transaction. The commit doesn't return until the write has been replicated to the required nodes, so any subsequent read on those nodes sees the write:
 
 ```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'majority protect';
+
 -- Insert a new transaction using an existing active account
 INSERT INTO transactions (transaction_id, account_id, direction, amount, balance_after, description, channel, initiated_at)
 SELECT
@@ -95,15 +98,12 @@ WHERE status = 'active'
 LIMIT 1
 RETURNING account_id, transaction_id, balance_after;
 
--- Wait for replication to all nodes before proceeding
-SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
+COMMIT;
 
--- This read now reflects the insert, regardless of which node serves it
+-- This read now reflects the insert on any node in the majority
 SELECT balance_after
 FROM transactions
 WHERE account_id = (SELECT account_id FROM accounts WHERE status = 'active' LIMIT 1)
 ORDER BY initiated_at DESC
 LIMIT 1;
 ```
-
-`bdr.wait_slot_confirm_lsn(NULL, NULL)` blocks until all PGD replication slots have confirmed the current LSN. The delay is proportional to network latency to the farthest node in the cluster. Use it selectively for operations that genuinely need it, not on every query.
