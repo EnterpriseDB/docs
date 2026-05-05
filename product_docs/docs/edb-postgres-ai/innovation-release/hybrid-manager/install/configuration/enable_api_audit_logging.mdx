@@ -1,0 +1,134 @@
+---
+title: Enable API audit logging
+navTitle: Enable API audit logging
+description: Enable structured audit logging for authenticated HM API requests.
+deepToC: true
+---
+
+EDB Postgres AI Hybrid Manager (HM) can emit structured audit logs for authenticated API requests passing through the ingress gateway. When enabled, every API call that requires authentication produces a JSON log entry providing a detailed record of who accessed what, when, and from where.
+
+API audit logging is available from HM 2026.4.
+
+## Enable API audit logging
+
+API audit logging is disabled by default. To enable it, set the `enable_api_audit` parameter for the `upm-istio-gateway` component.
+
+!!! Note
+The accepted values are the strings `"true"` and `"false"` only. Boolean types are not permitted.
+!!!
+
+### Operator installation
+
+Edit your HybridControlPlane CR to add or update the audit logging setting under `spec.componentsParameters.upm-istio-gateway`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  componentsParameters:
+    upm-istio-gateway:
+      enable_api_audit: "true"
+```
+
+Apply the updated CR:
+
+```shell
+kubectl apply -f hybridmanager.yaml
+```
+
+### Bootstrap installation
+
+Edit your `values.yaml` by updating the `parameters.upm-istio-gateway` section:
+
+```yaml
+parameters:
+  upm-istio-gateway:
+    enable_api_audit: "true"
+```
+
+Run the helm upgrade command to apply the changes:
+
+```shell
+helm upgrade \
+  -n edbpgai-bootstrap \
+  --install \
+  -f values.yaml \
+  edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap
+```
+
+:::warning
+Make sure you always provide the complete set of input variables you used to install the Helm chart. If you don't specify one of the custom inputs in a subsequent execution of the Helm upgrade command, its value is set to the default.
+:::
+
+## What gets audited
+
+HM emits an audit log entry for a request when both of the following conditions are met:
+
+- The request requires authentication. Anonymous or exempt endpoints are not audited.
+- The request targets an API path, such as REST APIs (`/api/…`), Iceberg catalog APIs, launchpad application APIs, or gRPC service endpoints.
+
+The following request types are not audited:
+
+- Health check endpoints
+- Static resources (for example, JavaScript, CSS, images)
+- Exempt paths, including `/api/ui` and `/api-docs`
+- Unauthenticated or anonymous API calls
+
+## Log format
+
+Each audit log entry is a JSON object nested under the `EDB-HM-AUDIT` key. You can use this key to filter audit entries in your log aggregation system, for example with Loki.
+
+Example log entry:
+
+```json
+{
+  "EDB-HM-AUDIT": {
+    "method": "GET",
+    "uri": "/api/v1/projects?page=1",
+    "user_id": "usr_abc123",
+    "user_name": "alice",
+    "key_id": "ak_def456",
+    "session_id": "aksid_a3f8c2e1b9d04f67",
+    "request_id": "a1b2c3d4-e5f6-7890",
+    "user_agent": "curl/7.68.0",
+    "ip": "10.0.0.1",
+    "status_code": 200
+  }
+}
+```
+
+## Log fields
+
+Each audit log entry contains the following fields. Fields with empty or unavailable values are omitted to reduce noise.
+
+| Field         | Description                                                                                                                                                                                                                                |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `method`      | HTTP method (GET, POST, PUT, DELETE, etc.)                                                                                                                                                                                                 |
+| `uri`         | Original request URI, including any query string                                                                                                                                                                                           |
+| `user_id`     | Authenticated user ID. Empty if authentication failed (for example, 401 response).                                                                                                                                                         |
+| `user_name`   | Authenticated user display name.                                                                                                                                                                                                           |
+| `key_id`      | Access key ID. Present only for access-key-based authentication; omitted for browser or OIDC sessions.                                                                                                                                     |
+| `session_id`  | Session identifier. For access key requests, this is a deterministic hash derived from the key and client context, enabling correlation across requests from the same automated client. For browser sessions, this is the OIDC session ID. |
+| `request_id`  | Unique request trace ID (x-request-id). Useful for correlating audit entries with upstream service logs.                                                                                                                                   |
+| `user_agent`  | Client User-Agent header value.                                                                                                                                                                                                            |
+| `ip`          | Client IP address, extracted from the `x-forwarded-for` header.                                                                                                                                                                            |
+| `status_code` | HTTP response status code (for example, 200, 401, 403, 500).                                                                                                                                                                               |
+| `grpc_status` | gRPC status code. Present only for gRPC requests. The HTTP transport always returns 200; the actual outcome is reflected here (for example, 16 = Unauthenticated).                                                                         |
+
+## Query audit logs
+
+Audit log entries are written to the ingress gateway's standard log output. You can query them using your cluster's log aggregation tool by filtering for the `EDB-HM-AUDIT` key.
+
+Using Loki and LogQL:
+
+```shell
+{namespace="istio-system", container="istio-proxy"} |= "EDB-HM-AUDIT" | json
+```
+
+Using kubectl for quick inspection:
+
+```shell
+kubectl logs -n istio-system -l istio=ingressgateway -c istio-proxy | grep EDB-HM-AUDIT
+```
