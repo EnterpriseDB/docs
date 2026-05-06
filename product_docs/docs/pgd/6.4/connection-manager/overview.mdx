@@ -1,7 +1,7 @@
 ---
 title: Connection Manager overview
 navTitle: Overview
-description: Overview of the Connection Manager
+description: Overview of Connection Manager
 redirects:
   - /pgd/latest/reference/connection-manager/overview/ #generated for DOCS-3034
 ---
@@ -10,9 +10,11 @@ redirects:
 
 Connection Manager is a new background worker for EDB Postgres Distributed (PGD) 6.0 that simplifies the process of connection to PGD clusters by providing a single point of entry for client applications. It replaces the PGD 5.x proxy solution with a tightly integrated approach that exposes read-write, read-only, and HTTP status network interfaces in PGD.
 
-Connection Manager is fully integrated into PGD and is designed to work seamlessly with the existing PGD architecture. Every PGD data node has a Connection Manager instance that listens for incoming connections and routes them to the appropriate node in the cluster, specifically the current write leader in the cluster. It also provides a read-only interface for applications that only need to read data from the cluster. 
+Connection Manager is fully integrated into PGD and is designed to work seamlessly with the existing PGD architecture. Every PGD data node has a Connection Manager instance that listens for incoming connections and routes them to the appropriate node in the cluster, specifically the current write leader in the cluster. It also provides a read-only interface for applications that only need to read data from the cluster.
 
 Starting in PGD 6.3.0, Connection Manager starts by default on subscriber-only nodes, ensuring that even nodes dedicated primarily to receiving replicated data have access to advanced connection pooling and session management features.
+
+Connection Manager consolidates three capabilities that previously required separate tools. It routes writes to the current leader, distributes read traffic across nodes, and pools backend connections. Because it runs inside PGD, authentication is configured once in `pg_hba.conf` and applies to both the proxy layer and the database, with no separate user list to maintain.
 
 ## Using Connection Manager
 
@@ -22,15 +24,26 @@ The read-write port is, by default, set to the Postgres port + 1000 (usually 643
 The read-only port is set to the Postgres port + 1001 (usually 6433).
 The HTTP port is set to the Postgres port + 1002 (usually 6434).
 
-To use Connection Manager, you need to configure your client applications to connect to the read-write or read-only port of the Connection Manager instance running on the data node. The Connection Manager will then route the connection to the appropriate node in the cluster.
+To use Connection Manager, configure your client applications to connect to its read-write or read-only port on the data node. Connection Manager routes the connection to the appropriate node in the cluster.
 
-Note that the Connection Manager is not a replacement for a load balancer. It is designed to work in conjunction with a load balancer to provide a complete solution for managing connections to PGD clusters. The Connection Manager provides a simple and efficient way to manage connections to PGD clusters, while the load balancer provides additional features such as load balancing and failover. See [Load Balancing](./load-balancing/) for more information.
+Connecting to the read-only port restricts the connection to read-only operations, similar to [`SET TRANSACTION READ ONLY`](https://www.postgresql.org/docs/current/sql-set-transaction.html), except that it's not possible to change it to read-write. The [`transaction_read_only`](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-TRANSACTION-READ-ONLY) configuration parameter correctly reports `on` in these connections.
 
-## Read-Only connections
+## Authentication
 
-Connecting a client to the read-only port provided by connection manager restricts that connection to read-only operations in a similar way to using [`SET TRANSACTION READ ONLY`](https://www.postgresql.org/docs/current/sql-set-transaction.html) would, except that it's not possible to change it to read-write. The [`transaction_read_only`](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-TRANSACTION-READ-ONLY) GUC correctly reports `on` in these connections.
+Connection Manager performs TLS termination and pre-authentication using the same `pg_hba.conf` configuration as Postgres, with no separate user list to maintain. See [Authentication](/pgd/current/connection-manager/authentication) for supported methods and constraints.
 
-## TLS and Authentication
+## Connection pooling
 
-The Connection Manager performs TLS termination and pre-authentication. The configuration for these is taken directly from Postgres `pg_hba.conf` file, and server key configuration are used transparently. See [authentication](authentication/) for more information.
+Connection Manager includes built-in connection pooling, removing the need for a separate pooler such as pgBouncer in most deployments. Pooling reduces the number of backend Postgres connections by sharing them across many client connections, lowering memory and process overhead on the database server. See [Connection pooling](/pgd/current/connection-manager/connection-pooling) for reference details, [Configuring connection pooling](/pgd/current/connection-pooling-dba) for DBA setup guidance, and [Using connection pooling in your application](/pgd/current/connection-pooling-developer) for developer guidance.
 
+## Load balancing
+
+Connection Manager isn't a replacement for a load balancer. Use an external load balancer to distribute client traffic across Connection Manager instances running on different nodes. See [Load balancing](/pgd/current/connection-manager/load-balancing) for configuration details and HAProxy examples.
+
+## Configuration
+
+Connection Manager is configured through PGD group options, including ports, connection limits, consensus timeouts, and pool mode. See [Configuring Connection Manager](/pgd/current/connection-manager/configuring) for the full option reference.
+
+## Monitoring
+
+Connection Manager exposes connection counts and pool utilization through catalog views and HTTP endpoints. See [Monitoring](/pgd/current/connection-manager/monitoring) for available metrics.

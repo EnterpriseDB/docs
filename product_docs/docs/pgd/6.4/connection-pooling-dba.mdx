@@ -1,0 +1,61 @@
+---
+title: Configuring connection pooling
+navTitle: Configuring connection pooling
+description: How to choose and enable Connection Manager's built-in connection pooling to reduce server resource overhead and eliminate the need for a separate pooler such as pgBouncer.
+redirects: []
+---
+
+Enable [Connection Manager](/pgd/current/connection-manager/)'s connection pooling for a PGD node group to maximize database throughput by recycling server connections across clients, preventing connection spikes from applications with many short-lived connections. Connection Manager's built-in transaction pooling requires no additional software to deploy or maintain.
+
+For guidance on writing applications that work correctly with each pool mode, see [Using connection pooling in your application](/pgd/current/connection-pooling-developer).
+
+## Prerequisites
+
+- Connection Manager running on each data node (PGD 6.4 and later)
+- `bdr_superuser` role or equivalent to run `bdr.alter_node_group_option`
+
+## Enabling connection pooling
+
+Connection pooling is disabled by default, with `server_pool_mode` set to `none`. To enable it, set the mode to `session` or `transaction` for your node group.
+
+Using SQL:
+
+```sql
+SELECT bdr.alter_node_group_option('mygroup', 'server_pool_mode', 'transaction');
+```
+
+Using the PGD CLI:
+
+```shell
+pgd group mygroup set-option server_pool_mode transaction
+```
+
+Existing connections aren't affected. Only new connections use the updated pool mode.
+
+Use `transaction` mode for high-concurrency workloads with many short-lived connections. Use `session` mode if your applications rely on session state that persists across transactions (such as `SET`, temporary tables, or advisory locks). For full details on each mode, see [Connection pooling](/pgd/current/connection-manager/connection-pooling).
+
+!!!Warning
+Transaction mode resets all session state at the end of each transaction. Before enabling it, check with your development team whether any applications rely on prepared statements, temporary tables, or `WITH HOLD` cursors across transactions. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer) for details.
+!!!
+
+Check the active pool mode.
+
+```sql
+SELECT node_group_name, server_pool_mode FROM bdr.node_group_summary;
+```
+
+## Monitoring the pool
+
+[Monitoring Connection Manager](/pgd/current/connection-manager/monitoring) describes the available metrics and HTTP endpoints for tracking active connections and pool utilization.
+
+## Migrating from pgBouncer
+
+Connection Manager's transaction mode is functionally equivalent to pgBouncer's transaction pooling mode. Follow these steps to migrate.
+
+1. Set `server_pool_mode` to `transaction` on the node group.
+1. Set `read_write_max_server_connections` to a similar value as pgBouncer's `pool_size`.
+1. Update application connection strings to point to Connection Manager's read-write port instead of pgBouncer.
+1. Verify application behavior, particularly any use of `SET` commands, prepared statements, or `WITH HOLD` cursors, and adjust as needed. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer).
+1. Remove pgBouncer from your infrastructure once migration is verified.
+
+Authentication configuration stays in `pg_hba.conf` on each PGD node. No separate user list or pooler configuration file is needed. Any user that can connect to Postgres through Connection Manager can use the pool, with no second place to grant or revoke access.
