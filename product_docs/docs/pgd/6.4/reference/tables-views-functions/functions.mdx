@@ -1242,3 +1242,363 @@ bdr.drop_commit_scope(
 ### `bdr.remove_commit_scope`
 
 **Deprecated**. Use [`bdr.drop_commit_scope`](/pgd/latest/reference/tables-views-functions/functions#bdrdrop_commit_scope) instead. Previously, this function was used to remove a commit scope from a node group. It's now deprecated and will emit a warning until it is removed in a future release, at which point it will raise an error.
+
+## Apply error policy functions
+
+These functions let you review, resolve, and analyze replication failures recorded by the apply error policy. See the `apply_error_policy`, `apply_error_max_retries`, `apply_error_max_skips`, and `apply_error_max_record_size` options in [`bdr.alter_node_group_option`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_group_option) for configuration details.
+
+### `bdr.skip_failed_change`
+
+Marks a single captured change in `bdr.pending_failed_changes` as skipped. The change status is updated to `skipped` but the row isn't deleted.
+
+#### Synopsis
+
+```sql
+bdr.skip_failed_change(change_id bigint)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `change_id` | Primary key of the row in `bdr.pending_failed_changes` to skip. |
+
+### `bdr.skip_failed_transaction`
+
+Marks all pending changes in a failed transaction as skipped and optionally re-enables the subscription.
+
+#### Synopsis
+
+```sql
+bdr.skip_failed_transaction(
+    subscription_name name,
+    remote_xid xid,
+    remote_commit_lsn pg_lsn,
+    dry_run boolean DEFAULT false,
+    re_enable boolean DEFAULT true
+)
+
+bdr.skip_failed_transaction(
+    failed_txn_id uuid,
+    dry_run boolean DEFAULT false,
+    re_enable boolean DEFAULT true
+)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `subscription_name` | Name of the subscription. |
+| `remote_xid` | Transaction ID on the origin node. |
+| `remote_commit_lsn` | Commit LSN of the failed transaction on the origin node. |
+| `failed_txn_id` | UUID of the failed transaction from `bdr.pending_failed_changes`. Use as a convenient alternative to specifying `subscription_name`, `remote_xid`, and `remote_commit_lsn`. |
+| `dry_run` | When `true`, returns the count of changes that would be skipped without modifying anything. Default is `false`. |
+| `re_enable` | When `true`, re-enables the subscription after skipping. Default is `true`. |
+
+#### Return value
+
+Returns the number of changes skipped. Returns `0` if the transaction was already resolved (no error is raised).
+
+### `bdr.apply_failed_change`
+
+Retries applying a single captured change.
+
+#### Synopsis
+
+```sql
+bdr.apply_failed_change(change_id bigint)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `change_id` | Primary key of the row in `bdr.pending_failed_changes` to apply. |
+
+### `bdr.apply_failed_transaction`
+
+Retries all pending changes for a failed transaction. Defaults to dry-run mode so you can preview the outcome before committing.
+
+#### Synopsis
+
+```sql
+bdr.apply_failed_transaction(
+    subscription_name name,
+    remote_xid xid,
+    remote_commit_lsn pg_lsn,
+    dry_run boolean DEFAULT true,
+    re_enable boolean DEFAULT true
+)
+
+bdr.apply_failed_transaction(
+    failed_txn_id uuid,
+    dry_run boolean DEFAULT true,
+    re_enable boolean DEFAULT true
+)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `subscription_name` | Name of the subscription. |
+| `remote_xid` | Transaction ID on the origin node. |
+| `remote_commit_lsn` | Commit LSN of the failed transaction on the origin node. |
+| `failed_txn_id` | UUID of the failed transaction from `bdr.pending_failed_changes`. Use as a convenient alternative to specifying `subscription_name`, `remote_xid`, and `remote_commit_lsn`. |
+| `dry_run` | When `true` (the default), shows what would happen without actually applying changes (rolls back at the end). Pass `false` to execute. |
+| `re_enable` | When `true` and `dry_run` is `false`, re-enables the subscription after applying. Default is `true`. |
+
+#### Return value
+
+Returns one row per change with the following columns.
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `change_num` | `integer` | Order of the change within the transaction. |
+| `change_id` | `bigint` | Primary key of the row in `bdr.pending_failed_changes`. |
+| `operation` | `text` | Operation type: `INSERT`, `UPDATE`, `DELETE`, `SQL`, `DDL`, or `TRUNCATE`. |
+| `schema_name` | `text` | Schema of the target table. |
+| `table_name` | `text` | Name of the target table. |
+| `status` | `text` | Result of the apply attempt. In dry-run mode, values are `would_apply`, `would_skip`, or `would_error`. When executed, values are `apply`, `skip`, or `error`. |
+| `message` | `text` | Error message if the change failed, or `NULL` on success. |
+
+If an error occurs during apply, the function returns results for all changes up to and including the failed one. If the transaction was already resolved, the function returns 0 rows without raising an error.
+
+### `bdr.modify_failed_change`
+
+Edits the column values of a single captured change before retrying the change. Updates the `modified_values` column in `bdr.pending_failed_changes` and sets the change status to `modified`.
+
+#### Synopsis
+
+```sql
+bdr.modify_failed_change(change_id bigint, new_values jsonb)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `change_id` | Primary key of the row in `bdr.pending_failed_changes` to modify. |
+| `new_values` | JSONB object containing the updated column values to use when the change is retried. |
+
+### `bdr.reconstruct_change_sql`
+
+Generates executable SQL for a single captured change. The `bdr.pending_failed_changes_sql` view uses this function internally.
+
+#### Synopsis
+
+```sql
+bdr.reconstruct_change_sql(
+    operation text,
+    schema_name name,
+    table_name name,
+    key_columns jsonb,
+    old_values jsonb,
+    new_values jsonb
+)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `operation` | Operation type. Valid values are `INSERT`, `UPDATE`, `DELETE`, `SQL`, `DDL`, and `TRUNCATE`. |
+| `schema_name` | Schema of the target table. |
+| `table_name` | Name of the target table. |
+| `key_columns` | JSONB object containing the primary key column values. |
+| `old_values` | JSONB object containing the before-image column values, used for `UPDATE` and `DELETE` operations. |
+| `new_values` | JSONB object containing the after-image column values for `INSERT` and `UPDATE` operations, or the SQL text for `DDL` and `SQL` operations. |
+
+#### Return value
+
+Returns a `text` string containing the reconstructed SQL statement. DDL operations include a `SET search_path` prefix when a search path was in effect during the original execution.
+
+### `bdr.reconstruct_failed_transaction`
+
+Generates a complete SQL script for all captured changes in a failed transaction, wrapped in `BEGIN` and `COMMIT`.
+
+#### Synopsis
+
+```sql
+bdr.reconstruct_failed_transaction(
+    subscription_name name,
+    remote_xid xid,
+    remote_commit_lsn pg_lsn
+)
+
+bdr.reconstruct_failed_transaction(failed_txn_id uuid)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `subscription_name` | Name of the subscription. |
+| `remote_xid` | Transaction ID on the origin node. |
+| `remote_commit_lsn` | Commit LSN of the failed transaction on the origin node. |
+| `failed_txn_id` | UUID of the failed transaction from `bdr.pending_failed_changes`. Use as a convenient alternative to specifying `subscription_name`, `remote_xid`, and `remote_commit_lsn`. |
+
+#### Return value
+
+Returns a `text` SQL script containing all changes in the transaction. Use the script to review or manually replay the complete transaction.
+
+### `bdr.resolve_failed_transaction`
+
+Marks all pending changes in a failed transaction as resolved, advances the subscription's position past the failed transaction, and optionally re-enables the subscription. Defaults to dry-run mode so you can preview the outcome before committing.
+
+#### Synopsis
+
+```sql
+bdr.resolve_failed_transaction(
+    subscription_name name,
+    remote_xid xid,
+    remote_commit_lsn pg_lsn,
+    resolution text DEFAULT 'skipped',
+    re_enable boolean DEFAULT false,
+    dry_run boolean DEFAULT true
+)
+
+bdr.resolve_failed_transaction(
+    failed_txn_id uuid,
+    resolution text DEFAULT 'skipped',
+    re_enable boolean DEFAULT false,
+    dry_run boolean DEFAULT true
+)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `subscription_name` | Name of the subscription. |
+| `remote_xid` | Transaction ID on the origin node. |
+| `remote_commit_lsn` | Commit LSN of the failed transaction on the origin node. |
+| `failed_txn_id` | UUID of the failed transaction from `bdr.pending_failed_changes`. Use as a convenient alternative to specifying `subscription_name`, `remote_xid`, and `remote_commit_lsn`. |
+| `resolution` | Resolution action to apply. Valid values are `skipped`, `applied`, and `discarded`. Default is `skipped`. |
+| `re_enable` | When `true`, re-enables the subscription after resolving. Default is `false`. |
+| `dry_run` | When `true` (the default), returns a detailed preview of what the operation would do without making any changes. Pass `false` to execute. |
+
+#### Return value
+
+In dry-run mode, returns a `text` report describing the planned changes. When `dry_run` is `false`, returns a `text` confirmation of the resolution applied.
+
+#### Notes
+
+Calling this function also inserts a summary record into `bdr.resolved_transactions`. Once resolved, you can truncate `bdr.pending_failed_changes` to reclaim space while retaining a history of resolutions.
+
+If the transaction was already resolved, the function raises an error with details about the prior resolution.
+
+### `bdr.analyze_skip_impact`
+
+Analyzes the safety and potential data impact of skipping a single captured change. Returns a risk assessment based on the error type, operation, and optionally the current local database state.
+
+#### Synopsis
+
+```sql
+bdr.analyze_skip_impact(
+    change_id bigint,
+    verify_state boolean DEFAULT true,
+    include_transaction_analysis boolean DEFAULT true
+)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `change_id` | Primary key of the row in `bdr.pending_failed_changes` to analyze. |
+| `verify_state` | When `true` (the default), queries the local database to verify current state before assessing safety. Pass `false` for a faster static analysis based on error code and operation type only. |
+| `include_transaction_analysis` | When `true` (the default), examines all other changes in the same transaction to detect dependencies and generate warnings. |
+
+#### Return value
+
+Returns a row with the following columns.
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `skip_safety` | `text` | Safety classification: `safe`, `caution`, or `risky`. |
+| `recommendation` | `text` | Human-readable recommendation. |
+| `explanation` | `text` | Detailed explanation including error context and any state verification results. |
+| `data_impact` | `text` | Data impact level: `none`, `possible_divergence`, or `certain_divergence`. |
+| `suggested_action` | `text` | Suggested action: `skip`, `apply_modified`, or `manual_review`. |
+| `dependency_warnings` | `text[]` | Array of warnings about related changes in the transaction that will also be affected, or `NULL` if none. |
+
+#### Safety classifications
+
+| Safety | Description |
+| --- | --- |
+| `safe` | Skipping the change is unlikely to cause data divergence between nodes. |
+| `caution` | Minor potential issues exist. Review the change before skipping. |
+| `risky` | Skipping the change will likely cause data divergence between nodes. |
+
+### `bdr.analyze_transaction_skip_impact`
+
+Analyzes the skip safety for all pending changes in a failed transaction, returning one row per change.
+
+#### Synopsis
+
+```sql
+bdr.analyze_transaction_skip_impact(
+    subscription_name name,
+    remote_xid xid,
+    remote_commit_lsn pg_lsn
+)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `subscription_name` | Name of the subscription. |
+| `remote_xid` | Transaction ID on the origin node. |
+| `remote_commit_lsn` | Commit LSN of the failed transaction on the origin node. |
+
+#### Return value
+
+Returns one row per change in the transaction, with the following columns.
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `change_seq` | `integer` | Order of the change within the transaction. |
+| `operation` | `text` | Operation type: `INSERT`, `UPDATE`, `DELETE`, `SQL`, `DDL`, or `TRUNCATE`. |
+| `qualified_table` | `text` | Schema-qualified table name. |
+| `skip_safety` | `text` | Safety classification: `safe`, `caution`, or `risky`. |
+| `recommendation` | `text` | Human-readable recommendation for the change. |
+| `has_dependents` | `boolean` | Whether other changes in the transaction may depend on the outcome of this change. |
+
+### `bdr.format_skip_analysis`
+
+Returns a formatted, human-readable analysis of the skip safety for a single captured change.
+
+#### Synopsis
+
+```sql
+bdr.format_skip_analysis(change_id bigint)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `change_id` | Primary key of the row in `bdr.pending_failed_changes` to analyze. |
+
+#### Return value
+
+Returns a `text` report including the safety classification, recommendation, explanation, and any state verification results.
+
+### `bdr.alter_subscription_reset_error_counters`
+
+Resets the error retry and skip counters for a subscription to their initial values. Use the reset after resolving replication failures to allow the subscription's error policy thresholds to apply fresh.
+
+#### Synopsis
+
+```sql
+bdr.alter_subscription_reset_error_counters(subscription_name name)
+```
+
+#### Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `subscription_name` | Name of the subscription. |
