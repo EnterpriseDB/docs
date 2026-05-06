@@ -18,7 +18,8 @@ These parameters define the information the EDB DMS agent requires to:
 - Connect to the source database and collect data or connect to the destination database and migrate data
 
 !!!note
-    A DMS Agent instance can only run in either reader or writer mode.
+A DMS Agent instance can only run in either reader or writer mode.
+!!!
 
 ### DBCONFIG_ID
 
@@ -38,7 +39,7 @@ Run the DMS agent in writer mode only if the destination for your migration is a
 
 ### RW_SERVICE_HOST
 
-Specifies the URL of the DMS that the EDB DMS agent uses to perform migrations. Obtain this value from the HM console Sources or Destinations migration pages.
+Specifies the URL of the DMS that the EDB DMS agent uses to perform migrations. This value is deployment-scoped — the same URL applies across all projects within a given HM deployment. Obtain this value from the HM console **Sources** or **Destinations** migration pages.
 
 To obtain your `RW_SERVICE_HOST`:
 
@@ -71,9 +72,8 @@ The EDB DMS agent supports `ORACLE` and `POSTGRES` as source database types (in 
 The hostname of the source/destination database.
 
 !!!note
-
-    For RDS databases, ensure the `DBCONFIG_DATABASES_0__HOSTNAME` value points to the RDS endpoint you can find under **Connectivity & security** in the AWS console. A redacted example is `foo_database.cb7asw1xxxxx.eu-west-0.rds.amazonaws.com`.
-
+For RDS databases, ensure the `DBCONFIG_DATABASES_0__HOSTNAME` value points to the RDS endpoint you can find under **Connectivity & security** in the AWS console. A redacted example is `foo_database.cb7asw1xxxxx.eu-west-0.rds.amazonaws.com`.
+!!!
 
 ### DBCONFIG_DATABASES_0__PORT
 
@@ -83,9 +83,17 @@ The port of the source/destination database.
 
 The database name in the source/destination database server.
 
+For Oracle sources:
+- **CDB/PDB**: use `CDB_NAME/PDB_NAME` (for example, `ORCLCDB/ORCLPDB1`). The agent splits on `/` to identify the CDB and PDB separately. Using only the PDB name causes it to be treated as the CDB, leaving the PDB unset.
+- **Non-CDB**: use the SID or service name (for example, `ORCL`)
+
 ### DBCONFIG_DATABASES_0__USERNAME
 
-The database username of the source/destination database.
+The database username of the source/destination database. Use your dedicated migration user, it can be the same user you created for the EDB Postgres AI agent.
+
+!!!note
+For Oracle sources, use your dedicated migration user — not `SYS` or other privileged system accounts. See [Preparing your Oracle source](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/preparing_oracle_source/) for instructions on creating the required migration user.
+!!!
 
 ### DBCONFIG_DATABASES_0__PASSWORD
 
@@ -93,11 +101,83 @@ The password for the database username of the source/destination database. You c
 
 ### DBCONFIG_DATABASES_0__RESOURCEID
 
-User-defined identifier for resource management. If you previously registered this database with the EDB Postgres AI agent for monitoring and schema ingestion, use the same `resource_id` here. This consistency is essential for the DMS to correctly correlate the resource across both the EDB Postgres AI agent and DMS agent components.
+User-defined identifier that associates this database with its registered counterpart in HM.
+
+If you previously registered this database with the EDB Postgres AI agent, this value **must match** the `resource_id` set for this database in `beacon_agent.yaml`. This is how HM correlates the DMS agent source with the registered database — a mismatch will cause them to appear as separate, unrelated entries.
+
+### DBCONFIG_DATABASES_0__INCLUDELIST
+
+Comma-separated list of `schema.table` tokens that controls which tables are available for migration. Use `*` as a wildcard for schema or table name (for example, `SCHEMA1.*` or `*.TABLE1`).
+
+If absent or empty, all tables are included. If `EXCLUDELIST` is also set, exclusions take priority.
+
+### DBCONFIG_DATABASES_0__EXCLUDELIST
+
+Comma-separated list of `schema.table` tokens for tables to always exclude from migration. Use `*` as a wildcard. Takes priority over `INCLUDELIST` — a table matching any exclude pattern is always excluded regardless of include rules.
+
+### DBCONFIG_DATABASES_0__SSLMODE
+
+Controls the SSL/TLS behavior for the database connection. Accepted values:
+
+- `STRICT` — verify-full; requires a valid, trusted certificate
+- `DEFAULT` — require encryption but don't verify the certificate
+- `WEAK` — prefer encryption but allow plaintext fallback
+
+### DBCONFIG_DATABASES_0__SOCKETTIMEOUT
+
+Socket timeout in seconds for the database connection. Used for dead connection detection. Default: `600` for writer mode, `60` for reader mode.
+
+### DBCONFIG_DATABASES_0__TCPKEEPALIVE
+
+Enables TCP keepalive probes on the database connection. Default: `true`.
+
+### DBCONFIG_DATABASES_0__TCPKEEPALIVESIDLE
+
+Seconds of inactivity before the first TCP keepalive probe is sent. Used during long-running writer operations such as PK application and post-snapshot deduplication. Default: `60`.
+
+### DBCONFIG_DATABASES_0__TCPKEEPALIVESINTERVAL
+
+Seconds between TCP keepalive retry probes. Default: `10`.
+
+### DBCONFIG_DATABASES_0__TCPKEEPALIVESCOUNT
+
+Maximum number of failed TCP keepalive probes before the connection is considered dead. Default: `6`.
+
+### DBCONFIG_DATABASES_0__JDBCOPTIONS
+
+Arbitrary JDBC driver properties to pass to the database connection, in `key=value;key=value` format. These are applied after defaults but before explicit settings like `SSLMODE` and `SOCKETTIMEOUT`.
+
+Oracle examples:
+- Disable network encryption negotiation: `oracle.net.encryption_client=REJECTED`
+- Set session program name: `v$session.program=DMSAgent`
+
+## Optional parameters
 
 ### FIPS_MODE
 
 If you need to comply with FIPS standards, enable FIPS mode for the DMS Agent by setting the environment variable to true: `export FIPS_MODE=true`.
+
+### TRANSFORMATION_ENABLE_NULLCHAR_REPLACEMENT
+
+Oracle-specific. Enables replacement of null characters (`0x00`) in text-based column types: `VARCHAR2`, `LONG`, `CLOB`, and `NCLOB`. Default: `false`.
+
+Use together with `TRANSFORMATION_NULLCHAR_REPLACEMENT` to specify the replacement string.
+
+### TRANSFORMATION_NULLCHAR_REPLACEMENT
+
+Oracle-specific. The string used to replace null characters (`0x00`) when `TRANSFORMATION_ENABLE_NULLCHAR_REPLACEMENT` is enabled. Defaults to an empty string.
+
+### TRANSFORMATION_ENABLE_SPECIAL_COLUMN_NAME_ENCODING
+
+Oracle-specific. Enables encoding of special characters (`$` and `-`) in column names. Default: `false`.
+
+### DBZ_*
+
+Debezium property passthrough. You can override any Debezium connector property by prefixing it with `DBZ_`. For example, to set `max.batch.size`, use `export DBZ_MAX_BATCH_SIZE=204800`.
+
+For a full list of supported properties, see the Debezium documentation:
+- [Oracle connector properties](https://debezium.io/documentation/reference/stable/connectors/oracle.html#oracle-connector-properties)
+- [PostgreSQL connector properties](https://debezium.io/documentation/reference/stable/connectors/postgresql.html#postgresql-connector-properties)
 
 ### QUARKUS_LOG_LEVEL
 
