@@ -4,32 +4,9 @@ navTitle: Running DDL
 description: How to safely run schema changes from application code in a geo-distributed PGD cluster.
 ---
 
-DDL operations in a geo-distributed cluster acquire locks across all nodes simultaneously, held for the duration of the statement. Keep DDL transactions small, avoid mixing them with DML, and schedule them during low-traffic periods to minimize the impact on application throughput.
+DDL operations in a geo-distributed cluster acquire locks across write leaders, held for the duration of the statement. Keep DDL transactions small, avoid mixing them with DML, and schedule them during low-traffic periods to minimize the impact on application throughput.
 
-## Using bdr.replicate_ddl_command()
-
-PGD replicates DDL automatically, but for greater control over execution order and locking behavior, use `bdr.replicate_ddl_command()` to run schema changes. It executes the DDL on the local node and replicates it to all other nodes in the specified replication sets, ensuring consistent execution order:
-
-```sql
-SELECT bdr.replicate_ddl_command(
-    'ALTER TABLE public.transactions ADD COLUMN notes text'
-);
-```
-
-To target specific replication sets rather than all nodes, check available replication sets first with `SELECT set_name FROM bdr.replication_sets;`, then pass the set name as an array:
-
-```sql
-SELECT bdr.replicate_ddl_command(
-    'CREATE INDEX idx_transactions_channel ON public.transactions(channel)',
-    ARRAY['<replication_set_name>']
-);
-```
-
-Using `CREATE INDEX CONCURRENTLY` inside `bdr.replicate_ddl_command()` isn't supported. Create concurrent indexes outside of the function, or use a standard `CREATE INDEX` inside it.
-
-## Running DDL safely
-
-Lock acquisition time is proportional to round-trip latency across all nodes, so DDL that takes milliseconds on a local cluster can take seconds in a multi-region setup. Apply these practices to keep the impact minimal.
+Lock acquisition time is proportional to round-trip latency across write leaders, so DDL that takes milliseconds on a local cluster can take seconds in a multi-region setup. Apply these practices to keep the impact minimal.
 
 - **Make additive changes:** Adding a column, adding an index, or creating a new table are low-risk. Dropping columns, renaming columns, and changing data types require more care because they can break running application code on nodes that haven't received the schema change yet. In a rolling deployment, keep backward compatibility until all application versions that depend on the old schema are retired.
 
