@@ -11,27 +11,43 @@ API audit logging is available from HM 2026.4.
 
 ## Prerequisites
 
+This page covers two HM installation types:
+
+- **Operator installation** — You installed HM using the HybridControlPlane custom resource and `kubectl`.
+- **Bootstrap installation** — You installed HM using Helm and a `values.yaml` file.
+
 Before enabling API audit logging, ensure you have:
 
 - `kubectl` access to your cluster
-- Sufficient permissions to edit the HybridControlPlane custom resource (Operator installation) or the `values.yaml` file (Bootstrap installation)
+- Sufficient permissions to edit the HybridControlPlane custom resource or the `values.yaml` file
+
+## What gets audited
+
+HM emits an audit log entry for a request when both these conditions are met:
+
+- The request requires authentication. Anonymous or exempt endpoints are not audited.
+- The request targets an API path, such as REST APIs (`/api/…`), Iceberg catalog APIs, launchpad application APIs, or gRPC service endpoints.
+
+These request types aren't audited:
+
+- Health check endpoints
+- Static resources (for example, JavaScript, CSS, images)
+- Exempt paths, including `/api/ui` and `/api-docs`
+- Unauthenticated or anonymous API calls
 
 ## Enabling API audit logging
 
-API audit logging is disabled by default. To enable it, set the `enable_api_audit` parameter for the `upm-istio-gateway` component.
+API audit logging is disabled by default. To enable it, set the `enable_api_audit` setting for the `upm-istio-gateway` component to `"true"`.
 
 !!! Note
 The accepted values are the strings `"true"` and `"false"` only. Boolean types are not permitted.
 !!!
 
-Use the instructions for your installation type:
-
-- **Operator installation** — You installed HM using the HybridControlPlane custom resource and `kubectl`.
-- **Bootstrap installation** — You installed HM using Helm and a `values.yaml` file.
+Use the instructions for your installation type.
 
 ### Operator installation
 
-Edit your HybridControlPlane custom resource to add or update the `enable_api_audit_logging` setting under `spec.componentsParameters.upm-istio-gateway`:
+Edit your HybridControlPlane custom resource to add or update the `enable_api_audit` setting under `spec.componentsParameters.upm-istio-gateway`:
 
 ```yaml
 apiVersion: edbpgai.edb.com/v1alpha1
@@ -52,7 +68,7 @@ kubectl apply -f hybridmanager.yaml
 
 ### Bootstrap installation
 
-Edit your `values.yaml` by updating the `parameters.upm-istio-gateway` section:
+Edit your `values.yaml` by updating the `parameters.upm-istio-gateway` section to set `enable_api_audit` to `"true"`:
 
 ```yaml
 parameters:
@@ -78,19 +94,25 @@ Always provide the complete set of input variables you used to install the Helm 
 
 To disable API audit logging, set `enable_api_audit` to `"false"` and reapply using the same steps for your installation type.
 
-## What gets audited
+## Querying audit logs
 
-HM emits an audit log entry for a request when both these conditions are met:
+Audit log entries are written to the ingress gateway's standard log output. You can query them using your cluster's log aggregation tool by filtering for the `EDB-HM-AUDIT` key.
 
-- The request requires authentication. Anonymous or exempt endpoints are not audited.
-- The request targets an API path, such as REST APIs (`/api/…`), Iceberg catalog APIs, launchpad application APIs, or gRPC service endpoints.
+### Using Loki
 
-These request types aren't audited:
+Use the following [LogQL](https://grafana.com/docs/loki/latest/query/) query to filter audit entries:
 
-- Health check endpoints
-- Static resources (for example, JavaScript, CSS, images)
-- Exempt paths, including `/api/ui` and `/api-docs`
-- Unauthenticated or anonymous API calls
+```shell
+{namespace="istio-system", container="istio-proxy"} |= "EDB-HM-AUDIT" | json
+```
+
+### Using kubectl for quick inspection
+
+If you don't have a log aggregation tool available, use this command to stream logs directly from the ingress gateway pod for quick inspection:
+
+```shell
+kubectl logs -n istio-system -l istio=ingressgateway -c istio-proxy | grep EDB-HM-AUDIT
+```
 
 ## Log format
 
@@ -132,23 +154,3 @@ Each audit log entry contains these fields. Fields with empty or unavailable val
 | `ip`          | Client IP address, extracted from the `x-forwarded-for` header.                                                                                                                                                                            |
 | `status_code` | HTTP response status code (for example, 200, 401, 403, 500).                                                                                                                                                                               |
 | `grpc_status` | gRPC status code. Present only for gRPC requests. The HTTP transport always returns 200; the actual outcome is reflected here (for example, 16 = Unauthenticated).                                                                         |
-
-## Querying audit logs
-
-Audit log entries are written to the ingress gateway's standard log output. You can query them using your cluster's log aggregation tool by filtering for the `EDB-HM-AUDIT` key.
-
-### Using Loki
-
-Use the following [LogQL](https://grafana.com/docs/loki/latest/query/) query to filter audit entries:
-
-```shell
-{namespace="istio-system", container="istio-proxy"} |= "EDB-HM-AUDIT" | json
-```
-
-### Using kubectl for quick inspection
-
-If you don't have a log aggregation tool available, you can stream logs directly from the ingress gateway pod using `kubectl`:
-
-```shell
-kubectl logs -n istio-system -l istio=ingressgateway -c istio-proxy | grep EDB-HM-AUDIT
-```
