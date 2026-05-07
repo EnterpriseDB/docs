@@ -1,0 +1,222 @@
+---
+title: Enabling and configuring the Chat Agent
+navTitle: Enable the Chat Agent
+description: Prerequisites, model setup, supported providers, and model selection guidance for enabling the Hybrid Manager Chat Agent.
+deepToC: true
+---
+
+The EDB Hybrid Manager (HM) Chat Agent is delivered with HM and powered by a chat-completion model that you provide through HM AI Factory. As an HM administrator, you create or register an **inference service** for that model. Tag it with the **`chatbot-gen-content`** function so the Chat Agent recognizes it as a provider.
+
+After that, anyone in your organization can use the Chat Agent from the HM console.
+
+This page is for HM administrators. To learn how to use the Chat Agent, see the [overview](./).
+
+## Before you begin
+
+Confirm the following:
+
+- HM is installed and reachable.
+- The **AI scenario** is enabled in your HM deployment. The Chat Agent is part of the AI scenario, and the **Sparkle** icon stays hidden when the AI scenario isn't installed. See [HM installation scenarios](../../install/install_guide/install_hm/#installation-scenarios) for details.
+- HM AI Factory is available, with model serving and the Model Library reachable from the HM console. See [Model Serving](../../../ai-factory/model/serving) for the AI Factory model-serving documentation.
+- You have the **AI Model Manager** organization role. This is the role that can register AI models, apply model functions, and create inference services. See [Roles and permissions](../managing_users/user_roles_authz/authz) for the full role matrix.
+- You have the credentials and connection details for at least one chat-completion model — either a third-party API or a self-hosted endpoint. See [Supported model providers](#supported-model-providers).
+- The chat-completion model supports a **context window of at least 128K tokens**. The Chat Agent loads skill instructions, tool schemas, and conversation history on every turn — models with smaller context windows can't keep up.
+
+!!! important
+The Chat Agent answers questions about your live HM estate. Choose a provider whose data-handling policy matches your organization's requirements. Self-hosted models keep prompts and responses inside your infrastructure.
+!!!
+
+## Set up the model that powers the Chat Agent
+
+In the HM console, go to **Estate > Inference Services**, open the **Quick Actions** menu, and choose one of two paths:
+
+- **Create Local Inference Service** — deploy and serve the model from inside HM AI Factory. Best when you want to keep prompts and responses inside your infrastructure, or when you want to serve a model directly from a container image.
+- **Register External Inference Service** — point HM at a model endpoint that runs outside HM. Examples include a third-party cloud API (OpenAI, Anthropic, Gemini) or a self-hosted endpoint on another cluster. Best when you already operate the model elsewhere and want HM to call into it.
+
+Either way, the model must carry the **`chatbot-gen-content`** function.
+
+### Create Local Inference Service
+
+This path serves the model from inside HM AI Factory. It's a two-step setup: add the model entry to the Asset Library, then create the inference service from that entry.
+
+#### 1. Add the model to the Asset Library
+
+In **Asset Library > Models**, select **+ Add New Model** and fill in the model details. Follow [How to deploy AI Models from the Model Library](../../../ai-factory/model/how-to-deploy-ai-models) for the full form reference. The only Chat Agent-specific requirement is to add **`chatbot-gen-content`** to the **Functions** field.
+
+#### 2. Create the inference service
+
+1. Go to **Estate > Inference Services**.
+2. From **Quick Actions**, select **Create Local Inference Service** (or the **Create Local Inference Service** button in the empty state).
+3. Pick the model you added in step 1 and complete the deployment form (project, location, resources).
+4. Submit. Wait until the inference service reaches the **Ready** state.
+
+The next time a user opens the Chat Agent, the model is listed in the model selector.
+
+### Register External Inference Service
+
+This path lets HM call a model endpoint that runs outside HM — for example, OpenAI's API, an Anthropic-compatible endpoint, or a Google Gemini endpoint.
+
+1. Go to **Estate > Inference Services**.
+2. From **Quick Actions**, select **Register External Inference Service** (or the corresponding button in the empty state).
+3. Provide the connection details for the external endpoint. Required fields are the URL, the API protocol (OpenAI v1, Anthropic Messages, or Google Gemini), and authentication credentials.
+4. Make sure the corresponding model carries the **`chatbot-gen-content`** function.
+5. Submit. Wait until the registration reaches the **Ready** state.
+
+For more on external services, see [Model Serving](../../../ai-factory/model/serving) in the AI Factory documentation.
+
+## Tune Chat Agent behavior with model functions
+
+In addition to the required `chatbot-gen-content` function, you can apply optional functions that change Chat Agent behavior for that model. Apply them the same way you applied `chatbot-gen-content`.
+
+| Function                         | Value                      | Purpose                                                                                                                      |
+| -------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `chatbot-gen-content`            | (none)                     | **Required.** Marks the model as a Chat Agent provider. Without it, the model isn't selectable in the Chat Agent.            |
+| `chatbot-default-thinking-level` | `low`, `medium`, or `high` | Sets the model's default reasoning effort for Chat Agent turns. Use only on models that support thinking or reasoning modes. |
+
+For models that don't support reasoning, the thinking-level function has no effect.
+
+## Verify the Chat Agent works
+
+1. In the HM console, sign in as a user that belongs to at least one project.
+2. Select the **Sparkle** icon at the top right.
+3. Confirm the panel opens with the header **HM AI** and the placeholder **Ask me anything…** in the input.
+4. If you registered more than one model, select the **model** picker and confirm your model appears.
+5. Send a quick prompt, such as: _List the projects I can see._
+6. Confirm a streamed response begins within a few seconds.
+
+If the Sparkle icon is missing or the panel can't be opened, see [Troubleshooting](./troubleshooting).
+
+## Supported model providers
+
+The Chat Agent communicates with models through three API protocols. Any provider that speaks one of these protocols works.
+
+### OpenAI v1 protocol
+
+Compatible providers and self-hosted runtimes:
+
+- OpenAI (api.openai.com)
+- Azure OpenAI
+- NVIDIA NIM containers
+- Amazon Bedrock through an OpenAI-compatible gateway
+- vLLM and other OpenAI-compatible self-hosted servers
+
+### Anthropic Messages protocol
+
+- Anthropic API direct (api.anthropic.com)
+- Anthropic-compatible gateways and proxies that preserve the Messages API surface
+
+### Google Gemini protocol
+
+- Google AI Studio (Gemini API)
+- Vertex AI with the Gemini API surface
+
+For details on registering each protocol in the Model Library, see [Adding a model](../../../ai-factory/model/library).
+
+## Choosing a model
+
+The Chat Agent classifies every registered model into a **strength tier** — Small, Medium, Large, or Extra Large — based on the model's capability. A model's tier determines which Chat Agent skills are available when that model is selected.
+
+### Strength tiers
+
+The four tiers correspond to approximate model scale and capability:
+
+- **Small** — roughly 7–30B parameter class.
+- **Medium** — roughly 30–100B parameters.
+- **Large** — `gpt-4.1` / `claude-haiku-4-5` / `gemini-2.5-pro` class.
+- **Extra Large** — frontier models in the `gpt-5.4+`, `gpt-5.3-codex`, `claude-sonnet-4-5+`, `gemini-3+`, and Claude Opus families.
+
+A model that isn't on the recognized list below defaults to **Small**.
+
+### Recognized models
+
+| Model                                      | Tier        |
+| ------------------------------------------ | ----------- |
+| `gemini-2.5-flash-lite`                    | Small       |
+| `gpt-5-nano`                               | Small       |
+| `gpt-oss-20b`                              | Small       |
+| `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Small       |
+| `gemini-2.5-flash`                         | Medium      |
+| `gemini-3.1-flash-lite-preview`            | Medium      |
+| `gpt-4.1-mini`                             | Medium      |
+| `gpt-5-mini`                               | Medium      |
+| `gpt-5.4-nano`                             | Medium      |
+| `claude-haiku-4-5`                         | Large       |
+| `gemini-2.5-pro`                           | Large       |
+| `gpt-4.1`                                  | Large       |
+| `gpt-5`                                    | Large       |
+| `gpt-5.3-chat-latest`                      | Large       |
+| `gpt-5.4-mini`                             | Large       |
+| `gpt-oss-120b`                             | Large       |
+| `claude-opus-4-1`                          | Extra Large |
+| `claude-opus-4-5`                          | Extra Large |
+| `claude-opus-4-6`                          | Extra Large |
+| `claude-opus-4-7`                          | Extra Large |
+| `claude-sonnet-4-5`                        | Extra Large |
+| `claude-sonnet-4-6`                        | Extra Large |
+| `gemini-3-flash-preview`                   | Extra Large |
+| `gemini-3.1-pro-preview`                   | Extra Large |
+| `gpt-5.3-codex`                            | Extra Large |
+| `gpt-5.4`                                  | Extra Large |
+| `gpt-5.4-pro`                              | Extra Large |
+| `gpt-5.5`                                  | Extra Large |
+| `gpt-5.5-pro`                              | Extra Large |
+
+The following aliases are recognized as the same canonical model:
+
+- Anthropic models on Amazon Bedrock — cross-region prefixes `us.`, `eu.`, `apac.`, `global.` and provider-prefixed variants (`anthropic.<model>-<date>-v1:0`).
+- OpenAI `gpt-oss-20b` and `gpt-oss-120b` — provider-prefixed variants `openai/<model>`, `openai.<model>-1:0`, `gpt-oss:<size>`.
+
+#### Assign a tier to a model that isn't on the recognized list
+
+Models whose names don't match any row in the table above (and aren't covered by the alias rules) default to **Small**. Many of the more advanced skills stay hidden as a result.
+
+To override that, add the **`chatbot-model-tier`** function to the model in the Asset Library with one of these values:
+
+| Function value | Tier        |
+| -------------- | ----------- |
+| `S`            | Small       |
+| `M`            | Medium      |
+| `L`            | Large       |
+| `XL`           | Extra Large |
+
+Use the value that best matches your model's actual capability. After saving, the Chat Agent honors the tier you set instead of defaulting to **Small**.
+
+### Skills available at each tier
+
+A skill is available when the selected model's tier is **at or above** the skill's minimum tier. Higher tiers add capabilities without removing anything.
+
+| Skill / capability                                                                        | Minimum tier |
+| ----------------------------------------------------------------------------------------- | ------------ |
+| HM documentation Q&A (concepts, architecture, how-to, with citations)                     | Small        |
+| Estate, projects, organization users, project users, organization roles, project roles    | Small        |
+| Iceberg catalog management (list, create, update, delete)                                 | Small        |
+| Project and organization activity feeds                                                   | Small        |
+| Kubernetes workload observability — Grafana datasources, Prometheus queries, Loki queries | Small        |
+| Cluster realtime and historical metrics, charts, available metric metadata                | Small        |
+| Active alerts (per cluster, per project), aggregated health scores                        | Small        |
+| Configuration, index, statistics, and security recommendations                            | Small        |
+| Postgres Cluster lifecycle management — create, delete, restore                           | Medium       |
+| Schema design recommendations driven by top running queries                               | Medium       |
+| 24-hour cluster reports — list, fetch, analyze, compare                                   | Medium       |
+| Data Migration Service status — sources, destinations, mappings, errors, assessments      | Medium       |
+| Oracle-to-Postgres SQL translation                                                        | Medium       |
+
+At Large and Extra Large tiers, Postgres Cluster lifecycle management has a richer interactive experience. The Chat Agent asks structured follow-up questions to confirm parameters before submitting. Small-tier models don't offer Postgres Cluster lifecycle management.
+
+### Recommendations
+
+- **Start with a Large model.** Large is the lowest tier that covers Postgres Cluster lifecycle management with structured forms and the full set of Medium-tier capabilities. `gpt-4.1`, `claude-haiku-4-5`, `gemini-2.5-pro`, and `gpt-5` sit in this tier.
+- **Pick a self-hosted model if your prompts contain regulated or proprietary data.** This keeps Chat Agent prompts and responses inside your infrastructure.
+- **Register more than one model** to let users pick a tier per conversation. For example, register a Small model for documentation lookups and an Extra Large model for cluster-creation flows.
+
+## Disabling the Chat Agent for an organization
+
+To remove the Chat Agent from your HM console, remove the `chatbot-gen-content` function from every model that has it. Once no Chat Agent provider is registered, the **Sparkle** icon is shown but disabled, with a tooltip directing users to configure a model service.
+
+To remove the **Sparkle** icon entirely, disable the AI scenario at install time. See [HM installation scenarios](../../install/install_guide/install_hm/#installation-scenarios).
+
+## Where to next
+
+- [What the Chat Agent can do](./capabilities) — the capability catalog users see, organized by area.
+- [Security and data handling](./security_and_data) — the authorization model, audit, and data treatment.
+- [Troubleshooting](./troubleshooting) — common configuration issues.
