@@ -138,6 +138,64 @@ The legend defines the colors and logical groupings used in the architecture dia
   * **Example 1: type: LoadBalancer**: This is a Kubernetes Service type that requests an external load balancer. In public cloud environments (like AWS, GCP, Azure), this is automatically provisioned as a managed service. In on-premises or bare-metal deployments, you must provide a solution (like MetalLB) to fulfill these LoadBalancer requests.  
   * **Example 2: StorageClass**: This resource abstracts the "Block Storage" and "Object Storage" requirements. It maps Kubernetes storage requests (Persistent Volume Claims) to actual, provisioned storage hardware or software (like local-pv, Ceph, vSphere, or cloud-based disks).
 
+## HM Control Plane vs. Data Plane
+
+| Attribute | Control Plane (CP) | Data Plane (DP) |
+|---|---|---|
+| **Role** | Orchestration, configuration, observability | Postgres cluster hosting and replication |
+| **Protocol** | HTTP (REST / gRPC) via Istio service mesh | Postgres wire protocol (TCP) per PG cluster |
+| **Multi-location topology & traffic** | Star — Primary is mandatory hub across locations; Primary pushes Control outbound to each Secondary, Secondaries return Logs to Primary | Optional mesh — locations may be fully isolated or directly peered for Postgres replication; no hub required |
+| **Lifecycle isolation** | All CPs share management context; CP upgrades affect the full estate | Each DP is an independent failure, security, and upgrade domain |
+| **DR role** | Secondary CPs provide management continuity | DPs are the replication targets; hot/cold standby model determined per deployment |
+| **Scenarios** | core, migration, ai | dbaas, analytics, ai |
+
+---
+
+### Protocol and ingress
+
+The simplest way to distinguish the two planes is by protocol.
+
+The **Control Plane is entirely EDB product**, and every component in it speaks HTTP. That HTTP traffic is served and secured by the **Istio service mesh**, which provides a single, centralized ingress surface across all CP services. Authentication, mTLS, and traffic policy are all enforced at the Istio layer before a request reaches any CP component.
+
+The **Data Plane is customer-provisioned Postgres**, and every cluster in it speaks the **Postgres wire protocol (PSQL)**. There is no middleware in the path. Each Postgres cluster listens on its own dedicated TCP connection — there is no shared proxy or mesh aggregating these connections. This is a deliberate design choice: dedicated ingress per cluster maximizes both availability and the security isolation boundary between customer workloads.
+
+In short: **HTTP CP ingress is centralized via Istio; PSQL DP ingress is dedicated per Postgres cluster.**
+
+---
+
+### Lifecycle isolation
+
+Lifecycle isolation is the most operationally significant distinction between the two planes.
+
+The CP and every DP it manages are on **independent upgrade lifecycles**. EDB publishes patches on a monthly cadence for the Long Term Support (LTS) release. Customers are strongly encouraged to apply these promptly, and the architecture makes this practical: **upgrading the CP has no effect on running customer Postgres services on the DP.** There is no maintenance window for Postgres availability when the CP is patched.
+
+These monthly CP patches carry two categories of content:
+
+1. **CP component security patches** — hardening the orchestration layer itself.
+2. **New Postgres container images** — updated images for Postgres engine versions, extensions, and the container host OS, all with current security patches applied.
+
+Once new images are available in the CP, it is **the customer's decision** when to use the CP's orchestration capabilities to roll those images out to their DP Postgres deployments. This preserves full customer control over Postgres upgrade timing while ensuring that hardened images are always available on demand.
+
+---
+
+### Availability and disaster recovery
+
+CP availability and DP availability are independent concerns, and the two planes warrant different recovery strategies.
+
+*Control Plane*
+
+The CP does not sit in the data path of customer Postgres traffic. A CP outage does not interrupt connections to provisioned Postgres clusters — running workloads continue unaffected. The CP has a robust DR capability: with disciplined operational practice (regular backups, documented runbooks), a CP can be restored in **under one hour**.
+
+*Data Plane*
+
+Because the DP carries live Postgres traffic, higher availability targets require active replication across **failure domains** — optimally across regions. Postgres replication across DP locations (where network peering is provisioned) allows the DP to survive a regional failure without any impact to application connectivity.
+
+*Availability zones*
+
+Both planes can take full advantage of **availability zones within a location**. Every HM deployment location may contain CP elements, DP elements, or both. Any location can be recovered from disaster using backups. The difference is ceiling: the CP's recovery is a restore operation measured in minutes to an hour, while the DP's Postgres clusters have the architectural capacity to remain continuously available through a disaster by maintaining live replicas in other failure domains.
+
+
+
 ## Deployment architectures
 
 Use reference architectures A-D below as reference models to decide which topology matches your "[Target state](#architectural-discovery)."
@@ -146,7 +204,7 @@ Use reference architectures A-D below as reference models to decide which topolo
 This legend above also applies to reference architectures A-D below.
 !!!
 
-### A. Minimum Control Plane
+### Minimum Control Plane
 
 The minimum install colocates the HM control plane (CP) on the Kubernetes control nodes.
 
@@ -186,7 +244,7 @@ The architecture diagrams above reference several external components. While you
 * **Local network:** The fabric connecting the CP to Data Plane. Latency here drives your Locality decisions.
 * **Container Registry:** The source of truth for application images. For air-gapped designs, this represents your local synchronized registry.
 
-### B. HM Data Plane
+### HM Control Plane + Data Plane
 
 Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual database workloads reside.
 
@@ -198,13 +256,17 @@ Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual
 
 ![HM Data Plane](../../images/HCP_reference_architectures-dbaas.svg)
 
-### C. Fully featured deployment
+### HM Fully featured deployment
 
 This view shows a fully capable HM deployment, including resources like GPU acceleration for AI workloads.
 
 ![HM fully featured](../../images/HCP_reference_architectures-full-featured.svg)
 
-### D. Multi-Location
+---
+
+## Multi-location topologies in EDB Hybrid Manager
+ 
+EDB Hybrid Manager supports multi-location deployments through two distinct but complementary network topologies — one for the Control Plane and one for the Data Plane. Each topology reflects the role and protocol of its plane.
 
 The multi-location capability is a DBaaS offering following a hub and spoke model.
 
@@ -213,6 +275,57 @@ The multi-location capability is a DBaaS offering following a hub and spoke mode
 3.  Connectivity is established using load-balanced endpoints&mdash;not a network mesh service, like Submariner for example.
 
 ![HM multi-location](../../images/HCP_reference_architectures-multi-location.svg)
+
+---
+ 
+### Control Plane: star topology
+ 
+![CP star topology](../../images/HCP_control-planes.png)
+ 
+The Control Plane is arranged in a **star topology**: one designated Primary CP sits at the center and up to five Secondary CPs radiate outward from it.
+ 
+Traffic follows a strict directional pattern. **Control flows outward** from the Primary to each Secondary — configuration, orchestration commands, and lifecycle operations all originate at the hub. **Logs flow inward**, returning from each Secondary back to the Primary. Secondaries have no lateral visibility: they cannot control one another, and they cannot self-govern. All authority is centralized in the Primary.
+ 
+This hub-and-spoke authority model has an important consequence. Because each Secondary CP is managed by the Primary but is otherwise autonomous in terms of what workloads it hosts, any Secondary can serve an entirely different engagement. Common examples include:
+ 
+- **Dev/test vs. production** — separate Secondaries enforce environment isolation at the infrastructure level
+- **One customer vs. another** — multi-tenant or MSP deployments where workload separation is a contractual or security requirement
+- **On-premises vs. cloud** — a single Primary can govern CPs deployed in a private data center alongside CPs deployed in one or more CSPs
+- **Geo-distributed regions** — each Secondary can reside in a different geographic region, managed from a single operational center of gravity
+The star is connected exclusively over **private network paths** — internal LoadBalancer endpoints accessed via VPC/VNet peering, Transit Gateway, VPN, or equivalent. No Secondary is reachable over a public endpoint.
+ 
+---
+ 
+### Data Plane: optional mesh topology
+ 
+![DP optional mesh topology](../../images/HCP_data-planes.png)
+ 
+The Data Plane topology is **optional mesh**: any two Data Plane locations may be left entirely isolated, or they may be directly interconnected via VPC/VNet peering for Postgres-level replication. There is no hub, no mandatory center, and no required connectivity between locations.
+ 
+When two Data Planes are peered, the network path enables **direct Postgres replication** between clusters hosted in each location. This is the foundation for two distributed Postgres topologies supported by EDB:
+ 
+- **EDB Postgres Distributed (PGD)** — active/active multi-writer replication across locations, suitable for applications requiring zero RPO and near-zero RTO across regions. See the [PGD documentation](https://www.enterprisedb.com/docs/pgd/latest/).
+- **CloudNativePG distributed** — streaming replication across Kubernetes clusters and failure domains using CloudNativePG's distributed topology. See the [CloudNativePG distributed documentation](https://cloudnative-pg.io/documentation/current/replica_cluster/).
+Data Planes that are not peered remain fully independent — separate security domains, separate failure domains, separate upgrade timelines. Peering is additive: it introduces a replication path without changing the isolation characteristics of either plane for any other purpose.
+ 
+The optional nature of the mesh means the Data Plane topology is shaped entirely by the customer's **replication and availability requirements**, not by any architectural mandate from HM itself.
+ 
+---
+ 
+### Relationship between the two topologies
+ 
+The CP star and DP mesh are independent overlays on the same set of physical or cloud locations. A location can host a Secondary CP, a Data Plane, or both. The CP star governs what is deployed and how it is managed; the DP mesh governs how Postgres data moves between locations. Neither topology constrains the other.
+ 
+| | Control Plane | Data Plane |
+|---|---|---|
+| **Shape** | Star — mandatory hub | Optional mesh — peer-to-peer |
+| **Hub required** | Yes — Primary CP | No |
+| **Cross-node traffic** | Control out, Logs in | Postgres replication (when peered) |
+| **Isolation model** | Secondaries are independent engagement boundaries | Each DP is an independent failure and security domain |
+| **Network requirement** | Private path to Primary required for all Secondaries | Private path only between peered DPs |
+ 
+---
+
 
 ## Choosing an installation scenario
 
