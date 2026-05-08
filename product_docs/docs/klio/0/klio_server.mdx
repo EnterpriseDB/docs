@@ -1,7 +1,7 @@
 ---
 title: The Klio Server
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.14/user/klio_server.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.15/user/klio_server.md
 sidebar_position: 5
 
 ---
@@ -64,7 +64,9 @@ The queue serves two purposes:
 
 The Klio Server uses three distinct PersistentVolumeClaims (PVCs), each
 serving a different purpose. Understanding what each PVC contains helps you
-size them appropriately for your environment.
+size them appropriately for your environment. For guidance on managing
+storage capacity and resizing PVCs, see
+[Managing Storage](managing_storage.mdx).
 
 ### Data PVC
 
@@ -332,7 +334,7 @@ metadata:
   namespace: default
 spec:
   # Container image for the Klio server
-  image: docker.enterprisedb.com/k8s/klio:v0.0.14
+  image: docker.enterprisedb.com/k8s/klio:v0.0.15
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []  # Add image pull secrets if needed
 
@@ -507,7 +509,7 @@ spec:
   mode: read-only
 
   # Container image for the Klio server
-  image: docker.enterprisedb.com/k8s/klio:v0.0.14
+  image: docker.enterprisedb.com/k8s/klio:v0.0.15
   imagePullPolicy: IfNotPresent
 
   # TLS configuration
@@ -638,155 +640,6 @@ for details on node tainting.
 
 Refer to the [OpenTelemetry](opentelemetry.mdx#klio-server-with-opentelemetry)
 documentation for setting up monitoring and telemetry for the Klio server.
-
-## PVC Resize
-
-The Klio operator supports expansion of PersistentVolumeClaims (PVCs) for all
-storage components: data, cache (tier1 and tier2), and queue.
-
-### Prerequisites
-
-PVC expansion requires a StorageClass with `allowVolumeExpansion: true`.
-
-!!!warning User Responsibility
-
-Before attempting to resize PVCs, **you must verify** that your StorageClass
-supports volume expansion. The operator will attempt the resize operation
-directly—if the StorageClass does not support expansion, the Kubernetes API will
-reject the request and the operator will log an error.
-!!!
-
-To check if your StorageClass supports expansion:
-
-```bash
-kubectl get storageclass <your-storage-class> -o jsonpath='{.allowVolumeExpansion}'
-```
-
-If the output is not `true`, you need to either:
-
-1.  Update the StorageClass to enable volume expansion (if the underlying storage
-    provisioner supports it)
-2.  Use a different StorageClass that supports volume expansion
-3.  Migrate to a new PVC (see [Limitations](#limitations) for options)
-
-### Expanding PVC Size
-
-To expand a PVC, update the corresponding `pvcTemplate.resources.requests.storage`
-field in the Server spec with a larger value:
-
-```yaml
-apiVersion: klio.enterprisedb.io/v1alpha1
-kind: Server
-metadata:
-  name: my-server
-spec:
-  tier1:
-    data:
-      pvcTemplate:
-        resources:
-          requests:
-            storage: 200Gi  # Increased from 100Gi
-    cache:
-      pvcTemplate:
-        resources:
-          requests:
-            storage: 20Gi   # Increased from 10Gi
-  queue:
-    pvcTemplate:
-      resources:
-        requests:
-          storage: 20Gi     # Increased from 10Gi
-```
-
-Apply the updated Server resource:
-
-```bash
-kubectl apply -f klio-server.yaml
-```
-
-### What Happens During Resize
-
-When you update the Server spec with larger PVC sizes, the following occurs:
-
-1.  **PVC expansion**: The operator patches PVCs directly to the new size. This
-    modifies the PVC resources but does **not** update the StatefulSet—the
-    StatefulSet's VolumeClaimTemplates remain unchanged at this point.
-2.  **Temporary misalignment**: After the PVC patch, there is a brief period
-    where the PVCs have the new size but the StatefulSet VolumeClaimTemplates
-    still reflect the old size.
-3.  **StatefulSet recreation**: The operator detects that the expected
-    StatefulSet (with new VolumeClaimTemplates) differs from the current one.
-    Since VolumeClaimTemplates are immutable in Kubernetes, the StatefulSet is
-    deleted and recreated to align with the new spec.
-4.  **Pod restart**: The Klio server pod restarts and mounts the already-expanded
-    PVCs.
-
-!!!note Why explicit PVC patching is necessary
-
-VolumeClaimTemplates only define specs for *new* PVCs—they do not resize
-existing ones. Without explicit PVC patching by the operator, the StatefulSet
-would be recreated but the PVCs would remain at their original size, creating
-a permanent mismatch between the Server spec and actual storage.
-!!!
-
-### StatefulSet and PVC Alignment
-
-After the full resize operation completes:
-
--   The **PVCs** have the new expanded size
--   The **StatefulSet VolumeClaimTemplates** match the new size (after recreation)
--   The **Server spec** is consistent with both
-
-This ensures no drift between the desired state and actual resources.
-
-### Monitoring Resize Progress
-
-The operator emits a `PVCExpanded` Kubernetes event on the Server resource when
-a PVC is successfully expanded. You can view these events with:
-
-```bash
-kubectl describe server my-server
-```
-
-Check the PVC status to monitor the resize operation:
-
-```bash
-kubectl get pvc -l klio.enterprisedb.io/klio-server=my-server
-```
-
-The PVC will show the new requested size in `spec.resources.requests.storage`.
-The actual capacity is reflected in `status.capacity.storage` once the resize
-completes.
-
-For detailed status, including any resize conditions:
-
-```bash
-kubectl describe pvc data-my-server-klio-0
-```
-
-### Limitations
-
--   **Expansion only**: PVC shrinking is not supported by Kubernetes. Attempting
-    to reduce the storage size will be ignored and logged as a warning.
--   **StorageClass support**: The StorageClass must have `allowVolumeExpansion:
-    true`. If the StorageClass does not support expansion, the resize will fail
-    and an error will be logged.
--   **Pod restart required**: Due to StatefulSet VolumeClaimTemplates being
-    immutable, PVC expansion causes a brief pod restart.
--   **Filesystem resize**: After the volume is expanded, the filesystem must also
-    be resized. Most modern storage providers handle this automatically.
-
-!!!warning No Automatic Fallback
-
-If your StorageClass does not support volume expansion, there is **no automatic
-fallback**. The operator will not delete and recreate PVCs to achieve a larger
-size, as this would result in **permanent data loss**. The only options in this
-case are:
-
-1.  Migrate to a StorageClass that supports volume expansion
-2.  Create a new Klio server with larger PVCs and restore from backup
-3.  Manually migrate data (requires downtime and careful planning)
-!!!
 
 ## Object Store
 

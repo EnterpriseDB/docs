@@ -1,7 +1,7 @@
 ---
 title: The Klio Plugin
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.14/user/plugin_configuration.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.15/user/plugin_configuration.md
 sidebar_position: 6
 
 ---
@@ -98,7 +98,7 @@ spec:
 
   postgresql:
     pg_hba:
-      - local replication all peer # Allow replication connections locally
+      - local replication all peer map=local # Allow replication connections locally
 
   plugins:
     - name: klio.enterprisedb.io
@@ -128,6 +128,27 @@ Even though the Klio plugin is used to archive WAL files on the Klio server,
 it does not use the `archiveCommand` parameter in the PostgreSQL configuration,
 as the WAL are streamed directly to the Klio server. Thus, you must not set
 `isWALArchiver: true` in the plugin configuration.
+!!!
+
+!!!important
+
+If you add the Klio plugin to an **existing** cluster, you must
+restart the cluster to inject the sidecar containers. Use
+[`kubectl cnpg restart`][cnpg-restart] or set the
+`kubectl.kubernetes.io/restartedAt` annotation on the cluster.
+
+[cnpg-restart]: https://cloudnative-pg.io/docs/current/kubectl-plugin/#restart
+!!!
+
+!!!warning
+
+The `PluginConfiguration` resource referenced in the `Cluster` should exist
+before creating or updating the cluster. If it doesn't exist, the Klio plugin
+uses the PreReconcile hook to gate reconciliation, causing the cluster to wait
+at the start of the reconciliation loop (before any object creation or status
+changes) until the `PluginConfiguration` is created. This avoids unrecoverable
+error states, but the cluster will not progress until the dependency is
+satisfied. Ensure the `PluginConfiguration` is created with the correct name.
 !!!
 
 ## Applying configuration changes
@@ -436,6 +457,56 @@ Klio's required values (name, args, `CONTAINER_NAME` env var) will
 always override any conflicting values you set. All other customizations are
 respected.
 !!!
+
+### Plugin configuration selection in replica clusters
+
+When a CloudNativePG `Cluster` has multiple `PluginConfiguration`
+resources — one for archiving and one or more for external clusters —
+Klio selects which configuration to apply to the sidecar containers
+using the following logic:
+
+1.  **Archive plugin takes precedence**: if the `Cluster` has a Klio
+    plugin declared in `.spec.plugins` (the archive plugin), its
+    `PluginConfiguration` is used for the sidecar containers on every
+    pod.
+2.  **Fallback to replica source**: if no archive plugin is configured
+    and the cluster is a replica (`.spec.replica` is set), the
+    designated primary pod uses the `PluginConfiguration` referenced
+    by the external cluster defined as the replica source
+    (`.spec.replica.source`). Non-primary pods do not receive a Klio
+    sidecar in this case.
+
+For example, consider a replica cluster that does not archive locally
+but restores WALs from an external source managed by Klio:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-dc-b
+spec:
+  instances: 3
+  # No archive plugin in .spec.plugins
+
+  replica:
+    self: cluster-dc-b
+    primary: cluster-dc-a
+    source: cluster-dc-a
+
+  externalClusters:
+    - name: cluster-dc-a
+      plugin:
+        name: klio.enterprisedb.io
+        parameters:
+          pluginConfigurationRef: source-plugin-config
+```
+
+In this setup, only the designated primary of `cluster-dc-b` gets a
+Klio sidecar, configured from the `source-plugin-config`
+`PluginConfiguration`. The container customizations defined in that
+`PluginConfiguration` (image, resources, environment variables, etc.)
+are applied to the sidecar following the same merging rules described
+above.
 
 ### Available sidecar containers
 
