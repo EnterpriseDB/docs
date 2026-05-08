@@ -6,12 +6,14 @@ originalFilePath: 'src/installation_upgrade.md'
 
 
 !!!note OpenShift
+
 For instructions on how to install Cloud Native PostgreSQL on Red Hat
 OpenShift Container Platform, please refer to the ["OpenShift"](openshift.md)
 section.
 !!!
 
 !!!warning
+
 OLM (via [operatorhub.io](https://operatorhub.io/) is no longer supported
 as an installation method for {{name.ln}}.
 !!!
@@ -21,6 +23,7 @@ as an installation method for {{name.ln}}.
 ### Obtaining an EDB subscription token
 
 !!!info Important
+
 You must obtain an EDB subscription token to install {{name.ln}}. Without a token, you will not be able to access the EDB private software repositories.
 !!!
 
@@ -34,6 +37,7 @@ EDB_SUBSCRIPTION_TOKEN=<your-token>
 ```
 
 !!!warning
+
 The token is sensitive information. Please ensure that you don't expose it to unauthorized users.
 !!!
 
@@ -69,12 +73,11 @@ kubectl create secret -n postgresql-operator-system docker-registry edb-pull-sec
 Now that the pull-secret has been added to the namespace, the operator can be installed like any other resource in Kubernetes,
 through a YAML manifest applied via `kubectl`.
 
-You can install the [latest operator manifest](https://get.enterprisedb.io/pg4k/pg4k-1.29.0.yaml)
-for this minor release as follows:
+You can install the manifest for the latest version of the operator by running:
 
 ```sh
 kubectl apply --server-side -f \
-  https://get.enterprisedb.io/pg4k/pg4k-1.29.0.yaml
+  https://get.enterprisedb.io/pg4k/pg4k-1.25.8.yaml
 ```
 
 You can verify that with:
@@ -102,6 +105,7 @@ Please refer to ["`cnp` plugin"](./kubectl-plugin.md#generation-of-installation-
 for a more comprehensive example.
 
 !!!warning
+
 If you are deploying {{name.ln}} on GKE and get an error (`... failed to
 call webhook...`), be aware that by default traffic between worker nodes
 and control plane is blocked by the firewall except for a few specific
@@ -123,6 +127,7 @@ When installed through the manifest or the `cnp` plugin, by default, it is calle
 When installed via Helm, by default, the deployment name is derived from the helm release name, appended with the suffix `-edb-postgres-for-kubernetes` (e.g., `<name>-edb-postgres-for-kubernetes`).
 
 !!!note
+
 With Helm you can customize the name of the deployment via the
 `fullnameOverride` field in the [*"values.yaml"* file](https://helm.sh/docs/chart_template_guide/values_files/).
 !!!
@@ -155,6 +160,7 @@ the actual PostgreSQL clusters are running (this might even include the control
 plane for self-managed Kubernetes installations).
 
 !!!note Operator configuration
+
 You can change the default behavior of the operator by overriding
 some default options. For more information, please refer to the
 ["Operator configuration"](operator_conf.md) section.
@@ -163,7 +169,15 @@ some default options. For more information, please refer to the
 ## Upgrades
 
 !!!warning CRITICAL WARNING: UPGRADING OPERATORS
+
 OpenShift users, or any customer attempting an operator upgrade, MUST configure the new unified repository pull secret (docker.enterprisedb.com/k8s) before running the upgrade. If the old, deprecated repository path is still in use during the upgrade process, image pull failure will occur, leading to deployment failure and potential downtime. Follow the [Central Migration Guide](/postgres_for_kubernetes/latest/migrating_edb_registries) first.
+!!!
+
+!!!info Important
+
+Please carefully read the [release notes](rel_notes)
+before performing an upgrade as some versions might require
+extra steps.
 !!!
 
 !!!info Important
@@ -191,10 +205,12 @@ the switchover automatically. If set to `supervised`, the user must manually
 promote the new primary instance using the `cnp` plugin for `kubectl`.
 
 !!!note Rolling updates
+
 This process is discussed in-depth on the [Rolling Updates](rolling_update.md) page.
 !!!
 
 !!!info Important
+
 In case `primaryUpdateStrategy` is set to the default value of `unsupervised`,
 an upgrade of the operator will trigger a switchover on your PostgreSQL cluster,
 causing a (normally negligible) downtime. If your PostgreSQL Cluster has only one
@@ -279,15 +295,39 @@ When versions are not directly upgradable, the old version needs to be
 removed before installing the new one. This won't affect user data but
 only the operator itself.
 
-### Upgrading to 1.29.0 or 1.28.x
+### Upgrading to 1.29.1, 1.28.3, or 1.25.8
+
+Version 1.29.1, 1.28.3, and 1.25.8 ship the fix for `CVE-2026-44477` /
+`GHSA-423p-g724-fr39`. The metrics exporter now authenticates as a
+dedicated `cnp_metrics_exporter` role with `pg_monitor` privileges
+only, instead of the `postgres` superuser.
+
+Custom monitoring queries that read user-owned tables, or use
+`target_databases: '*'` against databases where `PUBLIC` `CONNECT`
+has been revoked, need explicit `GRANT` statements to
+`cnp_metrics_exporter`. See ["Custom query privileges and
+safety"](monitoring.md#custom-query-privileges-and-safety) and ["Manually creating
+the metrics exporter
+role"](monitoring.md#manually-creating-the-metrics-exporter-role) in
+the monitoring documentation.
+
+### Upgrading to 1.25 from a previous minor version
 
 !!!info Important
+
 We strongly recommend that all {{name.ln}} users upgrade to version
-1.29.0, or at least to the latest stable version of your current minor release
-(e.g., 1.28.x).
+1.25.1 or at least to the latest stable version of the minor release you are
+currently using (namely 1.24.x).
 !!!
 
-### Upgrading to 1.27 from a previous minor version
+!!!warning
+
+Every time you are upgrading to a higher minor release, make sure you
+go through the release notes and upgrade instructions of all the
+intermediate minor releases. For example, if you want to move
+from 1.23.x to 1.25, make sure you go through the release notes
+and upgrade instructions for 1.24 and 1.25.
+!!!
 
 Version 1.27 introduces a change in the default behavior of the
 [liveness probe](instance_manager.md#liveness-probe): it now enforces the
@@ -297,10 +337,152 @@ within the `livenessProbeTimeout` (30 seconds).
 If this behavior is not suitable for your environment, you can disable the
 *isolation check* in the liveness probe with the following configuration:
 
-```yaml
-spec:
-  probes:
-    liveness:
-      isolationCheck:
-        enabled: false
+#### From Replica Clusters to Distributed Topology
+
+One of the key enhancements in EDB Postgres for Kubernetes 1.24.0 is the upgrade of the
+replica cluster feature.
+
+The former replica cluster feature, now referred to as the "Standalone Replica
+Cluster," is no longer recommended for Disaster Recovery (DR) and High
+Availability (HA) scenarios that span multiple Kubernetes clusters. Standalone
+replica clusters are best suited for read-only workloads, such as reporting,
+OLAP, or creating development environments with test data.
+
+For DR and HA purposes, EDB Postgres for Kubernetes now introduces the Distributed Topology
+strategy for replica clusters. This new strategy allows you to build PostgreSQL
+clusters across private, public, hybrid, and multi-cloud environments, spanning
+multiple regions and potentially different cloud providers. It also provides an
+API to control the switchover operation, ensuring that only one cluster acts as
+the primary at any given time.
+
+This Distributed Topology strategy enhances resilience and scalability, making
+it a robust solution for modern, distributed applications that require high
+availability and disaster recovery capabilities across diverse infrastructure
+setups.
+
+You can seamlessly transition from a previous replica cluster configuration to a
+distributed topology by modifying all the `Cluster` resources involved in the
+distributed PostgreSQL setup. Ensure the following steps are taken:
+
+-   Configure the `externalClusters` section to include all the clusters involved
+    in the distributed topology. We strongly suggest using the same configuration
+    across all `Cluster` resources for maintainability and consistency.
+-   Configure the `primary` and `source` fields in the `.spec.replica` stanza to
+    reflect the distributed topology. The `primary` field should contain the name
+    of the current primary cluster in the distributed topology, while the `source`
+    field should contain the name of the cluster each `Cluster` resource is
+    replicating from. It is important to note that the `enabled` field, which was
+    previously set to `true` or `false`, should now be unset (default).
+
+For more information, please refer to
+the ["Distributed Topology" section for replica clusters](replica_cluster.md#distributed-topology).
+
+## Verifying release assets
+
+{{name.ln}} cryptographically signs all official release assets. Verifying these
+signatures ensures the assets originate from the official repository and were
+published through our automated release workflow.
+
+!!!info
+
+Refer to the ["Release integrity and supply chain" section](security.md#release-integrity-and-supply-chain)
+for more information.
+!!!
+
+### Prerequisites
+
+-   **Signature verification:** [cosign](https://github.com/sigstore/cosign) CLI
+-   **SBOM and Provenance:** [Docker Buildx](https://docs.docker.com/build/install-buildx/)
+    (included in Docker Desktop and modern Docker versions)
+
+### Verifying the Operator YAML Deployment
+
+When installing via a direct YAML manifest, you should verify the manifest file
+using the corresponding bundle (the `.sigstore.json` file) provided on the
+[GitHub Release page](https://github.com/EnterpriseDB/cloud-native-postgres/releases).
+
+Run the following command:
+
+```bash
+cosign verify-blob \
+  postgresql-operator-{version}.yaml \
+  --bundle postgresql-operator-{version}.sigstore.json \
+  --certificate-identity-regexp "^https://github.com/EnterpriseDB/cloud-native-postgres/.github/workflows/release-publish.yml@refs/tags/v" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+```
+
+#### Verifying SLSA provenance
+
+To verify a release binary, download both the artifact and the provenance file
+(`multiple.intoto.jsonl`) from the
+[GitHub release](https://github.com/EnterpriseDB/cloud-native-postgres/releases),
+then run:
+
+```shell
+slsa-verifier verify-artifact <ARTIFACT> \
+  --provenance-path multiple.intoto.jsonl \
+  --source-uri github.com/EnterpriseDB/cloud-native-postgres
+```
+
+### Verifying the operator container images
+
+Run the following command to verify the signature of the {{name.ln}} operator
+images:
+
+```bash
+cosign verify docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg:{tag} \
+  --certificate-identity-regexp="^https://github.com/EnterpriseDB/cloud-native-postgres/.github/workflows/release-publish.yml@refs/tags/v" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+We provide OCI attestations for full transparency. To inspect the Software Bill
+of Materials (SBOM) or build provenance, use the `docker buildx imagetools`
+command:
+
+To view the Software Bill of Materials (SBOM) in SPDX format:
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg:{tag} \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+```
+
+To inspect the SLSA Provenance (build details):
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg:{tag} \
+  --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
+```
+
+!!!info
+
+Refer to ["Verifying SLSA provenance"](security.md#verifying-slsa-provenance)
+for SLSA Build Level 3 compliance verification.
+!!!
+
+### Verifying PostgreSQL operand images
+
+{{name.ln}} maintains container images for all supported PostgreSQL versions
+as part of the [`postgres-containers` project](https://github.com/enterprisedb/docker-postgres)
+(also called operand images).
+
+To verify the signature of a specific operand image:
+
+```bash
+cosign verify docker.enterprisedb.com/k8s_enterprise/postgresql:{tag} \
+  --certificate-identity-regexp="^https://github.com/enterprisedb/docker-postgres/" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+To view the Software Bill of Materials (SBOM) in SPDX format:
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s_enterprise/postgresql:{tag} \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+```
+
+To inspect the SLSA Provenance (Build details):
+
+```bash
+docker buildx imagetools inspect docker.enterprisedb.com/k8s_enterprise/postgresql:{tag} \
+  --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
 ```

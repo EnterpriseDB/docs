@@ -6,6 +6,7 @@ originalFilePath: 'src/monitoring.md'
 
 
 !!!info Important
+
 Installing Prometheus and Grafana is beyond the scope of this project.
 We assume they are correctly installed in your system. However, for
 experimentation we provide instructions in
@@ -22,11 +23,13 @@ more `ConfigMap` or `Secret` resources (see the
 ["User defined metrics" section](#user-defined-metrics) below for details).
 
 !!!info Important
+
 {{name.ln}}, by default, installs a set of [predefined metrics](#default-set-of-metrics)
 in a `ConfigMap` named `postgresql-operator-default-monitoring`.
 !!!
 
 !!!info
+
 You can inspect the exported metrics by following the instructions in
 the ["How to inspect the exported metrics"](#how-to-inspect-the-exported-metrics)
 section below.
@@ -34,10 +37,17 @@ section below.
 
 All monitoring queries that are performed on PostgreSQL are:
 
--   atomic (one transaction per query)
--   executed with the `pg_monitor` role
+-   atomic (one read-only transaction per query)
+-   executed as the `cnp_metrics_exporter` role (a member of `pg_monitor`)
 -   executed with `application_name` set to `cnp_metrics_exporter`
--   executed as user `postgres`
+
+The connection uses peer authentication on the pod-local Unix socket;
+because `session_user` is never a superuser, the monitoring session
+cannot escalate via `RESET ROLE` or `RESET SESSION AUTHORIZATION`. Do
+not grant additional privileges or role memberships to
+`cnp_metrics_exporter` beyond `pg_monitor` and the table-level grants
+required by your custom queries: any extra membership flows into the
+scrape session via inheritance and weakens this property.
 
 Please refer to the "Predefined Roles" section in PostgreSQL
 [documentation](https://www.postgresql.org/docs/current/predefined-roles.html)
@@ -58,24 +68,11 @@ The default database can always be overridden for a given user-defined metric,
 by specifying a list of one or more databases in the `target_databases` option.
 
 !!!note Prometheus/Grafana
+
 If you are interested in evaluating the integration of {{name.ln}}
 with Prometheus and Grafana, you can find a quick setup guide
 in [Part 4 of the quickstart](quickstart.md#part-4-monitor-clusters-with-prometheus-and-grafana)
 !!!
-
-### Output caching
-
-By default, the outputs of monitoring queries are cached for thirty
-seconds. This is done to enhance resource efficiency and to avoid
-PostgreSQL to run monitoring queries every time the prometheus
-endpoint is scraped.
-
-The cache itself can be observed by the `cache_hits`, `cache_misses`
-and `last_update_timestamp` metrics.
-
-Setting the `cluster.spec.monitoring.metricsQueriesTTL` to zero will
-disable the cache, and in that case the metrics will be run on every
-metrics endpoint scrape.
 
 ### Monitoring with the Prometheus operator
 
@@ -107,6 +104,7 @@ spec:
 ```
 
 !!!info Important Configuration Details
+
 -   `metadata.name`: Give your `PodMonitor` a unique name.
 -   `spec.namespaceSelector`: Use this to specify the namespace where
     your PostgreSQL cluster is running.
@@ -117,6 +115,7 @@ spec:
 #### Deprecation of Automatic `PodMonitor` Creation
 
 !!!warning Feature Deprecation Notice
+
 The `.spec.monitoring.enablePodMonitor` field in the `Cluster` resource is
 now deprecated and will be removed in a future version of the operator.
 !!!
@@ -134,6 +133,7 @@ setting to `true`. This setup ensures that the metrics exporter uses the same
 server certificate used by PostgreSQL to secure communication on port 5432.
 
 !!!info Important
+
 Changing the `.spec.monitoring.tls.enabled` setting will trigger a rolling restart of the Cluster.
 !!!
 
@@ -164,11 +164,13 @@ spec:
 ```
 
 !!!info Important
+
 Ensure you modify the example above with a unique name, as well as the
 correct Cluster's namespace and labels (e.g., `cluster-example`).
 !!!
 
 !!!info Important
+
 The `serverName` field in the metrics endpoint must match one of the names
 defined in the server certificate. If the default certificate is in use,
 the `serverName` value should be in the format `<cluster-name>-rw`.
@@ -431,22 +433,17 @@ go_threads 18
 ```
 
 !!!note
+
 `cnp_collector_postgres_version` is a GaugeVec metric containing the
 `Major.Minor` version of Postgres (either PostgreSQL or EPAS). The full
 semantic version `Major.Minor.Patch` can be found inside one of its label
 field named `full`.
 !!!
 
-!!!warning
-The metrics `cnp_collector_last_failed_backup_timestamp`,
-`cnp_collector_last_available_backup_timestamp`, and
-`cnp_collector_first_recoverability_point` have been deprecated starting
-from version 1.26. These metrics will continue to function with native backup
-solutions such as in-core Barman Cloud (deprecated) and volume snapshots. Note
-that for these cases, `cnp_collector_first_recoverability_point` and
-`cnp_collector_last_available_backup_timestamp` will remain zero until the
-first backup is completed to the object store. This is separate from WAL
-archiving.
+!!!note
+
+`cnp_collector_first_recoverability_point` and `cnp_collector_last_available_backup_timestamp`
+will be zero until your first backup to the object store. This is separate from the WAL archival.
 !!!
 
 ### User defined metrics
@@ -481,15 +478,54 @@ The `customQueriesConfigMap`/`customQueriesSecret` sections contain a list of
 Take care that the referred resources have to be created **in the same namespace as the Cluster** resource.
 
 !!!note
+
 If you want ConfigMaps and Secrets to be **automatically** reloaded by instances, you can
 add a label with key `k8s.enterprisedb.io/reload` to it, otherwise you will have to reload
 the instances using the `kubectl cnp reload` subcommand.
 !!!
 
 !!!info Important
+
 When a user defined metric overwrites an already existing metric the instance manager prints a json warning log,
 containing the message:`Query with the same name already found. Overwriting the existing one.`
 and a key `queryName` containing the overwritten query name.
+!!!
+
+#### Custom query privileges and safety
+
+!!!warning
+
+Custom queries run as the `cnp_metrics_exporter` role, which inherits
+`pg_monitor`. Queries within `pg_monitor`'s scope (catalog reads,
+`pg_stat_*` views, configuration parameters) work without modification.
+Queries that read user-owned tables or superuser-only catalogs (e.g.
+`pg_authid`, `pg_subscription`) need explicit grants. Reading a table
+also requires USAGE on its schema:
+
+```sql
+GRANT USAGE ON SCHEMA myschema TO cnp_metrics_exporter;
+GRANT SELECT ON TABLE myschema.mytable TO cnp_metrics_exporter;
+```
+
+Every database in `target_databases` must allow
+`cnp_metrics_exporter` to `CONNECT`. On clusters that have
+revoked `CONNECT` from `PUBLIC` for a database, grant it
+explicitly to that role:
+
+```sql
+GRANT CONNECT ON DATABASE domainapp TO cnp_metrics_exporter;
+```
+
+Prefer an explicit list of trusted databases (e.g.
+`target_databases: ["domainapp"]`) over the `"*"` wildcard. The
+wildcard scrapes every database the role can connect to and
+silently skips the rest, so an explicit list makes a missing grant
+easier to notice. Use `"*"` only when the query is meant to
+collect per-database metrics across the whole cluster.
+
+Schema-qualify catalog references (`pg_catalog.now()`,
+`pg_catalog.current_database()`) to prevent `search_path` shadowing
+by user-owned objects.
 !!!
 
 #### Example of a user defined metric
@@ -508,14 +544,14 @@ metadata:
 data:
   custom-queries: |
     pg_replication:
-      query: "SELECT CASE WHEN NOT pg_is_in_recovery()
+      query: "SELECT CASE WHEN NOT pg_catalog.pg_is_in_recovery()
               THEN 0
               ELSE GREATEST (0,
-                EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())))
+                EXTRACT(EPOCH FROM (pg_catalog.now() OPERATOR(pg_catalog.-) pg_catalog.pg_last_xact_replay_timestamp())))
               END AS lag,
-              pg_is_in_recovery() AS in_recovery,
-              EXISTS (TABLE pg_stat_wal_receiver) AS is_wal_receiver_up,
-              (SELECT count(*) FROM pg_stat_replication) AS streaming_replicas"
+              pg_catalog.pg_is_in_recovery() AS in_recovery,
+              EXISTS (TABLE pg_catalog.pg_stat_wal_receiver) AS is_wal_receiver_up,
+              (SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_replication) AS streaming_replicas"
 
       metrics:
         - lag:
@@ -551,7 +587,7 @@ some_query: |
     FROM some_table
   query: |
     SELECT
-     count(*) as rows
+     pg_catalog.count(*) as rows
     FROM some_table
   metrics:
     - rows:
@@ -568,24 +604,30 @@ Database auto-discovery can be enabled for a specific query by specifying a
 *shell-like pattern* (i.e., containing `*`, `?` or `[]`) in the list of
 `target_databases`. If provided, the operator will expand the list of target
 databases by adding all the databases returned by the execution of `SELECT
-datname FROM pg_database WHERE datallowconn AND NOT datistemplate` and matching
-the pattern according to [path.Match()](https://pkg.go.dev/path#Match) rules.
+datname FROM pg_catalog.pg_database WHERE datallowconn AND NOT datistemplate
+AND pg_catalog.has_database_privilege(datname, 'CONNECT')` and matching the
+pattern according to [path.Match()](https://pkg.go.dev/path#Match) rules.
+Databases on which `cnp_metrics_exporter` lacks the `CONNECT` privilege are
+silently skipped; if you want a database with revoked `PUBLIC` access to be
+scraped, grant `CONNECT` explicitly (see "Custom query privileges and safety"
+above).
 
 !!!note
+
 The `*` character has a [special meaning](https://yaml.org/spec/1.2/spec.html#id2786448) in yaml,
 so you need to quote (`"*"`) the `target_databases` value when it includes such a pattern.
 !!!
 
 It is recommended that you always include the name of the database
-in the returned labels, for example using the `current_database()` function
-as in the following example:
+in the returned labels, for example using the `pg_catalog.current_database()`
+function as in the following example:
 
 ```yaml
 some_query: |
   query: |
     SELECT
-     current_database() as datname,
-     count(*) as rows
+     pg_catalog.current_database() as datname,
+     pg_catalog.count(*) as rows
     FROM some_table
   metrics:
     - datname:
@@ -616,8 +658,8 @@ aforementioned query):
 some_query: |
   query: |
     SELECT
-     current_database() as datname,
-     count(*) as rows
+     pg_catalog.current_database() as datname,
+     pg_catalog.count(*) as rows
     FROM some_table
   metrics:
     - datname:
@@ -700,6 +742,7 @@ cnp_<MetricName>_<ColumnName>{<LabelColumnName>=<LabelColumnValue> ... } <Column
 ```
 
 !!!note
+
 `LabelColumnName` are metrics with `usage` set to `LABEL` and their `Value`
 !!!
 
@@ -744,6 +787,7 @@ If you want to disable the default set of metrics, you can:
 -   disable it for a specific Cluster: set `.spec.monitoring.disableDefaultQueries` to `true` in the Cluster.
 
 !!!info Important
+
 The ConfigMap or Secret specified via `MONITORING_QUERIES_CONFIGMAP`/`MONITORING_QUERIES_SECRET`
 will always be copied to the Cluster's namespace with a fixed name: `postgresql-operator-default-monitoring`.
 So that, if you intend to have default metrics, you should not create a ConfigMap with this name in the cluster's namespace.
@@ -755,12 +799,40 @@ So that, if you intend to have default metrics, you should not create a ConfigMa
 presents some differences. In particular, the `cache_seconds` field is not implemented
 in {{name.ln}}' exporter.
 
+### Manually creating the metrics exporter role
+
+The operator creates the `cnp_metrics_exporter` PostgreSQL role on the
+primary during reconciliation; it then propagates to standbys and
+replica clusters via streaming replication.
+
+If the role is missing (replica cluster upgraded before its primary,
+restore from a backup that predates the role, accidental removal),
+recreate it as a superuser on the writable primary of the replication
+chain (the source primary, not a designated primary of a replica
+cluster):
+
+```sql
+CREATE ROLE cnp_metrics_exporter WITH LOGIN NOSUPERUSER NOCREATEDB
+    NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT;
+GRANT pg_monitor TO cnp_metrics_exporter;
+```
+
+If your custom monitoring queries need access to objects outside
+`pg_monitor`'s scope, grant the necessary privileges explicitly. SELECT
+on a table also requires USAGE on its schema:
+
+```sql
+GRANT USAGE ON SCHEMA myschema TO cnp_metrics_exporter;
+GRANT SELECT ON TABLE myschema.mytable TO cnp_metrics_exporter;
+```
+
 ## Monitoring the {{name.ln}} operator
 
 The operator internally exposes [Prometheus](https://prometheus.io/) metrics
 via HTTP on port 8080, named `metrics`.
 
 !!!info
+
 You can inspect the exported metrics by following the instructions in
 the ["How to inspect the exported metrics"](#how-to-inspect-the-exported-metrics)
 section below.
@@ -794,79 +866,6 @@ spec:
 EOF
 ```
 
-### Enabling TLS for operator metrics
-
-By default, the operator exposes its metrics over HTTP on port `8080`.
-To secure this endpoint with TLS, follow these steps:
-
-1.  Create a Kubernetes Secret containing the TLS certificate (`tls.crt`) and
-    private key (`tls.key`).
-2.  Mount the Secret into the operator Pod.
-3.  Set the `METRICS_CERT_DIR` environment variable to point to the directory
-    where the certificates are mounted.
-
-Example `Secret` definition:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgresql-operator-metrics-cert
-  namespace: postgresql-operator-system
-type: kubernetes.io/tls
-data:
-  tls.crt: <base64-encoded-certificate>
-  tls.key: <base64-encoded-key>
-```
-
-Next, update the operator deployment to mount the secret and configure the
-environment variable:
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-      - name: manager
-        env:
-        - name: METRICS_CERT_DIR
-          value: /run/secrets/k8s.enterprisedb.io/metrics
-        volumeMounts:
-        - mountPath: /run/secrets/k8s.enterprisedb.io/metrics
-          name: metrics-certificates
-          readOnly: true
-      volumes:
-      - name: metrics-certificates
-        secret:
-          secretName: postgresql-operator-metrics-cert
-          defaultMode: 420
-```
-
-!!!note
-When `METRICS_CERT_DIR` is set, the operator automatically enables TLS for
-the metrics server. You must also update your PodMonitor configuration to
-use the `https` scheme.
-!!!
-
-Example `PodMonitor` configuration with TLS enabled:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: postgresql-operator-controller-manager
-  namespace: postgresql-operator-system
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: cloud-native-postgresql
-  podMetricsEndpoints:
-    - port: metrics
-      scheme: https
-      tlsConfig:
-        insecureSkipVerify: true  # or configure proper CA validation
-```
-
 ## How to inspect the exported metrics
 
 In this section we provide basic instructions on how to inspect
@@ -874,6 +873,7 @@ the metrics exported by a specific PostgreSQL instance manager (primary
 or replica) or the operator.
 
 !!!note
+
 In the examples below we assume we are working in the default namespace, and
 with the operator installed in the `postgresql-operator-system` namespace.
 Please adapt to your use case.
@@ -919,7 +919,7 @@ metadata:
 spec:
   containers:
   - name: curl
-    image: curlimages/curl:8.17.0
+    image: curlimages/curl:8.16.0
     command: ['sleep', '3600']
 EOF
 ```
@@ -966,6 +966,7 @@ kubectl delete -f curl.yaml
 ## Auxiliary resources
 
 !!!info Important
+
 These resources are provided for illustration and experimentation, and do
 not represent any kind of recommendation for your production system
 !!!
@@ -1025,6 +1026,7 @@ data:
 If the `ConfigMap` already exists, just add the variable `enableUserWorkload: true`.
 
 !!!info Important
+
 This will enable the monitoring for the whole cluster, if it is needed only
 for one namespace/project please refer to the official Red Hat documentation or
 talk with your cluster administrator.
@@ -1047,6 +1049,7 @@ spec:
 ```
 
 !!!note
+
 We currently don’t use `ServiceMonitor` because our service doesn’t define
 a port pointing to the metrics. If we added a metric port this could expose
 sensitive data.
