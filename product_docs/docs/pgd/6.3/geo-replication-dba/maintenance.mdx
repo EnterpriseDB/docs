@@ -1,0 +1,215 @@
+---
+title: Performing cluster maintenance
+navTitle: Performing cluster maintenance
+description: Configuration verification, DDL and VACUUM considerations, write leadership, node maintenance, and conflict monitoring for geo-distributed PGD clusters.
+deepToC: true
+---
+
+Verify your cluster configuration before going to production, and plan ongoing maintenance carefully. Operations that are straightforward in a single-location cluster can trigger cross-location failovers, introduce replication lag, or cause conflicts when multiple locations are active.
+
+## Verifying the cluster configuration
+
+After completing setup, verify that subgroups, routing, and commit scopes are configured correctly before going to production.
+
+- Check subgroups and their routing settings:
+
+    ```sql
+    SELECT node_group_name, node_group_enable_raft, node_group_enable_routing
+    FROM bdr.node_group;
+    ```
+
+- Check current write leaders:
+
+    ```sql
+    SELECT node_group_name, write_lead
+    FROM bdr.node_group_routing_summary;
+    ```
+
+- Check commit scope configuration:
+
+    ```sql
+    SELECT commit_scope_name, commit_scope_origin_node_group, commit_scope_rule
+    FROM bdr.commit_scopes;
+    ```
+
+## Managing database changes
+
+Schema changes and routine maintenance behave differently in a geo-distributed cluster. DDL acquires cluster-wide locks, while operations like `VACUUM` and `ANALYZE` run locally on each node but can be affected by replication slot lag.
+
+### Running DDL
+
+DDL operations acquire cluster-wide locks, but the lock type and timing differ by operation. Schema changes such as `ALTER TABLE` and `CREATE INDEX` acquire global DDL locks simultaneously across all nodes, with lock acquisition time approximately equal to the round-trip time to the most distant node. Operations such as `DROP TABLE` acquire a global DML lock that also flushes replication, with completion time depending on current replication lag rather than network latency alone.
+
+In both cases, long-running DDL blocks replication while the lock is held, and failed DDL may leave an inconsistent state across locations.
+
+To reduce risk, keep DDL transactions minimal and avoid combining multiple DDL changes in a single transaction. Test DDL timing in a staging environment that simulates your actual cross-location latency. Schedule DDL during maintenance windows.
+
+### Running VACUUM and ANALYZE
+
+`VACUUM` and `ANALYZE` run locally on each node and are not replicated. Autovacuum operates independently on each node, so no special coordination is needed across locations.
+
+The PGD-specific concern is replication slot lag. Slots for offline or lagging nodes hold back `catalog_xmin`, preventing VACUUM from cleaning catalog tables and causing bloat to accumulate on the origin node. Check slot lag regularly to catch this early:
+
+```sql
+SELECT target_name, state, replay_lag_bytes, replay_lag_size, xmin, catalog_xmin
+FROM bdr.node_slots
+ORDER BY replay_lag_bytes DESC;
+```
+
+## Managing write leadership
+
+In a geo-distributed cluster, write leadership can move between locations due to node failure or planned operations. Configure failover detection to match your latency, maintain quorum before taking nodes offline, and use planned switchovers to transfer write leadership safely.
+
+### Handling failover
+
+When a write leader failure occurs, PGD detects it through TCP keepalives and connection timeouts, then elects a new write leader via Raft consensus. Tune the following parameters to match your cross-location latency and acceptable failover time:
+
+- `bdr.global_keepalives_idle`, `bdr.global_keepalives_interval`, and `bdr.global_keepalives_count` control how quickly a failed connection is detected.
+- `bdr.global_connection_timeout` sets the maximum time to wait when establishing a connection. In high-latency deployments, lower this value to detect failures faster without waiting for the full TCP timeout.
+- `bdr.raft_global_election_timeout` controls how long before a new write leader is elected at the top-level group. `bdr.raft_group_election_timeout` applies to per-location subgroup elections. Increase these values if expected cross-location latency is causing false elections from network jitter.
+
+### Maintaining quorum
+
+Verify that your cluster maintains quorum (a majority of voting nodes) before taking any node offline. Without quorum, no new write leader is elected, the cluster enters a read-only state, and manual intervention is required. Check the current number of voting nodes before proceeding:
+
+```sql
+SELECT nvoting_nodes, is_voting FROM bdr.stat_raft_state;
+```
+
+Don't fence or stop nodes if doing so reduces the number of remaining voting nodes below a majority. In a two-location deployment, a witness node in a third location provides the extra vote needed to maintain quorum if one location fails. See [Planning your node distribution](topology-setup#planning-your-node-distribution) for details.
+
+### Performing a planned switchover
+
+Before a planned switchover, verify that the target node is healthy and caught up. Ensure no long-running transactions are active on the current leader, and perform the switchover during a low-traffic period where possible.
+
+1. Check that the target node's replication slot is active, streaming, and close to zero lag:
+
+    ```sql
+    SELECT target_name, active, state, replay_lag_bytes, replay_lag_size
+    FROM bdr.node_slots
+    WHERE target_name = '<target_node_name>';
+    ```
+
+    The slot should show `active = true`, `state = 'streaming'`, and `replay_lag_bytes` close to zero. If the state is `catchup` or `disconnected`, or lag is high, wait before proceeding.
+
+1. Initiate the switchover:
+
+    ```sql
+    SELECT bdr.routing_leadership_transfer(
+        node_group_name := '<group_name>',
+        leader_name := '<target_node_name>'
+    );
+    ```
+
+1. Confirm the cluster is in a healthy state:
+
+    1. Confirm the new write leader is elected:
+
+        ```sql
+        SELECT node_group_name, write_lead
+        FROM bdr.node_group_routing_summary;
+        ```
+
+    1. Confirm proxy routing has updated to the new leader:
+
+        ```sql
+        SELECT node_group_name, write_lead_name, previous_write_lead_name
+        FROM bdr.stat_routing_state;
+        ```
+
+    1. Confirm replication from the new leader to other nodes is streaming with low lag:
+
+        ```sql
+        SELECT target_name, active, state, replay_lag_bytes, replay_lag_size
+        FROM bdr.node_slots
+        WHERE origin_name = '<new_leader_node_name>';
+        ```
+
+    All slots should show `state = 'streaming'` and `replay_lag_bytes` close to zero.
+
+## Performing node maintenance
+
+Follow a location-aware order for rolling operations and fence nodes before taking them offline.
+
+### Rolling operations across locations
+
+When performing upgrades or maintenance that affects multiple nodes, follow this order to minimize cross-location failovers and keep writes local as long as possible. This order assumes local routing, where each location has its own write leader. With global routing, there is a single write leader for the entire cluster, so skip step 2 and handle the global write leader last.
+
+1. Start with non-leader nodes in the secondary location.
+2. Move to the write leader in the secondary location (doing so causes a local failover within that location). Skip step 2 if using global routing.
+3. Proceed to non-leader nodes in the primary location.
+4. Handle the primary write leader last. Taking down the primary write leader is the operation most likely to cause a cross-location failover.
+
+### Fencing nodes
+
+Fencing removes a node from write leader eligibility without removing it from the cluster. Use fencing before any maintenance requiring a node restart, before upgrades, and when node health is questionable.
+
+To fence a node:
+
+```sql
+SELECT bdr.alter_node_option(
+    node_name := '<node_name>',
+    config_key := 'route_fence',
+    config_value := 'true'
+);
+```
+
+A fenced node still participates in quorum and continues receiving replication, so it does not affect the cluster's ability to maintain consensus. However, fencing multiple nodes at the same time can reduce availability. Always unfence after maintenance completes.
+
+To unfence:
+
+```sql
+SELECT bdr.alter_node_option(
+    node_name := '<node_name>',
+    config_key := 'route_fence',
+    config_value := 'false'
+);
+```
+
+## Monitoring the cluster and responding to incidents
+
+Check replication slot health and conflict rates regularly as part of operations. Use the views below to assess impact when incidents occur and to verify recovery.
+
+### Handling network partitions
+
+When locations become partitioned, the side that retains quorum continues operating. The side without quorum becomes read-only. Replication slots on the isolated side pause and lag grows for the duration of the partition.
+
+After the partition heals, verify recovery before resuming operations:
+
+1. Monitor catchup progress using lag metrics in `bdr.node_slots` and wait for all slots to return to `streaming`.
+2. Check conflict rates for the partition window. See [Monitoring conflicts](#monitoring-conflicts).
+
+### Monitoring conflicts
+
+Geo-replication increases conflict potential because the same row can be updated in different locations simultaneously. By default, PGD resolves conflicts using last-update-wins. Timestamp-based resolvers depend on clock synchronization across nodes. Keep clock skew minimal by running NTP or chronyd on all nodes.
+
+Check `bdr.conflict_history_summary` regularly for tables with high conflict rates:
+
+```sql
+SELECT nspname, relname, conflict_type, count(*)
+FROM bdr.conflict_history_summary
+GROUP BY nspname, relname, conflict_type
+ORDER BY count(*) DESC;
+```
+
+A persistent high conflict rate on a specific table points to an access pattern worth revisiting with the application team. Persistent conflicts are usually a design issue. Location-based data partitioning, append-only patterns, or switching to CRDT data types are more effective long-term than adjusting conflict resolution.
+
+### Configuring conflict resolvers
+
+If changing the access pattern isn't feasible and last-update-wins produces the wrong outcome for a specific table, configure a custom resolver using `bdr.alter_node_set_conflict_resolver()`. The available strategies are `update_if_newer` (default), `skip`, and `error`. The function call isn't replicated, so run it on each node in the cluster. Check the node name first using `SELECT node_name FROM bdr.node_summary`:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver(
+    node_name         => 'node1',
+    conflict_type     => 'update_update',
+    conflict_resolver => 'error'
+);
+```
+
+To verify the current resolver configuration across all conflict types:
+
+```sql
+SELECT * FROM bdr.node_conflict_resolvers;
+```
+
+See [Conflict resolution](/pgd/current/conflict-management/conflicts/04_conflict_resolution/) for the full list of conflict types and resolvers.
