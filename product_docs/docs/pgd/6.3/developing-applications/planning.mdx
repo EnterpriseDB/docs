@@ -14,7 +14,7 @@ PGD also supports selective replication, which lets you control which tables are
 
 Before making any design decisions, understand your application's read-to-write ratio. Reads can be routed to different nodes to spread load and fully offload it from write leader nodes.
 
-Avoid using object-relational mappers (ORMs) where possible. ORMs add a layer of abstraction that hides the original intent of database operations, and the engineering and operational complexity this abstraction introduces is amplified in a distributed environment like PGD.
+If your application uses an object-relational mapper (ORM), review its emitted DDL to ensure generated tables have primary keys, configure separate connection pools to map to the Connection Manager's read-write and read-only ports, and audit generated SQL for the patterns described below.
 
 ## Planning your write strategy
 
@@ -34,9 +34,9 @@ For reads where a user must immediately see their own writes, such as a recently
 
 ## Designing your schema for replication
 
-Define a `PRIMARY KEY` on every table that receives `UPDATE` or `DELETE` operations. If a primary key isn't possible, a `UNIQUE` constraint works as well. Both back row identity with a unique index, which PGD uses for fast row lookups during replication.
+Define a `PRIMARY KEY` or `UNIQUE` constraint on every table that takes `UPDATE` or `DELETE` operations. PGD uses the unique index behind the constraint for fast row lookups during replication apply.
 
-For tables without any uniqueness constraint or index, PGD blocks `UPDATE` and `DELETE` operations entirely and generates a warning. This behavior is intentional. Omitting a primary key is often unintentional and severely hurts replication performance. If a table genuinely can't have a uniqueness constraint, set `REPLICA IDENTITY FULL` as a conscious decision. PGD then falls back to a sequential scan to locate rows, which works but carries a performance cost.
+For tables with no primary key and no unique constraint, PGD emits a warning when the table is created or added to replication. The table still replicates because `REPLICA IDENTITY FULL` is the default. Updates and deletes replicate by matching the full old row, but apply-side lookups are much slower. PGD uses any suitable index if one exists, or falls back to a sequential scan. A missing primary key is usually an oversight, and the scan cost compounds under write load. Don't rely on the default in production tables.
 
 PGD handles updatable views transparently. Data manipulation language (DML) through an updatable view resolves to the underlying base table on the origin and is applied to the same base table on the target.
 
@@ -50,21 +50,23 @@ PGD replicates only the final result of each statement, after all triggers and r
 
 The following behaviors differ from a single-node database and require attention during development.
 
-- Triggers execute only on the origin node by default. Use `ALTER TABLE ... ENABLE ALWAYS TRIGGER` to run a trigger on both the origin and at apply time, or `ALTER TABLE ... ENABLE REPLICA TRIGGER` to run it only at apply time. Statement-level triggers (`FOR EACH STATEMENT`) and per-column `UPDATE` triggers (`UPDATE OF column_name`) are never executed on apply, regardless of setting. When writing trigger functions, use fully qualified object references or set the search path explicitly with `ALTER FUNCTION ... SET search_path = ...`. PGD apply uses the system-level default `search_path`, so functions that assume a different path fail on apply.
+- **Triggers** fire only on the originating node where the SQL was first executed, the same as on single-node Postgres. When PGD applies a replicated change on a target node, triggers on that table don't fire. Their effects are replicated instead.
 
-- Rules execute only on the origin and are ignored during apply, even if enabled for replicas.
+  - To also fire a trigger when changes apply on a target node, use `ALTER TABLE ... ENABLE ALWAYS TRIGGER`. To fire only at apply time, use `ALTER TABLE ... ENABLE REPLICA TRIGGER`.
+  - Statement-level triggers (`FOR EACH STATEMENT`) and per-column `UPDATE` triggers (`UPDATE OF column_name`) are never executed on apply, regardless of setting.
+  - Trigger functions that fire at apply time must fully qualify object references, or set the search path explicitly with `ALTER FUNCTION ... SET search_path = ...`. PGD apply uses the system-level default `search_path`, and functions that assume a different path fail on apply.
+
+- Rules execute on the originating node only, the same as on single-node Postgres. PGD replicates the resulting changes, not the rule itself.
 
 - Row-level locks from `SELECT ... FOR UPDATE/FOR SHARE` and advisory locks aren't replicated. `SERIALIZABLE` isolation is supported, but transactions aren't serialized across nodes, and concurrent transactions on multiple nodes can still conflict.
 
-- `TRUNCATE` replicates without needing a replica identity.
-
 - Use `BYTEA` for binary data. `BYTEA` columns replicate fully, including the underlying `TOAST` storage, up to 1 GB. The [PostgreSQL large object](https://www.postgresql.org/docs/current/largeobjects.html) facility isn't supported in PGD.
 
-- Avoid volatile functions in `CHECK` constraints. PGD reexecutes `CHECK` constraints on apply, and if the result differs from the original execution, data divergence occurs.
+- Avoid volatile functions in `CHECK` constraints. PGD reexecutes `CHECK` constraints on apply by default, and if a volatile function returns a different result than it did on the origin, replication can break. This behavior is controlled by the [`check_constraints`](/pgd/current/reference/cli/command_ref/group/set-option/) group option.
 
 - Don't mark `REPLICA IDENTITY` columns as external.
 
-- Don't rely on foreign key constraints for cross-node referential integrity. Foreign keys, including cascading ones, are only enforced on the origin node and aren't checked on apply.
+- Foreign keys, including cascading ones, are enforced only on the writing node and aren't rechecked on apply. Use them for local consistency, but don't assume they prevent cross-node integrity violations during conflicts.
 
 ## Avoiding data anomalies
 
