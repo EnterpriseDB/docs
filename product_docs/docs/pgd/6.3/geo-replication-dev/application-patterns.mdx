@@ -1,0 +1,46 @@
+---
+title: Handling retries and failures
+navTitle: Handling retries
+description: Retry logic and circuit breakers for applications on geo-distributed PGD clusters.
+---
+
+Connections to a geo-distributed cluster can drop during write leader elections, network partitions, or commit scope timeouts. Implement retry logic that handles these failures without applying the same operation twice, and use a circuit breaker to avoid overwhelming the cluster during recovery.
+
+## Implementing retry logic
+
+Any connection to a geo-distributed cluster can fail during a write leader election or network event. Wrap database operations in a retry loop with the following principles:
+
+- **Retry on transient errors only:** Serialization failures (`40001`), deadlock errors (`40P01`), and connection errors are candidates for retry. Application-level errors or constraint violations aren't.
+- **Use exponential backoff:** Retrying immediately after a failure can hit the cluster while it's still recovering. Start with a short delay, double it on each retry, and add a small random jitter to avoid thundering herd behavior.
+- **Set a maximum retry count:** Don't retry indefinitely. After a reasonable number of attempts, fail and surface the error to the caller.
+- **Make retried operations idempotent where possible:** Idempotent operations produce the same result whether applied once or many times. If the same transaction can be safely applied twice without incorrect results, retry without checking the prior outcome. If it can't, use [CAMO](#camo-retry-workflow).
+
+### CAMO retry workflow
+
+CAMO is a commit scope configured by your DBA. If it isn't the group default, set it per session or per transaction as described in [Choosing commit scopes](using-commit-scopes#camo).
+
+For non-idempotent operations such as payments, inventory decrements, and anything where applying the same transaction twice causes incorrect results, standard retry logic isn't safe. CAMO guarantees the transaction is applied at most once, giving the application a way to determine the definitive outcome of a disconnected transaction before deciding whether to retry.
+
+Before issuing a CAMO transaction, confirm the CAMO partner is ready:
+
+```sql
+SELECT bdr.is_camo_partner_connected();
+SELECT bdr.is_camo_partner_ready();
+```
+
+If the partner is not ready, CAMO can degrade to asynchronous mode, in which case the exactly-once guarantee isn't available.
+
+For the full retry pattern and transaction status queries, see [Commit At Most Once](/pgd/current/commit-scopes/camo/).
+
+## Using a circuit breaker
+
+A circuit breaker prevents your application from flooding a database that's in the middle of a failover with retry requests. Without one, a burst of retries during leader election can slow recovery and overwhelm the newly elected leader.
+
+Implement a circuit breaker that tracks failure rate over a rolling window:
+
+- **Closed state**: requests pass through normally.
+- **Open state**: requests fail fast without hitting the database. Triggered when failures exceed a threshold within the window.
+- **Half-open state**: after a recovery timeout, a single probe request goes through. If it succeeds, the circuit closes. If it fails, the circuit stays open.
+
+The recovery timeout for a geo-distributed cluster's failover is typically 5-30 seconds depending on configuration. Set your circuit breaker's open duration to be at least that long.
+
