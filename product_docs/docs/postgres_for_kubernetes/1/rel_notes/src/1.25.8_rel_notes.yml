@@ -1,0 +1,197 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB CloudNativePG Cluster
+version: 1.25.8
+date: 8 May 2026
+intro: |
+ This release of EDB CloudNativePG Cluster is part of the LTS series for 1.25.x.
+ EDB will continue providing LTS releases in the 1.25.x series according to our [Long-Term Support
+ policy](/postgres_for_kubernetes/1/#long-term-support).
+
+ !!! Warning EDB CloudNativePG Cluster 1.25 reaches End-of-Life in June 2026.
+
+ Users are encouraged to start planning their upgrade to a newer minor
+ version before that date.
+
+ !!!
+
+ This release of EDB CloudNativePG Cluster includes the following:
+components:
+  "Operator": 1.25.8
+  "CNP plugin": 1.25.8
+  upstream-merge: None
+highlights: |
+  **`CVE-2026-44477` / `GHSA-423p-g724-fr39`: metrics exporter privilege
+  escalation.** The metrics exporter no longer authenticates as the
+  `postgres` superuser. It now uses a dedicated `cnp_metrics_exporter` role
+  with `pg_monitor` privileges only, closing a chain that let a low-privilege
+  database user gain PostgreSQL superuser.
+  ([`GHSA-423p-g724-fr39`](https://github.com/cloudnative-pg/cloudnative-pg/security/advisories/GHSA-423p-g724-fr39))
+
+  Upgrade impact: custom monitoring queries that read user-owned tables, or
+  use `target_databases: '*'` against databases where `PUBLIC CONNECT` has
+  been revoked, need explicit `GRANT` statements to `cnp_metrics_exporter`.
+  See ["Custom query privileges and safety"](../monitoring/#custom-query-privileges-and-safety)
+  and ["Manually creating the metrics exporter role"](../monitoring/#manually-creating-the-metrics-exporter-role)
+  in the monitoring documentation.
+
+  For replica clusters, upgrade the source primary cluster before any
+  replica clusters that consume from it. The `cnp_metrics_exporter` role
+  is created on the source primary and replicates downstream; a replica
+  cluster upgraded first will scrape against a missing role until the
+  source primary upgrades. The manual-recovery section linked above also
+  covers replica clusters.
+relnotes:
+- relnote: |
+    Schema-qualified catalog references in default monitoring queries
+  details: |
+    Hardened the shipped monitoring configuration and documentation samples by
+    qualifying every `pg_catalog` object explicitly. Unqualified references
+    resolve through `search_path`, which a database user can manipulate to
+    shadow built-in objects.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10576">#10576</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    Discoverable SBOM and provenance attestations
+  details: |
+    SBOM and SLSA provenance attached to operator container images now follow
+    the OCI 1.1 Referrers spec, so standard registry tooling and supply-chain
+    scanners can discover them automatically.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10601">#10601</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    CVE remediation in `github.com/jackc/pgx/v5`
+  details: |
+    Bumped to v5.9.2 to pick up upstream fixes for `CVE-2026-33816`
+    (memory-safety in `pgproto3`) and `GHSA-j88v-2chj-qfwx` (SQL injection via
+    simple-protocol dollar-quoted string handling).
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10435">#10435</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10497">#10497</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    CVE remediation in the Go runtime
+  details: |
+    Built with Go 1.26.3 to pick up upstream fixes in `crypto/x509`,
+    `crypto/tls`, `net/http`, and `net` (CVE-2026-32280, CVE-2026-32281,
+    CVE-2026-33810, CVE-2026-33814, CVE-2026-33811, CVE-2026-39825).
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10461">#10461</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10647">#10647</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    Build pipeline hardening
+  details: |
+    The Go 1.26.3 bump also addresses CVE-2026-42501 (`cmd/go` module-checksum
+    validation), reducing supply-chain exposure during release builds. The
+    affected code paths are not reachable from the running operator.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10647">#10647</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    Switched TLS peer verification from `VerifyPeerCertificate` to
+    `VerifyConnection`, which runs on every completed handshake (the former is
+    skipped on resumed TLS 1.3 sessions).
+  details: |
+    Session resumption is not enabled in EDB Postgres for Kubernetes today, so
+    this has no observable effect, but it future-proofs verification if
+    session caching is introduced later.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10478">#10478</a>
+  type: Change
+  impact: High
+
+- relnote: |
+    Fixed a failover window where the former primary kept its primary label.
+  details: |
+    If the former primary returned during failover (for example, after a
+    transient network partition), the `-rw` service kept routing to it,
+    replicas could reconnect, and committed writes were lost to `pg_rewind`.
+    The old primary is now labeled `unhealthy` to isolate it from service
+    traffic during failover.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10409">#10409</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed failover not being triggered when the node hosting the primary
+    becomes unreachable.
+  details: |
+    The operator now reads the pod's `Ready` condition (flipped to `False` by
+    the node controller when the kubelet stops reporting) instead of
+    `ContainersReady`, which stays stale as `True` in that scenario. Combined
+    with the spurious-failover guard
+    ([#10445](https://github.com/cloudnative-pg/cloudnative-pg/pull/10445)),
+    failover triggers only when Kubernetes itself marks the pod not Ready.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10448">#10448</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed spurious failovers caused by transient failures on the primary's
+    HTTP status endpoint.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10445">#10445</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed escaping of backslashes and control characters in PostgreSQL
+    configuration values.
+  details: |
+    Previously, such characters in parameters like `log_line_prefix` could
+    corrupt the configuration file or be silently stripped at runtime.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10515">#10515</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed `restore_command` construction to shell-quote each argument.
+  details: |
+    Values such as a `destinationPath` containing whitespace (for example,
+    `s3://my bucket/wal`) were word-split by the POSIX shell and passed to the
+    WAL restore tool as separate arguments.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10518">#10518</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Tightened `recoveryTarget` validation in the admission webhook.
+  details: |
+    `targetXID` must now be a non-negative 32-bit integer, and `targetName`
+    must be shorter than 64 bytes and free of ASCII control characters.
+    Malformed values are rejected at admission instead of failing later during
+    PostgreSQL recovery.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10565">#10565</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed snapshot restores failing when leftover `pgsql_tmp*` directories
+    were present in the data directory.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10447">#10447</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a deadlock occurring when PVC storage size and resource requests
+    are changed simultaneously.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10427">#10427</a>
+  type: Bug Fix
+  impact: High
