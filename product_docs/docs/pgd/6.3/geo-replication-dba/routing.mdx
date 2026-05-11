@@ -1,0 +1,105 @@
+---
+title: Configuring routing
+navTitle: Configuring routing
+description: How to configure local and global routing in a geo-distributed PGD cluster, including write leader election, route priority, and deployment pattern constraints.
+---
+
+In a geo-distributed PGD cluster, routing determines which node accepts writes at any given time. PGD 6 uses Connection Manager, which runs inside each Postgres instance, to handle this. Applications that need to write must connect to Connection Manager's read-write port, which routes the connection to the current write leader of the node group.
+
+How write leadership is structured across locations depends on whether you configure local or global routing.
+
+- **Local routing:** Gives each location its own write leader. When an application connects to a node in location A, Connection Manager routes it to location A's write leader, keeping write latency low. All locations accept writes simultaneously, which means cross-location conflicts are possible.
+- **Global routing:** Designates a single write leader for the entire cluster. Connection Manager on any node routes write connections to that cluster-wide leader, regardless of which location the application is in. This eliminates cross-location conflicts but means writes from remote locations incur cross-location latency.
+
+Two node group [settings](/pgd/current/reference/tables-views-functions/nodes-management-interfaces//#bdralter_node_group_option) control write leader election:
+
+- `enable_raft` — whether the group participates in Raft consensus
+- `enable_routing` — whether the group elects its own write leader
+
+In PGD, the cluster has a single top-level group spanning all nodes across all locations, and a subgroup per location. The `enable_routing` setting determines whether routing is local or global:
+
+| | Top-level group `enable_routing` | Subgroup `enable_routing` |
+|---|---|---|
+| Local routing (default) | `off` | `on` |
+| Global routing | `on` | `off` |
+
+`enable_raft` is always `on` for both the top-level group and subgroups and doesn't need to change between configurations.
+
+Local routing is the default and requires no explicit configuration. For global routing, set `enable_routing=on` on the top-level group and `enable_routing=off` on each subgroup.
+
+Global routing is only available on the [three data groups, active-active-active](/pgd/current/planning/deployment-patterns/three-data-groups) pattern, the [multiple locations, data residency](/pgd/current/planning/deployment-patterns/data-residency) pattern, or the [two data groups](/pgd/current/planning/deployment-patterns/two-data-groups) pattern with a witness location. Without a witness, losing one location in a two data groups setup breaks Raft majority, making it impossible to elect or maintain a cluster-wide write leader.
+
+## Configuration examples
+
+### Local routing
+
+Each location subgroup elects its own write leader. The top-level group does not participate in write leader election.
+
+```sql
+-- Top-level group does not elect a write leader
+SELECT bdr.alter_node_group_option('top_group', 'enable_routing', 'false');
+
+-- Each subgroup elects its own write leader
+SELECT bdr.alter_node_group_option('location_a', 'enable_routing', 'true');
+SELECT bdr.alter_node_group_option('location_b', 'enable_routing', 'true');
+```
+
+Connection Manager routes writes to the local write leader, keeping write latency low for each location.
+
+### Global routing
+
+The top-level group elects a single write leader for the whole cluster. Location subgroups do not elect their own.
+
+```sql
+-- Top-level group elects the cluster-wide write leader
+SELECT bdr.alter_node_group_option('top_group', 'enable_routing', 'true');
+
+-- Subgroups do not elect their own write leaders
+SELECT bdr.alter_node_group_option('location_a', 'enable_routing', 'false');
+SELECT bdr.alter_node_group_option('location_b', 'enable_routing', 'false');
+```
+
+All writes are routed to the single cluster-wide write leader. Remote locations incur cross-location write latency but there are no cross-location conflicts.
+
+## Tuning Connection Manager
+
+Connection Manager has several settings that are important to review for geo-distributed deployments.
+
+- `read_write_port` and `read_only_port` — the ports Connection Manager listens on for write and read traffic respectively. Ensure these are consistently configured across all locations.
+- `read_write_max_client_connections` and `read_only_max_client_connections` — limit the number of client connections accepted. In geo-distributed clusters with high connection counts per location, tuning these prevents resource exhaustion.
+- `read_write_consensus_timeout` — how long Connection Manager waits after losing consensus before it stops accepting write connections. The default is `0`, meaning it stops immediately. In a geo-distributed cluster, cross-location latency can cause brief consensus interruptions that are not true failures. Consider setting a small timeout to avoid unnecessary write disruption during transient network events.
+- `read_only_consensus_timeout` — same as above for read-only connections.
+
+See [Configuring Connection Manager](/pgd/current/connection-manager/configuring/) for the full list of options.
+
+## Setting route priority
+
+Route priority controls which nodes are preferred as write leaders within a group. Higher values mean higher priority. Assign higher priority to local nodes so that write leadership stays close to application traffic under normal conditions and only moves to a remote node when necessary:
+
+```sql
+SELECT bdr.alter_node_option(
+    node_name := '<node_name>',
+    config_key := 'route_priority',
+    config_value := '1'
+);
+```
+
+Document your priority scheme so the operations team understands expected failover behavior across locations.
+
+## Verifying current settings
+
+Check the current Raft and routing settings for all groups:
+
+```sql
+SELECT node_group_name,
+       node_group_enable_raft,
+       node_group_enable_routing
+FROM bdr.node_group;
+```
+
+View current write leaders:
+
+```sql
+SELECT node_group_name, write_lead
+FROM bdr.node_group_routing_summary;
+```
