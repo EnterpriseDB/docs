@@ -56,7 +56,8 @@ Use this checklist to verify at a high level that you have all necessary infrast
   - 5.2 [Domain Name Service](#52-dns)
   - 5.3 [Portal certificate management/TLS](#53-certificate-management)
 - 6. [ ] [Block storage (Database & logs)](#6-block-storage-database--logs)
-  - 6.1 [Volume snapshots](#61-volume-snapshots)
+  - 6.1 [Excluding storage from Hybrid Manager discovery](#61-excluding-storage-from-hybrid-manager-discovery)
+  - 6.2 [Volume snapshots](#62-volume-snapshots)
 - 7. [ ] [Object storage](#7-object-storage)
 - 8. [ ] [Container registry](#8-container-registry)
 - 9. [ ] [Identity provider (IdP)](#9-identity-provider-idp)
@@ -513,7 +514,44 @@ Verify available storage classes:
 kubectl get sc
 ```
 
-### 6.1 Volume snapshots
+### 6.1 Excluding storage from Hybrid Manager discovery
+
+In shared Kubernetes environments, some `StorageClasses` or `VolumeSnapshotClasses` may not be suitable for Postgres workloads — for example, GPU- or HM-only classes.
+By default, every discovered class appears in the Hybrid Manager **Create Cluster** dropdowns, which can lead operators to pick a class on which a Postgres cluster will never successfully deploy.
+
+To hide a class from the Hybrid Manager provisioning UI, apply the `beacon.enterprisedb.com/exclude-storage-from-dbaas` label with value `true`:
+
+```bash
+kubectl label storageclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+kubectl label volumesnapshotclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+```
+
+Behavior:
+
+* **Opt-in:** Only the exact value `"true"` excludes a class. An absent label, or any other value, preserves current behavior — the feature is a no-op for existing deployments.
+
+* **Default-safe:** An excluded `StorageClass` is never promoted to Hybrid Manager's discovered default, even if it carries the `storageclass.kubernetes.io/is-default-class` annotation.
+
+* **Takes effect on the next agent heartbeat:** No agent restart is required.
+
+* **UI-only:** The label hides the class from Hybrid Manager's provisioning UI. Workloads that reference the class by name — for example, a custom resource or a direct `kubectl apply` — can still use it.
+
+To restore a class to the provisioning UI, remove the label:
+
+```bash
+kubectl label storageclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas-
+kubectl label volumesnapshotclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas-
+```
+
+##### Validation
+
+Audit which classes are currently excluded:
+
+```bash
+kubectl get sc,volumesnapshotclass -l beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+```
+
+### 6.2 Volume snapshots
 
 * **Optionality:** Required for an optimal experience (backups will be limited without it).
 
