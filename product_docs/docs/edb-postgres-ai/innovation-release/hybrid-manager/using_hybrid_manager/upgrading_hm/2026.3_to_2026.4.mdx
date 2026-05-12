@@ -1,0 +1,227 @@
+---
+title: Upgrading from 2026.3 to the 2026.4 Innovation Release
+navTitle: 2026.3 to 2026.4
+description: Follow the step-by-step procedures for upgrading from HM 2026.3 to HM 2026.4.
+deepToC: true
+---
+
+Upgrade from 2026.3 to 2026.4.
+
+> **Role:** Infrastructure engineer
+
+## Prerequisites
+
+* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+* Access to the HM installation configuration file or `values.yaml` file used for the current installation. To save the contents of your current installation configuration:
+
+  ```shell
+  helm get values edbpgai-bootstrap -n edbpgai-bootstrap > values.yaml
+  ```
+
+* Required tools:
+    * `helm` (Latest version recommended)
+    * `kubectl`
+    * `edbctl` version `1.4.0` or later (or a build from `main`)
+
+## Upgrade 2026.3 → 2026.4
+
+This release introduces the `dbaas` scenario, requires new secrets for `upm-system-db`, and includes mandatory pre-upgrade steps to prevent data corruption and resource conflicts.
+
+### Create new secrets for upm-system-db
+
+Before upgrading, create the new secrets required by the `upm-system-db` component:
+
+```shell
+edbctl setup create-install-secrets --version v2026.4.0
+```
+
+!!! Note
+This command requires `edbctl` version `1.4.0` or a build from `main`. Earlier versions don't support the `--version` flag.
+!!!
+
+### Delete fluent-bit resources
+
+Label changes in 2026.4 make the existing `fluent-bit` StatefulSet and DaemonSet immutable. Delete both resources before upgrading to prevent the upgrade from failing:
+
+```shell
+kubectl delete statefulset fluent-bit-k8s-events -n edb-observability
+kubectl delete daemonset fluent-bit -n edb-observability
+```
+
+The operator recreates them automatically during the upgrade.
+
+### Delete the statistics collector database
+
+!!! Warning
+Complete this step before running the upgrade. The `upm-api-stats-collector` component bumps the Bluefin extension version in this release to address a critical WAL files issue. Existing data is incompatible with the new version and can't be migrated — upgrading without deleting the cluster first causes data corruption.
+
+The statistics collector retains only seven days of telemetry data, so deleting the cluster is non-disruptive for most deployments. If you need to preserve this data, contact [EDB Support](https://support.enterprisedb.com) before proceeding.
+!!!
+
+1. Delete the cluster:
+
+   ```shell
+   kubectl -n upm-api-stats-collector delete cluster stats-collector-db
+   ```
+
+   If the cluster doesn't terminate promptly, force-delete the pods:
+
+   ```shell
+   kubectl delete pod --force -n upm-api-stats-collector -l cnpg.io/cluster=stats-collector-db
+   ```
+
+1. Verify all associated resources are removed before proceeding:
+
+   ```shell
+   kubectl -n upm-api-stats-collector get cluster stats-collector-db
+   kubectl -n upm-api-stats-collector get pod stats-collector-db-1
+   kubectl -n upm-api-stats-collector get pvc stats-collector-db-1
+   ```
+
+   Each command returns `NotFound` when the resource is gone. Proceed only once all three return `NotFound`.
+
+### Perform the upgrade
+
+#### For Helm-based installations
+
+1. Update your Helm repository:
+
+   ```shell
+   helm repo update
+   ```
+
+1. If your SKU permits, add `dbaas` to the `scenarios` field in your `values.yaml`:
+
+   ```yaml
+   scenarios: "core,migration,ai,analytics,dbaas"
+   ```
+
+1. Perform the upgrade:
+
+   ```shell
+   helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+     --version 2026.4.0 \
+     --values values.yaml \
+     --namespace edbpgai-bootstrap \
+     --wait
+   ```
+
+#### For operator-based (CRD) installations
+
+The `dbaas` scenario wasn't present in the 2026.3 CRD schema and can't be added while still running the 2026.3 operator. Upgrade the operator first, then update the `HybridControlPlane` resource.
+
+1. Upgrade the `edb-hcp-operator` Helm chart to version `2026.4.0`:
+
+   ```shell
+   helm template \
+     --namespace edbpgai-bootstrap \
+     --install \
+     --version 2026.4.0 \
+     --include-crds \
+     edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
+     --set "controllerManager.manager.image.repository=docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager" \
+     --set "controllerManager.manager.image.tag=2026.4.0" \
+     --set "imagePullSecrets[0].name=edb-cred" \
+     | kubectl apply -f -
+   ```
+
+1. Update the version and, f your SKU permits, add the `dbaas` scenario in a single patch command:
+
+   ```shell
+   kubectl patch hcp edbpgai --type json \
+     --patch '[{"op":"add", "path":"/spec/scenarios/-", "value":"dbaas"}, {"op":"replace", "path":"/spec/version", "value":"v2026.4.0"}]'
+   ```
+
+   If you aren't enabling `dbaas`, update only the version:
+
+   ```shell
+   kubectl patch hcp edbpgai --type json \
+     --patch '[{"op":"replace", "path":"/spec/version", "value":"v2026.4.0"}]'
+   ```
+
+   See [The dbaas scenario](#the-dbaas-scenario) for details on what happens if `dbaas` isn't enabled.
+
+1. Trigger the upgrade by annotating the resource:
+
+   ```shell
+   kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+   ```
+
+1. The operator detects the version change and begins the rolling update. Monitor the progress with:
+
+   ```shell
+   kubectl get hybridcontrolplane edbpgai -w
+   ```
+
+### Enable beacon server usage telemetry
+
+2026.4 introduces a new boolean field for enabling usage server telemetry collection. To enable it, set `enableEDBUsageReporting` to `true` alongside the existing required fields.
+
+For operator-based installations, update your `HybridControlPlane` CR:
+
+```yaml
+spec:
+  beaconServer:
+    enableEDBUsageReporting: true
+    hybridManagerInstallation: "<your-installation-name>"
+  globalParameters:
+    company_code: "<your-company-code>"
+```
+
+For Helm-based installations, add the equivalent values to your `values.yaml`:
+
+```yaml
+beaconServer:
+  enableEDBUsageReporting: true
+  hybridManagerInstallation: "<your-installation-name>"
+parameters:
+  global:
+    company_code: "<your-company-code>"
+```
+
+After updating your configuration, re-annotate to apply the changes:
+
+```shell
+kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+```
+
+## The dbaas scenario
+
+The `dbaas` scenario is new in 2026.4 and is separate from `core`. It enables database cluster management — including cluster provisioning, backups, storage locations, and templates. For an overview of all available scenarios, see [Planning your architecture](/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/#available-scenarios).
+
+!!!warning
+Existing installations upgrading from 2026.3 must explicitly add `dbaas` to their scenarios list to retain Postgres cluster management functionality. Without it, the Clusters UI is hidden and cluster management APIs return `404` — existing clusters continue running but are no longer manageable through the platform.
+!!!
+
+If `dbaas` isn't included during the upgrade:
+
+* Cluster management APIs return `404`.
+* The **Clusters** section is hidden in the HM console.
+* Existing Postgres clusters continue running but are no longer manageable through the platform.
+
+You can add `dbaas` at any time after the upgrade by patching the CR and re-triggering reconciliation:
+
+```shell
+kubectl patch hcp edbpgai --type json \
+  -p '[{"op":"add", "path":"/spec/scenarios/-", "value":"dbaas"}]'
+
+kubectl annotate hybridcontrolplane edbpgai \
+  --overwrite edbpgai.com/ready-for-upgrade=true
+```
+
+## Troubleshooting
+
+### edb-migration-copilot fails to install
+
+If the upgrade fails with an error similar to:
+
+```
+failed to execute kapp command, error: update secret/ragchew-ai-vendor-secrets (v1) namespace: edb-migration-copilot
+```
+
+Delete the conflicting secret and re-trigger the upgrade:
+
+```shell
+kubectl delete secret -n edb-migration-copilot ragchew-ai-vendor-secrets
+kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+```
