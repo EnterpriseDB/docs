@@ -11,7 +11,7 @@ For DBA guidance on enabling and operating pooling, see [Configuring connection 
 
 ## Understanding the active pool mode
 
-Query `bdr.node_group_summary` to see the active pool mode:
+Query `bdr.node_group_summary` to see the active pool mode.
 
 ```sql
 SELECT node_group_name, server_pool_mode FROM bdr.node_group_summary;
@@ -21,15 +21,17 @@ The pool mode determines what session state persists between transactions.
 
 | Feature | `none`/`session` | `transaction` |
 |---------|---------------------|---------------|
-| `SET` changes persist | Yes | No |
-| Prepared statements persist | Yes | No |
+| `PREPARE`/`EXECUTE` statements persist | Yes | No |
 | Temporary tables persist | Yes | No |
 | Advisory locks across transactions | Yes | No |
 | Holdable cursors (`WITH HOLD`) | Yes | No |
+| `LISTEN` subscriptions | Yes | No |
 
 In `none` and `session` modes, your application behaves the same as with a direct Postgres connection and no changes are required. The difference between the two is at the infrastructure level. In `session` mode, backend connections are reused after clients disconnect, reducing server overhead, but this is invisible to the application.
 
-In `transaction` mode, the backend connection is returned to the pool when each transaction ends and all session state is cleared. The next transaction may run on a different backend.
+In `transaction` mode, the backend connection is returned to the pool when each transaction ends and most session state is cleared. The next transaction can run on a different backend. Some Postgres features rely on session state that doesn't persist between transactions and don't work as a result. For a full list, see [Connection pooling's unsupported features](/pgd/current/connection-manager/connection-pooling#unsupported-features).
+
+If your application depends on any of these features, ask your DBA to switch to `session` or `none` mode (see [Configuring connection pooling](/pgd/current/connection-pooling-dba)), or redesign the affected code paths to keep all state within a single transaction.
 
 ## Adapting your application for transaction mode
 
@@ -37,7 +39,7 @@ Some application patterns that work with a direct Postgres connection need adjus
 
 ### Managing session parameters
 
-Connection Manager automatically restores `client_encoding`, `DateStyle`, `TimeZone`, `standard_conforming_strings`, `application_name`, `search_path`, and `extra_float_digits` from your connection startup message on each new backend assignment.
+Connection Manager forwards a specific set of connection parameters to the backend and re-applies them on each new backend assignment in transaction mode. The parameters it recognizes are `client_encoding`, `DateStyle`, `TimeZone`, `standard_conforming_strings`, `application_name`, `search_path`, and `extra_float_digits`.
 
 Set these in the connection string rather than with `SET` commands, so they apply to every backend the pool assigns.
 
@@ -51,23 +53,13 @@ Or in a URI.
 postgresql://myhost/mydb?options=-c%20search_path%3Dmyschema%20-c%20work_mem%3D256MB
 ```
 
-Parameters outside the recognized list aren't restored on backend changes unless passed as startup options.
+Parameters outside the recognized list aren't re-applied on backend changes unless passed via the `options` connection parameter.
 
 ### Using prepared statements
 
-`DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, deallocating all prepared statements on that connection. The next transaction may run on a different backend where those statements don't exist.
+`DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, deallocating all prepared statements on that connection. The next transaction can run on a different backend where those statements don't exist.
 
-To avoid errors, follow these practices:
+To avoid errors, follow these practices.
 
-- Use parameterized queries rather than named prepared statements. Most client libraries send these using the extended query protocol by default, which works correctly in all pool modes.
-- If you need named prepared statements, prepare them inside the transaction where you use them.
-
-### Unsupported features
-
-These features require state that persists beyond a single transaction and don't work in transaction mode.
-
-- Holdable cursors declared with `WITH HOLD`
-- Advisory locks held across transaction boundaries
-- Temporary tables accessed across transactions
-
-If your application depends on these features, ask your DBA to switch to `session` mode, or redesign the affected code paths to keep all state within a single transaction.
+- Avoid `PREPARE`, `EXECUTE`, and `DEALLOCATE` SQL statements. Most client libraries use the extended query protocol by default, which handles parameterized queries correctly in all pool modes.
+- If you need to use `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements, issue them inside the transaction where you use them.

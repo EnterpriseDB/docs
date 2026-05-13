@@ -29,18 +29,16 @@ The `server_pool_mode` group option controls the pooling behavior.
 | Mode | Behavior |
 |------|----------|
 | `none` | No pooling. Each client connection gets a dedicated backend connection for its entire lifetime. The backend connection closes when the client disconnects. This mode is the default. |
-| `session` | A backend connection is assigned to a client on first use and returned to the pool when the client disconnects. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting all session state. |
-| `transaction` | A backend connection is assigned when a transaction begins and returned to the pool when the transaction ends. Between transactions, the client holds no backend connection, making it available to other clients. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting all session state. |
+| `session` | A backend connection is assigned to a client on first use and returned to the pool when the client disconnects. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state, then re-applies the supported connection parameters for the next client. |
+| `transaction` | A backend connection is assigned when a transaction begins and returned to the pool when the transaction ends. Between transactions, the client holds no backend connection, making it available to other clients. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state, then re-applies the client's supported connection parameters for the next transaction. |
 
 The current pool mode is visible in the `server_pool_mode` column of the `bdr.node_group_summary` view.
 
 ## Managing session parameters
 
-In transaction mode, the backend connection can change between transactions. Without intervention, any session settings configured during the session (such as `search_path`, `TimeZone`, or `work_mem`) would be lost when a new backend is assigned.
+Connection Manager forwards a specific set of connection parameters to the backend in all pool modes. The parameters it recognizes are `client_encoding`, `DateStyle`, `TimeZone`, `standard_conforming_strings`, `application_name`, `search_path`, and `extra_float_digits`.
 
-To prevent this, Connection Manager captures session parameters from the client's startup message and re-applies them each time it assigns a new backend connection. The parameters it recognizes and tracks automatically are `client_encoding`, `DateStyle`, `TimeZone`, `standard_conforming_strings`, `application_name`, `search_path`, and `extra_float_digits`.
-
-For parameters outside that list, pass them via the `options` startup parameter using `-c name=value` syntax. Connection Manager picks these up at connection time and re-applies them on each backend assignment too.
+To include additional parameters, pass them via the `options` connection parameter using `-c name=value` syntax.
 
 For example, in a libpq key-value connection string:
 
@@ -48,19 +46,19 @@ For example, in a libpq key-value connection string:
 host=myhost dbname=mydb options='-c work_mem=256MB'
 ```
 
-Or in a `postgresql://` URI:
+Or in a `postgresql://` URI.
 
 ```
 postgresql://host:port/db?options=-c%20work_mem%3D256MB
 ```
 
-Because only startup values are tracked, avoid using `SET` commands to configure session parameters in transaction mode. Changes made with `SET` aren't preserved when the backend connection changes. `RESET` and `RESET ALL` are forwarded to the backend, and `DISCARD ALL` runs when the connection is returned to the pool, after which startup parameters are restored on the next assignment.
+In `transaction` mode, where the backend connection can change between transactions, Connection Manager re-applies these parameters each time it assigns a new backend. Because only connection parameters are re-applied, avoid using `SET` commands to configure session parameters in transaction mode. Changes made with `SET` aren't preserved when the backend connection changes.
 
 ## Using prepared statements
 
-In `none` and `session` modes, prepared statements work as they do with a direct Postgres connection. The client's prepared statements exist on the assigned backend for the lifetime of the session.
+Prepared statements sent via the extended query protocol work correctly in all pool modes.
 
-In `transaction` mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements on that connection. The next transaction may be assigned a different backend where those statements don't exist. Prepare statements inside the transaction where you use them, or use parameterized queries instead.
+In `transaction` mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. The next transaction is assigned a potentially different backend where those statements don't exist. Issue `PREPARE`/`EXECUTE` SQL statements inside the transaction where you use them, or use the extended query protocol instead.
 
 ## Reusing connections
 
@@ -70,5 +68,9 @@ In `session` and `transaction` modes, Connection Manager returns the backend con
 
 Some Postgres features are incompatible with connection pooling and aren't supported.
 
+- `SET` changes made during a session don't persist in `transaction` mode. Configure session parameters in the connection string instead. See [Managing session parameters](#managing-session-parameters) for details.
 - Holdable cursors (`WITH HOLD`) aren't supported in `transaction` mode. They persist beyond the transaction boundary, which conflicts with returning the backend connection to the pool when the transaction ends.
+- `LISTEN` isn't supported in `transaction` mode. A `LISTEN` subscription persists beyond a single transaction, which conflicts with returning the backend connection to the pool.
+- Advisory locks held across transaction boundaries aren't supported in `transaction` mode.
+- Temporary tables accessed across transactions aren't supported in `transaction` mode.
 - Replication connections are rejected in all pool modes.

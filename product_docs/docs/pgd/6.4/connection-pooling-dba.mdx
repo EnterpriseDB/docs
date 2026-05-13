@@ -30,12 +30,14 @@ Using the PGD CLI:
 pgd group mygroup set-option server_pool_mode transaction
 ```
 
-Existing connections aren't affected. Only new connections use the updated pool mode.
+When enabling pooling, existing connections aren't affected and only new connections use the updated mode. When switching away from `transaction` mode, existing client connections with no open transaction are closed the next time they start a transaction.
 
-Use `transaction` mode for high-concurrency workloads with many short-lived connections. Use `session` mode if your applications rely on session state that persists across transactions (such as `SET`, temporary tables, or advisory locks). For full details on each mode, see [Connection pooling](/pgd/current/connection-manager/connection-pooling).
+Use `transaction` mode when connections are long-lived but transactions are short, with idle time between them, for example when client applications use their own connection pooling. 
+
+Use `session` mode for short-lived connections, or if your applications rely on session state that persists across transactions (such as `SET`, temporary tables, or advisory locks). For full details on each mode, see [Connection pooling](/pgd/current/connection-manager/connection-pooling).
 
 !!!Warning
-Transaction mode resets all session state at the end of each transaction. Before enabling it, check with your development team whether any applications rely on prepared statements, temporary tables, or `WITH HOLD` cursors across transactions. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer) for details.
+Transaction mode resets most session state at the end of each transaction. Before enabling it, check with your development team whether any applications rely on prepared statements, temporary tables, or `WITH HOLD` cursors across transactions. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer) for details.
 !!!
 
 Check the active pool mode.
@@ -50,12 +52,16 @@ SELECT node_group_name, server_pool_mode FROM bdr.node_group_summary;
 
 ## Migrating from pgBouncer
 
-Connection Manager's transaction mode is functionally equivalent to pgBouncer's transaction pooling mode. Follow these steps to migrate.
+Connection Manager's pooling modes are similar to pgBouncer's session and transaction pooling modes. Follow these steps to migrate.
 
-1. Set `server_pool_mode` to `transaction` on the node group.
-1. Set `read_write_max_server_connections` to a similar value as pgBouncer's `pool_size`.
+1. Set `server_pool_mode` to match your current pgBouncer pool mode (`session` or `transaction`).
+1. Set `read_write_max_server_connections` to a similar value as pgBouncer's `pool_size`, and `read_write_max_client_connections` to a similar value as pgBouncer's `max_client_conn`.
 1. Update application connection strings to point to Connection Manager's read-write port instead of pgBouncer.
-1. Verify application behavior, particularly any use of `SET` commands, prepared statements, or `WITH HOLD` cursors, and adjust as needed. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer).
+1. Verify application behavior:
+   - In `session` mode, application behavior is unchanged from a direct Postgres connection.
+   - In `transaction` mode, pay particular attention to any use of `SET` commands, prepared statements, or `WITH HOLD` cursors, and adjust as needed. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer).
 1. Remove pgBouncer from your infrastructure once migration is verified.
 
 Authentication configuration stays in `pg_hba.conf` on each PGD node. No separate user list or pooler configuration file is needed. Any user that can connect to Postgres through Connection Manager can use the pool, with no second place to grant or revoke access.
+
+Connection Manager imposes additional restrictions compared to a direct Postgres connection in some scenarios. Test your application thoroughly before completing the migration.
