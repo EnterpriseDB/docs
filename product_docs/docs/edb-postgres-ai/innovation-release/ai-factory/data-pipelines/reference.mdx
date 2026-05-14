@@ -396,6 +396,174 @@ Returns current processing statistics for a pipeline.
 SELECT * FROM aidb.get_pipeline_metrics('my_chunker');
 ```
 
+Functions in this group manage the per-pipeline error log table. See [Error log](./orchestration/error-log/) for the end-to-end workflow.
+
+### `aidb.get_error_logs`
+
+Returns rows from a pipeline's error log table, optionally filtered by source record, step, or error category. Results are ordered by `failed_at DESC, id DESC`.
+
+#### Parameters
+
+| Parameter           | Type                                          | Default  | Description                                                                 |
+| ------------------- | --------------------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `p_pipeline_name`   | TEXT                                          | Required | Name of the pipeline whose error log to query.                              |
+| `p_source_id`       | TEXT                                          | NULL     | Filter to errors for a single source record.                                |
+| `p_pipeline_step`   | SMALLINT                                      | NULL     | Filter to errors at a single pipeline step.                                 |
+| `p_error_category`  | [aidb.ErrorBlocking](#aidberrorblocking)      | NULL     | Filter to a single error category.                                          |
+| `p_limit`           | INTEGER                                       | NULL     | Maximum rows to return. Must be non-negative when set.                      |
+| `p_offset`          | INTEGER                                       | 0        | Rows to skip. Must be non-negative.                                         |
+
+Raises an exception if the pipeline does not exist. Returns an empty result set if the pipeline's error log table is missing (legacy pipelines created before 7.4.0 upgrade into the table automatically).
+
+#### Returns
+
+| Column            | Type                                                                            | Description                                                  |
+| ----------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `id`              | bigint                                                                          | Error log entry ID.                                          |
+| `source_id`       | text                                                                            | Source record ID. NULL for pipeline-level errors.            |
+| `part_ids`        | bigint[]                                                                        | Hierarchical part path (for example, `{0, 2}` = page 0, chunk 2). |
+| `pipeline_step`   | smallint                                                                        | Step number (1 to 10) where the error occurred.              |
+| `step_operation`  | [aidb.PipelineStepOperation](#aidbpipelinestepoperation)                        | Operation that failed.                                       |
+| `error_message`   | text                                                                            | Full error message.                                          |
+| `error_category`  | [aidb.ErrorBlocking](#aidberrorblocking)                                        | Error category.                                              |
+| `failed_at`       | timestamptz                                                                     | When the error was first logged.                             |
+| `retry_count`     | integer                                                                         | Number of times this entry has been retried.                 |
+| `last_retry_at`   | timestamptz                                                                     | When the most recent retry ran. NULL until the first retry.  |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_error_logs('my_pipeline');
+
+-- Errors for a specific source record
+SELECT * FROM aidb.get_error_logs('my_pipeline', p_source_id => 'doc_42');
+
+-- Blocking errors at step 2
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_pipeline_step  => 2::SMALLINT,
+    p_error_category => 'PipelinePermanent'
+);
+```
+
+### `aidb.clear_error_logs`
+
+Deletes the specified entries from a pipeline's error log table and returns the count of rows actually removed.
+
+#### Parameters
+
+| Parameter         | Type     | Default  | Description                                                       |
+| ----------------- | -------- | -------- | ----------------------------------------------------------------- |
+| `p_pipeline_name` | TEXT     | Required | Name of the pipeline whose error log to clear.                    |
+| `p_error_ids`     | BIGINT[] | Required | IDs from `aidb.get_error_logs` to remove. Missing IDs are skipped silently. |
+
+Raises an exception if the pipeline does not exist.
+
+#### Returns
+
+`BIGINT`: number of rows deleted.
+
+#### Example
+
+```sql
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3, 7]);
+
+-- Clear by filter via composition
+SELECT aidb.clear_error_logs(
+    'my_pipeline',
+    ARRAY(SELECT id FROM aidb.get_error_logs(
+        'my_pipeline',
+        p_pipeline_step  => 1::SMALLINT,
+        p_error_category => 'RecordPermanent'
+    ))
+);
+```
+
+### `aidb.get_error_log_summary`
+
+Returns error counts grouped by `(pipeline_step, step_operation, error_category)` for a single pipeline. One row per combination that has at least one error.
+
+#### Parameters
+
+| Parameter         | Type | Default  | Description                                       |
+| ----------------- | ---- | -------- | ------------------------------------------------- |
+| `p_pipeline_name` | TEXT | Required | Name of the pipeline to summarize.                |
+
+Raises an exception if the pipeline does not exist. Returns an empty result set if the pipeline's error log table is missing.
+
+#### Returns
+
+| Column             | Type                                                     | Description                                       |
+| ------------------ | -------------------------------------------------------- | ------------------------------------------------- |
+| `pipeline_step`    | smallint                                                 | Step number.                                      |
+| `step_operation`   | [aidb.PipelineStepOperation](#aidbpipelinestepoperation) | Operation at that step.                           |
+| `error_category`   | [aidb.ErrorBlocking](#aidberrorblocking)                 | Error category.                                   |
+| `error_count`      | bigint                                                   | Number of errors in this group.                   |
+| `latest_failed_at` | timestamptz                                              | Most recent `failed_at` in this group.            |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_error_log_summary('my_pipeline');
+
+-- Total error count
+SELECT sum(error_count) FROM aidb.get_error_log_summary('my_pipeline');
+```
+
+### `aidb.get_all_error_summaries`
+
+Returns the same row shape as `aidb.get_error_log_summary` with `pipeline_name` prepended, rolled up across every pipeline. Pipelines with zero errors, or whose error log table is missing, are omitted.
+
+#### Parameters
+
+None.
+
+#### Returns
+
+| Column             | Type                                                     | Description                                       |
+| ------------------ | -------------------------------------------------------- | ------------------------------------------------- |
+| `pipeline_name`    | text                                                     | Pipeline name.                                    |
+| `pipeline_step`    | smallint                                                 | Step number.                                      |
+| `step_operation`   | [aidb.PipelineStepOperation](#aidbpipelinestepoperation) | Operation at that step.                           |
+| `error_category`   | [aidb.ErrorBlocking](#aidberrorblocking)                 | Error category.                                   |
+| `error_count`      | bigint                                                   | Number of errors in this group.                   |
+| `latest_failed_at` | timestamptz                                              | Most recent `failed_at` in this group.            |
+
+#### Example
+
+```sql
+SELECT pipeline_name, sum(error_count) AS total_errors
+FROM aidb.get_all_error_summaries()
+GROUP BY pipeline_name;
+```
+
+### `aidb.retry_pipeline_errors`
+
+Re-runs the pipeline for the source records named by the specified error log entries and returns per-row outcomes. A pipeline-scoped advisory lock prevents two concurrent retries on the same pipeline, but it does not block `aidb.run_pipeline` or the background worker.
+
+#### Parameters
+
+| Parameter       | Type     | Default  | Description                                                                 |
+| --------------- | -------- | -------- | --------------------------------------------------------------------------- |
+| `pipeline_name` | TEXT     | Required | Name of the pipeline to retry. (Parameter names omit the `p_` prefix used by the other error log functions.) |
+| `error_ids`     | BIGINT[] | Required | Error log entry IDs to retry. Duplicates are deduplicated; unknown IDs raise an exception.                   |
+
+Raises if the pipeline does not exist, if any supplied `error_id` is missing from the error log, if the source is empty, or if another retry is already in progress for the pipeline.
+
+#### Returns
+
+| Column          | Type   | Description                                                                                                 |
+| --------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `error_id`      | bigint | The supplied error log ID.                                                                                  |
+| `status`        | text   | One of `resolved`, `failed`, or `skipped`.                                                                  |
+| `error_message` | text   | NULL when `resolved`; new error text when `failed`; advisory message when `skipped` (pipeline-level errors). |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+```
+
 ---
 
 ## Pipeline step config helpers
