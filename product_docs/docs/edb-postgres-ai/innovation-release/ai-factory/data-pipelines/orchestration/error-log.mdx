@@ -159,6 +159,59 @@ Error log entries clear without `aidb.clear_error_logs` or `aidb.retry_pipeline_
 
 Pipeline deletion drops the entire error log table.
 
+## End-to-end example
+
+A short walkthrough using a three-document source where one row has a corrupt PDF, one parses but produces an oversized chunk, and a third hits a model rate limit on the embedding step.
+
+```sql
+-- 1. Run the pipeline. None of the three failures abort the batch.
+SELECT aidb.run_pipeline('my_pipeline');
+
+-- 2. Inspect the resulting errors.
+SELECT id, source_id, error_category
+FROM aidb.get_error_logs('my_pipeline');
+__OUTPUT__
+ id | source_id | error_category
+----+-----------+-----------------
+  3 | doc_99    | RecordPermanent
+  2 | doc_42    | RecordPermanent
+  1 | doc_7     | RecordPermanent
+(3 rows)
+
+-- 3. The pipeline now reports PartialErrors and surfaces the counts.
+SELECT pipeline, "Status", "count(record errors)", "count(blocking errors)"
+FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
+__OUTPUT__
+   pipeline   |    Status     | count(record errors) | count(blocking errors)
+--------------+---------------+----------------------+------------------------
+ my_pipeline  | PartialErrors |                    3 |                      0
+(1 row)
+
+-- 4. After fixing the upstream rate-limit issue, retry just the rate-limited row.
+SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[3]);
+__OUTPUT__
+ error_id | status   | error_message
+----------+----------+---------------
+        3 | resolved |
+(1 row)
+
+-- 5. Dismiss the two permanent failures after triage.
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 2]);
+__OUTPUT__
+ clear_error_logs
+------------------
+                2
+(1 row)
+
+-- 6. Status returns to UpToDate.
+SELECT pipeline, "Status" FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
+__OUTPUT__
+   pipeline   |  Status
+--------------+----------
+ my_pipeline  | UpToDate
+(1 row)
+```
+
 ## Pipeline status integration
 
 Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline's [status](../reference#aidbpipelinestatus) reports `PartialErrors` when some records failed and the rest processed normally, or `BlockingErrors` when a pipeline-level error stopped the step entirely.
