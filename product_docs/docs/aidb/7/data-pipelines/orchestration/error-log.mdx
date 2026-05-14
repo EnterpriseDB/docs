@@ -10,7 +10,9 @@ Each pipeline has an error log table. When a record fails at any step, the log c
 
 - When a record fails, it's logged to `{source_schema}.pipeline_{pipeline_name}_errors` with the source ID, failing step number, operation type, and error message.
 - A single bad record doesn't block the pipeline. Other records in the batch continue through all remaining steps.
-- The error log table is created with the pipeline and dropped when the pipeline is deleted.
+- The error log table is created with the pipeline and dropped when the pipeline is deleted. Pipelines created before 7.4.0 get their table during the upgrade.
+- Writes happen inside the failing step's transaction, so a successful step never leaves orphan log rows and a failure never loses its record.
+- Each logged error also emits a Postgres `WARNING`. Toggle with [`aidb.pipeline_error_warnings`](../reference#aidbpipeline_error_warnings); errors persist to the log regardless.
 - Errors get one of four `error_category` values:
 
 | Category            | Scope    | Blocks pipeline? | Description                                                         |
@@ -20,7 +22,7 @@ Each pipeline has an error log table. When a record fails at any step, the log c
 | `PipelineTemporary` | Pipeline | Yes              | Transient failure that stopped the entire step (for example, a service outage). May resolve on retry. |
 | `PipelinePermanent` | Pipeline | Yes              | Permanent failure that stopped the entire step (for example, invalid model config). |
 
-`RecordTemporary` and `RecordPermanent` errors don't block the pipeline; other records keep processing. `PipelineTemporary` and `PipelinePermanent` errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration.
+Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration.
 
 ## Querying errors
 
@@ -123,7 +125,90 @@ __OUTPUT__
 (2 rows)
 ```
 
-Resolved entries are removed from the error log. Failed retries stay in the log with an incremented `retry_count` and updated `last_retry_at` timestamp.
+Each result row reports one of three statuses:
+
+- `resolved`: the record processed cleanly and the error log entry was deleted.
+- `failed`: the record failed again. The new error stays in the log with an incremented `retry_count` and an updated `last_retry_at` timestamp.
+- `skipped`: pipeline-level error (see below).
+
+Only one retry can run against a given pipeline at a time. A concurrent call from another session fails fast. Retry does not block `aidb.run_pipeline` or the background worker.
+
+### Pipeline-level errors
+
+Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be retried per record, so `aidb.retry_pipeline_errors` returns `status='skipped'` and leaves the entry in the log.
+
+Fix the underlying issue (model availability, config, deleted model), re-run the pipeline so the step processes cleanly, then dismiss the entry with `aidb.clear_error_logs`.
+
+### Source deleted between failure and retry
+
+If the source record was removed from the source table or volume between the original failure and the retry call, the result is `status='failed'` with a `Source record no longer exists` message. The call does not raise.
+
+### Aggregated error messages
+
+When a single source record fans out into many failing parts (for example, a PDF that parses into many pages that all fail at a later step), the returned `error_message` aggregates the first 10 messages with a trailing `... and N more (see error log table)` line. The full set stays in the error log table and can be queried with `aidb.get_error_logs`.
+
+## Automatic cleanup
+
+Error log entries clear without `aidb.clear_error_logs` or `aidb.retry_pipeline_errors` in three cases:
+
+- Source record deleted. The live `DELETE` trigger, background worker `DELETE` processing, and volume stale-state cleanup all remove matching error log entries alongside their destination rows.
+- Source envelope reaches the destination on a later run. The pipeline executor clears entries scoped by `(source_id, part_ids)` so part-granular successes do not wipe sibling errors.
+- Pipeline-level rows (NULL `source_id`) for a step clear after that step next runs cleanly. Errors written by a concurrent failing executor during that run are preserved.
+
+Pipeline deletion drops the entire error log table.
+
+## End-to-end example
+
+A short walkthrough using a three-document source where one row has a corrupt PDF, one parses but produces an oversized chunk, and a third hits a model rate limit on the embedding step.
+
+```sql
+-- 1. Run the pipeline. None of the three failures abort the batch.
+SELECT aidb.run_pipeline('my_pipeline');
+
+-- 2. Inspect the resulting errors.
+SELECT id, source_id, error_category
+FROM aidb.get_error_logs('my_pipeline');
+__OUTPUT__
+ id | source_id | error_category
+----+-----------+-----------------
+  3 | doc_99    | RecordTemporary
+  2 | doc_42    | RecordPermanent
+  1 | doc_7     | RecordPermanent
+(3 rows)
+
+-- 3. The pipeline now reports PartialErrors and surfaces the counts.
+SELECT pipeline, "Status", "count(record errors)", "count(blocking errors)"
+FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
+__OUTPUT__
+   pipeline   |    Status     | count(record errors) | count(blocking errors)
+--------------+---------------+----------------------+------------------------
+ my_pipeline  | PartialErrors |                    3 |                      0
+(1 row)
+
+-- 4. After fixing the upstream rate-limit issue, retry just the rate-limited row.
+SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[3]);
+__OUTPUT__
+ error_id | status   | error_message
+----------+----------+---------------
+        3 | resolved |
+(1 row)
+
+-- 5. Dismiss the two permanent failures after triage.
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 2]);
+__OUTPUT__
+ clear_error_logs
+------------------
+                2
+(1 row)
+
+-- 6. Status returns to UpToDate.
+SELECT pipeline, "Status" FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
+__OUTPUT__
+   pipeline   |  Status
+--------------+----------
+ my_pipeline  | UpToDate
+(1 row)
+```
 
 ## Pipeline status integration
 
