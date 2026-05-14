@@ -1,0 +1,117 @@
+---
+title: "Example: Using the TDS Foreign Data Wrapper"
+---
+
+<div id="example_using_the_tds_data_adapter" class="registered_link"></div>
+
+This example shows how to use `tds_fdw` to query a table on a Microsoft SQL Server from a Postgres database.
+
+## Prerequisites
+
+- `tds_fdw` is installed and the extension is created on your Postgres database. See [CREATE EXTENSION](configuring/#create-extension).
+- A foreign server and user mapping are defined. See [CREATE SERVER](configuring/#create-server) and [CREATE USER MAPPING](configuring/#create-user-mapping).
+
+## Create a foreign table
+
+### Using a table name
+
+To map a remote table to a foreign table on the Postgres server:
+
+```sql
+CREATE FOREIGN TABLE mssql_table (
+    id integer,
+    data varchar)
+    SERVER mssql_svr
+    OPTIONS (schema_name 'dbo', table_name 'mytable', row_estimate_method 'showplan_all');
+```
+
+### Using a query
+
+To map a custom SQL query to a foreign table:
+
+```sql
+CREATE FOREIGN TABLE mssql_table (
+    id integer,
+    data varchar)
+    SERVER mssql_svr
+    OPTIONS (query 'SELECT * FROM dbo.mytable', row_estimate_method 'showplan_all');
+```
+
+### Mapping a remote column name
+
+If a local column name differs from the remote column name, use the `column_name` option:
+
+```sql
+CREATE FOREIGN TABLE mssql_table (
+    id integer,
+    local_col varchar OPTIONS (column_name 'remote_col'))
+    SERVER mssql_svr
+    OPTIONS (schema_name 'dbo', table_name 'mytable');
+```
+
+## Query a foreign table
+
+Once a foreign table is set up, you can query it like any local table:
+
+```sql
+SELECT * FROM mssql_table WHERE id = 42;
+```
+
+`tds_fdw` supports WHERE clause pushdown and column pushdown when `match_column_names` is enabled, which means filters and column selections are evaluated on the remote server rather than locally.
+
+`tds_fdw` doesn't currently support JOIN push-down or write operations (INSERT, UPDATE, DELETE).
+
+## Import a foreign schema
+
+You can import an entire remote schema rather than defining each foreign table manually:
+
+```sql
+IMPORT FOREIGN SCHEMA dbo
+    EXCEPT (mssql_table)
+    FROM SERVER mssql_svr
+    INTO public
+    OPTIONS (import_default 'true');
+```
+
+### Foreign schema options
+
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `import_default` | No | `false` | Whether to include column DEFAULT expressions in the foreign table definitions. |
+| `import_not_null` | No | `true` | Whether to include column NOT NULL constraints in the foreign table definitions. |
+| `keep_custom_types` | No | `false` | Sybase only. When `false`, user-defined types are resolved to their underlying system types. When `true`, the original user-defined types are preserved. If you enable this, make sure the equivalent domain types exist in PostgreSQL before importing. |
+
+## Use EXPLAIN
+
+`EXPLAIN (VERBOSE)` shows the query issued on the remote system, along with cost-related parameters:
+
+```sql
+EXPLAIN (VERBOSE) SELECT * FROM mssql_table;
+```
+
+## Configure runtime variables
+
+`tds_fdw` provides the following variables for debugging memory usage. Set them with the `SET` command:
+
+```sql
+SET tds_fdw.show_before_row_memory_stats = 1;
+SET tds_fdw.show_after_row_memory_stats = 1;
+SET tds_fdw.show_finished_memory_stats = 1;
+```
+
+| Variable | Description |
+| -------- | ----------- |
+| `tds_fdw.show_before_row_memory_stats` | Prints memory context stats to the PostgreSQL log before each row is fetched. |
+| `tds_fdw.show_after_row_memory_stats` | Prints memory context stats to the PostgreSQL log after each row is fetched. |
+| `tds_fdw.show_finished_memory_stats` | Prints memory context stats to the PostgreSQL log when a query finishes. |
+
+## Troubleshooting
+
+To get more detail from `tds_fdw` when diagnosing issues, increase the verbosity of console messages and set the message handler to `notice`:
+
+```sql
+SET client_min_messages TO DEBUG3;
+ALTER SERVER mssql_svr OPTIONS (SET msg_handler 'notice');
+```
+
+Then run your queries and review the full output. You can report issues on the [tds_fdw GitHub Issues page](https://github.com/tds-fdw/tds_fdw/issues).
