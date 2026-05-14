@@ -37,7 +37,12 @@ const processSingleFile = async (filename) => {
     console.log(`Writing ${newFilename}`);
   }
 
-  fs.writeFile(newFilename, newContent)
+  await fs.mkdir(dirname(newFilename), { recursive: true }).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+
+  await fs.writeFile(newFilename, newContent)
     .catch((err) => {
       console.error(err);
       process.exit(1);
@@ -47,7 +52,7 @@ const processSingleFile = async (filename) => {
       if (newFilename != filename) {
         console.log(`Removing ${filename}`);
 
-        fs.rm(filename).catch((err) => {
+        return fs.rm(filename).catch((err) => {
           console.error(err);
           process.exit(1);
         });
@@ -60,14 +65,15 @@ const runProcessorsForFile = async (filename, content) => {
   let newContent = content;
 
   for (const index in args["--processor"]) {
-    await import(
+    const module = await import(
       `${__dirname}/processors/${args["--processor"][index]}.mjs`
-    ).then(async (module) => {
-      const output = await module.process(newFilename, newContent);
+    );
+    const output = await module.process(newFilename, newContent);
 
-      newFilename = output.newFilename;
-      newContent = output.newContent;
-    });
+    newFilename = output.newFilename;
+    newContent = output.newContent;
+
+    if (output.stopProcessing) break;
   }
 
   return { newFilename, newContent };

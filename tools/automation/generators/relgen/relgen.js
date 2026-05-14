@@ -9,7 +9,7 @@ import {
   appendFileSync,
   existsSync,
 } from "fs";
-import core from "@actions/core";
+import * as core from "@actions/core";
 import { load, dump } from "js-yaml";
 import SourceMap from "js-yaml-source-map";
 import Ajv from "ajv";
@@ -20,8 +20,7 @@ import { micromark } from "micromark";
 import { exit } from "process";
 import semver from "semver";
 
-let ghCore = core;
-
+let ghCore;
 if (!process.env.GITHUB_REF) {
   ghCore = {
     getInput: (key) => undefined,
@@ -77,6 +76,10 @@ if (!process.env.GITHUB_REF) {
       ? `${path.relative(docsBase, filePath)}:${line}:${column}`
       : "";
   }
+} else {
+  ghCore = {
+    ...core,
+  };
 }
 
 let argv = yargs(hideBin(process.argv))
