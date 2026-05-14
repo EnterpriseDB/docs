@@ -3,7 +3,7 @@ title: Error log
 description: Inspect, clear, and retry failed pipeline records using the per-pipeline error log in EDB Postgres AI.
 ---
 
-Every pipeline has a dedicated error log table. When a record fails at any step, the log captures the source record ID, which step failed, the operation, and the error message. The rest of the batch keeps processing.
+Every pipeline has a dedicated error log table. When a record fails at any step, the log captures the source record ID, which step failed, the operation, and the error message.
 
 ## Key features
 
@@ -14,7 +14,7 @@ Every pipeline has a dedicated error log table. When a record fails at any step,
 
 ## How it works
 
-- When a record fails, the log records the source ID, failing step number, operation, error message, and category in `{source_schema}.pipeline_{pipeline_name}_errors`.
+- Errors are written to the log inside the same transaction as the failing step, so a successful step never leaves orphan log rows and a failure never loses its record.
 - Temporary errors (network timeout, service outage) may resolve on retry. Permanent errors (corrupt PDF, invalid model) point to bad data or config. `RecordTemporary` currently fires only for model rate-limit errors.
 - The query and summary functions return empty results for any pipeline whose error log table is missing.
 - Do not drop the error log table manually. As of 7.4.0, the source `DELETE` handlers and post-step cleanup raise an error if the table is missing.
@@ -162,9 +162,6 @@ Pipeline deletion drops the entire error log table.
 
 ## Pipeline status integration
 
-Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline status reflects error severity:
-
-- `PartialErrors`: some records failed, the rest processed normally.
-- `BlockingErrors`: a pipeline-level error stopped the step entirely.
+Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline's [status](../reference#aidbpipelinestatus) reports `PartialErrors` when some records failed and the rest processed normally, or `BlockingErrors` when a pipeline-level error stopped the step entirely.
 
 See [Observability](./observability/) for more on monitoring pipeline health.
