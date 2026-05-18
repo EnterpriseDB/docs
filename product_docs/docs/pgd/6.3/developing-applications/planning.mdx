@@ -1,0 +1,82 @@
+---
+title: Preparing your application for PGD
+navTitle: Preparing your application
+description: Design decisions, conflict avoidance strategies, and replication behaviors that affect PGD applications.
+---
+
+PGD's distributed nature introduces design decisions that don't arise with single-node Postgres, whether you're porting an existing application or building from scratch. This guidance assumes the full database schema and all data are replicated to all nodes.
+
+!!! Note
+PGD also supports selective replication, which lets you control which tables are replicated to which nodes. See [Configuring selective replication](/pgd/current/geo-replication-dev/selective-replication/).
+!!!
+
+## Understanding your workload
+
+Before making any design decisions, understand your application's read-to-write ratio. Reads can be routed to different nodes to spread load and fully offload it from write leader nodes.
+
+If your application uses an object-relational mapper (ORM), review its emitted DDL to ensure generated tables have primary keys, configure separate connection pools to map to the Connection Manager's read-write and read-only ports, and audit generated SQL for the patterns described below.
+
+## Planning your write strategy
+
+Design your application to avoid write conflicts as the primary goal. Write transactions replicate to all data nodes in the cluster, so conflicts have a higher cost than on a single-node database.
+
+If your application can cleanly partition write traffic by geography or user group with no overlapping writes between partitions, local routing with multiple write leaders in separate regions is the right fit. Keeping writes local to a region eliminates cross-region conflicts and improves throughput. If that clean separation can't be guaranteed, the conflict rate rises as write volume scales. In that case, global routing, where all writes go to a single write leader, is the safer choice. The routing configuration itself is a database administrator (DBA) task, but understanding your application's write patterns determines which model fits.
+
+PGD uses global sequences by default. `int4` and `int2` sequences use `galloc`, which allocates ranges of values per node. `int8` sequences use `snowflakeid`. Both produce gaps in IDs. Don't assume gap-free sequences in your application. See [Sequences](/pgd/current/sequences/) for details on sequence kinds and their tradeoffs. For commutative updates that need to merge without conflict, use [conflict-free replicated data types (CRDTs)](/pgd/current/conflict-management/crdt/).
+
+For details on conflict detection and resolution, see [Conflict management](/pgd/current/conflict-management/).
+
+## Planning your read strategy
+
+Route read traffic to the Connection Manager's read-only port, which distributes connections across all nodes rather than directing them to the write leader. HAProxy can also balance read traffic across nodes using the Connection Manager's read-only port. See [Load balancing](/pgd/current/connection-manager/load-balancing/) for configuration examples.
+
+For reads where a user must immediately see their own writes, such as a recently placed order or an updated account balance, route those reads to the write leader or use stricter [commit scopes](/pgd/current/commit-scopes/) to ensure the write is visible on enough nodes before it completes. For reads where stale data is acceptable, such as aggregate counts or social metrics, use the read-only port.
+
+## Designing your schema for replication
+
+Define a `PRIMARY KEY` or `UNIQUE` constraint on every table that takes `UPDATE` or `DELETE` operations. PGD uses the unique index behind the constraint for fast row lookups during replication apply.
+
+For tables with no primary key and no unique constraint, PGD emits a warning when the table is created or added to replication. The table still replicates because `REPLICA IDENTITY FULL` is the default. Updates and deletes replicate by matching the full old row, but apply-side lookups are much slower. PGD uses any suitable index if one exists, or falls back to a sequential scan. A missing primary key is usually an oversight, and the scan cost compounds under write load. Don't rely on the default in production tables.
+
+PGD handles updatable views transparently. Data manipulation language (DML) through an updatable view resolves to the underlying base table on the origin and is applied to the same base table on the target.
+
+PGD supports partitioned tables transparently. Changes to any partition are replicated downstream automatically. For managing large tables that grow over time, [AutoPartition](/pgd/current/autopartition/) automates the creation and dropping of partitions using low-conflict locking.
+
+Ensure all collations used in the schema are available on all nodes, and that the default collation is the same across nodes. Row replication itself isn't affected, since PGD uses equality searches on replica identity values. However, unique indexes defined with nonmatching collation qualifiers can behave unexpectedly, and row filters that use collatable expressions can produce inconsistent results if collations differ between nodes.
+
+## Accounting for replication behavior
+
+PGD replicates only the final result of each statement, after all triggers and rules are processed. An `INSERT ... ON CONFLICT UPDATE` sends either an insert or an update, whichever occurred on the origin. If an update or delete affects zero rows, nothing is replicated.
+
+The following behaviors differ from a single-node database and require attention during development.
+
+- **Triggers** fire only on the originating node where the SQL was first executed, the same as on single-node Postgres. When PGD applies a replicated change on a target node, triggers on that table don't fire. Their effects are replicated instead.
+
+  - To also fire a trigger when changes apply on a target node, use `ALTER TABLE ... ENABLE ALWAYS TRIGGER`. To fire only at apply time, use `ALTER TABLE ... ENABLE REPLICA TRIGGER`.
+  - Statement-level triggers (`FOR EACH STATEMENT`) and per-column `UPDATE` triggers (`UPDATE OF column_name`) are never executed on apply, regardless of setting.
+  - Trigger functions that fire at apply time must fully qualify object references, or set the search path explicitly with `ALTER FUNCTION ... SET search_path = ...`. PGD apply uses the system-level default `search_path`, and functions that assume a different path fail on apply.
+
+- Rules execute on the originating node only, the same as on single-node Postgres. PGD replicates the resulting changes, not the rule itself.
+
+- Row-level locks from `SELECT ... FOR UPDATE/FOR SHARE` and advisory locks aren't replicated. `SERIALIZABLE` isolation is supported, but transactions aren't serialized across nodes, and concurrent transactions on multiple nodes can still conflict.
+
+- Use `BYTEA` for binary data. `BYTEA` columns replicate fully, including the underlying `TOAST` storage, up to 1 GB. The [PostgreSQL large object](https://www.postgresql.org/docs/current/largeobjects.html) facility isn't supported in PGD.
+
+- Avoid volatile functions in `CHECK` constraints. PGD reexecutes `CHECK` constraints on apply by default, and if a volatile function returns a different result than it did on the origin, replication can break. This behavior is controlled by the [`check_constraints`](/pgd/current/reference/cli/command_ref/group/set-option/) group option.
+
+- Don't mark `REPLICA IDENTITY` columns as external.
+
+- Foreign keys, including cascading ones, are enforced only on the writing node and aren't rechecked on apply. Use them for local consistency, but don't assume they prevent cross-node integrity violations during conflicts.
+
+## Avoiding data anomalies
+
+PGD uses replica identity values to identify rows and table names to identify tables. Reusing an identifier after deletion, or a table name after dropping, creates ambiguity that PGD can't resolve. This ambiguity is the [ABA problem](https://en.wikipedia.org/wiki/ABA_problem), where PGD can't determine whether an identifier refers to the current object, the previous one, or an older one.
+
+To avoid data anomalies and divergence:
+
+-   Use unique identifiers for rows on `INSERT`.
+-   Don't modify unique identifiers on `UPDATE`.
+-   Don't reuse deleted unique identifiers.
+-   Don't reuse dropped object names.
+
+Violations can lead to data anomalies across nodes. While unlikely, they aren't impossible. A deleted row's identifier is safe to reuse only after the `DELETE` has replayed on all nodes, including any that were down. Under good conditions that takes under a second, but can take days if a node is severely degraded.

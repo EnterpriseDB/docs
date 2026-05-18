@@ -1,0 +1,100 @@
+---
+title: Deployment patterns
+navTitle: Deployment patterns
+description: The recommended PGD deployment patterns, covering topology, use cases, trade-offs, and commit scope guidance for each.
+indexCards: simple
+navigation:
+  - single-data-group
+  - two-data-groups
+  - three-data-groups
+  - read-scaling
+  - primary-dr
+  - data-residency
+redirects:
+  - bdr
+  - /pgd/latest/overview/ #generated for DOCS-1247-PGD-6.0-Docs
+  - /pgd/latest/reference/overview/ #generated for DOCS-3034
+  - /pgd/latest/planning/architectures/
+  - /pgd/latest/overview/basic-architecture/
+  - /pgd/latest/essential-how-to/architectures/
+  - /pgd/latest/essential-how-to/architectures/standard/
+  - /pgd/latest/essential-how-to/architectures/standard/manually-deploying-standard/
+  - /pgd/latest/essential-how-to/architectures/near-far/
+  - /pgd/latest/essential-how-to/architectures/near-far/manually-deploying-near-far/
+  - /pgd/latest/expanded-how-to/architectures/
+  - /pgd/latest/expanded-how-to/architectures/always-on/
+  - /pgd/latest/expanded-how-to/architectures/essential/
+  - /pgd/latest/expanded-how-to/architectures/always-on/multi-location/
+  - /pgd/latest/expanded-how-to/architectures/geo-distributed/
+  - /pgd/latest/overview/architecture/
+  - /pgd/latest/overview/architectures/always-on/
+  - /pgd/latest/overview/architectures/essential/
+  - /pgd/latest/overview/architectures/always-on/multi-location/
+  - /pgd/latest/overview/architectures/geo-distributed/
+  - /pgd/latest/overview/architectures/standard/
+  - /pgd/latest/overview/architectures/near-far/
+  - /pgd/latest/planning/architecture/
+  - /pgd/latest/planning/architecture/architecture-and-performance/
+  - /pgd/latest/planning/architecture/standard/
+  - /pgd/latest/planning/architecture/near-far/
+  - /pgd/latest/planning/architecture/always-on/
+  - /pgd/latest/planning/architecture/multi-location/
+  - /pgd/latest/planning/architecture/geo-distributed/
+---
+
+PGD offers several deployment patterns, from a single high-availability (HA) group to globally distributed multi-region clusters. The pattern you choose determines where your data lives, which locations accept writes, and how the cluster recovers from failures. The key dimensions are the number of active write locations, the level of disaster recovery you need, and whether regulatory requirements constrain where data can be stored. Each choice carries implications for write latency, conflict handling, and operational complexity.
+
+## Choosing a pattern
+
+Most PGD deployments start from one of four goals, each mapping to one or more patterns.
+
+### Maintaining continuous availability
+
+PGD keeps the database available through node failures, data center (DC) failures, and rolling maintenance operations including major Postgres version upgrades. Within a single location, the [single data group](single-data-group) pattern provides HA across two or more nodes. For datacenter-level protection without the cost of a full second active site, the [primary active group, DR group](primary-dr) pattern adds a reduced-capacity DR site that takes over if the primary DC fails.
+
+### Writing across multiple regions
+
+Applications serving users in multiple geographies benefit from placing write capacity close to those users. Both the [two data groups](two-data-groups) and [three or more data groups](three-data-groups) patterns run active-active: all locations accept writes and replicate to each other. The two data groups pattern suits a primary and secondary location. A witness-only third location achieves Raft majority without a full third data site, and three full data groups take Raft majority further by surviving an entire region failure without interrupting the remaining regions.
+
+Active-active replication across regions makes write conflicts possible. PGD resolves conflicts automatically using configurable conflict resolution policies, but schemas and application writes need to be designed with conflict-awareness in mind.
+
+### Enforcing data locality
+
+Regulations such as GDPR and CCPA require that personal and sensitive data stays within specific jurisdictions. The [multiple locations, data residency](data-residency) pattern implements selective replication by data classification. Local-only data, including personally identifiable information (PII), financial records, and healthcare data, replicates only within its region. Global reference data, such as product catalogs and configuration, replicates everywhere. Each region runs independently with its own HA group.
+
+### Scaling out reads
+
+Read-heavy workloads can overwhelm a write cluster if not isolated. The [single data group, global read scaling](read-scaling) pattern offloads analytics, reporting, and API read traffic to subscriber-only nodes. Subscriber-only nodes receive all changes from the write group but don't participate in writes or consensus, so adding them doesn't affect write performance or commit scope quorum. They can be placed in additional regions to reduce read latency for local users.
+
+| Pattern | Locations | Active write locations | Disaster recovery |
+|---|---|---|---|
+| [Single data group](single-data-group) | 1 | 1 | Node failure only |
+| [Two data groups, active-active](two-data-groups) | 2 | 2 | DC failure |
+| [Three data groups, active-active-active](three-data-groups) | 3+ | 3+ | Region failure |
+| [Single data group, global read scaling](read-scaling) | 1+ | 1 | Node failure |
+| [Primary active group, DR group](primary-dr) | 2 | 1 | DC failure (manual) |
+| [Multiple locations, data residency](data-residency) | 3+ | 3+ | Region failure |
+
+## Architectural elements
+
+Each node in a PGD cluster is a Postgres instance running the PGD extension. Nodes are organized into groups, and each group elects a write leader to coordinate writes. Connection Manager runs on each node and routes client connections to the current write leader, enabling automatic failover without changes to the application connection string.
+
+### Node types
+
+A PGD cluster uses three node types, each serving a different role:
+
+- **Data nodes:** Store and manage data, handle reads and writes, and participate in replication and consensus.
+- **Subscriber-only nodes:** Receive all changes from the write group but don't accept writes or participate in consensus. They're suited to read-heavy workloads like analytics and reporting.
+- **Witness nodes:** Participate in Raft consensus but don't store user data. A witness in a third location resolves split-brain scenarios when two data locations lose contact with each other.
+
+### Node roles
+
+Data nodes take on transient roles that transfer automatically between nodes as conditions change:
+
+- **Write leader:** The current target for all write operations when applications connect through Connection Manager. If the write leader fails, another node is elected in seconds.
+- **Raft leader:** Manages consensus decisions across the group, including write leader election and schema change coordination.
+
+### Commit scopes
+
+Commit scopes control the durability guarantees PGD provides for each transaction. The default is asynchronous replication with eventual consistency. Stronger options, from majority protect through CAMO (Commit At Most Once), add synchronous coordination at the cost of added write latency. Each pattern page notes the commit scopes recommended for that topology. For the full reference, see [Commit scopes](/pgd/current/commit-scopes/commit-scopes).
+
