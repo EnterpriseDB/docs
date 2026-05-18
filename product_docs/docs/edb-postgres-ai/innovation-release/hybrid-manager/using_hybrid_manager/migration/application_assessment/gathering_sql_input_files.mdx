@@ -1,0 +1,198 @@
+---
+title: Gathering SQL input files
+navTitle: "Gathering SQL input files"
+description: Learn how to obtain Oracle trace files, EDB Query Extractor output files, and plain SQL files to upload for application SQL assessment in Hybrid Manager.
+deepToC: true
+---
+
+Hybrid Manager (HM) accepts three types of SQL input files for application assessment. Each captures your application's SQL differently, and the best choice depends on your application's architecture and the Oracle features it uses. This page explains how to generate or prepare each type.
+
+## Oracle trace files (.trc)
+
+Oracle SQL trace files record all SQL statements executed by a session or user, including bind variable values and wait events. They give HM the most complete picture of your application's runtime SQL.
+
+### Prerequisites
+
+-   You have DBA-level access to the Oracle database.
+-   Your Oracle diagnostic destination (`diagnostic_dest`) has sufficient disk space. Tracing can generate large volumes of data quickly, especially for busy applications.
+
+### Enable tracing
+
+Choose the method that best matches your application's connection model.
+
+#### Logon trigger (recommended for specific database users)
+
+A logon trigger automatically starts tracing every time a specific database user connects. This is the most reliable method when your application connects as a dedicated Oracle schema owner.
+
+```sql
+CREATE OR REPLACE TRIGGER trace_user_logon
+AFTER LOGON ON DATABASE
+BEGIN
+    IF (USER = 'YOUR_APP_USER') THEN
+        DBMS_SESSION.SET_IDENTIFIER('YOUR_APP_USER');
+        EXECUTE IMMEDIATE 'ALTER SESSION SET TRACEFILE_IDENTIFIER = ''APP_TRACE''';
+        DBMS_SESSION.SESSION_TRACE_ENABLE(waits => TRUE, binds => TRUE);
+    END IF;
+END;
+/
+```
+
+Replace `YOUR_APP_USER` with the Oracle schema the application connects as.
+
+To trace multiple users, use an `IN` list:
+
+```sql
+CREATE OR REPLACE TRIGGER trace_multi_user_logon
+AFTER LOGON ON DATABASE
+BEGIN
+    IF (USER IN ('APP_USER_1', 'APP_USER_2')) THEN
+        EXECUTE IMMEDIATE 'ALTER SESSION SET TRACEFILE_IDENTIFIER = ''' || USER || '_TRACE''';
+        DBMS_SESSION.SESSION_TRACE_ENABLE(waits => TRUE, binds => TRUE);
+    END IF;
+END;
+/
+```
+
+#### Client identifier (for pooled or middleware connections)
+
+If your application uses a connection pool where multiple end-users share a single database account, trace by client identifier instead. This requires the application to set a client identifier via `DBMS_SESSION.SET_IDENTIFIER`.
+
+```sql
+EXEC DBMS_MONITOR.CLIENT_ID_TRACE_ENABLE(
+    client_id => 'your_app_client_id',
+    waits     => TRUE,
+    binds     => TRUE
+);
+```
+
+#### Service or module (for specific application features)
+
+To trace all activity from a specific application module or service — for example, a specific report or job — use service/module tracing:
+
+```sql
+EXEC DBMS_MONITOR.SERV_MOD_ACT_TRACE_ENABLE(
+    service_name => 'your_service_name',
+    module_name  => 'YOUR_MODULE',
+    waits        => TRUE
+);
+```
+
+### Run the application
+
+With tracing enabled, run your application against the Oracle database. To get representative coverage, run the full test suite or exercise the key workflows the application uses in production.
+
+### Disable tracing and collect the files
+
+After your application run, disable tracing to stop generating new trace data.
+
+For logon triggers, drop the trigger:
+
+```sql
+DROP TRIGGER trace_user_logon;
+```
+
+For `DBMS_MONITOR` methods, call the corresponding disable procedure:
+
+```sql
+-- Client ID
+EXEC DBMS_MONITOR.CLIENT_ID_TRACE_DISABLE(client_id => 'your_app_client_id');
+
+-- Service/module
+EXEC DBMS_MONITOR.SERV_MOD_ACT_TRACE_DISABLE(
+    service_name => 'your_service_name',
+    module_name  => 'YOUR_MODULE'
+);
+```
+
+Trace files are written to Oracle's trace directory. To find it, run:
+
+```sql
+SELECT value FROM v$diag_info WHERE name = 'Diag Trace';
+```
+
+Collect the `.trc` files that were generated during your application run and upload them to HM.
+
+!!!note
+Always drop logon triggers when you're done. If left in place, they'll generate trace files for every future connection by that user.
+!!!
+
+---
+
+## EDB Query Extractor output files (.out)
+
+The EDB Query Extractor captures SQL executed by your application using Oracle Unified Auditing, which provides persistent storage of audit records — unlike `V$SQL`, which is in-memory and can be cleared between restarts. The extractor exports the captured SQL to a `.out` file compatible with HM's assessment engine.
+
+### Prerequisites
+
+-   Oracle Unified Auditing is enabled on the database.
+-   You have `AUDIT SYSTEM` privilege, or a DBA can configure the audit policy on your behalf.
+
+### Set up the audit policy
+
+Create an audit policy that captures all SQL actions for your application's database user:
+
+```sql
+CREATE AUDIT POLICY trace_style_policy
+    ACTIONS ALL;
+
+AUDIT POLICY trace_style_policy BY YOUR_APP_USER;
+```
+
+Replace `YOUR_APP_USER` with the Oracle schema the application connects as. Enabling the policy for a specific user (rather than for all users) is strongly recommended to limit performance impact and output volume.
+
+### Run the application
+
+With the audit policy active, run your application or test suite. Oracle will record all SQL statements executed by the audited user into `UNIFIED_AUDIT_TRAIL`.
+
+### Extract the SQL
+
+Run the EDB Query Extractor script (`edb_queries_extractor.sql`) against the database to export the captured SQL from `UNIFIED_AUDIT_TRAIL` to a `.out` file. The script is provided as part of the EDB tooling package.
+
+### Disable the audit policy
+
+After extraction, disable the audit policy to stop capturing new records:
+
+```sql
+NOAUDIT POLICY trace_style_policy BY YOUR_APP_USER;
+```
+
+Upload the generated `.out` file to HM for assessment.
+
+---
+
+## Plain SQL files (.sql)
+
+If you already have SQL scripts — for example, scripts used for database initialization, maintenance jobs, or SQL embedded in source code files — you can upload them directly as plain `.sql` files without any Oracle-side configuration.
+
+### Format requirements
+
+Plain SQL files must follow these formatting rules for HM to parse them correctly:
+
+-   Every SQL statement must end with a semicolon (`;`).
+-   Every PL/SQL block (anonymous blocks, stored procedures, triggers) must be terminated by a forward slash (`/`) on its own line, preceded by a blank line.
+-   Files must be encoded in UTF-8.
+
+**Example:**
+
+```sql
+SELECT employee_id, first_name FROM employees WHERE department_id = 10;
+
+BEGIN
+    UPDATE employees SET salary = salary * 1.1 WHERE department_id = 10;
+    COMMIT;
+END;
+
+/
+```
+
+### Limitations
+
+-   **SQL\*Plus commands:** Support for SQL\*Plus commands (such as `SET`, `DEFINE`, `SPOOL`, `PROMPT`, and `@`) is limited. Not all SQL\*Plus commands are recognized, and unsupported commands may cause parsing errors or be silently skipped.
+-   **No schema context:** Because plain SQL files aren't linked to a specific Oracle session or audit trail, HM can't determine the schema owner of the objects referenced. Statements are assessed without schema-level context, which may reduce the precision of compatibility results compared to trace or extractor files. Providing Oracle User UIDs at upload time helps narrow the scope of the assessment.
+-   **No validation of SQL\*Plus commands:** Commands in `.sql` files that reference schema objects aren't validated against an actual database, since there's no active session to resolve them against.
+
+## Related topics
+
+-   [Creating an application record](creating_an_application_record) — Set up an application record and upload SQL files for assessment.
+-   [Reviewing assessment results](reviewing_assessment_results) — Interpret the compatibility report and plan remediation.
+-   [Application assessment overview](../application_assessment/) — Understand how HM assesses application SQL and the supported file formats.
