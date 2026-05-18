@@ -11,7 +11,7 @@ deepToC: true
 
 ### Prerequisites
 
-* *A list of the business goals that your architecture plan should enable (examples: bugdet constraints, desired uptime, desired latency)*
+* *A list of the business goals that your architecture plan should enable (examples: bugdet constraints, desired uptime, and desired latency)*
 
 ### Outcomes 
 
@@ -36,7 +36,7 @@ This guide should be viewed from two perspectives:
 
 * **Current state:** Where are your existing database and application workloads today?
 
-* **Target state:** Where do you intend to deploy HM immmediately, and where do you plan to expand over the next 1-2 years?
+* **Target state:** Where do you intend to deploy HM immediately, and where do you plan to expand over the next 1-2 years?
 
 > **Recommendation:** Acquiring and reviewing diagrams of your current and target state is the most efficient way to complete this phase.
 
@@ -52,7 +52,7 @@ Understanding the physical or logical locations of your database and dependent a
     * Are there **upstream layers of dependency**, and where are those located?
 
 * **Analysis:**
-    * Locality determines the initial scope of the deployment (e.g., single cloud region vs. multi-region).
+    * Locality determines the initial scope of the deployment (for example, single cloud region vs. multi-region).
     * If you plan to span multiple regions, clouds, or hybrid cloud environments, **Postgres Distributed** is likely the appropriate database service recommendation.
     * The locality of upstream applications is key to minimizing network latency.
 
@@ -79,7 +79,7 @@ Activeness describes how your distributed locations are utilized for critical wo
     * Is one location active for OLTP, and the other active for analytical processing (OLAP/BI)?
 
 * **Analysis:**
-    * If your target state requires simultaneous writes to multiple database instances (i.e., true **active/active** across locations), **Postgres Distributed** is the required solution due to its multi-writer capability..
+    * If your target state requires simultaneous writes to multiple database instances (that is, true **active/active** across locations), **Postgres Distributed** is the required solution due to its multi-writer capability..
     * Understanding whether a location is passively waiting (cold standby) or actively running (hot standby) helps define resource requirements and recovery time objectives (RTO).
     * **Business continuity:** The architectural choices around active/passive, active/active, and standby models must balance the organization's tolerance for downtime/data loss against the cost of maintaining redundant systems.
 
@@ -88,7 +88,7 @@ These topics naturally follow the discussion of Activeness and help complete the
 * Ingress traffic routing in terms of the consuming application.
 * Replication at various application layers.
 * Caching layers (and their location relative to the database).
-* Session demands (e.g., is session replication handled at the application layer?).
+* Session demands (for example, is session replication handled at the application layer?).
     
 ### Lifecycle operations
 
@@ -130,13 +130,71 @@ It typically spans multiple data centers.
 
 The legend defines the colors and logical groupings used in the architecture diagram:
 
-* **Locality:** The highest-level physical or logical grouping, such as a physical data center or a geographical region (e.g., "City 1" and "Data Center 1").  
+* **Locality:** The highest-level physical or logical grouping, such as a physical data center or a geographical region (for example, "City 1" and "Data Center 1").  
 * **Kubernetes Cluster:** The complete Kubernetes environment—including all CP and worker nodes—hosting the entire platform.  
-* **EDB HM:** The logical boundary for the core HM components. This is typically implemented as a dedicated Kubernetes namespace (e.g., control-plane).  
-* **Compute Machine:** The virtual machines (e.g., vm01, vm02, vm03) that serve as the Kubernetes worker nodes, providing the CPU, memory, and storage for the cluster.  
+* **EDB HM:** The logical boundary for the core HM components. This is typically implemented as a dedicated Kubernetes namespace (for example, control-plane).  
+* **Compute Machine:** The virtual machines (for example, vm01, vm02, vm03) that serve as the Kubernetes worker nodes, providing the CPU, memory, and storage for the cluster.  
 * **Infrastructure Abstraction:** This critical layer represents Kubernetes-native resources that abstract underlying physical or virtual infrastructure. These resources must be provided by the Kubernetes cluster's environment.  
   * **Example 1: type: LoadBalancer**: This is a Kubernetes Service type that requests an external load balancer. In public cloud environments (like AWS, GCP, Azure), this is automatically provisioned as a managed service. In on-premises or bare-metal deployments, you must provide a solution (like MetalLB) to fulfill these LoadBalancer requests.  
   * **Example 2: StorageClass**: This resource abstracts the "Block Storage" and "Object Storage" requirements. It maps Kubernetes storage requests (Persistent Volume Claims) to actual, provisioned storage hardware or software (like local-pv, Ceph, vSphere, or cloud-based disks).
+
+## HM Control Plane vs. Data Plane
+
+| Attribute | Control Plane (CP) | Data Plane (DP) |
+|---|---|---|
+| **Role** | Orchestration, configuration, and observability | Postgres cluster hosting and replication |
+| **Protocol** | HTTP (REST / gRPC) via Istio service mesh | Postgres wire protocol (TCP) per PG cluster |
+| **Multi-location topology & traffic** | Star — Primary is mandatory hub across locations; Primary pushes Control outbound to each Secondary, Secondaries return Logs to Primary | Optional mesh — locations may be fully isolated or directly peered for Postgres replication; no hub required |
+| **Lifecycle isolation** | All CPs share management context; CP upgrades affect the full estate | Each DP is an independent failure, security, and upgrade domain |
+| **DR role** | Secondary CPs provide management continuity | DPs are the replication targets; hot/cold standby model determined per deployment |
+| **Scenarios** | core, migration, ai | dbaas, analytics, ai |
+
+---
+
+### Protocol and ingress
+
+The simplest way to distinguish the two planes is by protocol.
+
+The **Control Plane is entirely EDB product**, and every component in it speaks HTTP. That HTTP traffic is served and secured by the **Istio service mesh**, which provides a single, centralized ingress surface across all CP services. Authentication, mTLS, and traffic policy are all enforced at the Istio layer before a request reaches any CP component.
+
+The **Data Plane is customer-provisioned Postgres**, and every cluster in it speaks the **Postgres wire protocol (PSQL)**. There's no middleware in the path. Each Postgres cluster listens on its own dedicated TCP connection — there's no shared proxy or mesh aggregating these connections. This is a deliberate design choice: dedicated ingress per cluster maximizes both availability and the security isolation boundary between customer workloads.
+
+In short: **HTTP CP ingress is centralized via Istio; PSQL DP ingress is dedicated per Postgres cluster.**
+
+---
+
+### Lifecycle isolation
+
+Lifecycle isolation is the most operationally significant distinction between the two planes.
+
+The CP and every DP it manages are on **independent upgrade lifecycles**. EDB publishes patches on a monthly cadence for the Long Term Support (LTS) release. Customers are strongly encouraged to apply these promptly, and the architecture makes this practical: **upgrading the CP has no effect on running customer Postgres services on the DP.** There's no maintenance window for Postgres availability when the CP is patched.
+
+These monthly CP patches carry two categories of content:
+
+1. **CP component security patches** — hardening the orchestration layer itself.
+2. **New Postgres container images** — updated images for Postgres engine versions, extensions, and the container host OS, all with current security patches applied.
+
+Once new images are available in the CP, it's **the customer's decision** when to use the CP's orchestration capabilities to roll those images out to their DP Postgres deployments. This preserves full customer control over Postgres upgrade timing while ensuring that hardened images are always available on demand.
+
+---
+
+### Availability and disaster recovery
+
+CP availability and DP availability are independent concerns, and the two planes warrant different recovery strategies.
+
+*Control Plane*
+
+The CP doesn't sit in the data path of customer Postgres traffic. A CP outage doesn't interrupt connections to provisioned Postgres clusters — running workloads continue unaffected. The CP has a robust DR capability: with disciplined operational practice (regular backups, documented runbooks), a CP can be restored in **under one hour**.
+
+*Data Plane*
+
+Because the DP carries live Postgres traffic, higher availability targets require active replication across **failure domains** — optimally across regions. Postgres replication across DP locations (where network peering is provisioned) allows the DP to survive a regional failure without any impact to application connectivity.
+
+*Availability zones*
+
+Both planes can take full advantage of **availability zones within a location**. Every HM deployment location may contain CP elements, DP elements, or both. Any location can be recovered from disaster using backups. The difference is ceiling: the CP's recovery is a restore operation measured in minutes to an hour, while the DP's Postgres clusters have the architectural capacity to remain continuously available through a disaster by maintaining live replicas in other failure domains.
+
+
 
 ## Deployment architectures
 
@@ -146,9 +204,9 @@ Use reference architectures A-D below as reference models to decide which topolo
 This legend above also applies to reference architectures A-D below.
 !!!
 
-### A. Minimum Control Plane
+### Minimum Control Plane
 
-The minimum install colocates the HM control plane (CP) on the Kubernetes control nodes.
+The minimum install colocates the HM Control Plane (CP) on the Kubernetes control nodes.
 
 This is fully functional for:
 
@@ -167,13 +225,13 @@ HM is composed of several core microservices running within the Kubernetes clust
 * **Postgres life cycle operations:** The orchestration engine that manages deployment, scaling, and updates of the databases.
   * *See:* [Cluster Management](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/)
 * **Telemetry:** Collects metrics and logs. This service requires outbound network access to report health status.
-  * *See:* [Monitoring with Hybrid Manager](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/)
+  * *See:* [Monitoring with HM](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/)
 * **Database Migration Assistant:** Facilitates the movement of data from external sources into the platform.
-  * *See:* [Migrating databases with Hybrid Manager](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/)
+  * *See:* [Migrating databases with HM](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/)
 * **Estate:** Manages the inventory of resources creating using the HM DBAAS internal system as well as external databases.
   * *See:* [Enable monitoring>On external database clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/#on-external-database-clusters)
 * **Federation:** Manages secure communication and authorization across multiple HM instances in a Multi-Location topology.
-  * *See:* [Configuring multiple data centers for Hybrid Manager](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/)
+  * *See:* [Configuring multiple data centers for HM](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/)
 
 #### Architectural dependencies
 
@@ -186,7 +244,7 @@ The architecture diagrams above reference several external components. While you
 * **Local network:** The fabric connecting the CP to Data Plane. Latency here drives your Locality decisions.
 * **Container Registry:** The source of truth for application images. For air-gapped designs, this represents your local synchronized registry.
 
-### B. HM Data Plane
+### HM Control Plane + Data Plane
 
 Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual database workloads reside.
 
@@ -198,13 +256,17 @@ Sitting alongside the HM CP is the HM Data Plane (DP). This is where your actual
 
 ![HM Data Plane](../../images/HCP_reference_architectures-dbaas.svg)
 
-### C. Fully featured deployment
+### HM fully featured deployment
 
 This view shows a fully capable HM deployment, including resources like GPU acceleration for AI workloads.
 
 ![HM fully featured](../../images/HCP_reference_architectures-full-featured.svg)
 
-### D. Multi-Location
+---
+
+## Multi-location topologies in EDB Hybrid Manager
+ 
+EDB Hybrid Manager supports multi-location deployments through two distinct but complementary network topologies — one for the Control Plane and one for the Data Plane. Each topology reflects the role and protocol of its plane.
 
 The multi-location capability is a DBaaS offering following a hub and spoke model.
 
@@ -214,12 +276,63 @@ The multi-location capability is a DBaaS offering following a hub and spoke mode
 
 ![HM multi-location](../../images/HCP_reference_architectures-multi-location.svg)
 
+---
+ 
+### Control Plane: star topology
+ 
+![CP star topology](../../images/HCP_control-planes.svg)
+ 
+The Control Plane is arranged in a **star topology**: one designated Primary CP sits at the center and up to five Secondary CPs radiate outward from it.
+ 
+Traffic follows a strict directional pattern. **Control flows outward** from the Primary to each Secondary — configuration, orchestration commands, and lifecycle operations all originate at the hub. **Logs flow inward**, returning from each Secondary back to the Primary. Secondaries have no lateral visibility: they can't control one another, and they can't self-govern. All authority is centralized in the Primary.
+ 
+This hub-and-spoke authority model has an important consequence. Because each Secondary CP is managed by the Primary but is otherwise autonomous in terms of what workloads it hosts, any Secondary can serve an entirely different engagement. Common examples include:
+ 
+- **Dev/test vs. production** — separate Secondaries enforce environment isolation at the infrastructure level
+- **One customer vs. another** — multi-tenant or MSP deployments where workload separation is a contractual or security requirement
+- **On-premises vs. cloud** — a single Primary can govern CPs deployed in a private data center alongside CPs deployed in one or more CSPs
+- **Geo-distributed regions** — each Secondary can reside in a different geographic region, managed from a single operational center of gravity
+The star is connected exclusively over **private network paths** — internal LoadBalancer endpoints accessed via VPC/VNet peering, Transit Gateway, VPN, or equivalent. No Secondary is reachable over a public endpoint.
+ 
+---
+ 
+### Data Plane: optional mesh topology
+ 
+![DP optional mesh topology](../../images/HCP_data-planes.svg)
+ 
+The Data Plane topology is **optional mesh**: any two Data Plane locations may be left entirely isolated, or they may be directly interconnected via VPC/VNet peering for Postgres-level replication. There's no hub, no mandatory center, and no required connectivity between locations.
+ 
+When two Data Planes are peered, the network path enables **direct Postgres replication** between clusters hosted in each location. This is the foundation for two distributed Postgres topologies supported by EDB:
+ 
+- **EDB Postgres Distributed (PGD)** — active/active multi-writer replication across locations, suitable for applications requiring zero RPO and near-zero RTO across regions. See the [PGD documentation](https://www.enterprisedb.com/docs/pgd/latest/).
+- **CloudNativePG distributed** — streaming replication across Kubernetes clusters and failure domains using CloudNativePG's distributed topology. See the [CloudNativePG distributed documentation](https://cloudnative-pg.io/documentation/current/replica_cluster/).
+Data Planes that aren't peered remain fully independent — separate security domains, separate failure domains, separate upgrade timelines. Peering is additive: it introduces a replication path without changing the isolation characteristics of either plane for any other purpose.
+ 
+The optional nature of the mesh means the Data Plane topology is shaped entirely by the customer's **replication and availability requirements**, not by any architectural mandate from HM itself.
+ 
+---
+ 
+### Relationship between the two topologies
+ 
+The CP star and DP mesh are independent overlays on the same set of physical or cloud locations. A location can host a Secondary CP, a Data Plane, or both. The CP star governs what is deployed and how it is managed; the DP mesh governs how Postgres data moves between locations. Neither topology constrains the other.
+ 
+| | Control Plane | Data Plane |
+|---|---|---|
+| **Shape** | Star — mandatory hub | Optional mesh — peer-to-peer |
+| **Hub required** | Yes — Primary CP | No |
+| **Cross-node traffic** | Control out, Logs in | Postgres replication (when peered) |
+| **Isolation model** | Secondaries are independent engagement boundaries | Each DP is an independent failure and security domain |
+| **Network requirement** | Private path to Primary required for all Secondaries | Private path only between peered DPs |
+ 
+---
+
+
 ## Choosing an installation scenario
 
 HM provides a comprehensive suite of capabilities by default. To meet strict security standards and organizational governance, HM supports a modular installation through "scenarios". This allows you to deploy a curated subset of features, effectively reducing the software footprint for security audits and streamlining the UI by removing unauthorized or unlicensed components.
 
 !!!note
-Scenarios are intended for advanced production deployment planning. For pilots, proof of concepts (PoCs), and initial evaluations, EDB recommends a full installation to maintain maximum optionality and ensure all integrated capabilities are available for testing. If this is the case, omit the `scenarios` configuration parameter, as this enables all available scenarios by default.
+Scenarios are intended for advanced production deployment planning. For pilots, proof of concepts (PoCs), and initial evaluations, We recommend a full installation to maintain maximum optionality and ensure all integrated capabilities are available for testing. If this is the case, omit the `scenarios` configuration parameter, as this enables all available scenarios by default.
 !!!
 
 ### Available scenarios
@@ -228,8 +341,8 @@ The four available scenarios are:
 
 | Module      | Description                                               | Included capabilities                                                                                  |
 |-------------|-----------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| `core`      | **Required**. The foundational layer for all deployments. | Estate management, Observability, and system services (Cert-manager, Istio, etc.). |
-| `migration` | Enables schema and data migration tools.                  | Migration Portal integration, Data Migration Service (DMS) and other migration services.               |
+| `core`      | **Required**. The foundational layer for all deployments. | Estate management, Observability, DBaaS provisioning, and system services (Cert-manager, Istio, etc.). |
+| `migration` | Enables schema and data migration tools.                  | Migration Portal integration, Data Migration Service (DMS), and other migration services.               |
 | `analytics` | Large-scale data processing and cataloging.               | Lakehouse cluster management, Data Catalog.                                                         |
 | `ai`        | Tools for building and serving generative AI.             | Sovereign AI, model serving (kserve), Langflow, and GenAI builders.                                    |
 | `dbaas`     | Database clusters management.                             | Postgres cluster management, including provisioning, scaling, and updates.                            |
@@ -251,7 +364,7 @@ When choosing which scenarios to install, consider the following architectural a
 Decide whether your environment requires a full installation or a targeted subset. 
 
 !!! Important
-Currently, modifying installation scenarios after deployment isn't supported. Ensure you install all required capabilities, as you cannot add or remove them once HM is deployed.
+Currently, modifying installation scenarios after deployment isn't supported. Ensure you install all required capabilities, as you can't add or remove them once HM is deployed.
 !!!
 
 ## Impact on configuration
@@ -259,7 +372,7 @@ Currently, modifying installation scenarios after deployment isn't supported. En
 The decisions made during this discovery process directly determine the some of the root parameters of your installation configuration.
 
 While you do not need to create the file yet, your **Architecture Decision Record** should specify the values for these keys.
-The **SRE/Admin** builds on these inputs, by either recording them or beginning/continuing the configuration file in [Phase 2: Gathering your system requirements](/edb-postgres-ai/current/hybrid-manager/install/install_guide/sys_reqs/) and/or uses these values to build the configuration file in **[Phase 4: Preparing your Environment](environment_prep)**.
+The **SRE/Admin** builds on these inputs, by either recording them or beginning/continuing the configuration file in [Phase 2: Gathering your system requirements](/edb-postgres-ai/current/hybrid-manager/install/install_guide/sys_reqs/) and/or uses these values to build the configuration file in **[Phase 4: Preparing your environment](environment_prep)**.
 
 ### Values needed for the two installation methods.
 
@@ -282,7 +395,7 @@ The fields where you input the values are different, as final configuration file
 ### Impact on configuration file
 
 The following YAML snippets show how your architectural decisions above map to the final configuration file structures. 
-There is an example for each installation type.
+There's an example for each installation type.
 
 #### Operator method (`HybridControlPlane` CR)
 
@@ -292,7 +405,7 @@ kind: HybridControlPlane
 metadata:
   name: edbpgai
 spec:
-  flavour: <Kubernetes_Flavor> # e.g., rhos, rke2, aks, eks, gke
+  flavour: <Kubernetes_Flavor> # for example, rhos, rke2, aks, eks, gke
   imageRegistry: <Container_Registry_Domain>/pgai-platform
   version: <Version>
   scenarios: # Omit to install all scenarios by default
@@ -313,7 +426,7 @@ spec:
 #### Bootstrap method (`values.yaml`)
 
 ```yaml
-system: <Kubernetes_Flavor> # e.g., rhos, rke2, aks, eks, gke
+system: <Kubernetes_Flavor> # for example, rhos, rke2, aks, eks, gke
 bootstrapImageName: <Container_Registry_Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes_Flavor>
 bootstrapImageTag: <image-tag-version>
 scenarios: "core,migration,ai,analytics,dbaas"
