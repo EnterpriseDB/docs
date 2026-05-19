@@ -29,7 +29,7 @@ The `server_pool_mode` group option controls the pooling behavior.
 | Mode | Behavior |
 |------|----------|
 | `none` | No pooling. Each client connection gets a dedicated backend connection for its entire lifetime. The backend connection closes when the client disconnects. This mode is the default. |
-| `session` | A backend connection is assigned to a client on first use and returned to the pool when the client disconnects. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state, then re-applies the supported connection parameters for the next client. |
+| `session` | A backend connection is assigned to a client on first use and returned to the pool when the client disconnects. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state. |
 | `transaction` | A backend connection is assigned when a transaction begins and returned to the pool when the transaction ends. Between transactions, the client holds no backend connection, making it available to other clients. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state, then re-applies the client's supported connection parameters for the next transaction. |
 
 The current pool mode is visible in the `server_pool_mode` column of the `bdr.node_group_summary` view.
@@ -58,7 +58,7 @@ In `transaction` mode, where the backend connection can change between transacti
 
 Prepared statements sent via the extended query protocol work correctly in all pool modes.
 
-In `transaction` mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. The next transaction is assigned a potentially different backend where those statements don't exist. Issue `PREPARE`/`EXECUTE` SQL statements inside the transaction where you use them, or use the extended query protocol instead.
+In `transaction` mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. Issue `PREPARE`/`EXECUTE` SQL statements inside the transaction where you use them, or use the extended query protocol instead.
 
 ## Reusing connections
 
@@ -69,6 +69,7 @@ In `session` and `transaction` modes, Connection Manager returns the backend con
 Some Postgres features are incompatible with connection pooling and aren't supported.
 
 - `SET` changes made during a session don't persist in `transaction` mode. Configure session parameters in the connection string instead. See [Managing session parameters](#managing-session-parameters) for details.
+- `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements aren't supported in `transaction` mode. `DISCARD ALL` runs when the backend connection is returned to the pool, deallocating any prepared statements. Issue these statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](#using-prepared-statements) for details.
 - Holdable cursors (`WITH HOLD`) aren't supported in `transaction` mode. They persist beyond the transaction boundary, which conflicts with returning the backend connection to the pool when the transaction ends.
 - `LISTEN` isn't supported in `transaction` mode. A `LISTEN` subscription persists beyond a single transaction, which conflicts with returning the backend connection to the pool.
 - Advisory locks held across transaction boundaries aren't supported in `transaction` mode.
