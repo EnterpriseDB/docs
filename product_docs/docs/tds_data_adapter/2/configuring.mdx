@@ -1,18 +1,19 @@
 ---
-title: "Initial configuration"
+title: "Performing initial configuration"
+navTitle: "Initial configuration"
 ---
 
 Before using TDS foreign data wrapper:
 
-1. Use the [Create extension](#create-extension) command to create the TDS foreign data wrapper extension on the Postgres host.
+1. Use the [CREATE EXTENSION](#creating-the-extension) command to create the TDS foreign data wrapper extension on the Postgres host.
 
-1. Optionally, [Configure FreeTDS](#configure-freetds) for named server entries and character encoding.
+1. Optionally, [Configure FreeTDS](#configuring-freetds) for named server entries and character encoding.
 
-1. Use the [Create server](#create-server) command to define a connection to the TDS database.
+1. Use the [CREATE FOREIGN SERVER](#creating-the-foreign-server) command to create the foreign server that defines a connection to the TDS database.
 
-1. Use the [Create user mapping](#create-user-mapping) command to define a mapping that associates a Postgres role with the server.
+1. Use the [CREATE USER MAPPING](#creating-a-user-mapping) command to define a mapping that associates a Postgres role with the server.
 
-1. Use the [Create foreign table](#create-foreign-table) command to define a table in the Postgres database that corresponds to a table that resides on the remote TDS server.
+1. Use the [CREATE FOREIGN TABLE](#creating-a-foreign-table) command to define a table in the Postgres database that corresponds to a table that resides on the remote TDS server.
 
 
 ## Creating the extension
@@ -29,23 +30,24 @@ CREATE EXTENSION [IF NOT EXISTS] tds_fdw [WITH] [SCHEMA schema_name];
 
   Include the `IF NOT EXISTS` clause to instruct the server to issue a notice instead of returning an error if an extension with the same name already exists.
 
+`WITH`
+
+  A noise word included for readability. It has no effect on the command.
+
 `schema_name`
 
   Optionally specify the name of the schema in which to install the extension's objects.
 
-### Example
 
-The following command installs TDS foreign data wrapper:
-
-```sql
-CREATE EXTENSION tds_fdw;
-```
+The `CREATE EXTENSION` command installs the  TDS foreign data wrapper and its associated objects in the database. You only need to run this command once per database. 
+It creates a default `freetds.conf` during installation — you don't need to create it from scratch. The file typically lives at `/etc/freetds/freetds.conf` (or `/usr/local/etc/freetds.conf` if built from source), and it contains some default entries and comments.
 
 For more information about using the `CREATE EXTENSION` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createextension.html).
 
 ## Configuring FreeTDS
 
-`tds_fdw` uses FreeTDS to connect to TDS databases. You can configure connection parameters either directly in the foreign server definition or in the FreeTDS configuration file `freetds.conf`.
+`tds_fdw` uses FreeTDS to connect to TDS databases. Configuring FreeTDS is optional — you only need it if you want to use named server entries or set the client character encoding. 
+You can configure connection parameters either directly in the foreign server definition or in the FreeTDS configuration file `freetds.conf` (created during FreeTDS installation).
 
 To configure a named server entry in `freetds.conf`:
 
@@ -57,7 +59,7 @@ To configure a named server entry in `freetds.conf`:
     client charset = UTF-8
 ```
 
-You can then refer to this entry by its section name (`mssql_server`) as the `servername` option in your foreign server definition.
+You can then refer to this entry by its section name (`mssql_server`) as the `servername` option in your [foreign server definition](#creating-the-foreign-server).
 
 ### Character sets and encoding
 
@@ -78,7 +80,7 @@ Encrypted connections are handled by FreeTDS. To enable encryption, configure th
 
 For more information on FreeTDS configuration, see the [FreeTDS documentation](https://www.freetds.org/userguide/freetdsconf.html).
 
-## Creating the server
+## Creating the foreign server
 
 Use the `CREATE SERVER` command to define a connection to a foreign server. The syntax is:
 
@@ -87,7 +89,8 @@ CREATE SERVER server_name FOREIGN DATA WRAPPER tds_fdw
     [OPTIONS (option 'value' [, ...])];
 ```
 
-The role that defines the server is the owner of the server. Use the `ALTER SERVER` command to reassign ownership of a foreign server. To create a foreign server, you must have `USAGE` privilege on the foreign-data wrapper specified in the `CREATE SERVER` command.
+The role that defines the foreign server is the owner of the foreign server.  To create a foreign server, you must have `USAGE` privilege on the foreign-data wrapper specified in the `CREATE SERVER` command.
+If you want to change the owner of an existing foreign server, use the `ALTER SERVER` command to reassign ownership.
 
 ### Parameters
 
@@ -141,7 +144,7 @@ CREATE USER MAPPING FOR role_name SERVER server_name
     [OPTIONS (option 'value' [, ...])];
 ```
 
-You must be the owner of the foreign server to create a user mapping for that server.
+The role must be the owner of the foreign server to create a user mapping for that server.
 
 ### Parameters
 
@@ -157,10 +160,10 @@ You must be the owner of the foreign server to create a user mapping for that se
 
   Use the `OPTIONS` clause to specify connection information for the foreign server.
 
-| Option     | Required | Description                                                                                      |
-|------------|----------|--------------------------------------------------------------------------------------------------|
-| `username` | Yes      | The username on the remote server. For Azure SQL Database, use the format `username@servername`. |
-| `password` | Yes      | The password for the remote account.                                                             |
+| Option     | Required | Description                                                                                                                           |
+|------------|----------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `username` | Yes      | The username on the remote server. For Azure SQL Database, use the format `username@servername`. For other databases, use `username`. |
+| `password` | Yes      | The password for the remote account.                                                                                                  |
 
 ### Example
 
@@ -277,7 +280,7 @@ For more information about using the `DROP SERVER` command, see the [PostgreSQL 
 
 ## Drop user mapping
 
-Use the `DROP USER MAPPING` command to remove a mapping that associates a Postgres role with a foreign server. You must be the owner of the foreign server to remove a user mapping for that server.
+Use the `DROP USER MAPPING` command to remove a mapping that associates a Postgres role with a foreign server. The user must be the owner of the foreign server to remove a user mapping for that server.
 
 ```sql
 DROP USER MAPPING [ IF EXISTS ] FOR { user_name | USER | CURRENT_USER | PUBLIC } SERVER server_name;
