@@ -16,13 +16,44 @@ Oracle SQL trace files record all SQL statements executed by a session or user, 
 -   You have DBA-level access to the Oracle database.
 -   Your Oracle diagnostic destination (`diagnostic_dest`) has sufficient disk space. Tracing can generate large volumes of data quickly, especially for busy applications.
 
-### Enable tracing
+### Connecting to the database as SYSDBA
 
-Choose the method that best matches your application's connection model.
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
 
-#### Logon trigger (recommended for specific database users)
+Connect to the Pluggable Database (PDB) where your application data resides:
 
-A logon trigger automatically starts tracing every time a specific database user connects. This is the most reliable method when your application connects as a dedicated Oracle schema owner.
+```shell
+sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME> as sysdba
+```
+
+For example:
+
+```shell
+sqlplus sys/password123@//localhost:1521/ORCLPDB1 as sysdba
+```
+
+</Tab>
+<Tab title="Non-CDB">
+
+Connect to the database instance using the service name or SID:
+
+```shell
+sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+```
+
+For example:
+
+```shell
+sqlplus sys/password123@//localhost:1521/ORCL as sysdba
+```
+
+</Tab>
+</TabContainer>
+
+### Creating a logon trigger
+
+A logon trigger automatically starts tracing every time a specific database user connects. Replace `YOUR_APP_USER` with the Oracle schema the application connects as.
 
 ```sql
 CREATE OR REPLACE TRIGGER trace_user_logon
@@ -37,12 +68,10 @@ END;
 /
 ```
 
-Replace `YOUR_APP_USER` with the Oracle schema the application connects as.
-
 To trace multiple users, use an `IN` list:
 
 ```sql
-CREATE OR REPLACE TRIGGER trace_multi_user_logon
+CREATE OR REPLACE TRIGGER trace_user_logon
 AFTER LOGON ON DATABASE
 BEGIN
     IF (USER IN ('APP_USER_1', 'APP_USER_2')) THEN
@@ -53,70 +82,45 @@ END;
 /
 ```
 
-#### Client identifier (for pooled or middleware connections)
+### Verifying tracing is active
 
-If your application uses a connection pool where multiple end-users share a single database account, trace by client identifier instead. This requires the application to set a client identifier via `DBMS_SESSION.SET_IDENTIFIER`.
-
-```sql
-EXEC DBMS_MONITOR.CLIENT_ID_TRACE_ENABLE(
-    client_id => 'your_app_client_id',
-    waits     => TRUE,
-    binds     => TRUE
-);
-```
-
-#### Service or module (for specific application features)
-
-To trace all activity from a specific application module or service — for example, a specific report or job — use service/module tracing:
+Before running the full application, confirm the trigger is working. Connect as `YOUR_APP_USER` and run:
 
 ```sql
-EXEC DBMS_MONITOR.SERV_MOD_ACT_TRACE_ENABLE(
-    service_name => 'your_service_name',
-    module_name  => 'YOUR_MODULE',
-    waits        => TRUE
-);
+SELECT sysdate FROM dual;
 ```
 
-### Run the application
+Then check the trace directory for a new or updated `.trc` file. If one appears, tracing is working correctly.
 
-With tracing enabled, run your application against the Oracle database. To get representative coverage, run the full test suite or exercise the key workflows the application uses in production.
+### Running the application
 
-### Disable tracing and collect the files
+With tracing confirmed, run your application against the Oracle database. To get representative coverage, run the full test suite or exercise the key workflows the application uses in production.
 
-After your application run, disable tracing to stop generating new trace data.
+### Collecting the trace files
 
-For logon triggers, drop the trigger:
-
-```sql
-DROP TRIGGER trace_user_logon;
-```
-
-For `DBMS_MONITOR` methods, call the corresponding disable procedure:
-
-```sql
--- Client ID
-EXEC DBMS_MONITOR.CLIENT_ID_TRACE_DISABLE(client_id => 'your_app_client_id');
-
--- Service/module
-EXEC DBMS_MONITOR.SERV_MOD_ACT_TRACE_DISABLE(
-    service_name => 'your_service_name',
-    module_name  => 'YOUR_MODULE'
-);
-```
-
-Trace files are written to Oracle's trace directory. To find it, run:
+To find the trace directory, run:
 
 ```sql
 SELECT value FROM v$diag_info WHERE name = 'Diag Trace';
 ```
 
-Collect the `.trc` files that were generated during your application run and upload them to HM.
+This returns the full path to Oracle's trace directory, which follows the structure:
+
+```
+<ORACLE_BASE>/diag/rdbms/<DB_NAME>/<INSTANCE_NAME>/trace/
+```
+
+For example: `/u01/app/oracle/diag/rdbms/orcl/orcl/trace/`
+
+The trace files generated during your application run will be in that directory, named after the instance and your `TRACEFILE_IDENTIFIER` — for example, `orcl_ora_12345_APP_TRACE.trc`. Collect those files and upload them to HM.
 
 !!!note
-Always drop logon triggers when you're done. If left in place, they'll generate trace files for every future connection by that user.
-!!!
+The logon trigger stays active after this step. Drop it when you no longer need to capture traces, to avoid accumulating trace files on future connections:
 
----
+```sql
+DROP TRIGGER trace_user_logon;
+```
+!!!
 
 ## EDB Query Extractor output files (.out)
 
@@ -127,7 +131,7 @@ The EDB Query Extractor captures SQL executed by your application using Oracle U
 -   Oracle Unified Auditing is enabled on the database.
 -   You have `AUDIT SYSTEM` privilege, or a DBA can configure the audit policy on your behalf.
 
-### Set up the audit policy
+### Setting up the audit policy
 
 Create an audit policy that captures all SQL actions for your application's database user:
 
@@ -140,15 +144,15 @@ AUDIT POLICY trace_style_policy BY YOUR_APP_USER;
 
 Replace `YOUR_APP_USER` with the Oracle schema the application connects as. Enabling the policy for a specific user (rather than for all users) is strongly recommended to limit performance impact and output volume.
 
-### Run the application
+### Running the application
 
 With the audit policy active, run your application or test suite. Oracle will record all SQL statements executed by the audited user into `UNIFIED_AUDIT_TRAIL`.
 
-### Extract the SQL
+### Extracting the SQL
 
 Run the EDB Query Extractor script (`edb_queries_extractor.sql`) against the database to export the captured SQL from `UNIFIED_AUDIT_TRAIL` to a `.out` file. The script is provided as part of the EDB tooling package.
 
-### Disable the audit policy
+### Disabling the audit policy
 
 After extraction, disable the audit policy to stop capturing new records:
 
@@ -157,8 +161,6 @@ NOAUDIT POLICY trace_style_policy BY YOUR_APP_USER;
 ```
 
 Upload the generated `.out` file to HM for assessment.
-
----
 
 ## Plain SQL files (.sql)
 
