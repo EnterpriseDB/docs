@@ -9,29 +9,160 @@ The EDB Query Extractor captures SQL executed by your application using Oracle U
 
 ## Prerequisites
 
--   Oracle Unified Auditing is enabled on the database.
--   You have `AUDIT SYSTEM` privilege, or a DBA can configure the audit policy on your behalf.
+-   **Oracle Unified Auditing is enabled on the database.** In Oracle 12c and later, Unified Auditing is available by default in mixed mode. To verify it's active on your database, run:
+
+    ```sql
+    SELECT VALUE FROM V$OPTION WHERE PARAMETER = 'Unified Auditing';
+    ```
+
+    A result of `TRUE` means pure unified auditing is enabled. A result of `FALSE` means mixed mode is active, which still supports Unified Auditing and is sufficient for this workflow. If Unified Auditing isn't available, refer to the [Oracle documentation on enabling Unified Auditing](https://docs.oracle.com/en/database/oracle/oracle-database/19/dbseg/introduction-to-auditing.html#GUID-94381464-53A3-421B-8F13-BD171C867405).
+
+-   **You (or a DBA) have the `AUDIT SYSTEM` privilege.** This privilege is required to create and enable the audit policy in the steps below. The SYSDBA user has it by default. If you're not connecting as SYSDBA, ask a DBA to either grant you the `AUDIT SYSTEM` privilege or run the policy setup on your behalf.
+
+## Connecting to the database
+
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
+
+Connect to the Pluggable Database (PDB) where your application data resides:
+
+```shell
+sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME> as sysdba
+```
+
+For example:
+
+```shell
+sqlplus sys/password123@//localhost:1521/ORCLPDB1 as sysdba
+```
+
+</Tab>
+<Tab title="Non-CDB">
+
+Connect to the database instance using the service name or SID:
+
+```shell
+sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+```
+
+For example:
+
+```shell
+sqlplus sys/password123@//localhost:1521/ORCL as sysdba
+```
+
+</Tab>
+</TabContainer>
 
 ## Setting up the audit policy
 
-Create an audit policy that captures all SQL actions for your application's database user:
+1.  Create an audit policy that captures all SQL actions:
+
+    ```sql
+    CREATE AUDIT POLICY trace_style_policy
+        ACTIONS ALL;
+    ```
+
+1.  Enable the policy for your application's database user. Replace `YOUR_APP_USER` with the Oracle schema the application connects as. Enabling the policy for a specific user (rather than for all users) is strongly recommended to limit performance impact and output volume.
+
+    ```sql
+    AUDIT POLICY trace_style_policy BY YOUR_APP_USER;
+    ```
+
+## Confirming the audit policy is working
+
+Before running your application, confirm that Oracle is recording SQL for the audited user.
+
+1.  Connect to the database as `YOUR_APP_USER`:
+
+    <TabContainer syncKey="db_type">
+    <Tab title="CDB/PDB">
+
+    ```shell
+    sqlplus YOUR_APP_USER/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME>
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    ```shell
+    sqlplus YOUR_APP_USER/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE>
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1.  Run a pair of test statements to generate audit records:
+
+    ```sql
+    CREATE TABLE junk(a int);
+    DROP TABLE junk;
+    ```
+
+1.  Reconnect as SYSDBA and query `UNIFIED_AUDIT_TRAIL` to confirm the records were captured:
+
+    ```sql
+    SELECT SQL_TEXT, ACTION_NAME, STATEMENT_ID, SESSIONID, EVENT_TIMESTAMP
+    FROM UNIFIED_AUDIT_TRAIL
+    WHERE DBUSERNAME = UPPER('YOUR_APP_USER')
+      AND (OBJECT_SCHEMA IS NULL
+           OR OBJECT_SCHEMA NOT IN ('SYS', 'SYSTEM', 'AUDSYS', 'USERENV', 'GSMADMIN_INTERNAL'))
+      AND SQL_TEXT IS NOT NULL
+      AND SESSIONID IS NOT NULL
+      AND STATEMENT_ID IS NOT NULL;
+    ```
+
+    If the `CREATE TABLE` and `DROP TABLE` statements appear in the results, the policy is working correctly.
+
+## Granting Query Extractor privileges
+
+Before running the EDB Query Extractor, grant the audited user the privileges it needs to read the audit trail:
 
 ```sql
-CREATE AUDIT POLICY trace_style_policy
-    ACTIONS ALL;
-
-AUDIT POLICY trace_style_policy BY YOUR_APP_USER;
+GRANT AUDIT_VIEWER TO YOUR_APP_USER;
+GRANT SELECT ON UNIFIED_AUDIT_TRAIL TO YOUR_APP_USER;
+GRANT SELECT ON sys.v_$instance TO YOUR_APP_USER;
 ```
-
-Replace `YOUR_APP_USER` with the Oracle schema the application connects as. Enabling the policy for a specific user (rather than for all users) is strongly recommended to limit performance impact and output volume.
 
 ## Running the application
 
-With the audit policy active, run your application or test suite. Oracle will record all SQL statements executed by the audited user into `UNIFIED_AUDIT_TRAIL`.
+With the audit policy confirmed, run your application or test suite. Oracle will record all SQL statements executed by the audited user into `UNIFIED_AUDIT_TRAIL`.
 
 ## Extracting the SQL
 
-Run the EDB Query Extractor script (`edb_queries_extractor.sql`) against the database to export the captured SQL from `UNIFIED_AUDIT_TRAIL` to a `.out` file. The script is provided as part of the EDB tooling package.
+Run the EDB Query Extractor script (`edb_queries_extractor.sql`) as `YOUR_APP_USER` to export the captured SQL from `UNIFIED_AUDIT_TRAIL` to a `.out` file. The script is provided as part of the EDB tooling package.
+
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
+
+```shell
+sqlplus YOUR_APP_USER/<PASSWD>@//<HOST>:<PORT>/<PDB_NAME>
+```
+
+</Tab>
+<Tab title="Non-CDB">
+
+```shell
+sqlplus YOUR_APP_USER/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE>
+```
+
+</Tab>
+</TabContainer>
+
+Then run the script:
+
+```sql
+@/path/to/edb_queries_extractor.sql
+```
+
+The script prompts for the following information:
+
+- **Output file location** — the directory where the `.out` file will be written (for example, `/tmp`)
+- **Username** — the Oracle user whose audit records to export (for example, `YOUR_APP_USER`)
+- **Start timestamp** — the start of the capture window, in `DD-MM-YYYY HH24:MI:SS` format
+- **End timestamp** — the end of the capture window, in `DD-MM-YYYY HH24:MI:SS` format
+
+The script writes the output to a file named `USERNAME_YYMMDDHHMMSS.out` in the specified directory — for example, `/tmp/YOUR_APP_USER_260414133704.out`.
 
 ## Disabling the audit policy
 
