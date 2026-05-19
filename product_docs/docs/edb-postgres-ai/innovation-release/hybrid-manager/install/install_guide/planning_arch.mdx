@@ -155,7 +155,7 @@ The legend defines the colors and logical groupings used in the architecture dia
 
 The simplest way to distinguish the two planes is by protocol.
 
-The **Control Plane is entirely EDB product**, and every component in it speaks HTTP. That HTTP traffic is served and secured by the **Istio service mesh**, which provides a single, centralized ingress surface across all CP services. Authentication, mTLS, and traffic policy are all enforced at the Istio layer before a request reaches any CP component.
+The **Control Plane is entirely EDB product**, and every component in it speaks HTTP. That HTTP traffic is served and secured by the **Istio service mesh**, which provides a single, centralized ingress surface across all CP services. Authentication, TLS, and traffic policy are all enforced at the Istio layer before a request reaches any CP component.
 
 The **Data Plane is customer-provisioned Postgres**, and every cluster in it speaks the **Postgres wire protocol (PSQL)**. There's no middleware in the path. Each Postgres cluster listens on its own dedicated TCP connection — there's no shared proxy or mesh aggregating these connections. This is a deliberate design choice: dedicated ingress per cluster maximizes both availability and the security isolation boundary between customer workloads.
 
@@ -167,7 +167,7 @@ In short: **HTTP CP ingress is centralized via Istio; PSQL DP ingress is dedicat
 
 Lifecycle isolation is the most operationally significant distinction between the two planes.
 
-The CP and every DP it manages are on **independent upgrade lifecycles**. EDB publishes patches on a monthly cadence for the Long Term Support (LTS) release. Customers are strongly encouraged to apply these promptly, and the architecture makes this practical: **upgrading the CP has no effect on running customer Postgres services on the DP.** There's no maintenance window for Postgres availability when the CP is patched.
+The CP and every DP it manages are on **independent upgrade lifecycles**. EDB publishes patches on a monthly cadence for the Long Term Support (LTS) release. Customers are strongly encouraged to apply these promptly, and the architecture makes this practical: **upgrading the CP does not restart customer Postgres on the DP.** Applications continue serving connections through the upgrade, and there's no maintenance window required for Postgres availability when the CP is patched.  This separation holds because the embedded CloudNativePG (CNPG) operator that manages Postgres on the DP is configured for **in-place instance-manager updates**. When the operator is upgraded, the instance manager binary inside each Postgres pod is swapped while the running postmaster continues serving traffic. No pod restart, no switchover, no application-visible event.
 
 These monthly CP patches carry two categories of content:
 
@@ -175,6 +175,10 @@ These monthly CP patches carry two categories of content:
 2. **New Postgres container images** — updated images for Postgres engine versions, extensions, and the container host OS, all with current security patches applied.
 
 Once new images are available in the CP, it's **the customer's decision** when to use the CP's orchestration capabilities to roll those images out to their DP Postgres deployments. This preserves full customer control over Postgres upgrade timing while ensuring that hardened images are always available on demand.
+
+**Exception to the rule**
+
+A small fraction of CNPG operator releases — historically well under 10% — change the Postgres **Pod specification itself**, for example modifications to anti-affinity rules, container probes, or init containers. In these releases, Kubernetes must recreate the pods to match the new spec, and a rolling restart of HA Postgres clusters is unavoidable as part of the CP upgrade, even with in-place instance-manager updates enabled.  When an HM release embeds one of these CNPG versions, **EDB calls this out explicitly in the HM upgrade documentation and in pre-upgrade guidance to affected customers.** This means customers know in advance whether a given HM upgrade is fully non-disruptive or whether a rolling Postgres restart will occur as part of it — and can plan a maintenance window only when one is actually required.
 
 ---
 
@@ -194,14 +198,10 @@ Because the DP carries live Postgres traffic, higher availability targets requir
 
 Both planes can take full advantage of **availability zones within a location**. Every HM deployment location may contain CP elements, DP elements, or both. Any location can be recovered from disaster using backups. The difference is ceiling: the CP's recovery is a restore operation measured in minutes to an hour, while the DP's Postgres clusters have the architectural capacity to remain continuously available through a disaster by maintaining live replicas in other failure domains.
 
-
-
 ## Deployment architectures
 
-Use reference architectures A-D below as reference models to decide which topology matches your "[Target state](#architectural-discovery)."
-
 !!! Note
-This legend above also applies to reference architectures A-D below.
+This legend above also applies to deployment architectures below.
 !!!
 
 ### Minimum Control Plane
@@ -272,7 +272,7 @@ The multi-location capability is a DBaaS offering following a hub and spoke mode
 
 1.  As a DBaaS offering, secondary HMs have a reduced capability set compared to the primary.
 2.  The primary HM controls the Secondary.
-3.  Connectivity is established using load-balanced endpoints&mdash;not a network mesh service, like Submariner for example.
+3.  Connectivity is established using load-balanced endpoints; not a network mesh service, like Submariner for example.
 
 ![HM multi-location](../../images/HCP_reference_architectures-multi-location.svg)
 
