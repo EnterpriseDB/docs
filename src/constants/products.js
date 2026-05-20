@@ -133,7 +133,7 @@ const products = {
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
-     tds_data_adapter: {
+  tds_data_adapter: {
     name: "TDS Foreign Data Wrapper",
     iconName: IconNames.CONNECT,
   },
