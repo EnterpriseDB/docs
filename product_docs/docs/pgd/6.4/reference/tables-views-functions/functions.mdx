@@ -1086,25 +1086,50 @@ bdr.lag_control()
 
 ### `bdr.routing_leadership_transfer`
 
-Changing the routing leader transfers the leadership of the node group to another node.
+Changing the routing leader transfers the leadership of the node group to another node. If `leader_name` is `NULL`, the system automatically selects the most appropriate node based on write leader progress.
 
 #### Synopsis
 
 ```sql
 bdr.routing_leadership_transfer(node_group_name text,
-              leader_name text,
+              leader_name text DEFAULT NULL,
               transfer_method text DEFAULT 'strict',
               transfer_timeout interval DEFAULT '10s');
 ```
 
 #### Parameters
 
-| Name               | Type     | Default    | Description                                                                                        |
-| ------------------ | -------- | ---------- | -------------------------------------------------------------------------------------------------- |
-| `node_group_name`  | text     |            | Name of group where the leadership transfer is requested.                                          |
-| `leader_name`      | text     |            | Name of node that will become write leader.                                                        |
-| `transfer_method`  | text     | `'strict'` | Type of the transfer. It can be `'fast'` or the default, `'strict'`, which checks the maximum lag. |
-| `transfer_timeout` | interval | '10s'      | Timeout of the leadership transfer. Default is 10 seconds.                                         |
+| Name               | Type     | Default    | Description                                                                                                                                                                                          |
+| ------------------ | -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `node_group_name`  | text     |            | Name of group where the leadership transfer is requested.                                                                                                                                            |
+| `leader_name`      | text     | `NULL`       | Name of node that will become write leader. If NULL, the system automatically selects the most appropriate candidate based on write leader progress.                                                  |
+| `transfer_method`  | text     | `'strict'` | Type of the transfer. It can be `'fast'` or the default, `'strict'`, which checks the maximum lag.                                                                                                   |
+| `transfer_timeout` | interval | `'10s'`    | Timeout of the leadership transfer. Default is 10 seconds. When using auto-selection (`leader_name` is NULL), the system retries selecting the furthest-progressed node until the timeout is reached. |
+
+#### Notes
+
+When `leader_name` is `NULL`, the function selects the best candidate node by identifying the node with the furthest write leader progress and retrying selection until a suitable candidate is available or the timeout is reached. Automatic selection is useful for automated failover scenarios where manual node selection isn't required. When using Quorum Commit as the commit scope kind, pass `NULL` for `leader_name` to trigger automatic selection of the most appropriate node.
+
+#### Selecting a candidate automatically
+
+During automatic leader selection (when `leader_name` is `NULL`):
+
+- Route-fenced nodes (nodes with `route_fence` enabled via [`bdr.alter_node_option`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_option)) aren't considered candidates for leadership transfer.
+- Nodes with `route_writes` set to `false` aren't considered candidates for leadership transfer.
+- The `route_priority` option doesn't influence automatic selection. Selection is based solely on write leader progress among eligible nodes.
+
+#### Running in a mixed-version cluster
+
+Automatic leader selection (passing `NULL` for `leader_name`) requires PGD 6.4 and Raft protocol version 6004 or above.
+
+When calling the function on pre-6.4 nodes, the function exits without performing any action, as the older function signature requires a non-`NULL` `leader_name` parameter.
+
+When calling the function on 6.4 nodes, the behavior depends on the Raft protocol version:
+
+- If Raft protocol version is below 6004 and a PGD 6.4 or above node is the Raft leader, the function returns `ERROR: leadership auto transfer is supported from raft protocol version 6004 and above`.
+- If a pre-6.4 node is the Raft leader, the operation times out and returns `ERROR: switchover timed out`.
+
+For reliable automatic leader selection, ensure all nodes in the cluster are running PGD 6.4 or later with Raft protocol version 6004 or above.
 
 ## CAMO functions
 
