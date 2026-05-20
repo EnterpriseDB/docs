@@ -576,6 +576,7 @@ const Page = () => {
             <BannerWideLink to="/mysql_data_adapter/latest">
               MySQL
             </BannerWideLink>
+            <BannerWideLink to="/tds_data_adapter/latest">TDS</BannerWideLink>
 
             <BannerDivider
               headingText="Developer Tools"

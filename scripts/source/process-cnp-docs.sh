@@ -37,6 +37,7 @@ function do_import {
 
   node "$DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs" \
     -f "src/**/*.md" \
+    -p "cnp/convert-rel-notes" \
     -p "cnp/add-frontmatters" \
     -p "cnp/flatten-appendices" \
     -p "cnp/replace-github-urls" \

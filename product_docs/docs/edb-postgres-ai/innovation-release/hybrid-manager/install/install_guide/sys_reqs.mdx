@@ -57,6 +57,7 @@ Use this checklist to verify at a high level that you have all necessary infrast
   - 5.3 [Portal certificate management/TLS](#53-certificate-management)
 - 6. [ ] [Block storage (Database & logs)](#6-block-storage-database--logs)
   - 6.1 [Volume snapshots](#61-volume-snapshots)
+  - 6.2 [Excluding storage from Hybrid Manager discovery](#62-excluding-storage-from-hybrid-manager-discovery)
 - 7. [ ] [Object storage](#7-object-storage)
 - 8. [ ] [Container registry](#8-container-registry)
 - 9. [ ] [Identity provider (IdP)](#9-identity-provider-idp)
@@ -248,7 +249,8 @@ kubectl get svc
 
 ## 5. Ingress
 
-You must choose an ingress strategy that matches your infrastructure capabilities. 
+You must choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own Portal and services, as well as individual load balancers and NodePorts for each Postgres database you create.
+Choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own portal and services. It can also deploy individual load balancers and NodePorts for each Postgres database you create.
 The table below defines the supported combinations of DNS Management, Endpoint Types, and SSL Termination.
 
 | Scenario | DNS Management | Endpoint Type | Portal SSL/TLS Termination |
@@ -267,18 +269,31 @@ Examples of load balancer controllers range from the AWS Load Balancer controlle
 
 **General requirements**
 
-* **TCP:** The load balancer must be configured for **TCP passthrough (TCP-only)** and must **not** terminate SSL. SSL is terminated by the HM Ingress Gateway.
-
 * **Firewall Annotations:** If using a specific provider scheme (e.g., AWS Internet Facing), you know the correct `resourceAnnotations` to provision the load balancer correctly:
 
 *AWS example annotation*: 
 
 ```yaml
+globalParameters:
+  load_balancer_mode: public
+  load_balancer_provider: aws
 resourceAnnotations:
   - name: istio-ingressgateway
     kind: Service
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+```
+
+*MetalLB example annotation*:
+
+```yaml
+globalParameters:
+  load_balancer_mode: custom-only
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      metallb.io/address-pool: production-public-ips
 ```
 
 **Configuration dependencies**
@@ -288,6 +303,12 @@ resourceAnnotations:
 | **Enable LB** | `spec.globalParameters.load_balancer_mode` | `parameters.global.load_balancer_mode` | `"public"`, `"private"`, or `"disabled"` |
 | **Provider** | `spec.globalParameters.load_balancer_provider` | `parameters.global.load_balancer_provider` | `aws`, `azure`, or `gcp` |
 | **Annotations** | `spec.resourceAnnotations[]` | `resourceAnnotations` | Provider-specific list (see below). |
+
+
+The `load_balancer_mode` parameter lets you instruct HM to create a load balancer service for both the Portal and the Postgres databases. If set to 
+`disabled`, both the portal and the Postgres databases use NodePorts; otherwise, they use a load balancer. The `public` and `private` values only
+ affect the Postgres databases and have no impact on the portal load balancer. Similarly, the `load_balancer_provider` parameter applies only to Postgres clusters.
+  The `resourceAnnotations` parameter is relevant only for the HM Portal.
 
 **Spot validation**
 
@@ -299,14 +320,17 @@ kubectl get pods -A | grep -i 'load\|lb\|router\|metallb\|gateway'
 
 **HM control plane ports**
 
-The following are the Hybrid Manager Control Plane ports:
+The following ports must be open on your load balancer or firewall for Hybrid Manager to function:
 
-| Port | Protocol | Description |
-| :--- | :--- | :--- |
-| **443** | HTTPS | HM Portal (HTTPS ingress) |
-| **8444** | TCP | HM internal API |
-| **9443** | gRPC | Beacon gRPC API |
-| **9445** | TCP | Spire TLS |
+| Port | Protocol | Service | Description |
+| :--- | :--- | :--- | :--- |
+| **80** | TCP | `http2` | HM Portal (HTTP — redirects to HTTPS) |
+| **443** | TCP | `https` | HM Portal (HTTPS ingress) |
+| **9443** | TCP | `grpc-tls` | Beacon gRPC API |
+| **8444** | TCP | `spire-tls` | Spire TLS |
+| **9445** | TCP | `beacon-spire` | Beacon Spire TLS |
+| **24224** | TCP | `fluent-bit` | Inter-cluster log forwarding (multi-DC only) |
+| **10901** | TCP | `thanos-query` | Inter-cluster metrics (multi-DC only) |
 
 **Postgres ports (Data Plane)**
 
@@ -316,6 +340,14 @@ With a proper load balancer setup, the following are Postgres ports:
 | :--- | :--- | :--- |
 | **5432** | TCP | Default PSQL |
 | **6432** | TCP | PGD Connection Manager PSQL |
+
+
+**SSL Termination**
+
+HM is exposed through the Istio Gateway by using TLS. If you are using a load balancer in front of Istio to access HM, you have two options:
+
+1. **SSL passthrough**: Configure the load balancer to forward TCP traffic without modification.
+2. **TLS termination**: Terminate the TLS session from the client at the load balancer, then have the load balancer establish a new TLS connection with Istio.
 
 #### 5.1.2 NodePort alternative
 
@@ -344,16 +376,16 @@ If using NodePort for ingress, the following specific ports must use **NodePort*
 
 **Default NodePort assignments**
 
-| NodePort Variable | Port | Description |
-| :--- | :--- | :--- |
-| `parameters.upm-istio-gateway.ingress_http_node_port` | **32542** | HM Portal (HTTP) |
-| `parameters.upm-istio-gateway.ingress_https_node_port` | **30288** | HM Portal (HTTPS) |
-| `parameters.upm-istio-gateway.ingress_grpc_tls_node_port` | **30290** | Beacon gRPC |
-| `parameters.upm-istio-gateway.ingress_spire_tls_node_port` | **30292** | Spire TLS |
-| `parameters.upm-istio-gateway.ingress_beacon_spire_tls_node_port` | **30294** | Beacon Spire TLS |
-| `parameters.upm-istio-gateway.ingress_thanos_query_tls_node_port` | **30296** | Thanos-query TLS (inter-cluster metrics) |
-| `parameters.upm-istio-gateway.ingress_fluent_bit_tls_node_port` | **30298** | Fluent-bit TLS (inter-cluster logs) |
-| `parameters.upm-istio-gateway.enable_server_session` | n/a | Enable server stored session (`"true"` or `"false"`) |
+| NodePort variable | Default port | LB port | Description |
+| :--- | :--- | :--- | :--- |
+| `parameters.upm-istio-gateway.ingress_http_node_port` | **32542** | 80 | HM Portal (HTTP) |
+| `parameters.upm-istio-gateway.ingress_https_node_port` | **30288** | 443 | HM Portal (HTTPS) |
+| `parameters.upm-istio-gateway.ingress_grpc_tls_node_port` | **30290** | 9443 | Beacon gRPC TLS |
+| `parameters.upm-istio-gateway.ingress_spire_tls_node_port` | **30292** | 8444 | Spire TLS |
+| `parameters.upm-istio-gateway.ingress_beacon_spire_tls_node_port` | **30294** | 9445 | Beacon Spire TLS |
+| `parameters.upm-istio-gateway.ingress_thanos_query_tls_node_port` | **30296** | 10901 | Inter-cluster metrics (multi-DC only) |
+| `parameters.upm-istio-gateway.ingress_fluent_bit_tls_node_port` | **30298** | 24224 | Inter-cluster log forwarding (multi-DC only) |
+| `parameters.upm-istio-gateway.enable_server_session` | n/a | n/a | Enable server stored session (`"true"` or `"false"`) |
 
 **Postgres NodePorts**
 
@@ -500,6 +532,43 @@ Verify that a snapshot class is configured and available:
 
 ```bash
 kubectl get volumesnapshotclass
+```
+
+### 6.2 Excluding storage from Hybrid Manager discovery
+
+In shared Kubernetes environments, some `StorageClasses` or `VolumeSnapshotClasses` may not be suitable for Postgres workloads — for example, GPU- or HM-only classes.
+By default, every discovered class appears in the Hybrid Manager **Create Cluster** dropdowns, which can lead operators to pick a class on which a Postgres cluster will never successfully deploy.
+
+To hide a class from the Hybrid Manager provisioning UI, apply the `beacon.enterprisedb.com/exclude-storage-from-dbaas` label with value `true`:
+
+```bash
+kubectl label storageclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+kubectl label volumesnapshotclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+```
+
+Behavior:
+
+* **Opt-in:** Only the exact value `"true"` excludes a class. An absent label, or any other value, preserves current behavior — the feature is a no-op for existing deployments.
+
+* **Default-safe:** An excluded `StorageClass` is never promoted to Hybrid Manager's discovered default, even if it carries the `storageclass.kubernetes.io/is-default-class` annotation.
+
+* **Takes effect on the next agent heartbeat:** No agent restart is required.
+
+* **UI-only:** The label hides the class from Hybrid Manager's provisioning UI. Workloads that reference the class by name — for example, a custom resource or a direct `kubectl apply` — can still use it.
+
+To restore a class to the provisioning UI, remove the label:
+
+```bash
+kubectl label storageclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas-
+kubectl label volumesnapshotclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas-
+```
+
+##### Validation
+
+Audit which classes are currently excluded:
+
+```bash
+kubectl get sc,volumesnapshotclass -l beacon.enterprisedb.com/exclude-storage-from-dbaas=true
 ```
 
 ## 7. Object storage
