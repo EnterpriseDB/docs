@@ -12,12 +12,12 @@ deepToC: true
 - A running Kubernetes cluster meeting the [system requirements](../install_guide/sys_reqs).
 - All cluster nodes deployed on a private subnet with no public IPs (see [Security considerations](#security-considerations)).
 - [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/) installed and configured on your management workstation.
-- A valid [EDB Repos 2.0](https://www.enterprisedb.com/docs/repos/getting_started/) token.
-- `kubectl`, `helm`, and `yq` installed and authenticated against the cluster.
+- `kubectl` installed and authenticated against the cluster.
+- `yq` (Command-line YAML processor).
 
 * * *
 
-The EDB Postgres AI HCP Operator embeds a container registry that runs alongside the operator itself: the same operator image starts as either the controller manager or the registry, depending on its launch command. Enabling the registry doesn't require syncing any additional artifacts beyond the operator image.
+The EDB Postgres AI HCP Operator embeds a container registry, defined by the `HMRegistry` custom resource, that can run alongside the operator itself. Enabling the registry doesn't require syncing any additional artifacts beyond the operator image.
 
 Use this registry for **air-gapped or fully internal deployments** where you either don't have or don't want to maintain a private registry external to HM. After installing the operator, you sync EDB images into the in-cluster registry once, and the rest of the platform pulls from it.
 
@@ -37,170 +37,120 @@ This setup is only safe when **all cluster nodes sit on a private subnet with no
 If your nodes have public IPs, don't use the in-cluster registry. Use a private registry that is external to HM, as documented in [Syncing images to a local private registry](./sync_images).
 !!!
 
-### Create the operator namespace
+### Install HMRegistry
 
-```bash
-export EDB_OPERATOR_NAMESPACE=edbpgai-bootstrap
-kubectl create namespace $EDB_OPERATOR_NAMESPACE \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
+`HMRegistry` is a custom resource that deploys an in-cluster OCI image registry intended for Hybrid Manager workloads. The operator provisions a Deployment, Service, PVC, and ConfigMap for the registry, and on OpenShift it also patches `image.config.openshift.io/cluster` so the cluster's container runtime trusts the registry's NodePort/ClusterIP endpoint as an insecure source.
 
-### Create the upstream pull secret
-
-The operator pod pulls its image from EDB Repos 2.0 at install time. Create an `edb-cred` secret with your EDB credentials:
-
-```bash
-kubectl create secret docker-registry edb-cred \
-  --namespace $EDB_OPERATOR_NAMESPACE \
-  --docker-server=docker.enterprisedb.com \
-  --docker-username=<EDB_USERNAME> \
-  --docker-password=<EDB_REPOS_TOKEN> \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-### Install the operator with the registry enabled
-
-Create a `values.yaml` overriding the operator chart's defaults to enable the embedded registry and reference your pull secret:
-
-```yaml
-controllerManager:
-  manager:
-    image:
-      tag: <OPERATOR_VERSION>   # for example, v2026.4.1
-
-hmRegistry:
-  enabled: true
-  pvc:
-    storageRequest: 60Gi
-
-imagePullSecrets:
-  - name: edb-cred
-```
-
-!!! Note Storage sizing
-A full HM image set is roughly 50 GiB and grows over time. Set `hmRegistry.pvc.storageRequest` with enough headroom for at least one upgrade cycle.
-!!!
-
-Add the EDB chart repo and install the operator. Replace `<EDB_SUBSCRIPTION_TOKEN>` with your EDB Repos 2.0 token.
-
-```bash
-helm repo add enterprisedb-edbpgai \
-  "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
-helm repo update
-
-helm install my-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
-  --namespace $EDB_OPERATOR_NAMESPACE \
-  --values values.yaml \
-  --version <OPERATOR_VERSION>
-```
-
-Confirm both pods come up:
-
-```bash
-kubectl get pods -n $EDB_OPERATOR_NAMESPACE
-```
-
-You should see the operator manager and the registry pod, both `Running`.
-
-### Port-forward to the in-cluster registry
-
-To push images from your management workstation, port-forward the registry service. Run it in a loop in the background so transient disconnects don't interrupt the sync:
-
-```bash
-( while true; do
-    kubectl port-forward svc/edb-hcp-operator-hm-registry 5000:5000 \
-      -n $EDB_OPERATOR_NAMESPACE
-    sleep 2
-  done ) &
-
-until curl -sf http://localhost:5000/v2/; do sleep 1; done
-```
-
-Stop the loop with `kill %1` once the sync is complete.
-
-### Sync images into the in-cluster registry
-
-Mirror EDB images from EDB Repos 2.0 into the in-cluster registry. The `--insecure-destination-registry` flag is required, because the in-cluster registry serves plain HTTP:
-
-```bash
-export EDBPGAI_RELEASE=<EDB-pgai-release-version>   # for example, v2026.4.1
-export CS_EDB_TOKEN=<your-edb-repos-token>
-export EDB_SOURCE_REGISTRY=pgai-platform
-
-edbctl image sync-to-local-registry \
-  --version "${EDBPGAI_RELEASE}" \
-  --source-registry-username "${EDB_SOURCE_REGISTRY}" \
-  --source-registry-password "${CS_EDB_TOKEN}" \
-  --destination-registry-uri "localhost:5000" \
-  --insecure-destination-registry
-```
-
-For the full set of `edbctl image sync-to-local-registry` options, see [Syncing images to a local private registry](./sync_images).
-
-### Expose the registry to nodes via NodePort
-
-`containerd` on each node can't resolve in-cluster service DNS, and rejects the plain-HTTP ClusterIP. Exposing the registry as a `NodePort` lets each kubelet pull from `localhost:<nodePort>`:
-
-```bash
-kubectl get svc edb-hcp-operator-hm-registry \
-  -n $EDB_OPERATOR_NAMESPACE -o yaml \
-  | yq '.metadata.name = "edb-hcp-operator-hm-registry-nodeport"
-        | .spec.type = "NodePort"
-        | .spec.ports[0].nodePort = 30500
-        | del(.spec.clusterIP, .spec.clusterIPs, .metadata.resourceVersion, .metadata.uid, .status)' \
-  | kubectl apply -f -
-```
-
-Verify:
-
-```bash
-kubectl get svc edb-hcp-operator-hm-registry-nodeport -n $EDB_OPERATOR_NAMESPACE
-```
-
-### Configure the HybridControlPlane
-
-In your `HybridControlPlane` CR, point image references at `localhost:30500` and allow insecure registry discovery:
+Create a local file called `hm_registry.yaml` and add the following content:
 
 ```yaml
 apiVersion: edbpgai.edb.com/v1alpha1
-kind: HybridControlPlane
+kind: HMRegistry
 metadata:
-  name: edbpgai
+  name: hm-registry
+  annotations:
+    biganimal.enterprisedb.io/deletion-protect: "enabled"
 spec:
-  imageRegistry: localhost:30500
-  version: <HM_VERSION>           # for example, v2026.4.1
-
-  beaconAgent:
-    provisioning:
-      imagesetDiscoveryContainerRegistryURL: localhost:30500
-      imagesetDiscoveryAuthenticationType: token
-      imagesetDiscoveryAllowInsecureRegistry: true
-
-  # ... your other spec fields
+  mode: Insecure
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+  storage:
+    pvc:
+      size: 120Gi
 ```
 
-Apply:
+!!! Note Storage sizing
+A full HM image set is roughly 50 GiB. Set `spec.storage.pvc.size` in the HMRegistry custom resource with enough headroom for at least one upgrade cycle.
+!!!
+
+Now run:
 
 ```bash
-kubectl apply -f hybridmanager.yaml
+kubectl apply -f hm_registry.yaml
 ```
 
-For the rest of the HCP manifest, see [Phase 5: Installing Hybrid Manager](../install_guide/install_hm).
+You can now follow the creation of the HMRegistry via:
 
-### Common pitfalls
+```bash
+kubectl get hmregistries.edbpgai.edb.com
+```
 
-**Version mismatch.** Three places must use the same release tag:
+When finished, you will see output that looks similar to this:
 
-- `controllerManager.manager.image.tag` in the operator `values.yaml`
-- `--version` on `edbctl image sync-to-local-registry`
-- `spec.version` on the HCP CR
+```bash
+$ kubectl get hmregistries.edbpgai.edb.com
+NAME          PHASE   MESSAGE               CRI URI           KUBE URI
+hm-registry   Ready   HMRegistry is ready   localhost:30183   hm-registry-service.edbpgai-bootstrap.svc.cluster.local:5000
+```
 
-A mismatch produces `ImagePullBackOff` errors that are hard to trace.
+And the Operator will be managing a corresponding config-map, deployment, pod, pvc, and service, in the `edbpgai-bootstrap` namespace.  You can see these via:
 
-**Port-forward dropping mid-sync.** A 50+ GiB sync takes time. The `while true; do ... done` loop above ensures the forward reconnects automatically.
+```bash
+kubectl get cm,deployment,pods,pvc,svc -n edbpgai-bootstrap
+```
 
-**Registry storage exhaustion.** If the PVC fills up mid-sync, the registry pod fails. Size `hmRegistry.pvc.storageRequest` with headroom for upgrades.
+### Loading images into HMRegistry
 
-### Next steps
+**Required Information:**
 
-Return to [Phase 5: Installing Hybrid Manager](../install_guide/install_hm) to apply the `HybridControlPlane` resource and complete the deployment.
+-   **Release Version:** The tag of Hybrid Manager (HM) you intend to install (example:`v1.4.0`).
+-   **EDB Token:** Your access token for `docker.enterprisedb.com`.
+
+1.  Define the EDB release version
+
+    ```bash
+    export EDBPGAI_RELEASE=<EDB-pgai-release-version>
+    ```
+
+2.  In a separate shell, run
+
+    ```bash
+    kubectl port-forward svc/hm-registry-service 5000:5000 -n $EDB_OPERATOR_NAMESPACE
+    ```
+
+3.  Define EDB credentials (Source)
+
+    ```bash
+    export CS_EDB_TOKEN=<your-edb-repos-token>
+    export EDB_SOURCE_REGISTRY=pgai-platform
+    ```
+
+4.  Sync images into the HMRegistry
+
+    ```bash
+    edbctl image sync-to-local-registry \
+        --version "${EDBPGAI_RELEASE}" \
+        --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+        --source-registry-password "${CS_EDB_TOKEN}" \
+        --destination-registry-uri "localhost:5000" \
+        --insecure-destination-registry
+    ```
+
+5.  Terminate the port-forward running in the separate shell with ctrl-c.
+
+
+### Configure the HybridControlPlane to use the HMRegistry
+
+1. Find the registry URI:
+
+    ```bash
+    IMAGE_REGISTRY_URI=$(kubectl get hmregistries hm-registry -o yaml | yq '.status.uris.cri')
+    ```
+
+    which will populate the IMAGE_REGISTRY_URI variable with something similar to `localhost:30500`, for example.
+
+2. Update the HybridControlPlane custom resource like so:
+
+    ```bash
+    kubectl patch hybridcontrolplanes edbpgai --type=merge --patch-file=/dev/stdin <<EOF
+      spec:
+        imageRegistry: $IMAGE_REGISTRY_URI
+        hmRegistryRef:
+          name: hm-registry
+    EOF
+    ```
