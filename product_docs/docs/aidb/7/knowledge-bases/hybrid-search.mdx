@@ -49,6 +49,16 @@ The vector `ORDER BY` and the `WHERE` filter must be in the same query level —
 
 BM25 full-text filtering requires the `vchord_bm25` and [`pg_tokenizer`](/pg_extensions/vectorchord_bm25/) extensions. These are user-installed and managed. See [VectorChord-BM25](vectorchord/vectorchord-bm25) for setup details.
 
+### Native PostgreSQL FTS (no extension required)
+
+Standard PostgreSQL full-text search (`tsvector` / `ts_rank`) is available in every Postgres installation without additional extensions. 
+It's a practical keyword leg for hybrid search when you can't install VectorChord-BM25, or when your use case doesn't need BM25's probabilistic term weighting.
+
+The trade-off: `ts_rank` scores are less calibrated than BM25 scores and don't normalize well across queries of different lengths. 
+For most workloads the practical difference is small, but BM25 will give more consistent relevance ranking on large or heterogeneous corpora.
+
+See [Setting up native PostgreSQL FTS](#setting-up-native-postgresql-fts) for setup steps.
+
 ## Helper functions and metadata
 
 ### `aidb.kb_query_encode()`
@@ -178,6 +188,116 @@ ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashio
 LIMIT 10;
 ```
 
+### Vector + native PostgreSQL FTS
+
+Use standard PostgreSQL `tsvector` / `ts_rank` as the keyword leg when VectorChord-BM25 isn't available. The approach is equivalent to the BM25 filter pattern but uses the built-in `@@` match operator and `plainto_tsquery()` instead.
+
+This example assumes a `search_vector tsvector` column on the source table, populated and indexed as described in [Setting up native PostgreSQL FTS](#setting-up-native-postgresql-fts).
+
+```sql
+SET hnsw.iterative_scan = relaxed_order;
+
+SELECT s.id, s.title,
+       kb.value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling') AS distance,
+       ts_rank_cd(s.search_vector, plainto_tsquery('english', 'connection pooling'))   AS fts_score
+FROM public.pipeline_docs AS kb
+JOIN my_docs AS s ON s.id::TEXT = kb.source_id
+WHERE s.search_vector @@ plainto_tsquery('english', 'connection pooling')  -- keyword filter
+ORDER BY kb.value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')
+LIMIT 10;
+```
+
+The `WHERE` clause acts as a hard keyword filter: only rows that contain the search terms are considered. Results are then ordered by semantic similarity. To surface results that match either signal — not just both — use weighted linear fusion instead (see below).
+
+### Weighted linear fusion
+
+Weighted linear fusion combines normalized vector similarity and full-text scores into a single composite score. Unlike [RRF](#vector--bm25-via-reciprocal-rank-fusion), which uses only rank positions, weighted linear fusion respects actual score magnitudes — useful when you want to tune the relative importance of semantic vs keyword relevance explicitly.
+
+The two weights must sum to 1.0. Adjust them based on your workload:
+
+| Use case                                                         | Suggested weights             |
+|------------------------------------------------------------------|-------------------------------|
+| Concept/meaning is most important                                | `0.7` semantic, `0.3` keyword |
+| Exact terminology matters as much as meaning                     | `0.5` semantic, `0.5` keyword |
+| Keyword precision is critical (for example, code or rule search) | `0.3` semantic, `0.7` keyword |
+
+**With native PostgreSQL FTS:**
+
+Because vector distances and `ts_rank` values use different scales, both legs are normalized to `[0, 1]` before combining. Cosine distance (range `[0, 2]`) is converted to similarity using `(2.0 - distance) / 2.0`. `ts_rank_cd` already returns values in roughly `[0, 1]`.
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling'))) / 2.0
+               AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           ts_rank_cd(search_vector, plainto_tsquery('english', 'connection pooling')) AS fts_score
+    FROM my_docs
+    WHERE search_vector @@ plainto_tsquery('english', 'connection pooling')
+    ORDER BY fts_score DESC
+    LIMIT 50
+)
+SELECT
+    COALESCE(s.source_id, k.source_id)                             AS id,
+    0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.fts_score, 0) AS fusion_score
+FROM semantic s
+FULL OUTER JOIN keyword k ON s.source_id = k.source_id
+ORDER BY fusion_score DESC
+LIMIT 10;
+```
+
+**With VectorChord-BM25:**
+
+The same pattern works with `vchord_bm25`, but BM25 scores are returned as negative values by convention (lower = better match), so negate and normalize before combining:
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling'))) / 2.0
+               AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           -- BM25 returns negative scores; negate so higher = better
+           -(bm25_col <&> to_bm25query('my_bm25_idx', tokenize('connection pooling', 'bert'))) AS bm25_raw
+    FROM my_source_table
+    ORDER BY bm25_col <&> to_bm25query('my_bm25_idx', tokenize('connection pooling', 'bert'))
+    LIMIT 50
+),
+normalized_keyword AS (
+    SELECT source_id,
+           CASE WHEN max(bm25_raw) OVER () > 0
+                THEN bm25_raw / max(bm25_raw) OVER ()
+                ELSE 0
+           END AS bm25_score
+    FROM keyword
+)
+SELECT
+    COALESCE(s.source_id, k.source_id)                              AS id,
+    0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.bm25_score, 0) AS fusion_score
+FROM semantic s
+FULL OUTER JOIN normalized_keyword k ON s.source_id = k.source_id
+ORDER BY fusion_score DESC
+LIMIT 10;
+```
+
+**When to use weighted linear fusion vs RRF:**
+
+|                                   | Weighted linear fusion                              | RRF                                                  |
+|-----------------------------------|-----------------------------------------------------|------------------------------------------------------|
+| Uses actual score values          | Yes                                                 | No (rank positions only)                             |
+| Requires score normalization      | Yes                                                 | No                                                   |
+| Tunable per use case              | Yes (explicit weights)                              | Partially (smoothing constant `k`)                   |
+| Robust to score scale differences | No (normalize carefully)                            | Yes (rank-based, scale-independent)                  |
+| Best for                          | Workloads where score magnitude carries information | General-purpose merging of heterogeneous result sets |
 ---
 
 ## Worked examples
@@ -394,6 +514,139 @@ UPDATE my_source SET bm25_tokens = tokenize(description, 'bert') WHERE bm25_toke
 ```
 
 For full tokenizer configuration options, see [VectorChord-BM25](vectorchord/vectorchord-bm25) and [VectorChord-BM25 in pg_extensions](/pg_extensions/vectorchord_bm25/).
+
+---
+
+## Setting up native PostgreSQL FTS
+
+Native PostgreSQL full-text search uses a `tsvector` column and a GIN index. No additional extensions are required. The setup below shows field weighting, which allows title matches to rank higher than body matches, and a trigger to keep the search column current automatically.
+
+**1. Add a `tsvector` column**
+
+```sql
+ALTER TABLE my_docs ADD COLUMN search_vector tsvector;
+```
+
+**2. Populate it with weighted fields**
+
+Weight labels control how different fields affect relevance: `A` (highest) through `D` (lowest). Assign higher weights to fields like `title` and `summary`, and lower weights to longer body fields.
+
+```sql
+UPDATE my_docs
+SET search_vector =
+    setweight(to_tsvector('english', coalesce(title,   '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(summary, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(body,    '')), 'C');
+```
+
+**3. Create a GIN index**
+
+```sql
+CREATE INDEX my_docs_fts_idx ON my_docs USING gin(search_vector);
+```
+
+**4. Keep the column current with a trigger**
+
+New and updated rows are tokenized automatically, so the FTS index stays in sync without manual updates:
+
+```sql
+CREATE OR REPLACE FUNCTION my_docs_search_vector_update()
+RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('english', coalesce(NEW.title,   '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.summary, '')), 'B') ||
+        setweight(to_tsvector('english', coalesce(NEW.body,    '')), 'C');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER my_docs_search_vector_trigger
+    BEFORE INSERT OR UPDATE ON my_docs
+    FOR EACH ROW EXECUTE FUNCTION my_docs_search_vector_update();
+```
+
+**5. Query using `plainto_tsquery` or `websearch_to_tsquery`**
+
+```sql
+SELECT id, title,
+       ts_rank_cd(search_vector, query) AS score
+FROM my_docs,
+     plainto_tsquery('english', 'connection pooling') query
+WHERE search_vector @@ query
+ORDER BY score DESC
+LIMIT 10;
+```
+
+`plainto_tsquery` treats the input as a phrase; `websearch_to_tsquery` accepts Google-style syntax (`"exact phrase"`, `-exclude`, `OR`). Use whichever matches your application's query input format.
+
+For an AIDB pipeline running alongside a native FTS index, AIDB handles embedding generation and vector search. The FTS trigger and the pipeline operate independently — new rows are automatically covered by both.
+
+---
+
+## Fallback and degradation
+
+Hybrid search depends on embeddings being available at query time. If the embedding service is unreachable or embeddings haven't been generated yet for recent rows, the query will either error or return incomplete results. A fallback strategy ensures users still get results in those situations.
+
+A recommended degradation chain:
+
+1. **Hybrid** — vector + FTS (primary path, requires embedding service)
+2. **FTS-only** — `tsvector` keyword search (no embedding service required)
+3. **Regex** — `ILIKE` pattern match (last resort, no index required)
+
+You can implement this in application code by catching connection errors from the embedding step and routing to the fallback, or in SQL using a `CASE` expression or a wrapper function. Below are the three legs as standalone queries:
+
+**Primary: hybrid (vector + native FTS)**
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', :'query'))) / 2.0 AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           ts_rank_cd(search_vector, plainto_tsquery('english', :'query')) AS fts_score
+    FROM my_docs
+    WHERE search_vector @@ plainto_tsquery('english', :'query')
+    LIMIT 50
+)
+SELECT COALESCE(s.source_id, k.source_id) AS id,
+       0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.fts_score, 0) AS score
+FROM semantic s
+FULL OUTER JOIN keyword k ON s.source_id = k.source_id
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**Fallback 1: FTS-only (no embedding service)**
+
+```sql
+SELECT id, title,
+       ts_rank_cd(search_vector, plainto_tsquery('english', :'query')) AS score
+FROM my_docs
+WHERE search_vector @@ plainto_tsquery('english', :'query')
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**Fallback 2: regex (no index)**
+
+```sql
+SELECT id, title
+FROM my_docs
+WHERE title ILIKE '%' || :'query' || '%'
+   OR body  ILIKE '%' || :'query' || '%'
+LIMIT 10;
+```
+
+The regex fallback performs a full sequential scan and doesn't scale to large tables. Reserve it for emergency use or small datasets, and add a timeout guard in your application to prevent long-running queries.
+
+!!!Note
+The `tsvector` trigger pattern described in [Setting up native PostgreSQL FTS](#setting-up-native-postgresql-fts) ensures FTS coverage is always current, even for rows that arrive before embeddings are generated. This makes it a reliable fallback for new content.
+!!!
 
 ---
 
