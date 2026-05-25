@@ -12,6 +12,8 @@ Commit scope kind: `QUORUM COMMIT`
 
 Quorum Commit is a commit scope kind that guarantees distributed transaction consistency. Before any node commits, all participating nodes must agree on the transaction outcome. Either all nodes commit together, or the transaction is rolled back everywhere.
 
+Quorum Commit supersedes Group Commit, which is retained for backward compatibility only. Unlike Group Commit, which offered flexible syntax that could be misconfigured to allow inconsistency, Quorum Commit restricts syntax to what can guarantee consistency.
+
 Quorum Commit differs from standard synchronous replication, which confirms that a remote node received data but doesn't prevent two nodes from independently committing conflicting changes. Unlike legacy synchronous replication, if the cluster can't reach agreement, Quorum Commit rolls back the transaction rather than persisting data to the Write-Ahead Log (WAL) and leaving nodes in an inconsistent state.
 
 ## When to use Quorum Commit
@@ -22,17 +24,25 @@ For workloads that tolerate eventual consistency, or where conflict rates are hi
 
 ## How Quorum Commit works
 
-Quorum Commit requires all participating nodes to agree before any node commits, using eager conflict resolution to prevent inconsistencies rather than resolving them after the fact.
+Quorum Commit requires all participating nodes to agree before any node commits, using eager conflict resolution to prevent inconsistencies rather than resolving them after the fact. All writes must go through a single write leader, managed by PGD's [Connection Manager](/pgd/current/connection-manager/overview/). If fewer than a majority of nodes are available, the cluster can't reach quorum and manual intervention is required.
 
 ### Consistency guarantees
 
-With Quorum Commit:
+When used with a commit scope covering a majority or more of nodes in the routing group, Quorum Commit provides the following guarantees.
 
-- A transaction commits only when the required number of nodes have committed. When the application sees a commit, all required nodes hold the same resulting data.
-- A read from the write leader after a commit always returns the latest results, including after a leader change.
-- When a transaction aborts, it aborts everywhere. No partial state is visible on any node.
-- When the write leader changes, the new leader accepts transactions immediately, without interference from in-flight transactions of the old leader.
-- No data divergence or broken replication occurs on any node.
+- **Committed means committed everywhere.** A transaction commits only when the required number of nodes have committed it. When the application receives a commit acknowledgment, all required nodes hold the same resulting data.
+
+- **The write leader always reflects the latest committed state.** A read from the write leader after a commit always returns the latest results. This holds across write leader changes: transactions visible on the old write leader are visible on the new one.
+
+- **Aborted means aborted everywhere.** When a transaction aborts, its effects are rolled back on all nodes. No partial state is visible anywhere in the cluster.
+
+- **Zero recovery time objective (RTO0) on write leader change.** When the write leader changes, the new write leader can immediately accept transactions. In-flight transactions from the old write leader are resolved through reconciliation and don't block the new leader's operations.
+
+- **No data divergence.** No node diverges from the committed state of the cluster. Broken replication due to conflicting commits can't occur.
+
+!!!Warning
+To make the guarantees above possible, Quorum Commit doesn't support [`DEGRADE TO`](/pgd/current/commit-scopes/degrading/) clauses or [commit scope groups](/pgd/current/commit-scopes/origin_groups/) weaker than `MAJORITY`.
+!!!
 
 ### Eager conflict resolution
 
@@ -60,7 +70,7 @@ The pre-commit coordination adds roughly two network round trips compared to asy
 
 Logical standby nodes and nodes still joining or catching up aren't included in the quorum but eventually receive changes.
 
-### Handling timeouts
+### Timeout handling
 
 If quorum isn't reached within the configured timeout, the transaction is aborted via Raft and rolled back on all participating nodes. A partial commit isn't possible. Either all nodes commit, or none do. Once aborted, the transaction isn't resubmitted when the network recovers.
 
@@ -87,7 +97,7 @@ SELECT bdr.create_commit_scope(
 
 The `rule` parameter accepts the following options:
 
-- **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN GROUP`, `MAJORITY CLUSTER`, or `MAJORITY FOR EACH GROUP`.
+- **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN GROUP`, `MAJORITY CLUSTER`, `MAJORITY CLUSTER WITH LEADER`, or `MAJORITY FOR EACH GROUP`. For details on commit scope groups, see [Commit scope groups](/pgd/current/commit-scopes/origin_groups/).
 
     `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
 
@@ -101,31 +111,114 @@ The `rule` parameter accepts the following options:
   - `durable`: Confirms after all changes are flushed to disk.
   - `visible` (default): Confirms after all changes are flushed to disk and are visible to concurrent transactions.
 
-- **`ABORT ON ( timeout = <value> )`:** Mandatory. Sets how long to wait for quorum before aborting. If consensus isn't reached within this period, the transaction is aborted via Raft and rolled back on all nodes. It won't be resubmitted when the network recovers. Set `<value>` to an interval, for example `10s`. For full details on timeout behavior, see [Handling timeouts](#handling-timeouts).
+- **`ABORT ON ( timeout = <value> )`:** Mandatory. Sets how long to wait for quorum before aborting. If consensus isn't reached within this period, the transaction is aborted and rolled back on all nodes and won't be resubmitted when the network recovers. Set `<value>` to an interval, for example `10s`. For guidance on choosing a value, see [Choosing a timeout](#choosing-a-timeout).
 
-### Examples
+### Configuring by topology
 
-A majority of nodes in the origin node's group must confirm that changes are flushed to disk before any node commits. If consensus isn't reached within 10 seconds, the transaction is aborted and rolled back on all participating nodes.
+The right Quorum Commit configuration depends on your cluster topology and routing mode.
+
+#### Single-location cluster (3 data nodes)
+
+A cluster with three data nodes in a single subgroup, with routing enabled at the subgroup level. This topology tolerates the failure of one node at a time. We recommend `MAJORITY ORIGIN GROUP`, which requires a majority (two of three) nodes to confirm before the transaction commits. One node can fail without blocking writes.
 
 ```sql
 SELECT bdr.create_commit_scope(
-    commit_scope_name := 'banking_scope',
+    commit_scope_name := 'example_scope',
     origin_node_group := 'top_group',
-    rule := 'MAJORITY ORIGIN GROUP ON durable QUORUM COMMIT ABORT ON (timeout = 10s)',
+    rule := 'MAJORITY ORIGIN GROUP QUORUM COMMIT ABORT ON (timeout = 6s)',
     wait_for_ready := true
 );
 ```
 
-For multi-data-center deployments where each data center is a PGD subgroup, the `MAJORITY FOR EACH GROUP` syntax requires a majority within each participating group before the transaction commits. A network partition between data centers causes transactions to wait up to 30 seconds before aborting.
+Alternatively, using `ALL ORIGIN GROUP` requires every node to confirm. Any single node failure prevents new commits until the node recovers or the timeout expires.
 
 ```sql
 SELECT bdr.create_commit_scope(
-    commit_scope_name := 'geo_scope',
+    commit_scope_name := 'example_scope',
     origin_node_group := 'top_group',
-    rule := 'MAJORITY FOR EACH GROUP (dc_east, dc_west) QUORUM COMMIT ABORT ON (timeout = 30s)',
+    rule := 'ALL ORIGIN GROUP QUORUM COMMIT ABORT ON (timeout = 6s)',
     wait_for_ready := true
 );
 ```
+
+#### Two-region cluster (3+3 data nodes)
+
+A cluster with two subgroups of three data nodes each. The cluster tolerates the failure of up to two nodes, one per region.
+
+With local routing enabled, `MAJORITY FOR EACH GROUP IN CLUSTER` requires a majority within each subgroup to confirm. A network partition between regions causes transactions to wait up to the configured timeout before aborting. When the partition heals, writes resume automatically. Durability is guaranteed in both regions before the transaction commits, not only in the origin region.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY FOR EACH GROUP IN CLUSTER QUORUM COMMIT ABORT ON (timeout = 6s)',
+    wait_for_ready := true
+);
+```
+
+With global routing enabled, `MAJORITY CLUSTER WITH LEADER` requires a majority across the entire cluster, including the write leader, to confirm before the transaction commits.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY CLUSTER WITH LEADER QUORUM COMMIT ABORT ON (timeout = 6s)',
+    wait_for_ready := true
+);
+```
+
+#### Three-region cluster (3+3+3 data nodes)
+
+A cluster with three subgroups of three data nodes each.
+
+With global routing, `MAJORITY CLUSTER WITH LEADER` requires a majority of all nine nodes, including the write leader, to confirm. This topology tolerates the failure of up to four nodes, including the loss of an entire region.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY CLUSTER WITH LEADER QUORUM COMMIT ABORT ON (timeout = 6s)',
+    wait_for_ready := true
+);
+```
+
+With local routing, `MAJORITY FOR EACH GROUP IN CLUSTER` requires a majority within each region to confirm, making the transaction durable in all three regions before it's considered committed. This topology tolerates the failure of up to three nodes, one per region.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY FOR EACH GROUP IN CLUSTER QUORUM COMMIT ABORT ON (timeout = 6s)',
+    wait_for_ready := true
+);
+```
+
+!!!Note
+Only test failure scenarios that the cluster topology is designed to tolerate. For example, don't test the failure of two regions in a three-region cluster, or the failure of more than one node in a single-location cluster. PGD makes no guarantees for degraded clusters.
+!!!
+
+### Using Raft for the commit decision
+
+Adding `commit_decision = raft` to any of the configurations above routes the commit decision through PGD's built-in Raft consensus rather than the origin node directly. After receiving the required confirmations, the transaction commits only after Raft confirms the decision across all nodes. Using Raft eliminates the need for reconciliation on write leader change, since Raft ensures all nodes arrive at the same decision. Unresolved transactions are aborted via Raft if no decision has been logged.
+
+When using `ALL` as the commit scope group, we recommend setting `commit_decision = raft` to avoid reconciliation issues.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY ORIGIN GROUP QUORUM COMMIT (commit_decision = raft) ABORT ON (timeout = 6s)',
+    wait_for_ready := true
+);
+```
+
+### Choosing a timeout
+
+The `ABORT ON (timeout = <value>)` clause is mandatory for Quorum Commit. If quorum isn't reached within the timeout, the transaction is aborted and rolled back on all nodes and won't be resubmitted when connectivity recovers.
+
+When using local routing, set the timeout to be shorter than `bdr.raft_group_election_timeout` (default 3s). If a write leader is unresponsive for longer than the election timeout, a new write leader is elected. Timing out the transaction before that point avoids races between an in-flight transaction and the incoming write leader.
+
+When using global routing, set the timeout to be shorter than `bdr.raft_global_election_timeout` (default 6s). If a node isn't heard from for the global election timeout, reconciliation of its transactions begins. Setting a timeout of 6s or less ensures a transaction is cleanly aborted before write leader reconciliation starts.
 
 ## Writing applications for Quorum Commit
 
@@ -143,6 +236,10 @@ If `COMMIT` returns a serialization error, re-execute the transaction from `BEGI
 ## Using Quorum Commit with Parallel Apply
 
 Quorum Commit is compatible with [Parallel Apply](/pgd/current/parallelapply/). You don't need to disable Parallel Apply when using Quorum Commit.
+
+## Using Quorum Commit with transaction streaming
+
+Quorum Commit is compatible with [transaction streaming](/pgd/current/transaction-streaming/) in `file` and `off` modes only.
 
 ## Limitations
 

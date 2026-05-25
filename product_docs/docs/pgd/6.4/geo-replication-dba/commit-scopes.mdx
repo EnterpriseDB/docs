@@ -15,12 +15,17 @@ The deployment patterns that support geo-replication use the following commit sc
 | **Local protect** | Commits locally without waiting for other nodes. <br />Changes replicate asynchronously. | Lowest | Highest | Lowest possible write latency and some data loss on failure is acceptable. | Any topology | Not recommended for production use. <br /> Data loss possible if a node fails before replication. |
 | **Adaptive protect** | Synchronous to a majority when available, degrades to asynchronous after a timeout (default 10s). | Variable | Low | Durability by default, but cluster must stay writable during partial failures. | Groups with 2 data nodes + witness | Balances durability and availability. <br /> Graceful degradation during node failures. |
 | **CAMO** | Synchronous replication with exactly-once semantics using a dedicated partner node. | Higher | None | Exactly-once transaction requirements where duplicate detection isn't possible at the application level. | Groups with exactly 2 data nodes | Prevents duplicate transactions after failover. <br /> Higher latency. Requires application changes. |
+| **Quorum Commit** | Coordinates the commit decision across all participating nodes using two-phase commit before any node commits locally. Conflicting transactions are detected and aborted during the commit phase. | High | None | Workloads requiring distributed transaction consistency where conflicts can't be resolved after the fact, such as payments, core banking, and ledger systems. | Any group with 3+ nodes (majority required) | No `DEGRADE TO` support. Requires write leader routing. Application must handle serialization errors and retry. |
 
 ## Choosing a commit scope
 
 Choosing a commit scope is a critical decision that directly affects latency, durability, and behavior during failures.
 
 Use the following questions to identify the right commit scope for your deployment. Your answers depend on your topology, your Recovery Point Objectives (RPO) requirements, and whether your workloads have mixed durability needs.
+
+- Does the workload require strict distributed consistency where conflicting transactions can never both commit, such as payments or core banking?
+  - **Yes** — use Quorum Commit
+  - **No** — continue
 
 - Can the application tolerate data loss if a location fails?
   - **Yes** — majority protect without remote confirmation is sufficient
@@ -74,6 +79,21 @@ When using majority protect in a multi-group deployment, you can extend the `rul
     ```sql
     MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT AND ALL NOT ORIGIN_GROUP LAG CONTROL (max_lag_time = 30s)
     ```
+
+### Creating a Quorum Commit scope
+
+Quorum Commit requires all participating nodes to agree before any node commits. Unlike other commit scope kinds, `DEGRADE TO` isn't supported, and eager conflict resolution is always active. The `ABORT ON` clause is mandatory.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'quorum_scope',
+    origin_node_group := '<top_group>',
+    rule := 'MAJORITY ORIGIN GROUP QUORUM COMMIT ABORT ON (timeout = 6s)',
+    wait_for_ready := true
+);
+```
+
+For multi-region clusters, use `MAJORITY FOR EACH GROUP IN CLUSTER` to require a majority within each subgroup. For guidance on choosing the right configuration for your topology, see [Quorum Commit](/pgd/current/commit-scopes/quorum-commit/).
 
 ### Creating a CAMO scope
 
@@ -163,3 +183,5 @@ COMMIT;
 - **Add a witness node in a third location for two-location deployments.** Without one, losing a location breaks Raft quorum and the cluster can no longer elect a write leader.
 
 - **Use CAMO for workloads that can't tolerate duplicate transactions.** Without it, a node failure during commit can result in the transaction being applied twice after failover.
+
+- **Expect serialization errors with Quorum Commit.** Eager conflict resolution aborts one of any two conflicting transactions during the commit phase. Configure the application to catch serialization errors and retry.
