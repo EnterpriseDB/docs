@@ -1,0 +1,50 @@
+---
+title: Setting up user-managed BM25
+navTitle: Set up BM25
+description: "Install VectorChord-BM25, create a tokenizer, and add a BM25 index to your source table for use in hybrid search."
+redirects:
+  - /aidb/7/knowledge-bases/hybrid-search/#setting-up-user-managed-bm25
+---
+
+BM25 isn't managed by AI pipelines. You set it up independently on your source table, then reference it in your hybrid queries.
+
+**1. Install extensions**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_tokenizer;
+CREATE EXTENSION IF NOT EXISTS vchord_bm25;
+```
+
+**2. Create a tokenizer**
+
+```sql
+SELECT create_tokenizer('bert', $$
+    model = "bert_base_uncased"
+$$);
+```
+
+**3. Add a `bm25vector` column and index to your source table**
+
+```sql
+ALTER TABLE my_source ADD COLUMN bm25_tokens bm25vector;
+UPDATE my_source SET bm25_tokens = tokenize(description, 'bert');
+
+CREATE INDEX my_source_bm25 ON my_source USING bm25 (bm25_tokens bm25_ops);
+```
+
+**4. Keep the index current**
+
+New rows must be tokenized before they'll appear in BM25 results. Use a trigger or update the column as part of your data ingestion process:
+
+```sql
+UPDATE my_source SET bm25_tokens = tokenize(description, 'bert') WHERE bm25_tokens IS NULL;
+```
+
+For full tokenizer configuration options, see [VectorChord-BM25](../vectorchord/vectorchord-bm25) and [VectorChord-BM25 in pg_extensions](/pg_extensions/vectorchord_bm25/).
+
+---
+
+## Next steps
+
+- [Query patterns](query-patterns) — Use your BM25 index in hybrid queries.
+- [Worked examples](examples) — See a full end-to-end example using BM25 with RRF.

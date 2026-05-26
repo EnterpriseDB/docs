@@ -1,0 +1,81 @@
+---
+title: Setting up native PostgreSQL FTS
+navTitle: Set up native FTS
+description: "Add a tsvector column, GIN index, and auto-update trigger to your source table for use as the keyword leg in hybrid search."
+redirects:
+  - /aidb/7/knowledge-bases/hybrid-search/#setting-up-native-postgresql-fts
+---
+
+Native PostgreSQL full-text search uses a `tsvector` column and a GIN (Generalized Inverted Index) index. No additional extensions are required. The setup below shows field weighting, which allows title matches to rank higher than body matches, and a trigger to keep the search column current automatically.
+
+**1. Add a `tsvector` column**
+
+```sql
+ALTER TABLE my_docs ADD COLUMN search_vector tsvector;
+```
+
+**2. Populate it with weighted fields**
+
+Weight labels control how different fields affect relevance: `A` (highest) through `D` (lowest). Assign higher weights to fields like `title` and `summary`, and lower weights to longer body fields.
+
+```sql
+UPDATE my_docs
+SET search_vector =
+    setweight(to_tsvector('english', coalesce(title,   '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(summary, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(body,    '')), 'C');
+```
+
+**3. Create a GIN index**
+
+```sql
+CREATE INDEX my_docs_fts_idx ON my_docs USING gin(search_vector);
+```
+
+**4. Keep the column current with a trigger**
+
+New and updated rows are tokenized automatically, so the FTS index stays in sync without manual updates:
+
+```sql
+CREATE OR REPLACE FUNCTION my_docs_search_vector_update()
+RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('english', coalesce(NEW.title,   '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.summary, '')), 'B') ||
+        setweight(to_tsvector('english', coalesce(NEW.body,    '')), 'C');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER my_docs_search_vector_trigger
+    BEFORE INSERT OR UPDATE ON my_docs
+    FOR EACH ROW EXECUTE FUNCTION my_docs_search_vector_update();
+```
+
+**5. Query using `plainto_tsquery` or `websearch_to_tsquery`**
+
+```sql
+SELECT id, title,
+       ts_rank_cd(search_vector, query) AS score
+FROM my_docs,
+     plainto_tsquery('english', 'connection pooling') query
+WHERE search_vector @@ query
+ORDER BY score DESC
+LIMIT 10;
+```
+
+`plainto_tsquery` treats the input as a phrase; `websearch_to_tsquery` accepts Google-style syntax (`"exact phrase"`, `-exclude`, `OR`). Use whichever matches your application's query input format.
+
+For an AIDB pipeline running alongside a native FTS index, AIDB handles embedding generation and vector search. The FTS trigger and the pipeline operate independently — new rows are automatically covered by both.
+
+!!!Note
+The trigger pattern above ensures FTS coverage is always current, even for rows that arrive before embeddings are generated. This makes native FTS a reliable fallback for new content. See [Fallback and degradation](fallback-and-degradation) for more.
+!!!
+
+---
+
+## Next steps
+
+- [Query patterns](query-patterns) — Use your FTS index in hybrid queries, including weighted linear fusion.
+- [Fallback and degradation](fallback-and-degradation) — Use native FTS as a fallback when the embedding service is unavailable.

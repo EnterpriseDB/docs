@@ -1,0 +1,69 @@
+---
+title: Fallback and degradation
+navTitle: Fallback and degradation
+description: "Handle embedding service outages gracefully with a three-tier fallback chain: hybrid search, FTS-only, and regex."
+redirects:
+  - /aidb/7/knowledge-bases/hybrid-search/#fallback-and-degradation
+---
+
+Hybrid search depends on embeddings being available at query time. If the embedding service is unreachable or embeddings haven't been generated yet for recent rows, the query will either error or return incomplete results. A fallback strategy ensures users still get results in those situations.
+
+A recommended degradation chain:
+
+1. **Hybrid** — Vector + FTS (primary path, requires embedding service).
+2. **FTS-only** — Keyword search using `tsvector` (no embedding service required)
+3. **Regex** — `ILIKE` pattern match (last resort, no index required).
+
+You can implement this in application code by catching connection errors from the embedding step and routing to the fallback, or in SQL using a `CASE` expression or a wrapper function. Below are the three legs as standalone queries:
+
+**Primary: hybrid (vector + native FTS)**
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', :'query'))) / 2.0 AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           ts_rank_cd(search_vector, plainto_tsquery('english', :'query')) AS fts_score
+    FROM my_docs
+    WHERE search_vector @@ plainto_tsquery('english', :'query')
+    LIMIT 50
+)
+SELECT COALESCE(s.source_id, k.source_id) AS id,
+       0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.fts_score, 0) AS score
+FROM semantic s
+FULL OUTER JOIN keyword k ON s.source_id = k.source_id
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**Fallback 1: FTS-only (no embedding service)**
+
+```sql
+SELECT id, title,
+       ts_rank_cd(search_vector, plainto_tsquery('english', :'query')) AS score
+FROM my_docs
+WHERE search_vector @@ plainto_tsquery('english', :'query')
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**Fallback 2: regex (no index)**
+
+```sql
+SELECT id, title
+FROM my_docs
+WHERE title ILIKE '%' || :'query' || '%'
+   OR body  ILIKE '%' || :'query' || '%'
+LIMIT 10;
+```
+
+The regex fallback performs a full sequential scan and doesn't scale to large tables. Reserve it for emergency use or small datasets, and add a timeout guard in your application to prevent long-running queries.
+
+!!!Note
+The `tsvector` trigger pattern described in [Setting up native PostgreSQL FTS](set-up-native-fts) ensures FTS coverage is always current, even for rows that arrive before embeddings are generated. This makes it a reliable fallback for new content.
+!!!
