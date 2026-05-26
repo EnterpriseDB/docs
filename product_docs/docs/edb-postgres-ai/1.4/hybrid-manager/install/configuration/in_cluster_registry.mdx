@@ -11,13 +11,14 @@ deepToC: true
 
 - A running Kubernetes cluster meeting the [system requirements](../install_guide/sys_reqs).
 - All cluster nodes deployed on a private subnet with no public IPs (see [Security considerations](#security-considerations)).
+- The EDB Postgres AI HCP Operator already installed on the cluster (see [Install the EDB Postgres AI Operator](../install_guide/install_hm/#install-the-edb-postgres-ai-operator)).
 - [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/) installed and configured on your management workstation.
 - `kubectl` installed and authenticated against the cluster.
 - `yq` (Command-line YAML processor).
 
 * * *
 
-The EDB Postgres AI HCP Operator embeds a container registry, defined by the `HMRegistry` custom resource, that can run alongside the operator itself. Enabling the registry doesn't require syncing any additional artifacts beyond the operator image.
+The EDB Postgres AI HCP Operator embeds a container registry, defined by the `HMRegistry` custom resource definition, that can run alongside the operator itself. Enabling the registry doesn't require syncing any additional artifacts beyond the operator image.
 
 Use this registry for **air-gapped or fully internal deployments** where you either don't have or don't want to maintain a private registry external to HM. After installing the operator, you sync EDB images into the in-cluster registry once, and the rest of the platform pulls from it.
 
@@ -41,7 +42,7 @@ If your nodes have public IPs, don't use the in-cluster registry. Use a private 
 
 `HMRegistry` is a custom resource that deploys an in-cluster OCI image registry intended for Hybrid Manager workloads. The operator provisions a Deployment, Service, PVC, and ConfigMap for the registry, and on OpenShift it also patches `image.config.openshift.io/cluster` so the cluster's container runtime trusts the registry's NodePort/ClusterIP endpoint as an insecure source.
 
-Create a local file called `hm_registry.yaml` and add the following content:
+Create a local file called `hm-registry.yaml` and add the following content:
 
 ```yaml
 apiVersion: edbpgai.edb.com/v1alpha1
@@ -71,7 +72,7 @@ A full HM image set is roughly 50 GiB. Set `spec.storage.pvc.size` in the HMRegi
 Now run:
 
 ```bash
-kubectl apply -f hm_registry.yaml
+kubectl apply -f hm-registry.yaml
 ```
 
 You can now follow the creation of the HMRegistry via:
@@ -83,7 +84,7 @@ kubectl get hmregistries.edbpgai.edb.com
 When finished, you will see output that looks similar to this:
 
 ```bash
-$ kubectl get hmregistries.edbpgai.edb.com
+$ kubectl get hmregistries.edbpgai.edb.com hm-registry
 NAME          PHASE   MESSAGE               CRI URI           KUBE URI
 hm-registry   Ready   HMRegistry is ready   localhost:30183   hm-registry-service.edbpgai-bootstrap.svc.cluster.local:5000
 ```
@@ -131,26 +132,60 @@ kubectl get cm,deployment,pods,pvc,svc -n edbpgai-bootstrap
         --insecure-destination-registry
     ```
 
-5.  Terminate the port-forward running in the separate shell with ctrl-c.
+5.  Terminate the port-forward running in the separate shell with `ctrl-c`.
 
 
 ### Configure the HybridControlPlane to use the HMRegistry
 
-1. Find the registry URI:
+Update the HybridControlPlane custom resource like so:
+
+```bash
+kubectl patch hybridcontrolplanes edbpgai --type=merge --patch-file=/dev/stdin <<EOF
+  spec:
+    hmRegistryRef:
+      name: hm-registry
+EOF
+```
+
+The Operator then automatically inspects the `hm-registry` custom resource to find the `CRI URI` of the registry, and updates the `spec.imageRegistry` key of the `edpbgai` HybridControlPlane resource accordingly. No further configuration is necessary.
+
+
+### Switching back to a registry external to HM
+
+If you no-longer wish to use the in-cluster registry, you will need to do the following:
+
+1. Remove the reference to `hm-registry` from the HybridControlPlane resource
 
     ```bash
-    IMAGE_REGISTRY_URI=$(kubectl get hmregistries hm-registry -o yaml | yq '.status.uris.cri')
+    kubectl patch hybridcontrolplanes edbpgai --type=json -p '[{"op":"remove","path":"/spec/hmRegistryRef"}]'
     ```
 
-    which will populate the IMAGE_REGISTRY_URI variable with something similar to `localhost:30500`, for example.
-
-2. Update the HybridControlPlane custom resource like so:
+2. Update HybridControlPlane resource with your container registry URI
 
     ```bash
     kubectl patch hybridcontrolplanes edbpgai --type=merge --patch-file=/dev/stdin <<EOF
       spec:
-        imageRegistry: $IMAGE_REGISTRY_URI
-        hmRegistryRef:
-          name: hm-registry
+        imageRegistry: <your_container_registry_uri>
     EOF
     ```
+
+    You may also need to consult [Configuring Image Discovery](./image_discovery).
+
+
+3. Disable the deletion-protection on the in-cluster registry
+
+    ```bash
+    kubectl patch hmregistries.edbpgai.edb.com hm-registry --type=merge --patch-file=/dev/stdin <<EOF
+      metadata:
+        annotations:
+          biganimal.enterprisedb.io/deletion-protect: disabled
+    EOF
+    ```
+
+4. Delete the `hm-registry` HMRegistry instance
+
+    ```bash
+    kubectl delete hmregistries.edbpgai.edb.com hm-registry
+    ```
+  
+  And everything associated with the in-cluster HMRegistry (config-map, deployment, pod, pvc, and service in the `edbpgai-bootstrap` namespace) will be destroyed.
