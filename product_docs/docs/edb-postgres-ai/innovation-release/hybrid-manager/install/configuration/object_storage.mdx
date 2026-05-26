@@ -7,7 +7,7 @@ redirects:
 - /edb-postgres-ai/latest/hybrid-manager/install/configuration/object_storage/
 ---
 
-Object storage is required for Hybrid Manager (HM). HM uses object storage for:
+Before installing Hybrid Manager (HM), you must create a Kubernetes secret named `edb-object-storage` in the `default` namespace. HM uses this secret to access object storage for:
 
 - Postgres database backups and WAL archiving
 - Restore operations
@@ -15,9 +15,7 @@ Object storage is required for Hybrid Manager (HM). HM uses object storage for:
 - Logs (Postgres and internal services)
 - Metrics (Postgres and internal services)
 
-For backup and recovery planning, see [Backup readiness](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/#backup-readiness).
-
-To connect HM to your object storage, you must create a Kubernetes secret named `edb-object-storage` in the `default` namespace. This secret is referenced automatically during installation and must be in place before you install HM.
+This secret is referenced automatically during installation. For backup and recovery planning, see [Backup readiness](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/#backup-readiness).
 
 For multi-location deployments, the `edb-object-storage` secret must be synchronized across all locations. See [Configuring multiple data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/) for details.
 
@@ -26,6 +24,16 @@ Your object storage must be dedicated entirely to Hybrid Manager. Any data alrea
 !!!
 
 ## Provider configurations
+
+To create the secret, complete the following steps before installing HM:
+
+1. Select the configuration for your provider from the sections below and fill in the required values.
+1. Save the YAML to a file, for example `object-storage-secret.yaml`.
+1. Apply it to your cluster:
+
+   ```shell
+   kubectl apply -f object-storage-secret.yaml
+   ```
 
 ### AWS IAM (EKS and ROSA)
 
@@ -196,7 +204,7 @@ stringData:
 
 ## Providing a CA bundle
 
-If your S3-compatible endpoint uses a certificate signed by a private or self-signed certificate authority, you must provide the CA bundle. Two fields are supported — use one or the other, not both:
+This section applies to the [S3-compatible storage](#other-s3-compatible-storage) configuration. If your endpoint uses a certificate signed by a private or self-signed certificate authority (CA), generate the CA bundle value here and add it to the `aws_ca_bundle` or `aws_ca_bundle_base64` field in your secret. Two fields are supported — use one or the other, not both:
 
 | Field | Format | When to use |
 |---|---|---|
@@ -239,7 +247,7 @@ If your CA bundle contains a certificate chain (intermediate + root CAs), includ
 
 ## Encoding credentials
 
-For GCP, the `credentials_json_base64` field requires the GCP service account JSON key file encoded as base64.
+This section applies to the [GCP configuration](#gcp-object-storage). The `credentials_json_base64` field requires your GCP service account JSON key file encoded as a base64 string. Use the following commands to generate that value before adding it to the secret.
 
 To encode your credentials file:
 
@@ -253,9 +261,9 @@ On macOS, use:
 base64 -i /path/to/service-account-key.json
 ```
 
-## Per-project object storage
+## Configuring per-project object storage
 
-By default, all projects share the object storage configured during installation. You can configure dedicated object storage for individual projects to isolate their backup and WAL data.
+By default, all projects share the object storage configured during installation. You can configure dedicated object storage for individual projects at any time after installation, before creating any Postgres workloads in that project.
 
 The secret body is identical to the default `edb-object-storage` secret. Only the name differs — it must follow the convention `edb-object-storage-<normalized-project-id>`, where the project ID has all underscores (`_`) replaced with hyphens (`-`) and all letters converted to lowercase.
 
@@ -271,4 +279,4 @@ kubectl get cm slo-kv-store -o yaml -n default
 
 The `data` section maps each project ID to its object storage secret name. If a project ID doesn't appear, it hasn't been bound yet — binding happens automatically when the first Postgres workload is created.
 
-For the full setup procedure, see [Projected object storage](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/projects/projected-object-storage/).
+For step-by-step instructions — including how to retrieve the project ID, normalize it, and apply the secret — see [Configure dedicated object storage for a project](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/projects/projected-object-storage/).
