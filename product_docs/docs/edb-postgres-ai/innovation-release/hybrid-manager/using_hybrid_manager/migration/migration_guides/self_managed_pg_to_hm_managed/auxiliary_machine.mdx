@@ -1,7 +1,8 @@
 ---
 title: Configuring your auxiliary machine or bastion host
 navTitle: Configuring auxiliary machine
-description: Setting up the auxiliary machine that bridges your self-managed Postgres source and Hybrid Manager, including required agents and connectivity verification.
+description: Setting up the auxiliary machine that bridges your self-managed Postgres source and Hybrid Manager, including required agents, pg_dump configuration, and connectivity verification.
+deepToC: true
 # SINGLE-SOURCE FILE — edits here also affect these pages:
 #   - migration_guides/aws_rds_pg_to_hm_managed/auxiliary_machine.mdx
 #   - migration_guides/self_managed_pg_to_self_managed_pg/auxiliary_machine.mdx
@@ -15,12 +16,49 @@ Ensure the following are installed on your auxiliary machine before running the 
 
 - **Java 17 or higher** — required by the DMS agent (`cdcagent`). Verify with `java -version`.
 
-- **EDB Postgres AI agent** (`beacon-agent`) — required for database registration, schema assessment, and enabling schema migration within the HM landscape. [Install the EDB Postgres AI agent](/tools/agent/installing/).
+- **EDB Postgres AI agent** (`beacon-agent`) — required for database registration, schema assessment, and schema migration. [Install the EDB Postgres AI agent](/tools/agent/installing/).
 
 - **DMS agent** (`cdcagent`) — handles data migration and change data capture (CDC). [Install the DMS agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/installing_agent/).
 
+## Configuring the environment
+
+When you enable schema ingestion, `beacon-agent` uses `pg_dump` to extract DDL from your Postgres source. Install `pg_dump` on the auxiliary machine and ensure it meets two compatibility rules:
+
+- **Version rule** — The `pg_dump` major version must be greater than or equal to the major version of your source database. For example, if your source runs Postgres 16, you need `pg_dump` 16 or later. The agent validates this at startup and reports an error if the versions are incompatible.
+
+- **Distribution rule** — The `pg_dump` binary must come from the same Postgres distribution as the source database. Each distribution's `pg_dump` accesses distribution-specific catalog tables. Using a mismatched binary (for example, community PostgreSQL `pg_dump` against an EDB Postgres Advanced Server source) will fail because the expected catalog objects won't exist.
+
+### Verifying your pg_dump installation
+
+Postgres client tools packages include the `pg_dump` utility. Verify whether it's already available on your machine:
+
+```shell
+pg_dump --version
+```
+
+If the command isn't found, install the client tools that match your source database distribution.
+
+### Managing multiple Postgres versions on a host
+
+If you have multiple Postgres versions on the same machine, ensure the correct `pg_dump` appears first in your `PATH`:
+
+```shell
+which pg_dump
+pg_dump --version
+```
+
+On Debian and Ubuntu systems, use `update-alternatives` to manage the active version:
+
+```shell
+sudo update-alternatives --config pg_dump
+```
+
+### Credentials and pgpass behavior
+
+The OS user that runs `beacon-agent` is the same user that executes `pg_dump`. To avoid exposing database credentials in process arguments, the agent writes the password to a temporary pgpass file with restrictive permissions (`0600`) and passes a password-free connection string to `pg_dump`. The agent creates the file in the OS temporary directory and removes it automatically after each extraction completes.
+
 !!!note
-Unlike Oracle-sourced migrations, no additional client libraries are needed on the auxiliary machine for Postgres sources. The agents connect directly to the Postgres source over the standard Postgres port.
+If the agent process terminates unexpectedly (for example, by `SIGKILL` or a system crash), the agent may not clean up the temporary pgpass file. Only the OS user that runs the agent can read the file. The OS removes it on reboot, or on container restart if the agent runs in a container. To check for orphaned files, look for files matching `.pgpass-*` in `/tmp`.
 !!!
 
 ## Verifying connectivity
