@@ -120,13 +120,18 @@ The rendered page images can then pass directly to a `PeformOcr` step for text e
 
 For digitally produced PDFs that contain a native text layer, use `ParsePdf` instead — it's faster and doesn't require an OCR model.
 
-**Helper function:** `aidb.pdf_to_image_config()`
+**Options format:** Pass options as a JSON literal.
 
-| Parameter | Type      | Default  | Description                                    |
-|-----------|-----------|----------|------------------------------------------------|
-| `dpi`     | `INTEGER` | `NULL`   | Resolution in dots per inch used to render each page. Higher values produce sharper images at the cost of larger output size. Uses a system default when omitted.|
+| Parameter            | Type      | Default  | Description                                                                                                                          |
+|----------------------|-----------|----------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `dpi`                | `INTEGER` | `300`    | Resolution in dots per inch used to render each page. Higher values produce sharper images at the cost of larger file size.          |
+| `first_page`         | `INTEGER` | `NULL`   | First page to render (1-based). Renders from the beginning when omitted.                                                             |
+| `last_page`          | `INTEGER` | `NULL`   | Last page to render, inclusive (1-based). Renders to the end when omitted.                                                           |
+| `max_pages`          | `INTEGER` | `NULL`   | Maximum number of pages to render. Acts as a safety cap regardless of `first_page` and `last_page`.                                  |
+| `render_annotations` | `BOOLEAN` | `true`   | Whether to include PDF annotations (such as comments and form fields) in the rendered output.                                        |
+| `format`             | `TEXT`    | `"png"`  | Output image format. Accepted values: `"png"`, `"jpeg"`. Use `"png"` when passing output to `PerformOcr`.                           |
 
-Output images are in PNG format, which is compatible with the `PerformOcr` step using NVIDIA NIM PaddleOCR.
+Output images are in PNG or JPEG format depending on the `format` option. Use `"png"` (the default) when passing output to the `PerformOcr` step — NVIDIA NIM PaddleOCR requires PNG or JPEG input.
 
 Before using this step in a pipeline that includes PerformOcr, register an OCR-capable model:
 
@@ -147,7 +152,7 @@ SELECT aidb.create_pipeline(
     source_key_column  => 'id',
     source_data_column => 'pdf_data',
     step_1             => 'PdfToImage',
-    step_1_options     => aidb.pdf_to_image_config(dpi => 150),
+    step_1_options     => '{"dpi": 150}'::json,
     step_2             => 'PerformOcr',
     step_2_options     => aidb.ocr_config(model => 'my_paddle_ocr_model'),
     step_3             => 'KnowledgeBase',
@@ -157,7 +162,7 @@ SELECT aidb.create_pipeline(
 
 ### Result
 
-`PdfToImage` unnests results — each page of the source PDF produces one output row containing the rendered page as a PNG image. 
+`PdfToImage` unnests results — each page of the source PDF produces one output row containing the rendered page as a PNG or JPEG image, depending on the `format` option. 
 The `part_id` column maps to the page index (zero-based). 
 This output shape is directly compatible with the `PerformOcr` step, which expects image bytes as its input.
 
