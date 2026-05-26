@@ -1,12 +1,19 @@
 ---
-title: Creating a commit scope
-description: How to create a Quorum Commit scope, including syntax, topology-specific configurations, commit decision options, and timeout guidance.
+title: Using Quorum Commit
+navTitle: Using Quorum Commit
+description: How to create and use a Quorum Commit scope, including syntax, topology-specific configurations, commit decision options, timeout guidance, and application patterns.
 deepToC: true
+redirects:
+  - creating-a-commit-scope
 ---
+
+Quorum Commit scopes are created with `bdr.create_commit_scope` and configured for your topology and routing mode. Once created, a scope can be applied as the default for a node group or set per session or per transaction.
 
 !!!Note
 All nodes in the cluster must be running PGD 6.4.0 or later, including during a rolling upgrade.
 !!!
+
+## Creating a commit scope
 
 The Quorum Commit syntax is:
 
@@ -27,8 +34,7 @@ The `rule` parameter accepts the following options:
 
     `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
 
-- **`commit_decision`:** Optional. Controls how the commit decision is reached, and affects how [automatic reconciliation](how-quorum-commit-works#automatic-reconciliation) behaves after a node failure. When using `ALL` as the commit scope group, set `commit_decision` to `raft`.
-
+- **`commit_decision`:** Optional. Controls how the commit decision is reached, and affects how [automatic reconciliation](how-quorum-commit-works#automatic-reconciliation) behaves after a node failure.
   - `group` (default): The origin node decides to commit once it receives the required confirmations from the commit scope group.
   - `raft`: The commit decision goes through PGD's built-in Raft consensus. Slower than `group`, but required for certain multi-group topologies.
 
@@ -52,17 +58,6 @@ SELECT bdr.create_commit_scope(
     commit_scope_name := 'example_scope',
     origin_node_group := 'top_group',
     rule := 'MAJORITY ORIGIN GROUP QUORUM COMMIT ABORT ON (timeout = 6s)',
-    wait_for_ready := true
-);
-```
-
-Alternatively, using `ALL ORIGIN GROUP` requires every node to confirm. Any single node failure prevents new commits until the node recovers or the timeout expires.
-
-```sql
-SELECT bdr.create_commit_scope(
-    commit_scope_name := 'example_scope',
-    origin_node_group := 'top_group',
-    rule := 'ALL ORIGIN GROUP QUORUM COMMIT ABORT ON (timeout = 6s)',
     wait_for_ready := true
 );
 ```
@@ -127,8 +122,6 @@ Only test failure scenarios that the cluster topology is designed to tolerate. F
 
 Adding `commit_decision = raft` to any of the configurations above routes the commit decision through PGD's built-in Raft consensus rather than the origin node directly. After receiving the required confirmations, the transaction commits only after Raft confirms the decision across all nodes. The choice of `commit_decision` also affects how [automatic reconciliation](how-quorum-commit-works#automatic-reconciliation) works after a node failure. With `group`, the coordinator must query nodes and count confirmations to determine the outcome. With `raft`, Raft acts as the sole arbiter and the coordinator can resolve all unresolved transactions immediately, since any prior Raft decision takes precedence.
 
-When using `ALL` as the commit scope group, we recommend setting `commit_decision = raft` to avoid reconciliation issues.
-
 ```sql
 SELECT bdr.create_commit_scope(
     commit_scope_name := 'example_scope',
@@ -146,6 +139,31 @@ When using local routing, set the timeout to be shorter than `bdr.raft_group_ele
 
 When using global routing, set the timeout to be shorter than `bdr.raft_global_election_timeout` (default 6s). If a node isn't heard from for the global election timeout, reconciliation of its transactions begins. Setting a timeout of 6s or less ensures a transaction is cleanly aborted before write leader reconciliation starts.
 
+
+## Setting a default commit scope
+
+A commit scope can be set as the default for a node group using `bdr.alter_node_group_option`. All transactions on nodes in that group then use the commit scope automatically, ensuring consistent protection across all workloads.
+
+```sql
+SELECT bdr.alter_node_group_option('sg1', 'default_commit_scope', 'majority_qc');
+```
+
+!!!Important
+Quorum Commit doesn't guarantee consistency when transactions using it execute concurrently on the same tables as transactions that don't. Setting a default commit scope on the node group ensures all transactions get the consistency benefit.
+!!!
+
+## Writing applications for Quorum Commit
+
+Because Quorum Commit uses eager conflict resolution, applications encounter serialization errors more often than with asynchronous replication. Wrap transactions in a retry loop to handle serialization errors:
+
+```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'banking_scope';
+-- ... application queries ...
+COMMIT;
+```
+
+If `COMMIT` returns a serialization error, re-execute the transaction from `BEGIN`. The retry rate depends on the workload. Large transactions that modify many rows or overlap heavily with concurrent transactions retry more often.
 
 ## Compatibility
 
