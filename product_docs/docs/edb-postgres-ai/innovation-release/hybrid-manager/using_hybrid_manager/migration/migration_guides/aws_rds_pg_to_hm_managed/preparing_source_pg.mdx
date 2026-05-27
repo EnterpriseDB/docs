@@ -19,6 +19,10 @@ Because AWS RDS and Aurora PostgreSQL are managed services, you can't modify dat
 
 ## Preparing for schema ingestion (EDB Postgres AI agent)
 
+!!!note EDB Postgres AI agent only
+This section is required for schema ingestion. If you are performing data migration only, skip to [Creating the migration user](#creating-the-migration-user).
+!!!
+
 ### Creating a machine user in Hybrid Manager
 
 The EDB Postgres AI agent authenticates with HM using a machine user account. Create this user in the HM console before configuring the agent.
@@ -48,7 +52,7 @@ Store the access key in an environment variable named `$BEACON_AGENT_ACCESS_KEY`
 We recommend this step for security. The agent runs on your auxiliary machine and connects to the RDS endpoint remotely — it never runs on the RDS instance itself. For testing and development, you can skip this and run the agent as an existing OS user.
 !!!
 
-On Linux, create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This avoids granting the agent permissions it doesn't need (the exact command may vary by distribution):
+Create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This avoids granting the agent permissions it doesn't need. This is a Linux-specific example, the exact command might vary by distribution:
 
 ```shell
 sudo useradd <agent_os_user>
@@ -61,6 +65,10 @@ sudo usermod -aG postgres <agent_os_user>
 ```
 
 ## Creating the migration user
+
+!!!note Schema ingestion and data migration
+Complete all subsections if you plan to run both agents. If you are performing schema ingestion only, complete [Granting schema ingestion permissions](#granting-schema-ingestion-permissions). If you are performing data migration only, complete [Granting data migration permissions](#granting-data-migration-permissions).
+!!!
 
 Create a single migration user that serves both the EDB Postgres AI agent and the DMS agent. Using one user simplifies credential management across agents.
 
@@ -148,6 +156,10 @@ GRANT CREATE ON DATABASE <pg_db_name> TO <migration_user>;
 
 ## Preparing for data migration (DMS agent)
 
+!!!note DMS agent only
+This section is required for data migration. If you are performing schema ingestion only, skip this section and proceed to [configuring the EDB Postgres AI agent](agent_postgres).
+!!!
+
 ### Enabling logical replication
 
 The DMS agent requires logical replication to be enabled on your source instance. Because RDS and Aurora are managed services, you enable this through an AWS DB cluster parameter group rather than by editing `postgresql.conf` directly.
@@ -226,21 +238,27 @@ The DMS agent includes a validation script that checks whether your source datab
     PostgreSQL major version: 16
 
      *** [Transporter] - Validate WAL Level
+    wal_level:  logical
     [Pass] wal_level is 'logical'.
 
      *** [Transporter] - Validate max WAL senders
+    max_wal_senders: 10
     [Pass] max_wal_senders is at least 1.
 
      *** [Transporter] - Validate max replication slots
+    max_replication_slots: 10
     [Pass] max_replication_slots is at least 1.
 
      *** [Transporter] - Validate max WAL size
-    [Pass] max_wal_size is at least 8 GB.
+    max_wal_size: 8 GB
+    [Pass] max_wal_size is set to the recommended value of 8GB or higher.
 
      *** [Transporter] - Validate checkpoints
+    checkpoints_timed: 100
+    checkpoints_req: 5
     [Pass] Timed checkpoints are more frequent than requested checkpoints.
 
-     *** [Transporter] - Check debezium user role
+     *** [Transporter] - Check <migration_user> user role
     [Pass] User '<migration_user>' is present
     [Pass] User '<migration_user>' has replication permission
 
