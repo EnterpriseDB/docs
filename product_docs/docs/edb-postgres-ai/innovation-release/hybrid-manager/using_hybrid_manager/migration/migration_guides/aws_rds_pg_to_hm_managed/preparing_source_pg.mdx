@@ -7,11 +7,11 @@ deepToC: true
 
 Configure your AWS RDS or Aurora PostgreSQL source database and create the required users before starting your migration. What you need to configure depends on your goal:
 
-- **Schema ingestion only** (EDB Postgres AI agent): Create a machine user in Hybrid Manager (HM), set up a dedicated OS user for the agent on your auxiliary machine, and create a database user with schema extraction permissions. No WAL-level database changes are required.
+- **Schema ingestion only** (EDB Postgres AI agent): Create a machine user in Hybrid Manager (HM), set up a dedicated OS user for the agent on your auxiliary machine, and create a migration user with schema extraction permissions. No WAL-level database changes are required.
 
-- **Data migration** (DMS agent): Enable logical replication via an AWS DB cluster parameter group, create a dedicated CDC migration role, and grant the required replication privileges. Complete the [DMS agent preparation](#preparing-for-data-migration-dms-agent) sections on this page.
+- **Data migration** (DMS agent): Enable logical replication via an AWS DB cluster parameter group and grant the required replication privileges. Complete the [DMS agent preparation](#preparing-for-data-migration-dms-agent) sections on this page.
 
-If you plan to run both schema ingestion and data migration, complete all sections. We recommend using a single migration user for both agents — the `<agent_user>` you create in the next section can serve as the `<migration_role>` in the DMS agent section, provided you grant all required privileges to it.
+If you plan to run both schema ingestion and data migration, complete all sections. The migration user you create serves both agents.
 
 !!!note
 Because AWS RDS and Aurora PostgreSQL are managed services, you can't modify database configuration directly with `psql` or by editing `postgresql.conf`. WAL-level settings must be applied through AWS DB cluster parameter groups.
@@ -60,42 +60,42 @@ Add the agent OS user to the Postgres user's group. This allows the agent to rea
 sudo usermod -aG postgres <agent_os_user>
 ```
 
-### Creating a database user for the agent
+## Creating the migration user
 
-Using a database admin account, connect to your RDS or Aurora PostgreSQL source database and create a dedicated user for the EDB Postgres AI agent. This is a database-level user — separate from the OS user created in the previous step, which is used to run the agent process:
+Create a single migration user that serves both the EDB Postgres AI agent and the DMS agent. Using one user simplifies credential management across agents.
 
-```sql
-CREATE USER <agent_user> WITH PASSWORD '<password>';
-GRANT CONNECT ON DATABASE <source_database> TO <agent_user>;
-GRANT pg_monitor, pg_read_all_data TO <agent_user>;
-```
-
-Where `<source_database>` is the name of the database you want to assess.
-
-If you plan to connect the agent to additional databases on the same instance, grant `CONNECT` on each one:
+Using a database admin account, connect to your RDS or Aurora PostgreSQL source database and create the migration user:
 
 ```sql
-GRANT CONNECT ON DATABASE <other_database> TO <agent_user>;
+CREATE USER <migration_user> WITH LOGIN PASSWORD '<migration_user_password>';
 ```
 
-### Granting schema extraction permissions
+### Granting schema ingestion permissions
 
-The agent uses `pg_dump` to extract DDL from your source database. The `<agent_user>` needs additional roles for a complete extraction.
+Grant the permissions needed for the EDB Postgres AI agent to connect to the source database and extract schema information:
+
+```sql
+GRANT CONNECT ON DATABASE <source_database> TO <migration_user>;
+```
+
+Where `<source_database>` is the name of the database you want to assess. If you plan to connect the agent to additional databases on the same instance, grant `CONNECT` on each one:
+
+```sql
+GRANT CONNECT ON DATABASE <other_database> TO <migration_user>;
+```
+
+Then grant the roles needed for a complete schema extraction:
 
 <TabContainer syncKey="pg_version">
 <Tab title="Postgres 14 and later">
 
 ```sql
-GRANT pg_read_all_data TO <agent_user>;
-GRANT pg_read_all_settings TO <agent_user>;
-GRANT pg_monitor TO <agent_user>;
+GRANT pg_monitor TO <migration_user>;
+GRANT pg_read_all_data TO <migration_user>;
+GRANT pg_read_all_settings TO <migration_user>;
 ```
 
-!!!note
-`pg_monitor` and `pg_read_all_data` were already granted in the previous step. You only need to add `pg_read_all_settings` here. Together, these three roles enable a full schema extraction, including ownership and privilege information.
-
-With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
-!!!
+Together, these three roles enable a full schema extraction, including ownership and privilege information. With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
 
 </Tab>
 <Tab title="Postgres 10 to 13">
@@ -103,12 +103,48 @@ With only `pg_read_all_data` granted, the agent performs a partial extraction li
 `pg_read_all_data` isn't available in Postgres 10 to 13:
 
 ```sql
-GRANT pg_read_all_settings TO <agent_user>;
-GRANT pg_monitor TO <agent_user>;
+GRANT pg_monitor TO <migration_user>;
+GRANT pg_read_all_settings TO <migration_user>;
 ```
 
 </Tab>
 </TabContainer>
+
+### Granting data migration permissions
+
+!!!note DMS agent only
+Complete this section only if you plan to run data migration. Skip it if you're performing schema ingestion only.
+!!!
+
+Grant the `rds_replication` role, which provides replication privileges on RDS and Aurora:
+
+```sql
+GRANT rds_replication TO <migration_user>;
+```
+
+Grant the migration user usage on each schema containing tables to migrate:
+
+```sql
+GRANT USAGE ON SCHEMA <db_schema> TO <migration_user>;
+```
+
+Grant `SELECT` on source tables. For an entire schema:
+
+```sql
+GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_user>;
+```
+
+For individual tables:
+
+```sql
+GRANT SELECT ON <table_name> TO <migration_user>;
+```
+
+Grant `CREATE` on the source database so the DMS agent can create publications:
+
+```sql
+GRANT CREATE ON DATABASE <pg_db_name> TO <migration_user>;
+```
 
 ## Preparing for data migration (DMS agent)
 
@@ -143,61 +179,23 @@ The DMS agent requires logical replication to be enabled on your source instance
 
     `wal_level` should return `logical`.
 
-### Creating the CDC migration role
+### Creating the replication group role
 
-Connect to your source database as an administrative user and create a dedicated role for CDC data migration:
-
-```sql
-CREATE ROLE <migration_role> WITH LOGIN PASSWORD '<migration_role_password>';
-```
-
-Grant the `rds_replication` role, which provides replication privileges on RDS and Aurora:
-
-```sql
-GRANT rds_replication TO <migration_role>;
-```
-
-The `<migration_role>` must own the source tables to auto-create Postgres publications. Because those tables are already owned by another role, create a replication group role that both the current table owner and the migration role belong to:
+The migration user must own the source tables to auto-create Postgres publications. Because those tables are already owned by another role, create a replication group role that both the current table owner and the migration user belong to:
 
 ```sql
 CREATE ROLE <replication_group>;
-GRANT <replication_group> TO <migration_role>;
+GRANT <replication_group> TO <migration_user>;
 GRANT <replication_group> TO <original_owner>;
 ALTER TABLE <table_name> OWNER TO <replication_group>;
 ```
 
 Where:
 
-- `<migration_role>` is the Postgres role to use for CDC migration.
+- `<migration_user>` is the Postgres user you created for migration.
 - `<original_owner>` is the original owner of the tables.
 - `<replication_group>` is the shared role that owns the source tables for publication auto-creation.
 - `<table_name>` is the name of a table to migrate (case-sensitive).
-
-### Granting access to source schemas and tables
-
-Grant the migration role usage on each schema containing tables to migrate:
-
-```sql
-GRANT USAGE ON SCHEMA <db_schema> TO <migration_role>;
-```
-
-Grant `SELECT` on source tables. For an entire schema:
-
-```sql
-GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_role>;
-```
-
-For individual tables:
-
-```sql
-GRANT SELECT ON <table_name> TO <migration_role>;
-```
-
-Grant `CREATE` on the source database so the DMS agent can create publications:
-
-```sql
-GRANT CREATE ON DATABASE <pg_db_name> TO <migration_role>;
-```
 
 ### Validating your configuration
 
@@ -218,7 +216,7 @@ The DMS agent includes a validation script that checks whether your source datab
 1.  Run the validation script:
 
     ```shell
-    PG_USERNAME=postgres PG_PASSWORD=<password> PG_HOST=<rds-endpoint> PG_PORT=5432 DB_NAME=<db_name> DBZ_USERNAME=<migration_role> DBZ_PASSWORD=<migration_role_password> ./postgresConfigValidation.sh "${arr[@]}"
+    PG_USERNAME=postgres PG_PASSWORD=<password> PG_HOST=<rds-endpoint> PG_PORT=5432 DB_NAME=<db_name> DBZ_USERNAME=<migration_user> DBZ_PASSWORD=<migration_user_password> ./postgresConfigValidation.sh "${arr[@]}"
     ```
 
     A passing result looks like this:
@@ -243,14 +241,14 @@ The DMS agent includes a validation script that checks whether your source datab
     [Pass] Timed checkpoints are more frequent than requested checkpoints.
 
      *** [Transporter] - Check debezium user role
-    [Pass] User '<migration_role>' is present
-    [Pass] User '<migration_role>' has replication permission
+    [Pass] User '<migration_user>' is present
+    [Pass] User '<migration_user>' has replication permission
 
      *** [Transporter] - Check SELECT privilege on the tables to be migrated
-    [Pass] User <migration_role> has select privilege on all tables to be migrated.
+    [Pass] User <migration_user> has select privilege on all tables to be migrated.
 
      *** [Transporter] - Check CREATE privilege on database
-    [Pass] Role '<migration_role>' has CREATE privilege on database '<db_name>'.
+    [Pass] Role '<migration_user>' has CREATE privilege on database '<db_name>'.
     ```
 
 !!!note
