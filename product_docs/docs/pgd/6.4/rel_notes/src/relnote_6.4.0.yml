@@ -1,0 +1,283 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB Postgres Distributed
+version: 6.4.0
+date: 26 May 2026
+intro: |
+  EDB Postgres Distributed (PGD) 6.4.0 includes new features, enhancements, and bug fixes.
+highlights: |
+  - **[Quorum Commit](/pgd/current/commit-scopes/quorum-commit):** A new commit scope kind that enforces pre-commit coordination across the cluster. A majority of nodes must agree before any node commits a transaction. If agreement isn't reached, the transaction rolls back everywhere, guaranteeing a consistent global view with no conflicting updates and no divergence across nodes.
+  - **[Transaction pooling via Connection Manager](/pgd/current/connection-manager/connection-pooling):** Connection Manager now supports transaction-mode connection pooling in addition to session-mode pooling. In transaction pooling mode, a backend connection is held only for the duration of a transaction, reducing pressure on `max_connections` and improving scalability under high concurrency.
+  - **[Large object support](/pgd/current/large-objects):** PGD 6.4.0 adds support for large objects in distributed deployments. PGD replicates large objects across all nodes and generates globally unique OIDs using galloc sequences to eliminate conflicts. The standard `lo_*` API, including `lo_import` and `lo_export`, works transparently through Connection Manager, so applications using large objects can migrate to PGD without changes to their architecture.
+
+relnotes:
+- relnote: Added configurable apply error policy for handling replication failures.
+  details: |
+    PGD now provides a configurable policy for handling replication apply failures. When a transaction fails to apply, PGD can capture the failed changes and expose them for review and resolution via new SQL functions. Configure the policy per node group using `bdr.alter_node_group_option`. For more information, see [Handling replication apply errors](/pgd/current/apply-error-policy).
+  jira: BDR-7604
+  addresses: ""
+  type: Feature
+  impact: High
+- relnote: Added support for logically replicated large objects.
+  details: |
+    PGD now provides its own implementation of large objects as a drop-in replacement for the built-in Postgres large objects. PGD large objects are logically replicated across all nodes in the cluster. The feature is available via `bdr.lo_` functions directly, or transparently via `bdr.override_large_objects`. For more information, see [Replicated large objects](/pgd/current/large-objects) and the [large object functions reference](/pgd/current/reference/tables-views-functions/large-objects).
+  jira: BDR-7837
+  addresses: ""
+  type: Feature
+  impact: High
+- relnote: Parallel apply is now compatible with Quorum Commit.
+  details: |
+    Unlike Group Commit, Quorum Commit is compatible with parallel apply. Quorum Commit improves on legacy Group Commit, which was only supported with `num_writers = 1`.
+  jira: BDR-2271
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Added the `pgd raft sync-snapshot` command to synchronize Raft state.
+  details: |
+    New [`pgd raft sync-snapshot`](/pgd/current/reference/cli/command_ref/raft/sync-snapshot) command that synchronizes the Raft state across all nodes by disabling Raft, exporting state from the leader node, importing it on all nodes, and re-enabling Raft. Use `--group` to specify a target group; defaults to global group.
+  jira: BDR-7748
+  addresses: ""
+  type: Feature
+  impact: Medium
+- relnote: Enhanced the `pgd raft show` command to display more information.
+  details: |
+    [`pgd raft show`](/pgd/current/reference/cli/command_ref/raft/show) now displays three sections by default to provide deeper visibility into the Raft consensus layer: State (consensus state), Followers (follower status as seen from the leader), and Journal (global journal details).
+  jira: BDR-7580
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Connection Manager now respects `IntervalStyle` specified in connection startup parameters.
+  details: |
+    Previously, `IntervalStyle` was only supported via the `options` connection parameter. Connection Manager now correctly applies `IntervalStyle` when specified directly as a startup parameter.
+  jira: BDR-7775
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Improved Connection Manager idle connection handling on topology and configuration changes.
+  details: |
+    Connection Manager now closes outdated idle connections proactively on topology or configuration changes, and reports server connection errors directly to the client.
+  jira: BDR-7923
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Added per-subgroup connection string support via `node_group_dsn`.
+  details: |
+    A new `node_group_dsn` column in `bdr.node_config` lets nodes within the same subgroup use a dedicated connection string, useful in Kubernetes and cloud environments to reduce egress costs. Set it via [`bdr.alter_node_option`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_option).
+  jira: BDR-6055
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Fixed zero OID assigned to tablespaces during logical join sync.
+  details: |
+    `bdr_tablespace_upsert()` wasn't setting the OID when inserting a new tablespace, causing a duplicate key violation when multiple user tablespaces were synced during logical join.
+  jira: BDR-7886
+  addresses: "59715"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `pgd assess` command failing on Postgres instances without BDR extension.
+  details: |
+    The `pgd assess` command was failing with `ERROR: schema "bdr" does not exist`. The command now gracefully handles instances without BDR installed by checking for the BDR schema first, and performs the full assessment with compatibility suggestions for both PGD Essential and Expanded editions.
+  jira: BDR-7834
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed system OID assignment in `pgd node setup` causing upgrade failures.
+  details: |
+    `pgd node setup` was creating BDR objects with system-range OIDs, causing `pgd node upgrade` to fail with `schema "bdr" does not exist`. The setup command now assigns user-range OIDs correctly, and the upgrade command detects the issue early on existing affected clusters.
+  jira: BDR-7423
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a memory leak in the walsender for the temporary replication slot used by joining nodes.
+  details: |
+    Fixed a memory leak in `bdr_copy_to_repl_dest_receiver_receive`, where per-row allocations in the walsender for the temporary replication slot used by joining nodes were not freed correctly.
+  jira: BDR-7989
+  addresses: "59663"
+  type: Bug Fix
+  impact: High
+- relnote: Enhanced [`bdr.routing_leadership_transfer`](/pgd/current/reference/tables-views-functions/functions#bdrrouting_leadership_transfer) to support automatic candidate selection.
+  details: |
+    `bdr.routing_leadership_transfer` now accepts `NULL` for `leader_name`, triggering automatic selection of the best candidate based on write leader progress. Automatic selection is the recommended approach when using Quorum Commit as the commit scope kind. Requires PGD 6.4 with Raft protocol version 6004 or above.
+  jira: BDR-7800
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Added [`bdr.transfer_all_leaderships`](/pgd/current/reference/tables-views-functions/functions#bdrtransfer_all_leaderships) to transfer write and Raft leadership away from the local node.
+  details: |
+    Transfers write and Raft leadership away from the local node across all groups, useful for draining a node before maintenance.
+  jira: BDR-7693
+  addresses: ""
+  type: Feature
+  impact: Low
+- relnote: Fixed upgrade failures from PGD 6.2 to 6.3 or 6.4 when `pgaudit` follows `bdr` in `shared_preload_libraries`.
+  details: |
+    When `pgaudit` followed `bdr` in `shared_preload_libraries`, upgrades from PGD 6.2 failed with `ERROR: pgaudit not loaded before call to pgaudit_ddl_command_end()`. Hook deinitialization was resetting hooks to `NULL`, crashing pgaudit in the manager process. The fix adds bypass macros so hooks defer to the next handler instead of deinitializing.
+  jira: BDR-7875
+  addresses: "59715"
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager now reloads Postgres configuration parameters dynamically on `SIGHUP`.
+  details: |
+    Previously, configuration parameters were only loaded on Connection Manager process start. Connection Manager now reloads them on `SIGHUP` without requiring a restart.
+  jira: BDR-7911
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Fixed Connection Manager log level filtering to match Postgres behavior.
+  details: |
+    Connection Manager was incorrectly interpreting `log_min_messages`, causing inconsistent log filtering compared to Postgres.
+  jira: BDR-8039
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed Connection Manager process not stopping after postmaster is killed.
+  details: ""
+  jira: BDR-8020
+  addresses: "59631"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed memory leak in Postgres worker caused by `bdr_connection.client_addr` updates.
+  details: |
+    Handling updates to the `bdr_connection.client_addr` configuration parameter, used by Connection Manager in session pooling mode, was leaking memory in the Postgres worker.
+  jira: BDR-7910
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed Connection Manager using outdated routing configuration when routing was enabled or disabled on a node group.
+  details: ""
+  jira: BDR-7838
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed unbounded WAL accumulation caused by stale `node_peer_progress_mapping` entries.
+  details: |
+    Stale `node_peer_progress_mapping` entries left behind by cancelled forwarding subscriptions were pinning the group replication slot and preventing WAL cleanup. The maintenance path now removes entries that have been superseded by direct subscription progress.
+  jira: BDR-7822
+  addresses: "58999, 59320"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed deadlocks and stalls in the part and sync node state machines.
+  details: |
+    The part and sync state machines could deadlock or stall when end-of-recovery markers were delivered through `FORWARD` or `CATCHUP` subscriptions. Multiple fixes restrict confirmation waits to `NORMAL` subscriptions, ensure atomic origin advancement during `PART_CATCHUP`, and prevent a double-delete error on `node_peer_progress_mapping` rows.
+  jira: BDR-7968
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a writer segfault when a replication origin was already in use.
+  details: |
+    Enabling a `NORMAL` subscription while a `sync_node` request was in progress for the same origin caused a second writer to crash with a `SIGSEGV`. PGD now blocks enabling a `NORMAL` subscription in this case, and the origin-acquisition path returns a recoverable error instead of crashing.
+  jira: BDR-7816
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed segfaults in `bdr.stat` shared-memory entry handling.
+  details: |
+    Concurrent statistics readers observed partially-initialized or freed Dynamic Shared Area (DSA) pointers when a stat entry was being created or dropped, causing `bdr_stat_write_file` to dereference NULL or freed memory. The initialization path now marks entries invalid until allocation succeeds, the drop path holds an exclusive lock, and all dshash scan paths guard against invalid DSA pointers.
+  jira: BDR-7994
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed an undetectable deadlock in `bdr.alter_sequence_set_kind` under parallel writers.
+  details: |
+    When multiple writers concurrently changed sequence kinds, two writers could attempt to upgrade `ShareRowExclusiveLock` to `AccessExclusiveLock` on the same sequence relation simultaneously, deadlocking outside the deadlock detector's view. The lock is now acquired at `AccessExclusiveLock` upfront to eliminate the lock-upgrade window.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed an assertion crash in `bdr_load_commit_decisions` at end of WAL.
+  details: |
+    Reaching the end of WAL while loading commit decisions tripped an assertion (`buf.len > 0`) on debug builds. The loop now terminates normally when no more data is available.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a crash in the failover slot standby reply hook before BDR catalogs are available.
+  details: |
+    The standby reply hook could fire before BDR catalogs were fully initialized, causing a crash. The hook now checks catalog availability and exits early when catalogs are not yet ready.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Replaced a writer-start assertion with a graceful exit when the receiver role is reset mid-launch.
+  details: |
+    If the receiver role was reset between writer launch and writer initialization, the writer tripped an assertion. The writer now exits cleanly so it can be restarted by the supervisor without producing a core file.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `pgd raft set-leader` to wait correctly for asynchronous transfers and validate group scope.
+  details: |
+    The `pgd raft set-leader` command didn't properly wait for leadership change in asynchronous mode, allowed invalid cross-group transfers, and produced an unclear error message when the target group didn't exist. All three issues are now corrected.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Made `routing_leadership_transfer` retry when no Raft leader is currently available.
+  details: |
+    `routing_leadership_transfer` returned immediately when consensus reported no leader, instead of retrying like other transient consensus errors. `BDR_CONSENSUS_NO_LEADER` is now part of the retryable error set, so leadership transfers complete after a brief leader election rather than failing.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Downgraded analytics lease renewal failures from `ERROR` to `LOG`.
+  details: |
+    Transient lease renewal failures in the analytics (Seafowl) replicator caused the worker to crash and restart. Because these failures are self-recovering on the next renewal cycle, they are now logged at `LOG` level and the worker continues running.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed AutoPartition wait reliability and task manager backoff delays.
+  details: |
+    The AutoPartition task manager's exponential backoff wasn't reset after processing work items, causing unnecessary iteration delays. `autopartition_wait_for_partitions_on_all_nodes` was also hardened with better signalling, a `statement_timeout = 0` override on remote connections, and fixes for `PGresult`/`PGconn` leaks.
+  jira: BDR-8080
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: DDL on objects in the `bdr` schema is no longer permitted.
+  details: |
+    Database users can no longer create or modify database objects in the `bdr` schema, or set the namespace of an object to the `bdr` schema. This restriction prevents catalog corruption and extension upgrade issues that such operations could cause. For more information, see [`bdr.allow_bdr_schema_changes`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrallow_bdr_schema_changes).
+  jira: BDR-7120
+  addresses: "53224"
+  type: Enhancement
+  impact: Medium
+- relnote: Improved log output when the transaction change tracker buffer is exceeded.
+  details: |
+    The emitted log message now makes it clear that the issue is transient and that processing resumes following an automatic restart of the writer.
+  jira: BDR-6924
+  addresses: ""
+  type: Enhancement
+  impact: Low
+- relnote: Added sanity checks for joining and parting nodes in CAMO-configured groups.
+  details: |
+    Attempting to join a data node to a group where existing nodes are configured as CAMO partners, or to part a data node when the group's `default_commit_scope` or the local node's `bdr.commit_scope` is set to a CAMO commit scope, now raises an error. To perform these operations, drop the CAMO commit scope first.
+  jira: BDR-7440
+  addresses: "55212"
+  type: Enhancement
+  impact: Medium
+- relnote: Changed the default display value of `bdr.ddl_locking` to `auto`.
+  details: |
+    Previously the value was displayed as `true`, which has the same meaning but exists only as a backwards-compatibility alias. This change requires no configuration changes.
+  jira: BDR-7882
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: The configuration parameter `bdr.enable_auto_sync_reconcile` is now visible in `pg_settings`.
+  details: |
+    The `bdr.enable_auto_sync_reconcile` configuration parameter is now exposed in the `pg_settings` view, making it visible to monitoring tools.
+  jira: BDR-7754
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Fixed `pgd manager` crash during BDR 5 to PGD 6 rolling upgrade.
+  details: |
+    When upgrading the last node in a cluster from BDR 5 to PGD 6, the `pgd manager` process crashed with a `SIGSEGV` during subscription reconfiguration when replication slots had been renamed. The `pgd manager` now handles missing or renamed slots gracefully.
+  jira: BDR-8118
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed pglogical manager process spinning at 100% CPU when a PGD worker becomes unresponsive to `SIGTERM`.
+  details: |
+    When the pglogical manager process died with an error and tried to terminate other PGD workers, it hung if those workers had died uncleanly or were stuck and unable to receive signals. The process now exits correctly in all such cases.
+  jira: BDR-7972
+  addresses: "60272"
+  type: Bug Fix
+  impact: Low

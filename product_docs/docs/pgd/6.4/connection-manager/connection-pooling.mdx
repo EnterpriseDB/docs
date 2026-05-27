@@ -1,0 +1,63 @@
+---
+title: Connection pooling
+navTitle: Connection pooling
+description: How to use Connection Manager's built-in connection pooling to reduce server resource overhead and improve performance.
+redirects: []
+---
+
+Configure connection pooling to reuse backend connections across clients, reducing server memory overhead and improving throughput for workloads with many short-lived sessions. Connection Manager's built-in pooling removes the need for external tools such as pgBouncer in most deployments.
+
+See [Configuring connection pooling](/pgd/current/connection-pooling-dba) for DBA setup and migration guidance, and [Using connection pooling in your application](/pgd/current/connection-pooling-developer) for developer guidance.
+
+
+## Configuring the pool mode
+
+Set the pool mode for a node group using `bdr.alter_node_group_option`:
+
+```sql
+SELECT bdr.alter_node_group_option('mygroup', 'server_pool_mode', 'transaction');
+```
+
+Or using the PGD CLI:
+
+```shell
+pgd group mygroup set-option server_pool_mode transaction
+```
+
+The `server_pool_mode` group option controls the pooling behavior.
+
+| Mode | Behavior |
+|------|----------|
+| `none` | No pooling. Each client connection gets a dedicated backend connection for its entire lifetime. The backend connection closes when the client disconnects. This mode is the default. |
+| `session` | A backend connection is assigned to a client on first use and returned to the pool when the client disconnects. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state. |
+| `transaction` | A backend connection is assigned when a transaction begins and returned to the pool when the transaction ends. Between transactions, the client holds no backend connection, making it available to other clients. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state, then re-applies the client's supported connection parameters for the next transaction. |
+
+The current pool mode is visible in the `server_pool_mode` column of the `bdr.node_group_summary` view.
+
+## Managing session parameters
+
+Connection Manager forwards a specific set of connection parameters to the backend in all pool modes. The parameters it recognizes are `client_encoding`, `DateStyle`, `TimeZone`, `standard_conforming_strings`, `application_name`, `search_path`, and `extra_float_digits`. Additional parameters can be included via the `options` connection parameter using `-c name=value` syntax.
+
+In `transaction` mode, where the backend connection can change between transactions, Connection Manager re-applies these parameters each time it assigns a new backend. Because only connection parameters are re-applied, avoid using `SET` commands to configure session parameters in transaction mode. Changes made with `SET` aren't preserved when the backend connection changes. See [Using connection pooling in your application](/pgd/current/connection-pooling-developer#managing-session-parameters) for connection string examples.
+
+## Using prepared statements
+
+Prepared statements sent via the extended query protocol work seamlessly across transactions in all pool modes. Connection Manager automatically detects missing prepared statements on the backend and re-prepares them on demand, transparently managing statement naming between the client and the backend.
+
+In `transaction` mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. Issue `PREPARE`/`EXECUTE` SQL statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](/pgd/current/connection-pooling-developer#using-prepared-statements) in the developer guide for specific steps.
+
+## Reusing connections
+
+In `session` and `transaction` modes, Connection Manager returns the backend connection to the pool when a client disconnects or a transaction ends. If a client triggers an unsupported feature or closes the connection with commands still pending, Connection Manager discards that backend connection rather than returning it to the pool. Other clients aren't affected.
+
+## Unsupported features
+
+Some Postgres features are incompatible with connection pooling and aren't supported.
+
+- `SET` changes made during a session don't persist in `transaction` mode. Configure session parameters in the connection string instead. See [Managing session parameters](#managing-session-parameters) for details.
+- `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements aren't supported in `transaction` mode. `DISCARD ALL` runs when the backend connection is returned to the pool, deallocating any prepared statements. Issue these statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](#using-prepared-statements) for details.
+- Holdable cursors (`WITH HOLD`) aren't supported in `transaction` mode. They persist beyond the transaction boundary, which conflicts with returning the backend connection to the pool when the transaction ends.
+- `LISTEN` isn't supported in `transaction` mode. A `LISTEN` subscription persists beyond a single transaction, which conflicts with returning the backend connection to the pool.
+- Advisory locks held across transaction boundaries aren't supported in `transaction` mode.
+- Temporary tables accessed across transactions aren't supported in `transaction` mode.
+- Replication connections are rejected in all pool modes.
