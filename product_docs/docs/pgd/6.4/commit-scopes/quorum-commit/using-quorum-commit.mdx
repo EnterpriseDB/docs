@@ -30,7 +30,7 @@ SELECT bdr.create_commit_scope(
 
 The `rule` parameter accepts the following options:
 
-- **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN GROUP`, `MAJORITY CLUSTER`, `MAJORITY CLUSTER WITH LEADER`, or `MAJORITY FOR EACH GROUP IN CLUSTER`. For details on commit scope groups, see [Commit scope groups](/pgd/current/commit-scopes/origin_groups/).
+- **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN GROUP`, `MAJORITY CLUSTER`, `MAJORITY CLUSTER WITH LEADER`, `MAJORITY FOR EACH GROUP (subgroup1, subgroup2, ...)`, or `MAJORITY FOR EACH GROUP IN CLUSTER`. For details on commit scope groups, see [Commit scope groups](/pgd/current/commit-scopes/origin_groups/).
 
     `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
 
@@ -154,6 +154,12 @@ Quorum Commit doesn't guarantee consistency when transactions using it execute c
 
 ## Writing applications for Quorum Commit
 
+Quorum Commit requires a fast track writer enabled on every subscription. Before using a Quorum Commit scope with any transaction, enable the [`enable_fast_track_writer`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) option on the top-level group so the entire cluster has it enabled:
+
+```sql
+SELECT bdr.alter_node_group_option('topgroup', 'enable_fast_track_writer', 'true');
+```
+
 Because Quorum Commit uses eager conflict resolution, applications encounter serialization errors more often than with asynchronous replication. Wrap transactions in a retry loop to handle serialization errors:
 
 ```sql
@@ -164,6 +170,8 @@ COMMIT;
 ```
 
 If `COMMIT` returns a serialization error, re-execute the transaction from `BEGIN`. The retry rate depends on the workload. Large transactions that modify many rows or overlap heavily with concurrent transactions retry more often.
+
+Set the timeout below `bdr.raft_global_election_timeout` (default 6s) when using global routing, or below `bdr.raft_group_election_timeout` (default 3s) when using local routing. For more details, see [Choosing a timeout](#choosing-a-timeout).
 
 ## Compatibility
 

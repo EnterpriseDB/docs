@@ -8,7 +8,7 @@ Quorum Commit requires all participating nodes to agree before any node commits,
 
 ## Consistency guarantees
 
-When used with a commit scope covering a majority or more of nodes in the routing group, Quorum Commit provides the following guarantees. We recommend Postgres 17 or later for all guarantees to hold. Earlier versions are supported but not all guarantees apply.
+We recommend Postgres 17 or later to ensure all guarantees hold. Earlier versions are supported, but not all guarantees apply. When used with a commit scope covering a majority or more of the nodes in the routing group, Quorum Commit provides the following guarantees:
 
 - **Committed means committed everywhere.** A transaction commits only when the required number of nodes have committed it. When the application receives a commit acknowledgment, all required nodes hold the same resulting data.
 
@@ -34,13 +34,13 @@ Quorum Commit uses [two-phase commit (2PC)](/pgd/current/overview/terminology/#t
 
 The origin node then collects confirmations from the required commit scope group. Once it receives the required number, it makes the commit decision and propagates it to all participating nodes, which then all commit together. When Raft consensus is used for the commit decision, PGD's built-in Raft makes the decision rather than the origin node.
 
-Configure [`max_prepared_transactions`](/pgd/current/postgres-configuration/#max_prepared_transactions) high enough to handle all Quorum Commit transactions originating per node.
+Configure [`max_prepared_transactions`](/pgd/current/postgres-configuration/#max_prepared_transactions) to at least as high as `max_connections` to handle all Quorum Commit transactions originating per node.
 
 ## Automatic reconciliation
 
 In a Quorum Commit transaction, the origin node makes the commit decision once it receives the required confirmations, then propagates that decision to all nodes via replication. If the origin fails after preparing a transaction but before that decision reaches all nodes, the remaining nodes are left holding a prepared transaction with no outcome.
 
-Those prepared transactions hold locks and other resources and must be resolved before the cluster can make progress. The new write leader acts as coordinator and must arrive at the same decision the origin would have made. If the coordinator commits a transaction the origin had already aborted, or aborts one the origin had already committed, the cluster diverges.
+Those prepared transactions hold locks and other resources and must be resolved before the cluster can make progress. The new write leader acts as coordinator and must arrive at the correct commit or abort decision for each prepared transaction. If the coordinator commits a transaction the origin had already aborted, or aborts one the origin had already committed, the cluster diverges.
 
 PGD prevents this divergence by resolving these transactions automatically through reconciliation, enabled by default via [`bdr.enable_auto_sync_reconcile`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrenable_auto_sync_reconcile).
 
