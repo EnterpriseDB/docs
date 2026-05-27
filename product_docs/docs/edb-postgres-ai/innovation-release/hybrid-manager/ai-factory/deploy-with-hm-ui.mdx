@@ -6,7 +6,8 @@ description: Step-by-step guide for deploying NVIDIA NIM models and Gen AI appli
 
 ## Overview
 
-This guide provides deployment procedures for AI Factory components through the Hybrid Manager (HM) web interface. The deployment process covers GPU infrastructure setup, NVIDIA NIM model deployment, and Gen AI application configuration.
+This guide provides deployment procedures for AI Factory components through the Hybrid Manager (HM) web interface. 
+The deployment process covers GPU infrastructure setup, NVIDIA NIM model deployment, and Gen AI application configuration.
 
 ## Prerequisites
 
@@ -44,11 +45,10 @@ For clusters with internet access, configure NVIDIA NGC authentication:
 
 1.  Obtain NGC API key from [NVIDIA NGC Portal](https://docs.nvidia.com/ngc/gpu-cloud/ngc-user-guide/index.html#ngc-api-keys)
 
-2.  Create authentication secrets via HM UI:
-
--   Navigate to **Project Settings** → **Secrets**
--   Create `nvidia-nim-secrets` with NGC_API_KEY
--   Create `ngc-cred` Docker registry secret
+1. Create authentication secrets via HM UI:
+- Navigate to **Project Settings** → **Secrets**
+- Create `nvidia-nim-secrets` with NGC_API_KEY
+- Create `ngc-cred` Docker registry secret
 
 Alternatively, use kubectl:
 
@@ -76,10 +76,10 @@ kubectl -n default annotate secret ngc-cred \
 
 For environments without internet access:
 
-1.  **Mirror NIM Images**: Copy required images to private registry using skopeo
-2.  **Update Model URLs**: Configure HM to reference private registry locations
-3.  **Cache Profiles**: Download and store model profiles in object storage
-4.  **Configure Storage Path**: Reference cached profiles during model deployment
+1. **Mirror NIM Images**: Copy required images to private registry using skopeo
+1. **Update Model URLs**: Configure HM to reference private registry locations
+1. **Cache Profiles**: Download and store model profiles in object storage
+1. **Configure Storage Path**: Reference cached profiles during model deployment
 
 See [Air-Gapped Configuration](/edb-postgres-ai/current/hybrid-manager/ai-factory/prerequisites#air-gapped-deployments) for detailed procedures.
 
@@ -87,9 +87,9 @@ See [Air-Gapped Configuration](/edb-postgres-ai/current/hybrid-manager/ai-factor
 
 Navigate to the Model Library interface:
 
-1.  Log into Hybrid Manager console
-2.  Select your project from the project selector
-3.  Navigate to **AI Factory** → **Model Library**
+1. Log into Hybrid Manager console
+1. Select your project from the project selector
+1. Navigate to **AI Factory** → **Model Library**
 
 The Model Library displays available NVIDIA NIM models:
 
@@ -103,9 +103,9 @@ The Model Library displays available NVIDIA NIM models:
 
 ### Select Model for Deployment
 
-1.  Click **Deploy Model** in Model Library
-2.  Select target model from available options
-3.  Review model requirements and documentation links
+1. Click **Deploy Model** in Model Library
+1. Select target model from available options
+1. Review model requirements and documentation links
 
 ### Configure Deployment Parameters
 
@@ -134,9 +134,9 @@ Configure the model server cluster settings:
 
 ### Deploy Model
 
-1.  Review configuration summary
-2.  Click **Deploy** to initiate deployment
-3.  Monitor deployment status in Model Server Clusters view
+1. Review configuration summary
+1. Click **Deploy** to initiate deployment
+1. Monitor deployment status in Model Server Clusters view
 
 Deployment creates:
 
@@ -172,10 +172,10 @@ Click on a cluster name to view:
 
 For external access to deployed models:
 
-1.  Navigate to **AI Factory** → **API Token Management**
-2.  Click **Create Token**
-3.  Provide token reference name
-4.  Store generated token securely
+1. Navigate to **AI Factory** → **API Token Management**
+1. Click **Create Token**
+1. Provide token reference name
+1. Store generated token securely
 
 API tokens enable:
 
@@ -203,20 +203,23 @@ https://<ingress-url>/v1/chat/completions
 
 ### Create Knowledge Base
 
-1.  Navigate to **AI Factory** → **Gen AI Builder** → **Knowledge Bases**
-2.  Configure data sources:
-
--   PostgreSQL databases
--   Document repositories
--   API connections
-
-3.  Select embedding model from deployed services
-4.  Process content to generate embeddings
+1. Navigate to **AI Factory** → **Gen AI Builder** → **Knowledge Bases**
+1. Configure data sources:
+- PostgreSQL databases
+- Document repositories
+- API connections
+1. Select embedding model from deployed services
+1. Process content to generate embeddings
 
 ### Configure Assistant
 
-1.  Navigate to **AI Factory** → **Assistants**
-2.  Create new assistant with:
+1. Navigate to **AI Factory** → **Assistants**
+1. Create new assistant with:
+- Name and directive
+- Model endpoint selection
+- Knowledge base integration
+- Tool configuration
+1. Deploy assistant application
 
 -   Name and directive
 -   Model endpoint selection
@@ -233,15 +236,13 @@ See [Create Assistant Guide](/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-
 
 To modify running clusters:
 
-1.  Navigate to **Model Server Clusters**
-2.  Select cluster to edit
-3.  Adjust parameters:
-
--   Instance counts
--   Resource allocations
--   Scaling thresholds
-
-4.  Apply changes (triggers rolling update)
+1. Navigate to **Model Server Clusters**
+1. Select cluster to edit
+1. Adjust parameters:
+- Instance counts
+- Resource allocations
+- Scaling thresholds
+1. Apply changes (triggers rolling update)
 
 ### Rolling Updates
 
@@ -250,6 +251,63 @@ Updates maintain availability through:
 -   Connection draining before restart
 -   Health verification between instances
 -   Automatic rollback on failure
+
+## High availability for Gen AI applications
+
+For production workloads, configure Langflow and its dependent components to run with high availability. This section covers replica configuration, load balancer and ingress setup, and namespace-level workload isolation between development and production environments.
+
+### Configure replica counts
+
+Langflow in Hybrid Manager runs as a Kubernetes deployment. Increasing the replica count ensures the application stays available if a pod restarts or a node becomes unavailable.
+
+To adjust replica counts for the Langflow deployment:
+
+1. Navigate to **AI Factory** → **Langflow** in the HM console.
+1. Select **Settings** → **Scaling**.
+1. Set the desired replica count. We recommend a minimum of 2 replicas for production environments.
+1. Apply the changes. HM performs a rolling update, so existing connections aren't interrupted.
+
+For model server clusters that Langflow flows depend on, set replica counts in **AI Factory** → **Model Server Clusters** → select the cluster → **Edit** → adjust **Server Instances**. See [Step 3](#step-3-deploy-model-server-cluster) for configuration details.
+
+### Set up load balancing and ingress
+
+Hybrid Manager uses Istio as its service mesh. When multiple Langflow replicas are running, Istio automatically load-balances traffic across them.
+
+To expose Langflow to external consumers through a stable ingress endpoint:
+
+1. In the HM console, navigate to **Project Settings** → **Networking**.
+1. Verify that an ingress gateway is configured for the project. If one isn't configured, work with your platform team to set one up — see [Prerequisites](./prerequisites) for ingress requirements.
+1. Once configured, Langflow flows are accessible at the project's external ingress URL.
+
+For model server endpoints, the load balancer ingress URI is shown in **AI Factory** → **Model Server Clusters** → select the cluster → **Details**.
+
+!!!Note
+Istio manages internal load balancing between pods automatically. External ingress configuration depends on your cluster's networking setup and may require coordination with your platform or infrastructure team.
+!!!
+
+### Isolate dev and prod workloads using namespaces
+
+Hybrid Manager maps each project to a dedicated Kubernetes namespace. Keeping development and production Langflow instances in separate HM projects ensures that:
+
+- Development changes and experiments don't affect production traffic.
+- Secrets, access keys, and Global Variables are scoped independently to each environment.
+- Resource quotas and network policies can be applied per environment.
+
+The recommended setup uses one HM project per environment:
+
+| Environment | HM project name (example) | Kubernetes namespace  |
+|-------------|---------------------------|-----------------------|
+| Development | `ai-factory-dev`          | `m-<dev-project-id>`  |
+| Production  | `ai-factory-prod`         | `m-<prod-project-id>` |
+
+To create a separate production project:
+
+1. In the HM console, navigate to **Projects** → **Create Project**.
+1. Give the project a distinct name (for example, `ai-factory-prod`).
+1. Configure the production project with its own machine users, secrets, and model clusters.
+1. Deploy Langflow in the production project following the steps in this guide.
+
+To promote a Langflow flow from development to the production project, see [Promote a Langflow application to production](./langflow/promoting-to-production).
 
 ## Troubleshooting
 
