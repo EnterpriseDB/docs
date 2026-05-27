@@ -7,17 +7,17 @@ deepToC: true
 
 Configure your AWS RDS or Aurora PostgreSQL source database and create the required users before starting your migration. What you need to configure depends on your goal:
 
-- **Schema ingestion and assessment only** (EDB Postgres AI agent): Create a machine user in HM, set up a dedicated OS user for the agent on your auxiliary machine, and create a database user with schema extraction permissions. No WAL-level database changes are required.
+- **Schema ingestion only** (EDB Postgres AI agent): Create a machine user in Hybrid Manager (HM), set up a dedicated OS user for the agent on your auxiliary machine, and create a database user with schema extraction permissions. No WAL-level database changes are required.
 
 - **Data migration** (DMS agent): Enable logical replication via an AWS DB cluster parameter group, create a dedicated CDC migration role, and grant the required replication privileges. Complete the [DMS agent preparation](#preparing-for-data-migration-dms-agent) sections on this page.
 
-If you plan to run both schema assessment and data migration, complete all sections. The two agents use separate database users.
+If you plan to run both schema ingestion and data migration, complete all sections. We recommend using a single migration user for both agents — the `<agent_user>` you create in the next section can serve as the `<migration_role>` in the DMS agent section, provided you grant all required privileges to it.
 
 !!!note
 Because AWS RDS and Aurora PostgreSQL are managed services, you can't modify database configuration directly with `psql` or by editing `postgresql.conf`. WAL-level settings must be applied through AWS DB cluster parameter groups.
 !!!
 
-## Preparing for schema assessment (EDB Postgres AI agent)
+## Preparing for schema ingestion (EDB Postgres AI agent)
 
 ### Creating a machine user in Hybrid Manager
 
@@ -45,10 +45,10 @@ Store the access key in an environment variable named `$BEACON_AGENT_ACCESS_KEY`
 ### Creating a dedicated OS user for the agent
 
 !!!note EDB Postgres AI agent — recommended
-We recommend this step for security. The agent runs on your auxiliary machine and connects to the RDS endpoint remotely — it never runs on the RDS instance itself. For testing and development, you can skip this and run the agent as an existing OS user. Don't skip it in production environments.
+We recommend this step for security. The agent runs on your auxiliary machine and connects to the RDS endpoint remotely — it never runs on the RDS instance itself. For testing and development, you can skip this and run the agent as an existing OS user.
 !!!
 
-Create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This avoids granting the agent permissions it doesn't need:
+On Linux, create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This avoids granting the agent permissions it doesn't need (the exact command may vary by distribution):
 
 ```shell
 sudo useradd <agent_os_user>
@@ -62,7 +62,7 @@ sudo usermod -aG postgres <agent_os_user>
 
 ### Creating a database user for the agent
 
-Connect to your RDS or Aurora PostgreSQL source database and create a user for the EDB Postgres AI agent:
+Using a database admin account, connect to your RDS or Aurora PostgreSQL source database and create a dedicated user for the EDB Postgres AI agent. This is a database-level user — separate from the OS user created in the previous step, which is used to run the agent process:
 
 ```sql
 CREATE USER <agent_user> WITH PASSWORD '<password>';
@@ -82,7 +82,8 @@ GRANT CONNECT ON DATABASE <other_database> TO <agent_user>;
 
 The agent uses `pg_dump` to extract DDL from your source database. The `<agent_user>` needs additional roles for a complete extraction.
 
-For Postgres 14 and later:
+<TabContainer syncKey="pg_version">
+<Tab title="Postgres 14 and later">
 
 ```sql
 GRANT pg_read_all_data TO <agent_user>;
@@ -96,12 +97,18 @@ GRANT pg_monitor TO <agent_user>;
 With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
 !!!
 
-For Postgres 10 to 13, `pg_read_all_data` isn't available:
+</Tab>
+<Tab title="Postgres 10 to 13">
+
+`pg_read_all_data` isn't available in Postgres 10 to 13:
 
 ```sql
 GRANT pg_read_all_settings TO <agent_user>;
 GRANT pg_monitor TO <agent_user>;
 ```
+
+</Tab>
+</TabContainer>
 
 ## Preparing for data migration (DMS agent)
 
