@@ -1,0 +1,258 @@
+---
+title: Preparing your Postgres source database
+navTitle: Preparing source
+description: Configure your self-managed Postgres source database and create the required users for schema assessment with the EDB Postgres AI agent and data migration with the DMS agent.
+deepToC: true
+# SINGLE-SOURCE FILE — edits here also affect these pages:
+#   - migration_guides/self_managed_pg_to_self_managed_pg/preparing_source_pg.mdx
+---
+
+Configure your Postgres source database and create the required users before starting your migration. What you need to configure depends on your goal:
+
+- **Schema ingestion and assessment only** (EDB Postgres AI agent): Create a machine user in HM, set up a dedicated OS user for the agent on your auxiliary machine, and create a database user with schema extraction permissions. No WAL-level database changes are required.
+
+- **Data migration** (DMS agent): Configure WAL settings, create a dedicated CDC migration role, and grant the required replication privileges. Complete the [DMS agent preparation](#preparing-for-data-migration-dms-agent) sections on this page.
+
+If you plan to run both schema assessment and data migration, complete all sections. The two agents use separate database users.
+
+## Preparing for schema assessment (EDB Postgres AI agent)
+
+### Creating a machine user in Hybrid Manager
+
+The EDB Postgres AI agent authenticates with HM using a machine user account. Create this user in the HM console before configuring the agent.
+
+1.  Select your profile icon in the upper-right corner.
+1.  Select **User Management > Add New User**.
+1.  Enter a name for the new user.
+1.  Optionally, enter an email address.
+1.  Select **Create Access Key**. Enter an **Access Key Name** and an **Expiry** time.
+1.  Select **Add User**.
+1.  Store the access key safely — you won't be able to retrieve it again. Select **Key stored safely**.
+
+Then assign the required role:
+
+1.  Select the **Projects** tab and select the project from which you want to assess the database.
+1.  Select **Users** in the left navigation and locate the machine user you just created.
+1.  Select the edit button (pen icon) for the user entry.
+1.  Select **Assign Roles**.
+1.  On the **Assign Project Roles** window, select **estate ingester**.
+1.  Select **Submit**.
+
+Store the access key in an environment variable named `$BEACON_AGENT_ACCESS_KEY` on your auxiliary machine so the agent can access it at runtime.
+
+### Creating a dedicated OS user for the agent
+
+!!!note EDB Postgres AI agent — recommended
+We recommend this step for security. For testing and development, you can skip it and run the agent as the Postgres user, which has all required permissions by default. Don't run as the Postgres user in long-lived or production environments.
+!!!
+
+Create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This avoids granting the agent permissions it doesn't need:
+
+```shell
+sudo useradd <agent_os_user>
+```
+
+Add the agent OS user to the Postgres user's group. This allows the agent to read Postgres log files if needed:
+
+```shell
+sudo usermod -aG postgres <agent_os_user>
+```
+
+### Creating a database user for the agent
+
+Connect to your source Postgres database and create a user for the EDB Postgres AI agent:
+
+```sql
+CREATE USER <agent_user> WITH PASSWORD '<password>';
+GRANT CONNECT ON DATABASE <source_database> TO <agent_user>;
+GRANT pg_monitor, pg_read_all_data TO <agent_user>;
+```
+
+Where `<source_database>` is the name of the database you want to assess.
+
+If you're using Postgres 16 or earlier, also grant the following to allow the agent to discover the Postgres log file location:
+
+```sql
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_current_logfile() TO <agent_user>;
+```
+
+If you plan to connect the agent to additional databases on the same server, grant `CONNECT` on each one:
+
+```sql
+GRANT CONNECT ON DATABASE <other_database> TO <agent_user>;
+```
+
+### Granting schema extraction permissions
+
+The agent uses `pg_dump` to extract DDL from your source database. The `<agent_user>` needs additional roles for a complete extraction.
+
+For Postgres 14 and later:
+
+```sql
+GRANT pg_read_all_data TO <agent_user>;
+GRANT pg_read_all_settings TO <agent_user>;
+GRANT pg_monitor TO <agent_user>;
+```
+
+!!!note
+`pg_monitor` and `pg_read_all_data` were already granted in the previous step. You only need to add `pg_read_all_settings` here. Together, these three roles enable a full schema extraction, including ownership and privilege information.
+
+With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
+!!!
+
+For Postgres 10 to 13, `pg_read_all_data` isn't available:
+
+```sql
+GRANT pg_read_all_settings TO <agent_user>;
+GRANT pg_monitor TO <agent_user>;
+```
+
+## Preparing for data migration (DMS agent)
+
+### Configuring WAL settings
+
+The DMS agent uses Postgres logical decoding to capture changes from the write-ahead log (WAL). Configure the following parameters in `postgresql.conf`:
+
+1.  Set `wal_level` to `logical` to enable logical decoding:
+
+    ```ini
+    wal_level = logical
+    ```
+
+1.  Set `max_wal_senders` to at least `1`. If other streaming clients connect to your database, consult your DBA for the appropriate value:
+
+    ```ini
+    max_wal_senders = 1
+    ```
+
+1.  Set `max_replication_slots` to at least `1`. This can be higher if your organization uses Postgres replication:
+
+    ```ini
+    max_replication_slots = 1
+    ```
+
+1.  Set `max_wal_size` large enough that production traffic generates mostly timed checkpoints rather than requested checkpoints based on WAL size. EDB recommends at least 8 GB:
+
+    ```ini
+    max_wal_size = 8GB
+    ```
+
+    Setting `max_wal_size` too small can allow Postgres to drop WAL entries before the DMS agent can stream them, interfering with or slowing down the migration. Consult your DBA to determine the appropriate size for your environment.
+
+1.  Restart the database server to apply the changes.
+
+### Creating the CDC migration role
+
+Connect to your source database as an administrative user and create a dedicated role for CDC data migration:
+
+```sql
+CREATE ROLE <migration_role> WITH REPLICATION LOGIN PASSWORD '<migration_role_password>';
+```
+
+The `<migration_role>` must own the source tables to auto-create Postgres publications. Because those tables are already owned by another role, create a replication group role that both the current table owner and the migration role belong to:
+
+```sql
+CREATE ROLE <replication_group>;
+GRANT <replication_group> TO <migration_role>;
+GRANT <replication_group> TO <original_owner>;
+ALTER TABLE <table_name> OWNER TO <replication_group>;
+```
+
+Where:
+
+- `<migration_role>` is the Postgres role to use for CDC migration.
+- `<original_owner>` is the original owner of the tables.
+- `<replication_group>` is the shared role that owns the source tables for publication auto-creation.
+- `<table_name>` is the name of a table to migrate (case-sensitive).
+
+### Granting access to source schemas and tables
+
+Grant the migration role usage on each schema containing tables to migrate:
+
+```sql
+GRANT USAGE ON SCHEMA <db_schema> TO <migration_role>;
+```
+
+Grant `SELECT` on source tables. For an entire schema:
+
+```sql
+GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_role>;
+```
+
+For individual tables:
+
+```sql
+GRANT SELECT ON <table_name> TO <migration_role>;
+```
+
+Grant `CREATE` on the source database so the DMS agent can create publications:
+
+```sql
+GRANT CREATE ON DATABASE <pg_db_name> TO <migration_role>;
+```
+
+### Configuring SSL
+
+Configure your source database server to [accept SSL connections](https://www.postgresql.org/docs/current/ssl-tcp.html). The DMS agent requires SSL to connect to the source. Create a server certificate and server private key — you can generate the private key with a tool like OpenSSL.
+
+### Validating your configuration
+
+The DMS agent includes a validation script that checks whether your source database meets all requirements for CDC migration.
+
+1.  Navigate to the DMS agent folder:
+
+    ```shell
+    cd /opt/cdcagent/
+    ```
+
+1.  Create an array of all tables to migrate in `<schema_name>.<table_name>` format:
+
+    ```shell
+    arr=(schema1.table1 schema1.table2 schema2.table1)
+    ```
+
+1.  Run the validation script:
+
+    ```shell
+    PG_USERNAME=postgres PG_PASSWORD=<password> PG_HOST=<host> PG_PORT=5432 DB_NAME=<db_name> DBZ_USERNAME=<migration_role> DBZ_PASSWORD=<migration_role_password> ./postgresConfigValidation.sh "${arr[@]}"
+    ```
+
+    A passing result looks like this:
+
+    ```shell
+     *** [Transporter] - Get PostgreSQL Major Version
+    PostgreSQL major version: 16
+
+     *** [Transporter] - Validate WAL Level
+    [Pass] wal_level is 'logical'.
+
+     *** [Transporter] - Validate max WAL senders
+    [Pass] max_wal_senders is at least 1.
+
+     *** [Transporter] - Validate max replication slots
+    [Pass] max_replication_slots is at least 1.
+
+     *** [Transporter] - Validate max WAL size
+    [Pass] max_wal_size is at least 8 GB.
+
+     *** [Transporter] - Validate checkpoints
+    [Pass] Timed checkpoints are more frequent than requested checkpoints.
+
+     *** [Transporter] - Check debezium user role
+    [Pass] User '<migration_role>' is present
+    [Pass] User '<migration_role>' has replication permission
+
+     *** [Transporter] - Check SELECT privilege on the tables to be migrated
+    [Pass] User <migration_role> has select privilege on all tables to be migrated.
+
+     *** [Transporter] - Check CREATE privilege on database
+    [Pass] Role '<migration_role>' has CREATE privilege on database '<db_name>'.
+    ```
+
+!!!note
+Address any `[Failed]` or `[Suggestion]` statuses before proceeding. `[Failed]` checks are blocking issues you must resolve before the DMS agent can execute the data migration. `[Suggestion]` checks allow migration but can negatively affect performance if left unaddressed.
+!!!
+
+## Next step
+
+[Configure the EDB Postgres AI agent to assess your database](agent_postgres)
