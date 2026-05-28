@@ -1,0 +1,125 @@
+---
+title: Langflow FAQ
+navTitle: FAQ
+description: Common questions about building, configuring, and operating Langflow flows in Hybrid Manager using EDB components.
+---
+
+## Building flows
+
+### Where do I start with Langflow in Hybrid Manager?
+
+Access Langflow via **Launchpad** in the HM console. From the Langflow home screen you can create a new blank flow, import an existing flow from a `.json` file, or browse templates.
+
+For a step-by-step walkthrough of building your first RAG flow, see [Langflow quickstart](./quickstart).
+
+### What EDB components are available in Langflow?
+
+Langflow in HM includes the following EDB-specific components, available in the **EDB** folder in the left-side component panel:
+
+| Component          | Purpose                                                                           |
+|--------------------|-----------------------------------------------------------------------------------|
+| EDB Knowledge Base | Semantic similarity search over an AIDB knowledge base in a Postgres cluster.     |
+| EDB Database       | Standard data connector for querying any table in an HM-managed Postgres cluster. |
+| EDB Embeddings     | Generates vector embeddings using a model cluster deployed in your HM project.    |
+| EDB Model Server   | Sends prompts to a deployed LLM and returns generated responses.                  |
+| EDB MCP Server     | Exposes an EDB Database component as an MCP server for use by AI agents.          |
+
+### How do I connect EDB components to my HM project?
+
+All EDB components authenticate using an HM Machine User Key. Store this as a Langflow Global Variable and reference it in each component — you don't enter credentials directly on individual components.
+
+1. Create a machine user in your HM project and generate an access key.
+1. In Langflow, go to **Profile** → **Settings** → **Global Variables** and save the key.
+1. In each EDB component, set **HM Machine User Key** to the Global Variable.
+
+See [Set up Global Variables](https://docs.langflow.org/configuration-global-variables#create-a-global-variable) for instructions.
+
+### What roles does the machine user need?
+
+The required roles depend on which EDB components the flow uses:
+
+| Component                                        | Required role                         |
+|--------------------------------------------------|---------------------------------------|
+| EDB Embeddings, EDB Model Server                 | AI Model Manager (organization level) |
+| EDB Knowledge Base, EDB Database, EDB MCP Server | Project Viewer (project level)        |
+
+Assign roles in the HM console: **Profile → User management → Assign Organization Roles** (for org-level) or **Project → Users → Assign Project Roles** (for project-level).
+
+---
+
+## Knowledge bases and retrieval
+
+### How do I create a knowledge base for use in Langflow?
+
+Knowledge bases are created outside Langflow using the AIDB SQL API directly in your HM Postgres cluster. Once created, the EDB Knowledge Base component in Langflow can query it.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
+
+SELECT aidb.create_table_knowledge_base(
+    name               => 'my_knowledge_base',
+    model_name         => 'bert',
+    source_table       => 'public.my_content_table',
+    source_data_column => 'content',
+    source_data_format => 'Text'
+);
+
+SELECT aidb.bulk_embedding('my_knowledge_base');
+```
+
+See [Knowledge Base Creation](/edb-postgres-ai/1.3/ai-factory/gen-ai/create-knowledge-base) for full options.
+
+### How do I improve retrieval quality in a RAG flow?
+
+Poor retrieval results are usually caused by one of the following:
+
+- **Wrong embedding model** — the model used to create the knowledge base embeddings must match the model used at query time. Check the `model_name` used in `aidb.create_table_knowledge_base`.
+- **Chunk size** — if source documents were ingested as large chunks, retrieval scores may be noisy. Re-index with smaller chunks using `aidb.chunk_text_config`.
+- **Top-k too low** — the EDB Knowledge Base component returns the top-k most similar results. Increase this if relevant content is being missed.
+- **Index not up to date** — if source data has changed since the last `aidb.bulk_embedding` run, retrieved content may be stale. Re-run the bulk embedding or set up incremental syncing.
+
+---
+
+## Models
+
+### How do I use a model in a Langflow flow?
+
+Deploy a model cluster from **AI Factory → Model Library** in the HM console first, then reference it in the **EDB Model Server** or **EDB Embeddings** component using the **Hybrid Manager Model Server Cluster Instance** dropdown.
+
+See [Using models in Langflow](./using-models-in-langflow) for the full walkthrough.
+
+### What's the difference between EDB Model Server and EDB Embeddings?
+
+**EDB Model Server** sends a prompt to an LLM and returns a text response — use it for generation, summarisation, and reasoning steps. **EDB Embeddings** converts text into a vector using an embedding model — use it when you need to compute similarity or store vectors in Postgres. Both require a model cluster to be deployed in your HM project, but they use different model types (LLM vs embedding model).
+
+---
+
+## Deployment and promotion
+
+### How do I move a flow from development to production?
+
+Export the flow from Langflow as a `.json` file (**Options → Export**) and hand it to a Production Operator along with the list of resources the flow depends on (model clusters, knowledge bases, Postgres clusters, and required machine user roles). The operator imports it into the production HM project and reconfigures the EDB components to point to production resources.
+
+See [Promote a Langflow application to production](./promoting-to-production) for the full workflow.
+
+### Why do components show empty fields after importing a flow?
+
+Exported flows don't include HM Machine User Keys, passwords, or Global Variable values — those are scoped to the Langflow instance they were exported from. After importing, set up Global Variables in the new instance and reconfigure each EDB component to use them.
+
+---
+
+## Common errors
+
+### "Can't select a project" — the portal domain defaults to the API endpoint
+
+Select **Controls** at the top of the affected EDB Database or Knowledge Base component and set **HM Portal URL** to:
+
+```
+http://istio-internalgateway.istio-system.svc.cluster.local:7080
+```
+
+### A component shows an error after running
+
+Select the component to expand its error message. The most common causes are an invalid or expired access key, a model cluster that isn't active, a mismatched database connection, or a knowledge base that hasn't been populated yet.
+
+Check the model cluster status in **AI Factory → Model Server Clusters** and verify the machine user key hasn't expired in **Project Settings → Secrets**.

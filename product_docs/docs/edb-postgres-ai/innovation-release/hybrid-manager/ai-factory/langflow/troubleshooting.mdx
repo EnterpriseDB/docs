@@ -1,0 +1,147 @@
+---
+title: Troubleshooting Langflow in Hybrid Manager
+navTitle: Troubleshooting
+description: Diagnostic steps and fixes for common issues with Langflow flows and EDB components in Hybrid Manager.
+---
+
+## Component configuration errors
+
+### Components show empty or invalid fields after importing a flow
+
+**Cause:** Exported flow `.json` files don't include HM Machine User Keys, passwords, or Global Variable values. These are scoped to the Langflow instance they were exported from.
+
+**Fix:**
+1. In the new Langflow instance, go to **Profile → Settings → Global Variables** and create variables for the machine user key, database user, and database password using production values.
+1. Open each EDB component and set **HM Machine User Key** to the correct Global Variable.
+1. Reconfigure project, cluster, and database selections to point to the new environment's resources.
+
+See [Promote a Langflow application to production](./promoting-to-production) for the full reconfiguration checklist.
+
+### "Can't select a project" — portal domain defaults to the API endpoint
+
+**Cause:** The EDB component is resolving the HM portal URL to the internal API endpoint instead of the frontend.
+
+**Fix:** Select **Controls** at the top of the affected EDB Database or Knowledge Base component and set **HM Portal URL** to:
+
+```
+http://istio-internalgateway.istio-system.svc.cluster.local:7080
+```
+
+---
+
+## EDB Knowledge Base component
+
+### Empty or irrelevant retrieval results
+
+**Symptoms:** The component runs without error but returns no results, or returns results that don't match the query.
+
+**Diagnostic steps:**
+
+1. Verify the knowledge base exists and is populated:
+   ```sql
+   SELECT * FROM aidb.kbstat WHERE name = 'your_knowledge_base_name';
+   ```
+1. Check that `embedding_count` is greater than zero. If not, run:
+   ```sql
+   SELECT aidb.bulk_embedding('your_knowledge_base_name');
+   ```
+1. Confirm the **Database Name** and **Knowledge Base** fields in the component match exactly what was created in the cluster.
+
+**Common causes:**
+- Knowledge base was created but `aidb.bulk_embedding` was never run.
+- Source data was updated after the last embedding run — re-run `aidb.bulk_embedding` to sync.
+- The embedding model used to create the knowledge base doesn't match the one currently deployed. The `model_name` in `aidb.create_table_knowledge_base` must correspond to a model cluster that's still active.
+
+### Connection failure to the Postgres cluster
+
+**Symptoms:** Component shows a connection error when run.
+
+**Diagnostic steps:**
+
+1. Verify the machine user has **Project Viewer** role on the project:
+   - **Project → Users → Assign Project Roles → Project Viewer**
+1. Check that the Postgres cluster is active in the HM console.
+1. Confirm **Database Connection Type**, **User for the database**, **Password for database**, and **Database Name** all match what's configured in the cluster.
+1. Verify the access key hasn't expired:
+   ```bash
+   kubectl get secret <machine-user-secret> -n <namespace> -o yaml
+   ```
+
+---
+
+## EDB Model Server component
+
+### Model cluster not available in the dropdown
+
+**Cause:** No model cluster is deployed in the current HM project, or the machine user doesn't have the **AI Model Manager** role.
+
+**Fix:**
+1. Deploy a model cluster from **AI Factory → Model Library** in the HM console. See [Creating a model cluster](./index#creating-a-model-cluster).
+1. Confirm the machine user has **AI Model Manager** at organization level:
+   - **Profile → User management → Assign Organization Roles → AI Model Manager**
+
+### Component runs but returns no response or an error
+
+**Symptoms:** The EDB Model Server component finishes with an error, or returns an empty response.
+
+**Diagnostic steps:**
+
+1. Check the model cluster status in **AI Factory → Model Server Clusters**. The cluster must show **Active** / **Healthy** before it can serve requests.
+1. If the cluster is starting up (status: Pending), wait for it to become ready and retry.
+1. Check the cluster's pod logs for initialization errors:
+   ```bash
+   kubectl logs -n <project-namespace> <predictor-pod> -c kserve-container
+   ```
+1. Verify the **Input** field in the component is connected to an upstream component and isn't empty when the flow runs.
+
+### Context window exceeded
+
+**Symptoms:** The model returns an error mentioning token limits or truncated input.
+
+**Fix:** Reduce the amount of context being passed to the model. If the flow pipes EDB Knowledge Base results directly into the model:
+- Lower the **top-k** value on the EDB Knowledge Base component to retrieve fewer chunks.
+- Use a chunking step (AIDB `aidb.chunk_text_config`) on source documents to reduce individual chunk size before indexing.
+
+---
+
+## EDB Embeddings component
+
+### No model clusters available in the dropdown
+
+Same cause and fix as EDB Model Server — see [Model cluster not available in the dropdown](#model-cluster-not-available-in-the-dropdown) above.
+
+### Embedding generation fails
+
+**Diagnostic steps:**
+
+1. Confirm the model cluster uses an embedding model (not an LLM) — the two are not interchangeable.
+1. Check that the cluster is Active in **AI Factory → Model Server Clusters**.
+1. Review cluster pod logs for memory or GPU errors:
+   ```bash
+   kubectl describe inferenceservice <embedding-cluster-name> -n <namespace>
+   ```
+
+---
+
+## Flow-level issues
+
+### Flow works in Playground but fails in production
+
+**Likely causes:**
+- Global Variables in the production Langflow instance aren't set up, or reference incorrect values.
+- The production machine user has different (or missing) role assignments.
+- The production knowledge base or model cluster has a different name than the development one.
+
+Work through the [Promote a Langflow application to production](./promoting-to-production) reconfiguration checklist to confirm every component is pointing to the correct production resource.
+
+### Flow runs but gives inconsistent or low-quality answers
+
+Start with retrieval quality — most answer quality issues in RAG flows trace back to what the EDB Knowledge Base component is returning, not the model. See [Empty or irrelevant retrieval results](#empty-or-irrelevant-retrieval-results) and the retrieval quality guidance in [Langflow FAQ](./faq#how-do-i-improve-retrieval-quality-in-a-rag-flow).
+
+---
+
+## Further help
+
+- [Langflow FAQ](./faq) — common questions about components, Global Variables, and flow deployment.
+- [Observability](../observability) — Prometheus alert rules and Grafana dashboards for monitoring Langflow pod health and model cluster performance.
+- [Troubleshooting AI Factory on Hybrid Manager](../troubleshooting) — infrastructure-level issues (GPU, InferenceService, storage).
