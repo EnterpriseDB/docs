@@ -1,7 +1,7 @@
 ---
 title: Observability (AI Factory on HM)
 navTitle: Observability
-description: Where to observe Gen AI and Model Serving workloads in Hybrid Manager; links to hub.
+description: Monitor Gen AI and model serving workloads in Hybrid Manager using Prometheus alert rules, Grafana dashboards, Alertmanager routing, and OpenTelemetry tracing.
 ---
 
 **Hub quick links:**
@@ -50,8 +50,212 @@ kubectl port-forward -n observability svc/grafana 3000:3000
 
 * * *
 
+---
+
+## Prometheus alert rules for Gen AI service health
+
+Hybrid Manager exposes AI Factory metrics to Prometheus. Use the alert rules below as a starting point for production monitoring. Apply them by adding a `PrometheusRule` resource to the observability namespace of your cluster.
+
+### Model server availability
+
+Fires when the number of ready model server replicas drops below the configured minimum — indicating a deployment failure or node-level issue.
+
+```yaml
+groups:
+  - name: ai-factory-model-serving
+    rules:
+      - alert: ModelServerReplicasBelowMinimum
+        expr: |
+          kube_deployment_status_replicas_ready{deployment=~".*inferenceservice.*"}
+          < kube_deployment_spec_replicas{deployment=~".*inferenceservice.*"}
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model server replicas below minimum ({{ $labels.deployment }})"
+          description: >
+            Ready replicas ({{ $value }}) are fewer than the desired count.
+            Check pod events and GPU node availability.
+```
+
+### Inference latency
+
+Fires when the 95th-percentile inference latency exceeds 5 seconds, which typically indicates resource saturation or an undersized deployment.
+
+```yaml
+      - alert: HighInferenceLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(kserve_request_duration_seconds_bucket[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High inference latency on {{ $labels.service }}"
+          description: >
+            P95 latency is {{ $value | humanizeDuration }}.
+            Consider scaling replicas or adjusting batch size.
+```
+
+### Inference error rate
+
+Fires when more than 5% of inference requests return errors over a 5-minute window.
+
+```yaml
+      - alert: HighInferenceErrorRate
+        expr: |
+          rate(kserve_request_duration_seconds_count{response_code!~"2.."}[5m])
+          / rate(kserve_request_duration_seconds_count[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated inference error rate on {{ $labels.service }}"
+          description: >
+            Error rate is {{ $value | humanizePercentage }} over the last 5 minutes.
+```
+
+### Langflow availability
+
+Fires when all Langflow pods are unavailable, making flows inaccessible to users.
+
+```yaml
+  - name: ai-factory-langflow
+    rules:
+      - alert: LangflowUnavailable
+        expr: |
+          kube_deployment_status_replicas_ready{deployment=~".*langflow.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Langflow has no ready replicas"
+          description: >
+            No Langflow pods are ready. Check the deployment in the AI Factory project namespace.
+```
+
+---
+
+## Grafana dashboard setup for AI Factory metrics
+
+Hybrid Manager includes a Grafana instance in the observability stack. You can access it directly or configure dashboards for AI Factory-specific metrics.
+
+### Access Grafana
+
+If you have `kubectl` access to the cluster, port-forward the Grafana service:
+
+```bash
+kubectl port-forward -n observability svc/grafana 3000:3000
+```
+
+Then open `http://localhost:3000` in your browser. Default credentials are configured during cluster setup — check your HM project secrets if you don't have them.
+
+### Recommended dashboard panels
+
+Build or import a dashboard with the following panels to cover AI Factory health at a glance:
+
+| Panel | Metric | Visualisation |
+|---|---|---|
+| Inference request rate | `rate(kserve_request_duration_seconds_count[5m])` | Time series |
+| P95 inference latency | `histogram_quantile(0.95, rate(kserve_request_duration_seconds_bucket[5m]))` | Time series |
+| Inference error rate | `rate(kserve_request_duration_seconds_count{response_code!~"2.."}[5m])` | Time series |
+| Model server replica count | `kube_deployment_status_replicas_ready{deployment=~".*inferenceservice.*"}` | Stat |
+| Langflow replica count | `kube_deployment_status_replicas_ready{deployment=~".*langflow.*"}` | Stat |
+| GPU utilisation | `DCGM_FI_DEV_GPU_UTIL` | Gauge |
+
+### Import a pre-built dashboard
+
+KServe publishes a community Grafana dashboard. To import it:
+
+1. In Grafana, go to **Dashboards** → **Import**.
+1. Enter the dashboard ID or paste the JSON from the [KServe community dashboards](https://github.com/kserve/kserve/tree/master/config/grafana).
+1. Select your Prometheus data source.
+1. Select **Import**.
+
+---
+
+## Alertmanager routing
+
+Configure Alertmanager to route AI Factory alerts to your team's notification channels. The example below routes `critical` alerts to PagerDuty and `warning` alerts to Slack, with email as a fallback receiver.
+
+```yaml
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default-email
+  group_by: [alertname, namespace]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - match:
+        severity: critical
+      receiver: pagerduty
+      continue: true
+    - match:
+        severity: warning
+      receiver: slack-ai-factory
+
+receivers:
+  - name: pagerduty
+    pagerduty_configs:
+      - routing_key: <your-pagerduty-integration-key>
+        description: >
+          {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}
+
+  - name: slack-ai-factory
+    slack_configs:
+      - api_url: <your-slack-webhook-url>
+        channel: "#ai-factory-alerts"
+        title: "AI Factory alert: {{ .CommonLabels.alertname }}"
+        text: >
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+
+  - name: default-email
+    email_configs:
+      - to: ai-factory-ops@your-org.com
+        from: alertmanager@your-org.com
+        smarthost: smtp.your-org.com:587
+        auth_username: alertmanager@your-org.com
+        auth_password: <smtp-password>
+```
+
+Apply this configuration as a Kubernetes secret or ConfigMap in the namespace where Alertmanager is deployed. The exact method depends on how your cluster's monitoring stack was provisioned — consult your platform team if Alertmanager isn't already running in the cluster.
+
+---
+
+## OpenTelemetry tracing for Gen AI Builder
+
+Gen AI Builder includes OpenTelemetry drivers that emit trace data for assistant runs, thread execution, and retrieval operations. This enables distributed tracing across the full request path — from user input through retrieval and inference to response.
+
+### What's traced
+
+- Assistant invocation spans (start, tool calls, LLM calls, response)
+- Knowledge base retrieval spans (query, embedding lookup, ranking)
+- Inference request spans (request to model server, token generation time)
+- Thread lifecycle events (created, active, completed, errored)
+
+### Configure the OTLP exporter
+
+Set the following environment variables on the Gen AI Builder deployment to export traces to your OpenTelemetry collector:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://<otel-collector-service>:4317
+OTEL_SERVICE_NAME=gen-ai-builder
+OTEL_TRACES_EXPORTER=otlp
+```
+
+If you're using Jaeger or Tempo as your tracing backend, configure the collector to forward spans accordingly.
+
+For full driver reference and available attributes, see [Gen AI observability drivers](/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/drivers/observability-drivers/).
+
+---
+
 ## Key takeaway
 
--   **Model Serving** → monitored as KServe services with full metrics.
--   **Gen AI Builder** → assistants and threads tracked for usage and auditing.
--   **Hybrid Manager** provides a unified observability layer — no separate monitoring stack to configure.
+* **Model Serving** → monitored as KServe services with full metrics.
+* **Gen AI Builder** → assistants and threads tracked for usage and auditing.
+* **Hybrid Manager** provides a unified observability layer — no separate monitoring stack to configure.
+* **Enterprise monitoring** → extend the built-in stack with Prometheus alert rules, Grafana dashboards, Alertmanager routing to PagerDuty/Slack/email, and OpenTelemetry tracing for distributed visibility.

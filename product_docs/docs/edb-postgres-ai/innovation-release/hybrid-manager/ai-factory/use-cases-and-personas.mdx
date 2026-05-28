@@ -1,7 +1,7 @@
 ---
 title: Use Cases and Personas for AI Factory on Hybrid Manager
 navTitle: Use Cases & Personas
-description: Real-world AI Factory implementations on Hybrid Manager addressing specific organizational needs and user roles
+description: Real-world AI Factory implementations on Hybrid Manager addressing specific organizational needs and user roles, including the Production Operator persona responsible for deploying, configuring, and operating Gen AI applications in production.
 ---
 
 ## Overview
@@ -126,6 +126,71 @@ Developers integrate AI capabilities into business applications through APIs and
 1.  Access model endpoints via [KServe Integration](/edb-postgres-ai/1.3/ai-factory/model/access-kserve-endpoints)
 2.  Implement conversation tracking using [Thread Management](/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/threads/)
 3.  Create custom tools following [Tool Development Guide](/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/tools/)
+
+### Production Operator
+
+Production Operators are responsible for taking a tested Gen AI application from a developer and deploying it reliably and securely in a production Hybrid Manager environment. Their work begins where the developer's ends — the operator doesn't build flows, but is accountable for everything that happens after promotion.
+
+**What they receive from the developer**
+
+The developer hands over a Langflow flow exported as a `.json` file, along with documentation of the resources the flow depends on: which knowledge bases, model clusters, and Postgres databases it connects to, and what roles the machine user needs. The flow file captures structure and component configuration but not secrets or environment-specific endpoint references — the operator supplies those in the production environment.
+
+See [Promote a Langflow application to production](./langflow/promoting-to-production) for the full developer-to-operator handoff workflow.
+
+**Primary tooling**
+
+Production Operators work primarily through the **Hybrid Manager console** (HM UI). They don't need direct `kubectl` access for routine operations, though it's useful for advanced troubleshooting. Key HM UI areas they use:
+
+- **Launchpad → Langflow** — to import, configure, and validate the flow.
+- **Project Settings → Secrets** — to create and rotate credentials.
+- **AI Factory → Model Server Clusters** — to configure replica counts and monitor model health.
+- **AI Factory → Langflow → Settings → Scaling** — to set replica counts for HA.
+- **Project Settings → Networking** — to verify ingress gateway configuration.
+
+**Primary responsibilities**
+
+*Import and configure*
+
+- Import the exported flow JSON into the production Langflow instance.
+- Set up Global Variables (machine user key, database credentials) scoped to the production project.
+- Reconfigure each EDB component to point to production resources (project, cluster, knowledge base, model cluster).
+- Validate the flow end-to-end in Playground before treating it as live.
+
+*High availability*
+
+- Set Langflow replica count to a minimum of 2 for production resilience.
+- Configure model server cluster replica counts to match expected load.
+- Confirm Istio ingress gateway is active and routing to the production namespace.
+- Keep development and production flows in separate HM projects to prevent namespace-level interference.
+
+See [High availability for Gen AI applications](./deploy-with-hm-ui#high-availability-for-gen-ai-applications) for configuration steps.
+
+*Monitoring and alerting*
+
+- Apply Prometheus alert rules for model server availability, inference latency, error rate, and Langflow pod health.
+- Configure Alertmanager to route critical alerts to PagerDuty and warnings to the team's Slack channel.
+- Review Grafana dashboards for AI Factory metrics regularly and after any deployment change.
+
+See [Observability](./observability) for alert rule examples and dashboard setup.
+
+*Security and compliance*
+
+- Enforce Pod Security Standards (Restricted profile) on the AI Factory namespace.
+- Apply network policies to restrict traffic to explicitly permitted paths.
+- Rotate NGC API keys and machine user access keys on the organisation's schedule.
+- Enforce Istio mTLS (STRICT mode) for inter-service communication.
+- Maintain namespace isolation between dev and prod projects.
+
+See [Security and compliance](./security-and-compliance) for the full control set and compliance mapping.
+
+**Key workflows**
+
+1. Receive exported flow and dependency list from developer.
+1. Set up production HM project with correct machine user roles and secrets — see [Prerequisites](./prerequisites).
+1. Import and reconfigure the flow in production Langflow — see [Promote a Langflow application to production](./langflow/promoting-to-production).
+1. Configure HA replica counts and validate ingress — see [Deploy with HM UI](./deploy-with-hm-ui#high-availability-for-gen-ai-applications).
+1. Apply Prometheus alert rules and configure Alertmanager routing — see [Observability](./observability).
+1. Apply pod security, network policies, and mTLS — see [Security and compliance](./security-and-compliance).
 
 ### Business Analysts
 
