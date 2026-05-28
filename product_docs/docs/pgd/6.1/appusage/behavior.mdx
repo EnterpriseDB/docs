@@ -132,6 +132,47 @@ PGD handling of very long "toasted" data in PostgreSQL is transparent to the
 user. The TOAST "chunkid" values likely differ between the same row on different
 nodes, but that doesn't cause any problems.
 
+!!! Warning REPLICA IDENTITY FULL required for tables with TOAST-able columns
+    Tables that hold TOAST-able column types (`text`, `bytea`, `jsonb`, large
+    `varchar`, and so on) must use `REPLICA IDENTITY FULL` to be replicated
+    safely under concurrent updates from multiple nodes. PGD 6 sets this by
+    default for new tables via the `BDR_AUTO` replica identity. If you
+    override this — for example with `ALTER TABLE ... REPLICA IDENTITY
+    DEFAULT` or `... USING INDEX` — concurrent updates that change different
+    TOAST columns of the same row on different nodes can produce stale data
+    on the receiver and cause divergence between nodes.
+
+    The reason: when an `UPDATE` doesn't change a TOAST column, the column is
+    sent in the replication stream as an *unchanged* marker rather than as
+    full data. Under `REPLICA IDENTITY FULL`, PostgreSQL flattens the entire
+    pre-update row (including its TOAST data) into WAL, so the receiver
+    always has an authoritative source for unchanged columns. Under
+    `REPLICA IDENTITY DEFAULT` (or `USING INDEX`), the receiver fills
+    unchanged TOAST columns from its local copy of the row, which may be
+    stale if a concurrent update on another node modified a different column
+    of the same row.
+
+    To check or set:
+
+    ```sql
+    -- Check current replica identity
+    SELECT relname, relreplident FROM pg_class
+        WHERE relname = 'your_table';
+    -- 'd' = DEFAULT, 'n' = NOTHING, 'f' = FULL, 'i' = USING INDEX
+
+    -- Set REPLICA IDENTITY FULL
+    ALTER TABLE your_table REPLICA IDENTITY FULL;
+    ```
+
+    **Limitation:** `REPLICA IDENTITY FULL` does not enable replicating
+    rows whose total TOAST data exceeds approximately 1 GB. Updates on
+    such rows fail at the source with `invalid memory alloc request
+    size` because PostgreSQL must flatten the entire pre-update row in
+    memory before WAL logging, and the flattened tuple exceeds
+    `MaxAllocSize`. There is currently no replication-safe path for
+    rows of that size; avoid creating them.
+!!!
+
 ### Other restrictions
 
 PGD can't work correctly if Replica Identity columns are marked as external.
