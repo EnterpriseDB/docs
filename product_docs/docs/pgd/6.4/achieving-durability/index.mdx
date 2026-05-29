@@ -6,32 +6,17 @@ navigation:
   - custom-scopes
 ---
 
-Durability is the guarantee that once a transaction is committed, it remains committed even in the event of a system failure.
+Use commit scopes to control when PGD acknowledges a commit and match your database's durability guarantees to your workload. Which scope fits depends on your deployment, your tolerance for data loss, and your consistency requirements:
 
-In a distributed system, local persistence isn't enough. A transaction can be safely written to disk on one node but not yet replicated anywhere else. If that node fails before replication catches up, you lose committed work. PGD replicates asynchronously by default, meaning a commit returns as soon as the local node persists the transaction without waiting for any peer. For stricter guarantees, synchronous replication requires one or more remote nodes to confirm receipt before the commit returns.
+- **Distributing data across regions.** In a geo-distributed cluster, every synchronous cross-region confirmation adds latency. If you can't tolerate data loss on a regional failure, use [Synchronous Commit](/pgd/current/commit-scopes/synchronous_commit/) to require remote confirmation before a commit returns, with an optional timeout to fall back to async when peers are slow to respond.
 
-## Why use commit scopes?
+- **Processing high-value transactions.** In payments or banking, two nodes can independently commit conflicting changes. By the time the conflict surfaces, both transactions have already completed. Use [Quorum Commit](/pgd/current/commit-scopes/quorum-commit/) to prevent conflicting commits at the transaction level.
 
-Commit scopes are a flexible policy language in PGD that define exactly when a transaction is considered committed, letting you align database durability with your business goals.
+- **Meeting data compliance requirements.** Regulations like GDPR may require data to be confirmed as resident in a specific region before a transaction is complete. Committing asynchronously creates a window where the data exists only outside the compliant region. Use [Synchronous Commit](/pgd/current/commit-scopes/synchronous_commit/) to make the commit itself the guarantee that data is resident in the required region.
 
-- **Balance performance and durability.** Different workloads have different needs. Some transactions require strict replication across sites, while others can trade that strictness for lower latency or higher availability.
-- **Simplify configuration.** Instead of manually tuning dozens of complex `postgresql.conf` parameters, commit scopes provide predefined, intuitively named configurations that are ready to use out of the box.
-- **Granular, dynamic control.** Configure commit scopes globally, per node group, per session, or override them down to the individual transaction level.
-- **Automate failure response.** Commit scopes eliminate the need for external tools or manual intervention by automatically adapting to changing system conditions, such as replication lag or node failures.
+- **Protecting a high-throughput ingest pipeline.** Synchronous confirmation on every write adds latency that compounds at scale, but committing with no replication guarantee risks losing a large window of data on node failure. Use [Lag Control](/pgd/current/commit-scopes/lag-control/) to keep async performance while bounding how far replication can fall behind.
 
-## Choosing a commit scope
-
-Use commit scopes to control when PGD acknowledges a commit. Which commit scope fits your workload depends on your deployment, your tolerance for data loss, and your consistency requirements:
-
-- **Distributing data across regions.** In a geo-distributed cluster, every synchronous cross-region confirmation adds latency. Decide how much data loss you can tolerate on a regional failure. That threshold determines how strictly you need to enforce replication before committing.
-
-- **Processing high-value transactions.** In payments or banking, two nodes can independently commit conflicting changes. By the time the conflict surfaces, both transactions have already completed. Decide whether your workload can accept post-commit resolution or requires conflicts to be prevented at commit time.
-
-- **Meeting data compliance requirements.** Regulations like GDPR may require data to be confirmed as resident in a specific region before a transaction is complete. Committing asynchronously creates a window where the data exists only outside the compliant region. Decide whether your compliance obligations require the commit itself to be the guarantee of residency.
-
-- **Protecting a high-throughput ingest pipeline.** Synchronous confirmation on every write adds latency that compounds at scale, but committing with no replication guarantee risks losing a large window of data on node failure. Decide how much data loss you can accept. That balance determines how tightly you need to bound replication lag before a commit returns.
-
-- **Preventing duplicate transactions on failover.** When a client retries after a connection failure, it can't always know whether the original commit succeeded. Decide whether processing a transaction twice would cause real harm in your workload, and whether your application can implement a verification step before retrying.
+- **Preventing duplicate transactions on failover.** When a client retries after a connection failure, it can't always know whether the original commit succeeded. Use [CAMO](/pgd/current/commit-scopes/camo/) to prevent a transaction from being applied more than once on retry.
 
 PGD offers two ways to configure commit scopes. [Predefined scopes](predefined-scopes) are ready to use with no configuration and cover the most common single-group patterns. If your cluster spans multiple groups with different requirements, or you need distributed consistency guarantees, [custom scopes](custom-scopes) let you compose your own policy using the full commit scope language.
 
