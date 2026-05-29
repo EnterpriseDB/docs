@@ -1,0 +1,73 @@
+---
+title: Configuring set_user
+navTitle: Configuring
+---
+
+## Add set_user to shared_preload_libraries
+
+Add `set_user` to the `shared_preload_libraries` parameter in `postgresql.conf`:
+
+```ini
+shared_preload_libraries = 'set_user'
+```
+
+If `shared_preload_libraries` already contains other extensions, add `set_user` to the list. The order doesn't matter unless another extension implements set_user post-execution hooks — in that case, `set_user` must appear first.
+
+Restart Postgres after making this change.
+
+!!!note
+Adding `set_user` to `shared_preload_libraries` is required for `ALTER SYSTEM` and `COPY PROGRAM` blocking to work. The extension can be loaded without it, but those blocks won't be enforced.
+!!!
+
+## Create the extension
+
+After restarting Postgres, create the extension in your database:
+
+```sql
+CREATE EXTENSION set_user;
+```
+
+## GUC parameters
+
+The following parameters can be set in `postgresql.conf` to control set_user behavior:
+
+| Parameter                               | Default   | Description                                                                                                                                                                                                                                          |
+|-----------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `set_user.block_alter_system`           | `on`      | Block `ALTER SYSTEM` commands while running as an escalated role.                                                                                                                                                                                    |
+| `set_user.block_copy_program`           | `on`      | Block `COPY PROGRAM` commands while running as an escalated role.                                                                                                                                                                                    |
+| `set_user.block_log_statement`          | `on`      | Block `SET log_statement` commands. When `on` and the target role is a superuser, `log_statement` is automatically set to `all`.                                                                                                                     |
+| `set_user.superuser_allowlist`          | `'*'`     | Comma-separated list of roles permitted to escalate to superuser via `set_user_u()`. Use `'*'` to allow all roles with `EXECUTE` permission, `''` to block all escalation. Group roles can be specified with a `+` prefix (for example, `'+admin'`). |
+| `set_user.nosuperuser_target_allowlist` | `'*'`     | Comma-separated list of non-superuser roles that can be switched to via `set_user()`. Use `'*'` to allow all, `''` to block all non-superuser transitions.                                                                                           |
+| `set_user.superuser_audit_tag`          | `'AUDIT'` | String appended to `log_line_prefix` upon superuser escalation, tagging all subsequent log entries.                                                                                                                                                  |
+| `set_user.exit_on_error`                | `on`      | When `on`, the backend process exits with a FATAL error on any ERROR during `set_session_auth()` calls.                                                                                                                                              |
+
+### Example configuration
+
+```ini
+shared_preload_libraries = 'set_user'
+
+# Restrict superuser escalation to a specific admin group
+set_user.superuser_allowlist = '+dbadmins'
+
+# Allow transitions only to a specific set of non-superuser roles
+set_user.nosuperuser_target_allowlist = 'app_role, reporting_role'
+
+# Turn off blocking if not required
+set_user.block_alter_system = off
+set_user.block_copy_program = off
+```
+
+## Grant execute permissions
+
+After creating the extension, grant `EXECUTE` on the appropriate functions to the roles that need them:
+
+```sql
+-- Allow unprivileged users to switch to other non-superuser roles
+GRANT EXECUTE ON FUNCTION set_user(text) TO dbclient;
+GRANT EXECUTE ON FUNCTION set_user(text, text) TO dbclient;
+
+-- Allow privileged (non-superuser) roles to escalate to superuser
+GRANT EXECUTE ON FUNCTION set_user_u(text) TO dbadmin;
+```
+
+Only users with `EXECUTE` permission on `set_user_u(text)` can escalate to superuser.
