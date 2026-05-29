@@ -559,6 +559,10 @@ const Page = () => {
               SQL Profiler
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/set_user">
+              set_user
+            </BannerWideLink>
+
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pgfs">PGFS</BannerWideLink>
