@@ -1,0 +1,165 @@
+---
+title: Enrolling multiple databases for assessment
+navTitle: Enrolling databases
+description: Step-by-step workflow for using configure-onprem-dbs to enroll an Oracle or Postgres database estate for migration assessment in HM.
+---
+
+Set up and run the EDB Postgres AI agent to enroll multiple databases for migration assessment in a single workflow.
+
+## Prerequisites
+
+These apply regardless of your source database type:
+
+- **EDB Postgres AI agent installed** on an auxiliary machine or bastion host. How you configure your auxiliary machine depends on your source database type, here are examples for [Oracle](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/auxiliary_machine/), [Postgres](link) and [AWS RDS/Aurora](link) sources.
+
+  [update links after publishing PR 1168]: #
+
+- **Machine user with access key**. You need an HM machine user with the `estate ingester` role and a valid access key. Here are examples in the [Oracle](link), [Postgres](link) and [AWS RDS](link) guides on creating one.
+
+  [update links after publishing PR 1168]: #
+
+Additional requirements vary depending on your source database type and **must be completed for each database individually** before it can be enrolled:
+
+- **Oracle sources** — Each source database requires a dedicated migration user with the appropriate read privileges. See [Preparing your Oracle source database](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/preparing_oracle_source/).
+
+- **Postgres sources** — Each source database requires a user with sufficient read access. See [Configuring the EDB Postgres AI agent (self-managed Postgres)](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/agent_postgres/) (self-managed) or [Configuring the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/agent_postgres/) (AWS RDS / Aurora).
+
+  [add auxiliary machine and source prep links after publishing PR 1168]: #
+
+!!!note
+Set up the agent and machine user once. For each database you enroll, create the migration user and grant the required privileges. You can reuse the same credentials across databases, but the user must exist in each one.
+!!!
+
+## Prepare beacon_agent.yaml
+
+Create a `beacon_agent.yaml` file with your HM connection parameters. You don't need to add the `provider.onprem.databases` entries manually — `configure-onprem-dbs` populates those in the next step. Follow the configuration instructions for your source database type:
+
+- **Oracle** — See [Configuring the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/configuring_beacon_agent/#preparing-a-configuration-file).
+- **Self-managed Postgres** — See [Configuring the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/agent_postgres/).
+- **AWS RDS / Aurora** — See [Configuring the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/agent_postgres/).
+
+!!!note
+Alternatively, you can run the subcommand first and configure `beacon_agent.yaml` afterwards. The subcommand generates a minimal file containing only the DSN block and its entries — you then need to add the schema ingestion and registration parameters manually.
+!!!
+
+## Populate DSN entries using `configure-onprem-dbs`
+
+Run `configure-onprem-dbs` to read your database inventory and append the `provider.onprem.databases` entries to the configuration file you created. Choose the example that matches your input source.
+
+!!!tip Interactive credential entry
+Add `--interactive` to any of the commands below so the terminal prompts you for a username and password for each database entry that doesn't already have credentials. This flag is useful when your input source (such as a `tnsnames.ora` file) doesn't contain credentials, or when you prefer not to store them in a CSV file.
+
+During the prompt, you can enter credentials for each database individually, skip an entry to leave placeholders, apply the same credentials to all remaining entries, or skip all remaining entries at once. Any entries still using placeholder credentials after the run are listed in a warning — replace them in the output file before starting the agent.
+!!!
+
+### From a CSV file
+
+A CSV file lets you enroll databases from any source — exported from Oracle Enterprise Manager, another CMDB or asset management tool, or assembled manually. The file must follow a specific format. See [CSV file format](/tools/agent/agent_ref#csv-file-format) in the EDB Postgres AI agent CLI reference.
+
+Prepare a CSV file with your database inventory. For example:
+
+```csv
+# Database inventory
+resource_id,db_type,host,port,db_name,username,password,schema_enabled,poll_interval,tags
+ORACLE_PROD_01,oracle,oracle-prod.example.com,1521,PRODPDB,<username>,<password>,true,30s,production|critical
+ORACLE_STAGING_01,oracle,oracle-staging.example.com,1521,STAGEPDB,<username>,<password>,true,1m,staging
+ORACLE_DEV_01,oracle,oracle-dev.example.com,1521,DEVPDB,<username>,<password>,false,5m,development
+PG_PROD_01,postgresql,postgres-prod.example.com,5432,appdb,<username>,<password>,true,1m,production|postgres
+```
+
+Then run:
+
+```shell
+beacon-agent configure-onprem-dbs \
+  --source-type csv \
+  --input databases.csv \
+  --output-yaml ${HOME}/.beacon/beacon_agent.yaml \
+  --interactive
+```
+
+Use `--interactive` to be prompted for credentials for any entries that have placeholder values.
+
+### From an Oracle tnsnames.ora file
+
+If you use Oracle Net Services, you can pass a `tnsnames.ora` file directly. The command parses each entry and extracts the host, port, and service name or SID to construct the DSN. If your Oracle environment uses `tnsnames.ora`, pass it directly. Since `tnsnames.ora` doesn't include credentials, use `--interactive` to supply them during the run:
+
+```shell
+beacon-agent configure-onprem-dbs \
+  --source-type tns \
+  --input /etc/oracle/network/admin/tnsnames.ora \
+  --output-yaml ${HOME}/.beacon/beacon_agent.yaml \
+  --interactive
+```
+
+The command parses each entry and constructs the DSN from the host, port, and service name or SID. For example, given this entry:
+
+```
+PROD_DB =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = oracle-prod.example.com)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVICE_NAME = PRODPDB)
+    )
+  )
+```
+
+The agent generates: `oracle://username:password@oracle-prod.example.com:1521/PRODPDB`
+
+### From AWS RDS discovery
+
+If your databases run on AWS RDS or Aurora, the command can discover them automatically without a local file. It uses the standard AWS credential chain (environment variables, `~/.aws/credentials`, or an IAM role) and scans one or all regions. You can filter by engine type or by resource tags.
+
+Supported RDS engines: `postgres`, `aurora-postgresql`, `oracle-ee`, `oracle-ee-cdb`, `oracle-se2`, `oracle-se2-cdb`.
+
+To discover all supported RDS and Aurora instances in a specific region:
+
+```shell
+beacon-agent configure-onprem-dbs \
+  --source-type rds \
+  --region us-east-1 \
+  --output-yaml ${HOME}/.beacon/beacon_agent.yaml \
+  --interactive
+```
+
+To narrow discovery to specific engine types and filter by resource tags:
+
+```shell
+beacon-agent configure-onprem-dbs \
+  --source-type rds \
+  --region us-east-1 \
+  --rds-engine oracle-ee \
+  --rds-engine oracle-se2 \
+  --tag-filter Environment=Production \
+  --output-yaml ${HOME}/.beacon/beacon_agent.yaml \
+  --interactive
+```
+
+## Review and start the agent
+
+Before starting the agent, check the output file for any entries still using placeholder credentials:
+
+```shell
+grep -n "CHANGEME" ${HOME}/.beacon/beacon_agent.yaml
+```
+
+If placeholders remain, you have two options for replacing them:
+
+- **All databases share the same credentials** — use a `sed` command to replace all placeholders in one step:
+
+  ```shell
+  sed -i "s/CHANGEME_USERNAME:CHANGEME_PASSWORD/<username>:<password>/g" ${HOME}/.beacon/beacon_agent.yaml
+  ```
+
+  If your password is stored in an environment variable, you can reference it directly:
+
+  ```shell
+  sed -i "s/CHANGEME_USERNAME:CHANGEME_PASSWORD/<username>:$MY_DB_PASSWORD/g" ${HOME}/.beacon/beacon_agent.yaml
+  ```
+
+- **Each database has different credentials** — edit the output file manually and replace each placeholder with the correct credentials, or re-run `configure-onprem-dbs` with `--interactive` to step through each database individually.
+
+Replace any remaining placeholders with real credentials, then follow the guide for your source database type to validate your configuration and start the agent:
+
+- **Oracle** — See [Running the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/configuring_beacon_agent/#running-the-edb-postgres-ai-agent).
+- **Self-managed Postgres** — See [Configuring the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/agent_postgres/).
+- **AWS RDS / Aurora** — See [Configuring the EDB Postgres AI agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/agent_postgres/).
