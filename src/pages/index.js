@@ -192,6 +192,10 @@ const Page = () => {
               <BannerCardLink to="/supported-open-source/warehousepg/">
                 WarehousePG
               </BannerCardLink>
+
+              <BannerCardLink to="/clickhouse/latest/">
+                ClickHouse
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard

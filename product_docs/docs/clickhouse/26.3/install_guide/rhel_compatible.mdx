@@ -1,0 +1,144 @@
+---
+title: Installing EDB Postgres AI for ClickHouse on Rocky Linux
+navTitle: Rocky Linux
+description: Install EDB Postgres AI for ClickHouse on Rocky Linux 10 using EDB RPM packages.
+---
+
+EDB distributes ClickHouse as RPM packages for Rocky Linux 10 on x86-64 and AArch64. The following packages are available:
+
+| Package | Description | Install on |
+|---------|-------------|------------|
+| `edb-clickhouse-server` | ClickHouse server engine, systemd services, and default configuration files. Includes `clickhouse-keeper.service`, so server nodes can run Keeper alongside the server without an additional package. | Server nodes |
+| `edb-clickhouse-client` | `clickhouse-client`, `clickhouse-local`, `clickhouse-benchmark`, and related tools. | Server nodes, remote client hosts |
+| `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. | All server and client nodes |
+| `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. | Dedicated Keeper nodes only |
+
+For an explanation of node roles and deployment topologies, see [Architecture](../overview/architecture).
+
+## Prerequisites
+
+- Rocky Linux 10
+- `sudo` or root access
+- An EDB subscription token, available from the [EDB customer portal](https://www.enterprisedb.com/accounts/login)
+
+## Installing on a single node
+
+ClickHouse runs as a standalone instance with no cluster coordination required. Suitable for development, testing, and single-tenant analytical workloads.
+
+1. Install the packages:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+   sudo dnf install -y \
+     edb-clickhouse-common-static \
+     edb-clickhouse-server \
+     edb-clickhouse-client
+   ```
+
+1. Start the server:
+
+   ```bash
+   sudo systemctl enable clickhouse-server
+   sudo systemctl start clickhouse-server
+   ```
+
+   Verify the server is running:
+
+   ```bash
+   sudo systemctl status clickhouse-server
+   ```
+
+1. Connect using the ClickHouse command-line client:
+
+   ```bash
+   clickhouse-client
+   ```
+
+   By default, the `default` user has no password. To set one, run the following after connecting:
+
+   ```sql
+   ALTER USER default IDENTIFIED BY 'yourpassword';
+   ```
+
+   Then connect with:
+
+   ```bash
+   clickhouse-client --password
+   ```
+
+1. Verify the EDB build by checking the version string:
+
+   ```sql
+   SELECT value FROM system.build_options WHERE name = 'VERSION_OFFICIAL';
+   ```
+
+   The output includes `(EDB Build)` for EDB-packaged releases.
+
+## Installing a cluster
+
+A cluster deployment distributes data across multiple server nodes using sharding, replication, or both. Replication requires ClickHouse Keeper running on at least three nodes.
+
+1. Install the packages on each node according to its role.
+
+   On each server node. For co-located deployments, no additional package is needed: `edb-clickhouse-server` already includes `clickhouse-keeper.service`.
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+   sudo dnf install -y \
+     edb-clickhouse-common-static \
+     edb-clickhouse-server \
+     edb-clickhouse-client
+   ```
+
+   On each dedicated Keeper node, install this package only if you're deploying Keeper on separate nodes rather than co-locating it with your server nodes:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+   sudo dnf install -y edb-clickhouse-keeper
+   ```
+
+   On remote client hosts connecting to the cluster without running a server:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+   sudo dnf install -y \
+     edb-clickhouse-common-static \
+     edb-clickhouse-client
+   ```
+
+1. Configure the cluster.
+
+   Server nodes run both `clickhouse-server.service` and `clickhouse-keeper.service`. Keeper handles distributed coordination, keeping replicas in sync and executing distributed DDL. Keeper configuration lives in `/etc/clickhouse-keeper/keeper_config.xml`. Use a minimum of three Keeper nodes to maintain quorum and tolerate one node failure.
+
+   For configuration steps, see the [ClickHouse cluster deployment guide](https://clickhouse.com/docs/architecture/cluster-deployment) in the ClickHouse documentation.
+
+1. Start the services on each node.
+
+   On server nodes:
+
+   ```bash
+   sudo systemctl enable clickhouse-server
+   sudo systemctl start clickhouse-server
+   ```
+
+   On server nodes running co-located Keeper, also start the Keeper service:
+
+   ```bash
+   sudo systemctl enable clickhouse-keeper
+   sudo systemctl start clickhouse-keeper
+   ```
+
+   On dedicated Keeper nodes, start only the Keeper service:
+
+   ```bash
+   sudo systemctl enable clickhouse-keeper
+   sudo systemctl start clickhouse-keeper
+   ```

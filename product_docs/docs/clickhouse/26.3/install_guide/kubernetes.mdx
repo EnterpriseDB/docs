@@ -1,0 +1,123 @@
+---
+title: Installing EDB Postgres AI for ClickHouse on Kubernetes
+navTitle: Kubernetes operator
+description: Install EDB Postgres AI for ClickHouse on Kubernetes using the EDB ClickHouse Kubernetes operator.
+---
+
+The EDB ClickHouse Kubernetes operator manages ClickHouse deployments on Kubernetes, handling cluster provisioning, configuration, upgrades, and scaling. It installs the following Kubernetes resources:
+
+- Four CustomResourceDefinitions (CRDs):
+  - `clickhouseinstallation` (abbreviated `chi`)
+  - `clickhouseinstallationtemplates`
+  - `clickhousekeeperinstallation` (abbreviated `chk`)
+  - `clickhouseoperatorconfiguration`
+- A ServiceAccount: `clickhouse-operator`
+- A ClusterRoleBinding: `clickhouse-operator`
+- A Deployment: `clickhouse-operator`
+
+## Prerequisites
+
+- A running Kubernetes cluster (1.26 or later)
+- `kubectl` configured to access your cluster
+- [Helm](https://helm.sh/) (if installing with Helm)
+- An EDB subscription token, available from the [EDB customer portal](https://www.enterprisedb.com/accounts/login)
+
+## Installing the operator
+
+You can install the operator with Helm or with `kubectl`.
+
+### Installing with Helm
+
+1. Add the EDB Helm repository:
+
+   ```bash
+   helm repo add edb <edb-helm-repo-url>
+   ```
+
+2. Update the repository cache:
+
+   ```bash
+   helm repo update edb
+   ```
+
+3. Install the operator into the `clickhouse` namespace:
+
+   ```bash
+   helm upgrade --install clickhouse-operator \
+     edb/edb-clickhouse-operator \
+     --version <operator-version> \
+     --namespace clickhouse \
+     --create-namespace
+   ```
+
+4. Verify the operator is running:
+
+   ```bash
+   kubectl get deployment.apps -n clickhouse
+   ```
+
+   The output includes `clickhouse-operator` with `Ready 1/1`.
+
+### Installing with kubectl
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/EnterpriseDB/clickhouse-operator/<operator-version>/deploy/operator/clickhouse-operator-install.yaml
+```
+
+Verify the operator is running:
+
+```bash
+kubectl get deployment.apps -n clickhouse
+```
+
+## Creating a ClickHouse cluster
+
+Once the operator is running, create a `ClickHouseInstallation` resource to deploy a ClickHouse cluster using the EDB image.
+
+1. Create a file named `clickhouse-installation.yaml`. The following example creates a single-shard, single-replica cluster:
+
+   ```yaml
+   apiVersion: <operator-api-group>/v1
+   kind: ClickHouseInstallation
+   metadata:
+     name: my-clickhouse
+     namespace: clickhouse
+   spec:
+     defaults:
+       templates:
+         podTemplate: edb-clickhouse
+     configuration:
+       clusters:
+         - name: my_cluster
+           layout:
+             shardsCount: 1
+             replicasCount: 1
+     templates:
+       podTemplates:
+         - name: edb-clickhouse
+           spec:
+             containers:
+               - name: clickhouse
+                 image: docker.enterprisedb.com/edb-clickhouse-server:<version>
+   ```
+
+2. Apply the resource:
+
+   ```bash
+   kubectl apply -f clickhouse-installation.yaml
+   ```
+
+3. Check the cluster status and wait until it shows `Completed`:
+
+   ```bash
+   kubectl get chi -n clickhouse
+   ```
+
+4. Connect to the cluster:
+
+   ```bash
+   kubectl exec -it -n clickhouse \
+     $(kubectl get pods -n clickhouse -l clickhouse.altinity.com/chi=my-clickhouse -o name | head -1) \
+     -- clickhouse-client
+   ```
+
