@@ -9,7 +9,7 @@ Install the WarehousePG Enterprise Manager (WEM) package on your designated host
 
 ## Downloading and installing WEM 
 
-1. Configure the the EDB repository on your host:
+1. Configure the EDB repository on your host:
 
     ```bash
     export EDB_SUBSCRIPTION_TOKEN=<your-token>
@@ -42,75 +42,133 @@ export PATH=/usr/local/greenplum-db/wem:$PATH
 
 ## Configuring WEM
 
-Configure the WEM service by editing `/etc/wem/wem.conf`.
+Configure the WEM service by editing `/etc/wem/wem.conf`. For a complete list of all supported parameters, defaults, and types, see the [Configuration reference](../reference/configuration).
 
-1. **Target cluster:** Set the values of `WHPG_HOST`, `WHPG_PORT`, `WHPG_DATABASE`, `WHPG_USER` , and `WHPG_PASSWORD` as per your WHPG cluster. For example:
+### Target cluster
 
-    ```ini
-    WHPG_HOST=whpg-coordinator-host
-    WHPG_PORT=5432
-    WHPG_DATABASE=postgres
-    WHPG_USER=gpadmin
-    WHPG_PASSWORD=postgres
+Set the values of `WHPG_HOST`, `WHPG_PORT`, `WHPG_DATABASE`, `WHPG_USER`, and `WHPG_PASSWORD` as per your WHPG cluster. For example:
+
+```ini
+WHPG_HOST=whpg-coordinator-host
+WHPG_PORT=5432
+WHPG_DATABASE=postgres
+WHPG_USER=gpadmin
+WHPG_PASSWORD=postgres
+```
+
+!!! Note
+    You can specify any database on your WHPG cluster. However, `WHPG_USER` must be a superuser.
+
+### Observability endpoints
+
+Set the URLs for your Prometheus and Loki instances. For example:
+
+```ini
+PROMETHEUS_URL=http://prometheus.hostname:9090
+LOKI_URL=http://loki.hostname:3100
+```
+
+### Application state (optional)
+
+By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`. To use a dedicated database for WEM state, configure these optional parameters. For example:
+
+```ini
+WEM_HOST=wem-db-hostname
+WEM_PORT=5432
+WEM_DATABASE=wem
+WEM_USER=gpadmin
+WEM_PASSWORD=postgres
+```
+
+### Alerting
+
+To enable centralized notifications, point WEM to your Alertmanager endpoint:
+
+```ini
+ALERTMANAGER_URL=http://prometheus.hostname:9093
+```
+
+### AI Assistant
+
+To enable the AI Assistant for query writing and optimization, manually add the `ANTHROPIC_API_KEY` parameter (requires an active Anthropic account).
+
+```ini
+ANTHROPIC_API_KEY=YOUR_API_KEY_HERE
+```
+
+### Advanced tuning
+
+Optionally, adjust these parameters to fine-tune logging and data intervals:
+
+- `WEM_EXPORTER_LOG_LEVEL`: Sets the verbosity of Exporter logs (`debug`, `info`, `warn`, or `error`).
+
+- `WEM_EXPORTER_REMOTE_WRITE_ENABLED`: Controls whether WEM actively pushes SQL exporter metrics to Prometheus via remote write. Defaults to `true`. Set to `false` when you prefer Prometheus to scrape WEM instead of WEM pushing to Prometheus, or when `PROMETHEUS_URL` isn't set. Setting this to `false` doesn't disable the `/prom/metrics` endpoint. Cluster metrics remain available for Prometheus to scrape on demand.
+
+- `WEM_EXPORTER_REMOTE_WRITE_INTERVAL`: Frequency for pushing metrics. For example, 15s, 1m, 5m.
+
+- `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT`: Maximum time allowed for a data push. For example, 30s, 1m, 2m.
+
+- `LONG_RUNNING_THRESHOLD`: Duration after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. For example, 5m, 30m, 1h. This can also be configured directly from the WEM interface.
+
+### Remote write receiver (optional)
+
+WEM can accept inbound metrics from Grafana Alloy or any Prometheus-compatible remote write client. Received time series are stored in memory and exposed at `/prom/metrics` alongside WEM's own cluster metrics.
+
+To enable, set the following parameters:
+
+```ini
+WEM_REMOTE_WRITE_RECEIVER_ENABLED=true
+WEM_REMOTE_WRITE_RECEIVER_PORT=9091
+WEM_REMOTE_WRITE_RECEIVER_TTL=5m
+WEM_REMOTE_WRITE_RECEIVER_TOKEN=eU3zV8mK2pL9nQ4rX1yA6wB0cF5hJ7dT
+```
+
+- `WEM_REMOTE_WRITE_RECEIVER_ENABLED`: Master switch for the receiver. Defaults to `false`. When `false`, no `/write` endpoint is registered and no additional port is opened. The `/prom/metrics` endpoint remains available regardless. WEM's own cluster metrics are always exposed there for Prometheus to scrape even when the receiver is off.
+
+- `WEM_REMOTE_WRITE_RECEIVER_PORT`: Port on which WEM listens for `POST /write` requests. Defaults to `9091`.
+    - **Different from `PORT` (default):** WEM opens a dedicated HTTP listener on this port. Only `/write` and the `/api/v1/status/buildinfo` health endpoint are available there. This setup lets you restrict Alloy traffic independently of the main UI port using firewall rules.
+    - **Same as `PORT`:** The `/write` route is registered on the main web server and no second listener is opened. Use this in environments where opening an additional port isn't possible.
+
+- `WEM_REMOTE_WRITE_RECEIVER_TTL`: How long WEM retains a received time series in memory after its last sample. When the TTL expires and no new sample has arrived, the series is evicted from `/prom/metrics`. Defaults to `5m`. Set this to at least twice your Alloy `remote_write` interval to avoid gaps during temporary restarts. With Alloy's default 60-second interval, `2m` is the minimum safe value. Accepts `s` (seconds), `m` (minutes), and `h` (hours).
+
+- `WEM_REMOTE_WRITE_RECEIVER_TOKEN` *(sensitive)*: Bearer token that inbound `POST /write` requests must present in the `Authorization` header:
+
+    ```
+    Authorization: Bearer <token>
     ```
 
-    !!! Note
-        You can specify any database on your WHPG cluster. However, `WHPG_USER` must be a superuser.
+    Defaults to empty (no authentication). When empty, WEM logs a warning at startup and any client that can reach the receiver port can push metrics. When set, requests without a valid token are rejected with HTTP 401. Generate a token with `openssl rand -base64 32`. You can also pass this value as the `--remote-write-token` CLI flag instead of storing it in `wem.conf`.
 
-1. **Observability endpoints:** Set the URLs for your Prometheus and Loki instances. For example:
+To configure Grafana Alloy to push metrics to the receiver:
 
-    ```ini
-    PROMETHEUS_URL=http://prometheus.hostname:9090
-    LOKI_URL=http://loki.hostname:3100
-    ```
+```alloy
+prometheus.remote_write "wem" {
+  endpoint {
+    url = "http://<wem-host>:9091/write"
+    bearer_token = "<token>"
+  }
+}
+```
 
-1. **Application state (optional):** By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`. To use a dedicated database for WEM state, configure these optional parameters. For example:
+### WEM portal access
 
-    ```ini
-    WEM_HOST=wem-db-hostname
-    WEM_PORT=5432
-    WEM_DATABASE=wem
-    WEM_USER=gpadmin
-    WEM_PASSWORD=postgres
-    ```
+By default, the WEM web portal listens on port 8080. To use a different port, set the `PORT` parameter. For example:
 
-1. **Alerting:** To enable centralized notifications, point WEM to your Alertmanager endpoint:
+```ini
+PORT=8082
+```
 
-    ```ini
-    ALERTMANAGER_URL= http://prometheus.hostname:9093
-    ```
+### Session security
 
-1. **AI Assistant:** To enable the AI Assistant for query writing and optimization, manually add the `ANTHROPIC_API_KEY` parameter (requires an active Anthropic account).
+To start, WEM requires `WEM_COOKIE_SECRET` to be set. It returns an error with setup instructions if it's missing.
 
-    ```ini
-    ANTHROPIC_API_KEY=YOUR_API_KEY_HERE
-    ```
+- Generate a unique 32-byte key using `openssl rand -base64 32` and set it as the `WEM_COOKIE_SECRET`.
+- If you aren't using HTTPS, you must also set `WEM_INSECURE_COOKIES` to `1`.
 
-1. **Advanced tuning:** Optionally, adjust these parameters to fine-tune logging and data intervals:
-
-    - `WEM_EXPORTER_LOG_LEVEL`: Sets the verbosity of Exporter logs (`debug`, `info`, `warn`, or `error`).
-
-    - `WEM_EXPORTER_REMOTE_WRITE_INTERVAL`: Frequency for pushing metrics. For example, 15s, 1m, 5m.
-
-    - `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT`: Maximum time allowed for a data push. For example, 30s, 1m, 2m.
-
-    - `LONG_RUNNING_THRESHOLD`: Duration after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. For example, 5m, 30m, 1h. This can also be configured directly from the WEM interface.
-
-1. **WEM portal access:** By default, the WEM web portal listens on port 8080. To use a different port, set the `PORT` parameter. For example:
-
-    ```ini
-    PORT=8082
-    ```
-
-1. **Session security:** To start, WEM requires `WEM_COOKIE_SECRET` to be set. It returns an error with setup instructions if it's missing.
-
-    - Generate a unique 32-byte key using `openssl rand -base64 32` and set it as the `WEM_COOKIE_SECRET`.
-    - If you aren't using HTTPS, you must also set `WEM_INSECURE_COOKIES` to `1`.
-
-    ```ini
-    WEM_COOKIE_SECRET=your-generated-secret-key
-    WEM_INSECURE_COOKIES=1
-    ```
+```ini
+WEM_COOKIE_SECRET=your-generated-secret-key
+WEM_INSECURE_COOKIES=1
+```
 
 ### Setting the administrator password
 
@@ -157,6 +215,17 @@ Initialize the database and internal configurations. Choose the method that fits
     systemctl enable wem
     systemctl start wem
     ```
+
+!!! Important
+    `wem setup` doesn't read `wem.conf`. When run directly, it uses built-in defaults (host `localhost`, port `5432`, database `wem`) regardless of what's in your configuration file. `wem.conf` is only sourced when WEM starts via systemd.
+
+    To use your configured values during manual setup, pass them explicitly as flags:
+
+    ```shell
+    /usr/local/greenplum-db/wem/wem setup --host <WHPG_HOST> --port <WHPG_PORT> --database <WHPG_DATABASE> --user <WHPG_USER>
+    ```
+
+    Alternatively, use the automated systemd setup, which reads `wem.conf` automatically.
 
 ## Verifying the installation
 

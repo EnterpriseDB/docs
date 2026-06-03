@@ -1,0 +1,59 @@
+---
+title: Alert rules reference
+navTitle: Alert rules
+description: Reference for the Prometheus alert rules shipped with WEM.
+deepToC: true
+---
+
+WEM ships two Prometheus alert rule files at `/usr/local/greenplum-db/wem/config/prometheus/alerts/` on the WEM host. For setup instructions, see [Installing the observability stack](../installing/observability-stack).
+
+## Canary rules
+
+Defined in `wem-canary.rules.yml`. These rules fire based on metrics collected by WEM's canary check system.
+
+### Lock contention
+
+| Alert | Severity | Condition | Fires after |
+|---|---|---|---|
+| `CanaryLockCheckWarning` | Warning | Lock check duration > 50ms | 5m |
+| `CanaryLockCheckCritical` | Critical | Lock check duration > 200ms | 2m |
+
+The lock check measures how long it takes to acquire a test lock on the cluster. Elevated durations indicate lock contention that may be affecting query throughput.
+
+### Transaction wraparound
+
+| Alert | Severity | Condition | Fires after |
+|---|---|---|---|
+| `CanaryTransactionWraparound` | Warning | Max `datfrozenxid` age > 500 million XIDs | 1m |
+| `CanaryTransactionWraparoundCritical` | Critical | Max `datfrozenxid` age > 2 billion XIDs | 1m |
+
+These alerts fire when transaction ID age approaches XID exhaustion. The critical threshold requires immediate `VACUUM FREEZE` to prevent transaction ID wraparound.
+
+### Active connections
+
+| Alert | Severity | Condition | Fires after |
+|---|---|---|---|
+| `CanaryActiveConnectionsWarning` | Warning | Active connections > 100 | 5m |
+| `CanaryActiveConnectionsCritical` | Critical | Active connections > 300 | 2m |
+
+These alerts fire when the number of concurrent sessions exceeds the defined thresholds. High connection counts can exhaust the cluster's `max_connections` limit and prevent new connections from being established.
+
+### Canary health
+
+| Alert | Severity | Condition | Fires after |
+|---|---|---|---|
+| `CanaryCheckStale` | Warning | Check not run in the last 30 minutes | 5m |
+| `CanaryCheckCritical` | Critical | Check status equals `critical` | 2m |
+
+`CanaryCheckStale` fires when any individual canary check stops running, which may indicate that the WEM scheduler has stopped. `CanaryCheckCritical` is a generic rule that fires when any check reports a critical status.
+
+## System rules
+
+Defined in `wem-system.rules.yml`. These rules monitor the health of the WEM service itself.
+
+| Alert | Severity | Condition | Fires after |
+|---|---|---|---|
+| `WEMDown` | Critical | Prometheus cannot scrape WEM (`up{job="wem"} == 0`) | 1m |
+| `WEMSchedulerNotActive` | Warning | No WEM instance is holding the scheduler lock | 10m |
+
+`WEMDown` fires when Prometheus loses the ability to scrape the `/prom/metrics` endpoint, indicating that the WEM service is unreachable. `WEMSchedulerNotActive` fires when no WEM instance holds the internal scheduler lock, which means canary checks are not running even though the service may appear healthy.

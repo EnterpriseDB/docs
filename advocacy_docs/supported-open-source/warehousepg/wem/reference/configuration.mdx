@@ -1,0 +1,103 @@
+---
+title: Configuration parameters
+navTitle: Configuration parameters
+description: Complete reference for all WEM and Collector configuration parameters.
+deepToC: true
+---
+
+WEM and the Collector are each configured through a dedicated configuration file on their respective hosts. The parameters below cover all supported options, their defaults, and their descriptions.
+
+## WEM parameters
+
+Configure these parameters in `/etc/wem/wem.conf` on the WEM host.
+
+### Target cluster
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WHPG_HOST` | `localhost` | Yes | Hostname of the WarehousePG coordinator. |
+| `WHPG_PORT` | `5432` | Yes | Port for the WarehousePG coordinator. |
+| `WHPG_DATABASE` | `wem` | Yes | Database on the WHPG cluster to connect to. Any database is valid, but `WHPG_USER` must be a superuser. |
+| `WHPG_USER` | `gpadmin` | Yes | WarehousePG superuser for monitoring. |
+| `WHPG_PASSWORD` | — | Yes | Password for `WHPG_USER`. |
+
+### Observability endpoints
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `PROMETHEUS_URL` | — | No | URL of the Prometheus server for metrics. For example, `http://prometheus.hostname:9090`. |
+| `LOKI_URL` | — | No | URL of the Loki server for log aggregation. For example, `http://loki.hostname:3100`. |
+| `ALERTMANAGER_URL` | — | No | URL of the Alertmanager endpoint for alert routing and notifications. For example, `http://prometheus.hostname:9093`. Required to enable the **Alerts** panel. |
+
+### Application state
+
+By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`. Use these parameters to point WEM at a dedicated database instead.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_HOST` | `WHPG_HOST` | No | Hostname of the WEM application state database. |
+| `WEM_PORT` | `WHPG_PORT` | No | Port for the WEM application state database. |
+| `WEM_DATABASE` | `wem` | No | Database name for WEM application state. |
+| `WEM_USER` | `WHPG_USER` | No | User for the WEM application state database. |
+| `WEM_PASSWORD` | — | No | Password for `WEM_USER`. |
+
+### Web server
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `PORT` | `8080` | No | HTTP port on which the WEM web portal listens. |
+
+### Session security
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_COOKIE_SECRET` | — | Yes | 32-byte secret key for session cookies. Generate with `openssl rand -base64 32`. WEM returns an error at startup if this is unset. |
+| `WEM_INSECURE_COOKIES` | — | No | Set to `1` to allow cookies over HTTP. Required when WEM is not served over HTTPS. |
+
+### Admin credentials
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_ADMIN_PASSWORD` | Auto-generated | No | Initial admin password. Auto-generated at install if empty. Only used during first-time setup if the `dashboard_users` table doesn't yet exist. |
+| `WEM_ADMIN_PASSWORD_FILE` | — | No | Path to a file containing the admin password. Use instead of `WEM_ADMIN_PASSWORD` for automated deployments. |
+
+### AI Assistant
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | — | No | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when this parameter is unset. |
+
+### Exporter
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_EXPORTER_LOG_LEVEL` | `warn` | No | Verbosity of Exporter logs. Accepts `debug`, `info`, `warn`, or `error`. |
+| `WEM_EXPORTER_REMOTE_WRITE_ENABLED` | `true` | No | Controls whether WEM actively pushes SQL exporter metrics to Prometheus via remote write. Set to `false` to use pull-only mode or when `PROMETHEUS_URL` is not set. The `/prom/metrics` endpoint remains available regardless. |
+| `WEM_EXPORTER_REMOTE_WRITE_INTERVAL` | `15s` | No | Frequency for pushing metrics to Prometheus. For example, `15s`, `1m`, `5m`. |
+| `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT` | `30s` | No | Maximum time allowed for a remote write push. For example, `30s`, `1m`, `2m`. |
+| `LONG_RUNNING_THRESHOLD` | `10m` | No | Duration after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Can also be set from the WEM interface. |
+
+### Remote write receiver
+
+When enabled, WEM accepts inbound time-series data from Grafana Alloy or any Prometheus-compatible remote write client via `POST /write`, and exposes received metrics at `/prom/metrics` alongside its own cluster metrics.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_REMOTE_WRITE_RECEIVER_ENABLED` | `false` | Yes (to enable) | Master switch for the receiver. When `false`, no `/write` endpoint is registered and no additional port is opened. |
+| `WEM_REMOTE_WRITE_RECEIVER_PORT` | `9091` | No | Port on which WEM listens for `POST /write` requests. When different from `PORT`, WEM opens a dedicated HTTP listener — only `/write` and `/api/v1/status/buildinfo` are available there. When set to the same value as `PORT`, the `/write` route is registered on the main web server instead. |
+| `WEM_REMOTE_WRITE_RECEIVER_TTL` | `5m` | No | How long WEM retains a received time series in memory after its last sample. Set to at least twice your Alloy `remote_write` interval. With Alloy's default 60-second interval, `2m` is the minimum safe value. Accepts `s`, `m`, and `h` suffixes. |
+| `WEM_REMOTE_WRITE_RECEIVER_TOKEN` | — | Recommended | *Sensitive.* Bearer token that `POST /write` requests must present in the `Authorization: Bearer <token>` header. When empty, any client that can reach the port can push metrics and WEM logs a warning. When set, requests without a valid token are rejected with HTTP 401. Generate with `openssl rand -base64 32`. Can also be passed as the `--remote-write-token` CLI flag. |
+
+---
+
+## Collector parameters
+
+Configure these parameters in `/var/lib/whpg-observability-collector/collector.conf` on the WarehousePG coordinator.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WHPG_OBS_DSN` | — | Yes | WarehousePG cluster connection string. For example, `host=coordinator-host port=5432 dbname=postgres user=gpadmin sslmode=disable`. The user must be a superuser. |
+| `PROMETHEUS_ENDPOINT` | — | Yes | Prometheus remote write URL for host metrics. For example, `http://prometheus.hostname:9090/api/v1/write`. |
+| `LOKI_ENDPOINT` | — | Yes | Loki push API URL for log aggregation. For example, `http://loki.hostname:3100/loki/api/v1/push`. |
+| `PROMETHEUS_BEARER_TOKEN` | — | No | Bearer token for authenticating remote write requests to Prometheus. Required if your Prometheus instance enforces authentication. |
+| `LOKI_BEARER_TOKEN` | — | No | Bearer token for authenticating log push requests to Loki. Required if your Loki instance enforces authentication. |

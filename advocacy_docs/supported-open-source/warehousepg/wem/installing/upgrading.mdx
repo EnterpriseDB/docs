@@ -1,0 +1,88 @@
+---
+title: Upgrading WarehousePG Enterprise Manager
+navTitle: Upgrading
+description: Learn how to upgrade WEM Collector and WEM to a new version.
+---
+
+Upgrade Collector before upgrading WarehousePG Enterprise Manager (WEM). No service shutdown is required before running the upgrade commands.
+
+## Upgrading Collector
+
+Run these commands from the WarehousePG coordinator.
+
+1. On the coordinator, download the new Collector package from the EDB repository:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpg-observability-collector
+    ```
+
+1. Create a file named `all_hosts` listing every host in the cluster:
+
+    ```ini
+    cdw
+    scdw
+    sdw1
+    sdw2
+    ```
+
+1. Copy the package to all hosts:
+
+    <TabContainer syncKey="whpg-version">
+    <Tab title="WHPG 7">
+
+    ```bash
+    gpsync -f all_hosts edb-whpg-observability-collector*.rpm =:/tmp/
+    ```
+
+    </Tab>
+    <Tab title="WHPG 6">
+
+    ```bash
+    gpscp -f all_hosts edb-whpg-observability-collector*.rpm =:/tmp/
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1. Upgrade the package on all hosts:
+
+    ```bash
+    gpssh -f all_hosts -u gpadmin -e "sudo dnf upgrade -y /tmp/edb-whpg-observability-collector*.rpm"
+    ```
+
+1. Redeploy the updated Collector service across all hosts:
+
+    ```bash
+    cd /var/lib/whpg-observability/
+    ./deploy-observability
+    ```
+
+## Upgrading WEM
+
+Run these commands on the WEM host:
+
+1. Download the new WEM package from the EDB repository:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download whpg-enterprise-manager
+    ```
+
+1. Install the new WEM package:
+
+    ```bash
+    sudo dnf upgrade whpg-enterprise-manager*.rpm
+    ```
+
+1. Restart the WEM service to apply the update:
+
+    ```bash
+    systemctl restart wem
+    ```
+
+WEM 1.2 introduces an optional **remote write receiver** that allows WEM to accept inbound metrics from Grafana Alloy or any Prometheus-compatible client via a `POST /write` endpoint. This feature is disabled by default and requires explicit configuration to enable. See [Remote write receiver (optional)](wem#remote-write-receiver-optional) in the Configuring WEM section for details.
