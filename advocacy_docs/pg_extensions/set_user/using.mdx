@@ -3,6 +3,10 @@ title: Using set_user
 navTitle: Using
 ---
 
+Direct superuser login bypasses the audit trail. 
+`set_user` solves this by routing privileged access through SQL functions that log every role transition, tag audit entries, and block high-risk commands, keeping escalation traceable and controlled. 
+You interact with the extension through these functions:
+
 ## Overview of functions
 
 `set_user` provides the following functions:
@@ -42,12 +46,42 @@ Use `set_user_u()` to escalate to a superuser role. The calling role must have `
 SELECT set_user_u('postgres');
 ```
 
-While escalated, the following actions occur automatically (subject to GUC settings):
+Each of the following actions is controlled by a GUC parameter. While escalated, they occur automatically:
 
 - The role transition is logged.
 - `log_statement` is set to `all`, capturing every SQL statement.
 - `ALTER SYSTEM`, `COPY PROGRAM`, and `SET log_statement` commands are blocked.
 - The `set_user.superuser_audit_tag` value (default: `AUDIT`) is appended to `log_line_prefix`, tagging all subsequent log entries.
+
+### GUC parameters
+
+The following parameters can be set in `postgresql.conf` to control set_user behavior:
+
+| Parameter                               | Default   | Description                                                                                                                                                                                                                                          |
+|-----------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `set_user.block_alter_system`           | `on`      | Block `ALTER SYSTEM` commands while running as an escalated role.                                                                                                                                                                                    |
+| `set_user.block_copy_program`           | `on`      | Block `COPY PROGRAM` commands while running as an escalated role.                                                                                                                                                                                    |
+| `set_user.block_log_statement`          | `on`      | Block `SET log_statement` commands. When `on` and the target role is a superuser, `log_statement` is automatically set to `all`.                                                                                                                     |
+| `set_user.superuser_allowlist`          | `'*'`     | Comma-separated list of roles permitted to escalate to superuser via `set_user_u()`. Use `'*'` to allow all roles with `EXECUTE` permission, `''` to block all escalation. Group roles can be specified with a `+` prefix (for example, `'+admin'`). |
+| `set_user.nosuperuser_target_allowlist` | `'*'`     | Comma-separated list of non-superuser roles that can be switched to via `set_user()`. Use `'*'` to allow all, `''` to block all non-superuser transitions.                                                                                           |
+| `set_user.superuser_audit_tag`          | `'AUDIT'` | String appended to `log_line_prefix` upon superuser escalation, tagging all subsequent log entries.                                                                                                                                                  |
+| `set_user.exit_on_error`                | `on`      | When `on`, the backend process exits with a `FATAL` error on any `ERROR` during `set_session_auth()` calls.                                                                                                                                          |
+
+### Example configuration
+
+```ini
+shared_preload_libraries = 'set_user'
+
+# Restrict superuser escalation to a specific admin group
+set_user.superuser_allowlist = '+dbadmins'
+
+# Allow transitions only to a specific set of non-superuser roles
+set_user.nosuperuser_target_allowlist = 'app_role, reporting_role'
+
+# Turn off blocking if not required
+set_user.block_alter_system = off
+set_user.block_copy_program = off
+```
 
 To return to the previous role:
 
@@ -82,5 +116,4 @@ Use `set_session_auth()` when a permanent identity switch is required, not for t
 ## Caveats
 
 - `set_user()` and `set_user_u()` can't be called from within an explicit transaction block.
-- `set_user` logs the audit trail but can't prevent all nefarious actions by the escalated role. The logs provide the evidence; monitoring and alerting should be set up accordingly.
-- EDB packages of `set_user` support Postgres 17 and higher.
+- `set_user` logs the audit trail but can't prevent all actions by the escalated role. Use the logs as evidence, and set up monitoring and alerting accordingly.
