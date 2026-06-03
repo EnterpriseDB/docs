@@ -12,34 +12,16 @@ redirects:
 
 Configure your Postgres source database and create the required users before starting your migration. What you need to configure depends on your goal:
 
-- **Schema ingestion only** (EDB Postgres AI agent): Create a machine user in Hybrid Manager (HM), set up a dedicated OS user for the agent on your auxiliary machine, and create a migration user with schema extraction permissions. No WAL-level database changes are required.
+- **Schema ingestion only** with the EDB Postgres AI agent: Create a machine user in Hybrid Manager (HM), set up a dedicated OS user for the agent on your auxiliary machine, and create a migration user with schema extraction permissions. No WAL-level database changes are required.
 
-- **Data migration** (Data Migration Service (DMS) agent): Configure WAL settings and grant the required replication privileges. Complete the [DMS agent preparation](#preparing-for-data-migration-dms-agent) sections on this page.
+- **Data migration** with the Data Migration Service (DMS) agent: Configure WAL settings and grant the required replication privileges.
 
-If you plan to run both schema ingestion and data migration, complete all sections. The migration user you create serves both agents.
-
-## Preparing for schema ingestion (EDB Postgres AI agent)
-
-!!!note EDB Postgres AI agent only
-This section is required for schema ingestion. If you're performing data migration only, skip to [Creating the migration user](#creating-the-migration-user).
-!!!
-
-### Creating a dedicated OS user for the agent
-
-!!!note EDB Postgres AI agent — recommended
-We recommend this step for security. For testing and development, you can skip it and run the agent as the Postgres user, which has all required permissions by default.
-!!!
-
-Create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This avoids granting the agent permissions it doesn't need. This is a Linux-specific example, the exact command might vary by distribution:
-
-```shell
-sudo useradd <agent_os_user>
-```
+If you plan to run both schema ingestion and data migration, complete all sections. If you only plan to do schema or data migration, each section will explain whether it's applicable for your use case.
 
 ## Creating the migration user
 
-!!!note Schema ingestion and data migration
-Complete all subsections if you plan to run both agents. If you're performing schema ingestion only, complete [Granting schema ingestion permissions](#granting-schema-ingestion-permissions). If you're performing data migration only, complete [Granting data migration permissions](#granting-data-migration-permissions).
+!!!tip
+Required for both schema ingestion with the EDB Postgres AI agent and data migration with the DMS agent.
 !!!
 
 Create a single migration user that serves both the EDB Postgres AI agent and the DMS agent. Using one user simplifies credential management across agents.
@@ -54,84 +36,102 @@ CREATE USER <migration_user> WITH REPLICATION LOGIN PASSWORD '<migration_user_pa
 
 ### Granting schema ingestion permissions
 
-Grant the permissions needed for the EDB Postgres AI agent to connect to the source database and extract schema information:
+!!!tip
+Required for schema ingestion with the EDB Postgres AI agent.
+!!!
 
-```sql
-GRANT CONNECT ON DATABASE <source_database> TO <migration_user>;
-```
+1.  Grant the EDB Postgres AI agent connect access to the source database:
 
-Where `<source_database>` is the name of the database you want to assess. If you plan to connect the agent to additional databases on the same server, grant `CONNECT` on each one:
+    ```sql
+    GRANT CONNECT ON DATABASE <source_database> TO <migration_user>;
+    ```
 
-```sql
-GRANT CONNECT ON DATABASE <other_database> TO <migration_user>;
-```
+    Where `<source_database>` is the name of the database you want to assess. If you plan to connect the agent to additional databases on the same server, grant `CONNECT` on each one.
 
-Then grant the roles needed for a complete schema extraction:
+1.  Grant the roles needed for a complete schema extraction:
 
-<TabContainer syncKey="pg_version">
-<Tab title="Postgres 14 and later">
+    <TabContainer syncKey="pg_version">
+    <Tab title="Postgres 14 and later">
 
-```sql
-GRANT pg_monitor TO <migration_user>;
-GRANT pg_read_all_data TO <migration_user>;
-GRANT pg_read_all_settings TO <migration_user>;
-```
+    ```sql
+    GRANT pg_monitor TO <migration_user>;
+    GRANT pg_read_all_data TO <migration_user>;
+    GRANT pg_read_all_settings TO <migration_user>;
+    ```
 
-Together, these three roles enable a full schema extraction, including ownership and privilege information. With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
+    Together, these three roles enable a full schema extraction, including ownership and privilege information. With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
 
-</Tab>
-<Tab title="Postgres 10 to 13">
+    </Tab>
+    <Tab title="Postgres 10 to 13">
 
-`pg_read_all_data` isn't available in Postgres 10 to 13:
+    `pg_read_all_data` isn't available in Postgres 10 to 13:
 
-```sql
-GRANT pg_monitor TO <migration_user>;
-GRANT pg_read_all_settings TO <migration_user>;
-```
+    ```sql
+    GRANT pg_monitor TO <migration_user>;
+    GRANT pg_read_all_settings TO <migration_user>;
+    ```
 
-</Tab>
-</TabContainer>
+    </Tab>
+    </TabContainer>
 
-If you're using Postgres 16 or earlier, also grant the following to allow the agent to discover the Postgres log file location:
+1.  If you're using Postgres 16 or earlier, also grant the following to allow the agent to discover the Postgres log file location:
 
-```sql
-GRANT EXECUTE ON FUNCTION pg_catalog.pg_current_logfile() TO <migration_user>;
-```
+    ```sql
+    GRANT EXECUTE ON FUNCTION pg_catalog.pg_current_logfile() TO <migration_user>;
+    ```
 
 ### Granting data migration permissions
 
-!!!note DMS agent only
-Complete this section only if you plan to run data migration. Skip it if you're performing schema ingestion only.
+!!!tip
+Required for data migration with the DMS agent.
 !!!
 
-Grant the migration user usage on each schema containing tables to migrate:
+1.  Grant the migration user usage on each schema containing tables to migrate:
 
-```sql
-GRANT USAGE ON SCHEMA <db_schema> TO <migration_user>;
-```
+    ```sql
+    GRANT USAGE ON SCHEMA <db_schema> TO <migration_user>;
+    ```
 
-Grant `SELECT` on source tables. For an entire schema:
+1.  Grant `SELECT` on source tables. For an entire schema:
 
-```sql
-GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_user>;
-```
+    ```sql
+    GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_user>;
+    ```
 
-For individual tables:
+    For individual tables:
 
-```sql
-GRANT SELECT ON <table_name> TO <migration_user>;
-```
+    ```sql
+    GRANT SELECT ON <table_name> TO <migration_user>;
+    ```
 
-Grant `CREATE` on the source database so the DMS agent can create publications:
+1.  Grant `CREATE` on the source database so the DMS agent can create publications:
 
-```sql
-GRANT CREATE ON DATABASE <pg_db_name> TO <migration_user>;
+    ```sql
+    GRANT CREATE ON DATABASE <pg_db_name> TO <migration_user>;
+    ```
+
+## Preparing for schema ingestion (EDB Postgres AI agent)
+
+!!!tip
+Required for schema ingestion with the EDB Postgres AI agent.
+!!!
+
+### Creating a dedicated OS user for the agent
+
+!!!note EDB Postgres AI agent — recommended
+We recommend this step for security. For testing and development, you can skip it and run the agent as the Postgres user, which has all required permissions by default.
+!!!
+
+Create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This strategy avoids granting the agent permissions it doesn't need. This is a Linux-specific example, the exact command might vary by distribution:
+
+```shell
+sudo useradd <agent_os_user>
 ```
 
 ## Preparing for data migration (DMS agent)
 
-!!!note DMS agent only
-This section is required for data migration. If you're performing schema ingestion only, skip this section and proceed to [Configuring the EDB Postgres AI agent](agent_postgres).
+!!!tip
+Required for data migration with the DMS agent.
 !!!
 
 ### Configuring WAL settings
