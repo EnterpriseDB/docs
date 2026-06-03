@@ -6,7 +6,7 @@ description: How to apply PGD's predefined commit scopes to match common durabil
 
 If your cluster uses a single node group, start with a predefined scope. PGD ships four that cover the most common patterns, ready to use with no configuration, so you don't need to understand the full policy language to get started. Each predefined scope applies to a single node group. For clusters that span multiple groups with different requirements, use a [custom scope](custom-scopes) instead.
 
-- **`local protect`** suits workloads where latency is the priority and some data loss on node failure is acceptable. It commits as soon as the local node persists the transaction, with no remote confirmation required. A node failure before replication catches up can result in data loss.
+- **`local protect`** suits workloads where low latency is the priority and some data loss on node failure is acceptable. It commits as soon as the local node persists the transaction, with no remote confirmation required. If that node fails before replication catches up, any transactions that committed on it but hadn't yet replicated to a peer are permanently lost — no other node has a copy.
 - **`lag protect`** suits high-throughput workloads that need async performance but a bounded recovery point. It commits asynchronously while replication lag stays under a threshold (30 seconds by default). When lag grows too large, commits slow down until replication catches up. Commits block when lag exceeds the threshold.
 - **`majority protect`** suits production write workloads that need strong durability guarantees. It waits for a majority of nodes in the origin group to confirm before the commit returns. Commit latency is higher than with async replication.
 - **`adaptive protect`** suits cross-site deployments where network disruptions are common and writes can't afford to block. It waits for majority confirmation like `majority protect`, but degrades to async automatically if a majority isn't reachable within 10 seconds. Strict behavior resumes as soon as a majority is available again. Recovery point weakens temporarily during degrade.
@@ -59,7 +59,7 @@ After applying the scope, expect the following:
 
 - Commits from the write leader return only after the second primary node confirms receipt.
 - If the second primary node is unreachable for 10 seconds, writes continue without blocking — the scope degrades to async automatically.
-- Strict confirmation resumes as soon as the second primary node is reachable again, with no manual intervention needed.
+- When the second primary node is reachable again, the scope returns to requiring confirmation before commits return. No manual intervention needed.
 - The DR node receives changes asynchronously and doesn't delay commits.
 - On failover, PGD reassigns write leadership automatically — no scope reconfiguration needed.
 
