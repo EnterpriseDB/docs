@@ -457,6 +457,22 @@ const Page = () => {
           </BannerWideSubCard>
 
           <BannerWideSubCard
+            iconName={iconNames.CUBES}
+            headingText="Repositories and Downloading"
+            to="/repos/"
+          >
+            <BannerWideLink to="/repos/getting_started/get_your_token/">
+              Get your token
+            </BannerWideLink>
+            <BannerWideLink to="/repos/getting_started/">
+              Getting started
+            </BannerWideLink>
+            <BannerWideLink to="/repos/working_with_repos/">
+              Working with repositories
+            </BannerWideLink>
+          </BannerWideSubCard>
+
+          <BannerWideSubCard
             iconName={iconNames.EXTENSION}
             headingText="Extensions"
             to="/pg_extensions"
