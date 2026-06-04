@@ -281,6 +281,22 @@ const Page = () => {
           </div>
 
           <BannerWideSubCard
+            iconName={iconNames.DOWNLOAD}
+            headingText="Repositories and Downloading"
+            to="/repos/"
+          >
+            <BannerWideLink to="/repos/getting_started/get_your_token/">
+              Get your token
+            </BannerWideLink>
+            <BannerWideLink to="/repos/getting_started/">
+              Getting started
+            </BannerWideLink>
+            <BannerWideLink to="/repos/working_with_repos/">
+              Working with repositories
+            </BannerWideLink>
+          </BannerWideSubCard>
+
+          <BannerWideSubCard
             iconName={iconNames.IDEA_SHARING}
             headingText="Platforms"
             to="/edb-postgres-ai/platforms-and-tools/"
