@@ -1,4 +1,12 @@
 ---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
 title: Creating and Managing Tables
 originalFilePath: >-
   https://github.com/warehouse-pg/whpg-docs/blob/main/docs/docs/7x/admin_guide/ddl/ddl-table.md
@@ -58,9 +66,9 @@ Check constraints allow you to specify that the value in a certain column must s
 
 ```
 => CREATE TABLE products 
-            ( product_no integer, 
-              name text, 
-              price numeric CHECK (price > 0) );
+            ( product_no integer, 
+              name text, 
+              price numeric CHECK (price > 0) );
 ```
 
 <a id="topic30"></a>
@@ -71,9 +79,9 @@ Not-null constraints specify that a column must not assume the null value. A not
 
 ```
 => CREATE TABLE products 
-       ( product_no integer NOT NULL,
-         name text NOT NULL,
-         price numeric );
+       ( product_no integer NOT NULL,
+         name text NOT NULL,
+         price numeric );
 
 ```
 
@@ -85,10 +93,10 @@ Unique constraints ensure that the data contained in a column or a group of colu
 
 ```
 => CREATE TABLE products 
-       ( `product_no` integer `UNIQUE`, 
-         name text, 
-         price numeric)
-`      DISTRIBUTED BY (``product_no``)`;
+       ( `product_no` integer `UNIQUE`, 
+         name text, 
+         price numeric)
+`      DISTRIBUTED BY (``product_no``)`;
 
 ```
 
@@ -100,10 +108,10 @@ A primary key constraint is a combination of a `UNIQUE` constraint and a `NOT NU
 
 ```
 => CREATE TABLE products 
-       ( `product_no` integer `PRIMARY KEY`, 
-         name text, 
-         price numeric)
-`      DISTRIBUTED BY (``product_no``)`;
+       ( `product_no` integer `PRIMARY KEY`, 
+         name text, 
+         price numeric)
+`      DISTRIBUTED BY (``product_no``)`;
 
 ```
 
@@ -140,7 +148,7 @@ Adding an exclusion constraint automatically creates an index of the type specif
 
 ### Choosing the Table Distribution Policy
 
-All WarehousePG tables are distributed. When you create or alter a table, you optionally specify `DISTRIBUTED BY` (hash distribution), `DISTRIBUTED RANDOMLY` (random distribution), or `DISTRIBUTED REPLICATED` (fully distributed) to determine the table row distribution.
+All WarehousePG tables are distributed. When you create or alter a table, you optionally specify `DISTRIBUTED BY` (hash distribution), `DISTRIBUTED RANDOMLY` (random distribution), `DISTRIBUTED REPLICATED` (fully distributed), or `DISTRIBUTED COORDINATOR ONLY` (local to coordinator) to determine the table row distribution.
 
 > **Note** The WarehousePG server configuration parameter `gp_create_table_random_default_distribution` controls the table distribution policy if the DISTRIBUTED BY clause is not specified when you create a table.
 
@@ -152,10 +160,14 @@ Consider the following points when deciding on a table distribution policy.
 -   **Local and Distributed Operations** — Local operations are faster than distributed operations. Query processing is fastest if the work associated with join, sort, or aggregation operations is done locally, at the segment level. Work done at the system level requires distributing tuples across the segments, which is less efficient. When tables share a common distribution key, the work of joining or sorting on their shared distribution key columns is done locally. With a random distribution policy, local join operations are not an option.
 -   **Even Query Processing** — For best performance, all segments should handle an equal share of the query workload. Query workload can be skewed if a table's data distribution policy and the query predicates are not well matched. For example, suppose that a sales transactions table is distributed on the customer ID column (the distribution key). If a predicate in a query references a single customer ID, the query processing work is concentrated on just one segment.
 
-The replicated table distribution policy (`DISTRIBUTED REPLICATED`) should be used only for small tables. Replicating data to every segment is costly in both storage and maintenance, and prohibitive for large fact tables. The primary use cases for replicated tables are to:
+The primary use cases for replicated tables are to:
 
 -   remove restrictions on operations that user-defined functions can perform on segments, and
 -   improve query performance by making it unnecessary to broadcast frequently used tables to all segments.
+
+The replicated table distribution policy (`DISTRIBUTED REPLICATED`) should be used only for small tables. Replicating data to every segment is costly in both storage and maintenance, and prohibitive for large fact tables. 
+
+The coordinator-only table distribution policy (`DISTRIBUTED COORDINATOR ONLY`) stores data exclusively on the coordinator node. This is a specialized policy intended for small lookup tables or metadata that must be consulted during the planning phase of query processing, before distributed execution begins.
 
 > **Note** The hidden system columns (`ctid`, `cmin`, `cmax`, `xmin`, `xmax`, and `gp_segment_id`) cannot be referenced in user queries on replicated tables because they have no single, unambiguous value. WarehousePG returns a `column does not exist` error for the query.
 
@@ -163,27 +175,29 @@ The replicated table distribution policy (`DISTRIBUTED REPLICATED`) should be us
 
 #### Declaring Distribution Keys
 
-`CREATE TABLE`'s optional clauses `DISTRIBUTED BY`, `DISTRIBUTED RANDOMLY`, and `DISTRIBUTED REPLICATED` specify the distribution policy for a table. The default is a hash distribution policy that uses either the `PRIMARY KEY` (if the table has one) or the first column of the table as the distribution key. Columns with geometric or user-defined data types are not eligible as WarehousePG distribution key columns. If a table does not have an eligible column, WarehousePG distributes the rows randomly.
+`CREATE TABLE`'s optional clauses `DISTRIBUTED BY`, `DISTRIBUTED RANDOMLY`, `DISTRIBUTED REPLICATED`, and `DISTRIBUTED COORDINATOR ONLY` specify the distribution policy for a table. The default is a hash distribution policy that uses either the `PRIMARY KEY` (if the table has one) or the first column of the table as the distribution key. Columns with geometric or user-defined data types are not eligible as WarehousePG distribution key columns. If a table does not have an eligible column, WarehousePG distributes the rows randomly.
 
 Replicated tables have no distribution key because every row is distributed to every WarehousePG segment instance.
+
+Coordinator-only tables have no distribution key because every row is on the coordinator only.
 
 To ensure even distribution of hash-distributed data, choose a distribution key that is unique for each record. If that is not possible, choose `DISTRIBUTED RANDOMLY`. For example:
 
 ```
 => CREATE TABLE products
-`                        (name varchar(40),
-                         prod_id integer,
-                         supplier_id integer)
-             DISTRIBUTED BY (prod_id);
+`                        (name varchar(40),
+                         prod_id integer,
+                         supplier_id integer)
+             DISTRIBUTED BY (prod_id);
 `
 ```
 
 ```
 => CREATE TABLE random_stuff
-`                        (things text,
-                         doodads text,
-                         etc text)
-             DISTRIBUTED RANDOMLY;
+`                        (things text,
+                         doodads text,
+                         etc text)
+             DISTRIBUTED RANDOMLY;
 `
 ```
 
