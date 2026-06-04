@@ -4,7 +4,7 @@ navTitle: Fine-tuning with custom scopes
 description: How to use custom commit scopes to achieve full granularity over commit behavior across node groups in complex environments.
 ---
 
-Use custom scopes to achieve full granularity over commit behavior in complex environments. Each clause defines its own confirmation requirements independently, covering which nodes must respond, how many, and what kind of confirmation applies. Combining clauses lets you enforce different durability requirements across different node groups within a single commit.
+Use custom scopes to give your applications precise durability and consistency guarantees across complex, multi-group environments. Each clause defines its own confirmation requirements independently, covering which nodes must respond, how many, and what kind of confirmation applies. Combining clauses lets you enforce different durability requirements across different node groups within a single commit.
 
 ## Constructing a custom scope
 
@@ -122,3 +122,58 @@ SELECT bdr.create_commit_scope(
 The red box covers A1, A2, and A3 because `ALL ORIGIN GROUP` selects every node in the origin group, including A1, which plays no role in the previous example. The orange selection covers A2, B2, and B3, and the two arrows show that both B nodes must confirm. There's no `DEGRADE ON` clause, so if any of the required nodes can't confirm, the transaction waits.
 
 <div style="text-align: center;"><img src="../images/commit-scope-example2.svg" style="max-width: 100%; height: auto;" alt="Topology diagram showing two selection boxes. The red box covers all three Region A nodes as the local ALL clause. The orange selection spans A2, B2, and B3, with two solid arrows showing the two required cross-region confirmations." /></div>
+
+## Example: Handling multiple durability requirements in a payments workload
+
+Consider a payments application that processes wire transfers, point-of-sale transactions, and batch settlement jobs in the same cluster. Different transaction types carry different risks, and applying the same commit kind to all of them either over-protects low-criticality paths or under-protects high-value ones.
+
+In this scenario, the application faces two distinct durability problems:
+
+- **Conflicting commits:** two nodes can each approve a wire transfer against the same account without knowing about the other, resulting in an overdraft.
+- **Duplicate commits:** when a client loses its connection during a commit, it can't tell whether the transaction succeeded, so retrying risks processing the payment twice.
+
+To address these two problems, use different commit scope kinds:
+
+- Use [Quorum Commit](/pgd/current/commit-scopes/quorum-commit/) for wire transfers. It requires a majority of nodes to agree before any node finalizes the transaction. If they can't agree, the transaction rolls back everywhere.
+- Use [CAMO](/pgd/current/commit-scopes/camo/) for payment gateway transactions. It lets the application query a partner node for the definitive outcome before deciding whether to retry.
+
+To apply both in the same cluster, define a scope for each commit kind, set Quorum Commit as the group default, and override to CAMO per transaction for the payment gateway path:
+
+1. Define the two scopes:
+
+   ```sql
+   -- Quorum Commit scope for wire transfers
+   SELECT bdr.create_commit_scope(
+       commit_scope_name := 'quorum_commit',
+       origin_node_group := 'payments_group',
+       rule := 'MAJORITY ORIGIN GROUP QUORUM COMMIT',
+       wait_for_ready := true
+   );
+
+   -- CAMO scope for the payment gateway
+   SELECT bdr.create_commit_scope(
+       commit_scope_name := 'payment_gateway_camo_scope',
+       origin_node_group := 'payment_gateway_camo',
+       rule := 'ALL (payment_gateway_camo) CAMO DEGRADE ON (timeout=500ms) TO ASYNC',
+       wait_for_ready := true
+   );
+   ```
+
+2. Set Quorum Commit as the default for the payments group:
+
+   ```sql
+   SELECT bdr.alter_node_group_option(
+       node_group_name := 'payments_group',
+       config_key := 'default_commit_scope',
+       config_value := 'quorum_commit'
+   );
+   ```
+
+3. Apply CAMO per transaction for payment gateway operations that need exactly-once semantics:
+
+   ```sql
+   BEGIN;
+   SET LOCAL bdr.commit_scope = 'payment_gateway_camo_scope';
+   -- payment gateway writes
+   COMMIT;
+   ```
