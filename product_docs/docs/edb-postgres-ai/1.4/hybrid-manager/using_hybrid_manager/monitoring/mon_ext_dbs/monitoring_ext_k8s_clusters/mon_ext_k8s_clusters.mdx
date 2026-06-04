@@ -127,6 +127,132 @@ Key points:
     kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
     ```
 
+## Deploying the external cluster with monitoring extensions
+
+The EDB Postgres AI agent collects query and wait-state metrics from extensions that must be present in the monitored cluster. Deploy your external cluster with the following `bootstrap.initdb.postInitApplicationSQL` commands and `postgresql` settings so the monitoring extensions are created and preloaded when the cluster is initialized.
+
+!!!note
+
+The init SQL runs only on first initialization (`postInitApplicationSQL`). Apply it when you create the cluster. For an existing cluster, create the schema, grants, and extensions manually and add the libraries to `shared_preload_libraries` (which requires a restart).
+!!!
+
+The init SQL:
+
+-   Creates the `edb_internals` schema and grants `USAGE` on it to `edb_admin` and `pg_monitor`.
+-   Creates the `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions in that schema.
+-   Sets the database `search_path` and `timezone`.
+
+The `postgresql` block enables `pg_stat_statements` and preloads `aidb`, `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` via `shared_preload_libraries`.
+
+!!!important
+
+`${PG_IMAGE}` must be an EDB Postgres AI image that bundles the `aidb`, `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions. The community manifest uses the upstream CloudNativePG operator API but still requires these EDB extensions.
+!!!
+
+### CloudNativePG (community operator)
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ${PG_CLUSTER_NAME}
+  namespace: ${TARGET_NS}
+  labels:
+    k8s.enterprisedb.io/beacon: enabled
+spec:
+  backup:
+    target: primary
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ${PG_CLUSTER_NAME}-bck
+  bootstrap:
+    initdb:
+      database: edb_admin
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS edb_internals
+        - GRANT USAGE ON SCHEMA edb_internals TO edb_admin
+        - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
+        - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
+        - ALTER DATABASE edb_admin SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE edb_admin SET timezone TO 'UTC'
+  imageName: ${PG_IMAGE}
+  postgresql:
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+    shared_preload_libraries:
+    - aidb
+    - edb_stat_monitor
+    - query_advisor
+    - edb_wait_states
+  instances: 2
+  storage:
+    size: 1Gi
+  inheritedMetadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+```
+
+### EDB Postgres AI for CloudNativePG (enterprise operator)
+
+The enterprise manifest uses the EDB operator API, adds an `imagePullSecrets` entry for the EDB registry, and additionally grants `USAGE` on the `public` schema to `edb_admin` and `pg_monitor`.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: ${PG_CLUSTER_NAME}
+  namespace: ${TARGET_NS}
+  labels:
+    k8s.enterprisedb.io/beacon: enabled
+spec:
+  backup:
+    target: primary
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ${PG_CLUSTER_NAME}-bck
+  bootstrap:
+    initdb:
+      database: edb_admin
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS edb_internals
+        - GRANT USAGE ON SCHEMA edb_internals TO edb_admin
+        - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
+        - GRANT USAGE ON SCHEMA public TO edb_admin
+        - GRANT USAGE ON SCHEMA public TO pg_monitor
+        - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
+        - ALTER DATABASE edb_admin SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE edb_admin SET timezone TO 'UTC'
+  imagePullSecrets:
+  - name: edb-pull-secret
+  imageName: ${PG_IMAGE}
+  postgresql:
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+    shared_preload_libraries:
+    - aidb
+    - edb_stat_monitor
+    - query_advisor
+    - edb_wait_states
+  inheritedMetadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+  instances: 2
+  storage:
+    size: 1Gi
+```
+
+Apply the manifest with `kubectl apply -f <manifest>.yaml` (use `envsubst` first if you parameterized it with environment values).
+
 ## Patching clusters to enable the agent sidecar
 
 This section shows how to patch a single cluster. You can adapt the instructions below to patch many clusters:
