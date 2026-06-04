@@ -1,7 +1,7 @@
 ---
 title: The Klio Plugin
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.15/user/plugin_configuration.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.16/user/plugin_configuration.md
 sidebar_position: 6
 
 ---
@@ -28,7 +28,8 @@ your PostgreSQL clusters. To use Klio with a CloudNativePG cluster, you need to:
 Before configuring a cluster to use the Klio plugin, ensure you have:
 
 -   A running Klio `Server` resource deployed in your namespace
--   Client credentials (username and password) stored in a Kubernetes Secret
+-   A client TLS certificate stored in a Kubernetes Secret (see
+    [Klio server authentication](klio_server.mdx#authentication))
 -   The server's TLS certificate available in a Secret
 
 ## Creating a PluginConfiguration resource
@@ -91,7 +92,7 @@ Once you have created a `PluginConfiguration`, reference it in your CloudNativeP
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: my-postgres-cluster
+  name: my-cluster
   namespace: default
 spec:
   instances: 3
@@ -130,7 +131,7 @@ as the WAL are streamed directly to the Klio server. Thus, you must not set
 `isWALArchiver: true` in the plugin configuration.
 !!!
 
-!!!important
+!!!info
 
 If you add the Klio plugin to an **existing** cluster, you must
 restart the cluster to inject the sidecar containers. Use
@@ -188,6 +189,48 @@ Changes to container customizations (such as `image`,
 not applied automatically. These fields affect the pod spec,
 which is managed by CloudNativePG. To apply these changes, use
 `kubectl cnpg restart` to roll the cluster pods.
+!!!
+
+## Disabling the plugin
+
+To disable the Klio plugin for a CloudNativePG Cluster, set `enabled: false`
+in the plugin reference inside the `Cluster` resource:
+
+```yaml
+spec:
+  plugins:
+    - name: klio.enterprisedb.io
+      enabled: false
+      parameters:
+        pluginConfigurationRef: klio-plugin-config
+```
+
+After applying this change, a Pods rollout will be triggered by
+CloudNativePG to remove the Klio sidecar containers.
+
+!!!warning Replication slot cleanup
+
+When the Klio plugin is active, the WAL streaming sidecar creates
+a physical replication slot named `klio` on the PostgreSQL
+primary. Disabling the plugin does **not** automatically remove
+this replication slot. An orphaned replication slot will cause
+PostgreSQL to retain WAL files indefinitely, eventually leading
+to disk exhaustion.
+
+After disabling the plugin, connect to the primary instance and
+drop the replication slot manually:
+
+```sql
+SELECT pg_drop_replication_slot('klio');
+```
+
+You can verify the slot exists beforehand with:
+
+```sql
+SELECT slot_name, active
+FROM pg_replication_slots
+WHERE slot_type = 'physical';
+```
 !!!
 
 ## Advanced configuration options
@@ -258,6 +301,13 @@ Set a rule to `0` to disable that retention level.
 
 The `mode` field controls whether the plugin can perform both backup and
 restore operations (`standard`) or only restore operations (`read-only`).
+
+!!!note
+
+The `mode` field is immutable. Once a PluginConfiguration is created,
+its mode cannot be changed. To operate in a different mode, you would
+need another PluginConfiguration with a different mode.
+!!!
 
 ```yaml
 spec:
@@ -451,7 +501,7 @@ following merge behavior:
 4.  **Template defaults fill gaps**: For fields you don't specify, Klio applies
     sensible defaults (image, security context, standard volume mounts, etc.)
 
-!!!important
+!!!info
 
 Klio's required values (name, args, `CONTAINER_NAME` env var) will
 always override any conflicting values you set. All other customizations are

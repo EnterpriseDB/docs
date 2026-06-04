@@ -1,7 +1,7 @@
 ---
 title: OpenTelemetry Observability
 originalFilePath: >-
-  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.15/user/opentelemetry.md
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.16/user/opentelemetry.md
 sidebar_position: 8
 
 ---
@@ -20,17 +20,21 @@ Klio automatically collects the following:
     -   Backup lifecycle (backup, backup run, verification, maintenance)
 -   Metrics
     -   Server
-        -   Backup operation metrics
+        -   Server uptime
+        -   Backup metrics
             -   Number of snapshots
             -   Number of files in the latest snapshot
             -   Number of directories in the latest snapshot
             -   Size of the latest snapshot
             -   Age of the latest snapshot
             -   Age of the oldest snapshot
+            -   Total number of backup verifications (split by outcome and tier)
         -   WAL processing metrics
             -   Number of WAL files written
             -   Bytes written
             -   Timestamp of the most recently written WAL file
+            -   LSN progress of WAL ingestion (Tier 1) and archival (Tier 2)
+            -   Timeline of the latest WAL on Tier 1 and Tier 2
         -   Queue metrics
             -   Number of messages in the queue
             -   Number of bytes in the queue
@@ -39,15 +43,14 @@ Klio automatically collects the following:
         -   [Host metrics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/host)
         -   [Controller runtime metrics](https://book.kubebuilder.io/reference/metrics-reference)
     -   Sidecar
-        -   Backup lifecycle metrics
-            -   Whether a backup is currently running
+        -   Backup metrics
+            -   Number of backups currently in progress
             -   Timestamp of the most recent backup start
             -   Timestamp of the most recent successful completion
             -   Timestamp of the most recent failure
             -   Duration of the most recent backup
-            -   Total number of successful backups
-            -   Total number of failed backups
-        -   Backup verification metrics
+            -   Total number of backup runs (split by outcome)
+            -   Total number of backup verifications (split by outcome)
         -   [GRPC metrics](https://opentelemetry.io/docs/specs/semconv/rpc/rpc-metrics/)
         -   [Go runtime statistics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/runtime)
         -   [Host metrics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/host)
@@ -63,7 +66,7 @@ Log exporters are not currently supported.
 ### Backup lifecycle spans
 
 When a backup is triggered through CNPG-I, Klio creates
-the following spans under the `klio.backup` tracer:
+the following spans under the `klio.plugin.backup` tracer:
 
 | Span Name            | Description                                                                 |
 | -------------------- | --------------------------------------------------------------------------- |
@@ -83,90 +86,208 @@ On failure, the span records the error and sets its status to
 
 ## Metrics Reference
 
-### Backup lifecycle metrics (sidecar)
+Klio metric names follow the
+`klio.<component>.<domain>.<measurement>` taxonomy. The component
+segment identifies which process emits the metric:
 
-These metrics are emitted by the sidecar and track backup
+-   `plugin` — the CNPG plugin sidecar running in each PostgreSQL pod.
+-   `server` — the Klio server StatefulSet (hosts the Kopia server, the
+    WAL gRPC ingest, the embedded NATS JetStream queue, and the tier-2
+    WAL consumer).
+-   `operator` — the Klio operator deployment. Bridges
+    controller-runtime Prometheus metrics to OTLP and adds Go
+    runtime and host instrumentation.
+-   `client` — reserved for future instrumentation; no metrics are
+    emitted today.
+
+### Attributes
+
+Klio metrics carry the following attributes. Each per-metric table
+below repeats the applicable attributes in its descriptions; this
+section is the central reference for the value space of each
+attribute key.
+
+| Attribute         | Values                                                                                                         | Applies to                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `tier`            | `tier1` (local disk on the Klio server), `tier2` (remote object store)                                         | All `klio.server.wal.*` and `klio.server.backup.*` instruments.                                            |
+| `cluster_name`    | Name of the PostgreSQL cluster the recording belongs to                                                        | All `klio.server.wal.*` instruments.                                                                       |
+| `outcome`         | `success`, `failure`                                                                                           | `klio.plugin.backup.runs`, `klio.plugin.backup.verifications`, `klio.server.backup.verifications`.         |
+| `snapshot_source` | Kopia source descriptor (`userName@hostName:path`)                                                             | All `klio.server.backup.*` base snapshot gauges (`snapshots`, `latest_snapshot_*`, `oldest_snapshot_age`). |
+| `stream`          | JetStream stream name (`klio-wal-stream`, `klio-backup-stream`, `klio-latest-uploaded-wal-per-cluster-stream`) | `klio.server.queue.messages`, `klio.server.queue.bytes`.                                                   |
+
+### Backup lifecycle metrics (plugin sidecar)
+
+These metrics are emitted by the plugin sidecar and track backup
 operations on each PostgreSQL instance:
 
-| Metric Name                           | Type    | Unit | Description                                                             |
-| ------------------------------------- | ------- | ---- | ----------------------------------------------------------------------- |
-| `klio.backup.running`                 | Gauge   | -    | Whether a backup is currently running (1) or not (0)                    |
-| `klio.backup.latest_start_time`       | Gauge   | s    | Unix epoch timestamp when the most recent backup started                |
-| `klio.backup.latest_completion_time`  | Gauge   | s    | Unix epoch timestamp when the most recent backup completed successfully |
-| `klio.backup.latest_failure_time`     | Gauge   | s    | Unix epoch timestamp when the most recent backup failed                 |
-| `klio.backup.latest_duration_seconds` | Gauge   | s    | Duration of the most recent backup in seconds                           |
-| `klio.backup.successes`               | Counter | -    | Total number of successful backups                                      |
-| `klio.backup.failures`                | Counter | -    | Total number of failed backups                                          |
-| `klio.backup.verifications`           | Counter | -    | Total number of backup verification attempts                            |
-| `klio.backup.verification_failures`   | Counter | -    | Total number of backup verification failures                            |
+| Metric Name                                 | Type          | Unit              | Description                                                                                            |
+| ------------------------------------------- | ------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `klio.plugin.backup.in_progress`            | UpDownCounter | `{backups}`       | Number of backups currently in progress                                                                |
+| `klio.plugin.backup.latest_start_time`      | Gauge         | s                 | Unix epoch timestamp when the most recent backup started                                               |
+| `klio.plugin.backup.latest_completion_time` | Gauge         | s                 | Unix epoch timestamp when the most recent backup completed successfully                                |
+| `klio.plugin.backup.latest_failure_time`    | Gauge         | s                 | Unix epoch timestamp when the most recent backup failed                                                |
+| `klio.plugin.backup.latest_duration`        | Gauge         | s                 | Duration of the most recent backup                                                                     |
+| `klio.plugin.backup.runs`                   | Counter       | `{backups}`       | Total number of backup runs, split by the `outcome` attribute (`success` / `failure`)                  |
+| `klio.plugin.backup.verifications`          | Counter       | `{verifications}` | Total number of backup verification attempts, split by the `outcome` attribute (`success` / `failure`) |
 
-### WAL server metrics (server)
+!!!note
 
-These metrics are emitted by the Klio server WAL component and track
-WAL file reception from PostgreSQL instances:
+These metrics are tied to the plugin sidecar lifecycle: when the
+sidecar restarts (for example, after a pod reschedule or PostgreSQL
+instance failover) the counters reset to zero and the gauges are
+re-initialized on the next backup. As a result,
+`klio.plugin.backup.runs` and `klio.plugin.backup.verifications`
+report totals since the last sidecar start rather than over the life
+of the cluster, and may diverge from the count of `Backup`
+resources.
+!!!
 
-| Metric Name                    | Type    | Unit | Description                                                        |
-| ------------------------------ | ------- | ---- | ------------------------------------------------------------------ |
-| `klio.wal.written_size`        | Counter | By   | Number of bytes written to disk for WAL files                      |
-| `klio.wal.written`             | Counter | -    | Number of WAL files written                                        |
-| `klio.wal.latest_written_time` | Gauge   | s    | Unix epoch timestamp of the most recently written WAL file to disk |
+### WAL ingest metrics (server)
 
-### WAL consumer metrics (server)
+The WAL ingest series is unified across tiers: WAL bytes and files
+written to local disk by the WAL gRPC server (tier 1) and uploaded
+to remote storage by the consumer (tier 2) share a single instrument
+family and are distinguished by the `tier` attribute (`"tier1"` or
+`"tier2"`).
 
-These metrics are emitted by the Klio server WAL consumer and track
-WAL archival to Tier 2 storage:
+| Metric Name                               | Type    | Unit | Description                                                                                                                                                                                                |
+| ----------------------------------------- | ------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `klio.server.wal.written_size`            | Counter | By   | Number of bytes written for WAL files (per tier)                                                                                                                                                           |
+| `klio.server.wal.written`                 | Counter | -    | Number of WAL files written (per tier)                                                                                                                                                                     |
+| `klio.server.wal.latest_written_time`     | Gauge   | s    | Unix epoch timestamp of the most recently written WAL file (per tier)                                                                                                                                      |
+| `klio.server.wal.latest_written_lsn`      | Gauge   | By   | LSN of the most recently written WAL byte. On tier 1 this is the flush pointer (matches `pg_current_wal_flush_lsn()` semantics); on tier 2 this is the last byte of the most recently archived WAL segment |
+| `klio.server.wal.latest_written_timeline` | Gauge   | -    | Timeline ID of the most recently completed WAL file (per tier)                                                                                                                                             |
 
-| Metric Name                                 | Type    | Unit | Description                                                          |
-| ------------------------------------------- | ------- | ---- | -------------------------------------------------------------------- |
-| `klio.consumer.written_size`                | Counter | By   | Number of bytes written to Tier 2 for WAL files                      |
-| `klio.consumer.written`                     | Counter | -    | Number of WAL files written to Tier 2                                |
-| `klio.consumer.latest_written_time`         | Gauge   | s    | Unix epoch timestamp of the most recently written WAL file to Tier 2 |
-| `klio.consumer.backup_verification_success` | Counter | -    | Number of successful backup verifications                            |
-| `klio.consumer.backup_verification_failure` | Counter | -    | Number of failed backup verifications (corruption detected)          |
+Every recording carries a `cluster_name` attribute identifying the
+PostgreSQL cluster, alongside the `tier` discriminator.
+
+### Backup verification metrics (server)
+
+The server verifies each backup that the plugin records via
+`klio.plugin.backup.*`. Verification happens at two points: once
+against the tier-1 local copy immediately after the backup
+completes, and again against the tier-2 remote copy after migration.
+The `tier` attribute (`"tier1"` or `"tier2"`) identifies which check the
+recording refers to.
+
+| Metric Name                        | Type    | Unit              | Description                                                                                                                                                |
+| ---------------------------------- | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `klio.server.backup.verifications` | Counter | `{verifications}` | Number of backup verifications, split by the `outcome` attribute (`success` / `failure`; `failure` indicates corruption detected) and the `tier` attribute |
 
 ### Alerting on stalled WAL processing
 
-Despite sharing a similar name, `klio.wal.latest_written_time` and
-`klio.consumer.latest_written_time` track two distinct stages of the
-WAL pipeline and signal different failure scenarios:
+The same `klio.server.wal.latest_written_time` instrument is emitted
+from two stages of the WAL pipeline, distinguished by the `tier`
+attribute. A stale value signals a different failure depending on
+the tier:
 
--   **`klio.wal.latest_written_time`** reflects when the Klio server
-    last received a WAL file from PostgreSQL streaming replication
-    (Tier 1). A stale value means PostgreSQL is no longer shipping
-    WALs to Klio, which may indicate a replication problem.
+-   **`tier="tier1"`** reflects when the Klio server last received a WAL
+    file from PostgreSQL streaming replication and persisted it to
+    local disk. A stale value means PostgreSQL is no longer shipping
+    WALs to Klio, which may indicate a replication problem, or that
+    writing on disk is failing.
 
--   **`klio.consumer.latest_written_time`** reflects when the WAL
-    consumer last archived a WAL file to Tier 2 object storage (S3).
-    A stale value means the S3 backend is no longer receiving WALs,
-    even though PostgreSQL replication may still be working.
+-   **`tier="tier2"`** reflects when the consumer last uploaded a WAL file
+    to tier-2 object storage. A stale value means the remote backend
+    is no longer receiving WALs, even though PostgreSQL replication
+    may still be working, or that uploading the WAL to the object store
+    is failing.
 
-Both metrics carry a `cluster_name` attribute label identifying the
-PostgreSQL cluster the WAL event belongs to.
+### Server metrics
+
+| Metric Name          | Type  | Unit | Description                   |
+| -------------------- | ----- | ---- | ----------------------------- |
+| `klio.server.uptime` | Gauge | s    | Klio server uptime in seconds |
+
+The `klio.server.wal.latest_written_lsn` instrument provides a
+complementary view of the same two pipeline stages, expressed as a
+byte offset rather than a wall-clock timestamp:
+
+-   **`tier="tier1"`** is updated on every flushed WAL block received by
+    the WAL server (tracks `pg_current_wal_flush_lsn()` semantics).
+
+-   **`tier="tier2"`** is updated once per completed WAL file by the
+    consumer. Its value is the LSN of the last byte of the WAL
+    segment just archived.
+
+The companion `klio.server.wal.latest_written_timeline` gauge
+exposes the timeline ID of the WAL file each tier is currently
+handling.
+
+!!!warning
+
+While usually increasing, the LSN gauge may decrease after the
+promotion of a lagging standby.
+!!!
+
+Use these gauges alongside the timestamp gauges to distinguish a
+slow pipeline (timestamps advancing, LSN gap growing) from a
+stalled one (timestamps and LSN both frozen).
 
 ### Base backup metrics (server)
 
 These metrics are emitted by the Klio server base backup component
 and track Kopia snapshot statistics:
 
-| Metric Name                       | Type  | Unit | Description                                                                    |
-| --------------------------------- | ----- | ---- | ------------------------------------------------------------------------------ |
-| `klio.base.snapshots`             | Gauge | -    | Total number of base snapshots                                                 |
-| `klio.base.latest_snapshot_size`  | Gauge | By   | Size of latest base snapshot in bytes (ignoring compression and deduplication) |
-| `klio.base.latest_snapshot_files` | Gauge | -    | Number of files in latest base snapshot                                        |
-| `klio.base.latest_snapshot_dirs`  | Gauge | -    | Number of directories in latest base snapshot                                  |
-| `klio.base.latest_snapshot_age`   | Gauge | s    | Age of latest base snapshot in seconds                                         |
-| `klio.base.oldest_snapshot_age`   | Gauge | s    | Age of oldest base snapshot in seconds                                         |
+| Metric Name                                | Type  | Unit | Description                                                                    |
+| ------------------------------------------ | ----- | ---- | ------------------------------------------------------------------------------ |
+| `klio.server.backup.snapshots`             | Gauge | -    | Total number of base snapshots                                                 |
+| `klio.server.backup.latest_snapshot_size`  | Gauge | By   | Size of latest base snapshot in bytes (ignoring compression and deduplication) |
+| `klio.server.backup.latest_snapshot_files` | Gauge | -    | Number of files in latest base snapshot                                        |
+| `klio.server.backup.latest_snapshot_dirs`  | Gauge | -    | Number of directories in latest base snapshot                                  |
+| `klio.server.backup.latest_snapshot_age`   | Gauge | s    | Age of latest base snapshot in seconds                                         |
+| `klio.server.backup.oldest_snapshot_age`   | Gauge | s    | Age of oldest base snapshot in seconds                                         |
+
+Every recording carries a `tier` attribute (`tier1` for the local
+disk repository, `tier2` for the remote object store) and a
+`snapshot_source` attribute identifying the source descriptor
+(`userName@hostName:path`) the snapshot belongs to.
 
 ### Queue metrics (server)
 
 These metrics are emitted by the Klio server and track the state of
-the embedded NATS JetStream queue used for asynchronous Tier 2
-offloading of WAL files and backups:
+the embedded NATS JetStream streams used for asynchronous Tier 2
+offloading of WAL files and backups. Each sample carries a `stream`
+attribute identifying the source stream — typically
+`klio-wal-stream` (WAL work queue), `klio-backup-stream` (backup work
+queue), and `klio-latest-uploaded-wal-per-cluster-stream` (retention
+safeguard, capped to one message per cluster):
 
-| Metric Name           | Type  | Unit | Description                                                              |
-| --------------------- | ----- | ---- | ------------------------------------------------------------------------ |
-| `klio.queue.messages` | Gauge | -    | Number of messages currently stored in the embedded NATS JetStream queue |
-| `klio.queue.bytes`    | Gauge | By   | Number of bytes currently stored in the embedded NATS JetStream queue    |
+| Metric Name                  | Type  | Unit | Description                                                                        |
+| ---------------------------- | ----- | ---- | ---------------------------------------------------------------------------------- |
+| `klio.server.queue.messages` | Gauge | -    | Number of messages currently stored in the JetStream stream identified by `stream` |
+| `klio.server.queue.bytes`    | Gauge | By   | Number of bytes currently stored in the JetStream stream identified by `stream`    |
+
+### Migration from the previous metric names
+
+Klio is in alpha and previously emitted metrics under a flat
+namespace. The component-based taxonomy above replaces those names in
+a single hard rename — there is no dual emission. Update dashboards
+and alerts according to the following table:
+
+| Previous name                                   | New name                                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `klio.backup.*`                                 | `klio.plugin.backup.*`                                | Plugin sidecar metrics.                                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.backup.running`                           | `klio.plugin.backup.in_progress`                      | Renamed and switched from a 0/1 gauge to an UpDownCounter; reports the number of concurrent backups in progress.                                                                                                                                                                                                                                                                                      |
+| `klio.backup.latest_duration_seconds`           | `klio.plugin.backup.latest_duration`                  | The `_seconds` suffix was dropped — the unit (`s`) is conveyed via the OpenTelemetry metric metadata, per [semantic conventions guidelines](https://opentelemetry.io/docs/specs/semconv/general/metrics/#units). The Prometheus export name is unchanged (`klio_plugin_backup_latest_duration_seconds`) because the Prometheus exporter appends the unit suffix when the OpenTelemetry name lacks it. |
+| `klio.backup.successes`, `klio.backup.failures` | `klio.plugin.backup.runs`                             | Collapsed into a single counter with an `outcome` attribute (`success` / `failure`).                                                                                                                                                                                                                                                                                                                  |
+| `klio.backup.verifications`                     | `klio.plugin.backup.verifications`                    | Now split by an `outcome` attribute (`success` / `failure`); the total attempt count is `sum by () (verifications)`.                                                                                                                                                                                                                                                                                  |
+| `klio.backup.verification_failures`             | `klio.plugin.backup.verifications{outcome="failure"}` | Folded into the `verifications` counter via the `outcome` attribute.                                                                                                                                                                                                                                                                                                                                  |
+| `klio.wal.written_size`                         | `klio.server.wal.written_size`                        | Carries `tier="tier1"`.                                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.wal.written`                              | `klio.server.wal.written`                             | Carries `tier="tier1"`.                                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.wal.latest_written_time`                  | `klio.server.wal.latest_written_time`                 | Carries `tier="tier1"`.                                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.wal.latest_written_lsn`                   | `klio.server.wal.latest_written_lsn`                  | Carries `tier="tier1"`.                                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.wal.latest_written_timeline`              | `klio.server.wal.latest_written_timeline`             | Carries `tier="tier1"`.                                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.consumer.written_size`                    | `klio.server.wal.written_size`                        | Folded into the unified WAL series with `tier="tier2"`.                                                                                                                                                                                                                                                                                                                                               |
+| `klio.consumer.written`                         | `klio.server.wal.written`                             | Folded into the unified WAL series with `tier="tier2"`.                                                                                                                                                                                                                                                                                                                                               |
+| `klio.consumer.latest_written_time`             | `klio.server.wal.latest_written_time`                 | Folded into the unified WAL series with `tier="tier2"`.                                                                                                                                                                                                                                                                                                                                               |
+| `klio.consumer.latest_written_lsn`              | `klio.server.wal.latest_written_lsn`                  | Folded into the unified WAL series with `tier="tier2"`.                                                                                                                                                                                                                                                                                                                                               |
+| `klio.consumer.latest_written_timeline`         | `klio.server.wal.latest_written_timeline`             | Folded into the unified WAL series with `tier="tier2"`.                                                                                                                                                                                                                                                                                                                                               |
+| `klio.consumer.backup_verification_success`     | `klio.server.backup.verifications{outcome="success"}` | Moved under `server.backup` to pair with `plugin.backup`; collapsed into a single counter with an `outcome` attribute.                                                                                                                                                                                                                                                                                |
+| `klio.consumer.backup_verification_failure`     | `klio.server.backup.verifications{outcome="failure"}` | Same as above.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `klio.base.uptime`                              | `klio.server.uptime`                                  | Server-level metric, not tied to Kopia.                                                                                                                                                                                                                                                                                                                                                               |
+| `klio.base.*`                                   | `klio.server.backup.*`                                | Snapshot metrics, folded under `server.backup` alongside the verification counters.                                                                                                                                                                                                                                                                                                                   |
+| `klio.queue.*`                                  | `klio.server.queue.*`                                 | NATS JetStream metrics. Values are now reported per stream via a `stream` attribute instead of a single global aggregate.                                                                                                                                                                                                                                                                             |
 
 ## Configuration
 
@@ -264,7 +385,7 @@ the corresponding resource attributes (`k8s.container.name`, `k8s.pod.name`,
 `k8s.namespace.name`) to all telemetry data. Each attribute is added
 independently - you don't need all three environment variables to be present.
 
-!!!important
+!!!info
 
 If you have already defined any of these attributes in
 `OTEL_RESOURCE_ATTRIBUTES`, Klio will **not override** them. Only missing
@@ -442,3 +563,32 @@ spec:
   storage:
     size: 10Gi
 ```
+
+### Klio operator with OpenTelemetry
+
+The operator bridges the controller-runtime Prometheus metrics
+registry to OTLP and adds Go runtime and host instrumentation.
+When no `OTEL_*` environment variables are present, a no-op
+meter provider is installed and the operator runs without
+telemetry overhead.
+
+The existing Prometheus `/metrics` endpoint remains available
+for pull-based scraping regardless of whether OTLP export is
+enabled.
+
+To enable OTLP export, set `OTEL_*` variables through the Helm
+chart's `controllerManager.manager.env` value:
+
+```yaml
+controllerManager:
+  manager:
+    env:
+      OTEL_SERVICE_NAME: "klio-operator"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"  # or "grpc"
+```
+
+The Helm chart automatically injects `POD_NAME`,
+`NAMESPACE_NAME`, and `CONTAINER_NAME` via the Kubernetes
+downward API, so the corresponding `k8s.*` resource attributes
+are populated without additional configuration.
