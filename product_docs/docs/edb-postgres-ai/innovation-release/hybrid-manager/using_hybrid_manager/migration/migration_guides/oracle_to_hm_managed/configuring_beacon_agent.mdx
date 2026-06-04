@@ -1,0 +1,351 @@
+---
+title: Configuring the EDB Postgres AI agent to register your Oracle database
+navTitle: Configuring EDB Postgres AI agent
+description: Configuring the EDB Postgres AI agent to connect to your Oracle database.
+redirects:
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_creating_machine_user/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_configuring_oracle/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_running/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_service/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/agent_verifying_assessment/
+---
+
+Configure the EDB Postgres AI agent (packaged as `beacon-agent`) to establish a secure connection with HM and retrieve schema and migration assessment data from your Oracle source.
+
+## Prerequisites
+
+- **Machine user and access key**: Created in [Creating a machine user in HM](/tools/agent/create_machine_user/). Store the access key in an environment variable:
+
+  ```shell
+  export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"
+  ```
+
+- **Oracle Instant Client with SQL\*Plus**: The EDB Postgres AI agent uses SQL\*Plus to extract DDL from your Oracle source. Ensure you install Oracle Instant Client and SQL\*Plus, and configure the required environment variables on your auxiliary machine. See [Configuring an auxiliary machine](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/auxiliary_machine/) for instructions.
+
+!!!note
+The agent substitutes environment variables referenced in `beacon_agent.yaml` at runtime, so setting `$BEACON_AGENT_ACCESS_KEY` in your environment before running the agent is sufficient. Environment variables always take precedence over static values in the YAML.
+!!!
+
+<details><summary>Recommendations for setting environment variables</summary> 
+
+We recommend handling sensitive data, such as `$BEACON_AGENT_ACCESS_KEY` or `$DSN`, as environment variables managed through a secrets manager. This strategy prevents sensitive credentials from being stored in plaintext configuration files. If you use environment variables, make sure they're available to the EDB Postgres AI agent while it's running.
+
+Consult your organization's IT department on the safest approach for production environments.
+
+For short-lived migrations or testing and demo purposes, you can use the `export` command in an active terminal session.
+
+</details> 
+
+## Obtaining HM connection parameters
+
+The agent requires specific values from your HM installation. Contact your administrator for:
+
+-   **Beacon server hostname**: The internal endpoint for the `beacon_server`. 
+
+    When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Ask the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the EDB Postgres AI agent.
+
+-   **Root certificate path (if required)**: If your HM instance uses a self-signed or internal CA, obtain the `ca_public.crt` file. Store it on the agent machine (For example, `/etc/beacon/ca_public.crt`).
+
+    The EDB Postgres AI agent requires a trusted connection to the `beacon_server` service in your HM instance. If the server running the EDB Postgres AI agent doesn't inherently trust HM's TLS certificate (managed by your organization's security infrastructure), ask the administrator or installer of your HM instance to provide the file with the certificate. Store this certificate on the machine running the EDB Postgres AI agent. You'll need to provide the directory path to this certificate later to configure the EDB Postgres AI agent.
+
+See [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) for more information about the `beacon_server` and root certificate.
+
+## Verifying connectivity
+
+Once you have the HM connection parameters, verify that your auxiliary machine can reach both the Oracle source and Hybrid Manager. The following ports must be open:
+
+| Destination | Port | Used by |
+|-------------|------|---------|
+| Oracle host | 1521 | Both agents (database connection) |
+| HM `beacon_server` | 9443 | EDB Postgres AI agent |
+| HM DMS service (`RW_SERVICE_HOST`) | 443 (HTTPS) | DMS agent |
+
+Verify connectivity to each host and port with `nc`:
+
+```shell
+# Oracle Listener
+nc -zv <oracle-host-name-or-ip> 1521
+
+# HM beacon server
+nc -zv <beacon_server_hostname> 9443
+
+# HM DMS service
+nc -zv <rw-service-hostname> 443
+```
+
+A successful connection returns `succeeded!`. If you see `Connection refused` or `Operation timed out`, the port isn't reachable and must be opened before proceeding.
+
+## Defining source database connection parameters 
+
+The Data Source Name (DSN) is the connection string for your Oracle source.
+
+<TabContainer syncKey="db_type">
+<Tab title="CDB/PDB">
+
+Connect using a Common User (starting with C##) to a specific Pluggable Database (PDB) service.
+
+!!!note
+The # characters in the username must be URL-encoded as %23.
+!!!
+
+**Format:**
+
+```shell
+DSN="oracle://<C##_MIGRATION_USER>:<MIGRATION_USER_PASSWORD>@<HOST>:<PORT>/<PDB_SERVICE_NAME>"
+```
+      
+**Example:**
+
+```shell
+DSN="oracle://C%23%23_MIG:password@localhost:1521/ORCLPDB1"
+```
+
+</Tab>
+<Tab title="Non-CDB">
+
+Connect using a standard local user to the database instance SID or Service Name.
+
+**Format:**
+
+```shell
+DSN="oracle://<MIGRATION_USER>:<MIGRATION_USER_PASSWORD>@<HOST>:<PORT>/<SERVICE_NAME_OR_SID>"
+```
+      
+**Example:**
+
+```shell
+DSN="oracle://MIG_USER:password@localhost:1521/ORCL"
+```
+
+</Tab>
+</TabContainer>
+
+!!!Note Special characters
+If your password contains special characters (e.g., `@`, `#`, `!`), you must URL-encode them (e.g., `@` becomes `%40`).
+      
+```shell
+DSN="oracle://oracle:pa%24%24word@localhost:1521/ORCLPDB1"
+```
+
+!!!
+
+If you plan to connect to more than one database with the EDB Postgres AI agent, you can specify multiple such connection strings. For example, if you're using environment variables for the `database.dsn` settings, specify `$DSN1`, `$DSN2`.
+You can use any name you want for these variables because they'll be referenced by name in the configuration file.
+
+## Preparing a configuration file
+
+Prepare a configuration file for your agent. The agent searches for `beacon_agent.yaml` in `/etc/beacon/` or `${HOME}/.beacon/`.
+
+1.  Create an EDB Postgres AI agent configuration directory in your home directory:
+
+    ```shell
+    mkdir ${HOME}/.beacon
+    ```
+
+    !!!note
+    The agent searches for `beacon_agent.yaml` in `/etc/beacon/` or `${HOME}/.beacon/`.
+    As a final fallback, it searches the directory from which it's executed.
+    !!!
+
+1.  Inside this directory, create a file `beacon_agent.yaml`:
+
+    ```shell
+    touch ${HOME}/.beacon/beacon_agent.yaml
+    ```
+
+1.  Copy and paste the following template into the new file.
+
+    In this template, `$BEACON_AGENT_ACCESS_KEY` and `$DSN` are the environment variables you configured previously. Replace all `< >` placeholders in the template. See [Parameter reference](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/#parameter-reference) for details.
+
+    ```yaml
+    ---
+    agent:
+      access_key: $BEACON_AGENT_ACCESS_KEY
+      beacon_server: <beacon_server_hostname>:9443
+      project_id: <your_project_id>
+      providers:
+        - "onprem"
+      root_ca_path: ""
+      # In most HM deployments, you need to set this to the path of the ca_public.crt
+      # file obtained from your HM administrator (for example, /etc/beacon/ca_public.crt).      
+      # Leave empty only if the HM's certificate is already trusted by the system's CA bundle.
+      schema_providers:
+        - "onprem-schema"
+        # Include "onprem-schema" to enable schema ingestion and migration assessment.
+        # Remove this section if you don't want schema information to be collected.
+    provider:
+      onprem:
+        databases:
+          - resource_id: "<database_resource_identifier>"
+            # Controls how the auxiliary machine appears in HM Estate.
+            dsn: $DSN
+            schema:
+              enabled: true
+              poll_interval: 15s
+            tags:
+              - "<tag_names>"
+    general:
+      logging:
+        level: info
+        # Use 'debug' during initial setup or troubleshooting for more verbose output.
+    ```
+
+1.  Save the file. 
+
+## Running the EDB Postgres AI agent
+
+1.  Ensure the Oracle Instant Client environment variables are set in the same shell session where you will run the agent:
+
+    ```shell
+    export ORACLE_HOME=</path/to/instantclient>
+    export PATH=$ORACLE_HOME:$PATH
+    export LD_LIBRARY_PATH=$ORACLE_HOME:$LD_LIBRARY_PATH
+    ```
+
+1.  Before starting the service, verify connectivity and syntax:
+
+    ```shell
+    beacon-agent validate
+    ```
+
+1.  Run the agent: 
+
+    ```shell
+    beacon-agent
+    ```
+
+    !!!tip
+    See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
+    !!!
+
+1.  Monitor the ingestion process as the agent starts sending data to Hybrid Manager (HM). After a few minutes, your Oracle database appears in the HM console under **Estate > Migrations**.
+
+!!!important
+The agent dynamically detects changes to tables and columns. However, changes to views, procedures, or functions require an agent restart to re-ingest metadata.
+!!!
+
+For production use, see [Running the agent as a service](#running-the-agent-as-a-service).
+
+## Verifying the migration assessment
+
+To confirm your Oracle database was recognized by the agent and is ready for migration, go to **Estate > Migrations** in the HM console.
+
+If the database appears in the table, you have access to the following resources:
+
+- A **migration assessment** on the [Migrations tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/) of the **Estate** page, providing a summarized view of database schema count, core count, migration complexity, and level of effort.
+
+- A [migration database detailed view](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrations/migration_database_details_view/) accessible by selecting a specific database from the **Migrations** tab. This provides an expanded analysis of **Schemas**, a global **Assessment**, and a **Migration** hub with direct connections to other HM tools for performing migrations.
+
+- **Automatic schema DDL extraction** that you can use for schema migrations with the built-in Migration Portal. Once ingestion is complete, the [Migration Portal automatically creates a project](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_schema/#accessing-your-project) per database, which you can use to convert incompatible schemas and migrate them to the destination database.
+
+## Troubleshooting
+
+There are several reasons why the agent might fail to connect to HM or your Oracle database. Here are some tools you can use for troubleshooting.
+
+### `beacon-agent validate` command 
+
+The `beacon-agent validate` command is a helpful step to identify common connectivity and configuration issues.
+
+```shell
+beacon-agent validate
+```
+
+The validate command checks for the following:
+
+- **Server connectivity**: Verifies the agent can connect and authenticate to the configured `beacon_server` (usually on port `9443`).
+
+- **Database connectivity**: Attempts to connect to each configured database DSN. This is a full connection test, not just a syntax or URL-encoding check.
+
+- **Configuration display**: Shows TLS settings, project ID, providers, and per-database settings to help identify misconfiguration.
+
+### `beacon-agent` logs
+
+If the agent reports errors during ingestion, you can check the logs for more details. If you're running the agent in the foreground, logs will be printed to the terminal. If you set up the agent as a systemd service, use `journalctl` to view logs. 
+
+Here are some common error messages you might encounter in the logs:
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `sqlplus is not installed or not found in PATH` | Oracle Instant Client environment variables are not set or set incorrectly in the current session. | Set `PATH` and `LD_LIBRARY_PATH` to the Instant Client root directory and verify with `which sqlplus`. See [Configuring an auxiliary machine](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/auxiliary_machine/). |
+| `extractor permissions check failed: sqlplus execution failed: exit status 127` | `sqlplus` binary is found but cannot load its shared libraries. | Ensure `LD_LIBRARY_PATH` points to the Instant Client root directory (not a `lib/` subdirectory). |
+| `tls: failed to verify certificate: x509: certificate signed by unknown authority` | The agent cannot verify HM's TLS certificate because the CA is not trusted by the system. | Set `root_ca_path` in `beacon_agent.yaml` to the path of the `ca_public.crt` file obtained from your HM administrator. If you cannot obtain the certificate, you can set `plaintext: true` in the agent config as a temporary workaround (not recommended for production). |
+| `rpc error: code = Unknown desc = no rows in result set` | The beacon-agent version is incompatible with the server. | Upgrade to beacon-agent v1.384.0 or later. |
+
+## Running the agent as a service
+
+For continuous metric streaming and to ensure your Oracle database remains visible in **HM console > Estate**, configure the agent to run as a systemd service. Running as a service ensures it starts automatically on system boot and restarts after any errors.
+
+Without a service, the agent streams metrics only while you run it manually. Your database will disappear from the HM estate 72 hours after the agent stops streaming.
+
+!!!note
+Ensure that any environment variables referenced in `beacon_agent.yaml` (for example, `$BEACON_AGENT_ACCESS_KEY` and `$DSN`) are accessible to the service at runtime.
+!!!
+
+1.  Create the service file. This example uses `vi`, but you can use any text editor:
+
+    ```shell
+    sudo vi /usr/lib/systemd/system/beacon-agent.service
+    ```
+
+    Default service file paths by operating system:
+
+    | Operating system | Default path                                         |
+    | ---------------- | ---------------------------------------------------- |
+    | RHEL             | `/usr/lib/systemd/system/beacon-agent.service`       |
+    | Rocky Linux      | `/usr/lib/systemd/system/beacon-agent.service`       |
+    | AlmaLinux        | `/usr/lib/systemd/system/beacon-agent.service`       |
+    | Ubuntu           | `/etc/systemd/system/beacon-agent.service`           |
+    | Debian           | `/lib/systemd/system/beacon-agent.service`           |
+
+1.  Paste the following template into the file and replace all `< >` placeholders:
+
+    ```ini
+    [Unit]
+    Description=Agent
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=<user>
+    WorkingDirectory=</home/user/>
+    Environment="PATH=</path/to/oracle/instantclient>:</user/binaries>:</system/binaries>"
+    Environment="ORACLE_HOME=</path/to/oracle/instantclient>"
+    ExecStart=</usr/local/bin/beacon-agent>
+    Restart=on-failure
+    RestartSec=60
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    | Setting             | Placeholder                                             | Description                                                                                                                                                |
+    | ------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `User=`             | `<user>`                                                | System user that runs the agent.                                                                                                                           |
+    | `WorkingDirectory=` | `</home/user/>`                                         | Directory where the `.beacon` folder is stored. The path depends on the operating system.                                                                  |
+    | `Environment=`      | `"PATH=</path/to/oracle/instantclient>:..."`            | All directories containing Oracle executables, so the agent can locate `sqlplus` for schema extraction at runtime.                                        |
+    | `Environment=`      | `"ORACLE_HOME=</path/to/oracle/instantclient>"`         | Root directory of the Oracle Instant Client, required by `sqlplus` for schema extraction.                                                                  |
+    | `ExecStart=`        | `</usr/local/bin/beacon-agent>`                         | Full path to the `beacon-agent` binary. The path depends on how and where the agent was installed.                                                         |
+
+1.  Reload systemd, then enable and start the service:
+
+    ```shell
+    sudo systemctl daemon-reload
+    sudo systemctl enable beacon-agent.service
+    sudo systemctl start beacon-agent.service
+    ```
+
+1.  Confirm the service started successfully by checking the logs:
+
+    ```shell
+    journalctl -u beacon-agent.service
+    ```
+
+## Related topics
+
+-  For more granular control of schema ingestion (for example, to exclude or include schemas), see [Controlling schema ingestion](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/schema_ingestion/).
+
+-  If your administrator needs guidance on how to obtain the values for the root certificate and `beacon_server`, see [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/).
+
+## Next step
+
+[Prepare your destination database](preparing_destination_database)

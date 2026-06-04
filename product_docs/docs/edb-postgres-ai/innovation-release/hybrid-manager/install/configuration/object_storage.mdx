@@ -1,0 +1,270 @@
+---
+title: Configuring object storage
+navTitle: Configuring object storage
+description: Learn how to create and configure the object storage secret for Hybrid Manager across all supported providers, including S3-compatible storage.
+deepToC: true
+redirects:
+- /edb-postgres-ai/latest/hybrid-manager/install/configuration/object_storage/
+---
+
+Before installing Hybrid Manager (HM), you must create a Kubernetes secret named `edb-object-storage` in the `default` namespace. HM uses this secret to access object storage for:
+
+- Postgres database backups and WAL archiving
+- Restore operations
+- Data replication in multi-location deployments
+- Logs (Postgres and internal services)
+- Metrics (Postgres and internal services)
+
+This secret is referenced automatically during installation. For backup and recovery planning, see [Backup readiness](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/#backup-readiness).
+
+For multi-location deployments, the `edb-object-storage` secret must be synchronized across all locations. See [Configuring multiple data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/) for details.
+
+!!!note
+Your object storage must be dedicated entirely to Hybrid Manager. Any data already present in the bucket interferes with the successful operation of HM. If HM is removed and reinstalled, empty the bucket before starting the new installation.
+!!!
+
+## Creating the secret
+
+To create the secret, complete the following steps before installing HM:
+
+1. Select the configuration for your provider from [Provider configurations](#provider-configurations) below and fill in the required values.
+1. Save the YAML to a file, for example `object-storage-secret.yaml`.
+1. Apply it to your cluster:
+
+   ```shell
+   kubectl apply -f object-storage-secret.yaml
+   ```
+
+## Provider configurations
+
+### AWS IAM (EKS and ROSA)
+
+Use workload identity to authenticate when running on EKS or ROSA. No static credentials are required.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage # cannot be changed
+  namespace: default # cannot be changed
+stringData:
+  auth_type: workloadIdentity
+  aws_region: <AWS_BUCKET_REGION>
+  aws_role_arn: <PRIMARY_IDENTITY_ROLE_ARN>
+  bucket_name: <AWS_BUCKET_NAME>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|---|---|---|
+| `auth_type` | Yes | Must be `workloadIdentity`. |
+| `aws_region` | Yes | AWS region where the bucket is located. For example, `us-east-1`. |
+| `aws_role_arn` | Yes | ARN of the primary IAM role that HM assumes to access the bucket. |
+| `bucket_name` | Yes | Name of the S3 bucket. |
+| `secondary_role_arn` | No | ARN of a secondary role for cross-account bucket access. |
+| `secondary_role_external_id` | No | External ID required when assuming the secondary role. |
+
+### AWS static credentials (generic Kubernetes)
+
+Use static access keys when running on a generic Kubernetes cluster that connects to AWS S3 without workload identity.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  auth_type: credentials
+  aws_region: <AWS_BUCKET_REGION>
+  bucket_name: <AWS_BUCKET_NAME>
+  aws_access_key_id: <AWS_ACCESS_KEY_ID>
+  aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+  secondary_role_arn: <SECONDARY_IDENTITY_ROLE_ARN>
+  secondary_role_external_id: <SECONDARY_IDENTITY_EXTERNAL_ID>
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|---|---|---|
+| `auth_type` | Yes | Must be `credentials`. |
+| `aws_region` | Yes | AWS region where the bucket is located. |
+| `bucket_name` | Yes | Name of the S3 bucket. |
+| `aws_access_key_id` | Yes | AWS access key ID for the IAM user or role. |
+| `aws_secret_access_key` | Yes | AWS secret access key. |
+| `secondary_role_arn` | No | ARN of a secondary role for cross-account bucket access. |
+| `secondary_role_external_id` | No | External ID required when assuming the secondary role. |
+
+### Azure Blob Storage
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  provider: azure
+  subscription_id: <AZURE_SUBSCRIPTION_ID>
+  resource_group_name: <AZURE_RESOURCE_GROUP>
+  storage_account_name: <AZURE_STORAGE_ACCOUNT>
+  storage_account_container_name: <AZURE_STORAGE_CONTAINER>
+  storage_account_key: <AZURE_STORAGE_KEY>
+  region: <AZURE_REGION>
+  client_id: <AZURE_CLIENT_ID>
+  client_secret: <AZURE_CLIENT_SECRET>
+  tenant_id: <AZURE_TENANT_ID>
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|---|---|---|
+| `provider` | Yes | Must be `azure`. |
+| `subscription_id` | Yes | Azure subscription ID. |
+| `resource_group_name` | Yes | Azure resource group containing the storage account. |
+| `storage_account_name` | Yes | Name of the Azure storage account. |
+| `storage_account_container_name` | Yes | Name of the blob container within the storage account. |
+| `storage_account_key` | Yes | Storage account access key. |
+| `region` | Yes | Azure region of the storage account. For example, `eastus`. |
+| `client_id` | Yes | Client ID of the Azure service principal used for authentication. |
+| `client_secret` | Yes | Client secret of the Azure service principal. |
+| `tenant_id` | Yes | Azure Active Directory tenant ID. |
+
+### GCP object storage
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  provider: gcp
+  location_id: <GCP_BUCKET_REGION>
+  project_id: <GCP_PROJECT_ID>
+  bucket_name: <GCP_BUCKET_NAME>
+  credentials_json_base64: <GCP_CREDENTIAL_BASE64>
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|---|---|---|
+| `provider` | Yes | Must be `gcp`. |
+| `location_id` | Yes | GCP region where the bucket is located. For example, `us-central1`. |
+| `project_id` | Yes | GCP project ID. |
+| `bucket_name` | Yes | Name of the GCS bucket. |
+| `credentials_json_base64` | Yes | Base64-encoded contents of the GCP service account JSON key file. See [Encoding credentials](#encoding-credentials) for instructions. |
+
+### Other S3-compatible storage
+
+Use this configuration for on-premises or third-party S3-compatible storage such as MinIO or Ceph. Only AWS static credentials (`auth_type: credentials`) are supported for S3-compatible storage — workload identity isn't available for non-AWS providers.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edb-object-storage
+  namespace: default
+stringData:
+  auth_type: credentials
+  aws_endpoint_url_s3: <S3_ENDPOINT_URL>
+  aws_access_key_id: <AWS_ACCESS_KEY_ID>
+  aws_secret_access_key: <AWS_SECRET_ACCESS_KEY>
+  bucket_name: <S3_BUCKET_NAME>
+  aws_region: <S3_REGION>
+  # Optional: use ONE of the following if your endpoint uses a private or self-signed CA
+  aws_ca_bundle: <CA_BUNDLE_PEM>          # raw PEM format
+  # aws_ca_bundle_base64: <CA_BUNDLE_BASE64>  # base64-encoded PEM (alternative)
+  # Set to true if server-side encryption is disabled on the bucket
+  server_side_encryption_disabled: <true|false>
+  # Required for on-premises storage that does not support checksum headers; added in HM 2025.12
+  aws_request_checksum_calculation: when_required
+  aws_response_checksum_validation: when_required
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|---|---|---|
+| `auth_type` | Yes | Must be `credentials`. |
+| `aws_endpoint_url_s3` | Yes | Full URL of the S3-compatible endpoint, including protocol. For example, `https://minio.example.com`. |
+| `aws_access_key_id` | Yes | Access key ID for the S3-compatible storage. |
+| `aws_secret_access_key` | Yes | Secret access key. |
+| `bucket_name` | Yes | Name of the bucket. |
+| `aws_region` | Yes | Region identifier. For storage that doesn't use regions, use a placeholder such as `us-east-1`. |
+| `aws_ca_bundle` | No | CA bundle in raw PEM format. Use this or `aws_ca_bundle_base64` — not both. Required if your S3 endpoint uses a certificate signed by a private or self-signed CA. |
+| `aws_ca_bundle_base64` | No | CA bundle as a base64-encoded PEM string. Use this or `aws_ca_bundle` — not both. See [Providing a CA bundle](#providing-a-ca-bundle) for instructions. |
+| `server_side_encryption_disabled` | No | Set to `true` if server-side encryption is disabled on the bucket. Defaults to `false`. |
+| `aws_request_checksum_calculation` | No | Controls when the AWS SDK calculates checksums for requests. Set to `when_required` for on-premises storage that doesn't support checksum headers. This resolves the `x-amz-content-sha256` error seen with some S3-compatible providers. Added in HM 2025.12. |
+| `aws_response_checksum_validation` | No | Controls when the AWS SDK validates response checksums. Set to `when_required` alongside `aws_request_checksum_calculation`. Added in HM 2025.12. |
+
+## Providing a CA bundle
+
+If you are using [S3-compatible storage](#other-s3-compatible-storage) and your endpoint uses a certificate signed by a private or self-signed certificate authority (CA), you must provide the CA bundle. Add it to the `aws_ca_bundle` or `aws_ca_bundle_base64` field in your secret. Two fields are supported — use one or the other, not both:
+
+| Field | Format | When to use |
+|---|---|---|
+| `aws_ca_bundle` | Raw PEM text | You have the `.pem` or `.crt` file and can paste its contents directly. |
+| `aws_ca_bundle_base64` | Base64-encoded PEM | You need to embed the bundle as a single-line string. |
+
+### Using `aws_ca_bundle` (raw PEM)
+
+Paste the contents of your CA bundle file directly as the value. A PEM file starts with `-----BEGIN CERTIFICATE-----`.
+
+```yaml
+stringData:
+  aws_ca_bundle: |
+    -----BEGIN CERTIFICATE-----
+    MIIDazCCAlOgAwIBAgI...
+    -----END CERTIFICATE-----
+```
+
+### Using `aws_ca_bundle_base64` (base64-encoded PEM)
+
+Encode your CA bundle file before using it in the secret.
+
+On Linux:
+
+```shell
+base64 -w 0 /path/to/ca-bundle.pem
+```
+
+On macOS:
+
+```shell
+base64 -i /path/to/ca-bundle.pem
+```
+
+Copy the output and set it as the value for `aws_ca_bundle_base64`.
+
+!!!note
+If your CA bundle contains a certificate chain (intermediate + root CAs), include all certificates in the PEM file before encoding, concatenated in order from the issuing CA to the root.
+!!!
+
+## Encoding credentials
+
+If you are using a [GCP configuration](#gcp-object-storage), you must encode your service account JSON key file as a base64 string before adding it to the secret. Use the following commands to generate that value.
+
+To encode your credentials file:
+
+```shell
+base64 -w 0 /path/to/service-account-key.json
+```
+
+On macOS, use:
+
+```shell
+base64 -i /path/to/service-account-key.json
+```
+
+## Configuring per-project object storage
+
+By default, all projects share the object storage configured during installation. You can configure dedicated object storage for individual projects at any time after installation, before creating any Postgres workloads in that project. This isolates each project's backup and WAL data.
+
+For step-by-step instructions — including how to retrieve the project ID, normalize it, and apply the secret — see [Configure dedicated object storage for a project](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/projects/projected-object-storage/).

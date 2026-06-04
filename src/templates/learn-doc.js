@@ -225,17 +225,19 @@ const LearnDocTemplate = ({ data, pageContext }) => {
                 "col-print-12",
               ].join(" ")}
             >
-              <ProductContext
-                value={{
-                  product: frontmatter.product,
-                  version: frontmatter.version,
-                  productVersions,
-                  fileAbsolutePath: mdx.fileAbsolutePath,
-                }}
-              >
-                <MDXRenderer>{mdx.body}</MDXRenderer>
-              </ProductContext>
-              <Tiles mode={cardTileMode} node={navRoot} />
+              <article>
+                <ProductContext
+                  value={{
+                    product: frontmatter.product,
+                    version: frontmatter.version,
+                    productVersions,
+                    fileAbsolutePath: mdx.fileAbsolutePath,
+                  }}
+                >
+                  <MDXRenderer>{mdx.body}</MDXRenderer>
+                </ProductContext>
+                <Tiles mode={cardTileMode} node={navRoot} />
+              </article>
             </Col>
 
             {showToc && (

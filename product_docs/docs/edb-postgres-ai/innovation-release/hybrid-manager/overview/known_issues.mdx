@@ -176,13 +176,12 @@ Once the secret exists, the `accm-server` pod will be able to mount the volume a
 
 **Workaround:** Users must manually configure the `PackageRepository` using a `SecretRef` (Kubernetes Secret) for registry authentication, as cloud-native managed identities are currently not supported.
 
-### EPAS not supported as Metabase backend database
 
-**Description:** Metabase's Liquibase component includes DBMS detection logic that is incompatible with EDB Postgres Advanced Server (EPAS). Using EPAS as the backend database causes failures during configuration.
-
-**Workaround:** Use a community PostgreSQL database as the backend database when configuring the Metabase application.
-[UPM-92303]: #
 ### Beacon server enters a crashloop when spire is broken
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
 
 [UPM-85995]: #
 
@@ -208,7 +207,7 @@ Revert these settings before connecting a secondary location.
 
 ### SPIRE agent fails to start on RKE2 with SELinux enabled
 
-[UPM-87539, UPM-87538]: #
+[UPM-87538]: #
 
 **Description:** On RKE2 clusters running on RHEL (or other Linux distributions with SELinux in enforcing mode), the SPIRE agent pod enters a `CrashLoopBackOff` state with the error `create UDS listener: listen unix /tmp/spire-agent/public/spire-agent.sock: bind: permission denied`. This occurs because SELinux blocks the container process from creating a Unix domain socket on the `HostPath` volume `/run/spire/agent-sockets`. Environments without SELinux (such as Ubuntu-based RKE2 clusters) aren't affected.
 
@@ -216,7 +215,11 @@ Revert these settings before connecting a secondary location.
 
 ### Image library discovery fails when duplicate operand images share the same tags and SHA
 
-[UPM-92874]: #
+!!!tip
+Resolved in HM versions 2026.4 and later.
+!!!
+
+[UPM-92874, UPM-92875]: #
 
 **Description:** If two sets of EDB official PostgreSQL operand images are uploaded with the same tags and SHA digest but different repository names, the image library discovery process fails and no images are available for cluster provisioning.
 
@@ -269,13 +272,23 @@ Resolved in HM versions 2025.12 and later.
 
 ### AKS deployments limited to one PGD data group with private access per region
 
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
+
 [UPM-91061]: #
 
-**Description:** Azure enforces a hard limit of eight private link services per Standard Load Balancer (`PrivateLinkServicesPerLoadBalancerLimitReached`). Because each PGD data group with private access requires five Load Balancers (one per node, plus the group and proxy services), an AKS-based HM deployment can only host one PGD data group with private access per region.
+**Description:** Azure enforces a hard limit of eight private link services per Standard Load Balancer (`PrivateLinkServicesPerLoadBalancerLimitReached`). Because each PGD data group with private access requires five load balancer services (one per node, plus the group and proxy services), an AKS-based HM deployment can only host one PGD data group with private access per region. Enabling a read-only connection adds one additional load balancer service per data group, further reducing available quota.
 
-**Workaround:** Don't create more than one PGD data group with private access in the same AKS region. For additional data groups requiring private access, deploy an additional HM instance in the same region.
+A full two-data-group and witness cluster with private access consumes 12 private link service slots across the standard load balancer limit of 8, which prevents multi-node PGD bootstrap on AKS in a single location.
+
+**Workaround:** Deploy data groups across multiple locations to distribute load balancer quota. For example, deploy one data group and the witness in one location, and the second data group in a separate location. Don't create more than one PGD data group with private access in the same AKS region within a single HM instance.
 
 ### Network access type defaults to `Private` when not explicitly selected on RKE
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
 
 [UPM-90375]: #
 
@@ -345,6 +358,20 @@ Resolved in HM versions 2025.12 and later.
 **Workaround:** To ensure a successful restore, select an older backup to restore that has at least one archived WAL file immediately following it. This makes the needed transactional logs available for the recovery process.
 
 [ET-4092, backlog]: #
+
+### Full cluster recovery fails with `pg_ctl: server does not shut down` error
+
+[UPM-97292]: #
+
+**Description:** Under race conditions, restoring into a cluster with HA architecture that is created and managed by HM may fail. The error logs on the full-recovery pods will contain entries similar to the following:
+
+```shell
+pg_ctl: server does not shut down
+pg_ctl: waiting for server to shut down............................................................... failed
+controller: Error while deactivating instance err=error stopping PostgreSQL instance: exit status 1
+```
+
+**Workaround:** Restore into a single-node cluster first. After the restore completes, expand the cluster to HA architecture.
 
 ## AI Factory and model management
 
@@ -660,15 +687,27 @@ Resolved in HM versions 2026.2 and later.
 
 [BEAC-902]: #
 
-### Table offloading fails with a 500 timeout error
+### PGAA causes a server crash (SIGSEGV) when executing JOIN queries with constant result relations in PostgreSQL 17
 
-[UPM-77149]: #
+[BEAC-1439]: #
 
-**Description:** When attempting to offload a table to object storage, the API may return a 500 error with the message `error offloading table: callback error: runner error: timeout: context deadline exceeded`. This occurs when the operation takes longer than the allowed timeout period, typically due to slow write performance or high latency from the cloud provider's object storage.
+**Description:** When the Postgres Analytics Accelerator (PGAA) extension is loaded, executing a `JOIN` query where one side is a constant result relation — for example, `SELECT aaa FROM v_dual LEFT JOIN bbb` or `SELECT aaa FROM (SELECT 1) d LEFT JOIN bbb` — causes a SIGSEGV crash. This issue is due to a type-confusion bug in PostgreSQL 17, where three different path subtypes share the same `T_Result` pathtype.
 
-**Workaround:** This issue is generally caused by external infrastructure bottlenecks rather than the HM deployment itself. To mitigate this, troubleshoot any performance bottlenecks or latency issues within your cloud provider's object storage service.
+**Workaround:** Disable join and aggregate pushdown in PGAA:
 
-Once the storage performance is restored, retry the table offload operation from the HM console.
+```sql
+ALTER DATABASE <your_database> SET pgaa.enable_join_pushdown    = off;
+ALTER DATABASE <your_database> SET pgaa.enable_groupby_pushdown = off;
+```
+
+If you're using a Advanced High Availability or Distributed High Availability (PGD) cluster, replicate the settings to all nodes:
+
+```sql
+SELECT bdr.run_on_all_nodes($$
+ALTER DATABASE <your_database> SET pgaa.enable_join_pushdown    = off;
+ALTER DATABASE <your_database> SET pgaa.enable_groupby_pushdown = off;
+$$);
+```
 
 ## HM console and observability
 
@@ -762,6 +801,10 @@ Resolved in HM versions 2026.4 and later.
 
 ### Alert threshold updates intermittently fail to take effect
 
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
+
 [UPM-94011]: #
 
 **Description:** After saving a new alert threshold value in the HM console — for example, reducing the memory usage alert threshold from 90% to 85% — the change is intermittently not applied and the threshold reverts to the previous value.
@@ -777,6 +820,10 @@ Resolved in HM versions 2026.4 and later.
 **Workaround:** Ensure that any user who needs to access or manage Asset Library apps is assigned at least the **Project Editor** role for the relevant project. Role assignments can be managed by a Project Owner or organization owner in the project settings.
 
 ### Asset Library apps sorted by package name instead of display name
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
 
 [UPM-91053]: #
 
@@ -802,6 +849,10 @@ Resolved in HM versions 2026.4 and later.
 
 ### Editing cryptographic keys for Airflow or Superset causes the app to enter a failed state
 
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
+
 [UPM-92241]: #
 
 **Description:** Editing the `fernetKey` or `apiSecretKey` for Airflow, or the `secretKey` for Superset, through the Asset Library UI after initial deployment causes the app to enter a failed state. These keys are used for cryptographic operations — including encrypting connections, variables, sessions, and CSRF tokens — and the underlying Helm charts don't support key rotation. Changing these values after initial creation creates a mismatch between the new keys and data encrypted with the original keys, breaking the application.
@@ -818,6 +869,10 @@ Resolved in HM versions 2026.4 and later.
 
 ### Asset Library launch app always uses port 443 regardless of custom portal port
 
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
+
 [UPM-91790]: #
 
 **Description:** When HM is configured with a custom `portal_port` value other than 443, app or flow URLs in the **Estate** use port 443 instead of the configured port. This causes the launched app or flow to be unreachable in environments where the HM portal isn't exposed on the standard HTTPS port.
@@ -833,6 +888,10 @@ Resolved in HM versions 2026.4 and later.
 **Workaround:** Wait 30 minutes after app startup for the metrics to stabilize and reflect the correct state.
 
 ### Deleting an app or flow gets stuck due to missing service account
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
 
 [UPM-91799]: #
 
@@ -1017,9 +1076,13 @@ Resolved in HM versions 2026.2 and later.
 
 **Description:** Flows that include a Langflow MCP (Model Context Protocol) server component fail when executed via the Hybrid Manager Flow Hosting API with the following error: `Error building Component my_mcp: Error updating tool list: Langflow MCP server functionality is not available. This feature requires the full Langflow installation.` The HM Flow Hosting runtime (`lfx-runtime`) is a lightweight environment that does not include the full Langflow installation. Flows using MCP server components will appear to deploy successfully — the pod reports as healthy — but will fail at runtime when invoked via the REST API.
 
-**Workaround:** Avoid including Langflow MCP server components in flows intended for deployment via the HM Flow Hosting API. If MCP server functionality is required, use the full Langflow interactive environment instead.
+**Workaround:** Avoid including Langflow MCP server components in flows intended for deployment via the HM Flow Hosting API. If you need to run the Airman or HM MCP servers, use the EDB Airman or EDB Platform components instead — these components are compatible with the lfx-runtime environment. For any other MCP server functionality, use the full Langflow interactive environment instead.
 
 ### EDB Knowledge Base component returns a 403 error when dragged into Langflow
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
 
 [AID-1611]: #
 
@@ -1029,6 +1092,10 @@ Resolved in HM versions 2026.2 and later.
 
 ### EDB Knowledge Base component fails to connect when using a global variable for the database user
 
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
+
 [AID-1612]: #
 
 **Description:** When configuring the EDB Knowledge Base component in Langflow with a global variable for the database user field, the connection attempt fails. Global variable values aren't resolved correctly for this field during the initial connection setup.
@@ -1037,7 +1104,7 @@ Resolved in HM versions 2026.2 and later.
 
 ### Running a test query against an empty knowledge base returns a 500 error
 
-[UPM-91738]: #
+[UPM-91738, AID-1621]: #
 
 **Description:** When running a test query from the **Knowledge Bases** list view against a knowledge base whose underlying embeddings table is empty — for example, while the KB pipeline is still in a `Processing` state — the API returns an HTTP 500 error: `ERROR: Query returned no data. Hint: The "<pipeline_name>" table is likely empty`. The API should return an empty result set instead.
 
@@ -1045,11 +1112,16 @@ Resolved in HM versions 2026.2 and later.
 
 ### Flow Hosting deployment fails intermittently with `FlowValidationError`
 
+!!!tip
+
+Resolved in HM versions 2026.5 and later.
+!!!
+
 [AID-1277]: #
 
-**Description:** When deploying a flow via HM Flow Hosting, the `lfx-runtime` pod may intermittently enter a `CrashLoopBackOff` state with a `FlowValidationError` indicating that `load_from_db` isn't set to `true` for secret inputs. This issue is intermittent and doesn't occur on every deployment attempt.
+**Description:** When creating a flow via the Langflow UI, the secret or credential field of any components must use a global variable. Pasting a password directly will cause errors when deploying the flow via HM Flow Hosting. This is a default behavior across all components from Langflow v0.19.
 
-**Workaround:** Retry the deployment. The issue is intermittent and subsequent attempts typically succeed.
+**Workaround:** Store the credential in a global variable and reference it in the flow configuration.
 
 ### EDB Model Server component causes agent failures when used with the EDB Airman MCP component
 
@@ -1060,6 +1132,10 @@ Resolved in HM versions 2026.2 and later.
 **Workaround:** Use the OpenAI component or the generic model component in place of the EDB Model Server component. Flows using these alternative model providers aren't affected by this issue.
 
 ### `upm-ai-model-server-beaco` OOMKills due to insufficient memory limits
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
 
 [AID-1243]: #
 

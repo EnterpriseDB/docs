@@ -320,21 +320,23 @@ const DocTemplate = ({ data, pageContext }) => {
                 "col-print-12",
               ].join(" ")}
             >
-              <ProductContext
-                value={{
-                  product,
-                  version,
-                  fullVersion: frontmatter.version,
-                  productVersions,
-                  fileAbsolutePath,
-                }}
-              >
-                <MDXRenderer>{body}</MDXRenderer>
-              </ProductContext>
-              <Tiles mode={indexCards} node={navRoot} />
-              {(!indexCards || indexCards === TileModes.None) && sections && (
-                <Sections sections={sections} />
-              )}
+              <article>
+                <ProductContext
+                  value={{
+                    product,
+                    version,
+                    fullVersion: frontmatter.version,
+                    productVersions,
+                    fileAbsolutePath,
+                  }}
+                >
+                  <MDXRenderer>{body}</MDXRenderer>
+                </ProductContext>
+                <Tiles mode={indexCards} node={navRoot} />
+                {(!indexCards || indexCards === TileModes.None) && sections && (
+                  <Sections sections={sections} />
+                )}
+              </article>
             </Col>
 
             {showToc && (

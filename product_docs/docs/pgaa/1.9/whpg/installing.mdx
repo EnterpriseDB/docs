@@ -1,0 +1,119 @@
+---
+title: Installing PGAA on WarehousePG
+navTitle: Installing
+description: Step-by-step instructions for installing and enabling the Postgres Analytics Accelerator (PGAA) extension on a WarehousePG cluster.
+---
+
+## Prerequisites
+
+Before installing PGAA, ensure you have:
+
+- A running WarehousePG 7.4 or later cluster on x86_64 RHEL 8 or RHEL 9.
+- Access to the EDB repository configured on the coordinator host.
+- The `gpadmin` user with sudo privileges on all hosts.
+
+All steps must be performed as the `gpadmin` user unless otherwise noted.
+
+## Downloading and installing the package
+
+1. Set up your EDB subscription credentials on the coordinator:
+
+    ```shell
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_SUBSCRIPTION_PLAN=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpg7-pgaa
+    ```
+
+    `edb-whpg7-pgfs` is a declared dependency of `edb-whpg7-pgaa` and will be downloaded automatically.
+
+1. On the coordinator, create a file `all_hosts` listing all hosts in the WHPG cluster. For example:
+
+    ```ini
+    cdw
+    sdw1
+    sdw2
+    ```
+
+1. Transfer and install the packages on all hosts:
+
+    ```shell
+    gpssh -f all_hosts -e "scp gpadmin@$(hostname):~/edb-whpg7-pgaa*.rpm /tmp/ && sudo dnf install -y /tmp/edb-whpg7-pgaa*.rpm"
+    ```
+
+1. Verify that the packages are installed on all hosts:
+
+    ```shell
+    gpssh -f all_hosts -e 'rpm -q edb-whpg7-pgaa edb-whpg7-pgfs'
+    ```
+
+## Enabling the extension
+
+In WarehousePG installations, Seafowl is managed as a systemd service rather than as a background worker controlled by the extension itself. The RPM installs the systemd unit file automatically.
+
+1. On the coordinator, append PGAA and PGFS to the list of shared libraries using a comma separator, and restart the cluster.
+
+    ```shell
+    gpconfig -c shared_preload_libraries -v '<other_libraries>,pgaa,pgfs'
+    gpstop -ra
+    ```
+
+1. Enable and start the Seafowl service on all hosts, including the coordinator and every segment host:
+
+    ```shell
+    gpssh -f all_hosts -e 'sudo systemctl enable seafowl && sudo systemctl start seafowl'
+    ```
+
+    !!!Note
+    If installing in an environment where systemd is not available (for example, Docker), you must daemonize the Seafowl worker through some other means, such as a supervisor process or an entrypoint script. The critical constraint is that exactly one Seafowl worker must be running per host. Running multiple workers on the same host, or failing to run one at all, will cause problems.
+    !!!
+
+    !!!Note
+    Seafowl exposes a Prometheus metrics endpoint on port 9090 by default. If Prometheus is already running on the same host and bound to port 9090, Seafowl will fail to start. To resolve the conflict, edit the value of `port` in `/etc/edb/pgaa/seafowl.toml` on the affected host and restart the Seafowl service.
+    !!!
+
+1. Connect to the coordinator and create the extension on each database where you want to use PGAA:
+
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+    ```
+
+    Using `CASCADE` ensures that required dependencies, such as the Postgres File System (`PGFS`), are automatically installed. 
+
+## Verifying the installation
+
+1. Confirm that the extension is active using the `\dx` meta-command or by calling the version function:
+
+    ```sql
+    SELECT pgaa.pgaa_version();
+    ```
+
+1. Verify that the Seafowl service is running on all hosts:
+
+    ```shell
+    gpssh -f all_hosts -e 'sudo systemctl status seafowl --no-pager'
+    ```
+
+## Checking service health and logs
+
+Seafowl writes structured JSON logs via systemd. 
+
+- To check the status and recent log output on a single host:
+
+    ```shell
+    sudo systemctl status seafowl
+    ```
+
+- To stream live logs:
+
+    ```shell
+    sudo journalctl -u seafowl -f
+    ```
+
+- To check logs across all hosts at once:
+
+    ```shell
+    gpssh -f all_hosts -e 'sudo journalctl -u seafowl --no-pager -n 50'
+    ```
+
+For WarehousePG coordinator and segment logs, see [Viewing the database server log files](/warehousepg/latest/admin_guide/managing/monitor/#viewing-the-database-server-log-files).

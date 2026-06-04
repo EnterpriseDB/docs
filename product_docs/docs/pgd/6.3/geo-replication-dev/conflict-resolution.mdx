@@ -1,0 +1,58 @@
+---
+title: Preventing conflicts
+navTitle: Preventing conflicts
+description: How to design your schema and application to prevent conflicts in a geo-distributed PGD cluster, and how PGD resolves the ones that do occur.
+---
+
+In a geo-distributed PGD cluster, all locations accept writes simultaneously. Conflicts arise when the same data is modified on different nodes before replication has a chance to propagate the change.
+Each node commits the change locally, then receives the conflicting change from the other node during replication.
+
+PGD detects these collisions and resolves them automatically, but automatic resolution is a safety net, not a substitute for good design. Design your schema and access patterns to minimize how often conflicts occur.
+
+## Understanding how PGD resolves conflicts
+
+PGD resolves most conflicts automatically with no application involvement. The exception is conflicts with the `error` resolver set, which halt replication and require manual intervention. For all other conflict types, each has a deterministic default resolver. Knowing which resolver applies helps you identify when automatic resolution produces the expected outcome and when it doesn't. All conflicts are tracked in `bdr.conflict_history`:
+
+- `update_update`: the same row was updated on two different nodes. Resolved by last-update-wins.
+- `insert_insert`: the same primary key was inserted on two different nodes. Resolved by keeping the row with the later timestamp.
+- `update_delete`: the row was updated on one node and deleted on another. By default, the delete wins.
+- `delete_delete`: the row was deleted on both nodes simultaneously. Not a data concern, but logged.
+
+For a full list of conflict types including more esoteric cases, see [Conflicts](/pgd/current/conflict-management/conflicts/).
+
+## Designing to minimize conflicts
+
+Conflicts are a symptom of multiple locations writing to the same data concurrently. The most effective way to reduce them is to design your data model so that each piece of data has a clear owning location.
+
+- **Use cluster-wide unique keys:** Auto-increment sequences are node-local and generate the same values on different nodes, causing `insert_insert` conflicts. Use PGD's global sequence types (SnowflakeId or galloc) for primary keys that are unique across the cluster. UUIDs generated client-side are also conflict-safe, though less space-efficient. See [Sequences](/pgd/current/sequences/) for PGD sequence options.
+
+- **Partition data by location:** If each user or tenant always writes to one location, conflicts can't occur for that data. Assign each user, tenant, or data partition a home location and route write traffic there consistently. Data with high write rates and strict consistency requirements, such as account balances and inventory levels, is a good candidate for location-based partitioning. Data that is mostly read and rarely changes, such as product catalogs and lookup tables, can be written anywhere without conflict risk.
+
+- **Use append-only patterns where possible:** Tables that only ever receive inserts (audit logs, event streams, time-series data) can't have update or delete conflicts. Design these tables to be insert-only and use separate summary tables if aggregation is needed.
+
+- **Avoid shared counters:** A counter incremented by multiple locations is a conflict waiting to happen. Instead, record increments as individual rows and aggregate on read, or use PGD's CRDT data types, which are designed to merge correctly under concurrent updates. See [CRDT data types](/pgd/current/conflict-management/crdt/).
+
+- **Avoid long-running transactions:** Transactions that hold locks or read snapshots for extended periods increase the window in which a conflicting write can arrive from another location. Keep transactions short.
+
+## Monitoring for conflicts
+
+All conflict types are tracked in `bdr.conflict_history`. Check `bdr.conflict_history_summary` regularly for tables with high conflict rates:
+
+```sql
+SELECT nspname, relname, conflict_type, count(*)
+FROM bdr.conflict_history_summary
+GROUP BY nspname, relname, conflict_type
+ORDER BY count(*) DESC;
+```
+
+A persistent high conflict rate on a specific table points to an access pattern worth revisiting. Review the design patterns above or, if changing the access pattern isn't feasible, consider a custom conflict resolver. To inspect the actual row values involved in recent conflicts:
+
+```sql
+SELECT local_time, nspname, relname, conflict_type, conflict_resolution,
+       key_tuple, local_tuple, remote_tuple, apply_tuple
+FROM bdr.conflict_history
+ORDER BY local_time DESC
+LIMIT 20;
+```
+
+For tables where last-update-wins produces the wrong outcome and the access pattern can't be changed, ask your DBA to configure a custom conflict resolver. See [Configuring conflict resolvers](/pgd/current/geo-replication-dba/maintenance/#configuring-conflict-resolvers).
