@@ -3,95 +3,71 @@ title: Using set_user
 navTitle: Using
 ---
 
-Direct superuser login bypasses the audit trail. 
-`set_user` solves this by routing privileged access through SQL functions that log every role transition, tag audit entries, and block high-risk commands, keeping escalation traceable and controlled. 
-You interact with the extension through these functions:
+Direct superuser login bypasses the audit trail. `set_user` solves this by routing privileged access through SQL functions that log every role transition, tag audit entries, and block high-risk commands, keeping escalation traceable and controlled.
 
-## Overview of functions
+## Use cases
 
-`set_user` provides the following functions:
+- **Audited superuser access** — A DBA needs to run maintenance commands as `postgres` but must leave a traceable log of every action. Use `set_user_u()` to escalate, perform the work, then `reset_user()` to drop back down.
+- **Application role switching** — An application connects as a low-privilege role but needs to switch to `app_role` for specific operations. Use `set_user()` for reversible, non-superuser transitions.
+- **Permanent identity delegation** — A session needs to irrevocably adopt a new identity (for example, for row-level security tied to session user). Use `set_session_auth()`.
 
-| Function                     | Description                                                                         |
-|------------------------------|-------------------------------------------------------------------------------------|
-| `set_user(rolename)`         | Switch the current user to `rolename`. The target must be a non-superuser role.     |
-| `set_user(rolename, token)`  | Switch to `rolename` and store a token that must be provided to `reset_user()`.     |
-| `set_user_u(rolename)`       | Switch to `rolename`, including superuser roles. Requires explicit `EXECUTE` grant. |
-| `reset_user()`               | Revert to the previous user.                                                        |
-| `reset_user(token)`          | Revert to the previous user, verifying the stored token.                            |
-| `set_session_auth(rolename)` | Irrevocably change both the session and current user. Cannot be undone.             |
+## How it works
 
-## Switching to a non-superuser role
+A typical session follows this pattern:
 
-Use `set_user()` to transition to another non-superuser role:
+1. Connect as a low-privilege role (for example, `dbadmin`).
+
+1. Switch to the target role using `set_user()` (non-superuser) or `set_user_u()` (superuser). The transition is logged.
+
+1. Perform work. If escalating to superuser, every SQL statement is captured in the log.
+
+1. Reset to the original role with `reset_user()`.
+
+**For non-superuser role switching:**
 
 ```sql
 SELECT set_user('app_role');
+-- Do work as app_role ...
+SELECT reset_user();
 ```
 
-To require a token when resetting:
-
-```sql
-SELECT set_user('app_role', 'my_token');
--- do work as app_role ...
-SELECT reset_user('my_token');
-```
-
-If the token doesn't match, or a token was provided to `set_user()` but not `reset_user()`, an error occurs.
-
-## Escalating to superuser
-
-Use `set_user_u()` to escalate to a superuser role. The calling role must have `EXECUTE` permission on `set_user_u(text)` and must be listed in `set_user.superuser_allowlist`:
-
-```sql
-SELECT set_user_u('postgres');
-```
-
-Each of the following actions is controlled by a GUC parameter. While escalated, they occur automatically:
+**For superuser escalation,** the calling role must have `EXECUTE` permission on `set_user_u(text)` and be listed in `set_user.superuser_allowlist`. 
+While escalated, the following occur automatically:
 
 - The role transition is logged.
 - `log_statement` is set to `all`, capturing every SQL statement.
 - `ALTER SYSTEM`, `COPY PROGRAM`, and `SET log_statement` commands are blocked.
 - The `set_user.superuser_audit_tag` value (default: `AUDIT`) is appended to `log_line_prefix`, tagging all subsequent log entries.
 
-### GUC parameters
-
-The following parameters can be set in `postgresql.conf` to control set_user behavior:
-
-| Parameter                               | Default   | Description                                                                                                                                                                                                                                          |
-|-----------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `set_user.block_alter_system`           | `on`      | Block `ALTER SYSTEM` commands while running as an escalated role.                                                                                                                                                                                    |
-| `set_user.block_copy_program`           | `on`      | Block `COPY PROGRAM` commands while running as an escalated role.                                                                                                                                                                                    |
-| `set_user.block_log_statement`          | `on`      | Block `SET log_statement` commands. When `on` and the target role is a superuser, `log_statement` is automatically set to `all`.                                                                                                                     |
-| `set_user.superuser_allowlist`          | `'*'`     | Comma-separated list of roles permitted to escalate to superuser via `set_user_u()`. Use `'*'` to allow all roles with `EXECUTE` permission, `''` to block all escalation. Group roles can be specified with a `+` prefix (for example, `'+admin'`). |
-| `set_user.nosuperuser_target_allowlist` | `'*'`     | Comma-separated list of non-superuser roles that can be switched to via `set_user()`. Use `'*'` to allow all, `''` to block all non-superuser transitions.                                                                                           |
-| `set_user.superuser_audit_tag`          | `'AUDIT'` | String appended to `log_line_prefix` upon superuser escalation, tagging all subsequent log entries.                                                                                                                                                  |
-| `set_user.exit_on_error`                | `on`      | When `on`, the backend process exits with a `FATAL` error on any `ERROR` during `set_session_auth()` calls.                                                                                                                                          |
-
-### Example configuration
-
-```ini
-shared_preload_libraries = 'set_user'
-
-# Restrict superuser escalation to a specific admin group
-set_user.superuser_allowlist = '+dbadmins'
-
-# Allow transitions only to a specific set of non-superuser roles
-set_user.nosuperuser_target_allowlist = 'app_role, reporting_role'
-
-# Turn off blocking if not required
-set_user.block_alter_system = off
-set_user.block_copy_program = off
-```
-
-To return to the previous role:
-
 ```sql
+SELECT set_user_u('postgres');
+-- Do work ...
 SELECT reset_user();
 ```
 
+Use a token to guard against accidentally skipping the reset:
+
+```sql
+SELECT set_user('app_role', 'my_token');
+-- Do work as app_role ...
+SELECT reset_user('my_token');
+-- If the token doesn't match, or reset_user() is called without one, an error occurs.
+```
+
+The same token pattern applies to superuser escalation:
+
+```sql
+SELECT set_user_u('postgres', 'session-42');
+-- Do work ...
+SELECT reset_user('session-42');
+```
+
+For the full list of GUC parameters that control escalation behavior, see [Configuring set_user](configuring.mdx).
+
 ## Disabling direct superuser login
 
-Once `set_user_u()` is in place, you can prevent direct superuser login entirely, ensuring all privileged access is routed through set_user and its audit logging:
+Before disabling direct superuser login, ensure that all roles that need privileged access have been granted `EXECUTE` on `set_user_u()`. 
+Once those grants are in place, you can revoke direct login from the superuser account:
 
 ```sql
 ALTER USER postgres NOLOGIN;
@@ -112,6 +88,17 @@ SELECT set_session_auth('jeff');
 ```
 
 Use `set_session_auth()` when a permanent identity switch is required, not for temporarily elevated operations.
+
+## Overview of functions
+
+| Function                     | Description                                                                         |
+|------------------------------|-------------------------------------------------------------------------------------|
+| `set_user(rolename)`         | Switch the current user to `rolename`. The target must be a non-superuser role.     |
+| `set_user(rolename, token)`  | Switch to `rolename` and store a token that must be provided to `reset_user()`.     |
+| `set_user_u(rolename)`       | Switch to `rolename`, including superuser roles. Requires explicit `EXECUTE` grant. |
+| `reset_user()`               | Revert to the previous user.                                                        |
+| `reset_user(token)`          | Revert to the previous user, verifying the stored token.                            |
+| `set_session_auth(rolename)` | Irrevocably change both the session and current user. Cannot be undone.             |
 
 ## Caveats
 
