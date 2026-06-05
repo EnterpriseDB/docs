@@ -258,6 +258,13 @@ spec:
 
 Apply the manifest with `kubectl apply -f <manifest>.yaml` (use `envsubst` first if you parameterized it with environment values).
 
+!!!note WAL-archiver plugin on OpenShift
+
+Both example manifests declare a `barman-cloud.cloudnative-pg.io` WAL-archiver plugin. This plugin is not bundled with the operator and is **only needed if you want WAL archiving or backups** for the monitored cluster — it is not required for monitoring. If you don't need it, remove the `plugins` and `backup` blocks.
+
+If you do use it on OpenShift, the upstream plugin manifest is rejected by the `restricted-v2` SCC because it sets legacy seccomp annotations and `runAsUser: 10001`. Install it with both stripped. With the enterprise (EDB) operator you must also grant the plugin `get`/`list`/`watch` on `clusters` and `patch`/`update` on `clusters/finalizers` for the `postgresql.k8s.enterprisedb.io` API group; the upstream plugin only grants this on the community `postgresql.cnpg.io` group, so without it the cluster never reconciles (`cannot set blockOwnerDeletion … can't set finalizers`).
+!!!
+
 ## Patching clusters to enable the agent sidecar
 
 This section shows how to patch a single cluster. You can adapt the instructions below to patch many clusters:
@@ -521,3 +528,25 @@ On OpenShift, `prometheus-node-exporter` may conflict with OpenShift's built-in 
 For example, if port 9100 is already in use. 
 We recommend seting  `additionalCharts.prometheus-node-exporter.install: false` and relying on the `opentelemetry-collector` for container metrics via cadvisor/kubelet scraping.
 !!!
+
+### Capping the OTEL collector batch size on OpenShift
+
+On a fully-loaded OpenShift cluster, the per-node kubelet and cAdvisor scrape can produce an OTLP batch larger than the HM metrics receiver's 4 MiB gRPC message limit. When that happens the receiver rejects the batch with `ResourceExhausted` and **every datapoint in it is dropped**, so HM shows no CPU, memory, or network metrics even though the collector pods are healthy.
+
+Cap the collector's batch processor so each push stays under the limit:
+
+```yaml
+opentelemetry-collector:
+  config:
+    processors:
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+```
+
+Or via the command line:
+
+```shell
+--set 'opentelemetry-collector.config.processors.batch.send_batch_size=1000' \
+--set 'opentelemetry-collector.config.processors.batch.send_batch_max_size=1500'
+```
