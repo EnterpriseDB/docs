@@ -102,7 +102,10 @@ Optionally, adjust these parameters to fine-tune logging and data intervals:
 
 - `WEM_EXPORTER_LOG_LEVEL`: Sets the verbosity of Exporter logs (`debug`, `info`, `warn`, or `error`).
 
-- `WEM_EXPORTER_REMOTE_WRITE_ENABLED`: Controls whether WEM actively pushes SQL exporter metrics to Prometheus via remote write. Defaults to `true`. Set to `false` when you prefer Prometheus to scrape WEM instead of WEM pushing to Prometheus, or when `PROMETHEUS_URL` isn't set. Setting this to `false` doesn't disable the `/prom/metrics` endpoint. Cluster metrics remain available for Prometheus to scrape on demand.
+- `WEM_EXPORTER_REMOTE_WRITE_ENABLED`: Controls whether WEM actively pushes SQL exporter metrics to Prometheus via remote write. Defaults to `true`.
+    - Set to `false` when you prefer Prometheus to scrape WEM via the `/prom/metrics` endpoint instead of WEM pushing to Prometheus, or when `PROMETHEUS_URL` isn't set.
+    - Setting this parameter to `true` doesn't disable the `/prom/metrics` endpoint. Cluster metrics remain available for Prometheus to scrape on demand.
+    - When set to `false`, all `WEM_EXPORTER_*` parameters are ignored.
 
 - `WEM_EXPORTER_REMOTE_WRITE_INTERVAL`: Frequency for pushing metrics. For example, 15s, 1m, 5m.
 
@@ -126,7 +129,7 @@ WEM_REMOTE_WRITE_RECEIVER_TOKEN=eU3zV8mK2pL9nQ4rX1yA6wB0cF5hJ7dT
 - `WEM_REMOTE_WRITE_RECEIVER_ENABLED`: Master switch for the receiver. Defaults to `false`. When `false`, no `/write` endpoint is registered and no additional port is opened. The `/prom/metrics` endpoint remains available regardless. WEM's own cluster metrics are always exposed there for Prometheus to scrape even when the receiver is off.
 
 - `WEM_REMOTE_WRITE_RECEIVER_PORT`: Port on which WEM listens for `POST /write` requests. Defaults to `9091`.
-    - **Different from `PORT` (default):** WEM opens a dedicated HTTP listener on this port. Only `/write` and the `/api/v1/status/buildinfo` health endpoint are available there. This setup lets you restrict Alloy traffic independently of the main UI port using firewall rules.
+    - **Different from `PORT` (default):** WEM opens a dedicated HTTP listener on this port. Only `/write` and the `/-/healthy` health endpoint are available there. This setup lets you restrict Alloy traffic independently of the main UI port using firewall rules.
     - **Same as `PORT`:** The `/write` route is registered on the main web server and no second listener is opened. Use this in environments where opening an additional port isn't possible.
 
 - `WEM_REMOTE_WRITE_RECEIVER_TTL`: How long WEM retains a received time series in memory after its last sample. When the TTL expires and no new sample has arrived, the series is evicted from `/prom/metrics`. Defaults to `5m`. Set this to at least twice your Alloy `remote_write` interval to avoid gaps during temporary restarts. With Alloy's default 60-second interval, `2m` is the minimum safe value. Accepts `s` (seconds), `m` (minutes), and `h` (hours).
@@ -139,16 +142,19 @@ WEM_REMOTE_WRITE_RECEIVER_TOKEN=eU3zV8mK2pL9nQ4rX1yA6wB0cF5hJ7dT
 
     Defaults to empty (no authentication). When empty, WEM logs a warning at startup and any client that can reach the receiver port can push metrics. When set, requests without a valid token are rejected with HTTP 401. Generate a token with `openssl rand -base64 32`. You can also pass this value as the `--remote-write-token` CLI flag instead of storing it in `wem.conf`.
 
-To configure Grafana Alloy to push metrics to the receiver:
+Once the receiver is enabled, configure Collector to push metrics to WEM by setting `PROMETHEUS_ENDPOINT` in `/var/lib/whpg-observability-collector/collector.conf` to WEM's `/write` endpoint:
 
-```alloy
-prometheus.remote_write "wem" {
-  endpoint {
-    url = "http://<wem-host>:9091/write"
-    bearer_token = "<token>"
-  }
-}
+```ini
+PROMETHEUS_ENDPOINT="http://<wem-host>:9091/write"
 ```
+
+Redeploy Collector to apply the change:
+
+```bash
+cd /var/lib/whpg-observability/
+./deploy-observability
+```
+
 
 ### WEM portal access
 
