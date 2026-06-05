@@ -1,0 +1,92 @@
+---
+title: Upgrading application schemas
+navTitle: Upgrading application schemas
+description: How to upgrade your application's database schema on a live PGD cluster without downtime, using rolling application schema upgrades and conflict resolver configuration.
+deepToC: true
+redirects:
+  - /pgd/latest/lifecycle/upgrades/app_upgrades/
+  - /pgd/latest/reference/upgrades/app_upgrades/
+  - /pgd/latest/upgrades/app_upgrades/
+---
+
+Use rolling application schema upgrades to apply DDL changes across the cluster without downtime. PGD is designed to keep replication running even when nodes are temporarily at different schema versions, so you can apply changes one node at a time without requiring a maintenance window.
+
+Unlike a full-downtime upgrade, which requires stopping all affected applications while the change is applied, rolling application schema upgrades keep the cluster available throughout. Fall back to a full-downtime upgrade only when the schema change is incompatible with the rolling approach.
+
+## Preparing for a rolling application schema upgrade
+
+Before making any schema changes, agree with your application team on the exact schema changes and the sequence in which they'll be applied, then configure the appropriate resolvers on each node.
+
+PGD classifies schema mismatches as conflict types and handles each one using a conflict resolver. Configure the value of the resolver for each conflict type with `bdr.alter_node_set_conflict_resolver`. For the full list of conflict types and their resolvers, see [Conflicts](/pgd/current/reference/tables-views-functions/conflicts/).
+
+!!! Warning
+Resolver settings are permanent cluster-wide changes. A misconfiguration doesn't just affect the upgrade. It persists and impacts all future replication on the cluster.
+!!!
+
+### Adding tables
+
+When one node runs DDL that adds a new table, nodes that haven't yet received the DDL need to handle writes to a table they don't have. PGD raises a `target_table_missing` conflict.
+
+Before performing this type of schema change, configure all nodes to apply the `skip` resolver for `target_table_missing` conflicts. With `skip`, nodes that haven't yet received the DDL silently discard rows destined for the missing table without raising an error.
+
+Run this query separately on each node, replacing `<node_name>` with the actual node name:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('<node_name>', 'target_table_missing', 'skip');
+```
+
+### Adding columns
+
+When one node runs DDL that adds a column, nodes that haven't yet received the DDL need to handle writes that include a column they don't have. PGD raises a `target_column_missing` conflict.
+
+Before performing this type of schema change, configure all nodes to apply the `ignore` resolver for `target_column_missing` conflicts. With `ignore`, nodes that haven't yet received the DDL drop the value for the missing column without raising an error.
+
+Run this query separately on each node, replacing `<node_name>` with the actual node name:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('<node_name>', 'target_column_missing', 'ignore');
+```
+
+!!! Warning
+The `ignore` resolver can cause data loss and cluster divergence. Run [LiveCompare](/livecompare/latest/) against the whole cluster after completing the upgrade to detect and fix any divergence.
+!!!
+
+### Removing columns
+
+When one node runs DDL that drops a column, nodes that haven't yet received the DDL still send data for it. PGD raises a `source_column_missing` conflict.
+
+The default resolver for this conflict type is `use_default_value`. It fills the missing value with the column's default or `NULL` and lets replication continue.
+
+No action is required as long as the column accepts `NULL` or has a default value. If the column has a `NOT NULL` constraint and no default value, replication halts. Remove the `NOT NULL` constraint or add a default value on all nodes before dropping the column:
+
+```sql
+-- Option 1: remove the NOT NULL constraint
+ALTER TABLE <table_name> ALTER COLUMN <column_name> DROP NOT NULL;
+
+-- Option 2: add a default value
+ALTER TABLE <table_name> ALTER COLUMN <column_name> SET DEFAULT <default_value>;
+```
+
+### Changing column types
+
+When one node runs DDL that changes a column type, nodes that haven't yet received the DDL still send data in the old type.
+
+If the types are binary-compatible, PGD handles the change as a metadata update without rewriting the underlying table and replication continues. No action is required.
+
+If the type change requires a table rewrite, it can't be performed as a rolling application schema upgrade. Fall back to a full-downtime upgrade instead.
+
+## Performing a rolling application schema upgrade
+
+Procedure for actually performing the upgrade, covering: 
+
+- Applying the DDL change on one node at a time
+- Verifying replication between each step
+- Cleaning up resolver settings afterward
+
+## Using transform triggers to bridge schema differences
+
+Use transform triggers to reshape incoming rows on the target node before they're applied. For more complex schema changes that require data to be reshaped rather than simply discarded or filled with a default value, transform triggers are the appropriate tool. Examples include splitting a single column into two, or computing a derived value for a newly added column. See [Stream triggers](/pgd/current/stream-triggers/) for syntax, examples, and execution order.
+
+!!! Warning
+Any DML a transform trigger runs isn't replicated to other nodes and doesn't fire local triggers, making it easy to introduce silent data inconsistencies. Ask your application team to write and test the trigger logic before deploying it on the cluster, and remove the trigger once all nodes have completed the upgrade.
+!!!
