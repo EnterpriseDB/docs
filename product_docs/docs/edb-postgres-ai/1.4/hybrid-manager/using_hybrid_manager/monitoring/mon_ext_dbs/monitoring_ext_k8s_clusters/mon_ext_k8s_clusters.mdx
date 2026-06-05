@@ -129,16 +129,21 @@ Key points:
 
 ## Deploying the external cluster with monitoring extensions
 
-The EDB Postgres AI agent collects query and wait-state metrics from extensions that must be present in the monitored cluster. Deploy your external cluster with the following `bootstrap.initdb.postInitApplicationSQL` commands and `postgresql` settings so the monitoring extensions are created and preloaded when the cluster is initialized.
+The EDB Postgres AI agent collects query and wait-state metrics from extensions that must be present in the monitored cluster. Deploy your external cluster with the following `bootstrap.initdb.postInitApplicationSQL` commands in your database (`${PG_DATABASE}`) and `postgresql` settings so the monitoring extensions are created and preloaded when the cluster is initialized.
 
 !!!note
 
-The init SQL runs only on first initialization (`postInitApplicationSQL`). Apply it when you create the cluster. For an existing cluster, create the schema, grants, and extensions manually and add the libraries to `shared_preload_libraries` (which requires a restart).
+Because the manifest doesn't set `bootstrap.initdb.owner`, CNPG defaults the owner to the database name. As a result, CNPG creates an unprivileged Postgres role (user) with the exact same name as the target database (`${PG_DATABASE}`) and makes it the owner of that database. The grants in the init SQL reference this role by the `${PG_DATABASE}` name.
+!!!
+
+!!!note
+
+The init SQL runs only on first initialization (`postInitApplicationSQL`). Apply it when you create the cluster. For an existing cluster, create the schema, grants, and extensions manually in the database and add the libraries to `shared_preload_libraries` (which requires a restart).
 !!!
 
 The init SQL:
 
--   Creates the `edb_internals` schema and grants `USAGE` on it to `edb_admin` and `pg_monitor`.
+-   Creates the `edb_internals` schema in `${PG_DATABASE}` and grants `USAGE` on it to the database owner role (`${PG_DATABASE}`, which CNPG creates with the same name as the database) and `pg_monitor`.
 -   Creates the `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions in that schema.
 -   Sets the database `search_path` and `timezone`.
 
@@ -169,16 +174,16 @@ spec:
         barmanObjectName: ${PG_CLUSTER_NAME}-bck
   bootstrap:
     initdb:
-      database: edb_admin
+      database: ${PG_DATABASE}
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS edb_internals
-        - GRANT USAGE ON SCHEMA edb_internals TO edb_admin
+        - GRANT USAGE ON SCHEMA edb_internals TO ${PG_DATABASE}
         - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
         - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
         - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
         - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
-        - ALTER DATABASE edb_admin SET search_path TO "\$user", public, edb_internals
-        - ALTER DATABASE edb_admin SET timezone TO 'UTC'
+        - ALTER DATABASE ${PG_DATABASE} SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET timezone TO 'UTC'
   imageName: ${PG_IMAGE}
   postgresql:
     parameters:
@@ -199,7 +204,7 @@ spec:
 
 ### EDB Postgres AI for CloudNativePG (enterprise operator)
 
-The enterprise manifest uses the EDB operator API, adds an `imagePullSecrets` entry for the EDB registry, and additionally grants `USAGE` on the `public` schema to `edb_admin` and `pg_monitor`.
+The enterprise manifest uses the EDB operator API, adds an `imagePullSecrets` entry for the EDB registry, and additionally grants `USAGE` on the `public` schema to the database owner role (`${PG_DATABASE}`) and `pg_monitor`.
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -219,18 +224,18 @@ spec:
         barmanObjectName: ${PG_CLUSTER_NAME}-bck
   bootstrap:
     initdb:
-      database: edb_admin
+      database: ${PG_DATABASE}
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS edb_internals
-        - GRANT USAGE ON SCHEMA edb_internals TO edb_admin
+        - GRANT USAGE ON SCHEMA edb_internals TO ${PG_DATABASE}
         - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
-        - GRANT USAGE ON SCHEMA public TO edb_admin
+        - GRANT USAGE ON SCHEMA public TO ${PG_DATABASE}
         - GRANT USAGE ON SCHEMA public TO pg_monitor
         - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
         - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
         - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
-        - ALTER DATABASE edb_admin SET search_path TO "\$user", public, edb_internals
-        - ALTER DATABASE edb_admin SET timezone TO 'UTC'
+        - ALTER DATABASE ${PG_DATABASE} SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET timezone TO 'UTC'
   imagePullSecrets:
   - name: edb-pull-secret
   imageName: ${PG_IMAGE}
