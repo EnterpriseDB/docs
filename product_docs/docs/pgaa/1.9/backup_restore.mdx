@@ -1,100 +1,123 @@
 ---
-title: Backup and restore
-navTitle: Backup and restore
+title: Backing up and restoring
+navTitle: Backing up and restoring
 description: How to back up and restore Postgres Analytics Accelerator (PGAA) deployments, including Postgres Distributed (PGD) clusters that use tiered storage.
+deepToC: true
 ---
 
-Postgres Analytics Accelerator (PGAA) doesn't introduce a new backup mechanism. Its catalog tables are ordinary Postgres heap tables. A standard physical backup of the data directory captures them like any other relation. Iceberg, Delta, and Parquet data live in object storage, and a Postgres restore doesn't touch those files.
+Use [Barman](https://www.enterprisedb.com/docs/supported-open-source/barman/) to back up your analytical tables. Barman performs a physical backup of the Postgres node where the PGAA extension is installed. What gets backed up depends on the type of tables in your deployment.
 
-We recommend [Barman](https://www.enterprisedb.com/docs/supported-open-source/barman/) as the backup tool for PGAA deployments. Barman's `backup_method = postgres` runs `pg_basebackup` under the hood and adds catalog management, retention policies, WAL archiving, and the `barman recover` workflow that handles `max_worker_processes` adjustments automatically. The procedures on this page apply equally to a manual `pg_basebackup` and to `barman backup` / `barman recover`.
+## Understanding the scope of physical backups
 
-## What's captured by a Postgres backup
+PGAA tables fall into different categories depending on your deployment:
 
-A standard Postgres physical backup — whether taken with `barman backup` or with `pg_basebackup` directly — captures the following:
+- **Analytical tables**: tables using the PGAA access method that point entirely to data in object storage. Available in both standalone Postgres and Postgres Distributed (PGD) deployments.
+- **Tiered tables** (PGD only): partition-based tables with hot partitions in the local Postgres heap (also replicated to object storage when `replicate_to_analytics` is enabled) and cold partitions offloaded to object storage.
+- **HTAP tables** (PGD only): tables with a full copy in the Postgres heap and a full copy in object storage.
+- **Internal metadata tables**: PGAA's own system tables (such as `pgaa.table_mapping` and `pgaa.catalog`) stored as regular heap tables in the data directory. Available in all deployments.
 
-- All PGAA catalog tables in the data directory (`pgaa.table_mapping`, `pgaa.tiered_table`, `pgaa.catalog`, `pgaa.background_task`, and `pgaa.lakehouse_table_stats_cache`).
-- The relation files for any local heap or partition that PGAA hasn't converted to analytics storage.
-- Per-partition access method assignments for tiered tables.
+A standard Postgres physical backup captures:
 
-A backup doesn't capture the following:
+- Analytical table definitions as metadata pointers to object storage, not the underlying data itself.
+- Heap data from tiered table hot partitions and HTAP tables stored in the local data directory, backed up in full.
+- PGAA's internal metadata tables (such as `pgaa.table_mapping` and `pgaa.catalog`).
+
+A backup doesn't capture:
 
 - Iceberg, Delta, or Parquet files in object storage.
 - Iceberg REST catalog entries, such as those held by Lakekeeper.
 
+For example, for a PGD tiered table, Barman backs up the hot data entirely but backs up only pointers to the cold data, not the cold data itself.
+
 For full disaster-recovery coverage, snapshot your object store and catalog service alongside Postgres backups.
 
-### Example: Barman backup of a PGAA node
+## Backing up
 
-A typical Barman server entry for a PGAA-enabled PGD node looks like this in `/etc/barman.d/<node>.conf`:
+Configure Barman with `backup_method = postgres`, which runs `pg_basebackup` and adds catalog management, retention policies, WAL archiving, and the `barman recover` workflow that handles `max_worker_processes` adjustments automatically.
 
-```ini
-[pgd1]
-description = "PGD node pgd1 with PGAA"
-conninfo = host=pgd1 user=barman dbname=pgdtest
-streaming_conninfo = host=pgd1 user=streaming_barman
-backup_method = postgres
-streaming_archiver = on
-slot_name = barman
-create_slot = auto
-```
+See the [Barman documentation](https://www.enterprisedb.com/docs/supported-open-source/barman/) for the full server-side setup, including the `barman` and `streaming_barman` Postgres roles and replication slot.
 
-Take a backup and confirm it's recorded in the catalog:
+### Backing up a single node
+
+For a standalone Postgres node with PGAA, backups capture only metadata and pointers to object storage. All PGAA table data lives in object storage and is never replicated from Postgres, so there's no hot data to consider.
+
+1. Add a server entry for your PGAA-enabled Postgres node in `/etc/barman.d/<node>.conf`:
+
+   ```ini
+   [pgaa1]
+   description = "PGAA-enabled Postgres node"
+   conninfo = host=pgaa1 user=barman dbname=mydb
+   streaming_conninfo = host=pgaa1 user=streaming_barman
+   backup_method = postgres
+   streaming_archiver = on
+   slot_name = barman
+   create_slot = auto
+   ```
+
+2. Take a backup and confirm it's recorded in the catalog:
+
+   ```shell
+   barman backup pgaa1
+   barman list-backups pgaa1
+   ```
+
+### Backing up a PGD cluster
+
+In a PGD environment, add a separate server entry for each node in the cluster.
+
+1. Add a server entry for each PGD node in `/etc/barman.d/<node>.conf`:
+
+   ```ini
+   [pgd1]
+   description = "PGD node pgd1 with PGAA"
+   conninfo = host=pgd1 user=barman dbname=pgdtest
+   streaming_conninfo = host=pgd1 user=streaming_barman
+   backup_method = postgres
+   streaming_archiver = on
+   slot_name = barman
+   create_slot = auto
+   ```
+
+2. Take a backup and confirm it's recorded in the catalog:
+
+   ```shell
+   barman backup pgd1
+   barman list-backups pgd1
+   ```
+
+3. Repeat for each node in the cluster.
+
+!!! Note
+PGAA's catalog tables aren't part of Bi-Directional Replication (BDR)'s logical replication stream. Each node holds its own copy. At runtime, consistency is maintained through BDR's global DDL lock and PGAA's `object_access_hook`, which fires on every node. Backups, however, capture each node's physical copy independently. A single-node backup captures only that node's view of the catalog. For a full PGD cluster restore, you need backups from all nodes.
+!!!
+
+## Restoring
+
+Use `barman recover` to restore your PGAA tables. The restore procedure depends on your deployment: a standalone Postgres node, a single PGD node restored in isolation, or a full PGD cluster.
+
+### Restoring a standalone Postgres node
+
+Restore the node using `barman recover`:
 
 ```shell
-barman backup pgd1
-barman list-backups pgd1
+barman recover pgaa1 <backup-id> /var/lib/edb-pge/18/data
 ```
 
-Repeat for each PGD node. See the [Barman documentation](https://www.enterprisedb.com/docs/supported-open-source/barman/) for the full server-side setup, including the `barman` and `streaming_barman` Postgres roles and replication slot.
+PGAA tables are immediately queryable after restore. All PGAA table data lives in object storage, so the restore captures only metadata and pointers.
 
-## Supported restore scenarios
+### Restoring a single PGD node in isolation
 
-PGAA supports the following restore paths:
-
-- **Full 3-node physical restore of a Postgres Distributed (PGD) cluster.** When you back up and restore all 3 nodes together, PGAA catalog state is consistent across the restored nodes and post-restore writes replicate normally. See [Restoring a 3-node PGD cluster](#restoring-a-3-node-pgd-cluster).
-- **Restore after `convert_to_analytics`.** The local heap is empty by design after a convert. The `pgaa.table_mapping` row survives in the backup, so analytics queries continue to return all rows of the converted table.
-- **Standalone single-node restore.** The restore preserves PGAA catalog tables and per-partition access methods. Analytics queries continue to work because Seafowl reads credentials from `pgaa.catalog`. See [Standalone single-node restore](#standalone-single-node-restore).
-
-Point-in-time recovery (PITR) targets that fall between a pre-`convert_to_analytics` snapshot and the convert commit leave the deployment partially recovered. See [Known limitation with PITR around `convert_to_analytics`](#known-limitation-with-pitr-around-convert_to_analytics).
-
-## Restoring a 3-node PGD cluster
-
-A PGD cluster restore that includes PGAA follows the standard PGD procedure. PGAA itself doesn't add restore steps. The PGAA-relevant points to be aware of:
-
-- **Take a coordinated backup of all 3 nodes.** PGAA catalog tables aren't replicated through Bi-Directional Replication (BDR); each node carries its own physical copy. Cluster-wide consistency requires a backup from every node, not just one. With Barman, configure a server entry per PGD node and run `barman backup <node>` against each one. See [Why PGAA catalog tables aren't replicated through BDR](#why-pgaa-catalog-tables-arent-replicated-through-bdr).
-- **Follow the PGD restore procedure for the cluster itself.** Restoring the data directories (typically `barman recover --target-time ... <server> <backup-id> /var/lib/postgresql/...`), recreating logical replication slots, setting `max_worker_processes` to match the cluster runtime value, and rejoining nodes are PGD-side steps. `barman recover` adjusts `max_worker_processes` automatically based on the source's runtime value at backup time; manual `pg_basebackup` restores must set it explicitly before starting Postgres. See [Backup and recovery](/pgd/latest/backup-restore/) in the PGD documentation.
-- **Verify PGAA catalog state across nodes after restore.** Run this query on each restored node and compare the results:
-
-  ```sql
-  SELECT count(*), md5(string_agg(t::text, ',' ORDER BY t::text))
-  FROM pgaa.table_mapping t;
-  ```
-
-  The row count and digest must be identical across all nodes.
-- **Seafowl resumes automatically.** When `pgaa.autostart_seafowl` is on, the Seafowl background worker is registered with `BgWorkerStartTime::RecoveryFinished` and auto-restarts on failure, so it starts again after recovery completes. No SQL action is required. If you manage Seafowl externally (for example, through systemd in a WarehousePG deployment), restart Seafowl yourself after the cluster is healthy.
-
-### Why PGAA catalog tables aren't replicated through BDR
-
-PGAA's catalog tables — `pgaa.table_mapping`, `pgaa.tiered_table`, `pgaa.catalog`, `pgaa.background_task`, and `pgaa.lakehouse_table_stats_cache` — have `set_name = NULL` in `bdr.tables`. They aren't in any logical replication set. Instead, they stay consistent at runtime through two mechanisms:
-
-- DDL that modifies these tables runs under BDR's global DDL lock.
-- PGAA's `object_access_hook` fires on every node, applying the same change locally.
-
-Because the tables aren't on the logical replication stream, a single-node backup only captures one node's view. Restoring a single node from one backup is a valid recovery path for inspection (see [Standalone single-node restore](#standalone-single-node-restore)), but a PGD cluster restore needs all 3 node backups.
-
-## Standalone single-node restore
-
-A single-node restore is supported when BDR isn't reconnected — useful for inspecting catalog state, recovering a development environment, or staging a debug instance from a production backup. The restore source can be either a Barman backup or a raw `pg_basebackup`:
+Restore a single PGD node without reconnecting it to the cluster. This procedure is useful for inspecting catalog state, recovering a development environment, or creating an isolated environment from a production backup.
 
 ```shell
 barman recover pgd1 <backup-id> /var/lib/edb-pge/18/data
 ```
 
-PGAA catalog tables and per-partition access methods survive intact, and analytics queries work because Seafowl reads credentials from `pgaa.catalog`.
+The restore preserves PGAA catalog tables and per-partition access methods. Analytics queries remain accessible after restore, as the restore captures all the metadata needed to connect to object storage.
 
-When the restored node starts in isolation, expect BDR consensus errors in the log. The restored data directory still contains DSNs for the original peers, and BDR can't reach them. This is harmless for inspection: Postgres serves queries normally and PGAA reads its catalog locally.
+The restored node logs BDR consensus errors on startup, as it still references the original cluster peers but can't connect to them. These errors don't affect query serving. Postgres continues to answer queries normally and PGAA reads its catalog from the local data directory.
 
-The `pgaa.list_analytics_tables()` helper calls BDR functions and errors when no peers are configured. To inspect mappings without BDR, query the catalog tables directly:
+To list your analytical tables in this scenario, query the catalog tables directly, as `pgaa.list_analytics_tables()` relies on BDR and isn't available when restoring a PGD node in isolation.
 
 ```sql
 SELECT * FROM pgaa.table_mapping;
@@ -102,29 +125,24 @@ SELECT * FROM pgaa.tiered_table;
 SELECT * FROM pgaa.catalog;
 ```
 
-For details, see [`pgaa.list_analytics_tables()`](reference/functions#pgaalist_analytics_tables).
+### Restoring a PGD cluster
 
-## Known limitation with PITR around `convert_to_analytics`
+Follow the [physical restore procedure](/pgd/latest/backup-restore/) for PGD clusters. This procedure assumes you have a coordinated backup from all nodes in the cluster. See [Backing up a PGD cluster](#backing-up-a-pgd-cluster) for details. When you restore all nodes together, PGAA catalog state is consistent across the restored nodes and post-restore writes replicate normally. Keep the following PGAA-specific points in mind:
 
-Point-in-time recovery is typically driven through Barman with `--target-time`:
+- On manual restores, set `max_worker_processes` before starting Postgres. `barman recover` handles this adjustment automatically. See [Backup and recovery](/pgd/latest/backup-restore/) in the PGD documentation for details.
+- Verify PGAA catalog state across nodes after restore by running this query on each node and confirming the results are identical:
 
-```shell
-barman recover --target-time "2026-04-15 14:30:00" pgd1 <backup-id> /var/lib/edb-pge/18/data
-```
+  ```sql
+  SELECT count(*), md5(string_agg(t::text, ',' ORDER BY t::text))
+  FROM pgaa.table_mapping t;
+  ```
+- If `pgaa.autostart_seafowl` is on, Seafowl starts automatically after recovery completes with no action required.
 
-A target time between a pre-`convert_to_analytics` snapshot and the convert commit leaves the deployment partially recovered.
+#### Performing a PITR restore after offloading tables
 
-Postgres rolls back the following:
+When performing [point-in-time recovery (PITR)](/pgd/latest/backup-restore/) using Barman's `--target-time` option, a target time that falls during a `pgaa.convert_to_analytics()` operation can leave the deployment in a partially recovered state.
 
-- The `pgaa.table_mapping` insert that registered the analytical copy.
-- The heap truncate that `convert_to_analytics` performs after a successful copy.
-
-Postgres can't roll back the following:
-
-- The Iceberg data files written to object storage.
-- The Iceberg REST catalog entry, such as the one held by Lakekeeper.
-
-The result: the heap table holds its original rows, but the Iceberg data and catalog entry remain as orphans. Re-inserting the `pgaa.table_mapping` row by hand doesn't help. The `pg_class.relam` value is back to `heap`, so the mapping no longer matches the relation's access method.
+Offloading a table to object storage with `pgaa.convert_to_analytics()` removes the table's local heap copy and creates Iceberg data files and a REST catalog entry in object storage. During recovery, Postgres rolls back the `pgaa.table_mapping` insert and the heap truncate, but can't roll back the Iceberg data files and REST catalog entry already written to object storage. The heap table holds its original rows while the Iceberg data and catalog entry remain as orphans.
 
 To clean up the orphaned Iceberg data and catalog entry:
 
@@ -132,4 +150,4 @@ To clean up the orphaned Iceberg data and catalog entry:
 2. Delete the Iceberg data files at that path.
 3. Drop the orphaned table from the Iceberg REST catalog.
 
-For the `convert_to_analytics` flow, see [Replicating with PGD](pgd).
+For the `pgaa.convert_to_analytics()` flow, see [Replicating with PGD](pgd).
