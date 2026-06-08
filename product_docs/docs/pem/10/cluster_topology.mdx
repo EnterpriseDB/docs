@@ -1,0 +1,234 @@
+---
+title: "Cluster topology"
+---
+
+Cluster topology provides a visual representation of your PostgreSQL replication clusters. It automatically discovers which database servers are connected through streaming replication and displays them in an interactive diagram showing:
+
+- Primary servers — The source of replication.
+- Replica servers — Servers receiving replicated data.
+- Replication relationships — Which servers replicate from which.
+- Sync states — Whether replication is synchronous or asynchronous.
+- Cascading replication — Replicas that replicate from other replicas.
+- PGD/BDR clusters — Mesh replication where all nodes replicate to all others.
+- Witness nodes — Non-data nodes used for consensus in high availability (HA) setups.
+
+## How topology discovery works
+
+PEM discovers replication topology using dedicated probes that collect data from your PostgreSQL servers. The probes gather raw replication data, which is then processed by a correlation function to build the cluster topology.
+
+!!! Note
+The topology view is updated when you click **Refresh**, which triggers the correlation function to process the latest probe data and update the cluster information.
+!!!
+
+### Required probes
+
+For the topology feature to work correctly, enable the following probes on your monitored servers:
+
+| Probe name | Required for | Description |
+|---|---|---|
+| Streaming Replication | All cluster types | Collects replication data from `pg_stat_replication` (on primary) and `pg_stat_wal_receiver` (on standbys). Required for all topology discovery. |
+| PGD Group Summary | PGD clusters | Collects PGD group-level information. |
+| PGD Node Summary | PGD clusters | Collects PGD node information including node names, subgroups, and write leader status. |
+
+These probes are enabled by default on new server registrations. If topology data isn't appearing, verify that these probes are enabled in **Management > Probe Configuration**.
+
+### Cluster type detection
+
+PEM automatically detects the cluster type based on server configuration:
+
+| Cluster type | How it's detected |
+|---|---|
+| Physical Streaming Replication (PSR) | Default for servers with streaming replication and no HA manager configured. |
+| PGD | Servers with the BDR extension installed (detected via PGD probes). |
+| Patroni | Servers with **Patroni Cluster Name** configured in server properties. |
+| EDB Failover Manager (EFM) | Servers with **EFM Cluster Name** configured in server properties. |
+
+To enable Patroni or EFM cluster detection, configure the respective cluster name in the server's properties when registering or editing the server in PEM.
+
+## Accessing the topology view
+
+1. Log in to PEM.
+2. Navigate to **PEM > Topology** or go to `/pem/topology` directly.
+3. Select a cluster from the left sidebar.
+4. View the interactive topology diagram.
+
+### Required permissions
+
+To view cluster topology, users need the `pem_topology_view` role. Contact your PEM administrator to grant this permission.
+
+## Understanding the topology display
+
+### Cluster list (left sidebar)
+
+The sidebar shows all discovered replication clusters:
+
+| Element | Description |
+|---|---|
+| Cluster name | Auto-generated or primary server description. |
+| Type badge | PSR, Patroni, EFM, or PGD. |
+| Member count | Number of servers in the cluster. |
+
+### Supported cluster types
+
+| Type | Description |
+|---|---|
+| PSR | Physical Streaming Replication (standard PostgreSQL). |
+| Patroni | Patroni-managed HA clusters. |
+| EFM | EDB Failover Manager clusters. |
+| PGD | Postgres Distributed (BDR) with mesh replication. |
+
+### Topology graph (main panel)
+
+The interactive diagram shows nodes and the connections between them.
+
+**Node types**
+
+| Node color | Description |
+|---|---|
+| Green border | Primary — The source server providing replication. |
+| Blue border | Replica — Server receiving replicated data. |
+| Purple border | Data node — PGD data node that accepts reads and writes. |
+| Orange border | Witness — Non-data node for HA consensus. |
+| Gray border | Unknown — Unregistered replica (shows IP address). |
+
+Each node displays the server name or description, hostname and port, a role badge (Primary/Replica), and a sync state badge for replicas.
+
+**Connection lines**
+
+| Line style | Meaning |
+|---|---|
+| Solid line | Synchronous replication. |
+| Dashed line | Asynchronous replication. |
+
+The legend in the bottom-right corner of the diagram explains the color coding.
+
+## Interactive SVG view
+
+The topology visualization uses an interactive scalable vector graphics (SVG) view with the following features.
+
+### Pan and zoom
+
+- **Zoom in/out** — Use your mouse scroll wheel.
+- **Pan** — Click and drag anywhere on the canvas.
+- **Zoom controls** — Use the **+** and **−** buttons in the bottom-right corner. The **Fit to screen** button resets the view to fit all nodes in the viewport.
+
+### Fullscreen mode
+
+Click the **Fullscreen** button in the header to expand the view. This is useful for presenting topology to team members, viewing large clusters, or taking screenshots for documentation. Press **Escape** or click the button again to exit.
+
+### SVG export
+
+Click the **Download** button in the header to export the current topology view as an SVG file. The downloaded file preserves all node positions and styling, can be opened in any web browser or image editor, and includes the cluster name in the filename.
+
+### Node card details
+
+Each server is displayed as a card with the following information:
+
+- **Icon** — Storage icon for registered servers, help icon for unregistered servers.
+- **Server name** — The server description or hostname.
+- **Role badge** — `P` (Primary), `R` (Replica), `D` (Data Node for PGD), `W` (Write Leader or Witness), `?` (Unknown).
+- **Hostname:Port** — The server's connection information.
+- **Tags** — Server tags such as "Write Leader" and "Raft_Leader" displayed as pill-shaped badges.
+- **Status** — "Not Registered" indicator for servers not in PEM.
+
+### Renderer preference
+
+PEM offers two rendering modes. Switch between them in **Preferences > Cluster Topology > Renderer**:
+
+| Renderer | Description |
+|---|---|
+| SVG (default) | Interactive SVG view with pan/zoom and smooth tooltips. |
+| HTML | Classic HTML/CSS rendering without pan/zoom. |
+
+The SVG renderer is recommended for most users.
+
+## PGD/BDR clusters
+
+Postgres Distributed (PGD), also known as BDR (Bi-Directional Replication), is a multimaster replication solution where all nodes can accept writes. Unlike traditional primary-replica setups, PGD uses mesh replication where every node replicates to every other node.
+
+### Polygon and force graph layouts
+
+**Polygon layout (1–8 nodes)**
+
+For PGD clusters with 1–8 data nodes, PEM uses a polygon mesh layout — a single centered card for 1 node, a horizontal pair for 2, and polygon formations (triangle, square, pentagon, and so on) for 3–8 nodes. Dashed lines connect all nodes to visualize the mesh replication topology.
+
+**Force graph layout (9+ nodes)**
+
+For larger PGD clusters with 9 or more data nodes, PEM switches to a force graph layout. Nodes are displayed as colored circles with numbered labels. Hover over a node to see full details in a tooltip. Write leaders are highlighted with an outer ring, and sparse mesh lines show connectivity without visual clutter.
+
+### Subgroups
+
+PGD clusters can organize nodes into subgroups (also called locations), typically representing geographic data centers or availability zones. When a PGD cluster has multiple subgroups, PEM displays them as separate bordered cards with intersubgroup dashed lines connecting the subgroup centers. For 3 or more subgroups, cards are arranged in a circle.
+
+If all nodes belong to the same subgroup or no subgroup is defined, PEM displays the nodes directly using the standard polygon or force graph layout.
+
+## Working with unregistered replicas
+
+When PEM discovers a replica that isn't registered as a PEM-monitored server, it appears as an "Unknown" node showing the IP address. This happens when the replica server hasn't been added to PEM, or when the replica's IP address doesn't match any registered server's `server` or `hostaddr` field.
+
+To resolve this, either register the replica server in PEM, or add a manual IP mapping to `pem.server_ip_mapping` if the server uses a different IP for replication.
+
+## Refreshing topology data
+
+The Streaming Replication probe runs every 5 minutes by default, collecting the latest replication data from your servers. This raw data needs to be processed by the correlation function to update the topology view.
+
+Click **Refresh** in the topology view header to trigger the correlation function, update the cluster list with any new or changed clusters, and refresh the current topology graph. Always click **Refresh** after making changes to your replication setup — such as adding replicas or performing failovers — to see the updated topology.
+
+## Troubleshooting
+
+**No clusters appear**
+
+Possible causes:
+
+- The topology probe hasn't run yet — wait 5 minutes or trigger a manual refresh.
+- No streaming replication is configured on monitored servers.
+- The `replication_topology_discovery` probe is disabled.
+
+Check that the probe is enabled in **Probe Configuration**, verify that `pg_stat_replication` returns data on your primary servers, and then manually trigger a refresh.
+
+**Server shows as "Unknown"**
+
+The replica's IP address doesn't match any registered server. Register the server in PEM, or ensure the server's `server` or `hostaddr` field matches the IP seen in replication. You can also add an entry to `pem.server_ip_mapping`.
+
+**Topology graph is empty**
+
+Possible causes:
+
+- The selected cluster has no active members.
+- All members have become inactive (not seen for 15 or more minutes).
+
+Check that the servers are running and agents are connected, then verify the probe is collecting data:
+
+```sql
+SELECT * FROM pemdata.replication_topology_discovery;
+```
+
+**PGD cluster not detected**
+
+The `bdr_node_summary` probe isn't collecting data. Verify the probe is enabled for the PGD servers, check that the server has BDR installed and configured, and query the probe data:
+
+```sql
+SELECT * FROM pemdata.bdr_node_summary WHERE server_id = <id>;
+```
+
+**PGD node shows as "Unregistered"**
+
+The BDR node name doesn't match any registered server's description or hostname. Check the node name in `bdr_node_summary`:
+
+```sql
+SELECT node_name FROM pemdata.bdr_node_summary;
+```
+
+Then update the server description to match the node name exactly, or register a new server with the correct node name as the description.
+
+## Best practices
+
+- **Register all servers** — For the most accurate topology view, register all servers including replicas. Unregistered nodes show with a help icon and "Not Registered" status.
+- **Use consistent naming** — Give servers meaningful descriptions so the topology diagram is easy to understand.
+- **For PGD clusters** — Set server descriptions to match BDR node names exactly for proper node matching.
+- **Monitor probe status** — Ensure the `replication_topology_discovery` probe is enabled and running.
+- **Check after failovers** — After a planned or unplanned failover, refresh the topology to verify the new configuration.
+- **Use SVG export for documentation** — Export the topology as SVG for including in architecture documentation or presentations.
+- **Use fullscreen for large clusters** — For clusters with many nodes, fullscreen mode provides a better overview.
+- **Zoom for details** — Use the zoom controls to examine individual node details or get a bird's-eye view of the entire cluster.
+- **Check node tooltips** — In force graph layouts, hover over nodes to see detailed information including hostname, port, role, and tags.
