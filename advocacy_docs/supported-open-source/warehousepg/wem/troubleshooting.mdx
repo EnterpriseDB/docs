@@ -135,6 +135,52 @@ If WEM is unable to reach the WarehousePG cluster from the portal:
     PGHOST=localhost PGUSER=gpadmin psql -d postgres -c "SELECT current_database();"
     ```
 
+## Service identity and PXF issues
+
+### Error: `gpadmin` OS user not found during install
+
+When installing the WEM package, the install fails with:
+
+```
+ERROR: gpadmin OS user not found
+```
+
+**Cause:** The WEM host doesn't have a `gpadmin` OS user. WEM requires a `gpadmin` OS user. On WHPG hosts it already exists, but on standalone WEM hosts it must be created manually.
+
+**Solution:** Create the `gpadmin` user, then re-run the install:
+
+```bash
+sudo useradd -r -m -d /home/gpadmin -s /bin/bash gpadmin
+```
+
+### Issue: WEM service stays in `activating (auto-restart)` after upgrade
+
+Running `systemctl status wem` shows `activating (auto-restart)` and the log shows `wem refuses to start as root`.
+
+**Cause:** A custom service configuration override sets `User=root` or clears the user setting.
+
+**Solution:** Remove any custom configuration files in `/etc/systemd/system/wem.service.d/` that set `User=root`, then reload the service configuration:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart wem
+```
+
+Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf` to acknowledge running as `root`.
+
+### Issue: Start PXF and Stop PXF buttons fail with `Operation not permitted`
+
+The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return `Operation not permitted`.
+
+**Cause:** The WEM service configuration is missing or out of date for the active `PXF_BASE`. The issue commonly occurs after installing PXF on a host that already has WEM, or after running `pxf cluster prepare -b`.
+
+**Solution:** Run `wem configure-pxf-sandbox` to detect the active `PXF_BASE` and update the WEM service configuration, then restart the service to apply the change:
+
+```bash
+sudo wem configure-pxf-sandbox
+sudo systemctl restart wem
+```
+
 ## Authentication and access issues
 
 ### Message: "Session expired"
