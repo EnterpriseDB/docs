@@ -1,0 +1,118 @@
+---
+title: Deploying flows
+navTitle: Deploying flows
+description: Deploy a published bundle as a managed workload in a Hybrid Manager project, with its own parameter values, resource limits, and endpoints.
+deepToC: true
+---
+
+Deploying turns a [published bundle](publishing-bundles) into a running Langflow runtime hosted in a Hybrid Manager (HM) project. Each deployment is an independent workload with its own parameter values, resource configuration, and endpoints.
+
+## Where to start
+
+Navigate to **Asset Library > Published Flows**. In the row for the bundle you want to deploy, select the **Deploy** icon. The Deploy dialog opens.
+
+
+The Published Flows list displays all bundles available to you. Each row shows the bundle name, version, and a set of inline action icons on the right. The **Deploy** icon (rocket or arrow icon) is the rightmost action. Hover over it to confirm the tooltip reads **Deploy**, then select it to open the four-step Deploy dialog.
+
+A user can also reach the equivalent deploy action by browsing **Estate > Flows** and selecting **+ Add Flow**, then choosing the bundle to deploy from there.
+
+## Deploy dialog
+
+The dialog has four steps.
+
+### Step 1: Configure
+
+| Field                     | Required | Notes                                                                                                                                                 |
+|---------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Display Name**          | Yes      | Up to 63 characters. Used as the deployed flow's name in the Estate UI and in Kubernetes resource names.                                              |
+| **Project**               | Yes      | A single project. The drop-down lists only projects where you have permission to create deployed flows. A deployed flow lives in exactly one project. |
+| **Network Access Type**   | Yes      | Public or private. Determines whether the HM gateway routes for the flow are reachable from outside the HM network.                                   |
+| **Runtime Configuration** | Yes      | Settings that apply to the Langflow runtime itself, separate from your flow's parameters (for example, service-level configuration).                  |
+
+
+Fill in the four fields in order:
+
+1. In **Display Name**, enter a name for this deployment — for example, `my-rag-flow-prod`. The name must be unique within the project and is used as the label in **Estate > Flows** and as the basis for Kubernetes resource names. Maximum 63 characters.
+1. In **Project**, select the HM project to deploy into. Only projects where you have permission to create deployed flows appear in the list. A deployment belongs to exactly one project and cannot be moved after creation.
+1. In **Network Access Type**, select **Public** if the flow's HTTP and MCP endpoints should be reachable from outside the HM network, or **Private** to restrict access to within the cluster.
+1. In **Runtime Configuration**, set any service-level settings for the Langflow runtime container — these are separate from your flow's own parameters.
+
+Select **Next** to proceed to step 2.
+
+### Step 2: Credentials
+
+Every credential parameter in the bundle (any parameter whose Langflow input type is `SecretStrInput`) is listed here. Each must be set before the deployment can proceed.
+
+Credential values are stored as a Kubernetes Secret in the deployment's namespace and mounted as environment variables into the runtime container. They are not visible after deployment. The Estate UI redacts them.
+
+Non-credential parameters that were given defaults at publish time inherit those defaults, but can be overridden here.
+
+
+The Credentials form lists every credential parameter extracted from the bundle — these are the Langflow Global Variables whose input type is `SecretStrInput`, such as database passwords, API keys, or access tokens that the flow uses to reach downstream resources. Each credential is shown as a required field with no pre-filled value.
+
+For each credential listed:
+
+1. Locate the field by its parameter name — this matches the Langflow Global Variable name used in the flow (for example, `DB_PASSWORD` or `HM_ACCESS_KEY`).
+1. Enter the production value for that credential. Values are masked as you type.
+1. Repeat for every credential in the list. All credentials must be filled before you can proceed — the **Next** button remains disabled until every required field has a value.
+
+Non-credential parameters that had defaults set at publish time appear below the credentials section with their defaults pre-filled. You can override them here if the production environment requires different values.
+
+Select **Next** to proceed to step 3.
+
+### Step 3: Task Configuration
+
+Set the deployment's resource constraints. The fields surface a subset of the underlying Kubernetes resource model:
+
+| Setting                    | Default                   | Range        |
+|----------------------------|---------------------------|--------------|
+| **Replicas**               | 1                         | 1–5          |
+| **CPU request / limit**    | 500m request, 1000m limit | Configurable |
+| **Memory request / limit** | 512Mi request, 1Gi limit  | Configurable |
+
+
+Configure the compute resources for the deployment:
+
+1. In **Replicas**, set the number of runtime pod instances to run in parallel. The default is `1`. Increase this for production workloads that need higher availability or throughput. The maximum is `5`.
+1. In **CPU request**, set the guaranteed CPU allocation per pod (for example, `500m` for half a core). In **CPU limit**, set the maximum CPU a pod may use (for example, `1000m` for one core). The limit must be greater than or equal to the request.
+1. In **Memory request**, set the guaranteed memory per pod (for example, `512Mi`). In **Memory limit**, set the ceiling (for example, `1Gi`). As with CPU, the limit must be greater than or equal to the request.
+
+If you are unsure what values to use, start with the defaults and adjust based on observed usage in **Estate > Flows** after the deployment is running.
+
+Select **Next** to proceed to the review step.
+
+### Step 4: Review
+
+A summary of every setting from steps 1–3, with passwords masked. Selecting **Deploy** submits the deployment. Credential values are written to a Kubernetes Secret immediately, after which the workload begins reconciling. The new deployment appears in **Estate > Flows** with status **Provisioning** while resources come up.
+
+
+Review all settings before submitting:
+
+1. Read through the summary to confirm the display name, project, network access type, replica count, and resource limits are correct.
+1. Check that every credential field shows a masked value (a row of dots) — a blank credential field means it was not filled in step 2 and the deployment will fail to start. Use the **Back** button to return to step 2 if any are missing.
+1. When everything looks correct, select **Deploy**. The dialog closes and you are returned to **Asset Library > Published Flows**.
+1. Navigate to **Estate > Flows** to find the new deployment. Its status will show **Provisioning** while Kubernetes creates the namespace, pulls the runtime image, and downloads the bundle. Provisioning typically completes within a few minutes. Once the status changes to **Ready**, the flow's HTTP and MCP endpoints are live and accepting requests.
+
+## What gets created
+
+Each deployment provisions a set of Kubernetes resources in its own isolated namespace:
+
+| Resource         | Purpose                                                                                                                                                                                                                                                               |
+|------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Deployment`     | Runs the Langflow runtime container. Replicated per the configured replica count.                                                                                                                                                                                     |
+| `Service`        | Exposes the runtime's HTTP API and MCP server inside the cluster. The HM gateway routes external traffic to this Service.                                                                                                                                             |
+| `Secret`         | Holds all parameter values (credentials and non-credentials). Mounted into the runtime container as environment variables.                                                                                                                                            |
+| `ServiceAccount` | Pod identity used for secure communication with internal HM services.                                                                                                                                                                                                 |
+| `NetworkPolicy`  | Restricts pod egress to DNS, the HM services the runtime needs at startup, public HTTPS (port 443), and Postgres (port 5432). Flows that need to reach hosts on other protocols or ports will fail to connect. Contact your HM administrator if you have such a case. |
+
+At pod startup the runtime downloads the bundle (pinned to the version the deployment was created from) before the HTTP and MCP endpoints become ready. Cold start therefore has a small delay. Subsequent restarts repeat the same download step.
+
+## Update, undeploy
+
+-   **Edit deployment parameters.** From **Estate > Flows**, open the deployed flow and edit the parameter values. Saving rewrites the deployment's parameter Secret and triggers a rolling restart of the runtime pods. The runtime re-downloads the bundle at startup (still pinned to the version the deployment was created from).
+-   **Update the bundle version.** A deployed flow is pinned to the version it was deployed from. To run a newer version of the same bundle, edit the deployment and change the version, or undeploy and deploy again from the new version. Existing deployments are not auto-upgraded when a new bundle version is published.
+-   **Undeploy.** From the Estate UI, delete the deployed flow. HM deletes the deployment's resources, including the Secret holding its parameter values. The HM gateway routes for the flow are removed.
+
+## What's next
+
+-   [Accessing deployed flows](accessing-deployed-flows): Invoke a deployed flow over HTTP or MCP.
