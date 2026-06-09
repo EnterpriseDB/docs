@@ -1,0 +1,86 @@
+---
+title: EDB Vector Index
+navTitle: EDB Vector Index
+description: Langflow component that creates, drops, rebuilds, or checks pgvector indexes on PostgreSQL tables in a Hybrid Manager cluster.
+deepToC: true
+---
+
+The **EDB Vector Index** component manages [pgvector](https://github.com/pgvector/pgvector) indexes on an existing table. It can create a new index, drop an existing one, rebuild it, or just check whether it exists.
+
+## When to use this
+
+Use the EDB Vector Index component when:
+
+-   You already have a Postgres table with a `vector` column and want to add (or change) an index to accelerate similarity search.
+-   You want to switch index type (HNSW vs IVFFlat) or change distance metric on an existing column.
+-   You want to verify from a flow whether a particular index is in place before running other operations.
+
+Use a different component if:
+
+-   You want to query a knowledge base, not manage index structure. Use [EDB Knowledge Base](knowledge-base).
+-   You want raw SQL access to the database. Use [EDB Database](database).
+-   The table doesn't have a `vector` column yet. The component only manages indexes on existing vector columns. Add the column first (with `aidb` or your own DDL).
+
+## Prerequisites
+
+-   A Postgres role with the `CREATE INDEX` privilege on the target table.
+-   An HM cluster with the `pgvector` extension installed and a table containing at least one `vector` column.
+-   An HM machine-user access key and the database user/password saved in Langflow as [Global Variables](https://docs.langflow.org/configuration-global-variables).
+
+## Inputs
+
+### Connection
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Hybrid Manager URL** | Text | No | | Advanced. Override the default HM URL. |
+| **HM Machine User Key** | Secret | Yes | `HM_API_KEY` | Defaults to the global variable named `HM_API_KEY`. |
+| **Hybrid Manager Project** | Dropdown | Yes | | Populated from your HM projects. |
+| **Hybrid Manager Database** | Dropdown | Yes | | The cluster containing the target table. |
+| **Database Group** | Dropdown | No | | Cluster group, for example primary or reader. |
+| **Database Connection Type** | Dropdown | Yes | | For example, read or read/write. |
+| **User for the database** | Text | Yes | `HM_DB_USER` | Defaults to the `HM_DB_USER` global variable. |
+| **Password for the database** | Secret | Yes | `HM_DB_PASSWORD` | Defaults to the `HM_DB_PASSWORD` global variable. |
+| **Database Name** | Dropdown | Yes | | Database containing tables with vector columns. |
+
+### Target
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Table** | Dropdown | Yes | | Tables in the selected database, excluding system schemas. |
+| **Vector Column** | Dropdown | Yes | | Populated from columns of type `vector` in the selected table. |
+| **Distance Operation** | Dropdown | Yes | `Cosine` | One of `Cosine`, `L2`, `InnerProduct`. Maps to pgvector operator classes `vector_cosine_ops`, `vector_l2_ops`, `vector_ip_ops`. |
+| **Index Type** | Dropdown | Yes | `hnsw` | `hnsw` or `ivfflat`. |
+| **Operation** | Dropdown | Yes | `Create` | One of `Create`, `Drop`, `Rebuild`, `Check Exists`. See [Operations](#operations). |
+
+### HNSW parameters (Index Type = hnsw)
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **HNSW M (Max Connections)** | Integer | No | `16` | Advanced. Maximum number of connections per node. |
+| **HNSW ef_construction** | Integer | No | `64` | Advanced. Size of the dynamic candidate list during index construction. |
+
+### IVFFlat parameters (Index Type = ivfflat)
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **IVFFlat Lists** | Integer | No | `100` | Advanced. Number of inverted lists. |
+
+## Outputs
+
+| Output | Type | Carries |
+|--------|------|---------|
+| **Result** | Data | Operation outcome. Keys include `success`, `operation`, `table`, `column`, `index_name`, `message`, and the generated `sql` statement. Includes `exists` and `index_type` for `Check Exists`, and `already_existed` for an idempotent `Create`. |
+
+## Operations
+
+| Operation | Behavior |
+|-----------|----------|
+| `Create` | Creates the index if it doesn't exist. Idempotent: if an index of the same type already exists on this column, the operation returns success without re-creating. If an index of a different type exists on the column, the operation fails and asks you to `Drop` it first. |
+| `Drop` | Drops the index. Idempotent (uses `DROP INDEX IF EXISTS`). |
+| `Rebuild` | Runs `REINDEX INDEX` on the existing index. Fails if the index doesn't exist. |
+| `Check Exists` | Returns `exists: true/false` and the current `index_type` if any. Does not modify the database. |
+
+## Index naming
+
+The component generates a stable, predictable index name from the table and column: `idx_<table>_<column>_<index_type>` (without schema prefix). Choose your indexes through this component if you want that naming convention. Otherwise, manage them in SQL.

@@ -1,53 +1,67 @@
 ---
-title: EDB Embeddings component
+title: EDB Embeddings
 navTitle: EDB Embeddings
-description: Langflow component that produces embedding vectors via an HM-hosted embedding model cluster.
+description: Langflow component that produces embedding vectors via a Hybrid Manager-hosted embedding model cluster.
+deepToC: true
 ---
 
-The EDB Embeddings component is a model-related component used to turn AI data into embedding vectors that also interacts with models hosted on EDB infrastructure.
+The **EDB Embeddings** component connects a flow to an embedding model running on a Hybrid Manager (HM) model server cluster, and produces an Embeddings model object that downstream components (vector stores, retrievers) can use to encode text.
 
-It requires the [creation of a model cluster](#creating-a-model-cluster).
+## When to use this
+
+Use the EDB Embeddings component when:
+
+-   You want vector embeddings produced by a model running on an HM-hosted model server cluster (OpenAI-compatible or NVIDIA NIM).
+-   You're feeding a vector store, retriever, or similarity-search component that expects an Embeddings model.
+
+Use a different component if:
+
+-   You want CPU-based embeddings produced locally on the database cluster using `aidb`. Use [EDB Embedded Models](embedded-models).
+-   You want generative responses from a model, not embeddings. Use [EDB Model Server](model-server).
 
 ## Prerequisites
 
-You have to create a model cluster to use the EDB Embeddings component.
-Make sure the AI Model Manager role is assigned to the machine user you created:
+-   An HM model server cluster with an embedding model deployed. See [Models](/edb-postgres-ai/innovation-release/hybrid-manager/ai-factory/models) for how to create one. A [GPU node](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu/) is typically required.
 
--   Profile > **User management** > **Assign Organization Roles** > **AI Model Manager**.
+-   An HM machine-user access key saved in Langflow as a [Global Variable](https://docs.langflow.org/configuration-global-variables) (default name `HM_API_KEY`).
 
-!!!Important
+## Inputs
 
-Make sure a [GPU node is deployed](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu/) before creating a new model cluster.
-!!!
+### Connection
 
-## Creating a model cluster
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Hybrid Manager URL** | Text | No | | Advanced. Override the default HM URL. |
+| **HM Machine User Key** | Secret | Yes | `HM_API_KEY` | Defaults to the global variable named `HM_API_KEY`. |
+| **Hybrid Manager Model Server Cluster Instance** | Dropdown | Yes | | The model server cluster to call. Populated from your HM model clusters. |
+| **External Ingress** | Boolean | No | | Advanced. Route through the external ingress instead of the in-cluster service. |
 
-1.  In the HM console, select **Asset Library** in the upper-left hand.
+### Model
 
-1.  In the **Asset Library**, select **Models**.
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **API Client** | Dropdown | No | `OpenAI` | Advanced. `OpenAI` for the EDB Model Server's OpenAI-compatible API. `NVIDIA` only when connecting to a native NIM endpoint that needs NVIDIA-specific embedding features. |
+| **Model** | Dropdown | Yes | | Populated from the selected model server cluster. Use the refresh button if the list is empty. |
 
-1.  Select **Add New Model** on the right hand side of your screen.
+### API Client = OpenAI (default)
 
-1.  Specify the configuration for the new model cluster in the provided parameter fields.
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Dimensions** | Integer | No | | Advanced. Number of dimensions for the output vectors. Only supported by certain models. Leave blank to use the model's default. |
+| **Max Retries** | Integer | No | `3` | Advanced. Maximum retries on a failed embedding call. |
+| **Chunk Size** | Integer | No | `1000` | Advanced. Maximum texts to send in a single batch. |
+| **Model Kwargs** | Dict | No | | Advanced. Additional keyword arguments passed through to the OpenAI embeddings client. |
 
-1.  In the **Models** section, select the model cluster you have created.
+### API Client = NVIDIA
 
-1.  In the upper-right hand, select **Create Cluster With This Model**.
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Model Temperature** | Float | No | `0.1` | Advanced. Model temperature. |
 
-1.  Enter a name for the model cluster.
+The OpenAI-specific fields hide when **API Client** is `NVIDIA`, and vice versa. Field values are preserved when you switch between clients, so a round-trip doesn't wipe your settings.
 
-1.  In the **Asset Library**, select the model cluster you have created.
+## Outputs
 
-1.  Under **Clusters Using This Model**, check **Status** to verify that the cluster is active.
-
-## Using the EDB Embeddings component in Langflow
-
-1.  In Langflow, select **EDB** in the left side pane.
-
-1.  Drag and drop the **EDB Embeddings Component** to the flow.
-
-1.  In the field **HM Machine User Key**, enter the access key you have created.
-
-1.  Under **Hybrid Manager Model Server Cluster Instance**, select the model cluster you have created.
-
-1.  Select the **Play** icon in the upper-right corner of the component.
+| Output | Type | Carries |
+|--------|------|---------|
+| **Embedding Model** | Embeddings | A LangChain `Embeddings` instance pointing at the selected HM model server cluster. Pass this into a vector store or retriever. |

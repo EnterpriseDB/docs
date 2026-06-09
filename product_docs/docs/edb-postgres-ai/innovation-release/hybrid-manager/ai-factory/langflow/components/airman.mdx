@@ -1,0 +1,58 @@
+---
+title: EDB Airman MCP
+navTitle: EDB Airman MCP
+description: Langflow component that exposes a Postgres database to agents as MCP tools, with read-only or unrestricted SQL access.
+deepToC: true
+---
+
+The **EDB Airman MCP** component starts a Postgres MCP server backed by [pg-airman-mcp](https://github.com/EnterpriseDB/pg-airman-mcp) and surfaces its tools to an agent. The agent can then call those tools to read from (or, in unrestricted mode, write to) the database without you wiring every individual SQL operation by hand.
+
+## When to use this
+
+Use the EDB Airman MCP component when:
+
+-   You want an agent to be able to interrogate a database during a flow run (look up a row, summarize a table, answer a question by querying).
+-   You want safe-by-default behavior: the agent only runs read-only queries unless you explicitly opt into unrestricted access.
+-   You want each flow execution to track back to the calling HM session for audit.
+
+Use a different component if:
+
+-   You need a fixed database connection to pass into other components (not a tool for an agent). Use [EDB Database](database).
+-   You want platform-level operations (projects, clusters, knowledge bases) as agent tools rather than SQL. Use [EDB Platform](platform).
+-   You want similarity search against a knowledge base, not arbitrary SQL. Use [EDB Knowledge Base](knowledge-base).
+
+## Prerequisites
+
+-   The Project Viewer role on the project that owns the database cluster.
+-   A reachable Postgres database URL (from an [EDB Database](database) component's `Database URL` output, or supplied directly).
+-   An agent in the flow that consumes Tools (the component's only output is a Tool).
+
+## Inputs
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Database URL** | Text | Yes | | A Postgres connection string. Typically wired from the `Database URL` output of an [EDB Database](database) component. |
+| **Purpose** | Text | No | | Optional free-text hint passed to the MCP server as `AIRMAN_MCP_PURPOSE`. Use it to describe what the agent should do with the database. |
+| **Unrestricted Access Mode** | Boolean | No | `false` | Advanced. When off (default), the MCP server runs in restricted mode and only safe read-only queries are permitted. When on, the agent can execute any SQL the database role allows. |
+| **MCP Server Name** | Text | No | | Advanced. Override the registered MCP server name. By default the name is derived from the flow node ID so it stays stable across builds. |
+
+## Outputs
+
+| Output | Type | Carries |
+|--------|------|---------|
+| **Toolset** | Tool | The MCP tools exposed by `pg-airman-mcp` for the configured database. Connect to an agent's Tools input. |
+
+## Access mode
+
+The **Unrestricted Access Mode** toggle controls what the agent can do:
+
+| Mode | Behavior |
+|------|----------|
+| Restricted (default) | The MCP server only accepts safe read-only queries. Mutating statements (`INSERT`, `UPDATE`, `DELETE`, DDL) are rejected at the MCP layer regardless of what the database role would otherwise allow. |
+| Unrestricted | The MCP server accepts any SQL the connected database role can run. The role's own privileges become the only ceiling. |
+
+Restricted mode is the safe default. Turn it off only when the agent has a legitimate reason to write, and pair it with a database role that has the minimum privileges needed.
+
+## Session propagation
+
+When the component runs inside an HM-deployed flow, the calling user's HM session ID is forwarded to the MCP server with each tool call. Tool calls are traceable back to the originating session, which is useful for audit and for correlating MCP activity with HM gateway logs.
