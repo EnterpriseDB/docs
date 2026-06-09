@@ -1,0 +1,268 @@
+---
+title: Upgrade Notes
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.16/user/upgrade_notes.md
+sidebar_position: 91
+
+---
+
+This page lists version-specific changes that may require
+manual action when upgrading Klio. For the upgrade procedure,
+see the [Helm chart page](helm_chart.mdx#upgrades).
+
+## Upgrading to 0.0.16
+
+### Metric names renamed (breaking change)
+
+!!!warning
+
+All emitted OpenTelemetry metric names have been renamed to follow a
+component-based taxonomy of the form
+`klio.<component>.<domain>.<measurement>`. There is no dual emission
+or aliasing — dashboards and alerts using the previous names must be
+updated.
+!!!
+
+The tier-1 (WAL server) and tier-2 (consumer) WAL metric families
+have also been folded into a single family discriminated by the
+`tier` attribute (`"tier1"` or `"tier2"`). Backup verification
+metrics have moved from `klio.consumer.backup_verification_*` to
+`klio.server.backup.verification_*`, pairing with the existing
+`klio.plugin.backup.*` series. Kopia base snapshot gauges
+(`klio.base.snapshots`, `klio.base.latest_snapshot_*`,
+`klio.base.oldest_snapshot_age`) have been folded under the same
+`klio.server.backup.*` prefix alongside the verification counters.
+These snapshot gauges carry the `tier` attribute
+(`"tier1"` or `"tier2"`), matching the rest of the
+`klio.server.backup.*` family; dashboards that aggregate them must
+either group by `tier` or filter to a specific tier to avoid mixing
+the local-disk and object-store series.
+
+The `klio.plugin.backup.running` 0/1 gauge has been replaced by the
+`klio.plugin.backup.in_progress` UpDownCounter, which reports the
+number of backups currently in progress on each plugin instance.
+Dashboards that read the previous gauge as a boolean should now check
+`klio.plugin.backup.in_progress > 0` instead.
+
+The success/failure counter pairs have been collapsed into a single
+counter per family, distinguished by an `outcome` attribute
+(`success` / `failure`):
+
+-   `klio.plugin.backup.successes` and `klio.plugin.backup.failures`
+    are now both reported as `klio.plugin.backup.runs` with `outcome`.
+-   `klio.plugin.backup.verifications` no longer counts every attempt
+    on its own; it is now split by `outcome`. The previous total is
+    recoverable as `sum by () (klio.plugin.backup.verifications)`, and
+    the previous `klio.plugin.backup.verification_failures` counter is
+    `klio.plugin.backup.verifications{outcome="failure"}`.
+-   `klio.server.backup.verification_success` and
+    `klio.server.backup.verification_failure` are now both reported as
+    `klio.server.backup.verifications` with `outcome` (and the existing
+    `tier` attribute).
+
+The `klio.plugin.backup.latest_duration_seconds` gauge has been
+renamed to `klio.plugin.backup.latest_duration` — the unit (`s`) is
+conveyed via the OpenTelemetry metric metadata, per the
+[semantic-conventions naming guidelines](https://opentelemetry.io/docs/specs/semconv/general/metrics/#units).
+The Prometheus export name is unchanged
+(`klio_plugin_backup_latest_duration_seconds`) because the Prometheus
+exporter appends the unit suffix automatically when the OpenTelemetry
+name lacks it.
+
+The `klio.server.queue.messages` and `klio.server.queue.bytes` gauges
+are now reported per JetStream stream via a `stream` attribute,
+reflecting the WAL/backup queue split. Dashboards that previously
+read a single aggregate value should sum across the `stream`
+attribute or filter to a specific stream (for example
+`stream="klio-wal-stream"`).
+
+See the
+[OpenTelemetry metrics reference](opentelemetry.mdx#migration-from-the-previous-metric-names)
+for the complete old-to-new mapping table.
+
+## Upgrading to 0.0.15
+
+The `--custom-cnpg-group` and `--custom-cnpg-version` flags have been
+removed from the operator manager arguments. The operator now derives the CNPG
+API group and version from the cluster's metadata at runtime.
+
+In the Helm chart, `--custom-cnpg-group` was previously set in the default
+`controllerManager.manager.args` list, and has now been removed.
+
+No action is needed in most cases, unless one of the following applies:
+
+1.  You are setting these flags in your Helm values or `--set` overrides
+    explicitly
+2.  You are using `--reuse-values` when upgrading, which would preserve the old
+    flags in the new deployment.
+
+In any of these cases, ensure that the `controllerManager.manager.args` is
+overridden to define the parameter list.
+
+The default arguments are shown in the
+[Helm chart page](helm_chart.mdx#configuration-reference).
+
+## Upgrading to 0.0.14
+
+### Encryption key management (breaking change)
+
+!!!warning
+
+You should complete the first four steps in this section
+before proceeding with the Klio upgrade with Helm.
+!!!
+
+Previous versions of Klio stored the encryption key as a
+plaintext value in a Kubernetes Secret, referenced via the
+`encryptionKey` field (a `SecretKeySelector`). This field has
+been replaced by `encryptionKeyFile` and `identityFile`, which
+use [Age encryption](klio_server.mdx#age-encryption) to protect
+the key at rest.
+
+!!!warning
+
+This is a **breaking API change**. Existing `Server` resources
+using `encryptionKey` must be updated after upgrading the CRD.
+The underlying encryption key (used by Kopia) does **not**
+change — only how it is stored and delivered to Klio.
+!!!
+
+The steps below show the migration for `tier1`. If your
+Server also has `tier2` configured, repeat the same steps
+for `tier2` (replacing `.spec.tier1` with `.spec.tier2` in
+the commands, and updating the `tier2` section in the Server
+spec). Tier1 and tier2 may use different encryption keys and
+identity files.
+
+To migrate an existing deployment:
+
+!!!warning
+
+Complete steps from 1. to 4. before upgrading Klio.
+!!!
+
+1.  Extract the secret name and key from the Server resource:
+
+    ```bash
+    SECRET_NAME=$(kubectl get server my-server \
+        -o jsonpath='{.spec.tier1.encryptionKey.name}')
+    SECRET_KEY=$(kubectl get server my-server \
+        -o jsonpath='{.spec.tier1.encryptionKey.key}')
+    ```
+
+2.  Retrieve the current encryption key from the secret:
+
+    ```bash
+    ENCRYPTION_KEY=$(kubectl get secret "$SECRET_NAME" \
+        -o jsonpath="{.data.${SECRET_KEY}}" | base64 -d)
+    ```
+
+3.  Create the `values.yaml` file from the existing Helm chart:
+
+    ```bash
+    helm get values -n cnpg-system <RELEASE_NAME> > values.yaml
+    ```
+
+4.  Edit the `values.yaml` file updating the Klio version with
+    the new release tag:
+
+    ```yaml
+    controllerManager:
+      manager:
+        env:
+          SIDECAR_IMAGE: docker.enterprisedb.com/k8s/klio:v0.0.14
+          [...]
+        image:
+          tag: v0.0.14
+          [...]
+    ```
+
+    Before proceeding, finish reading this section. Then perform the
+    Klio upgrade following the
+    [Helm chart page](helm_chart.mdx#upgrades), up to and including the
+    "Upgrade Klio Server" section.
+
+    !!!warning
+
+    The command to verify that the Server is running the
+    latest version will continue showing the old version.
+    This is normal, as the operator can not reconcile yet.
+    !!!
+
+    You can use the `values.yaml` file created in the previous
+    step when requested.
+
+    !!!warning
+
+    Do not delete the Klio Server's Pod yet, nor the
+    StatefulSet. The situation will settle after you
+    perform the following steps in this section.
+    !!!
+
+5.  Generate an Age key pair:
+
+    ```bash
+    age-keygen -o identity.txt
+    # Note the public key from the output
+    ```
+
+6.  Encrypt the existing key with Age:
+
+    ```bash
+    echo -n "$ENCRYPTION_KEY" | age \
+        -r <public-key-from-step-5> \
+        -o encryption-key.age --armor
+    ```
+
+7.  Create new Kubernetes Secrets:
+
+    ```bash
+    kubectl create secret generic my-server-encryption-key \
+        --from-file=encryption-key.age
+    kubectl create secret generic my-server-age-identity \
+        --from-file=identity.txt
+    ```
+
+8.  Update the `tier1` section of the `Server` resource,
+    replacing the old `encryptionKey` field with the new
+    fields:
+
+    ```yaml
+    # Before (remove this):
+    #   encryptionKey:
+    #     name: my-server-encryption
+    #     key: encryptionKey
+
+    # After:
+        encryptionKeyFile:
+          fileReference:
+            volume:
+              secret:
+                secretName: my-server-encryption-key
+            path: encryption-key.age
+        identityFile:
+          fileReference:
+            volume:
+              secret:
+                secretName: my-server-age-identity
+            path: identity.txt
+    ```
+
+    !!!note
+
+    Add the same sections in `tier2`, in case it is enabled.
+    !!!
+
+9.  Apply the updated `Server` resource, then verify the Klio
+    server pod restarts successfully.
+
+    In case the Server's Pod is stuck in `CrashLoopBackOff` state,
+    please delete it, then check again.
+
+10. Once verified, delete the old plaintext secret and the
+    local `identity.txt` file:
+
+    ```bash
+    kubectl delete secret my-server-encryption
+    rm identity.txt
+    ```

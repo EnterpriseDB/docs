@@ -71,6 +71,7 @@ const sourceToPluginConfig = {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
   },
+  klio: { name: "klio", path: "product_docs/docs/klio" },
   language_pack: {
     name: "language_pack",
     path: "product_docs/docs/language_pack",
@@ -447,6 +448,7 @@ module.exports = {
                 seealso: "note",
                 hint: "tip",
                 interactive: "interactive",
+                caution: "warning",
               },
             },
           ],
