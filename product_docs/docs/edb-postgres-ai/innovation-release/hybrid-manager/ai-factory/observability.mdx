@@ -114,9 +114,9 @@ Fires when more than 5% of inference requests return errors over a 5-minute wind
             Error rate is {{ $value | humanizePercentage }} over the last 5 minutes.
 ```
 
-### Langflow availability
+### Langflow flow builder availability
 
-Fires when all Langflow pods are unavailable, making flows inaccessible to users.
+Fires when the shared Langflow flow builder has no ready pods, making the editor and any flows running in it inaccessible.
 
 ```yaml
   - name: ai-factory-langflow
@@ -128,9 +128,29 @@ Fires when all Langflow pods are unavailable, making flows inaccessible to users
         labels:
           severity: critical
         annotations:
-          summary: "Langflow has no ready replicas"
+          summary: "Langflow flow builder has no ready replicas"
           description: >
-            No Langflow pods are ready. Check the deployment in the AI Factory project namespace.
+            No flow-builder pods are ready. Check the deployment in the AI Factory project namespace.
+```
+
+### Deployed flow availability
+
+The rule above covers the shared flow builder. Each deployed flow runs as its own `langflow-runtime` workload in its own namespace, so deployed flows need a separate rule. This one fires when a deployed flow has no ready runtime pods, with the namespace identifying which flow.
+
+```yaml
+  - name: ai-factory-deployed-flows
+    rules:
+      - alert: DeployedFlowUnavailable
+        expr: |
+          kube_deployment_status_replicas_ready{deployment=~".*langflow-runtime.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Deployed flow has no ready replicas ({{ $labels.namespace }})"
+          description: >
+            A deployed Langflow flow has no ready runtime pods and is not serving requests.
+            Check the runtime workload in the flow's namespace.
 ```
 
 ---

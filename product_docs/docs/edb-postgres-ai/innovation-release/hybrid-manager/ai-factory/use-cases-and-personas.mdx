@@ -112,32 +112,38 @@ Data scientists leverage AI Factory to deploy models and build intelligent appli
 
 ### Production Operator
 
-Production Operators are responsible for taking a tested Gen AI application from a developer and deploying it reliably and securely in a production Hybrid Manager environment. Their work begins where the developer's ends — the operator doesn't build flows, but is accountable for everything that happens after promotion.
+Production Operators take a tested flow from a developer and run it as a deployed, production-grade service in a Hybrid Manager project. Their work begins where the developer's ends: the operator doesn't build flows, but owns deploying the flow, supplying its production credentials and parameters, and operating it afterwards. The deployment project can be one the developer has no access to, giving a clean separation between development and production.
 
 **What they receive from the developer**
 
-The developer hands over a Langflow flow exported as a `.json` file, along with documentation of the resources the flow depends on: which knowledge bases, model clusters, and Postgres databases it connects to, and what roles the machine user needs. The flow file captures structure and component configuration but not secrets or environment-specific endpoint references — the operator supplies those in the production environment.
+Depending on whether development and production share a cluster, the operator receives one of two things:
 
-See [Promote a Langflow application to production](./langflow/promoting-to-production) for the full developer-to-operator handoff workflow.
+- **Same cluster:** access to a *published flow*. The developer publishes the flow as a bundle, includes the operator's project in its access list, and notifies the operator. No file changes hands.
+- **Separate clusters:** the flow exported as a `.json` file, plus the list of resources it depends on (knowledge bases, model clusters, Postgres databases, and the machine-user roles required). The operator imports it into the production cluster and publishes it there. See [Share a Langflow flow between Hybrid Manager instances](./langflow/sharing-flows-between-instances).
+
+In both cases the published bundle carries the flow's structure and parameter names but no credential values; the operator supplies those at deploy time.
 
 **Primary tooling**
 
 Production Operators work primarily through the **Hybrid Manager console** (HM UI). They don't need direct `kubectl` access for routine operations, though it's useful for advanced troubleshooting. Key HM UI areas they use:
 
-- **Launchpad → Langflow** — to import, configure, and validate the flow.
+- **Launchpad → Langflow** — to import and publish flows (separate-cluster case).
+- **Asset Library → Published Flows** — to find published bundles and deploy them.
+- **Estate → Flows** — to manage deployed flows: replicas, endpoints, and access.
+- **Estate → InferenceServices** — to adjust inference service instances and monitor model server health.
 - **Project Settings → Secrets** — to create and rotate credentials.
-- **AI Factory → Model Server Clusters** — to configure replica counts and monitor model health.
-- **AI Factory → Langflow → Settings → Scaling** — to set replica counts for HA.
-- **Project Settings → Networking** — to verify ingress gateway configuration.
 
-**Key workflows**
+**Key workflow**
 
-1. Receive exported flow and dependency list from developer.
-1. Set up production HM project with correct machine user roles and secrets — see [Prerequisites](./prerequisites).
-1. Import and reconfigure the flow in production Langflow — see [Promote a Langflow application to production](./langflow/promoting-to-production).
-1. Configure HA replica counts and validate ingress — see [Deploy with HM UI](./deploy-with-hm-ui#high-availability-for-gen-ai-applications).
-1. Apply Prometheus alert rules and configure Alertmanager routing — see [Observability](./observability).
-1. Apply pod security, network policies, and mTLS — see [Security and compliance](./security-and-compliance).
+The flow reaches the deployment project by one of two routes, then follows the same deploy path:
+
+1. Get the flow into the target:
+   - *Same cluster:* the developer publishes the flow with the deployment project in its access list and notifies the operator.
+   - *Separate clusters:* the developer exports the flow as JSON; the operator imports it into the production cluster and publishes it. See [Share a Langflow flow between Hybrid Manager instances](./langflow/sharing-flows-between-instances).
+1. Deploy the published flow to the deployment project, supplying credentials, parameters, and replica count at deploy time. The deployment project need not be the one the flow was published to, so the developer can have zero access to production. See [Flow deployment](./langflow/flow-deployment).
+1. Set up alerting for the deployed flow and its dependencies — see [Observability](./observability).
+
+Project-level isolation, per-flow Kubernetes secrets, and network policy for a deployed flow are provided by the deployment itself, not configured by hand. For organisation-wide controls (external TLS, secret rotation, air-gapped egress), see [Security and compliance](./security-and-compliance).
 
 ## Industry-Specific Implementations
 
