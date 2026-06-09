@@ -12,9 +12,11 @@ import {
   InstantSearch,
   Configure,
   useSearchBox,
+  useInstantSearch,
 } from "react-instantsearch";
 import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
+import { trackSearchPageview, trackSearchEvent } from "./analytics";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
 import { products } from "../../constants/products";
 import { Dropdown, DropdownButton } from "react-bootstrap";
@@ -44,6 +46,7 @@ const useClickOutside = (ref, handler, events) => {
 
 const Search = ({ searchProduct, onSearchProductChange }) => {
   const { clear, refine } = useSearchBox();
+  const { results, status } = useInstantSearch();
   const searchBarRef = useRef(null);
   const [focus, setFocus] = useState(false);
   const inputRef = useRef(null);
@@ -53,6 +56,28 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
   const context = searchProduct
     ? " " + (products[searchProduct]?.name || searchProduct)
     : "";
+
+  // Establish the "docs-searchbar" UTM the first time the user interacts with
+  // the search bar (typing or changing the product filter), and only once.
+  const hasInteracted = useRef(false);
+  const trackFirstInteraction = useCallback(() => {
+    if (hasInteracted.current) return;
+    hasInteracted.current = true;
+    trackSearchPageview("docs-searchbar");
+  }, []);
+
+  // Report when a settled search either displays results or finds none. Keyed
+  // on query + hit count so we report each distinct result set only once.
+  const lastResultKey = useRef(null);
+  useEffect(() => {
+    if (status !== "idle" || !results || !results.query) return;
+    const key = `${results.query}:${results.nbHits}`;
+    if (lastResultKey.current === key) return;
+    lastResultKey.current = key;
+    trackSearchEvent(
+      results.nbHits > 0 ? "searchResultsDisplayed" : "noSearchResults",
+    );
+  }, [results, status]);
 
   // allow typing ahead of search loading
   useEffect(() => {
@@ -71,10 +96,23 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
   const onInputChange = useCallback(
     (e) => {
       let newValue = e.currentTarget.value;
+      trackFirstInteraction();
+      // Changing a query that was already non-empty is a refinement; the very
+      // first character typed is the initial search, not a refinement.
+      if (inputValue.length > 0 && newValue.length > 0)
+        trackSearchEvent("searchRefined");
       setInputValue(newValue);
       refine(newValue);
     },
-    [refine],
+    [refine, inputValue, trackFirstInteraction],
+  );
+
+  const onProductChange = useCallback(
+    (...args) => {
+      trackFirstInteraction();
+      onSearchProductChange(...args);
+    },
+    [onSearchProductChange, trackFirstInteraction],
   );
 
   const close = useCallback(() => {
@@ -172,7 +210,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
           role="menu"
           className="select-product d-none d-md-block"
           size="lg"
-          onSelect={onSearchProductChange}
+          onSelect={onProductChange}
         >
           <Dropdown.Item as="button" type="button" eventKey="">
             All products

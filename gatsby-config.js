@@ -484,6 +484,7 @@ module.exports = {
         // #1, we actually want data on specific version requests (e.g. /epas/13/installing vs /epas/latest/installing),
         // #2, it doesn't work properly: when navigating internally, it reports the canonical URL of the page we're coming *from*, not *to*!
         canonical: false,
+        spa: "history",
         includedDomains: "www.enterprisedb.com", // don't report staging / draft / local builds
       },
     },

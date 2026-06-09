@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Container, Navbar } from "react-bootstrap";
 import algoliasearch from "algoliasearch/lite";
 import { InstantSearch, Configure } from "react-instantsearch";
@@ -11,6 +11,7 @@ import {
   writeStateToQueryParams,
 } from "../components/advanced-search";
 import useSiteMetadata from "../hooks/use-sitemetadata";
+import { trackSearchPageview } from "../components/search/analytics";
 import { products } from "../constants/products";
 // loaded client-side for use by Algolia
 import aa from "search-insights"; // eslint-disable-line no-unused-vars
@@ -28,13 +29,22 @@ const Search = (data) => {
   const paramSearchState = queryParamsToState(data.location.search);
   const { algoliaIndex } = useSiteMetadata();
 
+  // Attribute advanced-search sessions in Fathom as soon as the page loads.
+  useEffect(() => {
+    trackSearchPageview("docs-advancedsearch");
+  }, []);
+
   return (
     <Layout
       background="white"
-      pageMeta={{ title: "Advanced Search", path: "/search/", minDeviceWidth: 320 }}
+      pageMeta={{
+        title: "Advanced Search",
+        path: "/search/",
+        minDeviceWidth: 320,
+      }}
     >
       <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
-          <InstantSearch
+        <InstantSearch
           searchClient={searchClient}
           indexName={algoliaIndex}
           initialUiState={{ [algoliaIndex]: paramSearchState }}
