@@ -86,18 +86,77 @@ Select a migration from the list to open the details page, which has three tabs:
 ## Finalizing a streaming migration
 
 !!!note
-This step applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, the DMS marks the migration as completed automatically.
+This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, the DMS marks the migration as completed automatically.
 !!!
 
-The EDB DMS agent continues streaming updates from your Oracle source until you explicitly stop it. Before stopping, ensure that no new writes are occurring on the source, and verify that the last known writes have been synchronized to the destination.
+### Monitoring catch-up before cutover
 
-When you're ready to cut over:
+Before stopping writes on the source, give the destination time to catch up. Use the **Migration details** page to track row counts and replication lag. Begin the cutover only after the destination is consistently close to the source.
+
+### Finalizing schema concurrently (recommended)
+
+<TabContainer syncKey="migration_scope">
+<Tab title="Simplified (recommended)">
+
+If you used the **Schema and data** scope, HM can apply most schema objects while the stream is still running: primary keys, unique constraints, indexes (built with `CREATE INDEX CONCURRENTLY`, so live writes aren't blocked), foreign keys (added as `NOT VALID`), check constraints, `NOT NULL` constraints, views, and triggers. Only foreign key validation is deferred until after cutover.
+
+Running this work concurrently shrinks the read-only cutover window. The larger your tables and the more indexes they have, the greater the time saved.
+
+When the destination has nearly caught up:
+
+1.  On the **Migration details** page, an alert titled **Schema Finalization Available** appears. Select **Finalize Schema Concurrently**.
+
+1.  HM applies the deferred objects while streaming continues. The migration remains in the **Running** state, with a progress sub-step labeled **Finalizing Schema Concurrently**.
+
+1.  When the sub-step completes, proceed to the cutover.
+
+!!!note
+**Finalize Schema Concurrently** is available only for migrations created with the **Schema and data** scope with streaming enabled.
+!!!
+
+If you skip this step, the same objects are applied serially after you mark the migration as completed. See [Schema Finalization stage](#schema-finalization-stage). The cutover window is larger in that case because indexes are built non-concurrently and constraints are validated under exclusive locks.
+
+</Tab>
+<Tab title="Manual">
+
+Not applicable to the manual path. You applied the schema before migration and will reapply deferred constraints manually after cutover. See [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data).
+
+</Tab>
+</TabContainer>
+
+### Performing the cutover
+
+When you're ready to switch traffic from the source to the destination:
+
+1.  Stop all writes on the source database.
+
+1.  Verify in the HM console that the destination has applied the last source change.
 
 1.  In the HM console, select **Migrate > Migrations** in your project.
 
 1.  Select the checkmark next to your migration to mark it as completed, or open the migration details page and select **Mark as Completed**.
 
 This stops the streaming process.
+
+### Schema Finalization stage
+
+<TabContainer syncKey="migration_scope">
+<Tab title="Simplified (recommended)">
+
+For migrations created with the **Schema and data** scope, the migration enters a **Schema Finalization** stage automatically after **Mark as Completed**. What runs in this stage depends on whether you ran concurrent finalization first:
+
+- **If you ran concurrent finalization**: HM validates the foreign keys that were added as `NOT VALID` and rebuilds sequences so they continue from the correct values on the destination. This stage is short.
+- **If you skipped concurrent finalization**: HM applies the full set of deferred objects now (primary keys, unique constraints, indexes, foreign keys, check constraints, `NOT NULL`, views, triggers), validates the foreign keys, and rebuilds sequences. This stage takes substantially longer and runs while the source is read-only.
+
+The migration is fully complete only after the **Schema Finalization** stage finishes. Progress is shown on the **Migration details** page.
+
+</Tab>
+<Tab title="Manual">
+
+No automatic schema finalization runs for the **Data only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, check, and exclusion constraints you deferred before migration.
+
+</Tab>
+</TabContainer>
 
 ## Applying deferred constraints and verifying data
 
@@ -106,14 +165,14 @@ This stops the streaming process.
 <TabContainer syncKey="migration_scope">
 <Tab title="Simplified (recommended)">
 
-HM applies foreign key, check, and exclusion constraints automatically — either while streaming continues (if you triggered **Finalize Schema Concurrently** during cutover) or in the post-cutover **Schema Finalization** stage after **Mark as Completed**. No manual constraint reapplication is needed. See [Finalizing a streaming migration](#finalizing-a-streaming-migration).
+HM applied all deferred constraints and rebuilt sequences automatically during the **Schema Finalization** stage. No manual action is needed. See [Schema Finalization stage](#schema-finalization-stage).
 
 </Tab>
 <Tab title="Manual">
 
 During the schema import, you excluded foreign key, check, and exclusion constraints to avoid performance overhead during data migration. Now that migration is complete, connect to the destination database and reapply those constraints.
 
-Primary key, unique, and NOT NULL constraints were already applied before migration and don't require any action.
+Primary key, unique, and `NOT NULL` constraints were already applied before migration and don't require any action.
 
 </Tab>
 </TabContainer>
