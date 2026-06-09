@@ -21,17 +21,17 @@ Before stopping writes on the source, give the destination time to catch up. Use
 <TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
-If you used the **Schema and data** scope, HM can apply most schema objects while the stream is still running: primary keys, unique constraints, indexes (built with `CREATE INDEX CONCURRENTLY`, so live writes aren't blocked), foreign keys (added as `NOT VALID`), check constraints, `NOT NULL` constraints, views, and triggers. Only foreign key validation is deferred until after cutover.
+If you used the **Schema and data** scope, HM can apply most schema objects while the stream is still running: primary keys, unique constraints, indexes (built with `CREATE INDEX CONCURRENTLY`, so live writes aren't blocked), foreign keys (added as `NOT VALID`), check constraints, `NOT NULL` constraints, and similar. Foreign key validation, sequence synchronization, and other lightweight tasks run later in the post-cutover **Schema Finalization** stage.
 
 Running this work concurrently shrinks the read-only cutover window. The larger your tables and the more indexes they have, the greater the time saved.
 
-When the destination has nearly caught up:
+Once every table has completed its snapshot and the migration enters the streaming phase, the **Migration details** page shows a **Schema Finalization Available** alert with a **Finalize Schema Concurrently** button. The button stays available throughout streaming, so you can pick the moment based on how close the destination is to catching up.
 
-1.  On the **Migration details** page, an alert titled **Schema Finalization Available** appears. Select **Finalize Schema Concurrently**.
+1.  Select **Finalize Schema Concurrently** on the **Migration details** page.
 
 1.  HM applies the deferred objects while streaming continues. The migration remains in the **Running** state, with a progress sub-step labeled **Finalizing Schema Concurrently**.
 
-1.  When the sub-step completes, proceed to the cutover.
+When the sub-step completes, proceed to the cutover.
 
 !!!note
 **Finalize Schema Concurrently** is available only for migrations created with the **Schema and data** scope with streaming enabled.
@@ -66,8 +66,8 @@ This stops the streaming process.
 
 For migrations created with the **Schema and data** scope, the migration enters a **Schema Finalization** stage automatically after **Mark as Completed**. What runs in this stage depends on whether you ran concurrent finalization first:
 
-- **If you ran concurrent finalization**: HM validates the foreign keys that were added as `NOT VALID` and rebuilds sequences so they continue from the correct values on the destination. This stage is short.
-- **If you skipped concurrent finalization**: HM applies the full set of deferred objects now (primary keys, unique constraints, indexes, foreign keys, check constraints, `NOT NULL`, views, triggers), validates the foreign keys, and rebuilds sequences. This stage takes substantially longer and runs while the source is read-only.
+- **If you ran concurrent finalization**: HM runs the lightweight remaining work — foreign key validation, sequence sync, and any other deferred metadata tasks. This stage is short.
+- **If you skipped concurrent finalization**: HM applies the full deferred set now (primary keys, unique constraints, indexes, foreign keys, check constraints, `NOT NULL`, and similar) followed by the lightweight tasks above. This stage takes substantially longer and runs while the source is read-only.
 
 The migration is fully complete only after the **Schema Finalization** stage finishes. Progress is shown on the **Migration details** page.
 
