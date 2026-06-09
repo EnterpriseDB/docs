@@ -1,0 +1,106 @@
+---
+title: Rotating the identity provider Fernet key
+navTitle: Rotating the Fernet key
+description: Rotate the Fernet key that HM uses to encrypt sensitive identity provider connector configuration.
+deepToC: true
+---
+
+HM encrypts the sensitive fields of your identity provider (IdP) connector configuration — values such as client secrets and bind passwords — using a Fernet key. HM stores this key in the `fernet-key` field of the `hm-portal-bootstrap` Kubernetes secret.
+
+The `fernet-key` value accepts more than one key, supplied as a comma-separated list. HM encrypts with the first key in the list and can still read data protected by any of the other keys. This lets you rotate the key in stages — add a new key, re-encrypt your connector secrets with it, then remove the old key — so rotation completes without downtime or data loss.
+
+!!! important
+Always back up your keys before making changes, and keep a key in the list for as long as any data is still protected by it. A Fernet-encrypted value can be read only with the key that produced it, so removing a key that still protects data makes that data permanently unrecoverable.
+!!!
+
+## Before you begin
+
+- `kubectl` access to the cluster running HM, with permission to read and edit secrets in the `default` namespace.
+- A backup of the current Fernet key, stored somewhere secure.
+- Because rotation requires you to re-save each connector and restarts HM's identity service, perform it during a maintenance window.
+
+## Rotating the key
+
+1. Read and back up the current key. Copy this value into your secrets manager — it's both your backup and the "current key" you reference in the next steps:
+
+   ```shell
+   kubectl get secret hm-portal-bootstrap -n default \
+     -o jsonpath='{.data.fernet-key}' | base64 -d
+   ```
+
+1. Generate a new key. A Fernet key is a URL-safe, base64-encoded, 32-byte value. Copy the output:
+
+   ```shell
+   openssl rand -base64 32 | tr '+/' '-_'
+   ```
+
+1. Add the new key while keeping the current one. Open the secret for editing:
+
+   ```shell
+   kubectl edit secret hm-portal-bootstrap -n default
+   ```
+
+   In the editor, the `fernet-key` under `data:` is base64-encoded. To set a plain-text value, remove the `fernet-key` line from the `data:` block and add a top-level `stringData:` block, listing the new key **first** and the current key second:
+
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: hm-portal-bootstrap
+     # …
+   data:
+     static-passwords.yaml: <unchanged>
+   stringData:
+     fernet-key: "<new-key>,<current-key>"
+   ```
+
+   Save and close the editor. HM uses the new key (first in the list) to encrypt and still reads existing data with the current key.
+
+   !!! note
+   `stringData` overrides only `fernet-key`, so the rest of the secret — including `static-passwords.yaml` — is unchanged. The API server moves `stringData` into `data` and encodes it, so the next time you edit the secret you'll again see `fernet-key` under `data:` (now holding the updated value), not `stringData`.
+   !!!
+
+1. HM's identity service restarts automatically once the change is replicated to the `upm-dex` namespace. Verify the pods have restarted and are running:
+
+   ```shell
+   kubectl get pods -n upm-dex -l app.kubernetes.io/name=dex
+   ```
+
+   Authentication continues to work uninterrupted.
+
+1. Re-encrypt your existing connector secrets with the new key. In the HM console, open each configured IdP connector and save it again. (See [Configuring your IdP in the HM console](config_idp_hm.mdx).) Saving a connector re-encrypts its sensitive fields with the current (new) key.
+
+   !!! note
+   Until you re-save a connector, its secret is still protected by the old key. Re-save every connector before continuing to the next step.
+   !!!
+
+1. Remove the old key. Once every connector has been re-saved, edit the secret again:
+
+   ```shell
+   kubectl edit secret hm-portal-bootstrap -n default
+   ```
+
+   Remove the `fernet-key` line from the `data:` block and add a `stringData:` block containing only the new key:
+
+   ```yaml
+   stringData:
+     fernet-key: "<new-key>"
+   ```
+
+   Save and close the editor.
+
+   !!! warning
+   Don't remove the old key until you have re-saved every connector. Removing it while a connector's secret is still protected by the old key prevents HM from reading that secret, and the affected IdP login stops working.
+   !!!
+
+## Verifying the rotation
+
+After HM's identity service restarts, confirm the pods are running:
+
+```shell
+kubectl get pods -n upm-dex -l app.kubernetes.io/name=dex
+```
+
+Then sign in through each configured IdP to confirm authentication succeeds.
+
+If a login fails after you removed the old key, that connector was not re-encrypted in time. To recover, edit the secret again and set `stringData.fernet-key` back to `"<new-key>,<old-key>"` (new key first), using your backed-up old key. HM's identity service restarts automatically. Sign in to confirm the login works, re-save the affected connector in the HM console, then remove the old key again.
