@@ -11,7 +11,7 @@ EDB distributes ClickHouse as RPM packages for Rocky Linux 10 on x86-64. The fol
 | `edb-clickhouse-server` | ClickHouse server engine, systemd services, and default configuration files. Includes `clickhouse-keeper.service`, so server nodes can run Keeper alongside the server without an additional package. | Server nodes |
 | `edb-clickhouse-client` | `clickhouse-client`, `clickhouse-local`, `clickhouse-benchmark`, and related tools. | Server nodes, remote client hosts |
 | `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. | All server and client nodes |
-| `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. Requires `edb-clickhouse-common-static`. | Dedicated Keeper nodes only |
+| `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. | Dedicated Keeper nodes only |
 
 For an explanation of node roles and deployment topologies, see [Architecture](../overview/architecture).
 
@@ -116,12 +116,8 @@ The following steps walk through a five-node deployment: four server nodes acros
    On each dedicated Keeper node:
 
    ```bash
-   sudo dnf install -y \
-     edb-clickhouse-common-static \
-     edb-clickhouse-keeper
+   sudo dnf install -y edb-clickhouse-keeper
    ```
-
-   `edb-clickhouse-keeper` requires `edb-clickhouse-common-static` for the ClickHouse binary it symlinks to. Install both together.
 
 ### Configuring Keeper
 
@@ -286,27 +282,6 @@ Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of i
    ORDER BY event_id;
    ```
 
-1. Insert some rows:
-
-   ```sql
-   INSERT INTO events VALUES
-       (1, 101, 'login',    now()),
-       (2, 102, 'purchase', now()),
-       (3, 103, 'logout',   now()),
-       (4, 104, 'login',    now());
-   ```
-
-1. Query the local table on any server node. Each node returns only the rows on its shard:
-
-   ```sql
-   SELECT * FROM events;
-   __OUTPUT__
-   ┌─event_id─┬─user_id─┬─event_type─┬──────────────created_at─┐
-   │        2 │     102 │ purchase   │ 2024-01-01 10:00:00      │
-   │        4 │     104 │ login      │ 2024-01-01 10:00:00      │
-   └──────────┴─────────┴────────────┴─────────────────────────┘
-   ```
-
 1. Create a `Distributed` table on top of `events`. Unlike the local table, it stores no data. It routes queries to `events` across all shards and aggregates the results:
 
    ```sql
@@ -318,15 +293,36 @@ Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of i
    ) ENGINE = Distributed(my_cluster, default, events, rand());
    ```
 
+1. Insert some rows via `events_dist`. The `rand()` sharding key distributes each row across shards:
+
+   ```sql
+   INSERT INTO events_dist VALUES
+       (1, 101, 'login',    now()),
+       (2, 102, 'purchase', now()),
+       (3, 103, 'logout',   now()),
+       (4, 104, 'login',    now());
+   ```
+
+1. Query the local table on any server node. Each node returns only the rows on its shard. The specific rows vary depending on how `rand()` distributed them:
+
+   ```sql
+   SELECT * FROM events;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬─────────────created_at─┐
+   │        2 │     102 │ purchase   │ 2026-06-10 14:48:15    │
+   │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
+   └──────────┴─────────┴────────────┴────────────────────────┘
+   ```
+
 1. Query `events_dist` from any node to confirm all rows are returned across shards:
 
    ```sql
    SELECT * FROM events_dist ORDER BY event_id;
    __OUTPUT__
-   ┌─event_id─┬─user_id─┬─event_type─┬──────────────created_at─┐
-   │        1 │     101 │ login      │ 2024-01-01 10:00:00      │
-   │        2 │     102 │ purchase   │ 2024-01-01 10:00:00      │
-   │        3 │     103 │ logout     │ 2024-01-01 10:00:00      │
-   │        4 │     104 │ login      │ 2024-01-01 10:00:00      │
-   └──────────┴─────────┴────────────┴─────────────────────────┘
+   ┌─event_id─┬─user_id─┬─event_type─┬─────────────created_at─┐
+   │        1 │     101 │ login      │ 2026-06-10 14:48:15    │
+   │        2 │     102 │ purchase   │ 2026-06-10 14:48:15    │
+   │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
+   │        4 │     104 │ login      │ 2026-06-10 14:48:15    │
+   └──────────┴─────────┴────────────┴────────────────────────┘
    ```

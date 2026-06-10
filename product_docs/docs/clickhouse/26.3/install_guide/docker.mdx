@@ -382,14 +382,97 @@ services:
    docker exec -it server-01 clickhouse-client
    ```
 
-3. Confirm all nodes are registered:
+3. Confirm all server nodes are registered. `system.clusters` lists server nodes only, so the dedicated Keeper containers don't appear:
 
    ```sql
-   SELECT * FROM system.clusters WHERE cluster = 'my_cluster';
+   SELECT cluster, shard_num, replica_num, host_name
+   FROM system.clusters
+   WHERE cluster = 'my_cluster';
+   __OUTPUT__
+   ┌─cluster────┬─shard_num─┬─replica_num─┬─host_name─┐
+   │ my_cluster │         1 │           1 │ server-01 │
+   │ my_cluster │         1 │           2 │ server-03 │
+   │ my_cluster │         2 │           1 │ server-02 │
+   │ my_cluster │         2 │           2 │ server-04 │
+   └────────────┴───────────┴─────────────┴───────────┘
    ```
 
-4. Confirm Keeper is healthy:
+4. Check Keeper connectivity across all nodes. The query uses `clusterAllReplicas` to run against every server node and returns the root znodes each one sees. Every node returning rows confirms all servers can reach Keeper:
 
    ```sql
-   SELECT * FROM system.zookeeper WHERE path = '/';
+   SELECT hostName(), name, path
+   FROM clusterAllReplicas('my_cluster', system.zookeeper)
+   WHERE path = '/';
+   __OUTPUT__
+   ┌─hostName()─┬─name───────┬─path─┐
+   │ server-01  │ keeper     │ /    │
+   │ server-01  │ clickhouse │ /    │
+   │ server-02  │ keeper     │ /    │
+   │ server-02  │ clickhouse │ /    │
+   │ server-03  │ keeper     │ /    │
+   │ server-03  │ clickhouse │ /    │
+   │ server-04  │ keeper     │ /    │
+   │ server-04  │ clickhouse │ /    │
+   └────────────┴────────────┴──────┘
+   ```
+
+### Testing replication and sharding
+
+Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of it. Insert some rows and query both tables to confirm that replication is working within each shard and that the distributed table aggregates data across all shards.
+
+1. Create a local storage table. The `ReplicatedMergeTree` engine stores data physically on each node and replicates it within the shard:
+
+   ```sql
+   CREATE TABLE events ON CLUSTER my_cluster (
+       event_id   UInt32,
+       user_id    UInt32,
+       event_type String,
+       created_at DateTime
+   ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
+   ORDER BY event_id;
+   ```
+
+1. Create a `Distributed` table on top of `events`. Unlike the local table, it stores no data. It routes queries to `events` across all shards and aggregates the results:
+
+   ```sql
+   CREATE TABLE events_dist ON CLUSTER my_cluster (
+       event_id   UInt32,
+       user_id    UInt32,
+       event_type String,
+       created_at DateTime
+   ) ENGINE = Distributed(my_cluster, default, events, rand());
+   ```
+
+1. Insert some rows via `events_dist`. The `rand()` sharding key distributes each row across shards:
+
+   ```sql
+   INSERT INTO events_dist VALUES
+       (1, 101, 'login',    now()),
+       (2, 102, 'purchase', now()),
+       (3, 103, 'logout',   now()),
+       (4, 104, 'login',    now());
+   ```
+
+1. Query the local table on any server node. Each node returns only the rows on its shard. The specific rows vary depending on how `rand()` distributed them:
+
+   ```sql
+   SELECT * FROM events;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬─────────────created_at─┐
+   │        2 │     102 │ purchase   │ 2026-06-10 14:48:15    │
+   │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
+   └──────────┴─────────┴────────────┴────────────────────────┘
+   ```
+
+1. Query `events_dist` from any node to confirm all rows are returned across shards:
+
+   ```sql
+   SELECT * FROM events_dist ORDER BY event_id;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬─────────────created_at─┐
+   │        1 │     101 │ login      │ 2026-06-10 14:48:15    │
+   │        2 │     102 │ purchase   │ 2026-06-10 14:48:15    │
+   │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
+   │        4 │     104 │ login      │ 2026-06-10 14:48:15    │
+   └──────────┴─────────┴────────────┴────────────────────────┘
    ```
