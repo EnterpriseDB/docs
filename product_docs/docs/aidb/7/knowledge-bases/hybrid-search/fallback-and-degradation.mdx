@@ -1,12 +1,15 @@
 ---
-title: Fallback and degradation
-navTitle: Fallback and degradation
-description: "Handle embedding service outages gracefully with a three-tier fallback chain: hybrid search, FTS-only, and regex."
+title: Handle embedding service outages
+navTitle: Handle outages
+description: "Implement a three-tier fallback chain — hybrid search, FTS-only, and regex — to keep queries returning results when the embedding service is unavailable."
 redirects:
   - /aidb/7/knowledge-bases/hybrid-search/#fallback-and-degradation
 ---
 
-Hybrid search depends on embeddings being available at query time. If the embedding service is unreachable or embeddings haven't been generated yet for recent rows, the query will either return error or incomplete results. A fallback strategy ensures users still get results in those situations.
+When the embedding service is unavailable or embeddings haven't been generated for recent rows, hybrid search queries fail or return incomplete results. 
+This page shows how to implement a three-tier fallback so your application keeps returning results in those situations.
+
+## Defining the fallback chain
 
 A recommended degradation chain:
 
@@ -14,16 +17,18 @@ A recommended degradation chain:
 1. **FTS-only** — Keyword search using `tsvector` (no embedding service required).
 1. **Regex** — `ILIKE` pattern match (last resort, no index required).
 
-You can implement this strategy in application code by catching connection errors from the embedding step and routing to the fallback, or in SQL using a `CASE` expression or a wrapper function. Below are the three legs as standalone queries:
+## Implementing the fallback
+
+Implement this strategy in application code by catching connection errors from the embedding step and routing to the appropriate fallback, or in SQL using a `CASE` expression or a wrapper function. The three queries below are the building blocks for each tier:
 
 **Primary: hybrid (vector + native FTS)**
 
 ```sql
 WITH semantic AS (
     SELECT source_id,
-           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', :'query'))) / 2.0 AS vec_score
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')::vector)) / 2.0 AS vec_score
     FROM public.pipeline_docs
-    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')::vector
     LIMIT 50
 ),
 keyword AS (
