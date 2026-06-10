@@ -11,7 +11,7 @@ EDB distributes ClickHouse as RPM packages for Rocky Linux 10 on x86-64. The fol
 | `edb-clickhouse-server` | ClickHouse server engine, systemd services, and default configuration files. Includes `clickhouse-keeper.service`, so server nodes can run Keeper alongside the server without an additional package. | Server nodes |
 | `edb-clickhouse-client` | `clickhouse-client`, `clickhouse-local`, `clickhouse-benchmark`, and related tools. | Server nodes, remote client hosts |
 | `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. | All server and client nodes |
-| `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. | Dedicated Keeper nodes only |
+| `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. Requires `edb-clickhouse-common-static`. | Dedicated Keeper nodes only |
 
 For an explanation of node roles and deployment topologies, see [Architecture](../overview/architecture).
 
@@ -21,7 +21,7 @@ For an explanation of node roles and deployment topologies, see [Architecture](.
 - `sudo` or root access
 - An EDB subscription token, available from the [EDB customer portal](https://www.enterprisedb.com/accounts/login)
 
-## Installing on a single node
+## Deploying a single node
 
 ClickHouse runs as a standalone instance with no cluster coordination required. Suitable for development, testing, and single-tenant analytical workloads.
 
@@ -76,69 +76,257 @@ ClickHouse runs as a standalone instance with no cluster coordination required. 
 
    The output includes `(EDB Build)` for EDB-packaged releases.
 
-## Installing a cluster
+## Deploying a cluster
 
-A cluster deployment distributes data across multiple server nodes using sharding, replication, or both. Replication requires ClickHouse Keeper running on at least three nodes.
+A cluster deployment distributes data across multiple server nodes using sharding, replication, or both. Replication requires ClickHouse Keeper running on at least three nodes. For an explanation of sharding, replication, and Keeper roles, see [Architecture](../overview/architecture).
 
-1. Install the packages on each node according to its role.
+The following steps walk through a five-node deployment: four server nodes across two shards with two replicas each, with Keeper co-located on node-1 and node-2 and running as a dedicated service on node-5. Adjust the configuration for your own topology.
 
-   On each server node. For co-located deployments, no additional package is needed: `edb-clickhouse-server` already includes `clickhouse-keeper.service`.
+| Node | Role | Shard | Replica |
+|------|------|-------|---------|
+| node-1 | ClickHouse server + Keeper | 1 | 1 |
+| node-2 | ClickHouse server + Keeper | 1 | 2 |
+| node-3 | ClickHouse server | 2 | 1 |
+| node-4 | ClickHouse server | 2 | 2 |
+| node-5 | Keeper | | |
+
+### Installing packages
+
+1. Set up the EDB repository on every node:
 
    ```bash
    export EDB_SUBSCRIPTION_TOKEN=<your-token>
    export EDB_SUBSCRIPTION_PLAN=clickhouse
    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+   ```
+
+1. Install the role-appropriate packages on each node.
+
+   On each server node:
+
+   ```bash
    sudo dnf install -y \
      edb-clickhouse-common-static \
      edb-clickhouse-server \
      edb-clickhouse-client
    ```
 
-   On each dedicated Keeper node, install this package only if you're deploying Keeper on separate nodes rather than co-locating it with your server nodes:
+   For co-located deployments, `edb-clickhouse-server` already includes `clickhouse-keeper.service`, so no additional package is needed.
+
+   On each dedicated Keeper node:
 
    ```bash
-   export EDB_SUBSCRIPTION_TOKEN=<your-token>
-   export EDB_SUBSCRIPTION_PLAN=clickhouse
-   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
-   sudo dnf install -y edb-clickhouse-keeper
-   ```
-
-   On remote client hosts connecting to the cluster without running a server:
-
-   ```bash
-   export EDB_SUBSCRIPTION_TOKEN=<your-token>
-   export EDB_SUBSCRIPTION_PLAN=clickhouse
-   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
    sudo dnf install -y \
      edb-clickhouse-common-static \
-     edb-clickhouse-client
+     edb-clickhouse-keeper
    ```
 
-1. Configure the cluster.
+   `edb-clickhouse-keeper` requires `edb-clickhouse-common-static` for the ClickHouse binary it symlinks to. Install both together.
 
-   Server nodes run both `clickhouse-server.service` and `clickhouse-keeper.service`. Keeper handles distributed coordination, keeping replicas in sync and executing distributed DDL. Keeper configuration lives in `/etc/clickhouse-keeper/keeper_config.xml`. Use a minimum of three Keeper nodes to maintain quorum and tolerate one node failure.
+### Configuring Keeper
 
-   For configuration steps, see the [ClickHouse cluster deployment guide](https://clickhouse.com/docs/architecture/cluster-deployment) in the ClickHouse documentation.
+Configure all Keeper nodes before starting any service. Use a minimum of three Keeper nodes to tolerate one node failure.
 
-1. Start the services on each node.
+1. The RPM installs a default `/etc/clickhouse-keeper/keeper_config.xml`. Replace its contents on each Keeper node with the following, setting `<server_id>` to a unique integer (`1`, `2`, `3`) per node:
 
-   On server nodes:
+   ```xml
+   <clickhouse>
+       <listen_host>0.0.0.0</listen_host>
+       <keeper_server>
+           <tcp_port>9181</tcp_port>
+           <server_id>1</server_id><!-- Set to 1, 2, or 3 depending on the node -->
+           <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+           <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+           <coordination_settings>
+               <operation_timeout_ms>10000</operation_timeout_ms>
+               <session_timeout_ms>30000</session_timeout_ms>
+               <raft_logs_level>information</raft_logs_level>
+           </coordination_settings>
+           <raft_configuration>
+               <server><id>1</id><hostname><node-1-ip></hostname><port>9234</port></server>
+               <server><id>2</id><hostname><node-2-ip></hostname><port>9234</port></server>
+               <server><id>3</id><hostname><node-5-ip></hostname><port>9234</port></server>
+           </raft_configuration>
+       </keeper_server>
+   </clickhouse>
+   ```
+
+### Configuring the servers
+
+Each server node needs a cluster configuration that defines the remote servers, Keeper endpoints, and the node's own shard and replica identity.
+
+1. Create `/etc/clickhouse-server/config.d/cluster.xml` on each server node, adjusting the `<shard>` and `<replica>` values in the `<macros>` section for each node:
+
+   | Node | `<shard>` | `<replica>` |
+   |------|-----------|-------------|
+   | node-1 | 01 | 01 |
+   | node-2 | 01 | 02 |
+   | node-3 | 02 | 01 |
+   | node-4 | 02 | 02 |
+
+   ```xml
+   <clickhouse>
+       <listen_host>0.0.0.0</listen_host>
+       <remote_servers>
+           <my_cluster>
+               <shard>
+                   <internal_replication>true</internal_replication>
+                   <replica><host><node-1-ip></host><port>9000</port></replica>
+                   <replica><host><node-2-ip></host><port>9000</port></replica>
+               </shard>
+               <shard>
+                   <internal_replication>true</internal_replication>
+                   <replica><host><node-3-ip></host><port>9000</port></replica>
+                   <replica><host><node-4-ip></host><port>9000</port></replica>
+               </shard>
+           </my_cluster>
+       </remote_servers>
+       <zookeeper>
+           <node><host><node-1-ip></host><port>9181</port></node>
+           <node><host><node-2-ip></host><port>9181</port></node>
+           <node><host><node-5-ip></host><port>9181</port></node>
+       </zookeeper>
+       <macros>
+           <cluster>my_cluster</cluster>
+           <shard>01</shard><!-- Adjust per node, see table above -->
+           <replica>01</replica><!-- Adjust per node, see table above -->
+       </macros>
+       <distributed_ddl>
+           <path>/clickhouse/task_queue/ddl</path>
+       </distributed_ddl>
+   </clickhouse>
+   ```
+
+### Starting services
+
+1. Start Keeper on all Keeper nodes. On each Keeper node:
+
+   ```bash
+   sudo systemctl enable clickhouse-keeper
+   sudo systemctl start clickhouse-keeper
+   ```
+
+1. Verify each Keeper node is healthy. Run the following on each Keeper node. A healthy node responds with `imok`:
+
+   ```bash
+   clickhouse-keeper-client -h 127.0.0.1 -p 9181 -q "ruok"
+   __OUTPUT__
+   imok
+   ```
+
+1. Confirm quorum is formed from any one Keeper node. A value of `2` means two followers are synced to the leader, confirming all three Keeper nodes have formed a quorum:
+
+   ```bash
+   clickhouse-keeper-client -h 127.0.0.1 -p 9181 -q "mntr" | grep zk_synced_followers
+   __OUTPUT__
+   zk_synced_followers	2
+   ```
+
+1. Start the server on all server nodes:
 
    ```bash
    sudo systemctl enable clickhouse-server
    sudo systemctl start clickhouse-server
    ```
 
-   On server nodes running co-located Keeper, also start the Keeper service:
+1. Verify the server is running on each server node:
 
    ```bash
-   sudo systemctl enable clickhouse-keeper
-   sudo systemctl start clickhouse-keeper
+   sudo systemctl status clickhouse-server
    ```
 
-   On dedicated Keeper nodes, start only the Keeper service:
+### Connecting to the cluster
+
+1. Connect to any server node from a host with `edb-clickhouse-client` installed:
 
    ```bash
-   sudo systemctl enable clickhouse-keeper
-   sudo systemctl start clickhouse-keeper
+   clickhouse-client -h <server-node-ip>
+   ```
+
+   By default, the `default` user has no password. To set one, run the following after connecting:
+
+   ```sql
+   ALTER USER default IDENTIFIED BY 'yourpassword';
+   ```
+
+   Then connect with:
+
+   ```bash
+   clickhouse-client -h <server-node-ip> --password
+   ```
+
+1. Confirm all server nodes are registered. `system.clusters` lists server nodes only, so the dedicated Keeper node-5 doesn't appear:
+
+   ```sql
+   SELECT cluster, shard_num, replica_num, host_name
+   FROM system.clusters
+   WHERE cluster = 'my_cluster';
+   __OUTPUT__
+   ┌─cluster────┬─shard_num─┬─replica_num─┬─host_name───┐
+   │ my_cluster │         1 │           1 │ <node-1-ip> │
+   │ my_cluster │         1 │           2 │ <node-2-ip> │
+   │ my_cluster │         2 │           1 │ <node-3-ip> │
+   │ my_cluster │         2 │           2 │ <node-4-ip> │
+   └────────────┴───────────┴─────────────┴─────────────┘
+   ```
+
+### Testing replication and sharding
+
+Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of it. Insert some rows and query both tables to confirm that replication is working within each shard and that the distributed table aggregates data across all shards.
+
+1. Create a local storage table. The `ReplicatedMergeTree` engine stores data physically on each node and replicates it within the shard:
+
+   ```sql
+   CREATE TABLE events ON CLUSTER my_cluster (
+       event_id   UInt32,
+       user_id    UInt32,
+       event_type String,
+       created_at DateTime
+   ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
+   ORDER BY event_id;
+   ```
+
+1. Insert some rows:
+
+   ```sql
+   INSERT INTO events VALUES
+       (1, 101, 'login',    now()),
+       (2, 102, 'purchase', now()),
+       (3, 103, 'logout',   now()),
+       (4, 104, 'login',    now());
+   ```
+
+1. Query the local table on any server node. Each node returns only the rows on its shard:
+
+   ```sql
+   SELECT * FROM events;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬──────────────created_at─┐
+   │        2 │     102 │ purchase   │ 2024-01-01 10:00:00      │
+   │        4 │     104 │ login      │ 2024-01-01 10:00:00      │
+   └──────────┴─────────┴────────────┴─────────────────────────┘
+   ```
+
+1. Create a `Distributed` table on top of `events`. Unlike the local table, it stores no data. It routes queries to `events` across all shards and aggregates the results:
+
+   ```sql
+   CREATE TABLE events_dist ON CLUSTER my_cluster (
+       event_id   UInt32,
+       user_id    UInt32,
+       event_type String,
+       created_at DateTime
+   ) ENGINE = Distributed(my_cluster, default, events, rand());
+   ```
+
+1. Query `events_dist` from any node to confirm all rows are returned across shards:
+
+   ```sql
+   SELECT * FROM events_dist ORDER BY event_id;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬──────────────created_at─┐
+   │        1 │     101 │ login      │ 2024-01-01 10:00:00      │
+   │        2 │     102 │ purchase   │ 2024-01-01 10:00:00      │
+   │        3 │     103 │ logout     │ 2024-01-01 10:00:00      │
+   │        4 │     104 │ login      │ 2024-01-01 10:00:00      │
+   └──────────┴─────────┴────────────┴─────────────────────────┘
    ```
