@@ -1,0 +1,302 @@
+---
+title: Writing Hybrid search queries
+navTitle: Writing queries
+description: "SQL patterns for combining vector search with relational filters, BM25, native FTS, RRF, and weighted linear fusion, with a worked example."
+deepToC: true
+redirects:
+  - /aidb/7/knowledge-bases/hybrid-search/#query-patterns
+  - /aidb/7/knowledge-bases/hybrid-search/#vector--relational-filter
+  - /aidb/7/knowledge-bases/hybrid-search/#vector--bm25-as-a-filter
+  - /aidb/7/knowledge-bases/hybrid-search/#vector--bm25-via-reciprocal-rank-fusion
+  - /aidb/7/knowledge-bases/hybrid-search/#vector--relational--bm25-all-three
+  - /aidb/7/knowledge-bases/hybrid-search/#vector--native-postgresql-fts
+  - /aidb/7/knowledge-bases/hybrid-search/#weighted-linear-fusion
+---
+
+The patterns below cover every supported combination of vector search with keyword and relational filters. Complete the relevant setup page before using a pattern that requires BM25 or native full-text search (FTS):
+
+- [Setting up user-managed BM25](set-up-bm25)
+- [Setting up native PostgreSQL FTS](set-up-native-fts)
+
+### Vector + relational filter
+
+Filter semantic search results by any column in the source table. The filter is applied at the same query level as the vector `ORDER BY`, allowing iterative index scans to produce exactly `LIMIT` results.
+
+```sql
+SET hnsw.iterative_scan = relaxed_order;
+
+SELECT s.id, s.description,
+       kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector AS distance
+FROM my_kb_vector kb
+JOIN my_source_table s ON s.id::TEXT = kb.source_id
+WHERE s.category_id = 2                          -- relational filter on source table
+ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector
+LIMIT 10;
+```
+
+### Vector + BM25 as a filter
+
+Use a BM25 score threshold as a `WHERE` condition, then order results by vector distance. This operation returns the semantically nearest results that also satisfy the keyword match.
+
+```sql
+SET hnsw.iterative_scan = relaxed_order;
+
+SELECT s.id, s.description,
+       kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector  AS distance
+FROM my_kb_vector kb
+JOIN my_source_table s ON s.id::TEXT = kb.source_id
+WHERE s.bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert')) < -1.0  -- BM25 filter
+ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector
+LIMIT 10;
+```
+
+### Vector + BM25 via reciprocal rank fusion (RRF)
+
+Reciprocal rank fusion (RRF) runs semantic and keyword searches independently, then merges and scores the result sets. This operation avoids overfiltering and surfaces results that rank well in either dimension.
+
+```sql
+WITH semantic AS (
+    SELECT source_id AS id,
+           ROW_NUMBER() OVER (ORDER BY value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector) AS rank
+    FROM my_kb_vector
+    ORDER BY value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector
+    LIMIT 50
+),
+fulltext AS (
+    SELECT id::TEXT AS id,
+           ROW_NUMBER() OVER (ORDER BY bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert'))) AS rank
+    FROM my_source_table
+    ORDER BY bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert'))
+    LIMIT 50
+)
+SELECT COALESCE(s.id, f.id) AS id,
+       COALESCE(1.0 / (60 + s.rank), 0) + COALESCE(1.0 / (60 + f.rank), 0) AS rrf_score
+FROM semantic s
+FULL OUTER JOIN fulltext f ON s.id = f.id
+ORDER BY rrf_score DESC
+LIMIT 10;
+```
+
+The constant `60` in the RRF formula is the standard rank smoothing factor. Adjust it to control the relative weight of high-rank vs lower-rank results.
+
+### Combining vector + relational + BM25
+
+Combine all three filtering mechanisms in a single query:
+
+```sql
+SET hnsw.iterative_scan = relaxed_order;
+
+SELECT s.id, s.description,
+       kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector  AS distance,
+       s.bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert')) AS bm25_score
+FROM my_kb_vector kb
+JOIN my_source_table s ON s.id::TEXT = kb.source_id
+WHERE s.category_id = 2                                                                    -- relational filter
+  AND s.bm25_col <&> to_bm25query('my_bm25_idx', tokenize('shoes', 'bert')) < -1.0        -- BM25 filter
+ORDER BY kb.value <=> aidb.kb_query_encode('public.my_kb_vector', 'summer fashion')::vector
+LIMIT 10;
+```
+
+### Vector + native PostgreSQL FTS
+
+Use standard PostgreSQL `tsvector` / `ts_rank` as the keyword leg when VectorChord-BM25 isn't available. The approach is equivalent to the BM25 filter pattern but uses the built-in `@@` match operator and `plainto_tsquery()` instead.
+
+This example assumes a `search_vector tsvector` column on the source table, populated and indexed as described in [Setting up native PostgreSQL FTS](set-up-native-fts).
+
+```sql
+SET hnsw.iterative_scan = relaxed_order;
+
+SELECT s.id, s.title,
+       kb.value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')::vector AS distance,
+       ts_rank_cd(s.search_vector, plainto_tsquery('english', 'connection pooling'))           AS fts_score
+FROM public.pipeline_docs AS kb
+JOIN my_docs AS s ON s.id::TEXT = kb.source_id
+WHERE s.search_vector @@ plainto_tsquery('english', 'connection pooling')  -- keyword filter
+ORDER BY kb.value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')::vector
+LIMIT 10;
+```
+
+The `WHERE` clause acts as a hard keyword filter: only rows that contain the search terms are considered. Results are then ordered by semantic similarity. To surface results that match either signal — not just both — use [weighted linear fusion](#weighted-linear-fusion) instead.
+
+### Weighted linear fusion
+
+Weighted linear fusion combines normalized vector similarity and full-text scores into a single composite score using two explicit weights — one for semantic relevance, one for keyword relevance — that must sum to 1.0. Unlike [RRF](#vector--bm25-via-reciprocal-rank-fusion-rrf), which uses only rank positions, weighted linear fusion respects actual score magnitudes, making it useful when you want to control exactly how much each signal contributes to the final ranking.
+
+### When to use weighted linear fusion versus RRF
+
+|                                   | Weighted linear fusion                              | RRF                                                  |
+|-----------------------------------|-----------------------------------------------------|------------------------------------------------------|
+| Uses actual score values          | Yes                                                 | No (rank positions only)                             |
+| Requires score normalization      | Yes                                                 | No                                                   |
+| Tunable per use case              | Yes (explicit weights)                              | Partially (smoothing constant `k`)                   |
+| Robust to score scale differences | No (normalize carefully)                            | Yes (rank-based, scale-independent)                  |
+| Best for                          | Workloads where score magnitude carries information | General-purpose merging of heterogeneous result sets |
+
+Adjust the weights based on your workload:
+
+| Use case                                                         | Suggested weights             |
+|------------------------------------------------------------------|-------------------------------|
+| Concept/meaning is most important                                | `0.7` semantic, `0.3` keyword |
+| Exact terminology matters as much as meaning                     | `0.5` semantic, `0.5` keyword |
+| Keyword precision is critical (for example, code or rule search) | `0.3` semantic, `0.7` keyword |
+
+**With native PostgreSQL FTS:**
+
+Because vector distances and `ts_rank` values use different scales, both legs are normalized to `[0, 1]` before combining. Cosine distance (range `[0, 2]`) is converted to similarity using `(2.0 - distance) / 2.0`. `ts_rank_cd` already returns values in roughly `[0, 1]`.
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')::vector)) / 2.0
+               AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')::vector
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           ts_rank_cd(search_vector, plainto_tsquery('english', 'connection pooling')) AS fts_score
+    FROM my_docs
+    WHERE search_vector @@ plainto_tsquery('english', 'connection pooling')
+    ORDER BY fts_score DESC
+    LIMIT 50
+)
+SELECT
+    COALESCE(s.source_id, k.source_id)                             AS id,
+    0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.fts_score, 0) AS fusion_score
+FROM semantic s
+FULL OUTER JOIN keyword k ON s.source_id = k.source_id
+ORDER BY fusion_score DESC
+LIMIT 10;
+```
+
+**With VectorChord-BM25:**
+
+The same pattern works with `vchord_bm25`, but BM25 scores are returned as negative values by convention (lower = better match), so negate and normalize before combining:
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')::vector)) / 2.0
+               AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', 'connection pooling')::vector
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           -- BM25 returns negative scores; negate so higher = better
+           -(bm25_col <&> to_bm25query('my_bm25_idx', tokenize('connection pooling', 'bert'))) AS bm25_raw
+    FROM my_source_table
+    ORDER BY bm25_col <&> to_bm25query('my_bm25_idx', tokenize('connection pooling', 'bert'))
+    LIMIT 50
+),
+normalized_keyword AS (
+    SELECT source_id,
+           CASE WHEN max(bm25_raw) OVER () > 0
+                THEN bm25_raw / max(bm25_raw) OVER ()
+                ELSE 0
+           END AS bm25_score
+    FROM keyword
+)
+SELECT
+    COALESCE(s.source_id, k.source_id)                              AS id,
+    0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.bm25_score, 0) AS fusion_score
+FROM semantic s
+FULL OUTER JOIN normalized_keyword k ON s.source_id = k.source_id
+ORDER BY fusion_score DESC
+LIMIT 10;
+```
+
+---
+
+## Worked example: relational predicate filtering
+
+This example shows how to combine semantic vector search with a relational `WHERE` filter to narrow results to a specific category. A pipeline embeds product names into a knowledge base, and queries then retrieve semantically similar results filtered by category.
+
+**Setting up the source table and pipeline**
+
+1. Create the source table:
+
+```sql
+CREATE TABLE products (
+    id           SERIAL PRIMARY KEY,
+    product_name TEXT NOT NULL,
+    category     TEXT NOT NULL
+);
+```
+
+1. Populate it with sample data:
+
+```sql
+INSERT INTO products (product_name, category) VALUES
+    ('Hamburger',    'meat'),
+    ('Cheeseburger', 'meat'),
+    ('Fish n Chips',  'fish'),
+    ('Fries',         'vegetarian'),
+    ('Burrito',       'meat'),
+    ('Pizza',         'meat'),
+    ('Sandwich',      'meat'),
+    ('Veggie Burger', 'vegetarian'),
+    ('Kebab',         'meat');
+```
+
+1. Create a pipeline to embed `product_name` into a knowledge base:
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'food_products',
+    source             => 'products',
+    source_key_column  => 'id',
+    source_data_column => 'product_name',
+    step_1             => 'KnowledgeBase',
+    step_1_options     => aidb.knowledge_base_config(
+                              model       => 'bert',
+                              data_format => 'Text'
+                          )
+);
+```
+
+1. Run the pipeline to generate embeddings:
+
+```sql
+SELECT aidb.run_pipeline('food_products');
+```
+
+**Standard semantic query (no filter)**
+
+This baseline query returns the top semantic matches with no constraints, so you can compare the result set against the filtered query that follows.
+
+```sql
+SELECT * FROM aidb.retrieve_text('public.pipeline_food_products', 'fast food', topk => 4);
+__OUTPUT__
+ key |     value     |      distance      | part_ids | pipeline_name | intermediate_steps
+-----+---------------+--------------------+----------+---------------+--------------------
+ 8   | Veggie Burger | 0.9955745765192575 | {0}      | food_products | []
+ 6   | Pizza         | 1.0280680840689795 | {0}      | food_products | []
+ 4   | Fries         | 1.0630385212203115 | {0}      | food_products | []
+ 7   | Sandwich      | 1.0903594734917037 | {0}      | food_products | []
+```
+
+**Custom query with relational filter**
+
+This query adds a `WHERE` clause on the source table to restrict results to a single category, while keeping the vector `ORDER BY` at the same query level so iterative index scans can satisfy the `LIMIT` efficiently.
+
+```sql
+SET hnsw.iterative_scan = relaxed_order;
+
+SELECT vector.source_id, source.product_name, source.category
+FROM public.pipeline_food_products AS vector
+JOIN products AS source ON source.id::TEXT = vector.source_id
+WHERE source.category = 'vegetarian'                                                         -- relational filter
+ORDER BY vector.value <=> aidb.kb_query_encode('public.pipeline_food_products', 'fast food')::vector
+LIMIT 10;
+__OUTPUT__
+ source_id | product_name  |  category
+-----------+---------------+------------
+ 8         | Veggie Burger | vegetarian
+ 4         | Fries         | vegetarian
+```
+
+Only vegetarian items are returned, ordered by semantic relevance to "fast food".
+
