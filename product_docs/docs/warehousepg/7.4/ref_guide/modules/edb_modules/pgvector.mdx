@@ -1,0 +1,339 @@
+---
+title: pgvector
+redirects:
+  - /supported-open-source/warehousepg/warehousepg/ref_guide/modules/pgvector/
+description: Learn how to store, query, and index embeddings in WarehousePG using the pgvector extension.
+---
+
+The pgvector module provides high-performance vector similarity search capabilities for WarehousePG (WHPG). By representing complex data (like text, images, or audio) as machine-learning-generated embeddings, you can perform semantic and syntactic searches at scale.
+
+The WarehousePG pgvector module is equivalent to version 0.7.4. of the pgvector module used with PostgreSQL. See [Limitations](#limitations) to understand the limitations of the WarehousePG version of the module.
+
+## Downloading, installing, and loading the extension
+
+Refer to [Downloading and installing an extension](./#downloading-and-installing-an-extension) for installation and setup instructions.
+
+Once installed, create the extension in your database:
+
+```sql
+CREATE EXTENSION vector;
+```
+
+## About the vector types, operators, and functions
+
+pgvector introduces the `vector` data type along with specialized index access methods `ivfflat` and `hnsw`. These tools enable both exact and approximate nearest neighbor (ANN) searches using various distance metrics.
+
+### vector data type
+
+The `vector` data type represents an n-dimensional coordinate. Each `vector` takes `4 * dimensions + 8` bytes of storage. Each element is a single precision floating-point number (similar to the `real` type in WarehousePG), and all of the elements must be finite (no `NaN`, `Infinity`, or `-Infinity`). Vectors can have up to 16,000 dimensions.
+
+### vector operators
+
+pgvector provides the following operators for the `vector` data type:
+
+| Operator | Description                 |
+| -------- | --------------------------- |
+| +        | Element-wise addition       |
+| -        | Element-wise subtraction    |
+| \*       | Element-wise multiplication |
+| &lt;–>   | Euclidean distance          |
+| &lt;#>   | Negative inner product      |
+| &lt;=>   | Cosine distance             |
+
+!!!Note
+
+  Because WarehousePG supports only `ASC` (ascending) order, the `<#>` returns the negative inner product to ensure the smallest value appears first.
+!!!
+
+### vector functions
+
+pgvector provides the following functions for the `vector` data type:
+
+| Function name                     | Return type        | Description                      |
+| --------------------------------- | ------------------ | -------------------------------- |
+| `cosine_distance(vector, vector)` | `double precision` | Computes the cosine distance     |
+| `inner_product(vector, vector)`   | `double precision` | Computes the inner product       |
+| `l2_distance(vector, vector)`     | `double precision` | Computes the Euclidean distance  |
+| `l1_distance(vector, vector)`     | `double precision` | Computes the taxicab distance    |
+| `vector_dims(vector)`             | `integer`          | Returns the number of dimensions |
+| `vector_norm(vector)`             | `double precision` | Computes the Euclidean norm      |
+
+### vector aggregate functions
+
+pgvector provides the following aggregate functions for the `vector` data type:
+
+| Function      | Return type | Description                             |
+| ------------- | ----------- | --------------------------------------- |
+| `avg(vector)` | `vector`    | Computes the arithmetic mean            |
+| `sum(vector)` | `vector`    | Computes the sum of the vector elements |
+
+## Using the pgvector module
+
+You can use pgvector to search, store, and query embeddings in WarehousePG.
+
+### Storing embeddings
+
+You can define `vector` columns with a specific dimension count to ensure data integrity.
+
+-   Create a table with a `vector` column with three dimensions:
+
+    ```sql
+    CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(1536));
+    ```
+
+-   Add a column to an existing table:
+
+    ```sql
+    ALTER TABLE items ADD COLUMN embedding vector(3);
+    ```
+
+### Performing common DML operations
+
+-   Insert data:
+
+    ```sql
+    INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
+    ```
+
+-   Upsert:
+
+    ```sql
+    INSERT INTO items (id, embedding) VALUES (1, '[1,2,3]')
+        ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding;
+    ```
+
+-   Update and delete data:
+
+    ```sql
+    UPDATE items SET embedding = '[1,2,3]' WHERE id = 1;
+    DELETE FROM items WHERE id = 1;
+    ```
+
+-   Insert and update data:
+
+    ```sql
+    INSERT INTO items (embedding) VALUES ('[1.1, 2.2, 3.3]');
+    UPDATE items SET embedding = '[4.4, 5.5, 6.6]' WHERE id = 1;
+    ```
+
+### Querying embeddings
+
+-   Get the nearest neighbors to a `vector` by L2 distance:
+
+    ```sql
+    SELECT * FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 5;
+    ```
+
+-   Get the nearest neighbors to a row:
+
+    ```sql
+    SELECT * FROM items WHERE id != 1 
+      ORDER BY embedding <-> (SELECT embedding FROM items WHERE id = 1) LIMIT 5;
+    ```
+
+-   Filter by a certain distance:
+
+    ```sql
+    SELECT * FROM items WHERE embedding <-> '[3,1,2]' < 5;
+    ```
+
+### Evaluating embedding distance
+
+-   Inner product (multiply by -1):
+
+    ```sql
+    SELECT (embedding <#> '[3,1,2]') * -1 AS inner_product FROM items;
+    ```
+
+-   Cosine similarity (1 - distance):
+
+    ```sql
+    SELECT 1 - (embedding <=> '[3,1,2]') AS cosine_similarity FROM items;
+    ```
+
+### Aggregating embeddings
+
+-   Average the vectors in a table:
+
+    ```sql
+    SELECT AVG(embedding) FROM items;
+    ```
+
+-   Average a group of vectors in a table:
+
+    ```sql
+    SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
+    ```
+
+### Indexing embeddings
+
+By default, pgvector performs an exact nearest neighbor search, which guarantees perfect recall. To trade some recall for performance, you can use an Approximate Nearest Neighbor (ANN) index.
+
+!!!Note
+
+  Unlike typical indexes, adding an approximate index may change query results.
+!!!
+
+When you create an index for an embedding, you use the `lists` parameter to specify the number of clusters created during index creation. Each cluster is a partition of the data set.
+
+For optimal search accuracy:
+
+-   Create the index after the table has data.
+-   Choose an appropriate `lists` value. Use `rows / 1000` for up to 1M rows and `sqrt(rows)` for over 1M rows.
+-   pgvector provides a `probes` parameter that you can set at query time to specify the number of regions to search during a query. When querying, specify an appropriate number of `probes`. A high number is better for recall, a low number is better for speed. A reasonable initial value is `sqrt(lists)`.
+
+**Inverted File Flat (IVFFlat) indexes**
+
+IVFFlat indexes are best for large datasets where memory is limited. It partitions vectors into clusters (lists). You can index a `vector` that has up to 2,000 dimensions.
+
+-   Create an index on the L2 distance:
+
+    ```sql
+    CREATE INDEX ON items USING ivfflat (embedding vector_l2_ops) WITH (lists = 100);
+    ```
+
+-   Create an index on the inner product:
+
+    ```sql
+    CREATE INDEX ON items USING ivfflat (embedding vector_ip_ops) WITH (lists = 100);
+    ```
+
+-   Create an index on the cosine distance:
+
+    ```sql
+    CREATE INDEX ON items USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+    ```
+
+-   Specify the number of `probes` (1 by default) to specify how many regions to search.
+
+    ```sql
+    SET ivfflat.probes = 10;
+    ```
+
+-   Use `SET LOCAL` inside a transaction block to set `probes` for a single query:
+
+    ```sql
+    BEGIN;
+    SET LOCAL ivfflat.probes = 10;
+    SELECT ... --- your queries
+    COMMIT;
+    ```
+
+**Hierarchical navigable small world (HNSW) indexes**
+
+HNSW indexes build a graph for faster search and higher recall than IVFFlat, supporting up to 2,000 dimensions.
+
+-   Create an index on the L2 distance:
+
+    ```sql
+    CREATE INDEX ON items USING hnsw (embedding vector_l2_ops);
+    ```
+
+-   Create an index on the inner product:
+
+    ```sql
+    CREATE INDEX ON items USING hnsw (embedding vector_ip_ops);
+    ```
+
+-   Create an index on the cosine distance:
+
+    ```sql
+    CREATE INDEX ON items USING hnsw (embedding vector_cosine_ops);
+    ```
+
+HNSW indexes support the following parameters:
+
+-   `m`: Specifies the maximum number of connections per layer (16 by default).
+-   `ef_construction`: Specifies the size of the dynamic candidate list for constructing the graph (64 by default).
+
+For example:
+
+```sql
+CREATE INDEX ON items USING hnsw (embedding vector_l2_ops) WITH (m = 16, ef_construction = 64);
+```
+
+You can specify a custom size for the dynamic candidate list for a search:
+
+```sql
+SET hnsw.ef_search = 100;
+```
+
+Higher value provides better recall at the cost of speed. The default size of the candidate list is 40. For example:
+
+```sql
+BEGIN;
+SET LOCAL hnsw.ef_search = 100;
+SELECT ... --- your queries
+COMMIT;
+```
+
+### Advanced usage
+
+**Parallel index creation**
+
+WarehousePG version 7.3.1 and later supports parallel index creation for HNSW and IVFFlat indexes through the `max_parallel_maintenance_workers` configuration parameter. By default, `max_parallel_maintenance_workers` is set to `2`, which allows two parallel workers to run per segment during index creation. To disable parallel workers, set `max_parallel_maintenance_workers` to  `0`.
+
+**Viewing indexing progress** 
+
+You can check index creation progress in WarehousePG as described in [CREATE INDEX Progress Reporting](../../../admin_guide/managing/progress_reporting.mdx#create_index_progress):
+
+```sql
+SELECT phase, tuples_done, tuples_total FROM gp_stat_progress_create_index;
+```
+
+**Filtering**
+
+Index nearest neighbor queries with a `WHERE` clause:
+
+```sql
+SELECT * FROM items WHERE category_id = 123 ORDER BY embedding <-> '[3,1,2]' LIMIT 5;
+```
+
+For approximate search, create a partial index on the `vector` column:
+
+```sql
+CREATE INDEX ON items USING ivfflat (embedding vector_l2_ops) WITH (lists = 100)
+    WHERE (category_id = 123);
+```
+
+Use [partitioning](../../../admin_guide/ddl/ddl-partition/) to perform an approximate search on many different values of the `WHERE` columns:
+
+```sql
+CREATE TABLE items (embedding vector(3), category_id int) PARTITION BY LIST(category_id);
+```
+
+**Performing hybrid search** 
+
+Use pgvector together with [full-text search](../../../admin_guide/query/textsearch/) for a hybrid search:
+
+```sql
+SELECT id, content FROM items, to_tsquery('hello & search') query
+  WHERE textsearch @@ query ORDER BY ts_rank_cd(textsearch, query) DESC LIMIT 5;
+```
+
+**Performance tuning and debugging**
+
+Use `EXPLAIN ANALYZE` to debug performance:
+
+```sql
+EXPLAIN ANALYZE SELECT * FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 5;
+```
+
+If vectors are normalized to length 1, use inner product for the best performance:
+
+```sql
+SELECT * FROM items ORDER BY embedding <#> '[3,1,2]' LIMIT 5;
+```
+
+To speed up queries with an index, increase the number of inverted `lists` (at the expense of recall):
+
+```sql
+CREATE INDEX ON items USING ivfflat (embedding vector_l2_ops) WITH (lists = 1000);
+```
+
+## Limitations
+
+pgvector for WarehousePG has the following limitations:
+
+-   The WarehousePG query optimizer (ORCA) doesn't support `ivfflat` and `hnsw` indexes. Queries using these indexes will fall back to the Postgres-based planner.
+-   The size of a vector index can be larger than the size of the base table.

@@ -1,0 +1,100 @@
+---
+title: Installing the observability stack
+navTitle: Installing the observability stack
+description: Install and configure Prometheus, Loki, and Alertmanager as the external observability services required by WEM.
+---
+
+WEM requires Prometheus and Loki to enable monitoring and log aggregation features. Alertmanager is required to enable the alerts integration. You can deploy dedicated instances for WEM or integrate with an existing enterprise monitoring stack.
+
+For a reference deployment using Docker Compose, see the [warehouse-pg-observability-demo](https://github.com/warehouse-pg/warehouse-pg-observability-demo) repository, which provides a working example with Prometheus, Loki, and Alertmanager pre-configured for WEM.
+
+!!! Note
+    Once WEM is installed, an example `prometheus.yml` and pre-built alert rule files (`wem-*.rules.yml`) are available at `/usr/local/greenplum-db/wem/config/prometheus/` on the WEM host. Use these as a starting point when configuring your Prometheus instance.
+
+## Installing Prometheus
+
+Prometheus collects and stores the metrics that WEM uses to display cluster performance data.
+
+1. Download and install Prometheus from the [official releases page](https://prometheus.io/download/), or install it using your system package manager.
+
+1. Configure a `prometheus.yml` to enable the remote write receiver, which the WEM Collector uses to push metrics. The example file at `/usr/local/greenplum-db/wem/config/prometheus/prometheus.yml` on the WEM host provides a ready-to-use starting point. At minimum, add the following:
+
+    ```yaml
+    global:
+      scrape_interval: 15s
+
+    # Enable remote write receiver so the WEM Collector can push metrics
+    ```
+
+    Start Prometheus with `--web.enable-remote-write-receiver` to accept inbound metrics:
+
+    ```bash
+    ./prometheus --config.file=prometheus.yml --web.enable-remote-write-receiver
+    ```
+
+1. Load the WEM alert rules. Once WEM is installed, copy the pre-built rule files to the path referenced in your `prometheus.yml` under `rule_files`:
+
+    ```bash
+    cp /usr/local/greenplum-db/wem/config/prometheus/alerts/*.rules.yml /etc/wem/prometheus/alerts/
+    ```
+
+    The example `prometheus.yml` included with WEM already references this path. See [Alert rules](../reference/alert-rules) for a description of each rule.
+
+1. Verify Prometheus is running:
+
+    ```bash
+    curl http://<prometheus-host>:9090/-/healthy
+    ```
+
+## Installing Loki
+
+Loki receives and stores WarehousePG log data forwarded by the WEM Collector.
+
+1. Download and install Loki from the [official releases page](https://github.com/grafana/loki/releases), or install it using your system package manager.
+
+1. Start Loki with a minimal configuration:
+
+    ```bash
+    ./loki -config.file=loki-local-config.yaml
+    ```
+
+1. Verify Loki is accepting log pushes:
+
+    ```bash
+    curl http://<loki-host>:3100/ready
+    ```
+
+## Installing Alertmanager
+
+Alertmanager is required to enable WEM's alert routing and notification features. Without it, the **Alerts** panel in WEM is not available.
+
+1. Download and install Alertmanager from the [official releases page](https://prometheus.io/download/#alertmanager), or install it using your system package manager.
+
+1. Create an `alertmanager.yml` with your notification routing. For example, to route all alerts to a Slack channel:
+
+    ```yaml
+    global:
+      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+    route:
+      receiver: 'slack-notifications'
+
+    receivers:
+      - name: 'slack-notifications'
+        slack_configs:
+          - channel: '#alerts'
+            text: '{{ .CommonAnnotations.summary }}'
+    ```
+
+1. Start Alertmanager:
+
+    ```bash
+    ./alertmanager --config.file=alertmanager.yml
+    ```
+
+1. Verify Alertmanager is running:
+
+    ```bash
+    curl http://<alertmanager-host>:9093/-/healthy
+    ```
+

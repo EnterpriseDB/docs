@@ -2,6 +2,7 @@
 title: Troubleshooting common issues
 navTitle: Troubleshooting
 description: Solutions for connectivity, authentication, and permission issues within WarehousePG Enterprise Manager.
+deepToC: true
 ---
 
 Address errors encountered within the portal to ensure continuous access to the management suite. Contact your system administrator if the resolution requires infrastructure-level changes.
@@ -21,21 +22,94 @@ wem setup --verify
 See [wem setup command reference](reference/commands#wem-setup) for details.
 
 **Perform a comprehensive health audit**
+
 Check for missing dependencies, incorrect file permissions, or service-level connectivity issues:
 
 ```bash
 wem doctor
 ```
 
-
 See [wem doctor command reference](reference/commands#wem-doctor) for details.
 
+**Check WEM logs**
+
+For service-level events (startup failures, restarts):
+
+```bash
+sudo journalctl -u wem -n 50 --no-pager
+```
+
+For application-level logs (alert evaluation, canary checks, query activity):
+
+```bash
+sudo tail -f /var/log/wem/wem.log
+```
 
 ## Connectivity issues
 
+### Error: "Failed to connect to WEM database" during setup
+
+When running `wem setup` or `wem setup --verify`, the command fails with an error similar to:
+
+```
+Setup failed: failed to connect to WEM database: failed to ping database: failed to connect to `user=gpadmin database=wem`
+```
+
+**Cause:** The `WHPG_HOST` or `WEM_HOST` environment variables aren't set in the current session, or the WarehousePG database isn't running.
+
+**Solution:**
+
+1. Export the required host variables before running the command:
+
+    ```bash
+    export WHPG_HOST=<coordinator-hostname>
+    export WEM_HOST=<coordinator-hostname>
+    wem setup --verify
+    ```
+
+2. If the database itself is not running, start it first:
+
+    ```bash
+    gpstart -a
+    ```
+
+    Then re-run `wem setup --verify`.
+
+### Issue: WEM service failed to start
+
+Running `sudo systemctl start wem` returns an error:
+
+```
+Job for wem.service failed because the control process exited with error code.
+See "systemctl status wem.service" and "journalctl -xe" for details.
+```
+
+**Cause:** WEM can't reach the WarehousePG database at startup.
+
+**Solution:**
+
+1. Check whether WarehousePG is running:
+
+    ```bash
+    gpstate
+    ```
+
+2. If the database is down, start it:
+
+    ```bash
+    gpstart -a
+    ```
+
+3. Start WEM again and verify the status:
+
+    ```bash
+    sudo systemctl start wem
+    sudo systemctl status wem
+    ```
+
 ### Issue: Can't connect to the database
 
-If WEM is unable to reach the WarehousePG cluster:
+If WEM is unable to reach the WarehousePG cluster from the portal:
 
 1. Ensure the database is active and accepting local connections:
 
@@ -50,16 +124,62 @@ If WEM is unable to reach the WarehousePG cluster:
     ```
 
 3. Use the built-in WEM tool from the WEM host to validate the current configuration:
-    
-    ```bash
-     wem setup --verify
-     ```
 
-4. Test the credentials directly via the CLI using the same parameters defined in the WEM **Settings** tab within the **Users** panel.
+    ```bash
+    wem setup --verify
+    ```
+
+4. Test the credentials directly via the CLI using the same parameters defined in the WEM **Settings** tab within the **Management** panel.
 
     ```bash
     PGHOST=localhost PGUSER=gpadmin psql -d postgres -c "SELECT current_database();"
     ```
+
+## Service identity and PXF issues
+
+### Error: `gpadmin` OS user not found during install
+
+When installing the WEM package, the install fails with:
+
+```
+ERROR: gpadmin OS user not found
+```
+
+**Cause:** The WEM host doesn't have a `gpadmin` OS user. WEM requires a `gpadmin` OS user. On WHPG hosts it already exists, but on standalone WEM hosts it must be created manually.
+
+**Solution:** Create the `gpadmin` user, then re-run the install:
+
+```bash
+sudo useradd -r -m -d /home/gpadmin -s /bin/bash gpadmin
+```
+
+### Issue: WEM service stays in `activating (auto-restart)` after upgrade
+
+Running `systemctl status wem` shows `activating (auto-restart)` and the log shows `wem refuses to start as root`.
+
+**Cause:** A custom service configuration override sets `User=root` or clears the user setting.
+
+**Solution:** Remove any custom configuration files in `/etc/systemd/system/wem.service.d/` that set `User=root`, then reload the service configuration:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart wem
+```
+
+Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf` to acknowledge running as `root`.
+
+### Issue: Start PXF and Stop PXF buttons fail with `Operation not permitted`
+
+The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return `Operation not permitted`.
+
+**Cause:** The WEM service configuration is missing or out of date for the active `PXF_BASE`. The issue commonly occurs after installing PXF on a host that already has WEM, or after running `pxf cluster prepare -b`.
+
+**Solution:** Run `wem configure-pxf-sandbox` to detect the active `PXF_BASE` and update the WEM service configuration, then restart the service to apply the change:
+
+```bash
+sudo wem configure-pxf-sandbox
+sudo systemctl restart wem
+```
 
 ## Authentication and access issues
 
@@ -70,7 +190,7 @@ If WEM is unable to reach the WarehousePG cluster:
 **Solution:** Select **Log In** to return to the authentication screen and re-enter your credentials.
 
 !!! Note
-    Any unsaved changes in forms or the query editor will be lost upon session expiration. Regularly save your configuration changes and avoid long periods of idle time with the browser tab open.
+    Any unsaved changes in forms or the query editor are lost upon session expiration. Regularly save your configuration changes and avoid long periods of idle time with the browser tab open.
 
 ### Error: "Permission denied"
 
@@ -107,9 +227,42 @@ Some tabs display the error `Prometheus not configured. Set PROMETHEUS_URL to en
 1.  Verify that Prometheus is running and reachable via the URL defined in the **Settings** tab within the **Management** panel.
 2.  Check network connectivity and firewall rules between the WEM server and the Prometheus endpoint.
 
+### Issue: Charts are empty despite Prometheus being configured
+
+Prometheus is reachable but WEM charts show no data.
+
+**Cause:** Metrics are not flowing from the Collector to Prometheus. The Collector may not be running, may not be configured correctly, or the `./deploy-observability` script may not have been run after configuration changes.
+
+**Solution:**
+
+1. Check whether the metric exists in Prometheus by running the following command on the coordinator host. Replace `<prometheus-host>` with the hostname from your `PROMETHEUS_ENDPOINT` configuration:
+
+    ```bash
+    curl 'http://<prometheus-host>:9090/api/v1/query?query=warehousepg_observability_node_cpu_seconds_total'
+    ```
+
+    If the response contains `"result":[]`, metrics are not reaching Prometheus.
+
+2. Inspect the Collector logs for errors:
+
+    ```bash
+    sudo cat /var/log/whpg-observability-collector/whpg-observability-collector.log
+    ```
+
+3. Verify that `PROMETHEUS_ENDPOINT` in `/var/lib/whpg-observability-collector/collector.conf` is correct and that Prometheus is reachable from the coordinator.
+
+4. If you recently edited `collector.conf`, re-run the deployment script to apply the changes:
+
+    ```bash
+    cd /var/lib/whpg-observability-collector
+    ./deploy-observability
+    ```
+
+5. If Prometheus is running in Docker, confirm that the `--web.enable-remote-write-receiver` flag is set, or that the `prometheus.yml` includes `remote_write` receiver configuration. Without this flag, Prometheus silently ignores incoming metrics from the Collector.
+
 ### Issue: Logs aren't loading
 
-The **Loki Logs** tab within the **Logs** panel reports the error: `Loki integration is not configured`.
+The **Historical Logs (Coordinator & Segments)** tab within the **Logs** panel reports the error: `Loki integration is not configured`.
 
 **Cause:** The Loki log aggregation service is unavailable or the URL is incorrect.
 
@@ -118,5 +271,3 @@ The **Loki Logs** tab within the **Logs** panel reports the error: `Loki integra
 1.  Ensure the Loki service is active.
 2.  Verify the Loki URL in the **Settings** tab within the **Management** panel.
 3.  Check server-side logs for `Connection Refused` errors.
-
-

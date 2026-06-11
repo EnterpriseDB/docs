@@ -1,11 +1,164 @@
 ---
-title: Migrating Oracle schemas with Migration Portal
-navTitle: Migrating schemas
-description: Use the Migration Portal integration to prepare and migrate your Oracle schemas.
+title: Migrating schema from Oracle to an HM-managed database
+navTitle: Migrating schema
+description: Resolve Oracle schema incompatibilities in Migration Portal, then choose how to import the schema to your destination database.
 deepToC: true
-
+redirects:
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/handling_schema/
+  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_schema/
 ---
 
-import MigratingOcSchemaMigP from '../snippet_sources/4_migrating_schemas/preparing_oracle_schemas.mdx'
+Before migrating data, your schema must be present on the destination database. There are two ways to handle this, and both start with opening your Migration Portal project and resolving any compatibility issues:
 
-<MigratingOcSchemaMigP />
+- **Simplified (recommended)**: Use Migration Portal to resolve incompatibilities only, then let HM import the schema as part of the migration. HM manages constraint ordering automatically — no manual constraint handling required. Select **Schema and data** as the migration scope when creating the migration.
+
+- **Manual**: Use Migration Portal to resolve incompatibilities and import the schema directly to the destination. You must manage constraint ordering yourself and reapply deferred constraints after data migration completes. Select **Data only** as the migration scope when creating the migration.
+
+A third scope option, **Schema only**, is also available when creating a migration in HM. Use this if you want to migrate the database structure without migrating any table data — for example, to validate the schema on the destination before committing to a full migration.
+
+## Opening your Migration Portal project
+
+The EDB Postgres AI agent automatically extracts the DDL from your Oracle source and makes it available in Migration Portal. Use Migration Portal to convert and migrate your Oracle schemas.
+
+### Prerequisites
+
+- You [registered your Oracle database with HM](configuring_beacon_agent) via the EDB Postgres AI agent.
+
+- Optional: Your HM administrator [enabled and configured the AI Copilot](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/) to help resolve schema incompatibilities in Migration Portal.
+
+### Accessing your project
+
+After registering your Oracle database with the EDB Postgres AI agent, a Migration Portal project is **created automatically** — one per registered database, based on the `resource_id` in your `beacon_agent.yaml`.
+
+!!!warning
+Any DDL changes made after the Migration Portal project was created — including new schemas, new tables, updated tables, or deleted tables — are not reflected in the auto-created project.
+!!!
+
+To find your project: 
+
+1.  Navigate to your Oracle database's detailed view. You can get there from either of these paths:
+
+    a. **Estate > Migrations > [your database]**.
+
+    b. **[your project] > Migrate > Databases > [your database]**.
+
+1.  Select the **Schemas** tab.
+
+1.  Select the project link in the **MP Project** column to open the Migration Portal's project-scoped workspace for this database.
+
+If no project link appears in the **MP Project** column, the project wasn't created automatically. Expand the section below to create one manually.
+
+<details><summary>Creating a Migration Portal project manually</summary>
+
+Automatic project creation won't trigger if:
+
+- The ingested DDL exceeds the 300 MB default limit (or an administrator-configured [customized limit](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/controlling_project_creation/#customizing-the-maximum-size-of-migration-portal-projects)).
+
+- Your Hybrid Manager administrators [disabled automatic project creation](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/controlling_project_creation/#disabling-the-automatic-creation-of-migration-portal-projects).
+
+In these cases, create a project manually:
+
+1. In the **Estate** page, select the **Migrations** tab, then select your database.
+
+1. In the detailed view, select the **Schemas** tab, then select **New MP Project** or the plus sign next to a schema.
+
+    !!!tip
+    The **Dependencies** column shows which schemas the current one relies on. Group a schema with all its dependencies in a single project to ensure referenced objects exist in the destination.
+    !!!
+
+1. Enter the project details and select **Continue**.
+
+1. Select the schemas to include and select **Create New Project**.
+
+    !!!note
+    You can't add schemas to the project after creation. Use a separate project to migrate additional schemas to the same destination.
+    !!!
+
+HM loads the schemas into Migration Portal in the background. Once ready, a project link appears — select it to open Migration Portal and begin resolving incompatibilities using the AI Copilot or QuickHelp.
+
+</details> 
+
+<br/>
+
+## Converting schema and resolving compatibility issues
+
+Use Migration Portal to convert your Oracle DDL to be compatible with EDB Postgres Advanced Server. Use the AI Copilot and QuickHelp to resolve any compatibility issues that arise during conversion. Additional resources:
+
+- [Using Migration Portal](/migration_portal/latest/03_mp_using_portal/)
+- [Enabling and configuring the AI Copilot in HM](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/) (administrator task)
+- [Migration Portal's AI Copilot](/migration_portal/latest/03_mp_using_portal/mp_ai_copilot/)
+- [Performing a schema assessment](/migration_portal/latest/04_mp_migrating_database/mp_schema_assessment/)
+
+## Importing schema
+
+<TabContainer syncKey="migration_scope">
+<Tab title="Simplified (recommended)">
+
+After resolving all incompatibilities in Migration Portal, proceed to [Configure the EDB DMS agent](configuring_dms_agent). When you create the migration, select **Schema and data** as the scope — HM imports the converted schema with constraints applied in the correct order, and automatically reapplies deferred constraints after data migration completes.
+
+</Tab>
+<Tab title="Manual">
+
+After resolving all compatibility issues in Migration Portal, import the schema into the destination database.
+
+### Handling constraints
+
+Import constraints in two stages to avoid performance degradation during migration:
+
+- **Include now** (before data migration): primary key, unique, and `NOT NULL` constraints. EDB DMS requires primary key and unique constraints to guarantee exactly-once delivery. `NOT NULL` constraints have negligible performance impact.
+
+- **Exclude now, reapply later** (after data migration): foreign key, check, and exclusion constraints. These cause unnecessary CPU and memory overhead while data is actively being migrated.
+
+When following the steps below, disable **Constraints** in Migration Portal and keep a record of what you excluded so you can reapply them after the migration completes.
+
+!!!note
+For tables without primary key or unique constraints, EDB DMS provides at-least-once delivery only. You can perform deduplication during migration verification.
+!!!
+
+<TabContainer>
+<Tab title="Online migration (recommended)">
+
+Use this option when you don't need to rename any schemas, tables, or columns.
+
+1. Select **Migrate to** > **Online migration**.
+
+1. Select your schemas. In the object list beneath the database, disable **Constraints**. Select **Next**.
+
+1. Enter the details of your destination cluster.
+
+   Find your cluster's information under **Clusters > Postgres Clusters > [cluster name] > Connect**.
+
+1.  Select **Test connection** to verify connectivity to the destination, then select **Save and continue**.
+
+1. Select **Next** and wait for the import to complete.
+
+1. Connect to the destination database and confirm the schemas are present.
+
+</Tab>
+<Tab title="Offline migration (with object renaming)">
+
+Use this option when you need to map schemas, tables, or columns to different names in the destination.
+
+1. Select **Migrate to** > **Offline migration**.
+
+1. Select your schemas. In the object list beneath the database, disable **Constraints**. Select **Next**.
+
+1. Select **Download SQL file**.
+
+1. Edit the object names directly in the downloaded DDL. Ensure that renamed objects are also updated in any dependent views, constraints, or other references. See [Mapping schemas, tables, and columns](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration) for details.
+
+1. Connect to the destination database and apply the modified DDL file.
+
+</Tab>
+</TabContainer>
+
+</Tab>
+</TabContainer>
+
+## Related topics
+
+- [Migration Portal's project-scoped workspace](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/#project-scoped-workspace-vs-users-workspace)
+
+## Next step
+
+[Configure the EDB DMS agent](configuring_dms_agent)

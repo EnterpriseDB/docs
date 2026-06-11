@@ -30,6 +30,8 @@ Ensure the following tools are available on your workstation environment or [Bas
 
 -   [Velero CLI](https://velero.io/docs/latest/velero-install/)
 
+-   `edbctl` (EDB Hybrid Manager CLI - see the [documentation](../edbctl))
+
 -   `jq` (Command-line JSON processor)
 
 -   `yq` (Command-line YAML processor)
@@ -226,7 +228,7 @@ The first step ensures the backups of the unavailable HM instance (“old backup
     # Copy data lake objects from old bucket to new bucket
     gcloud storage cp "gs://${OLD_BUCKET_DATALAKE}/**" gs://${NEW_BUCKET_DATALAKE}/ --recursive
     # Copy CORS configuration from old bucket to new bucket
-    gcloud storage buckets describe gs://rhos-uat-griptape-datalake --format="json" | jq .cors_config > cors-config.json
+    gcloud storage buckets describe gs://${OLD_BUCKET_DATALAKE} --format="json" | jq .cors_config > cors-config.json
     gcloud storage buckets update gs://${NEW_BUCKET_DATALAKE} --cors-file=cors-config.json
     ```
 
@@ -258,7 +260,6 @@ After the old backups are available in the new bucket, you can restore the HM-in
 2.  Suspend the reconciliation of all HM-internal database clusters, so that you can safely remove the old Custom Resource Definitions (CRDs) of the database clusters without having the operator recreating them by default: 
 
     ```shell
-    HCP_CR=$(kubectl get hybridcontrolplanes.edbpgai.edb.com -A -o json | jq -rc '.items[0] | .metadata.name')
     for CLUSTER in $(kubectl get clusters.postgresql.k8s.enterprisedb.io -A -o json | jq -rc '.items[].metadata | select((.name | test("^p-") | not) and (.name != "stats-collector-db")) | {namespace: .namespace}' | uniq)
     do
       NAMESPACE=$(echo "${CLUSTER}" | jq -rc '.namespace')
@@ -268,16 +269,14 @@ After the old backups are available in the new bucket, you can restore the HM-in
       else
         COMPONENT="${NAMESPACE}"
       fi
-      INDEX=$(kubectl get hybridcontrolplane ${HCP_CR} -o json | jq '.status.components | to_entries[] | select(.value.name=='\"${COMPONENT}\"') | .key')
-      kubectl patch hybridcontrolplane ${HCP_CR} --subresource=status --type=json -p "[{\"op\": \"replace\", \"path\": \"/status/components/$INDEX/suspended\", \"value\": true}]"
+      edbctl hm suspend-component "${COMPONENT}"
     done
     ```
 
 3.  Verify that the components have been suspended correctly: 
 
     ```shell
-    HCP_CR=$(kubectl get hybridcontrolplanes.edbpgai.edb.com -A -o json | jq -rc '.items[0] | .metadata.name')
-    kubectl hcp status -n edbpgai-bootstrap "${HCP_CR}"
+    edbctl hm status
     ```
 
 4.  Delete the HM-internal database clusters that were created during installation of the new HM instance to make room for the HM-internal database clusters that will be recovered from the backup:
@@ -356,8 +355,9 @@ After the old backups are available in the new bucket, you can restore the HM-in
     velero get backups -o json --selector velero.io/storage-location=recovery \
     | jq -rc '(["Name", "Timestamp"]), (.items // [.] | .[] | [.metadata.name, .metadata.creationTimestamp]) | @tsv' \
     | column -t -s "$(printf '\t')"
+    ```
 
-    Select a backup from this list$mdash;typically the latest$mdash;and export the following variable pointing to the file's selected name.
+    Select a backup from this list&mdash;typically the latest&mdash;and export the following variable pointing to the file's selected name.
 
     ```shell
     export BACKUP_NAME=<selected-name>

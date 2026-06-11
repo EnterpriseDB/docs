@@ -5,12 +5,12 @@ description: Monitor active workloads, execute SQL, and leverage AI-driven optim
 deepToC: true
 ---
 
-Perform real-time workload monitoring of your WarehousePG (WHPG) queries, identify resource-heavy statements, manage database sessions, and tune SQL execution plans with the **Query Monitor** panel from the left sidebar.
+Perform real-time workload monitoring of your WarehousePG (WHPG) queries, identify resource-heavy statements, and manage database sessions with the **Query Monitoring** panel from the left sidebar. To author and tune SQL statements, use the **Query Editor** panel.
 
 !!! Note 
-    Access to the **Query Monitor** and its administrative functions is governed by user roles, ensuring that session management capabilities are restricted to authorized personnel.
-    - Admin/Operator: full visibility, plus the ability to cancel queries and terminate session.
-    - Viewer: read-only access to all monitoring tabs. No access to stop or modify sessions.
+    Access to **Query Monitoring**, **Query Editor**, and their administrative functions is governed by user roles.
+    - Admin/Operator: full visibility, plus the ability to cancel queries and terminate sessions.
+    - Viewer: read-only access to all monitoring tabs and the Query Editor. No access to stop or modify sessions.
 
     Refer to the [Role permissions matrix](../reference#role-permissions-matrix) for details.
 
@@ -18,10 +18,10 @@ Perform real-time workload monitoring of your WarehousePG (WHPG) queries, identi
 
 Track real-time execution progress and prevent resource-heavy statements from impacting system stability by using the **Active Queries** tab.
 
-- Observe the **Status** bar to see the distribution of session states. Focus on sessions marked as **Idle in Transaction** or **Waiting**, as they typically indicate application-level leaks or locking contention.
-- Identify memory spill activity by reviewing the **Spill Activity** section to find queries forced to use disk space. High **Spill Size** or **Temp Files** counts indicate that specific queries are exceeding their memory quotas and require optimization.
-- Isolate long-running queries by using the **Advanced Search** to filter sessions by duration or specific users.
-- If you have Admin or Operator privileges, use the **Cancel** action to gracefully stop a statement consuming excessive resources.
+- The header cards show a live breakdown of connection states: **Active**, **Idle**, **Idle in Tx**, **Tx (Abort)**, **Fastpath**, **Disabled**, **Waiting**, and **Blocked**. Focus on **Idle in Tx** and **Waiting**, as they typically indicate application-level leaks or locking contention.
+- Identify memory spill activity by reviewing the **Spill Activity** section. The **Queries Spilling**, **Total Spill Size**, and **Total Temp Files** cards indicate queries that are exceeding their memory quotas and writing intermediate data to disk.
+- Filter the query list by database, user, or resource group using the dropdowns above the table.
+- If you have Admin or Operator privileges, use the **Cancel Query** action to gracefully stop a statement consuming excessive resources. The cancel action is disabled for queries in an idle state. You can provide an optional reason when canceling, which is recorded in the WEM audit log.
 
 **Understanding query statuses**
 
@@ -32,49 +32,55 @@ Monitor the real-time state of database connections to identify performance bott
 | Active | Queries currently being processed by the CPU. |
 | Idle   | Established connections waiting for the next command. |
 | Idle in Transaction | Open transactions waiting for input. Monitor these as they prevent vacuuming and cause table bloat. |
-| Idle in Transaction (abort) | Transactions that have encountered an error and are currently in an aborted state. You must roll back or terminated these sessions to release system locks. |
+| Idle in Transaction (abort) | Transactions that have encountered an error and are currently in an aborted state. You must roll back or terminate these sessions to release system locks. |
 | Fastpath | Sessions executing internal fast-path function calls. |
 | Disabled | Connections that have been administratively disabled or are currently restricted from executing new database operations. |
 | Waiting | Queries blocked while waiting for locks or system resources. |
 
+### Identifying the longest-running queries
+
+Review a ranked list of the slowest queries across the cluster using the **Longest Queries** tab. Use this tab to identify persistent slow queries that require index tuning or query rewriting.
 
 ### Resolving connection leaks and session bloat
 
-Identify connection leaks and manage dormant processes that consume system slots by accessing the **Sessions** tab:
-- To find dormant connections, sort the list by **Idle time** and find connections that have been open for long periods without activity. 
-- Identify which specific service might be responsible for a connection spike. Review the **Application** column to see which tools (such as `psql`, `pgadmin`, or ETL drivers) are initiating connections. 
-- If a session is unresponsive or holding critical locks, use the **Terminate** action to forcefully close the connection and release all associated system resources.
+Identify connection leaks and manage dormant processes that consume system slots by accessing the **Sessions** tab.
+- Filter sessions by database, user, resource group, or **Active** status using the dropdowns above the table. The **Active** column shows **Yes** or **No** to indicate whether a session is currently executing a command.
+- Review the **State** column to see each session's current connection state.
+- Review the **Application** column to identify which tools (such as `psql`, `pgadmin`, or ETL drivers) are initiating connections and investigate sources of connection spikes.
+- If a session is unresponsive or holding critical locks, use the **Terminate Session** action to forcefully close the connection and release all associated system resources. You can provide an optional reason when terminating, which is recorded in the WEM audit log.
 
-### Authoring and tuning SQL statements
+### Monitoring background processes
 
-Explore data and analyze execution plans in a read-only environment with the **Query Editor** tab.
-- Generate execution plans with the **EXPLAIN** and **ANALYZE** buttons, which help you visualize how the engine intends to process a query. Review the motion analysis to see how data is redistributed, broadcast, or gathered across segments.
-- Identify performance bottlenecks by reviewing the warnings provided in the execution plan. Focus on "sequential scans" on large tables or "missing statistics," which are common causes of slow performance.
+Use the **Background Processes** tab to view internal WHPG background workers and maintenance processes currently running on the cluster.
+
+## Using the Query Editor
+
+The **Query Editor** is a standalone page accessible from the left sidebar. Explore data and analyze execution plans in a read-only environment.
+
+!!! Note
+    Access to the **Query Editor** is governed by user roles. Admin and Operator roles have full access. Viewer roles have read-only access and can only execute `SELECT` statements.
+
+- Generate execution plans with the **Explain** and **Analyze** buttons. The result appears in two tabs: **Plan**, which renders a visual graph of the execution steps, and **Raw**, which shows the full text output. The plan view also surfaces key statistics alongside any warnings detected in the plan.
+- Identify performance bottlenecks by reviewing the warnings provided in the execution plan. Focus on sequential scans on large tables or missing statistics, which are common causes of slow performance.
 - Use the **Format SQL** button to clean up raw SQL for better readability.
 - Once a query successfully executes, you can download the entire result set as a CSV file, allowing data portability into spreadsheets or external reporting tools.
 
-
 !!! Important
     To ensure system safety, all queries executed through the **Query Editor** run in read-only mode. Use dedicated database tools for write operations if needed.
-
 
 ### Optimizing queries with the AI Assistant
 
 Use the integrated AI Assistant to accelerate SQL authoring and simplify the debugging of complex performance issues.
 
 !!! Note
-    The AI Assistant is an optional feature. An administrator must configure an `ANTHROPIC_API_KEY` for the assistant to be active. See [Configuring WEM](../installing/wem#configuring-wem) for details.
+    The AI Assistant is an optional feature. An administrator must configure an `ANTHROPIC_API_KEY` for the assistant to be active. The interface shows **AI Enabled** when it's configured. See [AI Assistant](../installing/wem#ai-assistant) in the WEM configuration for details.
 
-- Generate queries from natural language pressing the keys `Ctrl + K` and asking the assistant to write a query for you using plain English. Because the assistant is schema-aware, it will reference your actual table and column names accurately.
-- Optimize slow-running statements by providing a slow query statement into the assistant and asking for optimization suggestions. The assistant will analyze join efficiency, index usage, and cluster resource utilization to recommend a more efficient version of your code.
-- When a query fails, provide the Postgres error message to the assistant. It will explain the failure in plain language and suggest the specific corrections needed to resolve the error.
-
-!!! Note 
-    While the AI Assistant can suggest any SQL command (including DDL/DML), execution is strictly governed by your role. For example, Viewer roles are restricted to executing `SELECT` statements only.
+- Bring up the AI Assistant by pressing `Ctrl + K` and ask it to write a query in plain English. The assistant is schema-aware and references your actual table and column names accurately.
+- Optimize slow-running statements by providing a slow query statement into the assistant and asking for optimization suggestions. The assistant analyzes join efficiency, index usage, and cluster resource utilization to recommend a more efficient version of your code.
+- When a query fails, provide the Postgres error message to the assistant. It explains the failure in plain language and suggests the specific corrections needed to resolve the error.
 
 ### Managing query history and results
 
-Manage your recent query activity and retrieve data without re-executing heavy statements with the **Results** subtab within the **Query Editor** tab.
-- View results from queries run in the last 24 hours to re-examine data grids and success indicators without placing a new load on the cluster.
-- Refine past queries using the **Open in Editor** action and reloading a previous statement for further tuning.
-
+Manage your recent query activity and retrieve data without re-executing heavy statements with the **Results** subtab within the **Query Editor**.
+- View results from recent queries, including execution time, row count, and status.
+- Use the **Copy to Editor** action to reload a previous query into the editor for further tuning, or **View Results** to inspect its output directly.
