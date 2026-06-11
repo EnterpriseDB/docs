@@ -1,50 +1,56 @@
 ---
 title: Setting up user-managed BM25
-navTitle: Set up BM25
+navTitle: Setting up BM25
 description: "Install VectorChord-BM25, create a tokenizer, and add a BM25 index to your source table for use in hybrid search."
 redirects:
   - /aidb/7/knowledge-bases/hybrid-search/#setting-up-user-managed-bm25
 ---
 
-BM25 isn't managed by AI pipelines. You set it up independently on your source table, then reference it in your hybrid queries.
+Set up BM25 directly on your source table and reference it in your hybrid queries, it operates independently of AI pipelines.
 
-VectorChord-BM25 provides keyword ranking on top of PostgreSQL using the BM25 algorithm. 
-It consists of two extensions — `pg_tokenizer` (tokenizes text into BM25-compatible vectors) and `vchord_bm25` (stores and queries those vectors). 
-Both must be installed as OS packages from the EDB repository before the SQL setup steps below will work. See [Installing VectorChord-BM25](/pg_extensions/vectorchord_bm25/installing/) for package installation instructions.
+Install the VectorChord-BM25 package first. See [Installing VectorChord-BM25](/pg_extensions/vectorchord_bm25/installing/) for package installation instructions.
+This makes the `pg_tokenizer` and `vchord_bm25` extensions available in your database, which you then enable using CREATE EXTENSION in step 1 below.
 
-1. Install extensions
+1. Enable extensions
+   
+   Enable both extensions before creating BM25 columns or running BM25 queries — pg_tokenizer handles tokenization and vchord_bm25 provides the BM25 vector type and index.
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_tokenizer;
-CREATE EXTENSION IF NOT EXISTS vchord_bm25;
-```
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS pg_tokenizer;
+   CREATE EXTENSION IF NOT EXISTS vchord_bm25;
+   ```
 
 1. Create a tokenizer
+   
+   Create a tokenizer to convert raw text into token sequences for BM25 indexing. 
+   Reference it by name when populating and querying the BM25 column, and use the same model consistently — mixing models produces incorrect results.
 
-```sql
-SELECT tokenizer_catalog.create_tokenizer('bert', $$
-    model = "bert_base_uncased"
-$$);
-```
+   ```sql
+   SELECT tokenizer_catalog.create_tokenizer('bert', $$
+       model = "bert_base_uncased"
+   $$);
+   ```
 
-1. Add a `bm25vector` column and index to your source table
+1. Add a BM25 column and index
 
-```sql
-ALTER TABLE my_source ADD COLUMN bm25_tokens bm25_catalog.bm25vector;
-UPDATE my_source SET bm25_tokens = tokenizer_catalog.tokenize(description, 'bert');
+   Add a `bm25vector` column to store the tokenized representation of each row, populate it, then create a BM25 index to enable efficient top-k keyword retrieval at query time.
 
-CREATE INDEX my_source_bm25 ON my_source USING bm25 (bm25_tokens bm25_catalog.bm25_ops);
-```
+   ```sql
+   ALTER TABLE my_source ADD COLUMN bm25_tokens bm25_catalog.bm25vector;
+   UPDATE my_source SET bm25_tokens = tokenizer_catalog.tokenize(description, 'bert');
+   
+   CREATE INDEX my_source_bm25 ON my_source USING bm25 (bm25_tokens bm25_catalog.bm25_ops);
+   ```
 
 1. Keep the index current
 
-New rows must be tokenized before they'll appear in BM25 results. Use a trigger or update the column as part of your data ingestion process:
-
-```sql
-UPDATE my_source SET bm25_tokens = tokenizer_catalog.tokenize(description, 'bert') WHERE bm25_tokens IS NULL;
-```
-
-For full tokenizer configuration options, see [VectorChord-BM25](../vectorchord/vectorchord-bm25) and [VectorChord-BM25 in pg_extensions](/pg_extensions/vectorchord_bm25/).
+   Tokenize new rows before they'll appear in BM25 results. Use a trigger or run this update as part of your data ingestion process:
+   
+   ```sql
+   UPDATE my_source SET bm25_tokens = tokenizer_catalog.tokenize(description, 'bert') WHERE bm25_tokens IS NULL;
+   ```
+   
+   For full tokenizer configuration options, see [VectorChord-BM25](../vectorchord/vectorchord-bm25) and [VectorChord-BM25 in pg_extensions](/pg_extensions/vectorchord_bm25/).
 
 ---
 
@@ -52,39 +58,39 @@ For full tokenizer configuration options, see [VectorChord-BM25](../vectorchord/
 
 This example shows how to combine semantic vector search with BM25 keyword search using Reciprocal Rank Fusion (RRF) to merge the two result sets. It uses the `products` table and `food_products` pipeline set up in the [relational predicate filtering example](query-patterns#worked-example-relational-predicate-filtering).
 
-**Add a BM25 index to the source table**
+**Adding a BM25 index to the source table**
 
-BM25 isn't managed by AI pipelines — you set it up directly on your source table. This section adds the tokenizer and index that the keyword leg of the RRF query relies on.
+Set up BM25 directly on your source table, as it is independent of AI pipelines This section adds the tokenizer and index that the keyword leg of the RRF query relies on.
 
 1. Enable the `pg_tokenizer` and `vchord_bm25` extensions:
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_tokenizer;
-CREATE EXTENSION IF NOT EXISTS vchord_bm25;
-```
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS pg_tokenizer;
+   CREATE EXTENSION IF NOT EXISTS vchord_bm25;
+   ```
 
 1. Create a tokenizer using an available model:
 
-We'll use the BERT model in this example. You can choose any model supported by the `pg_tokenizer` extension, but make sure to use the same model for both tokenizing the source data and the query.
-
-```sql
-SELECT tokenizer_catalog.create_tokenizer('bert', $$
-    model = "bert_base_uncased"
-$$);
-```
+   Use the BERT model as shown, or substitute any model supported by pg_tokenizer. Ensure you use the same model for both tokenizing the source data and the query.   
+   
+   ```sql
+   SELECT tokenizer_catalog.create_tokenizer('bert', $$
+       model = "bert_base_uncased"
+   $$);
+   ```
 
 1. Add a BM25 vector column to the source table and populate it with tokenized values:
 
-```sql
-ALTER TABLE products ADD COLUMN embedding_bm25 bm25_catalog.bm25vector;
-UPDATE products SET embedding_bm25 = tokenizer_catalog.tokenize(product_name, 'bert');
-```
+   ```sql
+   ALTER TABLE products ADD COLUMN embedding_bm25 bm25_catalog.bm25vector;
+   UPDATE products SET embedding_bm25 = tokenizer_catalog.tokenize(product_name, 'bert');
+   ```
 
 1. Create a BM25 index on the new column:
 
-```sql
-CREATE INDEX products_bm25_idx ON products USING bm25 (embedding_bm25 bm25_catalog.bm25_ops);
-```
+   ```sql
+   CREATE INDEX products_bm25_idx ON products USING bm25 (embedding_bm25 bm25_catalog.bm25_ops);
+   ```
 
 **Hybrid query with RRF**
 
