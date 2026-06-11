@@ -227,7 +227,59 @@ namespace/edbpgai-bootstrap created
 
 #### Install the operator helm chart
 
-Execute the operator deployment using Helm:
+Install the operator with `edbctl hm upgrade-operator`. The command lists the operator image tags available in the target registry, selects the latest one, and installs (or upgrades) the chart. No operator version needs to be picked by hand — starting with HM 1.4, the operator is decoupled from the HM release cadence and a single operator version supports multiple HM lines.
+
+!!! Note Minimum edbctl version
+`edbctl hm upgrade-operator` ships in edbctl `1.7.0` and later. Earlier versions require the manual Helm flow shown in the [Manual Helm fallback](#manual-helm-fallback) section below.
+!!!
+
+The recommended path is to mirror the HM artifacts (operator images + chart included) to your private registry first — see [Syncing images to a local private registry](../configuration/sync_images) — and then install the operator from that private registry. Re-using the same variables defined in the sync step (`LOCAL_REGISTRY_URI`, `LOCAL_REGISTRY_USER`, `LOCAL_REGISTRY_PWD`):
+
+```bash
+edbctl hm upgrade-operator \
+  --registry-uri "${LOCAL_REGISTRY_URI}" \
+  --registry-username "${LOCAL_REGISTRY_USER}" \
+  --registry-password "${LOCAL_REGISTRY_PWD}"
+___OUTPUT___
+Latest HM Operator version found in "${LOCAL_REGISTRY_URI}": 2.0.0
+Namespace "edb-hcp-operator-system" does not exist, creating it...
+namespaces/edb-hcp-operator-system created
+Creating image pull secret "edb-hcp-operator-pull-secret" in namespace "edb-hcp-operator-system"...
+secrets/edb-hcp-operator-pull-secret created
+Installing HM Operator chart "edb-hcp-operator" (version 2.0.0) into namespace "edb-hcp-operator-system"...
+HM Operator chart "edb-hcp-operator" is now at version 2.0.0 in namespace "edb-hcp-operator-system".
+```
+
+If your private registry uses a self-signed certificate, add `--registry-insecure`. To pass extra Helm values (for example to enable the in-cluster HM Registry component), use `--set`:
+
+```bash
+edbctl hm upgrade-operator \
+  --registry-uri "${LOCAL_REGISTRY_URI}" \
+  --registry-username "${LOCAL_REGISTRY_USER}" \
+  --registry-password "${LOCAL_REGISTRY_PWD}" \
+  --set hmRegistry.enabled=true
+```
+
+If you don't operate a private registry, you can also pull directly from EDB Repos 2.0 by pointing `--registry-uri` at `docker.enterprisedb.com/pgai-platform` and passing your EDB Repos 2.0 token as `--registry-password` (with `--registry-username pgai-platform`).
+
+#### Verify operator installation
+
+`edbctl hm upgrade-operator` waits for the operator pod to be ready before returning. If you want to double-check:
+
+```bash
+kubectl get pods -n edb-hcp-operator-system
+```
+
+You should see output similar to:
+
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+edb-hcp-operator-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
+```
+
+#### Manual Helm fallback
+
+For environments still on edbctl `< 1.7.0`, the previous manual Helm flow still works. Install the operator using `helm template ... | kubectl apply -f -`:
 
 ```bash
 kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
@@ -253,55 +305,7 @@ helm template \
   | kubectl apply -f -
 ```
 
-If you are using an air-gapped environment, you can load the operator image into your cluster and reference it in the Helm command:
-
-```bash
-kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
-
-# Create a pull secret for your private registry:
-kubectl create secret docker-registry edb-cred \
-  --namespace edbpgai-bootstrap \
-  --docker-server=<PRIVATE_REGISTRY_URL> \
-  --docker-username=<USERNAME> \
-  --docker-password=<PASSWORD> \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Load the operator image into your private registry from cloudsmith:
-edbctl operator sync-to-local-registry \
-  --source-registry-username=<CLOUDSMITH_REGISTRY_USERNAME> \
-  --source-registry-password=<CLOUDSMITH_REGSIRT_PASSWORD> \
-  --destination-registry-uri=<PRIVATE_REGISTRY_URL> \
-  --destination-registry-username=<PRIVATE_REGISTRY_USERNAME> \
-  --destination-registry-password=<PRIVATE_REGISTRY_PASSWORD> \
-  --version <OPERATOR_VERSION>
-
-# Install the operator using Helm, referencing your private registry:
-helm template \
-  --namespace edbpgai-bootstrap \
-  --install \
-  --version <OPERATOR_VERSION> \
-  --include-crds \
-  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
-  --set "controllerManager.manager.image.repository=<PRIVATE_REGISTRY_URL>/edb-hcp-operator/manager" \
-  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
-  --set "imagePullSecrets[0].name=edb-cred" \
-  | kubectl apply -f -
-```
-
-#### Verify operator installation
-
-Check that the operator pod is running:
-
-```bash
-kubectl get pods -n edbpgai-bootstrap
-```
-
-You should see output similar to:
-
-```
-NAME                                READY   STATUS    RESTARTS   AGE
-edb-hcp-operator-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
-```
+`<OPERATOR_VERSION>` for HM 1.4 is `2.0.0` or later from the `2.x` lineage. Check the [release notes](../../release_notes/) for the version supported on the HM release you are installing.
 
 ### Create the HybridControlPlane resource
 
@@ -457,12 +461,12 @@ To update your HM configuration:
 If you encounter issues, check the operator logs:
 
 ```bash
-kubectl logs -n edbpgai-bootstrap deployment/edb-hcp-operator -f
+kubectl logs -n edb-hcp-operator-system deployment/edb-hcp-operator -f
 ```
 
 #### Upgrading HM version
 
-To upgrade to a new HM version, upgrade the operator version to your target HM version first, then update the `spec.version` field in your HCP manifest to the new version and apply the changes.
+Run `edbctl hm upgrade-operator` (it picks up the latest operator version available in your registry — no version needs to be set by hand), then update the `spec.version` field in your `HybridControlPlane` manifest to the target HM version and `kubectl apply` it. The operator is decoupled from the HM release cadence, so the same `2.x` operator covers a range of HM versions — see the [release notes](../../release_notes/) for the operator version supported on the HM release you are upgrading to.
 
 </Tab>
 
