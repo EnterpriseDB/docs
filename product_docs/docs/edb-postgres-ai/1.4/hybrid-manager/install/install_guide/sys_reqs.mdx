@@ -167,6 +167,12 @@ Mixed-architecture clusters (ARM64 + AMD64) are not supported for HM, even thoug
 
 Use Node Pools (e.g., AWS NodeGroups, RHOS Machine Sets) to manage resources and apply required labels/taints.
 
+> **Note:** The HM **system databases** (the platform/system database, and the per-feature databases
+> such as beacon, migration portal, and transporter) run on **control-plane** nodes, not the data
+> plane. The data-plane pool hosts only the **user-provisioned** Postgres clusters. This is why the
+> control-plane pool is far more pod-dense than its CPU/memory sizing alone suggests — see the
+> [`Max pods/node`](#31-control-plane-nodes) guidance.
+
 In most cases, HM runs on Kubernetes worker nodes in cloud environments (since you do not have access to managed control nodes&mdash;see EKS control plane access), and can run on control nodes ([see Kubernetes control plane documentation](https://kubernetes.io/docs/concepts/architecture/control-plane-node-communication/)) or worker nodes for on-premises clusters.
 
 ### 3.1 Control plane nodes
@@ -183,6 +189,20 @@ Resource requirements for the control plane increase with the number of database
 | **Memory** | 32 GB RAM | 64 GB RAM | 64+ GB RAM |
 | **Disk** | 100 GB SSD | 200 GB SSD | >200 GB SSD |
 | **Quantity** | 3 nodes | 3 nodes | 3+ nodes |
+| **Max pods/node** | ≥ 60 | ≥ 60 | ≥ 60 |
+
+> **Pod density (`maxPods`) — easy to miss, and not a CPU/memory problem.** The control-plane
+> stack is pod-dense: in addition to telemetry and the service mesh, the **HM system databases run
+> on control-plane nodes** (see [Node roles summary](#node-roles-summary)). An all-scenario install
+> places **~150 pods** on the control-plane pool, which across the minimum 3 nodes is ~50 pods/node —
+> so each control-plane node must allow **at least 60 pods**.
+>
+> This is independent of CPU and memory: a node can have spare CPU/RAM and still reject pods once it
+> hits its pod cap. On **AKS the Azure CNI default is `maxPods=30`**, which is too low — control-plane-pinned
+> pods (for example `upm-beacon-server`) stay `Pending` with *"Too many pods"* and the install stalls.
+> Set the limit **at node-pool creation time** (`az aks nodepool add … --max-pods 110`; it cannot be
+> changed afterward) or use Azure CNI Overlay (default 250). GKE (default 110) and EKS (per-ENI IP
+> limits) generally have enough headroom, but verify against the ~60-pods/node figure above.
 
 ### 3.2 Data plane nodes
 
@@ -238,7 +258,7 @@ A functional CNI is a strict requirement for pod-to-pod networking.
 
 * **Examples**: Calico, Cilium, Flannel
 
-* **Context:** Cilium is known to be more efficient at very high numbers of pods. However, because Postgres is the center of Hybrid Manager, extreme pod density is rarely the bottleneck compared to database I/O. Extra effort to optimize the stack to acheive slightly better results. Depending on the customers use case it may be justified. However, more often than not, good solution design can adapt to most infrastructure limitations.
+* **Context:** For the **data plane**, database I/O — not pod density — is the bottleneck, so CNI pod-density tuning rarely matters there. The **control plane** is different: it is pod-dense (system databases, telemetry, and the service mesh), so your CNI and per-node `maxPods` setting must allow at least 60 pods per control-plane node (see [3.1 Control plane nodes](#31-control-plane-nodes)). On platforms with a low default — notably **AKS Azure CNI (`maxPods=30`)** — raise it at node-pool creation or the install will stall on unschedulable control-plane pods. Cilium is more efficient at very high pod counts if you need it.
 
 * **Validation:** Verify CNI setup and CIDR assignment:
 
