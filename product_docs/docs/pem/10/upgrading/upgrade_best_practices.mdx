@@ -1,0 +1,245 @@
+---
+title: "PEM upgrade best practices and remediation"
+navTitle: "Upgrade best practices"
+description: "Best practices for running PEM server upgrades and SQL remediation steps for privilege-loss errors caused by the PEM-6100 and PEM-6103 bugs."
+---
+
+This page helps you plan, run, verify, and — if necessary — repair a PEM upgrade end-to-end. It explains why permissions can be lost during an upgrade, lists the operations that trigger the loss, and provides ready-to-run SQL for both prevention and repair.
+
+EDB tracks the recurring failure modes under PEM-6100 and PEM-6103. The product-side fixes ship separately. This page closes the customer-facing gap in the meantime and remains useful afterward as a best-practices reference.
+
+## How PEM upgrades preserve permissions
+
+During an upgrade, PEM drops and re-creates several internal views and functions in the `pem`, `pemdata`, and `pemhistory` schemas — most notably `probe_target_view`, `probe_schedule_view`, `avail_agents`, `avail_servers`, and a handful of functions whose signatures change between versions. These objects must remain readable by the PEM worker roles `pem_user`, `pem_admin`, and `pem_agent` for monitoring to keep working.
+
+PEM relies on PostgreSQL's `ALTER DEFAULT PRIVILEGES` to apply the standard grants automatically each time one of these objects is re-created. PostgreSQL stores these rules in `pg_default_acl`, keyed by the role that registered them — normally the role that ran the original PEM install (often `enterprisedb` or `postgres`).
+
+A PEM upgrade can lose grants in exactly two situations:
+
+- **Owner change.** You ran `REASSIGN OWNED BY <old> TO <new>` (or `ALTER ... OWNER TO <new>`) on PEM objects. `REASSIGN OWNED BY` transfers object ownership and preserves existing ACLs, but it doesn't copy the entries in `pg_default_acl` — those stay attached to `<old>`. Future objects created by `<new>` (such as views re-created during the upgrade) inherit no grants.
+- **Cross-role upgrade.** You're running `configure-pem-server.sh` under a different OS/database user than the one that originally installed PEM. The default-privilege rules registered at install time don't fire for a different role.
+
+In both cases the upgrade completes successfully, but the worker log immediately reports:
+
+```
+ERROR: permission denied for view probe_schedule_view
+ERROR: permission denied for view probe_target_view
+ERROR: permission denied for function create_default_server_alerts
+```
+
+and all monitored servers show **DOWN** in the PEM web UI.
+
+### Check your cluster before upgrading
+
+Run as a PostgreSQL superuser on the PEM backend database:
+
+```sql
+SELECT DISTINCT defaclrole::regrole AS defaults_bound_to,
+       defaclnamespace::regnamespace AS schema
+FROM   pg_default_acl
+WHERE  defaclnamespace::regnamespace::text IN ('pem','pemdata','pemhistory');
+```
+
+If the role returned matches the role that will run `configure-pem-server.sh`, the upgrade is safe to run as-is. If it doesn't, work through [Pre-upgrade preparation](#pre-upgrade-preparation) first.
+
+## Dos and don'ts
+
+### Before the upgrade
+
+**Do**
+
+- Take a backup: `pg_dumpall --globals-only` and `pg_dump -Fc -d pem`.
+- Note the OS user and PostgreSQL role that originally installed PEM — you'll run the upgrade as that role.
+- Run the verification query above.
+- Test the upgrade in a non-production environment first if possible.
+
+**Don't**
+
+- **Don't change ownership** of `pem`, `pemdata`, or `pemhistory` schemas or their objects without first completing [Pre-upgrade preparation](#pre-upgrade-preparation). This includes `REASSIGN OWNED BY`, `ALTER ... OWNER TO`, and `ALTER ROLE ... RENAME TO`.
+- **Don't grant privileges to `PUBLIC`** as a workaround — it exposes PEM internals to all database users. Grant only to `pem_user`, `pem_admin`, and `pem_agent`.
+- **Don't modify** PEM-managed tables, views, functions, or triggers directly.
+
+### During the upgrade
+
+**Do**
+
+- Run `configure-pem-server.sh` as the role for which default privileges are registered.
+- Watch the script output; stop and investigate any errors before continuing.
+
+**Don't**
+
+- **Don't run the upgrade under a different OS or database user** than the one that installed PEM (unless you've completed [Pre-upgrade preparation](#pre-upgrade-preparation) for the new role).
+- **Don't interrupt the script** or run other DDL on the PEM backend during the upgrade.
+
+### After the upgrade
+
+**Do**
+
+- Run the verification in [Post-upgrade verification](#post-upgrade-verification).
+- Watch `/var/log/pem/worker.log` for two minutes after starting services.
+- Confirm all monitored servers transition to **UP** in the web UI.
+
+**Don't**
+
+- **Don't ignore** `permission denied` errors in `worker.log` — they mean grants were lost and need repair. See [Remediation for already-affected clusters](#remediation-for-already-affected-clusters).
+- **Don't add new agents or probes** until verification passes.
+
+## Pre-upgrade preparation
+
+Apply this section only if the pre-upgrade check shows a mismatch — that is, you're changing the PEM owner, or running the upgrade under a different role than the install. Run all SQL as a PostgreSQL superuser. All blocks are idempotent.
+
+### Step 1 — Stop PEM services
+
+```bash
+sudo systemctl stop pemagent
+sudo systemctl stop pemserver
+```
+
+### Step 2 — Transfer ownership (only if changing ownership)
+
+```sql
+REASSIGN OWNED BY <old_owner> TO <new_owner>;
+GRANT <old_owner> TO <new_owner>;   -- lets <new_owner> inherit role memberships
+```
+
+### Step 3 — Register default privileges for the upgrade role
+
+Substitute `<upgrade_role>` with the role that will run `configure-pem-server.sh`.
+
+```sql
+-- Schema: pem
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT SELECT  ON TABLES    TO pem_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT ALL     ON TABLES    TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT SELECT  ON TABLES    TO pem_agent;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT USAGE   ON SEQUENCES TO pem_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT ALL     ON SEQUENCES TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT EXECUTE ON FUNCTIONS TO pem_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT ALL     ON FUNCTIONS TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pem GRANT EXECUTE ON FUNCTIONS TO pem_agent;
+
+-- Schema: pemdata
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemdata GRANT SELECT                         ON TABLES    TO pem_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemdata GRANT ALL                            ON TABLES    TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemdata GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO pem_agent;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemdata GRANT ALL                            ON SEQUENCES TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemdata GRANT ALL                            ON FUNCTIONS TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemdata GRANT EXECUTE                        ON FUNCTIONS TO pem_agent;
+
+-- Schema: pemhistory
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemhistory GRANT SELECT                         ON TABLES    TO pem_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemhistory GRANT ALL                            ON TABLES    TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemhistory GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO pem_agent;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemhistory GRANT ALL                            ON SEQUENCES TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemhistory GRANT ALL                            ON FUNCTIONS TO pem_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE <upgrade_role> IN SCHEMA pemhistory GRANT EXECUTE                        ON FUNCTIONS TO pem_agent;
+```
+
+### Step 4 — Revoke orphaned defaults from the old role (optional, only if you changed ownership)
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE <old_owner> IN SCHEMA pem        REVOKE ALL ON TABLES, SEQUENCES, FUNCTIONS FROM pem_user, pem_admin, pem_agent;
+ALTER DEFAULT PRIVILEGES FOR ROLE <old_owner> IN SCHEMA pemdata    REVOKE ALL ON TABLES, SEQUENCES, FUNCTIONS FROM pem_user, pem_admin, pem_agent;
+ALTER DEFAULT PRIVILEGES FOR ROLE <old_owner> IN SCHEMA pemhistory REVOKE ALL ON TABLES, SEQUENCES, FUNCTIONS FROM pem_user, pem_admin, pem_agent;
+```
+
+### Step 5 — Schema USAGE safety net
+
+```sql
+GRANT USAGE ON SCHEMA pem, pemdata, pemhistory TO pem_user, pem_admin, pem_agent;
+```
+
+### Step 6 — Re-run the verification query and upgrade
+
+Re-run the query from [Check your cluster before upgrading](#check-your-cluster-before-upgrading). Confirm that defaults are now bound to `<upgrade_role>`, then run the upgrade:
+
+```bash
+sudo /usr/bin/dnf upgrade -y ./edb-pem*.rpm --allowerasing
+sudo /usr/edb/pem/bin/configure-pem-server.sh
+```
+
+## Post-upgrade verification
+
+Run the following as a PostgreSQL superuser on the PEM backend database.
+
+```sql
+-- Confirm grants on the views most commonly affected.
+-- Each output should show entries for pem_user, pem_admin, and pem_agent.
+\dp pem.probe_target_view
+\dp pem.probe_schedule_view
+\dp pem.avail_agents
+\dp pem.avail_servers
+
+-- Smoke-test as pem_agent.
+SET ROLE pem_agent;
+SELECT count(*) FROM pem.probe_schedule_view;
+SELECT count(*) FROM pem.probe_target_view;
+RESET ROLE;
+
+-- Sweep for any object pem_user can't read.
+-- Zero rows = clean. Repeat with 'pem_admin' and 'pem_agent'.
+SELECT c.relkind, n.nspname || '.' || c.relname AS object
+FROM   pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE  n.nspname IN ('pem','pemdata','pemhistory')
+  AND  c.relkind IN ('r','v','m')
+  AND  NOT has_table_privilege('pem_user', c.oid, 'SELECT')
+ORDER BY 1,2;
+```
+
+Start services and watch the log for two minutes:
+
+```bash
+sudo systemctl start pemserver
+sudo systemctl start pemagent
+tail -f /var/log/pem/worker.log
+```
+
+No `permission denied` messages should appear. In the PEM web UI, confirm all monitored servers transition to **UP**.
+
+## Remediation for already-affected clusters
+
+If the upgrade has already completed and you're seeing `permission denied` errors for `probe_target_view`, `probe_schedule_view`, `avail_agents`, `avail_servers`, or `create_default_server_alerts`, run the in-place repair below as a PostgreSQL superuser. It's idempotent and safe on a healthy cluster:
+
+```sql
+GRANT USAGE ON SCHEMA pem, pemdata, pemhistory TO pem_user, pem_admin, pem_agent;
+
+-- Schema: pem
+GRANT SELECT  ON ALL TABLES    IN SCHEMA pem TO pem_user, pem_agent;
+GRANT ALL     ON ALL TABLES    IN SCHEMA pem TO pem_admin;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pem TO pem_user, pem_admin, pem_agent;
+GRANT USAGE   ON ALL SEQUENCES IN SCHEMA pem TO pem_user;
+GRANT ALL     ON ALL SEQUENCES IN SCHEMA pem TO pem_admin;
+
+-- Schema: pemdata
+GRANT SELECT                         ON ALL TABLES    IN SCHEMA pemdata TO pem_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES    IN SCHEMA pemdata TO pem_agent;
+GRANT ALL                            ON ALL TABLES    IN SCHEMA pemdata TO pem_admin;
+GRANT EXECUTE                        ON ALL FUNCTIONS IN SCHEMA pemdata TO pem_user, pem_admin, pem_agent;
+GRANT ALL                            ON ALL SEQUENCES IN SCHEMA pemdata TO pem_admin;
+
+-- Schema: pemhistory
+GRANT SELECT                         ON ALL TABLES    IN SCHEMA pemhistory TO pem_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES    IN SCHEMA pemhistory TO pem_agent;
+GRANT ALL                            ON ALL TABLES    IN SCHEMA pemhistory TO pem_admin;
+GRANT EXECUTE                        ON ALL FUNCTIONS IN SCHEMA pemhistory TO pem_user, pem_admin, pem_agent;
+GRANT ALL                            ON ALL SEQUENCES IN SCHEMA pemhistory TO pem_admin;
+```
+
+No restart is required — the next probe cycle (within approximately 60 seconds) picks up the new permissions. To prevent the same problem on the next upgrade, also complete [Pre-upgrade preparation](#pre-upgrade-preparation) for the role that will run that upgrade.
+
+## Example: upgrade with an ownership change
+
+This is a concrete walkthrough for the most common non-standard scenario. PEM was installed on the source server owned by `dbsdbadm`; the cluster has been restored on a target server where the corporate standard owner is `ddbadm`, and the goal is to upgrade PEM with `ddbadm` as the final owner.
+
+The ordering is what matters. Run the following steps in this exact order:
+
+1. Take a backup (see [Dos and don'ts](#dos-and-donts)).
+2. Stop services (step 1 of [Pre-upgrade preparation](#pre-upgrade-preparation)).
+3. Transfer ownership: `REASSIGN OWNED BY dbsdbadm TO ddbadm; GRANT dbsdbadm TO ddbadm;` (step 2).
+4. Register defaults `FOR ROLE ddbadm` (step 3).
+5. Revoke orphaned defaults `FOR ROLE dbsdbadm` (step 4).
+6. Apply the schema USAGE safety net (step 5).
+7. Run the RPM upgrade and `configure-pem-server.sh` as `ddbadm` (step 6).
+8. Run post-upgrade verification.
+9. Start services.
+
+If step 4 is skipped, step 7 re-creates `pem.probe_target_view` and `pem.probe_schedule_view` as `ddbadm`. PostgreSQL finds no defaults for `ddbadm` in `pg_default_acl` (they're still bound to `dbsdbadm`), and the views come up with no grants. The worker log immediately shows `permission denied for view ...` and [Remediation for already-affected clusters](#remediation-for-already-affected-clusters) is required to recover.
