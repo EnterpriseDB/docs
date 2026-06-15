@@ -1,7 +1,7 @@
 ---
 title: Observability (AI Factory on HM)
 navTitle: Observability
-description: Monitor model serving and Langflow workloads in Hybrid Manager using Prometheus alert rules, Grafana dashboards, and Alertmanager routing.
+description: Monitor model serving and Langflow workloads in Hybrid Manager using built-in dashboards, logs, and Grafana.
 ---
 
 **Hub quick links:**
@@ -48,113 +48,6 @@ kubectl port-forward -n observability svc/grafana 3000:3000
 
 * * *
 
----
-
-## Prometheus alert rules for Gen AI service health
-
-Hybrid Manager exposes AI Factory metrics to Prometheus. Use the alert rules below as a starting point for production monitoring. Apply them by adding a `PrometheusRule` resource to the observability namespace of your cluster.
-
-### Model server availability
-
-Fires when the number of ready model server replicas drops below the configured minimum — indicating a deployment failure or node-level issue.
-
-```yaml
-groups:
-  - name: ai-factory-model-serving
-    rules:
-      - alert: ModelServerReplicasBelowMinimum
-        expr: |
-          kube_deployment_status_replicas_ready{deployment=~".*inferenceservice.*"}
-          < kube_deployment_spec_replicas{deployment=~".*inferenceservice.*"}
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Model server replicas below minimum ({{ $labels.deployment }})"
-          description: >
-            Ready replicas ({{ $value }}) are fewer than the desired count.
-            Check pod events and GPU node availability.
-```
-
-### Inference latency
-
-Fires when the 95th-percentile inference latency exceeds 5 seconds, which typically indicates resource saturation or an undersized deployment.
-
-```yaml
-      - alert: HighInferenceLatency
-        expr: |
-          histogram_quantile(0.95,
-            rate(kserve_request_duration_seconds_bucket[5m])
-          ) > 5
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High inference latency on {{ $labels.service }}"
-          description: >
-            P95 latency is {{ $value | humanizeDuration }}.
-            Consider scaling replicas or adjusting batch size.
-```
-
-### Inference error rate
-
-Fires when more than 5% of inference requests return errors over a 5-minute window.
-
-```yaml
-      - alert: HighInferenceErrorRate
-        expr: |
-          rate(kserve_request_duration_seconds_count{response_code!~"2.."}[5m])
-          / rate(kserve_request_duration_seconds_count[5m]) > 0.05
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Elevated inference error rate on {{ $labels.service }}"
-          description: >
-            Error rate is {{ $value | humanizePercentage }} over the last 5 minutes.
-```
-
-### Langflow flow builder availability
-
-Fires when the shared Langflow flow builder has no ready pods, making the editor and any flows running in it inaccessible.
-
-```yaml
-  - name: ai-factory-langflow
-    rules:
-      - alert: LangflowUnavailable
-        expr: |
-          kube_deployment_status_replicas_ready{deployment=~".*langflow.*"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Langflow flow builder has no ready replicas"
-          description: >
-            No flow-builder pods are ready. Check the deployment in the AI Factory project namespace.
-```
-
-### Deployed flow availability
-
-The rule above covers the shared flow builder. Each deployed flow runs as its own `langflow-runtime` workload in its own namespace, so deployed flows need a separate rule. This one fires when a deployed flow has no ready runtime pods, with the namespace identifying which flow.
-
-```yaml
-  - name: ai-factory-deployed-flows
-    rules:
-      - alert: DeployedFlowUnavailable
-        expr: |
-          kube_deployment_status_replicas_ready{deployment=~".*langflow-runtime.*"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Deployed flow has no ready replicas ({{ $labels.namespace }})"
-          description: >
-            A deployed Langflow flow has no ready runtime pods and is not serving requests.
-            Check the runtime workload in the flow's namespace.
-```
-
----
-
 ## Grafana dashboard setup for AI Factory metrics
 
 Hybrid Manager includes a Grafana instance in the observability stack. You can access it directly or configure dashboards for AI Factory-specific metrics.
@@ -193,60 +86,9 @@ KServe publishes a community Grafana dashboard. To import it:
 
 ---
 
-## Alertmanager routing
-
-Configure Alertmanager to route AI Factory alerts to your team's notification channels. The example below routes `critical` alerts to PagerDuty and `warning` alerts to Slack, with email as a fallback receiver.
-
-```yaml
-global:
-  resolve_timeout: 5m
-
-route:
-  receiver: default-email
-  group_by: [alertname, namespace]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
-  routes:
-    - match:
-        severity: critical
-      receiver: pagerduty
-      continue: true
-    - match:
-        severity: warning
-      receiver: slack-ai-factory
-
-receivers:
-  - name: pagerduty
-    pagerduty_configs:
-      - routing_key: <your-pagerduty-integration-key>
-        description: >
-          {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}
-
-  - name: slack-ai-factory
-    slack_configs:
-      - api_url: <your-slack-webhook-url>
-        channel: "#ai-factory-alerts"
-        title: "AI Factory alert: {{ .CommonLabels.alertname }}"
-        text: >
-          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
-
-  - name: default-email
-    email_configs:
-      - to: ai-factory-ops@your-org.com
-        from: alertmanager@your-org.com
-        smarthost: smtp.your-org.com:587
-        auth_username: alertmanager@your-org.com
-        auth_password: <smtp-password>
-```
-
-Apply this configuration as a Kubernetes secret or ConfigMap in the namespace where Alertmanager is deployed. The exact method depends on how your cluster's monitoring stack was provisioned — consult your platform team if Alertmanager isn't already running in the cluster.
-
----
-
 ## Key takeaway
 
 * **Model Serving** → monitored as KServe services with full metrics.
 * **Langflow** → pod health, replica count, and flow availability monitored via Prometheus and Grafana.
 * **Hybrid Manager** provides a unified observability layer — no separate monitoring stack to configure.
-* **Enterprise monitoring** → extend the built-in stack with Prometheus alert rules, Grafana dashboards, and Alertmanager routing to PagerDuty/Slack/email.
+* **Enterprise monitoring** → extend the built-in stack with custom Grafana dashboards.
