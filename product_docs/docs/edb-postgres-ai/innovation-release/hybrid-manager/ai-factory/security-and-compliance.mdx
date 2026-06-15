@@ -1,7 +1,7 @@
 ---
 title: Security and compliance for AI Factory deployments
 navTitle: Security and compliance
-description: Security controls and compliance guidance for AI Factory on Hybrid Manager, covering pod security, network policies, secret management, TLS/mTLS, and mapping to ISO 27001/2, PCI DSS, and HIPAA.
+description: Security controls and compliance guidance for AI Factory on Hybrid Manager, covering pod security, secret management, and mapping to ISO 27001/2, PCI DSS, and HIPAA.
 ---
 
 Hybrid Manager's AI Factory is built on Kubernetes and Istio, which together provide a layered security model suited to enterprise and regulated environments. This page describes the platform controls available, how to configure them for production, and how they map to common compliance frameworks.
@@ -36,100 +36,6 @@ The Restricted profile enforces the following on all pods in the namespace:
 !!!Note
 NVIDIA NIM model server pods require specific capabilities for GPU access. If the Restricted profile causes GPU workloads to fail admission, work with your platform team to apply a targeted exception using a `PodSecurityPolicy` exemption or a separate namespace for model serving pods with the Baseline profile, while keeping Langflow and application pods at Restricted.
 !!!
-
----
-
-## Network policies
-
-By default, pods in a Kubernetes cluster can communicate freely. Network policies restrict this to explicitly permitted traffic paths, reducing the blast radius of a compromised pod.
-
-### Recommended policies for AI Factory
-
-Apply the following policies to the AI Factory project namespace. Adjust label selectors to match your cluster's labelling conventions.
-
-**Deny all ingress and egress by default:**
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-all
-  namespace: <ai-factory-namespace>
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-```
-
-**Allow Langflow to reach model server endpoints:**
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-langflow-to-model-server
-  namespace: <ai-factory-namespace>
-spec:
-  podSelector:
-    matchLabels:
-      app: langflow
-  policyTypes:
-    - Egress
-  egress:
-    - to:
-        - podSelector:
-            matchLabels:
-              app: kserve
-      ports:
-        - protocol: TCP
-          port: 8080
-```
-
-**Allow ingress to Langflow from the Istio ingress gateway only:**
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-ingress-gateway-to-langflow
-  namespace: <ai-factory-namespace>
-spec:
-  podSelector:
-    matchLabels:
-      app: langflow
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: istio-system
-```
-
-**Allow egress to Postgres clusters for EDB components:**
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-langflow-to-postgres
-  namespace: <ai-factory-namespace>
-spec:
-  podSelector:
-    matchLabels:
-      app: langflow
-  policyTypes:
-    - Egress
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              edb.com/project: "true"
-      ports:
-        - protocol: TCP
-          port: 5432
-```
 
 ---
 
@@ -180,68 +86,6 @@ Recommendations:
 
 ---
 
-## TLS and mTLS for inter-service communication
-
-### External TLS
-
-All traffic entering the AI Factory from outside the cluster — including Langflow UI access and model API calls — must be encrypted with TLS. Hybrid Manager's Istio ingress gateway terminates external TLS.
-
-Ensure a valid TLS certificate is configured for the ingress gateway:
-
-```bash
-kubectl -n istio-system create secret tls ai-factory-tls \
-  --cert=path/to/tls.crt \
-  --key=path/to/tls.key
-```
-
-Reference the secret in your `Gateway` resource:
-
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: Gateway
-metadata:
-  name: ai-factory-gateway
-  namespace: istio-system
-spec:
-  selector:
-    istio: ingressgateway
-  servers:
-    - port:
-        number: 443
-        name: https
-        protocol: HTTPS
-      tls:
-        mode: SIMPLE
-        credentialName: ai-factory-tls
-      hosts:
-        - "<your-ai-factory-domain>"
-```
-
-### mTLS between services (Istio STRICT mode)
-
-For internal traffic, Hybrid Manager uses Istio's service mesh to encrypt pod-to-pod communication. By default, Istio operates in `PERMISSIVE` mode, which accepts both plain-text and mTLS traffic. In production, enforce `STRICT` mode to require mTLS on all inter-service connections in the AI Factory namespace:
-
-```yaml
-apiVersion: security.istio.io/v1beta1
-kind: PeerAuthentication
-metadata:
-  name: enforce-mtls
-  namespace: <ai-factory-namespace>
-spec:
-  mtls:
-    mode: STRICT
-```
-
-Apply this resource to the namespace. After applying, any pod that attempts to communicate without a valid Istio sidecar certificate is rejected.
-
-Verify mTLS is enforced:
-
-```bash
-istioctl x authz check <pod-name> -n <ai-factory-namespace>
-```
-
----
-
 ## Air-gapped architecture and compliance
 
 Air-gapped deployments provide the strongest data egress controls, which are often required for classified, healthcare, and financial workloads. In an air-gapped Hybrid Manager deployment:
@@ -262,20 +106,20 @@ For air-gapped setup procedures, see [Air-Gapped Configuration](./prerequisites#
 
 The table below maps AI Factory platform controls to specific requirements in ISO 27001/2, PCI DSS v4.0, and HIPAA Security Rule. Use this as a starting point when preparing evidence for an audit — it doesn't replace a formal assessment.
 
-| Platform control | ISO 27001/2 | PCI DSS v4.0 | HIPAA Security Rule |
-|---|---|---|---|
-| Pod Security Standards (Restricted profile) | A.8.9, A.8.25 | Req 2.2, Req 6.3 | 164.312(a)(1) |
-| Kubernetes network policies (deny-all default) | A.8.20, A.8.22 | Req 1.3 | 164.312(c)(1) |
-| Istio mTLS (STRICT mode) | A.8.24 | Req 4.2.1 | 164.312(e)(2)(ii) |
-| External TLS on ingress gateway | A.8.24 | Req 4.2.1 | 164.312(e)(2)(ii) |
-| HM project secrets (encrypted at rest) | A.8.24 | Req 3.5 | 164.312(a)(2)(iv) |
-| Secret rotation policy | A.8.24 | Req 8.6 | 164.312(a)(2)(iv) |
-| RBAC with least-privilege project roles | A.8.2, A.8.3 | Req 7.2 | 164.312(a)(1) |
-| Namespace isolation (one project per environment) | A.8.22 | Req 1.3 | 164.312(a)(1) |
-| Air-gapped deployment (no external egress) | A.8.20 | Req 1.2 | 164.312(e)(2)(ii) |
-| Kubernetes audit logging | A.8.15, A.8.16 | Req 10.2 | 164.312(b) |
-| OpenTelemetry tracing for Gen AI workloads | A.8.15 | Req 10.2 | 164.312(b) |
-| GPU node isolation (dedicated taints/labels) | A.8.22 | Req 2.2 | 164.312(a)(1) |
+| Platform control                                  | ISO 27001/2    | PCI DSS v4.0     | HIPAA Security Rule |
+|---------------------------------------------------|----------------|------------------|---------------------|
+| Pod Security Standards (Restricted profile)       | A.8.9, A.8.25  | Req 2.2, Req 6.3 | 164.312(a)(1)       |
+| Kubernetes network policies (deny-all default)    | A.8.20, A.8.22 | Req 1.3          | 164.312(c)(1)       |
+| Istio mTLS (STRICT mode)                          | A.8.24         | Req 4.2.1        | 164.312(e)(2)(ii)   |
+| External TLS on ingress gateway                   | A.8.24         | Req 4.2.1        | 164.312(e)(2)(ii)   |
+| HM project secrets (encrypted at rest)            | A.8.24         | Req 3.5          | 164.312(a)(2)(iv)   |
+| Secret rotation policy                            | A.8.24         | Req 8.6          | 164.312(a)(2)(iv)   |
+| RBAC with least-privilege project roles           | A.8.2, A.8.3   | Req 7.2          | 164.312(a)(1)       |
+| Namespace isolation (one project per environment) | A.8.22         | Req 1.3          | 164.312(a)(1)       |
+| Air-gapped deployment (no external egress)        | A.8.20         | Req 1.2          | 164.312(e)(2)(ii)   |
+| Kubernetes audit logging                          | A.8.15, A.8.16 | Req 10.2         | 164.312(b)          |
+| OpenTelemetry tracing for Gen AI workloads        | A.8.15         | Req 10.2         | 164.312(b)          |
+| GPU node isolation (dedicated taints/labels)      | A.8.22         | Req 2.2          | 164.312(a)(1)       |
 
 !!!Note
 ISO 27001/2 annex references use the 2022 revision. PCI DSS references are to version 4.0. HIPAA references are to the Security Rule (45 CFR Part 164). Consult a qualified compliance assessor to confirm control applicability to your specific scope and deployment.
