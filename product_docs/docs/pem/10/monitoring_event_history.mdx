@@ -41,6 +41,7 @@ Event history currently tracks changes and actions for the following PEM functio
 * **Update Profile:** When profile settings or categories are modified.
 * **Delete Profile:** When a draft or published profile is deleted.
 * **Publish Profile:** When a draft profile is published for production use.
+* **Clone Profile:** When an existing profile is cloned via the UI or REST API.
 
 ### Alert blackout management
 * **Enable Alert Blackout:** When you silence alerts for a server (usually for planned maintenance).
@@ -88,7 +89,29 @@ When a monitoring profile (ID 42) is newly applied to a server (ID 10), the log 
 }
 ```
 
-### 2. Alert blackout enabled
+### 2. Profile clone
+
+**Message:** "Cloned profile 42".
+
+When a profile (ID 42) is cloned — either via the UI **Copy from** dialog or the REST API — both paths write the same audit row. To find clone events in the audit history, filter on `operation = 'clone_profile'`. A normal (non-clone) profile create uses `operation = 'create'` instead.
+
+**`details` (JSON):**
+
+```json
+{
+  "SourceProfileId": 42,
+  "SourceName": "Production Server Profile",
+  "NewProfileId": 55,
+  "NewName": "Copy of Production Server Profile",
+  "TargetKind": "server",
+  "ChangedCategories": ["metadata", "probe", "alert"]
+}
+```
+
+!!! Note
+    Audit logging is best-effort: if the audit row fails to write, the clone still succeeds. The failure is logged server-side.
+
+### 3. Alert blackout enabled
 
 **Message:** "Enabled the alert blackout for the server".
 
@@ -104,7 +127,7 @@ Alerting is suppressed for Server 10 until the blackout status is manually disab
 }
 ```
 
-### 3. HA switchover
+### 4. HA switchover
 
 **Message:** "Switchover observed for cluster prod_patroni".
 
@@ -133,6 +156,20 @@ Use this query to see the 20 most recent actions related to configuration profil
 SELECT recorded_time, user_name, message
 FROM pem.event_history
 WHERE component = 'profile'
+ORDER BY recorded_time DESC
+LIMIT 20;
+```
+
+### Recent profile clone events
+
+Use this query to see all profiles that have been cloned, along with the source and new profile IDs from the `details` field.
+
+```sql
+SELECT recorded_time, user_name,
+       details::json->>'SourceName' AS source_profile,
+       details::json->>'NewName' AS cloned_profile
+FROM pem.event_history
+WHERE component = 'profile' AND operation = 'clone_profile'
 ORDER BY recorded_time DESC
 LIMIT 20;
 ```
