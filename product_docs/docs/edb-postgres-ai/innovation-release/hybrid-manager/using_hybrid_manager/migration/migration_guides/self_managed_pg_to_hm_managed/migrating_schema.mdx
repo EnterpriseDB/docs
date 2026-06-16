@@ -13,7 +13,7 @@ redirects:
 Before starting a data migration, choose how to handle schema migration. HM supports two approaches:
 
 - **Simplified (recommended)**: HM manages schema migration and constraint handling automatically as part of the data migration setup.
-- **Manual**: Export and import the schema yourself using Migration Toolkit or `pg_dump`, handling constraints in two stages.
+- **Manual**: Export and import the schema yourself using Migration Toolkit or `pg_dump`, and handle constraints based on the key structure of each source table.
 
 <TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
@@ -32,13 +32,18 @@ Before you use EDB DMS for data migration, export and import your schema to the 
 
 ### Handling constraints
 
-Import constraints in two stages to avoid performance degradation during migration:
+How to handle constraints depends on the constraint type and the key structure of each source table.
 
-- **Include now** (before data migration): primary key, unique, and `NOT NULL` constraints. EDB DMS requires primary key and unique constraints to guarantee exactly-once delivery. `NOT NULL` constraints have negligible performance impact.
-- **Exclude now, reapply later** (after data migration): foreign key, check, and exclusion constraints. These cause unnecessary CPU and memory overhead while data is actively being migrated.
+| Constraint type | Action | Notes |
+|---|---|---|
+| Primary key | Exclude now — DMS applies automatically | The DMS writer applies the primary key when the migration enters the streaming phase, using it to deduplicate snapshot data. |
+| Unique key (source table has a primary key) | Exclude now, apply after streaming starts | Primary key-based deduplication ensures no duplicate rows remain when you apply unique constraints after streaming starts. |
+| Unique key (source table has no primary key) | Not currently supported | Use the simplified path instead — select the **Schema and data** scope when creating the migration to let HM handle schema migration automatically. |
+| `NOT NULL` | Include now | `NOT NULL` validation adds no meaningful overhead to the data load, unlike foreign key and check constraint validation. |
+| Foreign key, check, and exclusion | Exclude now, reapply after migration | These cause unnecessary CPU and memory overhead while data is actively being migrated. |
 
 !!!note
-For tables without primary key or unique constraints, EDB DMS provides at-least-once delivery only. You can perform deduplication during migration verification.
+For tables with no primary key or unique key, no key constraints are needed before or after migration. DMS treats these tables as keyless and provides at-least-once delivery. Deduplicate rows as part of your post-migration verification.
 !!!
 
 ### Exporting your schema
