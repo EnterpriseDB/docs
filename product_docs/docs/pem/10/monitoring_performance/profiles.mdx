@@ -71,6 +71,8 @@ The `Manage Profiles` section provides a central interface for creating, configu
   - [Assign profiles to servers or agents](#assigning-profiles)
   - [Un-assign profiles from servers or agents](#un-assigning-profiles)
   - [Delete and reassign profiles](#deleting-profiles)
+  - [Export profiles](#exporting-profiles)
+  - [Import profiles](#importing-profiles)
 
 The main table displays key information about each profile:
 
@@ -81,6 +83,74 @@ The main table displays key information about each profile:
 | Active Assignments | The count of servers or agents currently assigned to the profile.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Apply/Revert       | Displays the synchronization status of the profile:<br/> - Apply (Green button) &mdash; Deploys the draft changes made to the profile to all currently assigned servers and agents.<br/> - Revert (Red loop button) &mdash; Discards any non-applied draft changes, resetting the profile to the last successfully deployed version.<br/> - Green Tick Icon &mdash;  Indicates that there are no pending draft changes; all configurations are synced with the assigned objects. |
 
+
+### Exporting profiles
+
+A user with the `pem_manage_profile` role can export one or more profiles as a portable `.pemprf` JSON bundle.
+
+On the **Manage Profiles** tab:
+
+1. Select one or more profiles using the row checkboxes. 
+
+1. The **Export** button activates when at least one row is selected.
+
+1. Select **Export**. 
+
+1. A file named `Export_Profiles_<timestamp>.pemprf` is downloaded.
+
+The `.pemprf` file is a JSON document with a top-level `version` field and a `profiles` array containing the exported profile configurations.
+
+If a selected profile has unsaved draft edits, the exported file contains the **published** state of the profile, not the draft.
+
+All profile settings aren't included in the exported bundle.
+
+- The following settings are preserved in the exported bundle:
+
+   - Name, description, and target kind
+   - Probe configurations like frequency, retention, and status (enabled/disabled)
+   - Alert thresholds, operators, and parameters
+   - `auto_created` flag
+   - Script execution settings (`execute_script`, `execute_script_on_clear`, `execute_script_on_pem_server`) and script code body
+
+- The following settings are stripped and must be reconfigured after import:
+
+  - Notification routing settings: `email_group_id`, per-severity email groups, webhook IDs, SNMP trap version, and Nagios service
+  - Notification enable flags: `send_email`, per-severity `send_trap`, `submit_to_nagios`, `send_notification`, `override_default_config`, and `cleared_alert_enable`
+
+After importing a profile, alerts evaluate and appear in dashboards, but **do not deliver email, SNMP, webhook, or Nagios notifications** until you re-enable each channel and configure destinations in the alert dialog, then click **Apply**. Script execution settings survive the round-trip and do not need to be re-entered.
+
+!!! Warning
+    `.pemprf` files may contain script code with credentials, tokens, or environment-specific paths. Treat them as sensitive artifacts — do not email them or commit them to public or shared repositories without review.
+
+### Importing profiles
+
+A user with the `pem_manage_profile` role can import profiles from a `.pemprf` bundle.
+
+On the **Manage Profiles** tab:
+
+1. Select **Import** in the toolbar.
+
+1. Select a `.pemprf` file to upload.
+
+1. Choose whether to enable the **Skip existing?** checkbox to control how name conflicts are handled.
+
+1. Review the **Import Summary** table, which reports the per-profile result.
+
+The **Skip existing?** checkbox controls how the import handles profiles whose names already exist on the target instance:
+
+| Scenario                                                | Result                                                                                                                                       |
+|---------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| Profile name is new                                     | Imported as a published profile.                                                                                                             |
+| Profile name exists and **Skip existing?** is checked   | Skipped. The summary reports "profile name already exists."                                                                                  |
+| Profile name exists and **Skip existing?** is unchecked | Imported as a **draft** on the existing profile. Select **Apply** on that row to publish the draft and apply the changes to assigned targets. |
+
+The import handles type mismatches and missing references as follows:
+
+- If `target_kind` differs between the imported profile and the existing one (for example, server versus agent), the import fails for that profile with a descriptive error.
+
+- If a probe or alert template referenced in the bundle doesn't exist on the target PEM instance, that item is skipped. The rest of the profile imports successfully. The summary table lists skipped items.
+
+- If a reference is ambiguous (two active matches on the target instance), the import is refused with an error.
 
 ### Creating profiles
 
