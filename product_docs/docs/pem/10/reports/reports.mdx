@@ -27,6 +27,89 @@ Information in these reports shows the latest probe run time.
 
 While PEM allows for fully customized reporting, it also includes pre-configured system report templates designed for deep database analysis. These reports are built into the platform to provide immediate value without requiring manual template configuration.
 
+### Server Downtime report
+
+The Server Downtime report provides server availability and downtime analysis by tracking heartbeat gaps from monitored PostgreSQL servers. It distinguishes between planned downtime (during blackout periods) and unplanned downtime, and calculates an availability percentage for each server over the last 30 days.
+
+**Availability** is calculated from unplanned downtime only: `1 - (Unplanned Downtime / Total Time)`. Planned downtime during blackout periods doesn't affect the availability calculation.
+
+The report starts collecting data automatically after upgrading to PEM 10.5 — no manual setup is required and it can't be disabled.
+
+!!! Note
+    To run this report, the Agent Server Binding (ASB) user for the target server must have the `pem_user` role. This is the most common setup issue. See [Permissions](#permissions) below.
+
+#### Accessing the report
+
+To find and run the Server Downtime report:
+
+1. Go to **Management > Reports > Manage Report Templates**.
+1. Locate **Server Downtime Report** in the list. System-defined templates display a gear icon.
+1. Select the target servers and select **Execute** to run the report immediately, or use **Schedule** to run it on a recurring basis.
+1. To save the output, select **Export** and choose **HTML** or **JSON**.
+
+#### Report sections
+
+The report contains three sections.
+
+**Summary metrics**
+
+Provides an overview across all monitored servers:
+
+- **Total monitored servers** &mdash; Count of unique servers with downtime data in the last 30 days.
+- **Average availability percentage** &mdash; Mean availability across all monitored servers.
+- **Total downtime hours** &mdash; Sum of all downtime (planned and unplanned) across all servers.
+- **Total unplanned downtime hours** &mdash; Sum of downtime that occurred outside blackout periods.
+- **Total planned downtime hours** &mdash; Sum of downtime that occurred during blackout periods.
+
+**Server availability details**
+
+Shows a per-server breakdown, sorted by availability percentage ascending (worst performers first):
+
+- **Server name** &mdash; Hostname or IP address of the monitored server.
+- **Server description** &mdash; User-defined description.
+- **Availability pct** &mdash; Calculated as `1 - (Unplanned Downtime / Total Time)`.
+- **Total hours** &mdash; Total downtime (planned and unplanned).
+- **Unplanned hours** &mdash; Downtime outside blackout periods.
+- **Planned hours** &mdash; Downtime during blackout periods.
+- **Database count** &mdash; Number of non-system databases on the server.
+
+**Top 10 worst performers**
+
+Shows the 10 servers with the lowest availability in the last 30 days. Uses the same columns as the server availability details section. Use this section to quickly identify servers that need attention.
+
+#### Configuration parameters
+
+A user with the `pem_admin` role can adjust these parameters in **Server Configuration**:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `downtime_retention_days` | 30 | Number of days of downtime history to retain. Older data is automatically purged twice daily. Reducing this value lowers storage use but limits historical trend analysis. |
+| `downtime_heartbeat_gap_seconds` | 60 | Minimum gap between heartbeats (in seconds) before PEM records a downtime event. Increase this value to reduce false positives in high-latency network environments. |
+
+#### Permissions
+
+The report runs using the ASB user for each target server. That user must have the `pem_user` role to execute the report functions.
+
+To grant the role, connect to the PEM database as a superuser and run:
+
+```sql
+GRANT pem_user TO <asb_username>;
+```
+
+#### Limitations
+
+- **Downtime cause is unknown** &mdash; The report can't distinguish between a server going down, a PEM agent going down, a network partition, or a firewall issue. All heartbeat gaps that exceed the threshold are recorded as server downtime. Use blackout periods for planned maintenance to keep this data meaningful.
+
+- **Brief outages aren't captured** &mdash; The minimum detectable downtime is approximately equal to the heartbeat gap threshold (default 60 seconds). Outages shorter than this window don't appear in the report.
+
+- **No pre-upgrade history** &mdash; The report only tracks downtime from the point of upgrade to PEM 10.5 onwards. There's no historical data from earlier PEM versions. Allow up to 30 days after upgrading for a full reporting window.
+
+- **High-latency networks** &mdash; In high-latency environments, normal heartbeat delays may exceed the 60-second detection threshold and generate false downtime events. If you see unexpected downtime for healthy servers, increase `downtime_heartbeat_gap_seconds` to 90–120 seconds.
+
+- **Blackout data dependency** &mdash; Planned downtime classification requires blackout periods to exist in PEM and for the "Process alert blackouts" job to be enabled and running. If blackout data isn't available, all downtime is classified as unplanned and availability percentages will be lower than actual.
+
+- **30-day default window** &mdash; By default, only the last 30 days of data are available. If you need a longer history, increase `downtime_retention_days` before data is purged.
+
 ### EDB Postgres workload report (PWR)
 
 The EDB Postgres workload report (PWR) provides a comprehensive overview of a server's performance and resource utilization over a specific snapshot duration. It is an essential tool for identifying bottlenecks, high-load SQL statements, and wait events.
