@@ -50,9 +50,22 @@ Event history currently tracks changes and actions for the following PEM functio
     Skipped and failed import results are not audited. Only successful import operations write to `pem.event_history`.
 
 ### Alert blackout management
-* **Enable Alert Blackout:** When you silence alerts for a server (usually for planned maintenance).
-* **Disable Alert Blackout:** When you turn alerts back on so you can start receiving notifications again.
-* **Auto Alert Blackout:** When PEM automatically starts or stops a blackout based on a schedule you set.
+
+The `user_name` column identifies who performed the action. A real login (for example, `enterprisedb`) means a user acted via the UI or REST API. The value `system` means a system job performed the action automatically.
+
+| Operation                   | Trigger                                                                                                            |
+|-----------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `enable_alert_blackout`     | Alert Blackout checkbox toggled on, or `alert_blackout` flag synced by the **Process alert blackouts** system job  |
+| `disable_alert_blackout`    | Alert Blackout checkbox toggled off, or `alert_blackout` flag synced by the **Process alert blackouts** system job |
+| `schedule_alert_blackout`   | Scheduled blackout created via the Schedule Alert Blackout dialog                                                  |
+| `delete_scheduled_blackout` | Scheduled blackout deleted via the Schedule Alert Blackout dialog                                                  |
+| `create_blackout`           | Blackout created via REST API POST                                                                                 |
+| `end_blackout`              | Blackout ended via REST API DELETE                                                                                 |
+| `expire_manual_blackout`    | Manual blackout auto-expired because `max_manual_blackout` was exceeded                                            |
+| `blackout_ended`            | Checkbox uncheck ended an active scheduled or auto blackout early                                                  |
+| `blackout_completed`        | Scheduled blackout naturally completed when its end time was reached                                               |
+| `auto_enable_blackout`      | Auto blackout created for an unreachable server or agent                                                           |
+| `auto_disable_blackout`     | Auto blackout cleared after the server or agent recovered                                                          |
 
 ### High availability (HA) monitoring
 * **Switchover/Failover:** Planned or unplanned role changes in HA clusters (primary ↔ replica).
@@ -165,23 +178,146 @@ When an import overwrites an existing profile by name (with **Skip existing?** u
 !!! Note
     Skipped and failed import results do not generate an audit entry. Only successful imports are recorded in `pem.event_history`.
 
-### 6. Alert blackout enabled
+### 6. Alert blackout enabled (checkbox)
 
 **Message:** "Enabled the alert blackout for the server".
 
-Alerting is suppressed for Server 10 until the blackout status is manually disabled.
+Recorded when a user checks the Alert Blackout checkbox on the Global Overview dashboard.
 
 **`details` (JSON):**
 
 ```json
 {
-  "AlertBlackoutValue": true,
   "IsAgent": false,
-  "Ids": "10"
+  "ObjectId": 10
 }
 ```
 
-### 7. HA switchover
+### 7. Alert blackout disabled (checkbox)
+
+**Message:** "Disabled the alert blackout for the server".
+
+Recorded when a user unchecks the Alert Blackout checkbox. Because unchecking ends all active blackouts on the object, `EndedBlackouts` lists every record that was closed, with its source and whether it was ended before its scheduled end time.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "ObjectId": 10,
+  "EndedBlackouts": [
+    { "Id": 42, "Source": "manual", "ScheduledEnd": null, "EndedEarly": false },
+    { "Id": 43, "Source": "scheduled", "ScheduledEnd": "2026-04-24T02:00:00+00:00", "EndedEarly": true }
+  ],
+  "EndedCount": 2,
+  "EndedSources": ["manual", "scheduled"]
+}
+```
+
+### 8. Scheduled blackout created (dialog)
+
+**Message:** "Created scheduled alert blackout".
+
+Recorded when a scheduled blackout is saved via the Schedule Alert Blackout dialog. `BlackoutGroups` captures the objects, start time, and duration for each group in the batch.
+
+**`details` (JSON):**
+
+```json
+{
+  "BlackoutGroups": [
+    {
+      "ObjectType": "server",
+      "ObjectIds": [5, 7],
+      "StartTime": "2026-04-23T10:00:00Z",
+      "Duration": "2 hours"
+    }
+  ],
+  "CreatedCount": 2
+}
+```
+
+### 9. Scheduled blackout deleted (dialog)
+
+**Message:** "Deleted scheduled alert blackout".
+
+Recorded when a scheduled blackout is removed via the Schedule Alert Blackout dialog.
+
+**`details` (JSON):**
+
+```json
+{
+  "DeletedIds": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"],
+  "AgentIds": [],
+  "ServerIds": [5, 7]
+}
+```
+
+### 10. Manual blackout expired
+
+**Message:** "Manual blackout expired (max_manual_blackout exceeded)".
+
+Recorded by the **Process alert blackouts** system job when a manual blackout has been active longer than the `max_manual_blackout` threshold. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "MaxManualBlackoutHours": 24
+}
+```
+
+### 11. Scheduled blackout completed
+
+**Message:** "Scheduled blackout completed".
+
+Recorded by the system job when a scheduled blackout reaches its end time naturally. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "Source": "scheduled",
+  "BatchId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+### 12. Auto blackout enabled
+
+**Message:** "Auto-blackout enabled for unreachable server".
+
+Recorded by the **Blackout unreachable servers/agents** system job when a server or agent exceeds the `server_contact_timeout` threshold. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "Source": "auto"
+}
+```
+
+### 13. Auto blackout disabled
+
+**Message:** "Auto-blackout cleared for recovered server".
+
+Recorded by the system job when a previously unreachable server or agent resumes heartbeats within the timeout window. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "Source": "auto"
+}
+```
+
+### 14. HA switchover
 
 **Message:** "Switchover observed for cluster prod_patroni".
 
@@ -230,7 +366,7 @@ LIMIT 20;
 
 ### Recent alert blackout changes
 
-Use this query to track when alert suppression was enabled or disabled for maintenance windows.
+Use this query to see all blackout state changes, most recent first.
 
 ```sql
 SELECT recorded_time, user_name, operation, message
@@ -238,6 +374,50 @@ FROM pem.event_history
 WHERE component = 'alert_blackout'
 ORDER BY recorded_time DESC
 LIMIT 20;
+```
+
+To see who changed blackout state for a specific server (for example, object ID 10):
+
+```sql
+SELECT recorded_time, user_name, operation, message
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND (
+    details::jsonb->>'Ids' = '10'
+    OR details::jsonb->>'ObjectId' = '10'
+    OR details::jsonb->'ServerIds' @> '[10]'::jsonb
+  )
+ORDER BY recorded_time DESC;
+```
+
+To find all manual blackout expirations in the last 7 days:
+
+```sql
+SELECT recorded_time, details
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND operation = 'expire_manual_blackout'
+  AND recorded_time > now() - interval '7 days';
+```
+
+To see the full lifecycle of a scheduled blackout batch:
+
+```sql
+SELECT recorded_time, operation, message, details
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND details::jsonb->>'BatchId' = '<batch-id>'
+ORDER BY recorded_time;
+```
+
+To audit auto-blackout activity (unreachable servers and agents):
+
+```sql
+SELECT recorded_time, operation, message, details
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND operation IN ('auto_enable_blackout', 'auto_disable_blackout')
+ORDER BY recorded_time DESC;
 ```
 
 ### Recent HA switchovers
