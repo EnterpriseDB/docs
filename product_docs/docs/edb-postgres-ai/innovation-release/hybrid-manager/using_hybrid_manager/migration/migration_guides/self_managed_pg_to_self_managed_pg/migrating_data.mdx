@@ -1,66 +1,70 @@
 ---
-title: Migrating data from Oracle to an HM-managed database
+title: Migrating data from a self-managed Postgres database to a different self-managed Postgres database
 navTitle: Migrating data
-description: Create and run an EDB DMS migration, monitor progress, finalize streaming, and apply post-migration constraints. Covers both Schema and data and Data only migration scopes.
+description: Create and run an EDB DMS migration, monitor progress, finalize streaming, and apply post-migration constraints.
 deepToC: true
 redirects:
-  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/creating_migration/
-  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/monitoring_migration/
-  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/finalizing_migration/
-  - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/applying_constraints/
+  - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/creating_migration/
+  - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/monitoring_migration/
+  - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/finalizing_migration/
+  - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/applying_constraints/
 ---
 
-With the EDB DMS agent running and your schema either imported or ready for HM to import, you're ready to create a migration in the HM console. This page walks through the full migration lifecycle: creating the migration, monitoring its progress, finalizing it, and handling post-migration constraints.
+With both DMS agents running and your schema either imported or ready for HM to import, you're ready to create a migration in the HM console. This page covers the full migration lifecycle: creating the migration, monitoring its progress, finalizing it, and applying post-migration constraints.
 
 The steps below vary depending on the approach you chose on the previous page. Select the tab that matches your choice.
 
 ## Creating a migration
 
-A migration establishes a sync between your Oracle source and a destination database cluster managed by HM.
+A migration establishes a sync between your Postgres source and a self-managed destination database via HM.
 
-1.  In the HM console, select the project you're using for the migration.
+1.  In the HM console, select the project from which you want to manage the migration.
 
-1.  Select **Migrate > Migrations**.
+1.  In the project, select **Migrate > Migrations**.
 
-1.  Select **Create Migration**.
+1.  In the **Migrations** page, select **Create New Migration**.
 
-1.  Assign a meaningful name to the migration — for example, `oracle-prod-migration`.
+1.  In the **Create OLTP Migration** page, assign a name to the migration.
 
-1.  Select the source of the migration. This corresponds to the `DBCONFIG_ID` you set when configuring the DMS agent.
+1.  Select the source of the migration. The ID for the reader DMS agent is listed in the **Source** menu.
 
-1.  In **Scope**, select the option that matches your approach:
+1.  Under **Scope**, select the option that matches your approach:
 
-    <TabContainer syncKey="migration_scope">
+    <TabContainer syncKey="pg_schema_path">
     <Tab title="Simplified (recommended)">
 
-    Select **Schema and data**. HM imports the converted schema from the resolved Migration Portal project, creates tables without constraints to keep the initial snapshot fast, applies primary key and unique constraints after the snapshot completes (required for exactly-once delivery), and applies the remaining schema either concurrently with streaming (via **Finalize Schema Concurrently**) or automatically in the post-cutover **Schema Finalization** stage. See [Finalizing a streaming migration](#finalizing-a-streaming-migration).
+    Select **Schema and data**. When you select this option, HM:
+
+    1. Sources the schema from the Migration Portal project that was created automatically when you registered your database with the EDB Postgres AI agent.
+    1. Creates tables on the destination without constraints, so the initial snapshot copy isn't slowed by constraint validation.
+    1. After the snapshot completes, applies primary key and unique constraints (for tables that have them) so DMS can deliver streaming changes exactly-once. Tables without a PK or UK fall back to at-least-once delivery and require deduplication during verification.
+    1. Defers the remaining schema (indexes, foreign keys, check constraints, `NOT NULL`, and similar) until cutover. You can optionally apply most of this work concurrently with streaming via **Finalize Schema Concurrently** to shrink the cutover window — see [Finalizing a streaming migration](#finalizing-a-streaming-migration).
+    1. After you mark the migration as completed, validates deferred foreign keys, syncs sequences, and applies any remaining lightweight tasks in a final **Schema Finalization** stage.
+
+    !!!note
+    Use **Schema only** if you want to migrate the database structure without migrating any table data.
+    !!!
 
     </Tab>
     <Tab title="Manual">
 
-    Select **Data only**. The schema was already imported to the destination via Migration Portal.
+    Select **Data only**. The schema was already imported manually in the previous step.
 
     </Tab>
     </TabContainer>
 
-    !!!note
-    You can use **Schema only** if you want to migrate the database structure without migrating any table data.
-    !!!
+1.  Select the snapshot type: [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) or [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration).
 
-1.  Select the migration type:
-    - [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) — copies data once and completes. Use this for a one-time, offline migration.
-    - [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) — copies an initial snapshot, then continuously streams changes from the source. Use this to minimize downtime.
-
-1.  Under **Destination Type**, select **HM-managed Postgres** and select your destination database cluster and database. Then select **Next**.
+1.  Under **Destination Type**, select a self-managed instance as the destination for the migration. The ID for the writer DMS agent is listed in the **Destination** menu. Then, select **Next**.
 
 1.  On the **Review your Tables** tab, select the tables and columns to include in the migration. Expand a table to view its columns and optionally [map source columns to different destination column names](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration). Column mapping is only available for the **Data only** scope.
 
 1.  Select **Create Migration**.
 
-The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming**, the EDB DMS agent streams data changes continuously while the migration shows a **Running** state.
+The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming**, the DMS agents stream data changes continuously while the migration shows a **Running** state.
 
 !!!note
-The EDB DMS agent streams data changes only — not DDL changes (schema modifications).
+The DMS agent streams data changes only — not DDL changes (schema modifications).
 !!!
 
 ## Monitoring progress
@@ -90,7 +94,7 @@ The HM console doesn't surface all DMS agent errors. If a migration is stuck or 
 ## Finalizing a streaming migration
 
 !!!note
-This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, the DMS marks the migration as completed automatically.
+This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, DMS marks the migration as completed automatically.
 !!!
 
 ### Monitoring catch-up before cutover
@@ -99,7 +103,7 @@ Before stopping writes on the source, give the destination time to catch up. Use
 
 ### Finalizing schema concurrently (recommended)
 
-<TabContainer syncKey="migration_scope">
+<TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
 If you used the **Schema and data** scope, HM can apply most schema objects while the stream is still running: primary keys, unique constraints, indexes (built with `CREATE INDEX CONCURRENTLY`, so live writes aren't blocked), foreign keys (added as `NOT VALID`), check constraints, `NOT NULL` constraints, and similar. Foreign key validation, sequence synchronization, and other lightweight tasks run later in the post-cutover **Schema Finalization** stage.
@@ -118,7 +122,7 @@ When the sub-step completes, proceed to the cutover.
 **Finalize Schema Concurrently** is available only for migrations created with the **Schema and data** scope with streaming enabled.
 !!!
 
-If you skip this step, the same objects are applied serially after you mark the migration as completed. See [Schema Finalization stage](#schema-finalization-stage). The cutover window is larger in that case because indexes are built non-concurrently and constraints are validated under exclusive locks.
+If you skip this step, the same objects are applied serially after you mark the migration as completed. See [Schema finalization stage](#schema-finalization-stage). The cutover window is larger in that case because indexes are built non-concurrently and constraints are validated under exclusive locks.
 
 </Tab>
 <Tab title="Manual">
@@ -136,15 +140,13 @@ When you're ready to switch traffic from the source to the destination:
 
 1.  Verify in the HM console that the destination has applied the last source change.
 
-1.  In the HM console, select **Migrate > Migrations** in your project.
-
 1.  On the **Migration details** page, select **Mark as Completed**.
 
 This stops the streaming process.
 
-### Schema Finalization stage
+### Schema finalization stage
 
-<TabContainer syncKey="migration_scope">
+<TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
 For migrations created with the **Schema and data** scope, the migration enters a **Schema Finalization** stage automatically after **Mark as Completed**. What runs in this stage depends on whether you ran concurrent finalization first:
@@ -157,26 +159,26 @@ The migration is fully complete only after the **Schema Finalization** stage fin
 </Tab>
 <Tab title="Manual">
 
-No automatic schema finalization runs for the **Data only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, check, and exclusion constraints you deferred before migration.
+No automatic schema finalization runs for the **Data only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, unique, check, and exclusion constraints you deferred before migration.
 
 </Tab>
 </TabContainer>
 
 ## Applying deferred constraints and verifying data
 
-### Reapplying foreign key, check, and exclusion constraints
+### Reapplying deferred constraints
 
-<TabContainer syncKey="migration_scope">
+<TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
-HM applied all deferred constraints and synced sequences automatically during the **Schema Finalization** stage. No manual action is needed. See [Schema Finalization stage](#schema-finalization-stage).
+HM applied all deferred constraints and synced sequences automatically during the **Schema Finalization** stage. No manual action is needed. See [Schema finalization stage](#schema-finalization-stage).
 
 </Tab>
 <Tab title="Manual">
 
-During the schema import, you excluded foreign key, check, and exclusion constraints to avoid performance overhead during data migration. Now that migration is complete, connect to the destination database and reapply those constraints.
+At the beginning of your migration, you prepared and imported the schema excluding foreign key, unique, check, and exclusion constraints. Connect to the destination database and reapply those constraints now.
 
-Primary key, unique, and `NOT NULL` constraints were already applied before migration and don't require any action.
+Primary key constraints were applied automatically by the DMS writer when the migration entered the streaming phase. `NOT NULL` constraints were applied before migration and don't require any action now.
 
 </Tab>
 </TabContainer>
@@ -189,14 +191,7 @@ For tables that had no primary key or unique constraints, the EDB DMS agent prov
 
 Compare the source and destination databases to confirm all data was migrated successfully. You can use [LiveCompare](/livecompare/latest/) for this.
 
-### Assessing your application SQL before cutover
-
-With the database migration complete, the next step before switching your application to EPAS is to confirm that the SQL queries your application executes are compatible with the target database. Even a successful schema and data migration doesn't guarantee that application-level SQL — embedded in your code, ORM, or scripts — will work without changes.
-
-Use HM's application assessment to identify incompatible queries and review suggested transformations before application cutover. See [Application assessment](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/application_assessment/) for an overview, or go directly to [Creating an application record](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/application_assessment/creating_an_application_record/) to get started.
-
 ## Related topics
 
 - [LiveCompare](/livecompare/latest/) — row-level data comparison tool for verifying migration completeness
 - [Migration terminology](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/) — definitions for snapshot, streaming, and other migration concepts
-- [Application assessment](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/application_assessment/) — assess application SQL compatibility with EPAS before cutting over your application

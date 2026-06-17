@@ -1,10 +1,104 @@
 ---
-title: Creating your self-managed destination database
-navTitle: Creating destination
-description: Create a self-managed database to use as a destination for your migration.
-
+title: Preparing your self-managed destination database
+navTitle: Preparing destination
+description: Create a self-managed Postgres database and configure it with SSL and a CDC migration role to serve as the destination for your migration.
+deepToC: true
+redirects:
+  - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/preparing_destination_selfpg_db/
 ---
 
-import PreparedestinationSelf from '../snippet_sources/0_creating_destination_db/creating_selfmanaged_destination_db.mdx'
+Prepare your self-managed Postgres database to serve as the destination for your migration.
 
-<PreparedestinationSelf />
+If you already have a self-managed database you want to use as the destination, you can skip to [Configuring SSL](#configuring-ssl). Before proceeding, ensure that the tables you migrate and the load generated during migration won't interfere with existing workloads on the server.
+
+## Creating the destination database
+
+If you don't have a destination database yet, create one. This example assumes you have installed the Postgres database distribution of your choice and initialized the server.
+
+1.  Connect to the destination Postgres server:
+
+    ```shell
+    psql -p <PG_PORT> -U <PG_USERNAME>
+    ```
+
+1.  Create an empty database to use as the migration destination. In this example the destination database is `tr_target`:
+
+    ```sql
+    CREATE DATABASE tr_target;
+    ```
+
+## Configuring SSL
+
+Configure your destination Postgres server to accept SSL connections so the EDB DMS agent in writer mode can connect to it securely. To enable SSL, create a server certificate and a server private key (for example, with OpenSSL).
+
+The following example creates a self-signed certificate and key with OpenSSL for a PostgreSQL 17 server on Ubuntu. The bin and data directories may vary depending on your OS, [Postgres distribution](/edb-postgres-ai/databases/postgres_distributions/), and version.
+
+1.  Generate an SSL certificate and key:
+
+    ```shell
+    openssl req -new -x509 -days 365 -nodes -out server.crt -keyout server.key
+    ```
+
+    Follow the terminal prompts to create the files.
+
+1.  Move the created files to the Postgres data directory:
+
+    ```shell
+    sudo cp server.crt server.key /var/lib/postgresql/17/<data_directory>
+    ```
+
+1.  Set the required permissions:
+
+    ```shell
+    sudo chmod 600 /var/lib/postgresql/17/<data_directory>/server.key
+    sudo chmod 600 /var/lib/postgresql/17/<data_directory>/server.crt
+    sudo chown postgres:postgres /var/lib/postgresql/17/<data_directory>/server.crt /var/lib/postgresql/17/<data_directory>/server.key
+    ```
+
+1.  Enable SSL in `postgresql.conf`:
+
+    ```
+    ssl = on
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    ```
+
+1.  Allow local SSL connections in `pg_hba.conf`:
+
+    ```
+    hostssl all             all             0.0.0.0/0               md5
+    ```
+
+1.  Restart your server to apply the changes:
+
+    ```shell
+    /usr/lib/postgresql/17/bin/pg_ctl -D /var/lib/postgresql/17/<data_directory> restart
+    ```
+
+## Creating a migration role
+
+The EDB DMS agent in writer mode requires write access to the destination database. You can use an existing superuser or create a dedicated migration role. This example creates a dedicated role:
+
+1.  Create a role with login access:
+
+    ```sql
+    CREATE ROLE <MIGRATION_ROLE_WRITER> WITH LOGIN PASSWORD '<ROLE_PASSWORD>';
+    ```
+
+    Where `<MIGRATION_ROLE_WRITER>` is the name of the role to use for destination database access.
+
+1.  Grant control over replication sessions:
+
+    ```sql
+    GRANT SET ON PARAMETER session_replication_role TO <MIGRATION_ROLE_WRITER>;
+    ```
+
+    !!!note
+    Granting control over replication sessions is supported only on Postgres 15 and later. If your destination database is on Postgres 14 or earlier, use a superuser instead.
+    !!!
+
+Supply this role to the DMS writer agent via the `DBCONFIG_DATABASES_0__USERNAME` and `DBCONFIG_DATABASES_0__PASSWORD` values when you configure it in the next steps.
+
+## Next step
+
+[Migrate schemas](migrating_schema)
