@@ -124,7 +124,7 @@ Oracle XE (Express Edition) does not support enabling supplemental logging at th
 
 [ET-5742]: #
 
-When DMS translates Oracle triggers, procedures, functions, and packages to EDB Postgres Advanced Server (EPAS), the translated PL/SQL bodies retain unqualified object references from the Oracle source.
+**Description:** When DMS translates Oracle triggers, procedures, functions, and packages to EDB Postgres Advanced Server (EPAS), the translated PL/SQL bodies retain unqualified object references from the Oracle source.
 
 Oracle and EPAS resolve unqualified names differently:
 
@@ -135,7 +135,7 @@ The schema migration itself succeeds because the DMS agent sets `search_path` ex
 
 This limitation applies only to Oracle to EPAS migrations with a migration scope of **Schema only** or **Schema and data**. It doesn't affect **Data only** migrations, where schema objects are created by the customer before migration runs and DMS doesn't generate or translate any PL/SQL bodies.
 
-**Example**
+**Example:**
 
 This Oracle trigger references `test_orders_seq` without a schema prefix:
 
@@ -168,13 +168,13 @@ After migration, behavior varies by caller:
 - Session with `search_path = debezium`: trigger executes successfully.
 - Session with default `search_path = "$user", public`: fails with `sequence "test_orders_seq" does not exist`.
 
-**Workarounds**
+**Workarounds:**
 
 Choose one of the following approaches based on your environment:
 
 - **Schema-qualify the DDL (recommended)**: Before cutover, review all translated trigger, procedure, function, and package bodies and prefix unqualified object references with the source schema name. Apply the modified DDL to the destination. This approach removes the runtime dependency on `search_path`.
 
-  Example fix for the trigger above:
+  The following fix schema-qualifies the sequence reference inside the trigger body. The table reference in the trigger header is also qualified to make the object ownership explicit:
 
   ```sql
   CREATE OR REPLACE TRIGGER TEST_ORDERS_TRG
@@ -187,13 +187,7 @@ Choose one of the following approaches based on your environment:
   END;
   ```
 
-- **Set `search_path` at connection time**: Configure all application connections to include the migrated schema in `search_path`, either in the connection string (`options=-c search_path=debezium,public`) or as the first statement after connecting:
-
-  ```sql
-  SET search_path = debezium, public;
-  ```
-
-- **Set a default `search_path` for the role or database**: For environments where modifying the application isn't feasible, set a persistent default:
+- **Set a default `search_path` for the role or database**: Set a persistent default so new sessions automatically include the migrated schema in `search_path`:
 
   ```sql
   ALTER ROLE app_user SET search_path = debezium, public;
@@ -201,7 +195,13 @@ Choose one of the following approaches based on your environment:
   ALTER DATABASE mydb SET search_path = debezium, public;
   ```
 
-  New sessions inherit this `search_path` automatically. Ad-hoc sessions that connect without an explicit `search_path` (DBA sessions, monitoring tools, or BI clients) remain at risk of failures.
+- **Set `search_path` at connection time**: Configure all application connections to include the migrated schema in `search_path`, either in the connection string (`options=-c search_path=debezium,public`) or as the first statement after connecting:
+
+  ```sql
+  SET search_path = debezium, public;
+  ```
+
+Ad-hoc sessions that connect without an explicit `search_path` (DBA sessions, monitoring tools, or BI clients) remain at risk of failures regardless of which workaround you choose.
 
 ## Postgres limitations
 
