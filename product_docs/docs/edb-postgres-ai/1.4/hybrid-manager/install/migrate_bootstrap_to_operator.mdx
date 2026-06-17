@@ -66,7 +66,7 @@ The recommended way to migrate from the Bootstrap installation to the Operator i
 CRDs and custom resources are preserved — your database clusters keep running throughout the migration.
 
 !!! Note Minimum edbctl version
-`edbctl hm prepare-bootstrap-operator-conversion` ships in edbctl `1.7.0` and later. Earlier versions require the manual flow shown in the [Manual fallback](#manual-fallback) section below.
+`edbctl hm prepare-bootstrap-operator-conversion` ships in edbctl `1.7.0` and later. Earlier versions require the manual flow shown in the [Manual fallback](#manual-fallback-for-edbctl-less-than-170) section below.
 !!!
 
 ### Run the conversion
@@ -104,10 +104,12 @@ Review the generated `hybridmanager.yaml` before applying it. In particular:
 ### Next steps after running the command
 
 1. Review the generated `hybridmanager.yaml`.
-2. Install (or upgrade to) the operator chart in the namespace the conversion stamped — `edbctl hm upgrade-operator --namespace edbpgai-bootstrap --registry-uri <REGISTRY_URI> --registry-username <USER> --registry-password <PASSWORD>` (auto-discovers the latest operator version from the registry). On edbctl `< 1.7.0`, fall back to `helm install edb-hcp-operator <chart> -n edbpgai-bootstrap`.
-3. Apply the reviewed CR: `kubectl apply -f hybridmanager.yaml`. The exported file deliberately omits the bootstrap release's `meta.helm.sh/release-name=edbpgai-bootstrap` annotation that the live CR still carries; applying the file overwrites that stale annotation, so a later `helm uninstall edbpgai-bootstrap` (cleaning up the bootstrap release) does not cascade-delete the HybridControlPlane CR (and your database clusters with it).
 
-## Manual fallback (edbctl &lt; 1.7.0)
+1. Install (or upgrade to) the operator chart in the namespace the conversion stamped — `edbctl hm upgrade-operator --namespace edbpgai-bootstrap --registry-uri <REGISTRY_URI> --registry-username <USER> --registry-password <PASSWORD>` (auto-discovers the latest operator version from the registry). On edbctl `< 1.7.0`, fall back to `helm install edb-hcp-operator <chart> -n edbpgai-bootstrap`.
+
+1. Apply the reviewed CR: `kubectl apply -f hybridmanager.yaml`. The exported file deliberately omits the bootstrap release's `meta.helm.sh/release-name=edbpgai-bootstrap` annotation that the live CR still carries; applying the file overwrites that stale annotation, so a later `helm uninstall edbpgai-bootstrap` (cleaning up the bootstrap release) does not cascade-delete the HybridControlPlane CR (and your database clusters with it).
+
+## Manual fallback for edbctl less than 1.7.0
 
 For environments still on edbctl `< 1.7.0`, the previous manual flow still works. The rest of this guide preserves it for reference — but the `edbctl hm prepare-bootstrap-operator-conversion` path above is the recommended one.
 
@@ -115,21 +117,21 @@ For environments still on edbctl `< 1.7.0`, the previous manual flow still works
 
 The following table shows how `values.yaml` fields map to `HybridControlPlane` CR fields, if you need to hand-write the CR from a bootstrap `values.yaml`:
 
-| values.yaml field | HybridControlPlane field | Description |
-|-------------------|--------------------------|-------------|
-| `system` | `spec.flavour` | Kubernetes distribution (eks, aks, gke, rhos, etc.) |
-| `containerRegistryURL` | `spec.imageRegistry` | Container registry URL |
-| `bootstrapImageTag` | `spec.version` | HM version to install |
-| `imagePullSecrets` | `spec.imagePullSecrets[]` | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields. |
-| `disabledComponents` | `spec.disabledComponents[]` | Components to disable |
-| `parameters.global.*` | `spec.globalParameters` | Global configuration parameters |
-| `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters |
-| `beaconServer` | `spec.beaconServer` | Beacon server configuration |
-| `beaconAgent` | `spec.beaconAgent` | Beacon agent configuration |
-| `clusterGroups` | `spec.clusterGroups` | Multi-DC cluster topology |
-| `scenarios` | `spec.scenarios[]` | Installation scenarios (core, migration, ai, analytics). In `values.yaml` this is a comma-separated string (e.g., `"core,migration,ai"`). In the CR, it is a YAML list. |
-| `resourceAnnotations` | `spec.resourceAnnotations[]` | Custom resource annotations |
-| `source.remote` | `spec.source.remote` | Use remote bootstrap image for manifests |
+| values.yaml field          | HybridControlPlane field                | Description                                                                                                                                                             |
+|----------------------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `system`                   | `spec.flavour`                          | Kubernetes distribution (eks, aks, gke, rhos, etc.)                                                                                                                     |
+| `containerRegistryURL`     | `spec.imageRegistry`                    | Container registry URL                                                                                                                                                  |
+| `bootstrapImageTag`        | `spec.version`                          | HM version to install                                                                                                                                                   |
+| `imagePullSecrets`         | `spec.imagePullSecrets[]`               | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields.                  |
+| `disabledComponents`       | `spec.disabledComponents[]`             | Components to disable                                                                                                                                                   |
+| `parameters.global.*`      | `spec.globalParameters`                 | Global configuration parameters                                                                                                                                         |
+| `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters                                                                                                                                           |
+| `beaconServer`             | `spec.beaconServer`                     | Beacon server configuration                                                                                                                                             |
+| `beaconAgent`              | `spec.beaconAgent`                      | Beacon agent configuration                                                                                                                                              |
+| `clusterGroups`            | `spec.clusterGroups`                    | Multi-DC cluster topology                                                                                                                                               |
+| `scenarios`                | `spec.scenarios[]`                      | Installation scenarios (core, migration, ai, analytics). In `values.yaml` this is a comma-separated string (e.g., `"core,migration,ai"`). In the CR, it is a YAML list. |
+| `resourceAnnotations`      | `spec.resourceAnnotations[]`            | Custom resource annotations                                                                                                                                             |
+| `source.remote`            | `spec.source.remote`                    | Use remote bootstrap image for manifests                                                                                                                                |
 
 ### Convert using the migration script
 
@@ -290,10 +292,14 @@ The migration works by changing the `meta.helm.sh/release-name` annotation on al
 **Key benefits of this approach:**
 
 1. **No resource deletion** - CRDs, hybridControlPlane, preflight and postflight resources remain intact
-2. **No Helm conflicts** - The operator can adopt existing resources without ownership errors
-3. **Minimal downtime** - Only the HM operator pods are affected during the transition
-4. **Simple rollback** - Can transfer annotations back if needed
-5. **Clean migration** - After verification, the bootstrap namespace can be safely removed
+
+1. **No Helm conflicts** - The operator can adopt existing resources without ownership errors
+
+1. **Minimal downtime** - Only the HM operator pods are affected during the transition
+
+1. **Simple rollback** - Can transfer annotations back if needed
+
+1. **Clean migration** - After verification, the bootstrap namespace can be safely removed
 
 **What gets transferred:**
 
