@@ -10,7 +10,7 @@ redirects:
 
 Before migrating data, your schema must be present on the destination database. There are two ways to handle this, and both start with opening your Migration Portal project and resolving any compatibility issues:
 
-- **Simplified (recommended)**: Use Migration Portal to resolve incompatibilities only, then let HM import the schema as part of the migration. HM manages constraint ordering automatically — no manual constraint handling required. Select **Schema and data** as the migration scope when creating the migration.
+- **Simplified (recommended)**: Use Migration Portal to resolve incompatibilities only, then let Hybrid Manager (HM) import the schema as part of the migration. HM manages constraint ordering automatically — no manual constraint handling required. Select **Schema and data** as the migration scope when creating the migration.
 
 - **Manual**: Use Migration Portal to resolve incompatibilities and import the schema directly to the destination. You must manage constraint ordering yourself and reapply deferred constraints after data migration completes. Select **Data only** as the migration scope when creating the migration.
 
@@ -98,7 +98,7 @@ Migrated PL/SQL bodies (triggers, procedures, functions, and packages) retain un
 <TabContainer syncKey="migration_scope">
 <Tab title="Simplified (recommended)">
 
-After resolving all incompatibilities in Migration Portal, proceed to [Configure the EDB DMS agent](configuring_dms_agent). When you create the migration, select **Schema and data** as the scope — HM imports the converted schema with constraints applied in the correct order, and automatically reapplies deferred constraints after data migration completes.
+After resolving all incompatibilities in Migration Portal, proceed to [Configure the EDB Data Migration Service (DMS) agent](configuring_dms_agent). When you create the migration, select **Schema and data** as the scope — HM imports the converted schema with constraints applied in the correct order, and automatically reapplies deferred constraints after data migration completes.
 
 </Tab>
 <Tab title="Manual">
@@ -107,17 +107,43 @@ After resolving all compatibility issues in Migration Portal, import the schema 
 
 ### Handling constraints
 
-Import constraints in two stages to avoid performance degradation during migration:
+Import constraints in stages to avoid performance degradation during migration:
 
-- **Include now** (before data migration): primary key, unique, and `NOT NULL` constraints. EDB DMS requires primary key and unique constraints to guarantee exactly-once delivery. `NOT NULL` constraints have negligible performance impact.
+- **Include now** (before data migration): `NOT NULL` constraints. These have negligible performance impact and no conflict risk during the snapshot phase.
 
-- **Exclude now, reapply later** (after data migration): foreign key, check, and exclusion constraints. These cause unnecessary CPU and memory overhead while data is actively being migrated.
+- **Exclude now — DMS applies automatically**: primary key (PK) constraints. The DMS writer applies the primary key after each table's snapshot completes (delayed-PK behavior), using it to deduplicate snapshot data. Don't import PKs manually.
 
-When following the steps below, disable **Constraints** in Migration Portal and keep a record of what you excluded so you can reapply them after the migration completes.
+- **Exclude now, apply after streaming starts**: unique key (UK) constraints on tables that have a primary key. PK-based deduplication during the snapshot ensures no duplicate rows exist when you apply these.
+
+- **Exclude now — apply post-snapshot with deduplication**: unique key (UK) constraints on tables that have no primary key. See [UK-identity tables](#uk-identity-tables-supplemental-logging-and-post-snapshot-constraints) below for source preparation and the post-snapshot procedure. Don't create these on the destination before the snapshot completes.
+
+- **Exclude now, reapply after migration**: foreign key, check, and exclusion constraints. These cause unnecessary CPU and memory overhead while data is actively being migrated.
+
+When following the steps below, disable **Constraints** in Migration Portal. This disables foreign key, check, and exclusion constraints. Primary key and unique constraints must also be excluded — confirm these aren't applied during the import.
 
 !!!note
-For tables without primary key or unique constraints, EDB DMS provides at-least-once delivery only. You can perform deduplication during migration verification.
+PK and UK presence on the destination affects delivery semantics — without them, DMS falls back to at-least-once delivery. `NOT NULL` has no effect on delivery semantics.
 !!!
+
+!!!note
+For tables without any key constraints, DMS provides at-least-once delivery. Deduplicate rows as part of your post-migration verification.
+!!!
+
+#### UK-identity tables: supplemental logging and post-snapshot constraints
+
+A UK-identity table is a source table that has no primary key and uses a unique key as its only row identifier.
+
+Before starting the migration, enable supplemental logging on the UK columns on the **source** Oracle database for each UK-identity table. DMS needs this to emit change events keyed by those columns so streaming works correctly after you add the constraint on the destination.
+
+```sql
+-- Run on the source Oracle database for each UK-identity table.
+ALTER TABLE <schema_name>.<table_name>
+  ADD SUPPLEMENTAL LOG GROUP <log_group_name> (<col_1>, <col_2>) ALWAYS;
+```
+
+Don't create the unique constraint on the destination before the snapshot completes. With delayed-PK enabled, the DMS writer treats tables as keyless if they have no PK on the destination — even if a UK exists. Snapshot writes use plain INSERTs with no conflict handling, and any retry before snapshot finishes will hit the UK constraint and cause an infinite retry loop.
+
+After the snapshot for a UK-identity table completes, follow the deduplication and constraint procedure in [Applying unique constraints on UK-identity tables](migrating_data#applying-unique-constraints-on-uk-identity-tables).
 
 <TabContainer>
 <Tab title="Online migration (recommended)">

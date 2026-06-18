@@ -10,7 +10,7 @@ redirects:
   - /edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/applying_constraints/
 ---
 
-With the EDB DMS agent running and your schema either imported or ready for HM to import, you're ready to create a migration in the HM console. This page walks through the full migration lifecycle: creating the migration, monitoring its progress, finalizing it, and handling post-migration constraints.
+With the EDB Data Migration Service (DMS) agent running and your schema either imported or ready for Hybrid Manager (HM) to import, you're ready to create a migration in the HM console.
 
 The steps below vary depending on the approach you chose on the previous page. Select the tab that matches your choice.
 
@@ -90,7 +90,7 @@ The HM console doesn't surface all DMS agent errors. If a migration is stuck or 
 ## Finalizing a streaming migration
 
 !!!note
-This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, the DMS marks the migration as completed automatically.
+This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, DMS marks the migration as completed automatically.
 !!!
 
 ### Monitoring catch-up before cutover
@@ -157,14 +157,14 @@ The migration is fully complete only after the **Schema Finalization** stage fin
 </Tab>
 <Tab title="Manual">
 
-No automatic schema finalization runs for the **Data only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, check, and exclusion constraints you deferred before migration.
+No automatic schema finalization runs for the **Data only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, unique, check, and exclusion constraints you deferred before migration.
 
 </Tab>
 </TabContainer>
 
 ## Applying deferred constraints and verifying data
 
-### Reapplying foreign key, check, and exclusion constraints
+### Reapplying deferred constraints
 
 <TabContainer syncKey="migration_scope">
 <Tab title="Simplified (recommended)">
@@ -174,9 +174,54 @@ HM applied all deferred constraints and synced sequences automatically during th
 </Tab>
 <Tab title="Manual">
 
-During the schema import, you excluded foreign key, check, and exclusion constraints to avoid performance overhead during data migration. Now that migration is complete, connect to the destination database and reapply those constraints.
+During the schema import, you excluded foreign key, unique key (UK), check, and exclusion constraints to avoid performance overhead during data migration. Connect to the destination database and reapply those constraints now.
 
-Primary key, unique, and `NOT NULL` constraints were already applied before migration and don't require any action.
+Primary key constraints were applied automatically by the DMS writer when the migration entered the streaming phase. `NOT NULL` constraints were applied before migration and don't require any action now.
+
+For unique constraints, the procedure depends on whether the source table had a primary key:
+
+- **Tables with a primary key** — apply the unique constraint directly. Primary key (PK)-based deduplication during the snapshot ensures no duplicate rows remain.
+
+- **Tables with no primary key (UK-identity tables)** — deduplicate rows first, then add the constraint. See [Applying unique constraints on UK-identity tables](#applying-unique-constraints-on-uk-identity-tables) below.
+
+#### Applying unique constraints on UK-identity tables
+
+For tables where the unique key is the only row identifier (no primary key), the snapshot phase used plain INSERTs with no conflict handling, so duplicate rows might be present. You must deduplicate before adding the unique constraint.
+
+You can apply this per-table as each table's snapshot finishes — check the **Tables** tab on the migration details page and look for **Snapshot completed**. Applying it earlier (while streaming is running) lets DMS switch to keyed delivery for that table sooner. You can also wait and apply all UK-identity tables after the migration is complete.
+
+For each UK-identity table, run both steps against the destination database:
+
+**Step 1 — deduplicate rows:**
+
+```sql
+-- Keep the double-quoted identifiers — Postgres is case-sensitive when quoted.
+WITH d AS (
+  DELETE FROM "<schema_name>"."<table_name>" t
+  USING (
+    SELECT "<col_1>", "<col_2>", MIN(ctid) AS keep_ctid
+    FROM "<schema_name>"."<table_name>"
+    GROUP BY "<col_1>", "<col_2>"
+    HAVING COUNT(*) > 1
+  ) k
+  WHERE t."<col_1>" = k."<col_1>"
+    AND t."<col_2>" = k."<col_2>"
+    AND t.ctid <> k.keep_ctid
+  RETURNING 1
+)
+SELECT count(*) AS rows_removed FROM d;
+```
+
+**Step 2 — add the unique constraint:**
+
+```sql
+ALTER TABLE "<schema_name>"."<table_name>"
+  ADD CONSTRAINT <constraint_name> UNIQUE ("<col_1>", "<col_2>");
+```
+
+!!!note
+Tables with a source primary key don't need this procedure — DMS handles PK application automatically via the delayed-PK path, and unique constraints on those tables can be applied directly.
+!!!
 
 </Tab>
 </TabContainer>
@@ -191,7 +236,7 @@ Compare the source and destination databases to confirm all data was migrated su
 
 ### Assessing your application SQL before cutover
 
-With the database migration complete, the next step before switching your application to EPAS is to confirm that the SQL queries your application executes are compatible with the target database. Even a successful schema and data migration doesn't guarantee that application-level SQL — embedded in your code, ORM, or scripts — will work without changes.
+With the database migration complete, the next step before switching your application to EDB Postgres Advanced Server (EPAS) is to confirm that the SQL queries your application executes are compatible with the target database. Even a successful schema and data migration doesn't guarantee that application-level SQL — embedded in your code, ORM, or scripts — will work without changes.
 
 Use HM's application assessment to identify incompatible queries and review suggested transformations before application cutover. See [Application assessment](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/application_assessment/) for an overview, or go directly to [Creating an application record](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/application_assessment/creating_an_application_record/) to get started.
 

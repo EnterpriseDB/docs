@@ -10,7 +10,7 @@ redirects:
   - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/handling_schema/
 ---
 
-Before starting a data migration, choose how to handle schema migration. HM supports two approaches:
+Before starting a data migration, choose how to handle schema migration. Hybrid Manager (HM) supports two approaches:
 
 - **Simplified (recommended)**: HM manages schema migration and constraint handling automatically as part of the data migration setup.
 - **Manual**: Export and import the schema yourself using Migration Toolkit or `pg_dump`, and handle constraints based on the key structure of each source table.
@@ -21,7 +21,7 @@ Before starting a data migration, choose how to handle schema migration. HM supp
 No manual schema preparation is required. HM handles schema migration and constraint ordering automatically when you select the **Schema and data** scope later. Before proceeding, confirm:
 
 - The EDB Postgres AI agent has ingested your source schema and a Migration Portal project exists for the database. To verify, go to **Estate > Migrations** in the HM console, select the database in the **Database Name** column, and confirm a project appears in the **MP Project** column.
-- When you configure the DMS reader agent in a later step, you'll set `DBCONFIG_DATABASES_<N>__RESOURCEID` to the same `resource_id` value as in `beacon_agent.yaml`. The **Schema and data** and **Schema only** scopes will fail without it.
+- When you configure the Data Migration Service (DMS) reader agent in a later step, you'll set `DBCONFIG_DATABASES_<N>__RESOURCEID` to the same `resource_id` value as in `beacon_agent.yaml`. The **Schema and data** and **Schema only** scopes will fail without it.
 
 Continue to the next step.
 
@@ -38,7 +38,7 @@ How to handle constraints depends on the constraint type and the key structure o
 |---|---|---|
 | Primary key | Exclude now — DMS applies automatically | The DMS writer applies the primary key when the migration enters the streaming phase, using it to deduplicate snapshot data. |
 | Unique key (source table has a primary key) | Exclude now, apply after streaming starts | Primary key-based deduplication ensures no duplicate rows remain when you apply unique constraints after streaming starts. |
-| Unique key (source table has no primary key) | Not currently supported | Use the simplified path instead — select the **Schema and data** scope when creating the migration to let HM handle schema migration automatically. |
+| Unique key (source table has no primary key) | Exclude now — apply post-snapshot with deduplication | Don't create the Unique key (UK) on the destination before the snapshot completes — doing so causes an infinite retry loop. Requires replica identity setup on the source before migration starts. See [UK-identity tables](#uk-identity-tables-replica-identity-and-post-snapshot-constraints) below. |
 | `NOT NULL` | Include now | `NOT NULL` validation adds no meaningful overhead to the data load, unlike foreign key and check constraint validation. |
 | Foreign key, check, and exclusion | Exclude now, reapply after migration | These cause unnecessary CPU and memory overhead while data is actively being migrated. |
 
@@ -46,9 +46,25 @@ How to handle constraints depends on the constraint type and the key structure o
 For tables with no primary key or unique key, no key constraints are needed before or after migration. DMS treats these tables as keyless and provides at-least-once delivery. Deduplicate rows as part of your post-migration verification.
 !!!
 
+#### UK-identity tables: replica identity and post-snapshot constraints
+
+A UK-identity table is a source table that has no primary key and uses a unique key as its only row identifier.
+
+Before starting the migration, set replica identity on each UK-identity table on the **source** database. DMS needs this to emit change events keyed by the UK columns so streaming works correctly after you add the constraint on the destination.
+
+```sql
+-- Run on the source database for each UK-identity table.
+ALTER TABLE <schema_name>.<table_name>
+  REPLICA IDENTITY USING INDEX <index_name>;
+```
+
+Don't create the unique constraint on the destination before the snapshot completes. With delayed primary key (PK) behavior enabled, the DMS writer treats tables as keyless if they have no PK on the destination — even if a UK exists. This means snapshot writes use plain INSERTs with no conflict handling. If a retry occurs before the snapshot finishes, those rows hit the UK constraint and the migration enters an infinite retry loop.
+
+After the snapshot for a UK-identity table completes, follow the deduplication and constraint procedure in [Applying unique constraints on UK-identity tables](migrating_data#applying-unique-constraints-on-uk-identity-tables).
+
 ### Exporting your schema
 
-We recommend using [EDB Migration Toolkit](/migration_toolkit/latest/) to export your schema. MTK's [offline migration](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability generates SQL scripts you can apply on the destination without direct connectivity. Other valid export methods include `pg_dump`/`pg_restore`, pgAdmin, or `psql`.
+We recommend using [EDB Migration Toolkit](/migration_toolkit/latest/) (MTK) to export your schema. MTK's [offline migration](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability generates SQL scripts you can apply on the destination without direct connectivity. Other valid export methods include `pg_dump`/`pg_restore`, pgAdmin, or `psql`.
 
 When using Migration Toolkit:
 
