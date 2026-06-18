@@ -27,8 +27,9 @@ For the topology feature to work correctly, enable the following probes on your 
 | Probe name | Required for | Description |
 |---|---|---|
 | Streaming Replication | All cluster types | Collects replication data from `pg_stat_replication` (on primary) and `pg_stat_wal_receiver` (on standbys). Required for all topology discovery. |
-| PGD Group Summary | PGD clusters | Collects PGD group-level information. |
-| PGD Node Summary | PGD clusters | Collects PGD node information including node names, subgroups, and write leader status. |
+| PGD Group Summary (`bdr_group_summary`) | PGD clusters | Collects PGD group-level information. |
+| PGD Node Summary (`bdr_node_summary`) | PGD clusters | Collects PGD node information including node names, subgroups, and write leader status. |
+| EFM Cluster Node Status | EFM clusters | Collects EFM node data via the `efm_cluster_node_status` probe. |
 
 These probes are enabled by default on new server registrations. If topology data isn't appearing, verify that these probes are enabled in **Management > Probe Configuration**.
 
@@ -47,10 +48,10 @@ To enable Patroni or EFM cluster detection, configure the respective cluster nam
 
 ## Accessing the topology view
 
-1. Log in to PEM.
-2. Navigate to **PEM > Topology** or go to `/pem/topology` directly.
-3. Select a cluster from the left sidebar.
-4. View the interactive topology diagram.
+You can open the cluster topology view in two ways:
+
+- Navigate to the three dots just below the logged-in username and select **Open > Cluster Topology**.
+- Right-click any cluster or server in the object tree and select **Cluster Topology**.
 
 ### Required permissions
 
@@ -93,14 +94,7 @@ The interactive diagram shows nodes and the connections between them.
 
 Each node displays the server name or description, hostname and port, a role badge (Primary/Replica), and a sync state badge for replicas.
 
-**Connection lines**
-
-| Line style | Meaning |
-|---|---|
-| Solid line | Synchronous replication. |
-| Dashed line | Asynchronous replication. |
-
-The legend in the bottom-right corner of the diagram explains the color coding.
+The legend in the upper-right corner of the diagram explains the color coding.
 
 ## Interactive SVG view
 
@@ -118,7 +112,7 @@ Click the **Fullscreen** button in the header to expand the view. This is useful
 
 ### SVG export
 
-Click the **Download** button in the header to export the current topology view as an SVG file. The downloaded file preserves all node positions and styling, can be opened in any web browser or image editor, and includes the cluster name in the filename.
+Click the **Download** button in the header to export the current topology view as an SVG file.
 
 ### Node card details
 
@@ -129,7 +123,7 @@ Each server is displayed as a card with the following information:
 - **Role badge** — `P` (Primary), `R` (Replica), `D` (Data Node for PGD), `W` (Write Leader or Witness), `?` (Unknown).
 - **Hostname:Port** — The server's connection information.
 - **Tags** — Server tags such as "Write Leader" and "Raft_Leader" displayed as pill-shaped badges.
-- **Status** — "Not Registered" indicator for servers not in PEM.
+- **Status** — "Not Registered" indicator for servers not registered in PEM.
 
 ### Renderer preference
 
@@ -139,8 +133,6 @@ PEM offers two rendering modes. Switch between them in **Preferences > Cluster T
 |---|---|
 | SVG (default) | Interactive SVG view with pan/zoom and smooth tooltips. |
 | HTML | Classic HTML/CSS rendering without pan/zoom. |
-
-The SVG renderer is recommended for most users.
 
 ## PGD/BDR clusters
 
@@ -164,9 +156,9 @@ If all nodes belong to the same subgroup or no subgroup is defined, PEM displays
 
 ## Working with unregistered replicas
 
-When PEM discovers a replica that isn't registered as a PEM-monitored server, it appears as an "Unknown" node showing the IP address. This happens when the replica server hasn't been added to PEM, or when the replica's IP address doesn't match any registered server's `server` or `hostaddr` field.
+When PEM discovers a replica that isn't registered as a PEM-monitored server, it appears as an "Unknown" node showing the IP address and a "Not Registered" label inside the card.
 
-To resolve this, either register the replica server in PEM, or add a manual IP mapping to `pem.server_ip_mapping` if the server uses a different IP for replication.
+To resolve this, register the replica server in PEM.
 
 ## Refreshing topology data
 
@@ -180,32 +172,32 @@ Click **Refresh** in the topology view header to trigger the correlation functio
 
 Possible causes:
 
-- The topology probe hasn't run yet — wait 5 minutes or trigger a manual refresh.
+- The Streaming Replication probe hasn't run yet — wait 5 minutes or trigger a manual refresh.
 - No streaming replication is configured on monitored servers.
-- The `replication_topology_discovery` probe is disabled.
+- The `streaming_replication` probe is disabled.
 
 Check that the probe is enabled in **Probe Configuration**, verify that `pg_stat_replication` returns data on your primary servers, and then manually trigger a refresh.
 
 **Server shows as "Unknown"**
 
-The replica's IP address doesn't match any registered server. Register the server in PEM, or ensure the server's `server` or `hostaddr` field matches the IP seen in replication. You can also add an entry to `pem.server_ip_mapping`.
+The replica's IP address doesn't match any registered server. Register the server in PEM, or ensure the server's `server` or `hostaddr` field matches the IP seen in replication.
 
 **Topology graph is empty**
 
 Possible causes:
 
 - The selected cluster has no active members.
-- All members have become inactive (not seen for 15 or more minutes).
+- All members have become inactive.
 
 Check that the servers are running and agents are connected, then verify the probe is collecting data:
 
 ```sql
-SELECT * FROM pemdata.replication_topology_discovery;
+SELECT * FROM pemdata.streaming_replication;
 ```
 
 **PGD cluster not detected**
 
-The `bdr_node_summary` probe isn't collecting data. Verify the probe is enabled for the PGD servers, check that the server has BDR installed and configured, and query the probe data:
+The PGD Node Summary (`bdr_node_summary`) probe isn't collecting data. Verify the probe is enabled for the PGD servers, check that the server has BDR installed and configured, and query the probe data:
 
 ```sql
 SELECT * FROM pemdata.bdr_node_summary WHERE server_id = <id>;
@@ -213,7 +205,7 @@ SELECT * FROM pemdata.bdr_node_summary WHERE server_id = <id>;
 
 **PGD node shows as "Unregistered"**
 
-The BDR node name doesn't match any registered server's description or hostname. Check the node name in `bdr_node_summary`:
+The BDR node name doesn't match any registered server's description or hostname. Check the node name in the PGD Node Summary (`bdr_node_summary`) probe:
 
 ```sql
 SELECT node_name FROM pemdata.bdr_node_summary;
@@ -226,9 +218,153 @@ Then update the server description to match the node name exactly, or register a
 - **Register all servers** — For the most accurate topology view, register all servers including replicas. Unregistered nodes show with a help icon and "Not Registered" status.
 - **Use consistent naming** — Give servers meaningful descriptions so the topology diagram is easy to understand.
 - **For PGD clusters** — Set server descriptions to match BDR node names exactly for proper node matching.
-- **Monitor probe status** — Ensure the `replication_topology_discovery` probe is enabled and running.
+- **Monitor probe status** — Ensure the `streaming_replication` probe is enabled and running.
 - **Check after failovers** — After a planned or unplanned failover, refresh the topology to verify the new configuration.
 - **Use SVG export for documentation** — Export the topology as SVG for including in architecture documentation or presentations.
 - **Use fullscreen for large clusters** — For clusters with many nodes, fullscreen mode provides a better overview.
 - **Zoom for details** — Use the zoom controls to examine individual node details or get a bird's-eye view of the entire cluster.
 - **Check node tooltips** — In force graph layouts, hover over nodes to see detailed information including hostname, port, role, and tags.
+
+## SQL queries for topology data
+
+If you prefer querying topology data directly via SQL — for scripting, reporting, or integration with other tools — run the following queries against the PEM database.
+
+### List all discovered clusters
+
+```sql
+SELECT
+    c.id AS cluster_id,
+    c.name AS cluster_name,
+    c.cluster_type,
+    ps.description AS primary_server,
+    ps.server AS primary_host,
+    (SELECT COUNT(*) FROM pem.replication_cluster_member m
+     WHERE m.cluster_id = c.id AND m.is_active = true) AS active_members,
+    c.updated_at AS last_updated
+FROM pem.replication_cluster c
+LEFT JOIN pem.server ps ON ps.id = c.primary_server_id
+ORDER BY c.name;
+```
+
+### View cluster members with roles
+
+```sql
+SELECT
+    c.name AS cluster_name,
+    c.cluster_type,
+    m.role,
+    COALESCE(s.description, m.client_hostname, host(m.client_addr)::text) AS node_name,
+    s.server AS hostname,
+    s.port,
+    m.sync_state,
+    m.cascade_level,
+    m.subgroup_name,
+    CASE WHEN m.server_id IS NOT NULL THEN 'Yes' ELSE 'No' END AS registered_in_pem,
+    m.updated_at
+FROM pem.replication_cluster_member m
+JOIN pem.replication_cluster c ON c.id = m.cluster_id
+LEFT JOIN pem.server s ON s.id = m.server_id
+WHERE m.is_active = true
+ORDER BY c.name, m.cascade_level, m.role DESC;
+```
+
+### View replication lag (PSR, EFM, and Patroni clusters)
+
+```sql
+SELECT
+    c.name AS cluster_name,
+    ps.description AS primary_server,
+    sr.client_addr AS replica_address,
+    COALESCE(rs.description, sr.client_addr) AS replica_name,
+    m2.sync_state,
+    sr.lag_mb,
+    sr.recorded_time AS last_collected
+FROM pemdata.streaming_replication sr
+JOIN pem.replication_cluster_member m
+    ON m.server_id = sr.server_id AND m.role = 'primary' AND m.is_active = true
+JOIN pem.replication_cluster c ON c.id = m.cluster_id
+JOIN pem.server ps ON ps.id = sr.server_id
+LEFT JOIN pem.server rs ON host(rs.server::inet) = host(sr.client_addr::inet)
+LEFT JOIN pem.replication_cluster_member m2
+    ON m2.cluster_id = c.id AND host(m2.client_addr) = host(sr.client_addr::inet)
+    AND m2.is_active = true
+WHERE c.cluster_type IN ('psr', 'efm', 'patroni')
+  AND sr.client_addr IS NOT NULL
+ORDER BY c.name, sr.lag_mb DESC;
+```
+
+### View replication lag (PGD clusters)
+
+```sql
+SELECT
+    c.name AS cluster_name,
+    ps.description AS write_leader,
+    bns.target_name AS peer_node,
+    bns.client_addr AS peer_address,
+    bns.active_pid AS slot_pid,
+    bns.replay_lag_bytes,
+    ROUND(bns.replay_lag_bytes / (1024.0 * 1024), 2) AS lag_mb,
+    bns.replay_lag_size AS lag_pretty,
+    bns.recorded_time AS last_collected
+FROM pemdata.bdr_node_slots bns
+JOIN pem.replication_cluster_member m
+    ON m.server_id = bns.server_id AND m.role = 'primary' AND m.is_active = true
+JOIN pem.replication_cluster c ON c.id = m.cluster_id
+JOIN pem.server ps ON ps.id = bns.server_id
+WHERE c.cluster_type = 'pgd'
+  AND bns.target_name IS NOT NULL
+ORDER BY c.name, lag_mb DESC;
+```
+
+### Complete topology overview (all cluster types)
+
+This query gives a unified view of all clusters, members, and replication lag:
+
+```sql
+WITH cluster_lag AS (
+    -- PSR/EFM/Patroni lag from streaming_replication
+    SELECT
+        m.cluster_id,
+        host(sr.client_addr::inet) AS replica_addr,
+        sr.lag_mb
+    FROM pemdata.streaming_replication sr
+    JOIN pem.replication_cluster_member m
+        ON m.server_id = sr.server_id AND m.role = 'primary' AND m.is_active = true
+    JOIN pem.replication_cluster c ON c.id = m.cluster_id
+    WHERE c.cluster_type IN ('psr', 'efm', 'patroni')
+      AND sr.client_addr IS NOT NULL
+
+    UNION ALL
+
+    -- PGD lag from bdr_node_slots
+    SELECT
+        m.cluster_id,
+        host(bns.client_addr::inet) AS replica_addr,
+        ROUND(bns.replay_lag_bytes / (1024.0 * 1024), 2) AS lag_mb
+    FROM pemdata.bdr_node_slots bns
+    JOIN pem.replication_cluster_member m
+        ON m.server_id = bns.server_id AND m.role = 'primary' AND m.is_active = true
+    JOIN pem.replication_cluster c ON c.id = m.cluster_id
+    WHERE c.cluster_type = 'pgd'
+      AND bns.target_name IS NOT NULL
+)
+SELECT
+    c.name AS cluster_name,
+    c.cluster_type,
+    m.role,
+    COALESCE(s.description, m.client_hostname, host(m.client_addr)::text) AS node_name,
+    s.server AS hostname,
+    s.port,
+    m.sync_state,
+    m.subgroup_name,
+    COALESCE(cl.lag_mb, 0) AS lag_mb,
+    CASE WHEN m.server_id IS NOT NULL THEN 'Yes' ELSE 'No' END AS registered
+FROM pem.replication_cluster_member m
+JOIN pem.replication_cluster c ON c.id = m.cluster_id
+LEFT JOIN pem.server s ON s.id = m.server_id
+LEFT JOIN cluster_lag cl
+    ON cl.cluster_id = m.cluster_id
+    AND cl.replica_addr = COALESCE(host(m.client_addr), s.server)
+WHERE m.is_active = true
+ORDER BY c.name, m.cascade_level, m.role DESC;
+```
