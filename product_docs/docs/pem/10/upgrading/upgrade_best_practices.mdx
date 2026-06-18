@@ -1,7 +1,7 @@
 ---
 title: "PEM upgrade best practices and remediation"
 navTitle: "Upgrade best practices"
-description: "Best practices for running PEM server upgrades and SQL remediation steps for privilege-loss errors caused by the PEM-6100 and PEM-6103 bugs."
+description: "Best practices for running PEM server upgrades and SQL remediation steps for privilege-loss errors."
 ---
 
 This page helps you plan, run, verify, and — if necessary — repair a PEM upgrade end-to-end. It explains why permissions can be lost during an upgrade, lists the operations that trigger the loss, and provides ready-to-run SQL for both prevention and repair.
@@ -228,18 +228,18 @@ No restart is required — the next probe cycle (within approximately 60 seconds
 
 ## Example: upgrade with an ownership change
 
-This is a concrete walkthrough for the most common non-standard scenario. PEM was installed on the source server owned by `dbsdbadm`; the cluster has been restored on a target server where the corporate standard owner is `ddbadm`, and the goal is to upgrade PEM with `ddbadm` as the final owner.
+This is a concrete walkthrough for the most common non-standard scenario. PEM was installed on the source server owned by `old_owner`; the cluster has been restored on a target server where the corporate standard owner is `new_owner`, and the goal is to upgrade PEM with `new_owner` as the final owner.
 
 The ordering is what matters. Run the following steps in this exact order:
 
 1. Take a backup (see [Dos and don'ts](#dos-and-donts)).
 2. Stop services (step 1 of [Pre-upgrade preparation](#pre-upgrade-preparation)).
-3. Transfer ownership: `REASSIGN OWNED BY dbsdbadm TO ddbadm; GRANT dbsdbadm TO ddbadm;` (step 2).
-4. Register defaults `FOR ROLE ddbadm` (step 3).
-5. Revoke orphaned defaults `FOR ROLE dbsdbadm` (step 4).
+3. Transfer ownership: `REASSIGN OWNED BY old_owner TO new_owner; GRANT old_owner TO new_owner;` (step 2).
+4. Register defaults `FOR ROLE new_owner` (step 3).
+5. Revoke orphaned defaults `FOR ROLE old_owner` (step 4).
 6. Apply the schema USAGE safety net (step 5).
-7. Run the RPM upgrade and `configure-pem-server.sh` as `ddbadm` (step 6).
+7. Run the RPM upgrade and `configure-pem-server.sh` as `new_owner` (step 6).
 8. Run post-upgrade verification.
 9. Start services.
 
-If step 4 is skipped, step 7 re-creates `pem.probe_target_view` and `pem.probe_schedule_view` as `ddbadm`. PostgreSQL finds no defaults for `ddbadm` in `pg_default_acl` (they're still bound to `dbsdbadm`), and the views come up with no grants. The worker log immediately shows `permission denied for view ...` and [Remediation for already-affected clusters](#remediation-for-already-affected-clusters) is required to recover.
+If step 4 is skipped, step 7 re-creates `pem.probe_target_view` and `pem.probe_schedule_view` as `new_owner`. PostgreSQL finds no defaults for `new_owner` in `pg_default_acl` (they're still bound to `old_owner`), and the views come up with no grants. The worker log immediately shows `permission denied for view ...` and [Remediation for already-affected clusters](#remediation-for-already-affected-clusters) is required to recover.
