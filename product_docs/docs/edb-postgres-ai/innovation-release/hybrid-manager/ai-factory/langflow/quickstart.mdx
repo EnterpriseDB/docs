@@ -1,10 +1,11 @@
 ---
 title: Langflow quickstart
 navTitle: Quickstart
+deepToC: true
 description: Build your first AI flow in Langflow on Hybrid Manager — connect a knowledge base and a model to answer questions from your own data.
 ---
 
-This quickstart walks you through building a simple retrieval-augmented generation (RAG) flow in Langflow on Hybrid Manager. By the end you'll have a working flow that accepts a user question, retrieves relevant content from a knowledge base, and returns a grounded answer from an LLM — all running within your HM cluster.
+This quickstart walks you through building a simple retrieval-augmented generation (RAG) flow in Langflow on Hybrid Manager. By the end you'll have a working flow that accepts a user question, retrieves relevant content from a knowledge base, and returns a grounded answer from an LLM, all running within your HM cluster.
 
 ## Prerequisites
 
@@ -12,7 +13,7 @@ Before starting, make sure you have:
 
 - AI Factory enabled on your HM project. See [How to enable AI Factory](../how-to-enable-ai-factory).
 - A GPU node deployed for model serving. See [GPU recommendations](../gpu-recommended).
-- At least one model cluster deployed from the Model Library — you need an LLM for generation and an embedding model for the knowledge base. See [Creating a model cluster](../models).
+- At least one model cluster deployed from the Model Library with an LLM for generation. See [Creating a model cluster](../models). (The knowledge base in this quickstart uses the AIDB `bert` embedded model, which runs on the database CPU — no embedding model cluster is required.)
 - A Postgres cluster in your HM project with a table containing the content you want to query.
 - An access key (machine user) with the following roles:
   - **AI Model Manager** (organization level)
@@ -20,7 +21,7 @@ Before starting, make sure you have:
 
 ---
 
-## Step 1 — Access Langflow
+## Step 1: Accessing Langflow
 
 1. Log into the HM console and select your project.
 1. Select **Launchpad** in the navigation and open **Langflow**.
@@ -28,24 +29,23 @@ Before starting, make sure you have:
 
 ---
 
-## Step 2 — Set up Global Variables
+## Step 2: Setting up global variables
 
 EDB components read credentials from Langflow Global Variables. Set these up once and reuse them across all components in the flow.
 
 1. In Langflow, go to **Profile** → **Settings** → **Global Variables**.
 1. Create the following variables:
 
-   | Variable name | Value |
-   |---|---|
-   | `HM_API_KEY` | Your HM machine user access key. |
-   | `HM_DB_USER` | Postgres user for your HM cluster. |
-   | `HM_DB_PASSWORD` | Password for the Postgres user. |
+   | Variable name    | Value                              |
+   |------------------|------------------------------------|
+   | `HM_API_KEY`     | Your HM machine user access key.   |
+   | `HM_DB_USER`     | Postgres user for your HM cluster. |
+   | `HM_DB_PASSWORD` | Password for the Postgres user.    |
 
 See [Configure Global Variables](https://docs.langflow.org/configuration-global-variables#create-a-global-variable) for instructions.
 
 ---
-
-## Step 3 — Create a knowledge base
+## Step 3: Creating a knowledge base
 
 Before building the flow, create a knowledge base in your HM cluster so Langflow has content to retrieve from.
 
@@ -71,16 +71,20 @@ Verify the knowledge base is ready:
 SELECT * FROM aidb.kbstat;
 ```
 
+!!!note
+This quickstart creates the knowledge base using AIDB SQL directly. If you prefer a UI-driven approach, you can also create knowledge bases through [Pipeline Designer](../pipeline-designer).
+!!!
+
 ---
 
-## Step 4 — Add a Chat Input
+## Step 4: Adding a chat input
 
 1. In the Langflow canvas, select **Inputs** in the component panel.
 1. Drag **Chat Input** onto the canvas. This captures the user's question.
 
 ---
 
-## Step 5 — Add an EDB Knowledge Base component
+## Step 5: Adding an EDB knowledge base component
 
 1. Select **EDB** in the component panel and drag **EDB Knowledge Base** onto the canvas.
 1. Configure the component:
@@ -91,30 +95,49 @@ SELECT * FROM aidb.kbstat;
    - **User for the database** → select the `HM_DB_USER` Global Variable.
    - **Password for database** → select the `HM_DB_PASSWORD` Global Variable.
    - **Database Name** → select the database where the knowledge base was created.
-   - **Query Value** → connect this to the **Chat Input** output.
-1. Connect **Chat Input** → **EDB Knowledge Base**.
+1. Connect **Chat Input** → **EDB Knowledge Base**. This wires the user's question into the **Query Value** field automatically.
+
+---
+## Step 6: Adding a prompt template
+
+Without a prompt template, the model receives a raw dump of retrieved chunks alongside the question. A template structures the input into a prompt the model can follow.
+
+1. Select **Prompts** in the component panel and drag **Prompt Template** onto the canvas.
+1. In the **Template** field, enter:
+
+   ```
+   Answer the question using only the context below. If the answer isn't in the context, say you don't know.
+
+   Context:
+   {context}
+
+   Question:
+   {question}
+   ```
+
+1. Connect **EDB Knowledge Base** → **Prompt Template** (`context` variable).
+1. Connect **Chat Input** → **Prompt Template** (`question` variable).
 
 ---
 
-## Step 6 — Add an EDB Model Server component
+## Step 7: Adding an EDB model server component
 
 1. Select **EDB** in the component panel and drag **EDB Model Server** onto the canvas.
 1. Configure the component:
    - **HM Machine User Key** → select the `HM_API_KEY` Global Variable.
    - **Hybrid Manager Model Server Cluster Instance** → select your LLM model cluster.
-   - **Input** → connect this to the **EDB Knowledge Base** output (retrieved context) and the **Chat Input** output (the original question).
-1. Connect both **EDB Knowledge Base** and **Chat Input** → **EDB Model Server**.
+1. Connect **Prompt Template** → **EDB Model Server**.
 
 ---
 
-## Step 7 — Add a Chat Output
+## Step 8: Adding a chat output
 
 1. Select **Outputs** in the component panel and drag **Chat Output** onto the canvas.
 1. Connect **EDB Model Server** → **Chat Output**.
 
 ---
 
-## Step 8 — Run and test the flow
+## Step 9: Running and testing the flow
 
 1. Select **Playground** in the top toolbar to open the interactive test panel.
 1. Type a question that relates to your source data and press **Enter**.
