@@ -209,6 +209,9 @@ const Page = () => {
               <BannerCardLink to="/pg_extensions/pgvector">
                 pgvector
               </BannerCardLink>
+              <BannerCardLink to="/agent-governance/latest">
+                Agent Governance
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard

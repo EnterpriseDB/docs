@@ -41,6 +41,11 @@ const products = {
     abbreviation: "AIDB",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
+  "agent-governance": {
+    name: "EDB Agent Governance",
+    shortName: "Agent Governance",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     shortName: "EDB Postgres Distributed",
