@@ -3,7 +3,7 @@ title: Custom report templates
 navTitle: Custom Report Templates
 ---
 
-Custom report templates let you design, execute, and manage diagnostic reports that query data from your monitored servers or from PEM's own management database. You can define reports using SQL queries organized into sections, with results displayed as tables or text values.
+Custom report templates let you design, execute, and manage diagnostic reports that query data from your monitored servers or from PEM's own management database. You can define reports using SQL queries or batch/shell scripts organized into sections, with results displayed as tables or text values.
 
 ## Report types
 
@@ -11,8 +11,8 @@ Custom report templates let you design, execute, and manage diagnostic reports t
 
 Custom report templates fall into two categories based on what they query:
 
-- **PEM reports** query PEM's own management database. Use these to report on PEM monitoring data, agent status, alert history, and configuration. PEM reports require the `pem_admin` or `pem_super_admin` role.
-- **Non-PEM reports** query a monitored server's database directly. Use these for workload analysis, object-level inspection, or application-specific diagnostics. Non-PEM reports require the target server to be bound to a PEM agent (version 10.4 or later).
+- **PEM reports** query PEM's own management database. Use these to report on PEM monitoring data, agent status, alert history, and configuration. PEM reports require the `pem_admin` or `pem_super_admin` role and the target server to be bound to a PEM agent version 10.5 or later.
+- **Non-PEM reports** query a monitored server's database directly. Use these for workload analysis, object-level inspection, or application-specific diagnostics. Non-PEM reports require the target server to be bound to a PEM agent version 10.4 or later.
 
 ### By origin
 
@@ -56,12 +56,19 @@ Each item within a section is defined by the following attributes.
 | Format      | Defines the presentation layer: **Table** (tabular output) or **Text** (single value). |
 | Code        | The specific SQL statement or script logic to be executed by the agent.                |
 
+The **Format** attribute determines how item results are presented:
+
+| Format | Presentation mode | Best use case |
+|--------|-------------------|---------------|
+| Table  | An interactive data grid complete with column headers. | Multi-row SQL result sets or structured log outputs. |
+| Text   | A single string, scalar value, or block of raw text. | Summary metrics, version strings, or simple status checks. |
+
 #### Section types
 
 Each section in a report is either simple or iterative:
 
 - **Simple sections** run a fixed set of items against one target. Use these for standard diagnostic queries where the scope is known in advance.
-- **Iterative sections** include a *group query* that returns a list of targets. For each row returned by the group query, the section's items run once. Use iterative sections when you need to repeat the same queries across a dynamic set of databases, schemas, or objects.
+- **Iterative sections** include a *group query* that returns a list of targets. For each row returned by the group query, the section's items run once. Use iterative sections when you need to repeat the same queries across a dynamic set of databases, schemas, or objects. Iterative sections require the target server to be bound to a PEM agent version 10.5 or later.
 
 For example, an iterative section with a group query that returns all databases on a server runs each item once per database — useful for cross-database comparisons.
 
@@ -74,7 +81,7 @@ There are two ways to run a report:
 1. In the PEM browser tree, select the target server. It must be bound to a PEM agent version 10.4 or later.
 1. Right-click the server and select **Run Report**.
 1. Select the desired report template from the dropdown.
-1. For non-PEM reports, select the target database.
+1. For selected reports, select the target database.
 1. Select **Run**. PEM triggers an agent job to execute the report.
 
 **Using a scheduled job:**
@@ -108,12 +115,7 @@ To access the detailed output of a report, select any execution record within th
 Results are structured according to the original template hierarchy. Data is partitioned into **Sections**, with each section containing its respective **Items**.
 
 **Data presentation layers:**
-Depending on the **Format** attribute assigned to each item, results are rendered in one of two ways:
-
-| Format | Presentation mode                                      | Best use case                                              |
-|--------|--------------------------------------------------------|------------------------------------------------------------|
-| Table  | An interactive data grid complete with column headers. | Multi-row SQL result sets or structured log outputs.       |
-| Text   | A single string, scalar value, or block of raw text.   | Summary metrics, version strings, or simple status checks. |
+Results are rendered based on the **Format** attribute set in the report template — either as an interactive **Table** grid or a **Text** scalar value.
 
 **Handling errors:**
 If an item within a report fails to execute, the system captures and displays the specific error message returned by the SQL engine or shell environment directly within the item's result block. This ensures that even in a **Partially Successful** report, you can identify and troubleshoot individual point failures.
@@ -175,21 +177,20 @@ This limit is managed globally via the **Server Configuration** dashboard, where
 
 PEM uses four roles to control access to report templates and results.
 
-**`pem_view_reports`** — Read-only access to reports:
-- View system-defined and custom non-PEM templates.
-- View your own non-PEM report results.
+**`pem_view_reports`** — Read-only access to report execution history:
+- View system-defined and custom non-PEM reports.
 
-Can't generate reports, create, edit, or delete report templates, or view report execution history for PEM reports.
+Can't generate reports, create, edit, view, or delete report templates.
 
 **`pem_manage_report_templates`** — Includes all `pem_view_reports` permissions, plus:
-- Create, edit, and delete own custom non-PEM report templates.
+- Create and edit custom non-PEM report templates.
 - Generate non-PEM reports.
 - Delete own non-PEM report results.
 
 Can't create or edit PEM report templates, or view report execution history for PEM reports.
 
 **`pem_admin`** — Includes all `pem_manage_report_templates` permissions, plus:
-- Create, edit, and delete own custom PEM report templates.
+- Create and edit custom PEM report templates.
 - Generate PEM reports.
 - View your own PEM report execution history.
 
@@ -205,18 +206,11 @@ System-defined templates can't be modified or deleted by any user or role.
 
 | Action | `pem_view_reports` | `pem_manage_report_templates` | `pem_admin` | `pem_super_admin` |
 |--------|:-----------------:|:---------------------------:|:-----------:|:-----------------:|
-| View templates (non-PEM) | ✓ | ✓ | ✓ | ✓ |
-| View templates (PEM) | | | ✓ | ✓ |
-| Create/edit own templates (non-PEM) | | ✓ | ✓ | ✓ |
-| Create/edit own templates (PEM) | | | ✓ | ✓ |
-| Delete own templates (non-PEM) | | ✓ | ✓ | ✓ |
-| Delete own templates (PEM) | | | ✓ | ✓ |
+| View template | non-PEM | non-PEM | all | all |
+| Create/edit template | | non-PEM | all | all |
+| Delete own template | | non-PEM | all | all |
 | Delete any template | | | | ✓ |
-| Generate reports (non-PEM) | | ✓ | ✓ | ✓ |
-| Generate reports (PEM) | | | ✓ | ✓ |
-| View own report results (non-PEM) | ✓ | ✓ | ✓ | ✓ |
-| View own report results (PEM) | | | ✓ | ✓ |
-| View all users' report results (PEM) | | | | ✓ |
-| Delete own report results (non-PEM) | | ✓ | ✓ | ✓ |
-| Delete own report results (PEM) | | | ✓ | ✓ |
-| Delete any report result | | | | ✓ |
+| View reports | non-PEM | non-PEM | all | all |
+| Generate reports | | non-PEM | all | all |
+| Delete own reports | | non-PEM | all | all |
+| Delete any reports | | | | ✓ |
