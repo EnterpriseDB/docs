@@ -14,9 +14,11 @@ Configure the EDB Postgres AI agent (packaged as `beacon-agent`) to establish a 
 
 ## Prerequisites
 
-- **Machine user**: [Create a machine user and access key with the `estate ingester` role](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/create_machine_user/) assigned to it.
+- **Machine user and access key**: Created in [Creating a machine user in HM](/tools/agent/create_machine_user/). Store the access key in an environment variable:
 
-- **Machine user access key**: Store the access key generated in the HM console when you created a machine user in an environment variable, for example `export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"`.
+  ```shell
+  export BEACON_AGENT_ACCESS_KEY="baak_your_key_here"
+  ```
 
 - **Oracle Instant Client with SQL\*Plus**: The EDB Postgres AI agent uses SQL\*Plus to extract DDL from your Oracle source. Ensure you install Oracle Instant Client and SQL\*Plus, and configure the required environment variables on your auxiliary machine. See [Configuring an auxiliary machine](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/auxiliary_machine/) for instructions.
 
@@ -40,7 +42,7 @@ The agent requires specific values from your HM installation. Contact your admin
 
 -   **Beacon server hostname**: The internal endpoint for the `beacon_server`. 
 
-    When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Ask the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You will need this value later to configure the EDB Postgres AI agent.
+    When configuring the HM installation, administrators/installers must specify an internal endpoint for the `beacon_server` service. Ask the administrator or installer of your HM instance to provide the hostname (URL) they set for the `beacon_server` service in the Helm chart configuration file used for installation. For this, they'll look up the value they set for `parameters.upm-beacon.server_host` (or `BEACON_SERVICE_DOMAIN_NAME`) in the `values.yaml` file. You'll need this value later to configure the EDB Postgres AI agent.
 
 -   **Root certificate path (if required)**: If your HM instance uses a self-signed or internal CA, obtain the `ca_public.crt` file. Store it on the agent machine (For example, `/etc/beacon/ca_public.crt`).
 
@@ -48,9 +50,38 @@ The agent requires specific values from your HM installation. Contact your admin
 
 See [Administrative tasks](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/admin_tasks/) for more information about the `beacon_server` and root certificate.
 
+## Verifying connectivity
+
+Once you have the HM connection parameters, verify that your auxiliary machine can reach both the Oracle source and Hybrid Manager. The following ports must be open:
+
+| Destination | Port | Used by |
+|-------------|------|---------|
+| Oracle host | 1521 | Both agents (database connection) |
+| HM `beacon_server` | 9443 | EDB Postgres AI agent |
+| HM DMS service (`RW_SERVICE_HOST`) | 443 (HTTPS) | DMS agent |
+
+Verify connectivity to each host and port with `nc`:
+
+```shell
+# Oracle Listener
+nc -zv <oracle-host-name-or-ip> 1521
+
+# HM beacon server
+nc -zv <beacon_server_hostname> 9443
+
+# HM DMS service
+nc -zv <rw-service-hostname> 443
+```
+
+A successful connection returns `succeeded!`. If you see `Connection refused` or `Operation timed out`, the port isn't reachable and must be opened before proceeding.
+
 ## Defining source database connection parameters 
 
 The Data Source Name (DSN) is the connection string for your Oracle source.
+
+!!!tip Enrolling many databases at once
+If you have a large number of databases to register, you don't need to construct each DSN manually. The `configure-onprem-dbs` command can populate the `beacon_agent.yaml` databases section automatically from a CSV file, an Oracle `tnsnames.ora` file, or by discovering AWS RDS instances directly. See [Assessing multiple databases at once](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrations/assessing_multiple_databases/).
+!!!
 
 <TabContainer syncKey="db_type">
 <Tab title="CDB/PDB">
@@ -94,7 +125,7 @@ DSN="oracle://MIG_USER:password@localhost:1521/ORCL"
 </TabContainer>
 
 !!!Note Special characters
-If your password contains special characters (e.g., `@`, `#`, `!`), you must URL-encode them (e.g., `@` becomes `%40`).
+If your password contains special characters (for example, `@`, `#`, `!`), you must URL-encode them (for example, `@` becomes `%40`).
       
 ```shell
 DSN="oracle://oracle:pa%24%24word@localhost:1521/ORCLPDB1"
@@ -167,7 +198,7 @@ Prepare a configuration file for your agent. The agent searches for `beacon_agen
 
 ## Running the EDB Postgres AI agent
 
-1.  Ensure the Oracle Instant Client environment variables are set in the same shell session where you will run the agent:
+1.  Ensure the Oracle Instant Client environment variables are set in the same shell session where you'll run the agent:
 
     ```shell
     export ORACLE_HOME=</path/to/instantclient>
@@ -188,7 +219,7 @@ Prepare a configuration file for your agent. The agent searches for `beacon_agen
     ```
 
     !!!tip
-    See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
+    See [agent CLI](/tools/agent/agent_ref) for other agent modes and options.
     !!!
 
 1.  Monitor the ingestion process as the agent starts sending data to Hybrid Manager (HM). After a few minutes, your Oracle database appears in the HM console under **Estate > Migrations**.
@@ -207,9 +238,13 @@ If the database appears in the table, you have access to the following resources
 
 - A **migration assessment** on the [Migrations tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/) of the **Estate** page, providing a summarized view of database schema count, core count, migration complexity, and level of effort.
 
-- A [migration database detailed view](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrations/migration_database_details_view/) accessible by selecting a specific database from the **Migrations** tab. This provides an expanded analysis of **Schemas**, a global **Assessment**, and a **Migration** hub with direct connections to other HM tools for performing migrations.
+- A **[migration database detailed view](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrations/migration_database_details_view/)** accessible by selecting a specific database from the **Migrations** tab. This view provides an expanded analysis of **Schemas**, a global **Assessment**, and a **Migration** hub with direct connections to other HM tools for performing migrations.
 
-- **Automatic schema DDL extraction** that you can use for schema migrations with the built-in Migration Portal. Once ingestion is complete, the [Migration Portal automatically creates a project](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_schema/#accessing-your-project) per database, which you can use to convert incompatible schemas and migrate them to the destination database.
+- **Automatic schema DDL extraction** that you can use for schema migrations with the built-in Migration Portal. Once ingestion is complete, [Migration Portal automatically creates a project](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_schema/#accessing-your-project) per database, which you can use to convert incompatible schemas and migrate them to the destination database.
+
+!!!important Required for the schema and data migration scope
+If you plan to use the **Schema and data** or **Schema only** migration scope, the agent must finish ingesting your source schema before a Migration Portal project is created for the database. To confirm the project exists, go to **Estate > Migrations** in the HM console, select the database in the **Database Name** column, and check that a project appears in the **MP Project** column. Do this before [creating the migration](migrating_data#creating-a-migration). The **Schema and data** and **Schema only** scopes will fail without it.
+!!!
 
 ## Troubleshooting
 

@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useCallback, useRef, useState } from "react";
 import { useSearchBox } from "react-instantsearch";
 import Icon, { iconNames } from "../icon";
 import { SlashIndicator, ClearButton } from "../search/formComps";
+import { trackSearchEvent } from "../search/analytics";
 
 export const AdvancedSearchForm = ({ initialQuery }) => {
   const { clear, refine } = useSearchBox();
@@ -16,6 +17,10 @@ export const AdvancedSearchForm = ({ initialQuery }) => {
       setInputValue(newValue);
       // todo: debounce
       if (newValue !== lastSetQuery) {
+        // Changing a query that was already non-empty is a refinement; the
+        // first characters typed into an empty box are the initial search.
+        if ((lastSetQuery || "").length > 0 && newValue.length > 0)
+          trackSearchEvent("searchRefined");
         setLastSetQuery(newValue);
         refine(newValue);
       }

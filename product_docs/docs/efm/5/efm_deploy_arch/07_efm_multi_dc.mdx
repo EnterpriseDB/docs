@@ -1,0 +1,109 @@
+---
+title: "Cluster across more than one data center"
+description: "Configure a Failover Manager streaming replication cluster that spans multiple data centers for geographical redundancy."
+redirects:
+  - ../../efm_pgpool_ha_guide/07_efm_multi_dc
+---
+
+A physical streaming replication cluster can span multiple data centers, for example to achieve geographical redundancy.
+Failover Manager has no location-aware settings.
+It only requires that each agent can connect to every other agent and database in the cluster.
+Keep the following in mind when planning a multi-data-center deployment.
+
+## Using two data centers
+
+These configurations cover common two-data-center cluster setups, from a minimal three-node arrangement to a more redundant five-node setup.
+
+### Configuring a simple cluster
+
+A simple two-data-center cluster has the following layout:
+
+* DC1:
+  * Primary node with Virtual IP (VIP) pointing to it
+  * Witness node
+* DC2:
+  * Standby node
+
+Applications connect to the primary database using a VIP. Each data center typically needs its own VIP, and applications must be configured to know both addresses. To assign different VIPs to different nodes, set the `virtual.ip.single` property to `false`. For more information, see
+[Using Failover Manager with virtual IP addresses](/efm/latest/04_configuring_efm/05_using_vip_addresses/#using_vip_addresses).
+
+This configuration has the following properties:
+
+* If the primary database or node fails, Failover Manager will promote the standby. This behavior
+is the same as in a single-location cluster.
+* If the network between the two data centers fails, the standby won't be promoted, and the primary database won't
+be fenced, because DC1 still holds a majority of nodes.
+* If the entire primary site fails, you can manually promote the standby in DC2:
+  * Remove any nodes marked `DOWN` from the cluster using the [`efm reset-members`](/efm/latest/07_using_efm_utility/#efm-reset-members) command. Without this step, the agent won't promote the standby, because it can't determine whether it has been isolated from a majority of nodes that are still running.
+  * Promote the standby using the [`efm promote`](/efm/latest/07_using_efm_utility/#efm_promote) command.
+
+### Configuring a more robust cluster
+
+The following configuration provides more redundancy for the database servers and allows for more read scalability.
+
+* DC1:
+  * Primary node with VIP pointing to it
+  * Standby1
+  * Witness node
+* DC2:
+  * Standby2
+  * Standby3
+
+This configuration behaves the same as the three-node setup in the case of a network separation or
+data center failure. The five-node cluster offers additional options for controlling promotion:
+
+* During a promotion, Failover Manager promotes the most up to date standby, using the standby priority list
+to break ties. Use the [`priority.standbys`](/efm/latest/04_configuring_efm/01_cluster_properties/#priority_standbys)
+property to customize the priority list based on which node was last promoted to primary.
+* To restrict automatic promotion to Standby1 only, mark the other two standbys as non-promotable by
+setting the [`promotable`](/efm/latest/04_configuring_efm/01_cluster_properties/#promotable) property to false.
+* To promote a standby in DC2, for example, to perform maintenance on DC1, use the [`efm set-priority`](/efm/latest/07_using_efm_utility/#efm-set-priority) command to give Standby2 or Standby3 the highest priority before performing a
+switchover. This approach works even if the standby was originally marked non-promotable.
+
+## Spanning more than two data centers
+
+Spreading a cluster across more than two data centers is possible but introduces more complex failover and network behavior.
+
+### Planning for automatic failover on data center failure
+
+To achieve automatic failover when the primary data center fails, deploy more nodes
+outside of the primary data center than within it, though this setup can lead to
+unintended behavior during network outages.
+
+### Spanning three data centers
+
+The following architecture distributes nodes across three data centers:
+
+* DC1:
+  * Primary node with VIP pointing to it
+  * Standby1
+* DC2:
+  * Standby2
+  * Standby3
+* DC3:
+  * Witness node
+
+In this architecture, a complete failure of DC1 will trigger a failover to a standby in DC2, because DC2
+and DC3 together hold more than half of the cluster's nodes. However, network outages can lead to the
+following behavior:
+
+* If DC1 is isolated from the rest of the cluster, the primary database will be fenced off, meaning it's shut down and the VIP dropped if one is in use, even though it's running normally. All applications will be disconnected, and a standby in DC2 will be promoted.
+Applications running in DC1 won't be able to access the new primary until the network is restored.
+In contrast, a network outage in the two-location architecture has no effect on the running
+primary or applications in DC1.
+
+* If the network between all sites goes down, each site becomes isolated. The primary
+will be fenced, but no standby will be promoted. Failover Manager will restart the original primary and resume monitoring once the nodes reconnect.
+
+* If only DC2 or DC3 is isolated, DC1 continues to function normally.
+
+* If the network allows two locations to lose connectivity with each other while both remain connected to a third, behavior is undefined. For example, if DC1 and DC2 can't reach each other but both can
+reach the witness in DC3, agents in DC1 and DC2 may each believe they hold a majority of nodes. This situation can result in two simultaneous primary databases until the network
+is restored.
+
+For these reasons, only spread a cluster across three locations if network outages between them are unlikely.
+
+### Spanning more than three data centers
+
+Given the complexities of network-related issues with three data centers, we don't recommend using more
+than three locations.

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Hits,
   usePagination,
@@ -9,6 +9,7 @@ import { AdvancedPageHit } from "./index";
 import { products } from "../../constants/products";
 import { capitalize } from "../../constants/utils";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
+import { trackSearchEvent } from "../search/analytics";
 
 const prettyProductName = (product) => {
   return products[product] ? products[product].name : capitalize(product);
@@ -101,10 +102,23 @@ const ResultsContent = ({ children }) => (
 export const AdvancedSearchResults = () => {
   const { algoliaIndex } = useSiteMetadata();
 
-  const { results: searchResults, uiState } = useInstantSearch();
+  const { results: searchResults, uiState, status } = useInstantSearch();
   const query = uiState[algoliaIndex].query;
   const queryLength = (query || "").length;
   const showPagination = searchResults && searchResults.nbPages > 1;
+
+  // Report when a settled search either displays results or finds none. Keyed
+  // on query + hit count so we report each distinct result set only once.
+  const lastResultKey = useRef(null);
+  useEffect(() => {
+    if (status !== "idle" || !searchResults || !searchResults.query) return;
+    const key = `${searchResults.query}:${searchResults.nbHits}`;
+    if (lastResultKey.current === key) return;
+    lastResultKey.current = key;
+    trackSearchEvent(
+      searchResults.nbHits > 0 ? "searchResultsDisplayed" : "noSearchResults",
+    );
+  }, [searchResults, status]);
 
   if (queryLength === 0) {
     return (

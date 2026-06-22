@@ -151,7 +151,12 @@ main().catch((err) => ghCore.setFailed(err));
 
 const pipeline = unified()
   .use(remarkParse)
-  .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
+  .use(remarkStringify, {
+    emphasis: "*",
+    bullet: "-",
+    fences: true,
+    incrementListMarker: false,
+  })
   .use(remarkMdxEmbeddedHast)
   .use(remarkFootnotes)
   .use(admonitions, {
@@ -468,6 +473,8 @@ run \`npm run links:fix\` locally.`);
         } else {
           ret.push(urlPath);
         }
+      } else {
+        ret.push(urlPath);
       }
       return ret;
     });

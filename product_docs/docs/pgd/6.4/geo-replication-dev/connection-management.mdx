@@ -1,0 +1,45 @@
+---
+title: Connecting through Connection Manager
+navTitle: Connecting through Connection Manager
+description: How to connect to a geo-distributed PGD cluster through Connection Manager, configure connection strings, and handle failover in your application.
+---
+
+In a geo-distributed PGD cluster, [Connection Manager](/pgd/current/connection-manager/) handles routing automatically, directing write connections to the current write leader and read connections to a replica. Design your application to connect to Connection Manager's endpoints rather than directly to individual nodes, and configure your connection string to list multiple hosts for resilience.
+
+## Splitting reads and writes
+
+Connection Manager exposes two ports on each node. Direct traffic to the appropriate port based on your workload:
+
+- **Read-write port**: Routes the connection to the current write leader of the node group. Use this port for all write operations and for reads that require up-to-date data.
+
+    ```shell
+    host=node1.<location>,node2.<location>,node3.<location> port=6432 dbname=<dbname> user=<username>
+    ```
+
+- **Read-only port**: Routes the connection to a replica. Use this port for reporting queries and reads that can tolerate slight replication lag, to keep read traffic off the write leader.
+
+    ```shell
+    host=node1.<location>,node2.<location>,node3.<location> port=6433 dbname=<dbname> user=<username>
+    ```
+
+Your DBA configures port numbers and they're consistent across all nodes in the cluster. Ask your DBA for the correct values.
+
+List multiple nodes in both connection strings so that if one node is unavailable, the client driver tries the next one automatically.
+
+Subscriber-only nodes never accept writes, so always connect to them through the read-only port.
+
+## Configuring your connection strings
+
+For geo-distributed deployments, configure your connection strings with the following in mind:
+
+- **Connect to a local node.** Your application runs faster if you connect to a Connection Manager instance in the same location as your application servers, rather than routing to a remote node. Connection Manager then handles routing to the write leader if needed.
+- **Set appropriate timeouts.** Cross-region network latency is higher than within a single data center. Use the standard Postgres `connect_timeout` parameter in your connection string to account for this. 5-10 seconds is typical for geo-distributed clusters.
+
+## Handling failover
+
+When the write leader fails, Connection Manager detects the failure and routes connections to the new write leader after election completes. In-flight connections drop during the election, so your application needs to account for the following:
+
+- **Expect connection drops:** Any open transaction that was in-flight during failover is rolled back. Your application must catch connection errors and retry.
+- **Don't assume transaction outcome:** Connection drops during `COMMIT` can happen on any database, but write leader elections make them more frequent in a geo-distributed cluster. If replication was in progress when the connection dropped, the transaction may have already committed on some nodes. For standard transactions, retry with idempotent operations. For non-idempotent critical transactions, use [CAMO](using-commit-scopes#camo) to determine the exact outcome.
+- **Implement retry logic with backoff:** Retrying immediately after a connection failure risks hitting a node still in the process of failover. See [Handling retries and failures](application-patterns) for a retry strategy.
+- **Plan for location-level failover:** Location-level failover is often handled at the infrastructure level through DNS or load balancer configuration. For applications that manage connections directly, we recommend including remote nodes as a secondary fallback in your connection string.

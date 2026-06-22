@@ -1,0 +1,66 @@
+---
+title: Using connection pooling in your application
+navTitle: Using connection pooling
+description: How to write applications that work correctly with Connection Manager's built-in connection pooling, including session parameter handling, prepared statements, and transaction lifecycle.
+redirects: []
+---
+
+Adapt your application to work with [Connection Manager](/pgd/current/connection-manager/)'s connection pooling.
+
+For DBA guidance on enabling and operating pooling, see [Configuring connection pooling](/pgd/current/connection-pooling-dba).
+
+## Understanding the active pool mode
+
+Query `bdr.node_group_summary` to see the active pool mode.
+
+```sql
+SELECT node_group_name, server_pool_mode FROM bdr.node_group_summary;
+```
+
+The pool mode determines what session state persists between transactions.
+
+| Feature | `none`/`session` | `transaction` |
+|---------|---------------------|---------------|
+| `SET` changes persist | Yes | No |
+| `PREPARE`/`EXECUTE` statements persist | Yes | No |
+| Temporary tables persist | Yes | No |
+| Advisory locks across transactions | Yes | No |
+| Holdable cursors (`WITH HOLD`) | Yes | No |
+| `LISTEN` subscriptions | Yes | No |
+
+In `none` and `session` modes, your application behaves the same as with a direct Postgres connection for most purposes. The exception is that Connection Manager forwards only a specific set of connection parameters to the backend. See [Managing session parameters](#managing-session-parameters) for details. The difference between `none` and `session` is at the infrastructure level: in `session` mode, backend connections are reused after clients disconnect, reducing server overhead, but this is invisible to the application.
+
+In `transaction` mode, the backend connection is returned to the pool when each transaction ends and most session state is cleared. The next transaction can run on a different backend. Some Postgres features rely on session state that doesn't persist between transactions and don't work as a result. For a full list, see [Connection pooling's unsupported features](/pgd/current/connection-manager/connection-pooling#unsupported-features).
+
+If your application depends on any of these features, ask your DBA to switch to `session` or `none` mode (see [Configuring connection pooling](/pgd/current/connection-pooling-dba)), or redesign the affected code paths to keep all state within a single transaction.
+
+## Adapting your application for transaction mode
+
+Some application patterns that work with a direct Postgres connection need adjustment in transaction mode.
+
+### Managing session parameters
+
+Connection Manager forwards a specific set of connection parameters to the backend and re-applies them on each new backend assignment in transaction mode. The parameters it recognizes are `client_encoding`, `DateStyle`, `TimeZone`, `standard_conforming_strings`, `application_name`, `search_path`, and `extra_float_digits`.
+
+Set these in the connection string rather than with `SET` commands, so they apply to every backend the pool assigns.
+
+```
+host=myhost dbname=mydb options='-c search_path=myschema -c work_mem=256MB'
+```
+
+Or in a URI.
+
+```
+postgresql://myhost/mydb?options=-c%20search_path%3Dmyschema%20-c%20work_mem%3D256MB
+```
+
+Parameters outside the recognized list aren't re-applied on backend changes unless passed via the `options` connection parameter.
+
+### Using prepared statements
+
+Connection Manager automatically detects missing prepared statements on the backend and re-prepares them on demand, so prepared statements sent via the extended query protocol work seamlessly across transactions. Most client libraries use the extended query protocol by default.
+
+`DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, deallocating any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. To avoid errors with these, follow these practices.
+
+- Avoid `PREPARE`, `EXECUTE`, and `DEALLOCATE` SQL statements. Use the extended query protocol instead, which most client libraries do by default.
+- If you need to use `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements, issue them inside the transaction where you use them.
