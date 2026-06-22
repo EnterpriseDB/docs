@@ -1,0 +1,51 @@
+---
+title: Governance concepts
+navTitle: Concepts
+description: Key terms used throughout the AI governance audit log viewer — sessions, steps, purpose, instances, and how Airman MCP tags agent activity.
+---
+
+Review these terms to understand and use the AI governance audit log viewer effectively.
+
+## Airman MCP
+
+Airman MCP is the Model Context Protocol (MCP) server that brokers Postgres access for AI agents. It exposes Postgres operations as tools the agents can call, and it tags every query it runs with tracing metadata so that the activity can be reconstructed later. The viewer relies entirely on these tags to group and attribute agent activity.
+
+## Session
+
+A session is a logical grouping of SQL statements executed by an AI agent within a single Airman MCP interaction. Each session is the primary unit of audit in the viewer: when you open a cluster, you see its sessions, and when you open a session, you see the statements it contains.
+
+Airman MCP identifies a session with a *session short* — the first eight hexadecimal characters of the MCP session token. All log entries that share a session short belong to the same session.
+
+## Step
+
+A step is a single SQL statement within a session — one parsed Postgres log record. Each step carries the SQL text and its execution metadata: target database, Postgres role, backend process ID, duration, and error severity.
+
+## Purpose
+
+Purpose is a declared intent label configured per Airman MCP instance through the `AIRMAN_MCP_PURPOSE` environment variable (for example, `billing`, `support`, or `analytics`). It appears as the first segment of the tag Airman writes to each query and is surfaced in both the sessions list and session detail. Purpose is set on the agent side, not in the viewer.
+
+## Instance
+
+An instance is a registered upstream data source — either a Hybrid Manager (HM) deployment or a standalone Loki endpoint. The viewer can connect to multiple instances at once, aggregating the clusters and sessions from all of them. See [Connecting data sources](./connecting_data_sources).
+
+## Cluster
+
+A cluster is a Postgres cluster managed by HM or monitored through Loki. The viewer lists clusters as the entry point for auditing: you pick a cluster, then review the AI agent sessions detected for it.
+
+## Loki and LogQL
+
+Loki is the log aggregation system that stores the Postgres query logs the viewer reads. It is optimized for label-based queries expressed in LogQL, its query language. HM includes a Loki pipeline; you can also point the viewer at a standalone Loki instance that receives Postgres logs. The viewer's backend constructs LogQL queries to find the session-tagged log entries for a cluster.
+
+## Sync watermark
+
+A sync watermark is a per-instance, per-cluster record that tracks how far back the viewer's backend has cached session data from Loki. It records the earliest known entry and how far the cache has been populated, which is what enables fast, incremental syncing instead of re-querying the full log history on every visit. See [Architecture and data flow](./architecture).
+
+## How activity is tagged
+
+Every query Airman MCP executes is tagged through the Postgres `application_name` session variable, in the form:
+
+```
+airman:<purpose>/<session-short>
+```
+
+For example, `airman:billing/a1b2c3d4` identifies a query run for the `billing` purpose within session `a1b2c3d4`. Postgres records `application_name` on every log line, Loki ingests those lines, and the viewer parses the tag to group statements into sessions and attribute each one to its declared purpose.

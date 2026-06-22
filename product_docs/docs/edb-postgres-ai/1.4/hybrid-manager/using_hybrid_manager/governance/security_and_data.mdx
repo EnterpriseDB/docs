@@ -1,0 +1,63 @@
+---
+title: Security and data handling
+navTitle: Security and data handling
+description: How the AI governance audit log viewer authenticates users, stores upstream credentials, and treats your data.
+deepToC: true
+---
+
+The audit log viewer reads Postgres query logs that may contain sensitive data and holds credentials for the upstream sources it audits. This page describes how it authenticates users, where credentials live, and how your data is treated. It audits AI agents whose Postgres clusters are managed by Hybrid Manager (HM). There are two distinct authentication layers, and all credentials live server-side — none are exposed to the browser.
+
+## Authentication layers
+
+| Layer | Question it answers | Mechanism |
+|-------|---------------------|-----------|
+| User authentication | Who may sign in to the viewer? | Identity federation through Dex (OIDC) |
+| Upstream authentication | How does the backend reach HM or Loki? | Machine user API keys |
+
+## User authentication
+
+Sign-in goes through Dex, which federates to your upstream identity providers:
+
+- The backend is an OIDC client of Dex. Dex brokers login to the configured connector — OIDC, SAML, or LDAP — and reports which identity provider authenticated the user.
+- On success, the backend mints a server-side session: a signed cookie, with refresh and ID tokens encrypted at rest. Tokens never reach the browser.
+- A bootstrap admin exists before any identity provider is configured. Use it for first login, then add a federated identity provider and switch day-to-day login to it.
+- **Admin gating** — a user is an administrator if their email is in the admin allowlist, or if their `groups` claim includes `governance-admin`. Admin-only surfaces, such as identity provider management, are gated on this.
+
+For configuring identity providers, see [Deployment and configuration](./administration).
+
+## Upstream authentication
+
+Reaching the upstream log source uses machine user API keys — credentials that grant access to an HM dataplane or a Loki instance. These keys are:
+
+- Created in the HM admin portal (for HM instances) or configured externally (for Loki).
+- Stored in the backend's Postgres database.
+- Injected server-side on every proxied request.
+- Never included in responses to the browser — they're cleared on the server and omitted.
+
+The backend adds the appropriate header based on the instance type:
+
+| Instance type | Header | Format |
+|---------------|--------|--------|
+| HM | `x-access-key` | The raw key value, for example `hmak_abc123...` |
+| Loki | `Authorization` | The full header value, for example `Bearer token123...` |
+
+## Credential storage at rest
+
+Two credential stores live in the backend's Postgres databases:
+
+- The viewer's database holds instance access keys and user sessions.
+- The Dex database holds identity provider connector secrets, such as OIDC client secrets and LDAP bind passwords, in cleartext.
+
+Keep the underlying storage volume on encrypted-at-rest storage — LUKS or dm-crypt, cloud disk encryption, or an equivalent. The Dex connector credentials in particular have no application-layer encryption, so volume-level encryption is the protection that matters.
+
+## Network protections
+
+**TLS verification.** OIDC TLS verification — for discovery, JWKS, and token exchange — is always on and can't be disabled. To trust a self-signed or private-CA issuer, supply a CA bundle, which is added to the system trust pool rather than bypassing verification.
+
+**Upstream egress controls.** By default, the backend blocks instance egress to private network ranges so that a registered instance can't be used to probe your internal network. Cloud metadata, loopback, and link-local addresses stay blocked regardless. Allow private ranges only for on-premises deployments whose HM or Loki upstreams legitimately live on private IPs.
+
+**Cross-origin requests.** The viewer and its backend are served from a single origin in normal operation, so cross-origin access to the backend API is restricted to the origins you explicitly allow.
+
+## What data the viewer reads
+
+The viewer reads Postgres query logs, which include the SQL text agents executed along with execution metadata such as the target database, Postgres role, and duration.
