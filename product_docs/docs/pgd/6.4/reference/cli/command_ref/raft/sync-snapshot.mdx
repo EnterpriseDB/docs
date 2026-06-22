@@ -1,0 +1,101 @@
+---
+title: pgd raft sync-snapshot
+navTitle: Sync-snapshot
+deepToC: true
+---
+
+## Synopsis
+
+The `pgd raft sync-snapshot` command synchronizes the Raft state across all nodes in the EDB Postgres Distributed cluster when that state has diverged.
+
+The command runs pre-flight checks before making any changes: it validates the BDR version, identifies the Raft leader, verifies all nodes are reachable, and checks whether the state is already in sync. If the state is already consistent, the command exits without making changes unless `--ignore-sync-status` is specified.
+
+When changes are needed, the command
+
+1. Disables Raft on all nodes.
+2. Exports the current Raft state from the leader node.
+3. Imports the leader's Raft state on all follower nodes.
+4. Re-enables Raft on all nodes and waits for a leader to be elected.
+
+Subscriber-only groups don't have their own Raft instance and aren't valid targets for this command. To sync Raft state that includes subscriber-only nodes, run the command without `--group`.
+
+## Syntax
+
+```plaintext
+pgd raft sync-snapshot [OPTIONS]
+```
+
+## Options
+
+The following options are available for the `pgd raft sync-snapshot` command:
+
+| Option                   | Default | Description                                                                              |
+|------------------------|---------|------------------------------------------------------------------------------------------|
+| --group                |         | Target a specific group by name. Defaults to the top-level group if not specified.       |
+| --check                | false   | Perform pre-flight checks only without making any changes to the cluster.                |
+| --ignore-sync-status   | false   | Proceed with sync even if Raft state is already consistent across all nodes.             |
+
+See [Global Options](/pgd/latest/reference/cli/command_ref/#global-options) for common global options.
+
+## Examples
+
+### Run pre-flight checks only
+
+```shell
+pgd raft sync-snapshot --check
+__OUTPUT__
+Performing Raft Sync-Snapshot Pre-flight Checks
+------------------------------------------------
+Checking BDR version                                          ok (6.4.0)
+Resolving target group                                        ok (dc-1)
+Identifying raft leader                                       ok (leader: pgd-a1)
+Discovering cluster nodes                                     ok (3 nodes)
+Connecting to pgd-a1 (leader)                                 ok
+Connecting to pgd-a2                                          ok
+Connecting to pgd-a3                                          ok
+Validating node states                                        ok
+Checking raft sync status                                     ok (out of sync)
+
+Raft Sync-Snapshot Pre-flight Report
+-------------------------------------
+Target group:    dc-1
+Raft leader:     pgd-a1
+Nodes in scope:  3 (pgd-a1, pgd-a2, pgd-a3)
+
+All pre-flight checks passed. Ready for sync-snapshot.
+```
+
+### Synchronize the global group
+
+```shell
+pgd raft sync-snapshot
+__OUTPUT__
+Performing Raft Sync-Snapshot Pre-flight Checks
+------------------------------------------------
+Checking BDR version                                          ok (6.4.0)
+Resolving target group                                        ok (dc-1)
+Identifying raft leader                                       ok (leader: pgd-a1)
+Discovering cluster nodes                                     ok (3 nodes)
+Connecting to pgd-a1 (leader)                                 ok
+Connecting to pgd-a2                                          ok
+Connecting to pgd-a3                                          ok
+Validating node states                                        ok
+Checking raft sync status                                     ok (out of sync)
+
+Performing Raft Sync-Snapshot
+-----------------------------
+Disabling raft on pgd-a1                                      WARNING:  disabling the consensus
+ok
+Disabling raft on pgd-a2                                      ok (already disabled)
+Disabling raft on pgd-a3                                      WARNING:  disabling the consensus
+ok
+Exporting snapshot from leader (pgd-a1)                       ok
+Importing snapshot on pgd-a2                                  ok
+Importing snapshot on pgd-a3                                  ok
+Re-enabling raft on pgd-a1                                    ok
+Re-enabling raft on pgd-a2                                    ok
+Re-enabling raft on pgd-a3                                    ok
+Waiting for raft recovery                                     ok (leader: pgd-a3)
+
+Raft sync-snapshot completed successfully.
+```

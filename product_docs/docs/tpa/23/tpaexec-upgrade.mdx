@@ -83,8 +83,9 @@ restarting services, and performing any runtime configuration changes,
 before moving on to do the same thing on the next instance. At any time
 during the process, only one of the cluster's nodes will be unavailable.
 
-When upgrading a cluster to PGD-Always-ON or upgrading an existing
-PGD-Always-ON cluster, you can enable monitoring of the status of your
+When upgrading a cluster to PGD-Always-ON, upgrading an existing
+PGD-Always-ON cluster, or performing a minor upgrade of a PGD-S or
+PGD-X cluster, you can enable monitoring of the status of your
 proxy nodes during the upgrade by adding the option
 `-e enable_proxy_monitoring=true` to your `tpaexec upgrade` command
 line. If enabled, this will create an extra table in the bdr database
@@ -92,12 +93,298 @@ and write monitoring data to it while the upgrade takes place. The
 performance impact of enabling monitoring is very small and it is
 recommended that it is enabled.
 
+## Before you upgrade
+
+This section describes the checks you should perform on your cluster
+before running `tpaexec upgrade`. Working through these in order will
+catch most common problems before they affect a live cluster.
+
+### Verify cluster health
+
+The upgrade is easiest to perform on a cluster that is in a known-good
+state. Run `tpaexec test <cluster>` to exercise the standard health
+checks. The upgrade process itself runs pre-upgrade health checks, but
+discovering a problem ahead of time gives you longer to address it.
+
+For any BDR enabled architecture, also confirm that all nodes appear in
+its catalogue:
+
+```sql
+SELECT node_name, peer_state_name, peer_target_state_name
+  FROM bdr.node_summary;
+```
+
+Every entry should report `ACTIVE` (or `STANDBY` for read-only
+standbys). Investigate any other state before proceeding.
+
+For M1 clusters using repmgr, run `repmgr cluster show` on the primary
+and confirm every node is shown as running and connected.
+
+### Verify backups
+
+Before any upgrade, confirm that a recent Barman backup exists and is
+in a state from which you could restore. On the Barman host:
+
+```shell
+sudo -u barman barman list-backup <server>
+sudo -u barman barman check <server>
+```
+
+Any failed status here should be investigated before starting. Once
+the upgrade is underway, the Barman WAL receiver is stopped, so the
+backup landscape during the upgrade window is fixed at whatever
+existed beforehand.
+
+### Verify replication lag
+
+Whilst the cluster may be healthy at a high level, individual replicas
+may be lagging. The upgrade fences each instance in turn; if a replica
+is significantly behind, it will take longer to catch up after being
+unfenced, and the overall upgrade duration will grow.
+
+For PGD clusters:
+
+```sql
+SELECT slot_name, active, restart_lsn, write_lag, flush_lag, replay_lag
+  FROM bdr.node_slots;
+```
+
+For M1 clusters, on the primary:
+
+```sql
+SELECT application_name, state, write_lag, flush_lag, replay_lag
+  FROM pg_stat_replication;
+```
+
+Aim for lag measured in seconds, not minutes. Investigate any replica
+that is seriously behind before starting.
+
+### Pin and review package versions
+
+For control over what is installed during the upgrade, it is recommended
+that you explicitly set package versions  in `config.yml` before running
+`tpaexec upgrade`. The relevant variables are `postgres_package_version`,
+`bdr_package_version`, `pgd_proxy_package_version`,
+`pgdcli_package_version`, and the component-specific equivalents.
+
+Without an explicit pin, TPA installs the latest available package for
+each component, which can result in an unintended major-version
+upgrade. See [Package version selection](#package-version-selection)
+for details.
+
 !!!Note
 
-   The `enable_proxy_monitoring` option is specifically designed for upgrades involving HARP proxies (typically when moving from PGD 4 to PGD 5). 
-
-   Because PGD 6 replaces PGD Proxy with Connection Manager, attempting to use this option during a PGD 5 to PGD 6 upgrade will cause the process to fail.
+After updating versions in `config.yml`, run `tpaexec provision` to
+regenerate the inventory.
 !!!
+
+### Read the release notes
+
+Check the release notes for the target versions of every component you
+are upgrading but also the ones between current and target versions.
+EDB's PGD and Postgres release notes occasionally call
+out version-specific upgrade considerations: settings that must be
+changed before or after the upgrade, deprecations, and behaviour
+changes. The same applies to TPA's own release notes for any newer
+version of TPA you may be using to perform the upgrade.
+
+### Test the upgrade in a staging environment
+
+`tpaexec upgrade` processes the cluster instance-by-instance. The
+upgrade is rolling: at any one time only a single instance is fenced
+off. However, the total wall-clock time depends on the cluster size,
+the number of components being upgraded, and the storage and network
+characteristics of each instance but also that the upgrade scenario
+goes through without issues.
+
+We strongly recommend reproducing the upgrade in a non-production
+environment that matches your production cluster's architecture,
+Postgres flavour and version, package pinnings, and any custom hooks.
+This catches surprises (missing packages in your configured
+repository, unexpected configuration drift) before they affect live
+traffic.
+
+### Disable scheduled jobs
+
+Anything scheduled to run against the cluster during the upgrade
+window should be paused. Typical items:
+
+-   Cron jobs that hit the database (analytics, reporting).
+-   External backup tools that are not aware of the upgrade.
+-   Long-running migrations or batch jobs.
+
+TPA itself stops the Barman WAL receiver before starting and restarts
+it afterwards; you do not need to disable Barman manually.
+
+## During the upgrade
+
+This section describes what to expect whilst `tpaexec upgrade` is
+running and what to watch for from outside TPA.
+
+### What to expect
+
+TPA processes the cluster one instance at a time. For each instance,
+in turn, the upgrade:
+
+1.  Fences the instance off so the proxy or failover manager stops
+    sending it new connections.
+1.  Stops the affected services on that instance.
+1.  Installs the new packages.
+1.  Updates configuration files where required.
+1.  Restarts services and waits for them to come up.
+1.  Unfences the instance.
+
+You should expect brief connection interruptions whilst each instance is
+fenced and again when it returns to service. Applications using
+connection pooling and retry logic should typically not see
+client-visible errors during these transitions.
+
+Whilst each non-leader node is being upgraded, write traffic
+continues through the current write leader. Each time the write
+leader itself is upgraded, a brief leader-election interruption
+occurs. PGD-S and PGD-X arrange for the write leader to be upgraded
+last; PGD-Always-ON upgrades nodes in inventory order, so a leader
+election occurs whenever the current leader's turn comes round.
+
+### What to watch from the application side
+
+Whilst the upgrade is running, a brief pause at each fence/unfence
+transition is normal. Sustained connection failures across multiple
+instances are not — if you see those, stop and investigate before TPA
+proceeds to the next instance.
+
+If an application is running against the cluster during the upgrade,
+monitor:
+
+-   Application error rates: transient retries are expected; sustained
+    errors are not.
+-   Connection pool metrics: brief drops in available connections are
+    expected.
+-   Replication slot lag: may grow transiently as each instance catches
+    up post-upgrade.
+
+## After the upgrade
+
+This section describes the verification you should perform once
+`tpaexec upgrade` has completed.
+
+### Verify installed package versions
+
+Confirm that the new packages are installed on every instance. On
+RHEL-family hosts:
+
+```shell
+tpaexec cmd <cluster> all -m shell -a 'rpm -qa | grep -E "^(postgres|edb-)"'
+```
+
+On Debian / Ubuntu hosts:
+
+```shell
+tpaexec cmd <cluster> all -m shell -a 'dpkg -l | grep -E "(postgres|edb-)"'
+```
+
+The same package versions should be reported on every instance of the
+same role.
+
+### Verify services and replication
+
+Confirm that all services restarted cleanly:
+
+```shell
+tpaexec cmd <cluster> all -m shell -a 'systemctl is-active postgres'
+```
+
+For PGD clusters, confirm that BDR has fully reconverged:
+
+```sql
+SELECT node_name, peer_state_name FROM bdr.node_summary;
+```
+
+For M1 clusters with repmgr:
+
+```shell
+tpaexec cmd <cluster> role_primary -m shell -a 'repmgr -f /etc/repmgr.conf cluster show'
+```
+
+### Take a fresh backup
+
+After any non-trivial upgrade, take a fresh Barman backup of the
+cluster:
+
+```shell
+tpaexec cmd <cluster> role_barman -m shell -a 'sudo -u barman barman backup <server>'
+```
+
+This gives you a known-good restore point that reflects the
+post-upgrade state.
+
+### Re-enable scheduled jobs
+
+If you disabled cron jobs, batch jobs, or external scheduled tasks
+before the upgrade, re-enable them now. TPA's own Barman WAL receiver
+is restarted automatically.
+
+### Run tpaexec test
+
+As a final smoke check, run the standard test suite:
+
+```shell
+tpaexec test <cluster>
+```
+
+This exercises connectivity, replication, role mapping, and the
+component-specific checks that ran before the upgrade. A clean test
+run is the simplest end-to-end confirmation that the upgrade landed.
+
+## Recovering from a failed upgrade
+
+If `tpaexec upgrade` reports a failure, the cluster is left in a known
+state at whichever instance was being processed when the failure
+occurred. Subsequent instances are not touched.
+
+### When to roll back, when to call EDB Support
+
+A roll-back is only safe before TPA has applied any non-reversible
+catalogue change — typically the BDR-side configuration updates that
+occur in major-version upgrades. Once those changes are in place, the
+correct path is forward, not backward.
+
+If you are unsure whether to proceed or roll back, stop and contact
+EDB Support with:
+
+-   The `ansible.log` from the failed run.
+-   The output of `tpaexec test <cluster>`.
+-   A description of which instances completed the upgrade and which
+    did not.
+-   The config.yml used.
+-   Optionally the EDB lasso report or any other meaningful logs.
+
+## Common pitfalls
+
+This section consolidates a few specific situations that have caught
+users out in the past.
+
+### Pinned package versions cause no-op upgrades
+
+If `postgres_package_version` (or any other `xxx_package_version`)
+already matches the installed package, `tpaexec upgrade` reports the
+components as "already at the desired version" and does nothing. The
+symptom is a run that completes quickly with no changes, and the
+desired version not installed.
+
+Fix: update `config.yml` to set the new desired version, then re-run
+`tpaexec provision` followed by `tpaexec upgrade`. See [Package
+version selection](#package-version-selection) for details.
+
+### Shared Barman or shared PEM clusters
+
+TPA does not currently support running `tpaexec upgrade` against
+clusters with shared Barman or shared PEM configurations. The
+restriction is enforced by the upgrade's preconditions, which abort
+early. Until support is added, upgrades for these cluster shapes
+need to be performed manually outside TPA — see [After a manual
+major-version Postgres upgrade](reference/reconciling-local-changes/#after-a-manual-major-version-postgres-upgrade)
+for how to reconcile the cluster afterwards.
 
 ## Component selection
 
@@ -260,23 +547,23 @@ tpaexec upgrade ~/clusters/speedy\
 the ansible inventory. The upgrade process does the following:
 
 1.  Checks that all preconditions for upgrading the cluster are met.
-2.  For each instance in the cluster, checks that it has the correct
+1.  For each instance in the cluster, checks that it has the correct
     repositories configured and that the required postgres packages are
     available in them.
-3.  For each BDR node in the cluster, one at a time:
+1.  For each BDR node in the cluster, one at a time:
     -   Fences the node off to ensure that harp-proxy doesn't send any
         connections to it.
     -   Stops, updates, and restarts postgres, including replacing BDR4
         with PGD5.
     -   Unfences the node so it can receive connections again.
     -   Updates pgbouncer and pgd-cli, as applicable for this node.
-4.  For each instance in the cluster, updates its BDR configuration
+1.  For each instance in the cluster, updates its BDR configuration
     specifically for BDR v5
-5.  For each proxy node in the cluster, one at a time:
+1.  For each proxy node in the cluster, one at a time:
     -   Sets up pgd-proxy.
     -   Stops harp-proxy.
     -   Starts pgd-proxy.
-6.  Removes harp-proxy and its support files.
+1.  Removes harp-proxy and its support files.
 
 ## Upgrading from PGD-Always-ON to PGD-X
 
@@ -294,8 +581,8 @@ architecture.
 The upgrade process transitions the cluster through three distinct states:
 
 1.  **Start:** `PGD` 5.9+ (`PGD-Always-ON`) using `PGD-Proxy`
-2.  **Intermediate:** `PGD` 5.9+ (`PGD-Always-ON`) now using the built-in `Connection Manager`
-3.  **Final:** `PGD` 6 (`PGD-X Architecture`)
+1.  **Intermediate:** `PGD` 5.9+ (`PGD-Always-ON`) now using the built-in `Connection Manager`
+1.  **Final:** `PGD` 6 (`PGD-X Architecture`)
 
 ### Prerequisites
 
@@ -371,7 +658,7 @@ tpaexec switch2cm ~/clusters/speedy
 The `switch2cm` command performs the following operations:
 
 1.  Updates the Ansible inventory with Connection Manager settings
-2.  For each node:
+1.  For each node:
     -   Fences the node to prevent new connections
     -   Restarts PostgreSQL to load the Connection Manager configuration
     -   Stops the `pgd-proxy` service
@@ -438,16 +725,16 @@ tpaexec upgrade ~/clusters/speedy\
 the ansible inventory. The upgrade process does the following:
 
 1.  Checks that all preconditions for upgrading the cluster are met.
-2.  For each instance in the cluster, checks that it has the correct
+1.  For each instance in the cluster, checks that it has the correct
     repositories configured and that the required postgres packages are
     available in them.
-3.  For each BDR node in the cluster, one at a time:
+1.  For each BDR node in the cluster, one at a time:
     -   Fences the node off so there are no connections to it.
     -   Stops, updates, and restarts postgres, including replacing PGD5
         with PGD6.
     -   Unfences the node so it can receive connections again.
     -   Updates pgbouncer and pgd-cli, as applicable for this node.
-4.  Applies BDR configuration specifically for BDR v6
+1.  Applies BDR configuration specifically for BDR v6
 
 ### Upgrade Complete
 
@@ -462,10 +749,10 @@ software versions, the upgrade process does the following:
 
 1.  Checks that the cluster is healthy and that the nodes are listening
     on the configured ports.
-2.  Checks that the nodes to be upgraded have their repositories
+1.  Checks that the nodes to be upgraded have their repositories
     configured and updated, including local repositories.
-3.  Checks that updated packages can be installed
-4.  Upgrade each BDR node in the cluster one at a time:
+1.  Checks that updated packages can be installed
+1.  Upgrade each BDR node in the cluster one at a time:
 
     **Important:** To ensure high availability, if the write leader is among the
     nodes being upgraded, it will be the very last node to be upgraded.
@@ -476,8 +763,8 @@ software versions, the upgrade process does the following:
     -   Unfences the node so it can receive connections again
     -   Checks that the BDR cluster has re-established Raft consensus
     -   Checks that the upgraded node is listening on the configured ports
-5.  Re-runs the cluster health checks
-6.  Outputs information about the upgraded packages
+1.  Re-runs the cluster health checks
+1.  Outputs information about the upgraded packages
 
 ## PGD-Always-ON
 
@@ -486,22 +773,22 @@ software versions, the upgrade process does the following:
 
 1.  Checks that all preconditions for upgrading the cluster are
     met, including that it is not a shared PEM or shared Barman cluster.
-2.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
+1.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
     including that no Barman backup is underway (this stops the WAL-receiver)
-3.  For each instance in the cluster, checks that it has the correct
+1.  For each instance in the cluster, checks that it has the correct
     repositories configured and that the required postgres packages are
     available in them.
-4.  Checks that all selected components are able to be updated to the
+1.  Checks that all selected components are able to be updated to the
     desired version (if a package version is provided)
-5.  For each BDR node in the cluster, one at a time:
+1.  For each BDR node in the cluster, one at a time:
     -   Fences the node off to ensure that pgd-proxy doesn't send any
         connections to it.
     -   Stops, updates, and restarts postgres.
     -   Unfences the node so it can receive connections again.
     -   Updates pgd-proxy and pgd-cli software (if explicitly opted-in)
-6.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
+1.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
     agents/PEM server (according to the node's roles)
-7.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
+1.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
     (as applicable to the cluster)
 
 ## BDR-Always-ON
@@ -511,21 +798,21 @@ one by one and does the following:
 
 1.  Checks that all preconditions for upgrading the cluster are
     met, including that it is not a shared PEM or shared Barman cluster.
-2.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
+1.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
     including that no Barman backup is underway (this stops the WAL-receiver)
-3.  For each instance in the cluster, checks that it has the correct
+1.  For each instance in the cluster, checks that it has the correct
     repositories configured and that the required postgres packages are
     available in them.
-4.  Tell haproxy the server is under maintenance.
-5.  If the instance was the active server, request pgbouncer to reconnect
+1.  Tell haproxy the server is under maintenance.
+1.  If the instance was the active server, request pgbouncer to reconnect
     and wait for active sessions to be closed.
-6.  Stop Postgres, update Postgres, etcd, and pgdcli (if applicable and opted-in) packages and restart
+1.  Stop Postgres, update Postgres, etcd, and pgdcli (if applicable and opted-in) packages and restart
     Postgres.
-7.  Finally, mark the server as "ready" again to receive requests through
+1.  Finally, mark the server as "ready" again to receive requests through
     haproxy.
-8.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
+1.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
     agents/PEM server (according to the node's roles)
-9.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
+1.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
     (as applicable to the cluster)
 
 PGD logical standby or physical replica instances are updated without
@@ -541,18 +828,18 @@ switchover back to the initial primary node.
 
 1.  Checks that all preconditions for upgrading the cluster are
     met, including that it is not a shared PEM or shared Barman cluster.
-2.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
+1.  Runs pre-upgrade health checks for all components, as applicable to the cluster,
     including that no Barman backup is underway (this stops the WAL-receiver)
-3.  For each instance in the cluster, checks that it has the correct
+1.  For each instance in the cluster, checks that it has the correct
     repositories configured and that the required postgres packages are
     available in them.
-4.  Update Postgres on the streaming replicas and witness. nodes (when applicable)
-5.  Perform a [switchover](tpaexec-switchover/) from the primary to one of the upgraded replicas
-6.  Update Postgres on the primary
-7.  Switchover back to the initial primary node.
-8.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
+1.  Update Postgres on the streaming replicas and witness. nodes (when applicable)
+1.  Perform a [switchover](tpaexec-switchover/) from the primary to one of the upgraded replicas
+1.  Update Postgres on the primary
+1.  Switchover back to the initial primary node.
+1.  For the applicable nodes in the cluster, updates pgbouncer, barman, pg-backup-api, and PEM
     agents/PEM server (according to the node's roles)
-9.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
+1.  Starts the Barman WAL-receiver if required and runs post-upgrade health checks for all components
     (as applicable to the cluster)
 
 ## Controlling the upgrade process
@@ -589,3 +876,12 @@ However, support for this feature varies by architecture.
 ### Best Practice for PGD-Always-ON/BDR-Always-ON
 
 When performing a minor upgrade on a subset of PGD nodes, it is highly recommended to update the **RAFT leader nodes last**. This strategy avoids potential issues with post-upgrade checks while the cluster is running mixed versions of BDR.
+
+### PGD-S and PGD-X
+
+`tpaexec upgrade` arranges for the current write leader to be
+upgraded last in PGD-S and PGD-X clusters automatically: the
+Postgres/PGD rolling phase is split into two `serial: 1` plays, one
+for every BDR data node except the current write leader and one for
+the write leader itself. No additional steps are required to achieve
+the leader-last sequence on these architectures.

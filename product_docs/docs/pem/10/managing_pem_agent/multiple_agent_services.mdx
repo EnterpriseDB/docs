@@ -1,0 +1,124 @@
+---
+title: "Running multiple PEM agent services on a single server"
+navTitle: "Running multiple agent services"
+---
+
+You can run more than one PEM agent service on a single server. While migrating, running multiple EDB Postgres Enterprise Manager (PEM) agents per database server is standard practice.
+
+Each agent service runs as a separate process with its own configuration file, SSL certificates, and system service. All agents report independently to the same PEM server.
+
+!!! Note
+A single PEM agent can already monitor multiple Postgres instances on the same host. Running multiple PEM agents on a single server is necessary only when you need separate agents for independent monitoring contexts or organizational boundaries.
+!!!
+
+## Prerequisites
+
+-  The PEM agent package is installed on the host.
+-  You have root or administrator access on the host.
+-  The PEM server is accessible from the host.
+
+## Linux
+
+### Register each additional agent
+
+Each agent instance needs its own configuration directory and SSL certificate directory. Use `--config-dir` and `--cert-path` to specify separate directories for each agent.
+
+1.  Create a directory for the additional agent's configuration and certificates:
+
+    ```shell
+    mkdir -p /etc/edb/pem/agent2/etc
+    mkdir -p /root/.pem/agent2
+    chmod 700 /root/.pem/agent2
+    ```
+
+2.  Register the additional agent, specifying the new configuration directory and certificate path:
+
+    ```shell
+    export PEM_SERVER_PASSWORD=<pem_admin_password>
+
+    /usr/edb/pem/agent/bin/pemworker --register-agent \
+      --pem-server <new-pem-server-ip> \
+      --pem-port 5432 \
+      --pem-user enterprisedb \
+      --display-name "agent-host1-2" \
+      --config-dir /etc/edb/pem/agent2/etc \
+      --cert-path /root/.pem/agent2
+    ```
+
+    PEM assigns a unique agent ID automatically. The `agent.cfg` file and SSL certificates are created in the directories you specified.
+
+3.  Update the log file paths in the new `agent.cfg` to avoid conflicts with the default agent:
+
+    ```shell
+    vi /etc/edb/pem/agent2/etc/agent.cfg
+    ```
+
+    Set `log_location` and `agent_log_location` to unique paths, for example:
+
+    ```ini
+    log_location=/var/log/pem/agent2-worker.log
+    agent_log_location=/var/log/pem/agent2.log
+    ```
+
+### Create a systemd service for each additional agent
+
+The default `pemagent` service runs the agent using its default configuration directory. To run an additional agent, create a new service unit file that points to the additional agent's configuration.
+
+1.  Copy the default service file:
+
+    ```shell
+    cp /usr/lib/systemd/system/pemagent.service \
+       /usr/lib/systemd/system/pemagent2.service
+    ```
+
+2.  Edit the new service file and update `ExecStart` to use the new configuration directory:
+
+    ```shell
+    vi /usr/lib/systemd/system/pemagent2.service
+    ```
+
+    Update the `ExecStart` line to pass the `-c` flag with the path to the new `agent.cfg`:
+
+    ```ini
+    ExecStart=/usr/edb/pem/agent/bin/pemagent -c /etc/edb/pem/agent2/etc/agent.cfg
+    ```
+
+3.  Reload the systemd daemon to pick up the new service file:
+
+    ```shell
+    systemctl daemon-reload
+    ```
+
+4.  Enable and start the new agent service:
+
+    ```shell
+    systemctl enable --now pemagent2
+    ```
+
+5.  Verify that the service is running:
+
+    ```shell
+    systemctl status pemagent2
+    ```
+
+Repeat these steps for each additional agent service you want to run on the same host. Use distinct directory paths, log file paths, and service names for each one (for example, `agent3`, `pemagent3.service`, and so on).
+
+## Windows
+
+Running multiple PEM agent services on a single Windows server isn't supported.
+
+## Verify agent registration
+
+After starting each agent service, confirm that all agents are registered and active in the PEM web application.
+
+1.  In the PEM browser, expand **PEM Server Directory > PEM Agents** in the Object Explorer.
+2.  Confirm that each agent appears with an **Active** status.
+3.  Check the agent log files for connection or authentication errors.
+
+You can also use the `verify-registration` subcommand to validate each agent:
+
+```shell
+pemworker --verify-registration --config-dir /etc/edb/pem/agent2/etc
+```
+
+See [Registering a PEM agent](../registering_agent/#verifying-pem-agent-registration) for details on exit codes and additional options.
