@@ -1,0 +1,109 @@
+---
+title: Point-in-time recovery with WarehousePG Disaster Recovery
+navTitle: Point-in-time recovery
+description: Restore a WarehousePG cluster to a specific restore point to recover from data corruption or accidental data loss.
+deepToC: true
+---
+
+Use PITR to restore the cluster to a specific past point. Use it to recover from accidental or unwanted changes committed to the primary. PITR also lets you inspect the database as it was at a specific past point, for example to analyze historical data or seed a development environment.
+
+<div style="text-align: center; margin-bottom: 1.5rem;"><img src="../images/whpg-dr-flow-phase3.svg" style="max-width: 600px; height: auto;" alt="Setup flow diagram with phase 3 highlighted: Perform DR." /></div>
+
+## Prerequisites
+
+Configure the DR cluster for restore before proceeding. See [Installing and configuring the DR cluster](configuring-dr).
+
+## Restoring to a restore point
+
+Run all commands as the `gpadmin` user on the DR coordinator.
+
+1. Inspect the available restore points:
+
+    ```bash
+    whpg-dr list-backup my_cluster
+    ```
+
+1. Restore to a specific restore point:
+
+    ```bash
+    whpg-dr restore my_cluster --target-name 20260615-143022R_before_etl_load
+    ```
+
+    The command applies the base backup that the restore point belongs to, then replays WAL forward to that exact point. When replay finishes, all segments stop in recovery mode. 
+    
+### Advancing to a later restore point
+
+If the DR cluster already has a restore applied and you want to move it forward to a later restore point without a full re-restore, use `--delta`:
+
+```bash
+whpg-dr restore my_cluster --target-name 20260615-143022R_before_etl_load --delta
+```
+
+`--delta` replays only the WAL between the current DR state and the target restore point. It requires that the DR cluster already has a valid restored state (data directories contain `PG_VERSION`).
+
+### Checking restore status
+
+Check the current restore state at any time:
+
+```bash
+whpg-dr list-restore my_cluster
+```
+
+### Resuming a failed restore
+
+If the restore is interrupted, retry with `--resume-failed`:
+
+```bash
+whpg-dr restore my_cluster --resume-failed
+```
+
+## Promoting the DR cluster
+
+Once the restore is complete and you're ready to bring the DR cluster online:
+
+```bash
+whpg-dr promote my_cluster
+```
+
+Then start the cluster. Source the WarehousePG environment and set `COORDINATOR_DATA_DIRECTORY` before running `gpstart`:
+
+```bash
+source /usr/edb/whpg7/greenplum_path.sh
+export COORDINATOR_DATA_DIRECTORY=<coordinator_data_directory>
+gpstart -a
+```
+
+After promotion, the cluster is a writable primary and accepts connections. Extension data is restored as part of the cluster state.
+
+## Recovering individual objects
+
+PITR is useful for recovering individual tables or schemas without failing over the entire production cluster. For example, if a table was accidentally dropped, you can restore the cluster to a point before the drop, use `gpbackup` to back up that specific table, then restore it to the production cluster with `gprestore`:
+
+```bash
+gpbackup --dbname mydb --include-table public.my_table --backup-dir /tmp/table_recovery
+gprestore --backup-dir /tmp/table_recovery --redirect-db mydb_production
+```
+
+Once the object is recovered, you can discard the temporary DR cluster. The base backup and WAL remain in the storage repository and can be used again for future restores.
+
+## Adding mirrors and standby coordinator
+
+Optionally, add mirrors and a standby coordinator after promotion. `whpg-dr` doesn't restore these components, so the promoted cluster has only primary segments. See the WarehousePG documentation for [enabling segment mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-segment-mirroring/) and [enabling coordinator mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-coordinator-mirroring/).
+
+## Performing a fresh restore
+
+To restore to an earlier restore point than the one currently applied, or to restore a cluster that has already been promoted, clear the data directories first and run a full restore from scratch.
+
+1. Stop the cluster if it's running:
+
+    ```bash
+    gpstop -af
+    ```
+
+1. Remove the data directories on all DR hosts:
+
+    ```bash
+    gpssh -f all_hosts -e "rm -rf /data/coordinator/gpseg-1 /data/primary/gpseg*"
+    ```
+
+1. Run a full restore to the target restore point.

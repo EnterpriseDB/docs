@@ -1,0 +1,77 @@
+---
+title: Understanding disaster recovery
+navTitle: Understanding disaster recovery
+description: Learn the recovery objectives, DR modes, and implementation mechanics behind WarehousePG Disaster Recovery before you deploy.
+deepToC: true
+---
+
+WarehousePG Disaster Recovery (`whpg-dr`) protects WarehousePG clusters against data-center-level failures such as a fire, a flood, or a complete site loss. Segment mirroring and redundant hardware handle individual node failures, but they can't help if the entire data center goes offline. `whpg-dr` fills that gap, complementing [gpbackup's logical backups](/warehousepg/latest/admin_guide/backup_restore/) with physical, full-cluster failover capability.
+
+<div style="text-align: center; margin-bottom: 1.5rem;"><img src="../images/whpg-dr-architecture.svg" style="max-width: 100%; height: auto;" alt="Diagram showing primary cluster shipping WAL and base backups to a central storage repository, with the DR cluster restoring from the same repository. The two clusters have no direct connection." /></div>
+
+## Disaster recovery objectives
+
+Any DR strategy is shaped by two objectives that capture what an organization can tolerate:
+
+- **Recovery Time Objective (RTO)** is the maximum allowable time between declaring a failure and having the DR cluster active and queryable. A lower RTO means faster recovery and less downtime.
+- **Recovery Point Objective (RPO)** is the maximum allowable amount of data loss, measured as the age of the most recent consistent snapshot in storage at the moment of failure. A lower RPO means less data lost.
+
+These two objectives are in tension with infrastructure cost. A DR cluster that's continuously kept current costs more to run than one that's provisioned only at failure time. The right choice depends on how critical the data is and what your organization's risk tolerance allows.
+
+## WarehousePG Disaster Recovery modes
+
+`whpg-dr` supports three recovery modes, each targeting a different point on the RTO/RPO/cost curve.
+
+### Cold DR
+
+The DR cluster doesn't need to exist until a failure occurs. Backups and WAL accumulate in storage, and you restore on demand when a failure is declared. RTO is high because you need to provision the DR cluster and run a full restore before it's usable. Infrastructure cost is lowest.
+
+Cold DR is a good fit when infrastructure cost is the primary concern and the organization can tolerate a longer recovery time.
+
+### PITR (point-in-time recovery)
+
+Point-in-time recovery (PITR) restores the cluster to any restore point in storage, not just the latest one. It's the mechanism underlying all DR modes and can be used independently, for example to recover from data corruption or to inspect the database as it was at a specific past point without any primary failure having occurred.
+
+### Warm DR
+
+A DR cluster is pre-provisioned and continuously kept near-current by two coordinated scheduled jobs: one on the primary creates a new restore point on a schedule, and one on the DR cluster applies it at a slight offset. The DR cluster stays in recovery mode, not queryable, until you promote it. At failover time, most of the WAL is already applied, so RTO is low.
+
+RPO is determined by the replay interval. A job that runs every 15 minutes gives an RPO of approximately 15 minutes.
+
+| Mode | RTO | RPO | DR cluster pre-provisioned? |
+|------|-----|-----|-----------------------------|
+| Cold DR | High | Configurable | No (provisioned at failover) |
+| PITR | Depends on setup | Configurable | Optional |
+| Warm DR | Low | Configurable | Yes (continuously current) |
+
+
+## How whpg-dr implements recovery
+
+### Base backups
+
+A base backup is a physical snapshot of the coordinator and all primary segment data directories at a consistent point in time. It's the starting point for any restore. `whpg-dr` uses [Barman](/supported-open-source/barman/) as its backup engine. Backups and restores run across all segments in parallel, so time scales with the size of the largest segment rather than the number of segments.
+
+### WAL and restore points
+
+Because WarehousePG is a distributed system, each segment has its own independent WAL stream. A restore point marks a named, consistent position across all those streams that the cluster can be replayed to. Given a base backup and the WAL archived since it was taken, `whpg-dr` replays the cluster forward to the target restore point. `whpg-dr` coordinates restore point creation across all segments simultaneously, recording each one as a small metadata file in the storage repository. Restore points aren't standalone. They belong to the base backup that was current when they were created.
+
+### Storage repository
+
+The storage repository is the sole artifact shared between the primary and DR sites. The two clusters have no direct network path to each other. The repository also records the source cluster's segment topology, which fixes the DR cluster's segment count. `whpg-dr` supports two storage backends:
+
+| Backend | WarehousePG version | Notes |
+|---------|:-------------------:|-------|
+| POSIX (NFS/shared filesystem) | 6.x, 7.x | Path must be mounted read-write on all primary and DR hosts. |
+| S3-compatible (AWS S3, MinIO, SeaweedFS) | 7.x only | S3 endpoint must be reachable from all primary and DR hosts. |
+
+## End-to-end workflow
+
+The `whpg-dr` workflow has three phases.
+
+<div style="text-align: center; margin-bottom: 1.5rem;"><img src="../images/whpg-dr-flow.svg" style="max-width: 100%; height: auto;" alt="Three-phase setup flow: Set up primary cluster, Set up DR cluster, Perform DR." /></div>
+
+- **Phase 1 — Set up the primary cluster.** Install `whpg-dr` on all primary hosts, configure WAL archiving and storage, take the first base backup, and schedule or run restore points. See [Setting up the primary cluster](../setting-up-primary).
+
+- **Phase 2 — Set up the DR cluster.** Provision DR hosts with the same OS and WarehousePG patch version as the primary, install `whpg-dr`, and run `whpg-dr configure restore` to prepare the cluster to receive restores from the storage repository. See [Installing and configuring the DR cluster](../performing-disaster-recovery/configuring-dr).
+
+- **Phase 3 — Perform DR.** When a failure occurs or when testing your recovery plan, run `whpg-dr restore` to replay WAL up to the target restore point, then `whpg-dr promote` to bring the cluster online. Optionally add mirrors and a standby coordinator after promotion. See [Performing disaster recovery](../performing-disaster-recovery).

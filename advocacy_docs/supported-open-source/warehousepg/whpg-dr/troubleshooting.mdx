@@ -1,0 +1,213 @@
+---
+title: Troubleshooting whpg-dr
+navTitle: Troubleshooting
+description: Diagnose and resolve common issues with whpg-dr backup, WAL archiving, and restore operations.
+deepToC: true
+---
+
+Most `whpg-dr` issues leave traces in the operational logs. Start there before investigating specific symptoms.
+
+## Finding logs
+
+WarehousePG Disaster Recovery (`whpg-dr`) writes operational logs to `$HOME/gpAdminLogs` by default. The log file for a given day is `whpg_dr-YYYY-MM-DD.log`. Barman per-segment logs are written to the same directory as `barman-<cluster_name>.log`.
+
+To increase verbosity for a single command, use the `--log-level debug` flag:
+
+```bash
+whpg-dr check my_cluster --log-level debug
+```
+
+## whpg-dr check failures
+
+### PostgreSQL check fails on one or more segments
+
+**Symptom:**
+
+```
+check completed with 2 errors:
+  - my_cluster-seg0: Server my_cluster-seg0:
+      PostgreSQL: FAILED
+```
+
+**Cause:** Barman can't connect to the segment's Postgres process. Barman uses the connection string:
+
+```
+host=<segment_host> user=<pg_user> dbname=postgres port=<segment_port> options='-c gp_role=utility'
+```
+
+**Resolution:**
+
+1. Confirm that `pg_hba.conf` has an entry allowing the Barman user to connect from the segment host (which may be the same host for single-node clusters) using a non-local socket:
+
+    ```
+    host    all    gpadmin    <segment_host_ip>/32    trust
+    ```
+
+    For single-node clusters, both the coordinator and segments are on the same host. Use the host's IP address (not `127.0.0.1`) in the entry, because Barman connects to the segment host by name.
+
+1. After editing `pg_hba.conf`, reload:
+
+    ```bash
+    gpstop -u
+    ```
+
+1. Re-run the check:
+
+    ```bash
+    whpg-dr check my_cluster
+    ```
+
+## WAL archiving issues
+
+### WAL archiving not working after configure
+
+After running `whpg-dr configure backup`, check that `archive_mode = on` and `archive_command` are set in `postgresql.conf` on the coordinator and all segment hosts:
+
+```bash
+psql -c "SHOW archive_mode;"
+psql -c "SHOW archive_command;"
+```
+
+To force a WAL switch and verify archiving is flowing:
+
+```bash
+psql -c "SELECT pg_switch_wal();"
+```
+
+Then check `pg_stat_archiver`:
+
+```bash
+psql -c "SELECT last_archived_wal, last_failed_wal, last_failed_time FROM pg_stat_archiver;"
+```
+
+If `last_failed_wal` is populated, Barman is receiving WAL segments but failing to archive them. Check the Barman log:
+
+```bash
+cat $HOME/gpAdminLogs/barman-my_cluster.log
+```
+
+### Barman catalog is out of sync
+
+If WAL archiving reports errors after a cluster restart or storage outage, rebuild the Barman WAL catalog for the affected segments:
+
+```bash
+/usr/edb/whpg-dr/bin/barman -c $WHPG_DR_HOME/my_cluster/backup/barman_conf/my_cluster-global.conf rebuild-xlogdb my_cluster-seg0
+```
+
+Repeat for each segment (`seg-1` for the coordinator, `seg0` through `segN` for data segments).
+
+## Restore failures
+
+### WAL replay did not complete
+
+**Symptom:**
+
+```
+WARNING: WAL replay did not complete. Data directories for 1 coordinator and N segments
+were modified, but the restore-last state file has NOT been updated.
+Error: WAL replay failed: segments are not running and not in expected recovery state
+```
+
+**Cause:** One or more segments failed to replay WAL to the target restore point. A WAL file may be missing from the storage repository, or there's a network or permission issue accessing storage.
+
+**Resolution:**
+
+1. Check the segment startup log in `$HOME/gpAdminLogs`. Look for `pg_ctl start` failures and the last line before the failure.
+
+1. Confirm all WAL files between the current restore state and the target are present in storage. For S3, list the WAL objects for the failing segment:
+
+    ```bash
+    aws s3 ls s3://my-bucket/whpg/my_cluster/my_cluster-seg0/wals/ --recursive
+    ```
+
+    WAL file names are hex-sequential (for example `000000010000000000000019`). A gap in the sequence indicates a missing file.
+
+1. If the repository is intact, re-run the restore with `--resume-failed`:
+
+    ```bash
+    whpg-dr restore my_cluster --target-name latest --resume-failed
+    ```
+
+### Restoring from a specific base backup
+
+By default, `whpg-dr configure restore` targets the backup recorded by the latest restore point in the repository. To restore from a different backup, pass its name explicitly with `--backup-name`. First list what's available:
+
+```bash
+whpg-dr list-backup my_cluster
+```
+
+Then pass the backup name:
+
+```bash
+whpg-dr configure restore /home/gpadmin/restore.yaml --backup-name 20260601T120000_base_backup
+```
+
+## Stale lock file
+
+If a `whpg-dr create-restore-point` command is interrupted, it may leave a lock file at:
+
+```
+$WHPG_DR_HOME/my_cluster/state/whpgdr_create_restore_point.lock
+```
+
+If subsequent runs fail with a lock error and you're certain no other `whpg-dr` process is running, remove the lock file:
+
+```bash
+whpg-dr clean-lock-file my_cluster
+```
+
+## Controlling WAL archiving in an emergency
+
+If a storage outage (S3 endpoint down, NFS mount unavailable) causes unarchived WAL to accumulate on local disk and threaten the primary cluster's stability, you can suspend WAL archiving temporarily to protect the primary.
+
+!!! Warning
+`whpg-dr archiving suspend` is an emergency discard switch, not a safe pause. WAL generated while archiving is suspended is permanently lost and can't be recovered. The restore point chain is broken for that window. Use it only when WAL backlog is actively threatening the cluster.
+!!!
+
+### Suspending archiving
+
+Run on the primary coordinator:
+
+```bash
+whpg-dr archiving suspend my_cluster
+```
+
+The command replaces `archive_command` with a no-op and reloads the cluster. Postgres continues recycling WAL files normally, so local disk pressure is relieved. While suspended, `whpg-dr backup`, `whpg-dr create-restore-point`, and `whpg-dr configure backup --reconfigure` are all blocked. Use `--reason` to record why the suspension was needed:
+
+```bash
+whpg-dr archiving suspend my_cluster --reason "S3 endpoint down since 14:30"
+```
+
+### Resuming archiving
+
+Once storage is back online, re-enable archiving:
+
+```bash
+whpg-dr archiving resume my_cluster
+```
+
+The command restores the real `archive_command` from saved configuration and reloads the cluster. After resuming, take a fresh base backup before creating new restore points or relying on PITR. The WAL chain is broken at the suspension window, and the new base backup re-establishes the baseline:
+
+```bash
+whpg-dr backup my_cluster
+```
+
+Restore points created before the suspension are still valid for their point in time. Any data written to the primary during the suspension window isn't recoverable via `whpg-dr`.
+
+## rsync errors during configure backup
+
+**Symptom:**
+
+```
+Error: distribute barman configs: rsync barman_conf to host sdw1 failed: exit status 23
+rsync: [receiver] failed to set permissions on ".../.whpg-lab-global.conf.yU9Gmu": No such file or directory
+```
+
+**Cause:** The `WHPG_DR_HOME` directory doesn't exist on the target segment host. `whpg-dr` uses rsync to distribute Barman configuration to segment hosts, and rsync can't create the intermediate directories.
+
+**Resolution:** Create the `WHPG_DR_HOME` directory on all segment hosts (as `gpadmin`), then re-run `configure backup`:
+
+```bash
+gpssh -f all_hosts -e "mkdir -p $WHPG_DR_HOME/my_cluster/backup/barman_conf"
+whpg-dr configure backup /home/gpadmin/backup.yaml
+```

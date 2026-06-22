@@ -1,0 +1,147 @@
+---
+title: whpg-dr configuration reference
+navTitle: Configuration
+description: YAML schemas for whpg-dr backup configuration, restore configuration, and the global.yaml host-level defaults file.
+---
+
+## Backup configuration YAML
+
+Used with `whpg-dr configure backup`. Contains the cluster name, storage backend, and optional Barman tuning.
+
+### Full schema
+
+```yaml
+# Required
+cluster_name: <string>
+
+storage:
+  type: posix | s3
+
+  # POSIX fields
+  path: <absolute-path>
+
+  # S3 fields
+  bucket: <string>
+  prefix: <string>
+  region: <string>
+  credential_source: static | default   # optional; inferred from access_key_id when omitted
+  profile: <string>               # optional; AWS credentials profile name (default: whpg-dr)
+  endpoint_url: <url>             # optional; omit for AWS S3
+  local_staging: <absolute-path>  # optional; local path for WAL staging (S3 only)
+  access_key_id: <string>         # optional; inline credentials (implies credential_source: static)
+  secret_access_key: <string>     # optional; required with access_key_id
+  session_token: <string>         # optional; for temporary STS credentials only
+
+# Optional
+whpg_dr_home: <absolute-path>    # overrides WHPG_DR_HOME env var
+ssh_user: <string>                # default: gpadmin
+pg_user: <string>                 # default: gpadmin
+
+barman_options:
+  compression: gzip | bzip2 | zstd | none
+  compression_level: low | medium | high
+  network_compression: "on" | "off"  # POSIX only
+```
+
+### Field reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cluster_name` | string | Yes | Unique name for this cluster. Used as the namespace for all artifacts in the storage repository. |
+| `storage.type` | `posix` or `s3` | Yes | Storage backend type. |
+| `storage.path` | string | If `type: posix` | Absolute path to the backup directory. Must be reachable from all segment hosts. |
+| `storage.bucket` | string | If `type: s3` | S3 bucket name. The bucket must already exist. |
+| `storage.prefix` | string | If `type: s3` | Path prefix within the bucket for this cluster's data. |
+| `storage.region` | string | If `type: s3` | AWS region or region configured on the S3-compatible store. |
+| `storage.credential_source` | `static` or `default` | No | Credential mode. `static` uses inline keys distributed to all segment hosts; `default` uses the AWS credential chain on each host (instance profile, environment, `~/.aws`). Inferred from whether `access_key_id` is set when omitted. |
+| `storage.profile` | string | No | AWS credentials profile name. With `credential_source: static`, names the generated profile (default `whpg-dr`). With `credential_source: default`, references a named profile in each host's `~/.aws` files. |
+| `storage.endpoint_url` | string | No | Custom endpoint URL for S3-compatible stores. Omit for AWS S3. |
+| `storage.access_key_id` | string | No | AWS access key ID. Required together with `secret_access_key`; implies `credential_source: static`. |
+| `storage.secret_access_key` | string | No | AWS secret access key. Required together with `access_key_id`. |
+| `storage.session_token` | string | No | Temporary session token for short-lived STS credentials. Requires both `access_key_id` and `secret_access_key`. Note that STS tokens expire and aren't refreshed; prefer `credential_source: default` with an instance role for temporary credentials. |
+| `storage.local_staging` | string | No | Local path for WAL staging during S3 uploads. S3 storage only. |
+| `whpg_dr_home` | string | No | Override for `WHPG_DR_HOME`. Defaults to `$HOME/.whpg-dr`. |
+| `ssh_user` | string | No | OS user for SSH connections to segment hosts. Defaults to `gpadmin`. |
+| `pg_user` | string | No | Postgres user for Barman's connections to segments. Defaults to `gpadmin`. |
+| `barman_options.compression` | string | No | Compression algorithm for WAL archiving. |
+| `barman_options.compression_level` | string | No | Compression level for WAL archiving. |
+| `barman_options.network_compression` | `"on"` or `"off"` | No | Enable rsync network compression. POSIX storage only. |
+
+---
+
+## Restore configuration YAML
+
+Used with `whpg-dr configure restore`. Describes the storage repository and the DR cluster's topology.
+
+### Full schema
+
+```yaml
+# Required
+source_cluster_name: <string>
+
+storage:
+  # Same structure as backup YAML storage block
+
+coordinator_host: <string>
+coordinator_data_directory: <absolute-path>
+
+segment_hosts:
+  - <hostname>
+  - ...
+
+data_directory: <absolute-path>
+data_directory_prefix: <string>
+
+# Optional
+segment_data_directory_overrides:
+  <hostname>:
+    data_directory: <absolute-path>
+  ...
+
+coordinator_port: <integer>       # optional; default from backup's segment_configuration.csv
+segment_port_base: <integer>      # optional; default from backup's segment_configuration.csv
+
+whpg_dr_home: <absolute-path>
+ssh_user: <string>
+pg_user: <string>
+
+barman_options:
+  compression: gzip | bzip2 | zstd | none
+  compression_level: low | medium | high
+  network_compression: "on" | "off"  # POSIX only
+```
+
+### Field reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source_cluster_name` | string | Yes | The `cluster_name` from the backup YAML. Used to locate the cluster's data in the storage repository. |
+| `storage` | object | Yes | Same structure as the backup YAML. Must point to the same repository the primary writes to. |
+| `coordinator_host` | string | Yes | Hostname of the DR coordinator. |
+| `coordinator_data_directory` | string | Yes | Absolute path for the coordinator data directory on the DR coordinator host. |
+| `segment_hosts` | list | Yes | Hostnames of the DR segment hosts. Entries must be unique. The count doesn't need to match the source but can't exceed the number of primary segment contents in the backup. Segment content IDs are placed round-robin when counts differ from the source. |
+| `data_directory` | string | Yes | Base path for segment data directories on DR segment hosts. All segments on a host are placed under this single directory, regardless of how they were distributed on the primary. The DR layout doesn't need to match the primary's. |
+| `data_directory_prefix` | string | Yes | Prefix for segment directory names. Combined with `data_directory` and the content ID to form the full path (for example, `/data/primary/gpseg0`). |
+| `segment_data_directory_overrides` | map | No | Per-host override for the base data directory. Key is the hostname; value is an object with a `data_directory` field. Takes precedence over `data_directory` + `data_directory_prefix` for the specified hosts. All segments on the overridden host still go into the single overridden directory. |
+| `coordinator_port` | integer | No | Coordinator port on the DR cluster. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
+| `segment_port_base` | integer | No | Base port for segments. Segment N uses `segment_port_base + N`. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
+| `barman_options` | object | No | Barman tuning options. Same fields as the backup YAML. Both sides use the same block so restore-time Barman sees the same compression settings as backup-time Barman. |
+| `whpg_dr_home` | string | No | Override for `WHPG_DR_HOME` on the DR cluster. |
+| `ssh_user` | string | No | OS user for SSH connections to DR segment hosts. Defaults to `gpadmin`. |
+| `pg_user` | string | No | Postgres user for Barman connections. Defaults to `gpadmin`. |
+
+---
+
+## global.yaml
+
+The host-level defaults file at `$WHPG_DR_HOME/global.yaml` sets values that apply to all clusters on the host. Per-cluster YAML settings override these defaults.
+
+```yaml
+log_dir: <absolute-path>          # default: $HOME/gpAdminLogs
+log_level: debug | info | warn | error | fatal
+log_file_level: debug | info | warn | error | fatal
+ssh_user: <string>                # default: gpadmin
+pg_user: <string>                 # default: gpadmin
+```
+
+All fields are optional.

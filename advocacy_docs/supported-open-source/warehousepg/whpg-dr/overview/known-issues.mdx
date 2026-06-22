@@ -1,0 +1,22 @@
+---
+title: Known issues and limitations for WarehousePG Disaster Recovery
+navTitle: Known issues
+description: Current limitations and available workarounds for whpg-dr.
+---
+
+These are the currently known issues and limitations in WarehousePG Disaster Recovery. Where applicable, workarounds are included to help mitigate the impact.
+
+- **The restore-point lock file is host-local.** The lock file at `$WHPG_DR_HOME/state/whpgdr_create_restore_point.lock` only prevents concurrent restore-point creation on the same machine. Running `whpg-dr create-restore-point` concurrently from two different machines against the same cluster isn't safe and can corrupt restore-point state in storage.
+
+- **The DR cluster must not be initialized before restore.** Running `gpinitsystem` on the DR cluster before `whpg-dr restore` causes the restore to fail. Follow the [WarehousePG install guide](/warehousepg/latest/install_guide/) through [Creating the Data Storage Areas](/warehousepg/latest/install_guide/create_data_dirs/), then stop. Do not proceed to Initializing WarehousePG. If `gpinitsystem` has already been run, delete the data directories on all DR hosts before attempting a restore.
+
+- **No pre-restore WAL completeness check.** `whpg-dr restore` doesn't verify that all WAL files required to reach the target restore point are present in storage before starting. If a WAL file is missing, the restore fails part-way through:
+
+    ```
+    WARNING: WAL replay did not complete. Data directories for 1 coordinator and N segments
+    were modified, but the restore-last state file has NOT been updated.
+    ```
+
+    The failing segment's `startup.log` shows a `pg_ctl start` failure but doesn't identify which WAL file is absent. Run `whpg-dr check` and verify the storage repository before restoring. If the restore fails, re-run it with `--resume-failed` after investigating log output in `$HOME/gpAdminLogs`.
+
+- **No failback automation.** After promoting a DR cluster to a writable primary, there's no automated path to reverse direction and make the original primary the active source again. Failback requires re-initializing the former primary as a new DR cluster and running a fresh base backup.

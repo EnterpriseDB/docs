@@ -1,0 +1,111 @@
+---
+title: Taking backups with WarehousePG Disaster Recovery
+navTitle: Taking backups
+description: Take base backups and create restore points on the primary cluster to prepare for disaster recovery.
+deepToC: true
+---
+
+Protect your primary cluster against data loss by taking regular base backups and creating restore points.
+
+- **Base backups** are full physical snapshots of the coordinator and all segment data directories. They're the foundation of every recovery scenario. Configuring the DR cluster requires at least one base backup in the storage repository.
+- **Restore points** are cluster-wide consistent markers at a specific WAL position. They let you recover to a known-good state rather than just the latest available WAL.
+
+How often to take each depends on your cluster size, storage capacity, and Recovery Point Objective (RPO). More frequent base backups reduce the WAL that must be replayed at restore time, directly affecting your Recovery Time Objective (RTO). Restore point frequency determines your maximum data loss window.
+
+Storage capacity is the other factor to plan for. Base backup size tracks your database size directly. WAL accumulates at a rate driven by your workload. A full-table `UPDATE` rewrites every row and generates WAL roughly equal to the table size, so a write-heavy cluster fills storage faster than the database size alone suggests.
+
+## Taking a base backup
+
+Run all `whpg-dr` commands as the `gpadmin` user on the primary coordinator. Take the first base backup after [configuring the primary cluster](configuring-primary):
+
+```bash
+whpg-dr backup my_cluster
+```
+
+The command backs up the coordinator and all primary segment data directories in parallel, writing the base backup to the configured storage repository. Backup time scales with the size of the largest segment, not the total cluster size. 
+
+After the backup completes, `whpg-dr` automatically creates an initial restore point tied to that backup. This restore point is the minimum target needed to restore from the backup.
+
+### Listing base backups
+
+List all base backups and their associated restore points:
+
+```bash
+whpg-dr list-backup my_cluster
+__OUTPUT__
+Full backup: 20260601T120000_base_backup
+└── Restore Points:
+    └── 20260601-120015R_initial: 2026-06-01 12:00:15
+```
+
+## Creating a restore point
+
+Create restore points on a schedule for routine coverage, or manually before significant database operations, such as a large ETL load or a schema migration:
+
+```bash
+whpg-dr create-restore-point my_cluster --suffix before_etl_load
+```
+
+The restore point name combines a timestamp with your suffix, for example `20260615-143022R_before_etl_load`. The suffix `latest` is reserved and can't be used.
+
+!!! Note
+A base backup must exist before you can create a restore point. Each restore point is tied to the base backup that was current at creation time. Restoring to a restore point replays WAL from that base backup forward to the target position.
+!!!
+
+### Scheduling restore points
+
+For routine coverage, create restore points on a schedule. Add a cron job under `gpadmin` on the primary coordinator:
+
+```cron
+0 * * * * /usr/edb/whpg-dr/bin/whpg-dr create-restore-point my_cluster --suffix hourly >> $HOME/gpAdminLogs/whpg-dr-crp.log 2>&1
+```
+
+Adjust the interval to match your Recovery Point Objective (RPO). More frequent restore points reduce the maximum data loss window but increase storage use.
+
+Scheduled restore points are also the foundation of Warm DR. A corresponding cron job on the DR cluster replays each new restore point shortly after it's created, keeping the DR cluster continuously current. See [Warm DR](../performing-disaster-recovery/warm-dr).
+
+### Listing restore points
+
+```bash
+whpg-dr list-restore-point my_cluster
+```
+
+Filter by date range:
+
+```bash
+whpg-dr list-restore-point my_cluster --from 2026-06-01 --to 2026-06-15
+```
+
+## Verifying backup integrity
+
+Check the integrity of a base backup periodically to confirm it's restorable before you need it. The command verifies that all backup files for each segment are present and accessible in the storage repository:
+
+```bash
+whpg-dr check-backup my_cluster --backup-name 20260601T120000_base_backup
+__OUTPUT__
+Finding backup...
+Checked backup 20260601T120000 on server my_cluster-seg-1
+Checked backup 20260601T120000 on server my_cluster-seg0
+Checked backup 20260601T120000 on server my_cluster-seg1
+Checked backup 20260601T120000 on server my_cluster-seg2
+Checked backup 20260601T120000 on server my_cluster-seg3
+All backup checks completed successfully
+```
+
+## Deleting old backups
+
+Run on the primary coordinator to remove a base backup and all its associated restore points from storage:
+
+```bash
+whpg-dr delete my_cluster --backup-name 20260513T181327_base_backup
+```
+
+!!! Warning
+Deleting a base backup removes all restore points that depend on it. Always retain at least one base backup in the repository.
+!!!
+
+Use `whpg-dr delete` to clean up failed backups, which appear as `[FAILED]` in `list-backup` output.
+
+## Handling storage outages
+
+If the storage backend becomes unavailable and unarchived WAL accumulates on local disk, use `whpg-dr archiving suspend` to stop WAL archiving temporarily and relieve disk pressure. WAL generated during the suspension window is permanently lost. When storage is back online, use `whpg-dr archiving resume` followed by a fresh `whpg-dr backup` to re-establish the PITR baseline. See [Controlling WAL archiving in an emergency](../troubleshooting#controlling-wal-archiving-in-an-emergency) for the full procedure.

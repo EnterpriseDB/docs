@@ -1,0 +1,330 @@
+---
+title: whpg-dr command reference
+navTitle: Commands
+description: Full reference for all whpg-dr subcommands, flags, and examples.
+deepToC: true
+---
+
+All `whpg-dr` commands accept the following global flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--log-dir <path>` | `$HOME/gpAdminLogs` | Directory for log files. |
+| `--log-level <level>` | `info` | Console log level (`debug`, `info`, `warn`, `error`, `fatal`). |
+| `--log-file-level <level>` | `debug` | Log file level (`debug`, `info`, `warn`, `error`, `fatal`). |
+
+---
+
+## whpg-dr configure backup
+
+Configures backup for a WHPG cluster. Reads the backup YAML, generates Barman configuration files for every segment, distributes them to all segment hosts via SSH/rsync, sets `archive_mode = on` and the `archive_command` in `postgresql.conf`, and restarts the cluster with `gpstop -ar`.
+
+Before distributing any files, the command validates the live coordinator and primary hostnames from `gp_segment_configuration`. If any hostname is a loopback address (`localhost`, `127.0.0.1`, `::1`), the command exits without making any changes.
+
+```bash
+whpg-dr configure backup <backup_config_file> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print planned actions without executing. |
+| `--reconfigure` | Redistribute regenerated Barman configuration files without changing cluster settings or restarting the cluster. Use after an OS migration or SSH key rotation. |
+
+**Example:**
+
+```bash
+whpg-dr configure backup /home/gpadmin/backup.yaml
+whpg-dr configure backup /home/gpadmin/backup.yaml --reconfigure
+```
+
+---
+
+## whpg-dr configure restore
+
+Configures the DR cluster for restore. Reads the restore YAML, reads the source cluster's segment topology from the backup's `segment_configuration.csv`, generates Barman restore configuration files, and distributes them to all DR segment hosts.
+
+The `coordinator_host` and all `segment_hosts` entries must be the DR cluster's real resolvable hostnames. Localhost addresses (`localhost`, `127.0.0.1`, `::1`) cause the command to exit before distributing any files.
+
+```bash
+whpg-dr configure restore <restore_config_file> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--backup-name <name>` | Use a specific base backup from the repository. Defaults to the backup recorded by the latest restore point if not specified. |
+| `--dry-run` | Print planned actions without executing. |
+
+**Example:**
+
+```bash
+whpg-dr configure restore /home/gpadmin/restore.yaml
+whpg-dr configure restore /home/gpadmin/restore.yaml --backup-name 20260601T120000_base_backup
+```
+
+---
+
+## whpg-dr configure reset
+
+Removes `whpg-dr` configuration from a cluster. Clears `archive_mode` and `archive_command` from `postgresql.conf` and removes the per-cluster Barman configuration from the coordinator. Run on the backup (primary) site only.
+
+```bash
+whpg-dr configure reset <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print planned actions without executing. |
+
+!!! Note
+    `configure reset` cleans up the backup-side configuration only. It doesn't remove restore-side configuration on the DR cluster.
+!!!
+
+---
+
+## whpg-dr check
+
+Runs Barman's health checks against all segments to verify that WAL archiving is configured and working correctly.
+
+```bash
+whpg-dr check <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--check-timeout <seconds>` | Maximum time to wait for each segment check. |
+
+**Example:**
+
+```bash
+whpg-dr check my_cluster
+whpg-dr check my_cluster --check-timeout 120
+```
+
+---
+
+## whpg-dr archiving suspend
+
+Suspends WAL archiving on the primary cluster. The command replaces `archive_command` with `/bin/true` and reloads the cluster with `gpstop -u`. PostgreSQL continues believing WAL is archived and recycles WAL files normally, so **WAL generated during the suspended window is unrecoverable**. The PITR chain is broken for that window.
+
+This command is an emergency discard switch, not a safe pause. Only use it when WAL archiving is causing the primary to fill local disk (for example, during an S3 or NFS outage). It only proceeds from a healthy, fully-enabled archiving state and refuses to run on a cluster that is already suspended, disabled, or in an inconsistent state.
+
+While archiving is suspended, `backup`, `create-restore-point`, and `configure backup --reconfigure` are blocked. A marker file at `$WHPG_DR_HOME/state/<cluster_name>_archiving_suspended` records the suspension.
+
+```bash
+whpg-dr archiving suspend <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--reason <text>` | Human-readable explanation for the suspension, recorded in the marker file. |
+
+---
+
+## whpg-dr archiving resume
+
+Resumes WAL archiving after a suspension. The command recomputes the real `archive_command` from the saved backup configuration, re-asserts `archive_mode = on`, and applies the change with `gpstop -u`. It also recovers an inconsistent cluster (a no-op `archive_command` with a lost marker) back to healthy archiving.
+
+!!! Important
+    After resuming, run `whpg-dr backup <cluster_name>` before creating new restore points or relying on PITR. The WAL chain was broken during the suspension window; the fresh backup re-establishes the PITR baseline.
+!!!
+
+```bash
+whpg-dr archiving resume <cluster_name>
+```
+
+---
+
+## whpg-dr backup
+
+Takes a full physical backup of the coordinator and all primary segment data directories in parallel.
+
+Before starting, the command verifies that the current cluster topology (hostnames, ports, and data directories) matches the baseline recorded by `configure backup`. If any change is detected, the backup is rejected with a message to re-run `configure backup`.
+
+If any failed backup records exist from a previous interrupted run, the command displays a warning and prompts for confirmation before proceeding. Failed backups are shown as `[FAILED]` in `list-backup` output and can be removed with `delete`.
+
+```bash
+whpg-dr backup <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--check-timeout <seconds>` | Wait up to this many seconds for Barman checks to pass before starting the backup. Pass `0` to disable the timeout entirely. |
+
+**Example:**
+
+```bash
+whpg-dr backup my_cluster
+whpg-dr backup my_cluster --check-timeout 300
+```
+
+---
+
+## whpg-dr create-restore-point
+
+Creates a cluster-wide consistent restore point (a named LSN snapshot across all segments) using `gp_create_restore_point()`. The restore point is associated with the current base backup.
+
+The cluster must be running to create a restore point.
+
+```bash
+whpg-dr create-restore-point <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--suffix <text>` | Appended to the auto-generated timestamp prefix in the restore point name, for example `20260615-143022R_<suffix>`. Must not be `latest`. |
+
+**Example:**
+
+```bash
+whpg-dr create-restore-point my_cluster
+whpg-dr create-restore-point my_cluster --suffix before_etl_load
+```
+
+---
+
+## whpg-dr list-backup
+
+Lists all base backups in the storage repository, along with their associated restore points.
+
+```bash
+whpg-dr list-backup <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--detail` | Show additional metadata for each backup. |
+| `--from <date>` | Filter backups starting from this date (`YYYY-MM-DD`). |
+| `--to <date>` | Filter backups up to this date (`YYYY-MM-DD`). |
+
+---
+
+## whpg-dr list-restore-point
+
+Lists all restore points in the storage repository. Run on either the primary or the DR coordinator.
+
+```bash
+whpg-dr list-restore-point <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--from <date>` | Filter restore points starting from this date (`YYYY-MM-DD`). |
+| `--to <date>` | Filter restore points up to this date (`YYYY-MM-DD`). |
+
+---
+
+## whpg-dr check-backup
+
+Verifies the integrity of a specific base backup in the storage repository.
+
+```bash
+whpg-dr check-backup <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--backup-name <name>` | Name of the base backup to check. |
+
+---
+
+## whpg-dr delete
+
+Deletes a base backup and all its associated restore points from the storage repository. Run on the primary cluster only.
+
+```bash
+whpg-dr delete <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--backup-name <name>` | Name of the base backup to delete. Required. |
+
+!!! Warning
+    Deleting a backup removes all restore points associated with it. Retain at least one base backup at all times.
+!!!
+
+---
+
+## whpg-dr restore
+
+Restores the DR cluster from a base backup and WAL to a named restore point. Run on the DR cluster's coordinator host.
+
+Before restoring, the command verifies that the target backup's topology is compatible with the `restore.json` generated by `configure restore`. A topology mismatch (for example, after a cluster expansion) causes the restore to be rejected with a message to re-run `configure restore --backup-name <target_backup>`.
+
+A full restore requires empty target data directories on the DR cluster. Non-empty directories cause the restore to be rejected. Only `--delta` and `--resume-failed` flows reuse existing data directories.
+
+```bash
+whpg-dr restore <cluster_name> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--target-name <name>` | Name of the restore point to restore to. Use `latest` for the most recent restore point in storage. |
+| `--delta` | Instead of applying the base backup from scratch, compute the WAL diff between the current DR state and the target, and replay only the new WAL. Requires an existing restored state. |
+| `--resume-failed` | Continue a previously interrupted restore. |
+| `--wal-replay-timeout <seconds>` | Timeout for each segment's WAL replay phase. |
+| `--dry-run` | Print the planned restore operations without executing. |
+
+**Examples:**
+
+```bash
+# Full restore to a specific restore point
+whpg-dr restore my_cluster --target-name 20260615-143022R_before_etl_load
+
+# Full restore to the latest restore point
+whpg-dr restore my_cluster --target-name latest
+
+# Delta restore (advance from current state to latest)
+whpg-dr restore my_cluster --target-name latest --delta
+
+# Resume an interrupted restore
+whpg-dr restore my_cluster --target-name latest --resume-failed
+```
+
+---
+
+## whpg-dr list-restore
+
+Shows the current restore state of the DR cluster: the last completed restore point, the base backup used, and the status and replay LSN of each segment.
+
+```bash
+whpg-dr list-restore <cluster_name>
+```
+
+---
+
+## whpg-dr list-cluster
+
+Lists all cluster names that `whpg-dr` has configuration for on the current host.
+
+```bash
+whpg-dr list-cluster
+```
+
+---
+
+## whpg-dr promote
+
+Promotes the DR cluster from recovery mode to a writable primary. After promotion, the cluster accepts write connections. Run on the DR cluster's coordinator host.
+
+This command is blocked while the cluster has an unfinished or failed restore state. Inspect the state with `whpg-dr list-restore` and either retry with `whpg-dr restore --resume-failed` or run a new full restore before promoting.
+
+```bash
+whpg-dr promote <cluster_name>
+```
+
+After promotion, add mirrors if needed:
+
+```bash
+gpaddmirrors -i mirror_config_file
+```
+
+---
+
+## whpg-dr clean-lock-file
+
+Removes a stale lock file left by an interrupted `create-restore-point` command. Only run this command when no other `whpg-dr` process is running for this cluster.
+
+```bash
+whpg-dr clean-lock-file <cluster_name>
+```
