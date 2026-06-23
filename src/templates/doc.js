@@ -301,7 +301,7 @@ const DocTemplate = ({ data, pageContext }) => {
                       const url = versionMatch
                         ? versionMatch.url
                         : `/${product}/${version}/`;
-                      return `href="${withPrefix(url)}"`;
+                      return `href="${url}"`;
                     },
                   )
                   .replace(
