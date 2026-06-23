@@ -1,0 +1,52 @@
+---
+title: Job scheduling with EDB Postgres AI for CloudNativePG
+navTitle: Job scheduling
+---
+
+If you need to perform regular maintenance or automation tasks in your PostgreSQL environment, there are two primary approaches:
+
+1. Kubernetes-native scheduling using Kubernetes [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) or [CronJobs](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/).
+2. In-database scheduling, using tools like:
+    - [pg_cron](/pg_extensions/pg_cron/), a lightweight cron-based job scheduler for PostgreSQL and EDB Postgres Extended (PGE) Server.
+    - [DBMS_SCHEDULER](/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/15_dbms_scheduler/), a robust built-in job scheduler available in EDB Postgres Advanced Server (EPAS).
+
+    !!! Warning Pitfalls of in-database scheduling on distributed systems
+        
+        With an in-database job scheduler, jobs might run only on the primary instance. After a switchover or failover, scheduled jobs will continue only when the promoted primary carries the same scheduler configuration. A missing configuration might produce no error and jobs would simply stop firing. 
+        
+        Verify that jobs still run after any failover. 
+
+!!! Warning Transaction Semantics Still Apply
+
+    Regardless of whether you use Kubernetes or in-database scheduling, database transaction semantics still govern the outcome of the job:
+    
+    - A job may be initiated and marked as successful by the scheduler.
+    - However, if a failover occurs during execution, the underlying transaction may not be committed.
+    - Depending on your replication setup, changes may not be propagated to the new primary node.
+
+    Therefore, a successful job report doesn't guarantee successful data persistence.
+
+## Examples of scheduled maintenance tasks
+
+Common scheduled operations include:
+
+- Performing manual VACUUM on high-churn tables during off-peak hours.
+- Refreshing materialized views to keep analytics up-to-date.
+- Archiving or purging old records from transactional tables.
+
+However, scheduled jobs may also serve mission-critical business purposes, such as:
+
+- End-of-Day (EOD) financial reconciliation.
+- Trade settlement and clearing processes.
+- Periodic risk calculations or regulatory reporting.
+
+## Best practices for business-critical jobs
+
+It's the user's responsibility to implement custom retry and idempotency logic for jobs that are business-critical.
+This may include:
+
+- Checking for existing records before inserts.
+- Using advisory locks or state markers to avoid duplication.
+- Re-running jobs safely without data corruption.
+
+In EPAS, you can also leverage [autonomous transactions](/epas/latest/application_programming/epas_compat_spl/06_transaction_control/03_pragma_autonomous_transaction/) for certain scenarios: these allow a block of work to commit independently of the parent transaction, which can be useful in logging, auditing, or compensating operations.
