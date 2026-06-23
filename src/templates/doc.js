@@ -295,13 +295,14 @@ const DocTemplate = ({ data, pageContext }) => {
                   .replace(
                     new RegExp(`href="\\/${product}\\/([^:\\/]+)\\/?:splat"`),
                     (substring, version) => {
-                      const versionMatch = versionArray.find(
-                        (v) => v.version === version,
-                      );
+                      const versionMatch =
+                        version === "latest"
+                          ? versionArray[0]
+                          : versionArray.find((v) => v.version === version);
                       const url = versionMatch
                         ? versionMatch.url
                         : `/${product}/${version}/`;
-                      return `href="${withPrefix(url)}"`;
+                      return `href="${url}"`;
                     },
                   )
                   .replace(
