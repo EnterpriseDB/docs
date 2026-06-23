@@ -1,0 +1,479 @@
+---
+title: Installing EDB Postgres AI for ClickHouse with Docker
+navTitle: Docker
+description: Install EDB Postgres AI for ClickHouse using EDB container images, either as a single node for development or a multi-node cluster for testing replication.
+deepToC: true
+---
+
+EDB publishes a container image built from the same RPMs as the Linux packages. The image is based on Rocky Linux 10 minimal, is available for x86-64, and includes `clickhouse-server`, `clickhouse-keeper`, and `clickhouse-client`.
+
+## Prerequisites
+
+- Docker Engine 20.10 or later with Compose v2 (`docker compose` command)
+- An EDB subscription token, available from the [EDB customer portal](https://www.enterprisedb.com/accounts/login)
+
+## Pulling the image
+
+Log in to the EDB container registry and pull the image:
+
+```bash
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
+docker login docker.enterprisedb.com \
+  --username <your-edb-email> \
+  --password "$EDB_SUBSCRIPTION_TOKEN"
+docker pull docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+```
+
+## Running a single-node server
+
+For development and testing purposes, run a single ClickHouse Server node.
+
+1. Start the server:
+
+   ```bash
+   docker run -d \
+     --name clickhouse-server \
+     --ulimit nofile=262144:262144 \
+     -p 8123:8123 \
+     -p 9000:9000 \
+     docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+   ```
+
+   Port `8123` exposes the HTTP interface. Port `9000` exposes the native TCP interface used by `clickhouse-client` and most drivers.
+
+   To persist data across container restarts, add a volume mount:
+
+   ```bash
+   docker run -d \
+     --name clickhouse-server \
+     --ulimit nofile=262144:262144 \
+     -p 8123:8123 \
+     -p 9000:9000 \
+     -v /local/path/clickhouse-data:/var/lib/clickhouse \
+     docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+   ```
+
+2. To override default server settings, mount a configuration directory:
+
+   ```bash
+   docker run -d \
+     --name clickhouse-server \
+     --ulimit nofile=262144:262144 \
+     -p 8123:8123 \
+     -p 9000:9000 \
+     -v /local/path/config:/etc/clickhouse-server/config.d \
+     docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+   ```
+
+   ClickHouse merges all `.xml` files in `config.d` into the main configuration at startup.
+
+3. Connect with the ClickHouse client:
+
+   ```bash
+   docker exec -it clickhouse-server clickhouse-client
+   ```
+
+4. Verify the EDB build:
+
+   ```sql
+   SELECT value FROM system.build_options WHERE name = 'VERSION_OFFICIAL';
+   ```
+
+   The output includes `(EDB Build)` for EDB-packaged releases.
+
+## Running a multi-node cluster
+
+Use Docker Compose to deploy a multi-node cluster. The EDB-provided server image includes both `clickhouse-server` and `clickhouse-keeper`, so all nodes in the cluster run from a single image. 
+
+The following example sets up a 2-shard, 2-replica cluster with 3 dedicated Keeper nodes (7 containers total). For an explanation of sharding, replication, and Keeper roles, see [Architecture](../overview/architecture).
+
+### Creating the configuration files
+
+Create the following directory structure:
+
+```
+cluster/
+├── docker-compose.yml
+├── keeper-01/
+│   └── keeper_config.xml
+├── keeper-02/
+│   └── keeper_config.xml
+├── keeper-03/
+│   └── keeper_config.xml
+├── server-01/
+│   ├── config.xml
+│   └── users.xml
+├── server-02/
+│   ├── config.xml
+│   └── users.xml
+├── server-03/
+│   ├── config.xml
+│   └── users.xml
+└── server-04/
+    ├── config.xml
+    └── users.xml
+```
+
+Populate each directory with the configuration files for its node role:
+
+**Keeper nodes**
+
+The three Keeper nodes form a Raft quorum. Each has a unique `server_id`. Create `keeper_config.xml` in each keeper directory, setting `server_id` to `1`, `2`, and `3` respectively.
+
+<details>
+<summary>keeper_config.xml</summary>
+
+```xml
+<clickhouse replace="true">
+    <logger>
+        <level>information</level>
+        <console>1</console>
+    </logger>
+    <listen_host>0.0.0.0</listen_host>
+    <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+        <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+        <coordination_settings>
+            <operation_timeout_ms>10000</operation_timeout_ms>
+            <session_timeout_ms>30000</session_timeout_ms>
+            <raft_logs_level>information</raft_logs_level>
+        </coordination_settings>
+        <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>keeper-01</hostname>
+                <port>9234</port>
+            </server>
+            <server>
+                <id>2</id>
+                <hostname>keeper-02</hostname>
+                <port>9234</port>
+            </server>
+            <server>
+                <id>3</id>
+                <hostname>keeper-03</hostname>
+                <port>9234</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+</clickhouse>
+```
+
+</details>
+
+**Server nodes**
+
+Each server node needs its cluster topology, Keeper endpoints, and shard/replica macros. Create `config.xml` in each server directory. The only values that differ between nodes are the `<shard>` and `<replica>` entries in the `<macros>` section:
+
+| Node | `<shard>` | `<replica>` |
+|------|-----------|-------------|
+| server-01 | 01 | 01 |
+| server-02 | 02 | 01 |
+| server-03 | 01 | 02 |
+| server-04 | 02 | 02 |
+
+<details>
+<summary>config.xml</summary>
+
+```xml
+<clickhouse replace="true">
+    <logger>
+        <level>information</level>
+        <console>1</console>
+    </logger>
+    <display_name>cluster node 01</display_name>
+    <listen_host>0.0.0.0</listen_host>
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+    <remote_servers>
+        <my_cluster>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>server-01</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>server-03</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>server-02</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>server-04</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </my_cluster>
+    </remote_servers>
+    <zookeeper>
+        <node>
+            <host>keeper-01</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>keeper-02</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>keeper-03</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+    <macros>
+        <shard>01</shard>
+        <replica>01</replica>
+    </macros>
+</clickhouse>
+```
+
+</details>
+
+**User configuration**
+
+All four server nodes use the same `users.xml`. Copy it into each server directory and set a password after starting the cluster.
+
+<details>
+<summary>users.xml</summary>
+
+```xml
+<clickhouse replace="true">
+    <profiles>
+        <default>
+            <max_memory_usage>10000000000</max_memory_usage>
+            <load_balancing>in_order</load_balancing>
+            <log_queries>1</log_queries>
+        </default>
+    </profiles>
+    <users>
+        <default>
+            <profile>default</profile>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <quota>default</quota>
+            <access_management>1</access_management>
+        </default>
+    </users>
+    <quotas>
+        <default>
+            <interval>
+                <duration>3600</duration>
+                <queries>0</queries>
+                <errors>0</errors>
+                <result_rows>0</result_rows>
+                <read_rows>0</read_rows>
+                <execution_time>0</execution_time>
+            </interval>
+        </default>
+    </quotas>
+</clickhouse>
+```
+
+</details>
+
+### Creating the Compose file
+
+Create `docker-compose.yml` in the `cluster/` directory:
+
+```yaml
+services:
+  keeper-01:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: keeper-01
+    hostname: keeper-01
+    entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper_config.xml"]
+    volumes:
+      - ./keeper-01/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml
+
+  keeper-02:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: keeper-02
+    hostname: keeper-02
+    entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper_config.xml"]
+    volumes:
+      - ./keeper-02/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml
+
+  keeper-03:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: keeper-03
+    hostname: keeper-03
+    entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper_config.xml"]
+    volumes:
+      - ./keeper-03/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml
+
+  server-01:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: server-01
+    hostname: server-01
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    ports:
+      - "127.0.0.1:18123:8123"
+      - "127.0.0.1:19000:9000"
+    volumes:
+      - ./server-01/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./server-01/users.xml:/etc/clickhouse-server/users.d/users.xml
+    depends_on: [keeper-01, keeper-02, keeper-03]
+
+  server-02:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: server-02
+    hostname: server-02
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    ports:
+      - "127.0.0.1:18124:8123"
+      - "127.0.0.1:19001:9000"
+    volumes:
+      - ./server-02/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./server-02/users.xml:/etc/clickhouse-server/users.d/users.xml
+    depends_on: [keeper-01, keeper-02, keeper-03]
+
+  server-03:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: server-03
+    hostname: server-03
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    ports:
+      - "127.0.0.1:18125:8123"
+      - "127.0.0.1:19002:9000"
+    volumes:
+      - ./server-03/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./server-03/users.xml:/etc/clickhouse-server/users.d/users.xml
+    depends_on: [keeper-01, keeper-02, keeper-03]
+
+  server-04:
+    image: docker.enterprisedb.com/edb-clickhouse-server:26.3.12.3
+    container_name: server-04
+    hostname: server-04
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    ports:
+      - "127.0.0.1:18126:8123"
+      - "127.0.0.1:19003:9000"
+    volumes:
+      - ./server-04/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./server-04/users.xml:/etc/clickhouse-server/users.d/users.xml
+    depends_on: [keeper-01, keeper-02, keeper-03]
+```
+
+### Starting and verifying the cluster
+
+1. From the `cluster/` directory, start all containers:
+
+   ```bash
+   docker compose up -d
+   ```
+
+2. Connect to `server-01`:
+
+   ```bash
+   docker exec -it server-01 clickhouse-client
+   ```
+
+3. Confirm all server nodes are registered. `system.clusters` lists server nodes only, so the dedicated Keeper containers don't appear:
+
+   ```sql
+   SELECT cluster, shard_num, replica_num, host_name
+   FROM system.clusters
+   WHERE cluster = 'my_cluster';
+   __OUTPUT__
+   ┌─cluster────┬─shard_num─┬─replica_num─┬─host_name─┐
+   │ my_cluster │         1 │           1 │ server-01 │
+   │ my_cluster │         1 │           2 │ server-03 │
+   │ my_cluster │         2 │           1 │ server-02 │
+   │ my_cluster │         2 │           2 │ server-04 │
+   └────────────┴───────────┴─────────────┴───────────┘
+   ```
+
+4. Check Keeper connectivity across all nodes. The query uses `clusterAllReplicas` to run against every server node and returns the root znodes each one sees. Every node returning rows confirms all servers can reach Keeper:
+
+   ```sql
+   SELECT hostName(), name, path
+   FROM clusterAllReplicas('my_cluster', system.zookeeper)
+   WHERE path = '/';
+   __OUTPUT__
+   ┌─hostName()─┬─name───────┬─path─┐
+   │ server-01  │ keeper     │ /    │
+   │ server-01  │ clickhouse │ /    │
+   │ server-02  │ keeper     │ /    │
+   │ server-02  │ clickhouse │ /    │
+   │ server-03  │ keeper     │ /    │
+   │ server-03  │ clickhouse │ /    │
+   │ server-04  │ keeper     │ /    │
+   │ server-04  │ clickhouse │ /    │
+   └────────────┴────────────┴──────┘
+   ```
+
+### Testing replication and sharding
+
+Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of it. Insert some rows and query both tables to confirm that replication is working within each shard and that the distributed table aggregates data across all shards.
+
+1. Create a local storage table. The `ReplicatedMergeTree` engine stores data physically on each node and replicates it within the shard:
+
+   ```sql
+   CREATE TABLE events ON CLUSTER my_cluster (
+       event_id   UInt32,
+       user_id    UInt32,
+       event_type String,
+       created_at DateTime
+   ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
+   ORDER BY event_id;
+   ```
+
+1. Create a `Distributed` table on top of `events`. Unlike the local table, it stores no data. It routes queries to `events` across all shards and aggregates the results:
+
+   ```sql
+   CREATE TABLE events_dist ON CLUSTER my_cluster (
+       event_id   UInt32,
+       user_id    UInt32,
+       event_type String,
+       created_at DateTime
+   ) ENGINE = Distributed(my_cluster, default, events, rand());
+   ```
+
+1. Insert some rows via `events_dist`. The `rand()` sharding key distributes each row across shards:
+
+   ```sql
+   INSERT INTO events_dist VALUES
+       (1, 101, 'login',    now()),
+       (2, 102, 'purchase', now()),
+       (3, 103, 'logout',   now()),
+       (4, 104, 'login',    now());
+   ```
+
+1. Query the local table on any server node. Each node returns only the rows on its shard. The specific rows vary depending on how `rand()` distributed them:
+
+   ```sql
+   SELECT * FROM events;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬─────────────created_at─┐
+   │        2 │     102 │ purchase   │ 2026-06-10 14:48:15    │
+   │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
+   └──────────┴─────────┴────────────┴────────────────────────┘
+   ```
+
+1. Query `events_dist` from any node to confirm all rows are returned across shards:
+
+   ```sql
+   SELECT * FROM events_dist ORDER BY event_id;
+   __OUTPUT__
+   ┌─event_id─┬─user_id─┬─event_type─┬─────────────created_at─┐
+   │        1 │     101 │ login      │ 2026-06-10 14:48:15    │
+   │        2 │     102 │ purchase   │ 2026-06-10 14:48:15    │
+   │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
+   │        4 │     104 │ login      │ 2026-06-10 14:48:15    │
+   └──────────┴─────────┴────────────┴────────────────────────┘
+   ```

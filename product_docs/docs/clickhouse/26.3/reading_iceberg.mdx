@@ -1,0 +1,97 @@
+---
+title: Integrating with Iceberg catalogs
+navTitle: Integrating with Iceberg catalogs
+description: How to connect ClickHouse to an external Iceberg catalog and query data.
+---
+
+Connect ClickHouse to an external Iceberg catalog to run fast analytical queries over your data lake without moving data. An Iceberg catalog is a governance and metadata layer that tracks which tables exist, where their data lives in object storage, and who has access.
+
+Different pipelines and tools, such as Spark jobs, Databricks, or dbt, can write data to object storage, and the catalog provides a single consistent view of all of it. Any query engine that implements the Iceberg protocol, such as ClickHouse, Spark, and Trino, can connect to the same catalog and query the same data independently.
+
+!!! Note
+ClickHouse's Iceberg catalog integration is read-only. `INSERT`, `UPDATE`, and `DELETE` operations aren't supported. See [Known issues](./overview/known_issues) for details.
+!!!
+
+## Connecting to a catalog
+
+Use the `DataLakeCatalog` database engine to connect ClickHouse to an external Iceberg catalog. The engine is experimental and requires opt-in before use.
+
+1. Enable the experimental setting for your catalog type. The required setting varies by catalog. See the [DataLakeCatalog reference](https://clickhouse.com/docs/engines/database-engines/datalakecatalog) for the full list. For a REST catalog:
+
+   ```sql
+   SET allow_experimental_database_iceberg = 1;
+   ```
+
+1. Create a database that maps to your external catalog. For example:
+
+   ```sql
+   CREATE DATABASE my_catalog
+   ENGINE = DataLakeCatalog('https://catalog.example.com/api/iceberg/prj_abc123')
+   SETTINGS
+       catalog_type = 'rest',
+       warehouse = 'my-warehouse',
+       auth_header = 'Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.example';
+   ```
+
+   Where:
+
+   - `catalog_type` is the catalog type. See the [DataLakeCatalog reference](https://clickhouse.com/docs/engines/database-engines/datalakecatalog) for valid values.
+   - `warehouse` is the warehouse or project identifier within the catalog.
+   - `auth_header` is the HTTP header for bearer token authentication.
+
+   For most REST catalogs, authenticate using a static bearer token via `auth_header`, as shown above. For catalogs that support OAuth2 client credentials, use `catalog_credential` instead:
+
+   ```sql
+   CREATE DATABASE my_catalog
+   ENGINE = DataLakeCatalog('https://catalog.example.com/api/iceberg/prj_abc123')
+   SETTINGS
+       catalog_type = 'rest',
+       warehouse = 'my-warehouse',
+       catalog_credential = 'my-client-id:my-client-secret',
+       oauth_server_uri = 'https://auth.example.com/oauth/token',
+       auth_scope = 'catalog:read';
+   ```
+
+   Where:
+
+   - `catalog_credential` is the OAuth2 client credentials in `client_id:client_secret` format.
+   - `oauth_server_uri` is the OAuth2 authorization server URI.
+   - `auth_scope` is the OAuth2 scope. Defaults to `PRINCIPAL_ROLE:ALL` if not specified.
+
+## Querying data
+
+Once the database is created, list all available tables:
+
+```sql
+SHOW TABLES FROM my_catalog;
+__OUTPUT__
+┌─name──────────────────────────────┐
+│ public.calls                      │
+│ public.notes                      │
+│ analytics.events                  │
+│ duckdb_tpcds_sf_1.catalog_sales   │
+└───────────────────────────────────┘
+```
+
+Tables are listed in `namespace.table_name` format. Reference them using backticks:
+
+```sql
+SELECT * FROM my_catalog.`public.calls` LIMIT 5;
+__OUTPUT__
+┌─id─┬─────────────────────────ts─┬─data───┬─category─┐
+│  1 │ 2025-05-01 00:01:00.000000 │ data 1 │ bread    │
+│  2 │ 2025-05-01 00:02:00.000000 │ data 2 │ fruit    │
+│  3 │ 2025-05-01 00:03:00.000000 │ data 3 │ juice    │
+└────┴────────────────────────────┴────────┴──────────┘
+```
+
+Standard SQL applies, including aggregations, filters, joins, and window functions:
+
+```sql
+SELECT category, count() AS total
+FROM my_catalog.`public.calls`
+GROUP BY category
+ORDER BY total DESC;
+```
+
+ClickHouse reads only the Parquet data files required by the query, using Iceberg metadata for partition pruning and predicate pushdown.

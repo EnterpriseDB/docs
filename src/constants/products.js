@@ -147,6 +147,11 @@ const products = {
     name: "WarehousePG",
     iconName: IconNames.WHPG,
   },
+  clickhouse: {
+    name: "EDB Postgres AI for ClickHouse",
+    shortName: "ClickHouse",
+    iconName: IconNames.CLICKHOUSE,
+  },
 };
 
 module.exports = { products };
