@@ -43,6 +43,7 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
 const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
+  clickhouse: { name: "clickhouse", path: "product_docs/docs/clickhouse" },
   postgres_for_kubernetes: {
     name: "postgres_for_kubernetes",
     path: "product_docs/docs/postgres_for_kubernetes",
@@ -128,6 +129,10 @@ const sourceToPluginConfig = {
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
+  tds_data_adapter: {
+    name: "tds_data_adapter",
+    path: "product_docs/docs/tds_data_adapter",
+  },
   wait_states: {
     name: "wait_states",
     path: "advocacy_docs/pg_extensions/wait_states",
@@ -480,6 +485,7 @@ module.exports = {
         // #1, we actually want data on specific version requests (e.g. /epas/13/installing vs /epas/latest/installing),
         // #2, it doesn't work properly: when navigating internally, it reports the canonical URL of the page we're coming *from*, not *to*!
         canonical: false,
+        spa: "history",
         includedDomains: "www.enterprisedb.com", // don't report staging / draft / local builds
       },
     },

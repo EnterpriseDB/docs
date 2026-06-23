@@ -1,0 +1,168 @@
+---
+title: Installing EDB Postgres AI for ClickHouse on Kubernetes
+navTitle: Kubernetes operator
+description: Install EDB Postgres AI for ClickHouse on Kubernetes using the EDB ClickHouse Kubernetes operator.
+deepToC: true
+---
+
+The EDB ClickHouse Kubernetes operator manages ClickHouse deployments on Kubernetes, handling cluster provisioning, configuration, upgrades, and scaling.
+
+When installed via the Helm chart, it creates:
+
+- Four CustomResourceDefinitions (CRDs):
+  - `clickhouseinstallations` (abbreviated `chi`)
+  - `clickhouseinstallationtemplates`
+  - `clickhouseoperatorconfigurations`
+  - `clickhousekeeperinstallations` (abbreviated `chk`)
+- A Deployment running the operator and metrics-exporter sidecar (`2/2 Ready`).
+- A ServiceAccount, Role, ClusterRole, and bindings the operator needs to manage ClickHouse resources cluster-wide.
+
+## Prerequisites
+
+- A running Kubernetes cluster (1.26 or later)
+- `kubectl` configured to talk to your cluster
+- [Helm](https://helm.sh/) 3.8 or later
+- An EDB Cloudsmith account with read access to the `clickhouse` repository. You'll use two credentials from it:
+  - **Entitlement token** — embedded in the Helm chart repo URL. Get it from your EDB account at <https://www.enterprisedb.com/accounts/login>.
+  - **Cloudsmith API key** — used as the Docker password when Kubernetes pulls images from `docker.enterprisedb.com`. Get it from <https://cloudsmith.io/user/settings/api/> (log in via EDB SSO).
+
+## Creating the image pull secret
+
+Kubernetes needs credentials to pull EDB container images from `docker.enterprisedb.com`. Create a `docker-registry` secret in the namespace you'll install the operator into:
+
+```bash
+kubectl create namespace clickhouse
+kubectl create secret docker-registry cs-pull \
+  --namespace=clickhouse \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=<your-cloudsmith-username> \
+  --docker-password=<your-cloudsmith-api-key>
+```
+
+You'll reference `cs-pull` both in the Helm install (so the operator pod can pull its own images) and in every `ClickHouseInstallation` (so the ClickHouse pods can pull `edb-clickhouse-server`).
+
+## Installing the operator
+
+1. Add the EDB Helm repository. Replace `<entitlement-token>` with the token from your EDB account and `<cs-repo>` with the EDB Cloudsmith repository name listed in your release notes:
+
+   ```bash
+   helm repo add edb \
+     "https://dl.cloudsmith.io/<entitlement-token>/enterprisedb/<cs-repo>/helm/charts/"
+   helm repo update edb
+   ```
+
+1. Install the chart. Specify `--version` explicitly because the EDB release suffix (`-NedbM`) is a SemVer pre-release tag and `helm search` filters those out by default:
+
+   ```bash
+   helm upgrade --install clickhouse-operator \
+     edb/edb-clickhouse-operator-chart \
+     --version <operator-version> \
+     --namespace clickhouse \
+     --set 'imagePullSecrets[0].name=cs-pull'
+   ```
+
+1. Verify the operator is running:
+
+   ```bash
+   kubectl get pods -n clickhouse
+   ```
+
+   The operator pod reports `2/2 Ready` within about 30 seconds — the two containers are the operator and the metrics-exporter sidecar.
+
+1. Confirm the CRDs registered:
+
+   ```bash
+   kubectl get crds | grep altinity
+   ```
+
+   All four CRDs listed above appear in the output.
+
+## Creating a ClickHouse cluster
+
+The operator watches for `ClickHouseInstallation` resources and reconciles them into running ClickHouse pods. Create a file named `clickhouse-installation.yaml`:
+
+```yaml
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: my-clickhouse
+  namespace: clickhouse
+spec:
+  configuration:
+    clusters:
+      - name: my-cluster
+        templates:
+          podTemplate: edb-clickhouse
+        layout:
+          shardsCount: 1
+          replicasCount: 1
+  templates:
+    podTemplates:
+      - name: edb-clickhouse
+        spec:
+          imagePullSecrets:
+            - name: cs-pull
+          containers:
+            - name: clickhouse
+              image: docker.enterprisedb.com/<cs-repo>/edb-clickhouse-server:<server-version>
+              ports:
+                - name: http
+                  containerPort: 8123
+                - name: client
+                  containerPort: 9000
+```
+
+Note that `imagePullSecrets` appears inside the pod template — this applies to the ClickHouse pods the operator creates, not the operator pod itself. Both need it.
+
+`<server-version>` is the Docker image tag for `edb-clickhouse-server`. The Docker tag doesn't carry the `-NedbM` suffix that the RPM packages use; only the upstream version (for example, `26.3.12.1`). Check your release notes for the version compatible with your operator version.
+
+Apply the resource and watch the cluster come up:
+
+```bash
+kubectl apply -f clickhouse-installation.yaml
+kubectl get chi -n clickhouse -w
+```
+
+Wait until `STATUS` shows `Completed`, which takes about 60 to 90 seconds.
+
+## Connecting to ClickHouse
+
+The operator creates a headless Service per cluster. Connect via the Service name using port forwarding:
+
+```bash
+kubectl port-forward -n clickhouse svc/clickhouse-my-clickhouse 9000:9000
+```
+
+Then in another terminal:
+
+```bash
+clickhouse-client --host 127.0.0.1 --port 9000
+```
+
+Or run a one-shot query inside the cluster:
+
+```bash
+kubectl exec -it -n clickhouse \
+  "$(kubectl get pods -n clickhouse -l clickhouse.altinity.com/chi=my-clickhouse -o name | head -1)" \
+  -- clickhouse-client --query "SELECT version()"
+```
+
+The version returned includes the `(EDB Build)` suffix, confirming you're running the EDB distribution.
+
+## Uninstalling
+
+```bash
+kubectl delete chi my-clickhouse -n clickhouse        # operator deletes pods and services
+helm uninstall clickhouse-operator -n clickhouse      # removes the operator Deployment; CRDs survive
+kubectl delete secret cs-pull -n clickhouse           # optional
+```
+
+CRDs are intentionally not deleted by `helm uninstall`. Deleting CRDs deletes every dependent `ClickHouseInstallation`, including any in other namespaces. Remove them only if you have no other operator instances in the cluster:
+
+```bash
+kubectl delete crd \
+  clickhouseinstallations.clickhouse.altinity.com \
+  clickhouseinstallationtemplates.clickhouse.altinity.com \
+  clickhouseoperatorconfigurations.clickhouse.altinity.com \
+  clickhousekeeperinstallations.clickhouse-keeper.altinity.com
+```

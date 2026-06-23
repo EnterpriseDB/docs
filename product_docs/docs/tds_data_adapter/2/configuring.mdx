@@ -1,0 +1,311 @@
+---
+title: "Performing initial configuration"
+navTitle: "Initial configuration"
+---
+
+Before using TDS foreign data wrapper:
+
+1. Use the [CREATE EXTENSION](#creating-the-extension) command to create the TDS foreign data wrapper extension on the Postgres host.
+
+1. Optionally, [Configure FreeTDS](#configuring-freetds) for named server entries and character encoding.
+
+1. Use the [CREATE FOREIGN SERVER](#creating-the-foreign-server) command to create the foreign server that defines a connection to the TDS database.
+
+1. Use the [CREATE USER MAPPING](#creating-a-user-mapping) command to define a mapping that associates a Postgres role with the server.
+
+1. Use the [CREATE FOREIGN TABLE](#creating-a-foreign-table) command to define a table in the Postgres database that corresponds to a table that resides on the remote TDS server.
+
+
+## Creating the extension
+
+Use the `CREATE EXTENSION` command to create the `tds_fdw` extension. Connect to the database from which you want to query the TDS server, and invoke the command:
+
+```sql
+CREATE EXTENSION [IF NOT EXISTS] tds_fdw [WITH] [SCHEMA schema_name];
+```
+
+### Parameters
+
+`IF NOT EXISTS`
+
+  Include the `IF NOT EXISTS` clause to instruct the server to issue a notice instead of returning an error if an extension with the same name already exists.
+
+`WITH`
+
+  A noise word included for readability. It has no effect on the command.
+
+`schema_name`
+
+  Optionally specify the name of the schema in which to install the extension's objects.
+
+
+The `CREATE EXTENSION` command installs the  TDS foreign data wrapper and its associated objects in the database. You only need to run this command once per database. 
+It creates a default `freetds.conf` during installation — you don't need to create it from scratch. The file typically lives at `/etc/freetds/freetds.conf` (or `/usr/local/etc/freetds.conf` if built from source), and it contains some default entries and comments.
+
+For more information about using the `CREATE EXTENSION` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createextension.html).
+
+## Configuring FreeTDS
+
+`tds_fdw` uses FreeTDS to connect to TDS databases. Configuring FreeTDS is optional — you only need it if you want to use named server entries or set the client character encoding. 
+You can configure connection parameters either directly in the foreign server definition or in the FreeTDS configuration file `freetds.conf` (created during FreeTDS installation).
+
+To configure a named server entry in `freetds.conf`:
+
+```ini
+[mssql_server]
+    host = 192.168.1.100
+    port = 1433
+    tds version = 7.4
+    client charset = UTF-8
+```
+
+You can then refer to this entry by its section name (`mssql_server`) as the `servername` option in your [foreign server definition](#creating-the-foreign-server).
+
+### Character sets and encoding
+
+If you encounter errors like the following when working with Unicode data on Microsoft SQL Server:
+
+```
+NOTICE: DB-Library notice: Msg #: 4004, Msg state: 1, Msg: Unicode data in a
+Unicode-only collation or ntext data cannot be sent to clients using DB-Library
+```
+
+You may need to set `tds version` to `7.0` or higher in `freetds.conf`. See [Choosing a TDS protocol version](https://www.freetds.org/userguide/ChoosingTdsProtocol.html).
+
+To set the client character set, set `client charset` in `freetds.conf`. See [Localization and TDS 7.0](https://www.freetds.org/userguide/Localization.html).
+
+### Encrypted connections to Microsoft SQL Server
+
+Encrypted connections are handled by FreeTDS. To enable encryption, configure the `encryption` setting in `freetds.conf`. See the [FreeTDS freetds.conf reference](https://www.freetds.org/userguide/freetdsconf.html) for details.
+
+For more information on FreeTDS configuration, see the [FreeTDS documentation](https://www.freetds.org/userguide/freetdsconf.html).
+
+## Creating the foreign server
+
+Use the `CREATE SERVER` command to define a connection to a foreign server. The syntax is:
+
+```sql
+CREATE SERVER server_name FOREIGN DATA WRAPPER tds_fdw
+    [OPTIONS (option 'value' [, ...])];
+```
+
+The role that defines the foreign server is the owner of the foreign server.  To create a foreign server, you must have `USAGE` privilege on the foreign-data wrapper specified in the `CREATE SERVER` command.
+If you want to change the owner of an existing foreign server, use the `ALTER SERVER` command to reassign ownership.
+
+### Parameters
+
+`server_name`
+
+  Use `server_name` to specify a name for the foreign server. The server name must be unique in the database.
+
+`FOREIGN DATA WRAPPER`
+
+  Include the `FOREIGN DATA WRAPPER` clause to specify that the server uses the `tds_fdw` foreign data wrapper when connecting to the TDS database.
+
+`OPTIONS`
+
+  Use the `OPTIONS` clause to specify connection information for the foreign server object. You can include these options:
+
+| Option                | Required | Default     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|-----------------------|----------|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `servername`          | Yes      | `127.0.0.1` | The hostname, IP address, or DSN of the remote server. This can be a DSN as specified in `freetds.conf` — see [FreeTDS name lookup](https://www.freetds.org/userguide/freetdsconf.html). You can supply a comma-separated list of server names for automatic failover to a secondary server.                                                                                                                                                                                                                       |
+| `port`                | No       | —           | The port of the remote server. Can also be specified in `freetds.conf` if servername is a DSN.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `database`            | No       | —           | The database to connect to on the remote server.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `dbuse`               | No       | `0`         | If `0`, connects directly to `database`. If non-zero, connects to the server's default database and then selects `database` using `dbuse()` function. Set to `0` for Azure SQL Database.                                                                                                                                                                                                                                                                                                                           |
+| `language`            | No       | —           | The language for messages and date format locale. Defaults to `us_english` in most FreeTDS installations. It can be changed in `freetds.conf`. In MS SQL Server, see [SET LANGUAGE](https://learn.microsoft.com/en-us/sql/t-sql/statements/set-language-transact-sql?view=sql-server-ver17&redirectedfrom=MSDN) to change the language. In Sybase ASE, see [SET LANGUAGE](https://infocenter.sybase.com/help/index.jsp?topic=/com.sybase.infocenter.dc36272.1572/html/commands/X64136.htm) to change the language. |
+| `character_set`       | No       | —           | The client character set for the connection. Has no effect for TDS protocol version 7.0 and higher, which always use UCS-2. See [Localization and TDS 7.0](https://www.freetds.org/userguide/configs.html#Localization).                                                                                                                                                                                                                                                                                           |
+| `tds_version`         | No       | —           | The TDS protocol version to use. See [Choosing a TDS protocol version](https://www.freetds.org/userguide/ChoosingTdsProtocol.html) and [History of TDS versions](https://www.freetds.org/userguide/tdshistory.html).                                                                                                                                                                                                                                                                                               |
+| `msg_handler`         | No       | `blackhole` | How to handle TDS messages. Use `notice` to surface them as PostgreSQL notices, or `blackhole` to discard them.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `fdw_startup_cost`    | No       | —           | An estimated cost representing the overhead of using this FDW, used in query planning.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `fdw_tuple_cost`      | No       | —           | An estimated cost representing the overhead of fetching rows from this server, used in query planning.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `sqlserver_ansi_mode` | No       | `false`     | SQL Server only. When set to `true`, enables `CONCAT_NULLS_YIELDS_NULL`, `ANSI_NULLS`, `ANSI_WARNINGS`, `QUOTED_IDENTIFIER`, `ANSI_PADDING`, and `ANSI_NULL_DFLT_ON` after connecting. These parameters are comparable to SQL Server option `ANSI_DEFAULTS`. In contrast, `sqlserver_ansi_mode` doesn't activate `CURSOR_CLOSE_ON_COMMIT` and `IMPLICIT_TRANSACTIONS` options.                                                                                                                                     |
+| `use_remote_estimate` | No       | —           | Whether to estimate table size by querying the remote server. Can also be set on individual foreign tables.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `row_estimate_method` | No       | `execute`   | Method used for remote row estimation. Can also be set on individual foreign tables.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+### Example
+
+The following command creates a foreign server named `mssql_svr` that uses the `tds_fdw` foreign data wrapper to connect to a Microsoft SQL Server:
+
+```sql
+CREATE SERVER mssql_svr
+    FOREIGN DATA WRAPPER tds_fdw
+    OPTIONS (servername '127.0.0.1', port '1433', database 'mydb', tds_version '7.4');
+```
+
+For more information about using the `CREATE SERVER` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createserver.html).
+
+
+## Creating a user mapping
+
+Use the `CREATE USER MAPPING` command to define a mapping that associates a Postgres role with a foreign server:
+
+```sql
+CREATE USER MAPPING FOR role_name SERVER server_name
+    [OPTIONS (option 'value' [, ...])];
+```
+
+The role must be the owner of the foreign server to create a user mapping for that server.
+
+### Parameters
+
+`role_name`
+
+  Use `role_name` to specify the role to associate with the foreign server.
+
+`server_name`
+
+  Use `server_name` to specify the name of the server that defines a connection to the TDS database.
+
+`OPTIONS`
+
+  Use the `OPTIONS` clause to specify connection information for the foreign server.
+
+| Option     | Required | Description                                                                                                                           |
+|------------|----------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `username` | Yes      | The username on the remote server. For Azure SQL Database, use the format `username@servername`. For other databases, use `username`. |
+| `password` | Yes      | The password for the remote account.                                                                                                  |
+
+### Example
+
+The following command creates a user mapping for a role named `postgres`. The mapping is associated with a server named `mssql_svr`.
+
+```sql
+CREATE USER MAPPING FOR postgres
+    SERVER mssql_svr
+    OPTIONS (username 'sa', password 'yourpassword');
+```
+
+For more information about using the `CREATE USER MAPPING` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createusermapping.html).
+
+
+## Creating a foreign table
+
+A foreign table is a pointer to a table that resides on the TDS host. Use the `CREATE FOREIGN TABLE` command to define a table in the Postgres database that corresponds to a table on the remote TDS server. The syntax is:
+
+```sql
+CREATE FOREIGN TABLE [ IF NOT EXISTS ] table_name ( [
+  { column_name data_type [ OPTIONS ( option 'value' [, ... ] ) ] [ COLLATE collation ] [ column_constraint [ ... ] ]
+    | table_constraint }
+    [, ... ]
+] )
+[ INHERITS ( parent_table [, ... ] ) ]
+  SERVER server_name [ OPTIONS ( option 'value' [, ... ] ) ];
+```
+
+### Parameters
+
+`table_name`
+
+  Specify the name of the foreign table. Include a schema name to specify the schema in which the foreign table resides.
+
+`IF NOT EXISTS`
+
+  Include the `IF NOT EXISTS` clause to instruct the server to not return an error if a table with the same name already exists.
+
+`column_name`
+
+  Specify the name of every column in the new table. Each column must correspond to a column on the remote TDS server.
+
+`data_type`
+
+  Specify the data type of the column.
+
+`server_name`
+
+  Specify the name of the foreign server that defines the connection to the TDS database.
+
+`OPTIONS`
+
+  Use the `OPTIONS` clause to specify the following options:
+
+| Option                 | Required              | Default   | Description                                                                                                                                                                    |
+|------------------------|-----------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `table_name`           | Yes (or `query`)      | —         | The table on the remote server to query. The schema can be included in the name or set separately with `schema_name`. Alias: `table`.                                          |
+| `query`                | Yes (or `table_name`) | —         | A SQL query string to execute on the remote server instead of reading a table directly.                                                                                        |
+| `schema_name`          | No                    | —         | The schema the remote table is in. Can also be included in `table_name`.                                                                                                       |
+| `match_column_names`   | No                    | Enabled         | When enabled, local columns are matched to remote columns by name rather than by position.                                   |
+| `use_remote_estimate`  | No                    | —         | Whether to estimate the table size by querying the remote server.                                                                                                              |
+| `local_tuple_estimate` | No                    | —         | A locally set row count estimate, used when `use_remote_estimate` is disabled.                                                                                                 |
+| `row_estimate_method`  | No                    | `execute` | How to estimate row counts: `execute` runs the query and counts actual rows; `showplan_all` uses MS SQL Server's `SET SHOWPLAN_ALL` to get an estimated count without executing. |
+
+### Foreign table column options
+
+| Option        | Required | Description |
+| ------------- | -------- | ----------- |
+| `column_name` | No       | The name of the corresponding column on the remote server. If not set, the local column name is used. Ignored when `match_column_names` is `0`. |
+
+### Example
+
+```sql
+CREATE FOREIGN TABLE mssql_table (
+    id integer,
+    data varchar)
+    SERVER mssql_svr
+    OPTIONS (schema_name 'dbo', table_name 'mytable', row_estimate_method 'showplan_all');
+```
+
+For more information about using the `CREATE FOREIGN TABLE` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createforeigntable.html).
+
+## Dropping the extension
+
+Use the `DROP EXTENSION` command to remove the TDS foreign data wrapper extension. Connect to the Postgres database from which you're dropping TDS foreign data wrapper, and run the command:
+
+```sql
+DROP EXTENSION [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ];
+```
+
+### Example
+
+```sql
+DROP EXTENSION tds_fdw;
+```
+
+For more information about using the `DROP EXTENSION` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-dropextension.html).
+
+## Dropping the server
+
+Use the `DROP SERVER` command to remove a connection to the foreign server. The syntax is:
+
+```sql
+DROP SERVER [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ];
+```
+
+### Example
+
+```sql
+DROP SERVER mssql_svr;
+```
+
+For more information about using the `DROP SERVER` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-dropserver.html).
+
+## Dropping the user mapping
+
+Use the `DROP USER MAPPING` command to remove a mapping that associates a Postgres role with a foreign server. The user must be the owner of the foreign server to remove a user mapping for that server.
+
+```sql
+DROP USER MAPPING [ IF EXISTS ] FOR { user_name | USER | CURRENT_USER | PUBLIC } SERVER server_name;
+```
+
+### Example
+
+```sql
+DROP USER MAPPING FOR postgres SERVER mssql_svr;
+```
+
+For more information about using the `DROP USER MAPPING` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-dropusermapping.html).
+
+## Dropping the foreign table
+
+Use the `DROP FOREIGN TABLE` command to remove a foreign table. Only the owner of the foreign table can drop it.
+
+```sql
+DROP FOREIGN TABLE [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ];
+```
+
+### Example
+
+```sql
+DROP FOREIGN TABLE mssql_table;
+```
+
+For more information about using the `DROP FOREIGN TABLE` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-dropforeigntable.html).
