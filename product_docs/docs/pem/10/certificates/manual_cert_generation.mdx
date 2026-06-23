@@ -1,0 +1,96 @@
+---
+title: "Generating agent certificates manually"
+navTitle: "Generating agent certificates manually"
+---
+
+This page explains how to manually generate an agent certificate.
+This is necessary if you are using a local CA rather than sslutils, or if you are using sslutils but wish to transition to using a common agent certificate.
+
+These instructions may also be useful if you are using an organizational or external CA that requires you to supply a certificate signing request (CSR).
+In this case, you will need to replace steps 3 and 4 with the appropriate steps for your CA.
+
+Please refer to [Deciding on an SSL model](../considerations/ssl_certs.mdx) for more detail on these different SSL models.
+
+## Generating an agent certificate and key
+
+1. On the host where the agent will run, generate an agent key:
+
+   ```shell
+   # Running as root
+   openssl genrsa -out agent.key 4096 
+   ```
+
+1.  Generate a CSR for the agent:
+
+   ```shell
+   openssl req -new -key agent.key -out agent.csr -subj '/C=<country>/ST=<state>/L=<locality>/O=<organization>/CN=<agent_user>'
+   ```
+
+   Where `-subj` is completed appropriately for your organization, and `<agent_user>` is replaced with the Postgres username that the agent will use to connect to the PEM database.
+
+1.  Copy the CSR to host where your CA is located.
+
+1.  On the CA host, use the `openssl x509` command to sign the CSR and generate an agent certificate:
+
+   ```shell
+   openssl x509 -req -days 365 -in agent.csr -CA ca_certificate.crt -CAkey ca_key.key -CAcreateserial -out agent.crt
+   ```
+
+1. Copy `agent.crt` back to the agent host.
+
+1. On the agent host, change the permissions on the `agent.crt` and `agent.key` files:
+
+   ```shell
+   chmod 600 agent.crt agent.key
+   ```
+
+## Configuring the agent to use the new certificate and key
+
+The next step depends on whether this certificate and key are to be used by new agent, or an agent that is already registered.
+
+<TabContainer syncKey="newOrOld">
+
+<Tab title="To register a new agent">
+
+1.  Register the agent, providing the path to the new certificate and key file.
+    The path can be absolute or relative to the agent config directory.
+
+    ```shell
+    export PEM_SERVER_PASSWORD=edb
+
+    /usr/edb/pem/agent/bin/pemworker --register-agent \
+    --pem-server 192.168.99.130 \
+    --pem-user enterprisedb \
+    --pem-port 5444 \
+    --pem-agent-user <agent_user> \
+    -o agent_ssl_crt=agent.crt \
+    -o agent_ssl_key=agent.key
+    ```
+
+1.  Enable and start the pemagent services:
+
+    ```shell
+    systemctl enable pemagent
+    systemctl start pemagent
+    ```
+</Tab>
+<Tab title="For a previously registered agent">
+
+1.  Edit the `agent_ssl_key`, and `agent_ssl_crt` parameters in the `agent.cfg` file of the agent host to provide the paths to the new key and cert respectively.
+    The path can be absolute or relative to the agent config directory.
+    If you are also changing the agent user, edit `agent_user` too. It must match the common name on the certificate and be a Postgres user with `pem_agent` role on the PEM backend database.
+
+    ```ini
+    agent_user=<agent_user>
+    agent_ssl_key=<new_location>/agent.key
+    agent_ssl_crt=<new_location>/agent.crt
+    ```
+
+1.  Restart the pemagent service:
+
+    ```shell
+    systemctl restart pemagent
+    ```
+
+</Tab>
+</TabContainer>
