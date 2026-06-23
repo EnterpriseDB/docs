@@ -1,0 +1,186 @@
+---
+title: Langflow quickstart
+navTitle: Quickstart
+deepToC: true
+description: Build your first AI flow in Langflow on Hybrid Manager — connect a knowledge base and a model to answer questions from your own data.
+---
+
+This quickstart walks you through building a simple retrieval-augmented generation (RAG) flow in Langflow on Hybrid Manager. By the end you'll have a working flow that accepts a user question, retrieves relevant content from a knowledge base, and returns a grounded answer from an LLM, all running within your HM cluster.
+
+## Prerequisites
+
+Complete the [Langflow prerequisites](./) for roles and access key setup, then make sure you also have:
+
+- A GPU node deployed for model serving. See [GPU recommendations](../gpu-recommended).
+
+- At least one model cluster deployed from the Model Library with an LLM for generation. See [Creating a model cluster](../models). The knowledge base in this quickstart uses the AIDB `bert` embedded model, which runs on the database CPU — no embedding model cluster is required.
+
+- A Postgres cluster in your HM project with a table containing the content you want to query. Have the database username and password for that cluster ready — you'll need them in Step 2.
+
+### Prepare your data: create a knowledge base
+
+Before opening Langflow, create a knowledge base in your HM Postgres cluster so the flow has content to retrieve from.
+
+You can run this using psql or any SQL client connected to your cluster. To find the connection details, go to your cluster in the HM console and select **Connect**.
+
+Run the following, replacing the table name and column with your own data:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS aidb CASCADE;
+
+SELECT aidb.create_table_knowledge_base(
+    name               => 'my_knowledge_base',
+    model_name         => 'bert',
+    source_table       => 'public.my_content_table',
+    source_data_column => 'content',
+    source_data_format => 'Text'
+);
+
+SELECT aidb.bulk_embedding('my_knowledge_base');
+```
+
+Verify the knowledge base is ready:
+
+```sql
+SELECT * FROM aidb.kbstat;
+```
+
+!!!note
+This quickstart creates the knowledge base using AIDB SQL directly. If you prefer a UI-driven approach, you can also create knowledge bases through [Pipeline Designer](../pipeline-designer).
+!!!
+
+---
+
+## Step 1: Accessing Langflow
+
+1. Log into the HM console and select your project.
+
+1. Select **Launchpad** in the navigation and open **Langflow**.
+
+---
+
+## Step 2: Setting up Global Variables
+
+EDB components read credentials from Langflow Global Variables. Set these up once and reuse them across all components in the flow.
+
+1. In Langflow, go to **Profile** → **Settings** → **Global Variables**.
+
+1. Create the following variables:
+
+   | Variable name    | Value                              |
+   |------------------|------------------------------------|
+   | `HM_API_KEY`     | Your HM machine user access key.   |
+   | `HM_DB_USER`     | Postgres user for your HM cluster. |
+   | `HM_DB_PASSWORD` | Password for the Postgres user.    |
+
+See [Configure Global Variables](https://docs.langflow.org/configuration-global-variables#create-a-global-variable) for instructions.
+
+---
+
+## Step 3: Creating a blank flow
+
+1. On the Langflow home screen, select **New Flow** → **Blank Flow**.
+
+---
+
+## Step 4: Adding a chat input
+
+1. In the Langflow canvas, select **Inputs** in the component panel.
+
+1. Drag **Chat Input** onto the canvas. This captures the user's question.
+
+---
+
+## Step 5: Adding an EDB Knowledge Base component
+
+1. Select **EDB** in the component panel and drag **EDB Knowledge Base** onto the canvas.
+
+1. Configure the component:
+   - **HM Machine User Key** → select the `HM_API_KEY` Global Variable.
+   - **Hybrid Manager Project** → select your project.
+   - **Hybrid Manager Database** → select the cluster containing your knowledge base.
+   - **Database Connection Type** → select the appropriate connection type.
+   - **User for the database** → select the `HM_DB_USER` Global Variable.
+   - **Password for the database** → select the `HM_DB_PASSWORD` Global Variable.
+   - **Database Name** → select the database where the knowledge base was created.
+   - **Knowledge Base** → select `my_knowledge_base` (created in the Prerequisites).
+
+1. Connect **Chat Input** → **EDB Knowledge Base**. This wires the user's question into the **Query Value** field automatically.
+
+---
+
+## Step 6: Adding a Prompt Template
+
+Without a prompt template, the model receives a raw dump of retrieved chunks alongside the question. A template structures the input into a prompt the model can follow.
+
+1. Select **Prompts** in the component panel and drag **Prompt Template** onto the canvas.
+
+1. In the **Template** field, enter:
+
+   ```
+   Answer the question using only the context below. If the answer isn't in the context, say you don't know.
+
+   Context:
+   {context}
+
+   Question:
+   {question}
+   ```
+
+1. Connect **EDB Knowledge Base** → **Prompt Template** (`context` variable).
+
+1. Connect **Chat Input** → **Prompt Template** (`question` variable).
+
+---
+
+## Step 7: Adding an EDB Model Server component
+
+1. Select **EDB** in the component panel and drag **EDB Model Server** onto the canvas.
+
+1. Configure the component:
+   - **HM Machine User Key** → select the `HM_API_KEY` Global Variable.
+   - **Hybrid Manager Model Server Cluster Instance** → select the LLM model cluster deployed in the prerequisites.
+
+1. Connect **Prompt Template** → **EDB Model Server**.
+
+---
+
+## Step 8: Adding a Chat Output
+
+1. Select **Outputs** in the component panel and drag **Chat Output** onto the canvas.
+
+1. Connect **EDB Model Server** → **Chat Output**.
+
+---
+
+## Step 9: Running and testing the flow
+
+1. Select **Playground** in the top toolbar to open the interactive test panel.
+
+1. Type a question that relates to your source data and press **Enter**.
+
+1. Verify the response is grounded in your content — you should see the EDB Knowledge Base retrieving relevant rows, the Prompt Template formatting the context and question, and the EDB Model Server generating a contextualised answer.
+
+1. Check that all components show green status indicators after running.
+
+If any component shows an error, select it and review the configuration. Common issues:
+
+- **Can't select a project in the EDB Knowledge Base component** — the portal domain is defaulting to the API endpoint. Select **Controls** on the component and set **Hybrid Manager URL** to `http://istio-internalgateway.istio-system.svc.cluster.local:7080`.
+
+- **Incorrect or expired access key** — verify the `HM_API_KEY` Global Variable holds a valid machine user key.
+
+- **Mismatched database connection** — confirm the database user, password, and database name match what's configured in the cluster.
+
+- **Model cluster not active** — check the cluster status in **AI Factory → Model Server Clusters**.
+
+For further help, see [Troubleshooting](./troubleshooting).
+
+---
+
+## Next steps
+
+- **Add more components** — extend the flow with an **EDB Database** component to query structured data alongside the knowledge base, or an **EDB Vector Index** component to manage vector indexes. See [EDB components](./components/) for the full set, including EDB Airman MCP, EDB Platform, and EDB Embedded Models.
+
+- **Deploy the flow** — publish it as a bundle and deploy it as a managed, callable service with its own endpoints, project-level isolation, and independent scaling. See [Flow deployment](./flow-deployment).
+
+- **Monitor the flow's dependencies** — set up Prometheus alert rules and Grafana dashboards for the model cluster and Langflow pods. See [Observability](../observability).
