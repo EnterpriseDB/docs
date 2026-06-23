@@ -293,7 +293,10 @@ const DocTemplate = ({ data, pageContext }) => {
               dangerouslySetInnerHTML={{
                 __html: navRoot.displayBanner
                   .replace(
-                    new RegExp(`href="\\/${product}\\/([^:\\/]+)\\/?:splat"`),
+                    new RegExp(
+                      `href="\\/${product}\\/([^:\\/]+)\\/?:splat"`,
+                      "g",
+                    ),
                     (substring, version) => {
                       const versionMatch =
                         version === "latest"
@@ -306,7 +309,7 @@ const DocTemplate = ({ data, pageContext }) => {
                     },
                   )
                   .replace(
-                    /href="(\/[^"]+)"/,
+                    /href="(\/[^"]+)"/g,
                     (substring, urlPath) => `href="${withPrefix(urlPath)}"`,
                   ),
               }}
