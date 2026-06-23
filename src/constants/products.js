@@ -133,6 +133,10 @@ const products = {
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
+  tds_data_adapter: {
+    name: "TDS Foreign Data Wrapper",
+    iconName: IconNames.CONNECT,
+  },
   wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
   apache_age: { name: "Apache AGE", iconName: IconNames.POSTGRESQL },
   "data migration service": {
@@ -142,6 +146,11 @@ const products = {
   warehousepg: {
     name: "WarehousePG",
     iconName: IconNames.WHPG,
+  },
+  clickhouse: {
+    name: "EDB Postgres AI for ClickHouse",
+    shortName: "ClickHouse",
+    iconName: IconNames.CLICKHOUSE,
   },
 };
 

@@ -1,0 +1,21 @@
+---
+title: Running DDL safely
+navTitle: Running DDL
+description: How to safely run schema changes from application code in a geo-distributed PGD cluster.
+---
+
+DDL operations in a geo-distributed cluster acquire locks across write leaders, held for the duration of the statement. Keep DDL transactions small, avoid mixing them with DML, and schedule them during low-traffic periods to minimize the impact on application throughput.
+
+Lock acquisition time is proportional to round-trip latency across write leaders, so DDL that takes milliseconds on a local cluster can take seconds in a multi-region setup. Apply these practices to keep the impact minimal.
+
+- **Make additive changes:** Adding a column, adding an index, or creating a new table are low-risk. Dropping columns, renaming columns, and changing data types require more care because they can break running application code on nodes that haven't received the schema change yet. In a rolling deployment, keep backward compatibility until all application versions that depend on the old schema are retired.
+
+- **Add nullable columns first:** If a new column has a `NOT NULL` constraint, existing rows across the cluster need a default value or a backfill before the constraint can be enforced. Add the column as nullable first, backfill the data, then add the constraint in a subsequent migration.
+
+- **Deploy schema changes before application code:** Roll out additive schema changes first, then deploy the application code that uses them. The schema is then in place across all nodes before any node starts sending queries that rely on it.
+
+- **Keep DDL isolated:** Each DDL statement holds a cluster-wide DDL lock, preventing other concurrent DDL. Run DDL statements separately rather than combining them in a single transaction, and never mix DDL with DML. Combining schema changes with data manipulation extends the lock duration to cover the entire transaction.
+
+- **Resolve long-running transactions before running DDL:** Long-running transactions block DDL from acquiring its cluster-wide lock. Check for and resolve any long-running queries or transactions before running DDL.
+
+- **Have a rollback plan:** Not all DDL can be rolled back after it's committed. For destructive changes like `DROP TABLE` or `DROP COLUMN`, have a tested rollback procedure before running the change in production.
