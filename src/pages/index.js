@@ -200,20 +200,14 @@ const Page = () => {
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="Vector Engine"
-              to="/edb-postgres-ai/vector-engine"
+              headingText="Agent Factory"
+              to="/edb-postgres-ai/agent-factory"
             >
               <BannerCardLink to="/aidb/latest">
                 AI Database (AIDB)
               </BannerCardLink>
               <BannerCardLink to="/pg_extensions/pgvector">
                 pgvector
-              </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/vectorchord">
-                VectorChord
-              </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/vectorchord_bm25">
-                VectorChord-BM25
               </BannerCardLink>
             </BannerSubCard>
 
@@ -509,14 +503,6 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/pgvector">
               pgvector
-            </BannerWideLink>
-
-            <BannerWideLink to="/pg_extensions/vectorchord">
-              VectorChord
-            </BannerWideLink>
-
-            <BannerWideLink to="/pg_extensions/vectorchord_bm25">
-              VectorChord-bm25
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pg_anonymizer">
