@@ -1,0 +1,904 @@
+---
+title: Gathering your system requirements
+navTitle: Gathering requirements
+description: Determine your hardware, software, and external service requirements for a successful Hybrid Manager deployment.
+deepToC: true
+---
+
+## Overview 
+
+> **Role focus:** Infrastructure engineer / CSP Administrator / Platform Engineer
+
+### Prerequisites
+
+* [Phase 1: Planning your architecture](./planning_arch) (Completed)
+
+### Outcomes
+
+* *A validated high-level inventory of compute, network, and storage infrastructure to be used in Phase 3: [Deploying your Kubernetes cluster](./k8s_install)*
+
+* *A number of requirements validated as ready for use in Phase 4 [Preparing your environment](environment_prep) and initial inputs for the HM configuration — either a `HybridControlPlane` Custom Resource manifest (Operator method, recommended) or a `values.yaml` file (Bootstrap method).*
+
+!!! Note
+EDB's Sales Engineering and Professional Services are the primary resources for communicating and clarifying detailed deployment requirements during the sales cycle or via a Statement of Work (SoW).
+The official documentation also provides comprehensive checklists.
+!!!
+
+
+**Next phase:** Phase 3: [Deploying your Kubernetes cluster](./k8s_install)
+
+## Connection to architecture
+
+The requirements listed below for Phase 2 are not all generic; many are direct consequences of the decisions made in **[Phase 1: Planning your architecture](./planning_arch)**:
+
+* **Locality decisions** determine your latency requirements between the Control Plane and Data Plane.
+* **Disaster recovery goals** determine the need for specific Object Storage configurations (for replication).
+* **Activeness (Active/Active)** determines if you need the specialized networking required for Postgres Distributed.
+
+!!! Important
+While this document serves as your comprehensive technical checklist, **EDB Professional Services** is the primary resource for validating complex deployment architectures.
+If your "Target state" from Phase 1 involves multi-region redundancy or high-scale requirements, we recommend clarifying these detailed requirements via a Statement of Work (SoW) before procuring infrastructure.
+!!!
+
+## Deployment readiness checklist
+
+Use this checklist to verify at a high level that you have all necessary infrastructure components available. 
+
+- 1. [ ] [Management workstation (Bastion host)](#1-management-workstation-bastion-host)
+- 2. [ ] [Kubernetes platform verification](#2-kubernetes-platform-verification)
+- 3. [ ] [Compute](#3-compute-node-requirements)
+  - 3.1 [Control plane nodes](#31-control-plane-nodes)
+  - 3.2 [Data plane nodes](#32-data-plane-nodes)
+  - 3.3 [AI model nodes](#33-ai-model-nodes)
+- 4. [ ] [Local networking](#4-local-networking)
+- 5. [ ] [Ingress](#5-ingress)
+  - 5.1 [Load Balancer Controller](#51-load-balancer-controller)
+  - 5.2 [Domain Name Service](#52-dns)
+  - 5.3 [Portal certificate management/TLS](#53-certificate-management)
+- 6. [ ] [Block storage (Database & logs)](#6-block-storage-database--logs)
+  - 6.1 [Volume snapshots](#61-volume-snapshots)
+  - 6.2 [Excluding storage from Hybrid Manager discovery](#62-excluding-storage-from-hybrid-manager-discovery)
+- 7. [ ] [Object storage](#7-object-storage)
+- 8. [ ] [Container registry](#8-container-registry)
+- 9. [ ] [Identity provider (IdP)](#9-identity-provider-idp)
+- 10. [ ] [Key management storage (KMS) for Transparent Data Encryption (TDE)](#10-key-management-service-kms)
+
+## 1. Management workstation (Bastion host)
+
+> **Optionality:** Strict requirement.
+
+You require a designated machine to orchestrate the deployment. 
+This can be a laptop (for public clusters) or a cloud-based Bastion host (for private clusters).
+
+!!! Note
+A **Bastion host** (or jump host/box) is strongly recommended for secure, private access to the Kubernetes API, Portal, and PostgreSQL endpoints. 
+This host serves as your dedicated operational workstation for installation and validation activities.
+For EDB Remote DBA (RDBA) or Managed Services contracts, a dedicated Bastion is **mandatory**.
+!!!
+
+### General requirements
+
+* **Operating System:** Linux (AMD64/ARM64) or macOS.
+    * *Note:* Windows users must use **WSL2** (Windows Subsystem for Linux).
+
+* **Network Access:**
+    * **Kubernetes API:** Must have network connectivity to the Cluster API Server (typically port 6443).
+    * **Internet/Registry:** Must be able to reach the Container Registry to pull Helm charts and images.
+
+* **Storage:** Minimal (enough to hold configuration files and certificates).
+
+### Required tooling inventory
+
+You do not need to install these tools in this phase. 
+However, you must ensure your workstation environment allows for the installation and execution of the following binaries in the next phase (Phase 3):
+
+**Core installation tools**
+* `edbctl` (EDB Hybrid Manager CLI)
+* `kubectl` (Kubernetes CLI) + `cnpg` plugin
+* `helm` (Kubernetes package manager)
+* `yq` (Command-line YAML processor)
+
+**Utilities**
+* `curl` (Download utility)
+* `openssl` (Certificate management)
+* `htpasswd` (Required only if using Static Users)
+
+**Platform CLIs (Environment dependent)**
+* `aws` (AWS CLI)
+* `gcloud` (Google Cloud CLI)
+* `oc` (OpenShift CLI)
+
+**Operational tools (Post-install)**
+* `pgdcli` (Postgres Distributed management)
+* `sentinel` (Monitoring and failover management)
+
+## 2. Kubernetes platform verification
+
+Ensure the cluster you provision matches the platform selected in the **[Planning your architecture](./planning_arch)** phase.
+
+**Supported distributions:**
+  * Cloud service provider platforms:
+    * Microsoft Azure AKS (IR release stream only)
+    * Amazon EKS
+    * Google GKE
+    * ROSA RedHat OpenShift Service on AWS (IR release stream only)
+
+  * On premises platforms:
+    * SUSE Rancher RKE2 
+    * OCP RedHat OpenShift (RHOS)
+
+For a more detailed overview of HM compatibility per LTS/IR version, see [Hybrid Manager platform compatibility](https://www.enterprisedb.com/resources/platform-compatibility#hybrid%20management%20).
+
+**Provisioning constraints:**
+
+* **Dedicated cluster:** The cluster must be dedicated to Hybrid Manager. Multi-tenanting with other workloads is **not supported**.
+
+* **Relationship:** 1:1 (One HM deployment per one Cluster).
+
+* **Lifecycle:** You are responsible for the provisioning, upgrading, and scaling of the Kubernetes layer.
+
+### Configuration dependencies
+
+Your choice of platform dictates specific configuration values.
+
+Record these now for the next phase:
+
+| Parameter | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Required Value |
+| :--- | :--- | :--- | :--- |
+| **System flavor** | `spec.flavour` | `system` | `eks`, `gke`, `aks`, `rke2`, or `rhos` |
+| **OpenShift** | `spec.beaconAgent.provisioning.openshift` | `beaconAgent.provisioning.openshift` | Set to `true` **only** if using Red Hat OpenShift. |
+| **OpenShift ingress domain** | `spec.globalParameters.default_ingress_domain` | `parameters.global.default_ingress_domain` | Required only for `rhos` (query via `oc get ingresses.config/cluster -o jsonpath={.spec.domain}`). |
+| **OpenShift console domain** | `spec.componentsParameters.upm-istio-gateway.openshift_console_domain_name` | `parameters.upm-istio-gateway.openshift_console_domain_name` | Required only for OpenShift; used for console linking and UX. |
+
+## 3. Compute (Node requirements)
+
+Ensure your worker nodes meet the minimum sizing for your intended deployment topology (Minimum vs. Fully featured) as defined in the **[Planning Architecture](./planning_arch)** phase.
+
+Hybrid Manager components require **AMD64/x86-64 nodes**. 
+Mixed-architecture clusters (ARM64 + AMD64) are not supported for HM, even though PostgreSQL itself can run on ARM64.
+
+### Node roles summary
+
+| Node type | Purpose | Count | Kubernetes nodes | Required label |
+| :--- | :--- | :--- | :--- | :--- |
+| **Control plane** | Runs HM control plane & telemetry. | 3+ | Control or Worker | `edbaiplatform.io/control-plane: "true"` |
+| **Data plane** | Runs Postgres databases. | 0 or 3+ | Worker | `edbaiplatform.io/postgres: "true"` |
+| **AI model (GPU)** | *Optional:* Runs AI/ML workloads. | 0 or 2+ | Worker | `nvidia.com/gpu: "true"` |
+
+Use Node Pools (e.g., AWS NodeGroups, RHOS Machine Sets) to manage resources and apply required labels/taints.
+
+In most cases, HM runs on Kubernetes worker nodes in cloud environments (since you do not have access to managed control nodes&mdash;see EKS control plane access), and can run on control nodes ([see Kubernetes control plane documentation](https://kubernetes.io/docs/concepts/architecture/control-plane-node-communication/)) or worker nodes for on-premises clusters.
+
+### 3.1 Control plane nodes
+
+> **Optionality:** Strict requirement.
+
+Resource requirements for the control plane increase with the number of databases monitored. (Note: The Telemetry stack scales with the monitoring load).
+
+**Sizing guidelines:**
+
+| Resource | Minimum (Up to 10 DBs) | Standard (10–50 DBs) | Large (>50 DBs) |
+| :--- | :--- | :--- | :--- |
+| **CPU** | 8 vCPUs | 16 vCPUs | 16+ vCPUs |
+| **Memory** | 32 GB RAM | 64 GB RAM | 64+ GB RAM |
+| **Disk** | 100 GB SSD | 200 GB SSD | >200 GB SSD |
+| **Quantity** | 3 nodes | 3 nodes | 3+ nodes |
+
+### 3.2 Data plane nodes
+
+> **Optionality:** Strict requirement.
+
+The data plane nodes must be sized to host the **PostgreSQL** database clusters provisioned by users.
+* **Sizing:** Depends entirely on expected database workloads, storage requirements, and performance SLAs as defined in [Phase 1](./planning_arch.mdx).
+
+### 3.3 AI model nodes
+
+> **Optionality:** Required only if utilizing GenAI/Agent Factory capabilities (Installation scenario `ai` is enabled).
+
+* **Sizing:** Current recommendations require **Nvidia B200 GPUs** (or equivalent supported hardware).
+
+### Node abstractions
+
+To ensure the HM Control Plane runs on dedicated resources and Postgres workloads are on independent resources, or to partition dedicated resources for your AI workloads, you must apply specific configurations to each of these node pools before [deploying your Kubernetes cluster](./k8s_install/#set-your-node-abstractions).
+
+### Node allocatable resources requirements
+
+Hybrid Manager components have specific resource requirements that the nodes they're scheduled on must satisfy. When defining your node pools, ensure the allocatable resources meet the minimum requirements for the Hybrid Manager components and Postgres clusters you plan to run. Each scenario corresponds to a set of Hybrid Manager components and has its own resource requirements:
+
+| Scenario | Total CPU | Total Memory | Total Storage | Total Ephemeral Storage |
+|---------|---------|---------|---------|---------|
+| ai | 3366m | 4749Mi | 4Gi | 250Mi |
+| analytics | 200m | 456Mi | 0 | 0 |
+| core | 10020m | 30445Mi | 454706Mi | 3Gi |
+| dbaas | 0 | 0 | 0 | 0 |
+| migration | 2880m | 6432Mi | 54Gi | 0 |
+
+In addition, the Hybrid Manager operator itself requires `260m CPU` and `576Mi memory`.
+
+## 4. Local networking
+
+### Local network requirements
+
+HM is not strictly opinionated about local networking logic. 
+The standard networking capabilities provided by major Cloud Service Providers (AWS, Azure, GCP) are sufficient, provided they offer **low latency and high bandwidth** between availability zones.
+
+* **On-premises:** Networking should follow best practices regarding switching, link bonding, and link redundancy to ensure high availability.
+
+* **Protocol:** **IPv4 only**. Kubernetes must be configured for IPv4. IPv6 has not been thoroughly productized for Hybrid Manager; if IPv6 is required, it must be masked behind a Load Balancer so that internal communication remains IPv4.
+
+* **Defined Network Address Spaces (CIDRs)**: Your cluster must be configured with distinct, non-overlapping IP ranges for:
+    
+    * Pod Network (clusterCIDR): The IP range from which all pods are assigned their IPs.
+    * Service Network (serviceCIDR): The IP range from which all internal services (ClusterIPs) are assigned their virtual IPs.
+    * Functional DNS and NTP: The cluster's internal DNS service (typically CoreDNS) must be running and able to resolve both internal cluster services (e.g. kubernetes.default) and external addresses.
+
+#### Container Network Interface (CNI)
+
+A functional CNI is a strict requirement for pod-to-pod networking.
+
+* **Examples**: Calico, Cilium, Flannel
+
+* **Context:** Cilium is known to be more efficient at very high numbers of pods. However, because Postgres is the center of Hybrid Manager, extreme pod density is rarely the bottleneck compared to database I/O. Extra effort to optimize the stack to acheive slightly better results. Depending on the customers use case it may be justified. However, more often than not, good solution design can adapt to most infrastructure limitations.
+
+* **Validation:** Verify CNI setup and CIDR assignment:
+
+```bash
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR
+kubectl get svc
+```
+
+## 5. Ingress
+
+You must choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own Portal and services, as well as individual load balancers and NodePorts for each Postgres database you create.
+Choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own portal and services. It can also deploy individual load balancers and NodePorts for each Postgres database you create.
+The table below defines the supported combinations of DNS Management, Endpoint Types, and SSL Termination.
+
+| Scenario | DNS Management | Endpoint Type | Portal SSL/TLS Termination |
+| :--- | :--- | :--- | :--- |
+| **CSP LB (ELB, ALB)** | Manual portal, dynamic postgres | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
+| **F5 + F5 K8s Controller** | Manual portal, dynamic postgres | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
+| **MetalLB** | Manual | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
+| **NodePort (Conventional LB)** | Manual (A record against LB) | Static (manual) | Istio Ingress Gateway |
+| **NodePort (No LB)** | Manual (Round Robin against Nodes) | Static (manual) | Istio Ingress Gateway |
+
+### 5.1 Load balancer controller
+
+> **Optionality:** Required option for an optimal experience.
+
+Examples of load balancer controllers range from the AWS Load Balancer controller to MetalLB or a BigIP F5 combined with DNS capability and their F5 Load Balancer Controller.
+
+**General requirements**
+
+* **Firewall Annotations:** If using a specific provider scheme (e.g., AWS Internet Facing), you know the correct `resourceAnnotations` to provision the load balancer correctly:
+
+*AWS example annotation*: 
+
+```yaml
+globalParameters:
+  load_balancer_mode: public
+  load_balancer_provider: aws
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+```
+
+*MetalLB example annotation*:
+
+```yaml
+globalParameters:
+  load_balancer_mode: custom-only
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      metallb.io/address-pool: production-public-ips
+```
+
+**Configuration dependencies**
+
+| Parameter | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Value / Format |
+| :--- | :--- | :--- | :--- |
+| **Enable LB** | `spec.globalParameters.load_balancer_mode` | `parameters.global.load_balancer_mode` | `"public"`, `"private"`, or `"disabled"` |
+| **Provider** | `spec.globalParameters.load_balancer_provider` | `parameters.global.load_balancer_provider` | `aws`, `azure`, or `gcp` |
+| **Annotations** | `spec.resourceAnnotations[]` | `resourceAnnotations` | Provider-specific list (see below). |
+
+
+The `load_balancer_mode` parameter lets you instruct HM to create a load balancer service for both the Portal and the Postgres databases. If set to 
+`disabled`, both the portal and the Postgres databases use NodePorts; otherwise, they use a load balancer. The `public` and `private` values only
+ affect the Postgres databases and have no impact on the portal load balancer. Similarly, the `load_balancer_provider` parameter applies only to Postgres clusters.
+  The `resourceAnnotations` parameter is relevant only for the HM Portal.
+
+**Spot validation**
+
+To verify that your controller is active, use the following command:
+
+```bash
+kubectl get pods -A | grep -i 'load\|lb\|router\|metallb\|gateway'
+```
+
+**HM control plane ports**
+
+The following ports must be open on your load balancer or firewall for Hybrid Manager to function:
+
+| Port | Protocol | Service | Description |
+| :--- | :--- | :--- | :--- |
+| **80** | TCP | `http2` | HM Portal (HTTP — redirects to HTTPS) |
+| **443** | TCP | `https` | HM Portal (HTTPS ingress) |
+| **9443** | TCP | `grpc-tls` | Beacon gRPC API |
+| **8444** | TCP | `spire-tls` | Spire TLS |
+| **9445** | TCP | `beacon-spire` | Beacon Spire TLS |
+| **24224** | TCP | `fluent-bit` | Inter-cluster log forwarding (multi-DC only) |
+| **10901** | TCP | `thanos-query` | Inter-cluster metrics (multi-DC only) |
+
+**Postgres ports (Data Plane)**
+
+With a proper load balancer setup, the following are Postgres ports:
+
+| Port | Protocol | Description |
+| :--- | :--- | :--- |
+| **5432** | TCP | Default PSQL |
+| **6432** | TCP | PGD Connection Manager PSQL |
+
+
+**SSL Termination**
+
+HM is exposed through the Istio Gateway by using TLS. If you are using a load balancer in front of Istio to access HM, you have two options:
+
+1. **SSL passthrough**: Configure the load balancer to forward TCP traffic without modification.
+2. **TLS termination**: Terminate the TLS session from the client at the load balancer, then have the load balancer establish a new TLS connection with Istio.
+
+#### 5.1.2 NodePort alternative
+
+> **Optionality:** Alternative to [Load Balancer controller](#51-load-balancer-controller).
+
+If a Load Balancer is not available, you must use a **NodePort** strategy.
+
+* **Configuration:** You must configure `parameters.global.load_balancer_mode: "disabled"` and define a `parameters.global.node_port_domain` in your HM configuration.
+
+* **Context:** By default, HM components expose services on specific NodePort values. You may use NodePort directly, or front these ports with **MetalLB** (software load balancer) or a **hardware load balancer** for a friendlier DNS name and better failover.
+
+**Default NodePort assignments**
+
+If using NodePort for ingress, the following specific ports must use **NodePort**.
+
+* **Constraint:** You must define a `node_port_domain` (Base DNS name).
+
+* **Context:** HM components expose services on specific NodePort values. You may use NodePort directly, or front these ports with a hardware load balancer.
+
+**Configuration dependencies**
+
+| Parameter | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Value / Format |
+| :--- | :--- | :--- | :--- |
+| **Disable LB** | `spec.globalParameters.load_balancer_mode` | `parameters.global.load_balancer_mode` | `"disabled"` |
+| **Domain** | `spec.globalParameters.node_port_domain` | `parameters.global.node_port_domain` | Postgres DNS domain (e.g., `pg.myorg.com`). |
+
+**Default NodePort assignments**
+
+| NodePort variable | Default port | LB port | Description |
+| :--- | :--- | :--- | :--- |
+| `parameters.upm-istio-gateway.ingress_http_node_port` | **32542** | 80 | HM Portal (HTTP) |
+| `parameters.upm-istio-gateway.ingress_https_node_port` | **30288** | 443 | HM Portal (HTTPS) |
+| `parameters.upm-istio-gateway.ingress_grpc_tls_node_port` | **30290** | 9443 | Beacon gRPC TLS |
+| `parameters.upm-istio-gateway.ingress_spire_tls_node_port` | **30292** | 8444 | Spire TLS |
+| `parameters.upm-istio-gateway.ingress_beacon_spire_tls_node_port` | **30294** | 9445 | Beacon Spire TLS |
+| `parameters.upm-istio-gateway.ingress_thanos_query_tls_node_port` | **30296** | 10901 | Inter-cluster metrics (multi-DC only) |
+| `parameters.upm-istio-gateway.ingress_fluent_bit_tls_node_port` | **30298** | 24224 | Inter-cluster log forwarding (multi-DC only) |
+| `parameters.upm-istio-gateway.enable_server_session` | n/a | n/a | Enable server stored session (`"true"` or `"false"`) |
+
+**Postgres NodePorts**
+
+Postgres clusters use the `node_port_domain` and increment on the port, provisioned in the port range `30000+`.
+
+### 5.2 DNS
+
+> **Optionality:** DNS configuration is a **required option for an optimal experience**.
+
+You must ensure proper DNS resolution both inside the cluster and for external access.
+
+#### Internal cluster DNS & NTP
+
+* **CoreDNS:** The cluster's internal DNS service (typically CoreDNS) must be running and able to resolve both internal cluster services (e.g., `kubernetes.default`) and external internet addresses.
+
+* **NTP:** Functional NTP is required to ensure time synchronization across nodes.
+
+* **Container Registry:** Your DNS service must be able to resolve the DNS entries for the container registry (whether local or EDB's).
+
+#### Configuration dependencies
+
+You must provision and control the following domains.
+These are inputs into your HM configuration in the next phase:
+
+| Domain Purpose | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Description |
+| :--- | :--- | :--- | :--- |
+| **Portal domain** | `spec.globalParameters.portal_domain_name` | `parameters.global.portal_domain_name` | The host name for the HM Portal UI. |
+| **Agent domain** | `spec.componentsParameters.upm-beacon.server_host` | `parameters.upm-beacon.server_host` | The host name through which the Beacon Server API is reachable. |
+| **Migration domain** | `spec.globalParameters.dms_domain_name` | `parameters.global.dms_domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. |
+| **NodePort base** | `spec.globalParameters.node_port_domain` | `parameters.global.node_port_domain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
+
+In case of NodePort approach, the above DNS entries should be round robin on the compute IP where the control-plane label is applied on the Kubernetes Nodes.
+
+#### DNS configuration strategy
+
+Your DNS configuration depends on your Ingress selection.
+
+**Scenario A: Load balancer (recommended)**
+
+* **Dependency:** Ensure `parameters.global.load_balancer_mode:` is set to `"public"` or `"private"` in your HM configuration.
+
+* **Portal:** In the case of an optimal load balancer controller like AWS ELB or an F5 with DNS capability, manually configure DNS to point to the resulting Load Balancer IP for `istio-ingress`. Domain names must be resolvable to a **locally routable IP** so that the ingress service on Kubernetes can properly route traffic according to the hostname in the HTTPS request.
+
+* **Postgres:** You do *not* need to manually manage DNS for every database. 
+
+Postgres DNS records are populated automatically as a function of the load balancer controller updating the status of the Service in the namespace dedicated to that Postgres cluster.
+
+**Scenario B: NodePort alternative**
+
+* **Prerequisite:** You disabled load balancers and defined a `node_port_domain` in the Ingress section.
+
+* **Portal:** DNS entries should be a **Round Robin A Record** pointing to the compute IPs of the **Control Plane nodes** (nodes labeled `edbaiplatform.io/control-plane`).
+
+* **Postgres:** The `node_port_domain` value is used as the base URL for all Postgres instances. It should be a **Round Robin DNS record** pointing to the IP addresses of the **Worker nodes** where the Postgres clusters are running.
+
+### 5.3 Certificate management
+
+> **Optionality:** Strictly required.
+
+Secure communication requires TLS certificates for the Portal and API endpoints. 
+You must decide on a certificate management strategy before installation.
+
+#### Decision matrix
+
+| Option | Description | Typical use case |
+| :--- | :--- | :--- |
+| **A. Custom cert-manager issuer** | Use an existing `cert-manager` Issuer. | Production (Recommended). |
+| **B. Customer CA** | Bring your own CA to sign internal certs. | Enterprises with internal PKI. |
+| **C. Customer Certificate** | Provide your own pre-generated x.509 cert and private key as a Kubernetes secret. | Specific organization-issued cert. |
+| **D. Self-signed** | Installer generates self-signed certs. | **Test/Non-Production only.** |
+
+#### Configuration dependencies by strategy
+
+| Strategy | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Description |
+| :--- | :--- | :--- | :--- |
+| **A. Cert Manager** | `spec.globalParameters.portal_certificate_issuer_kind` | `parameters.global.portal_certificate_issuer_kind` | **Required.** The Resource Kind (`Issuer` or `ClusterIssuer`). |
+| **A. Cert Manager** | `spec.globalParameters.portal_certificate_issuer_name` | `parameters.global.portal_certificate_issuer_name` | **Required.** The Resource Name (e.g., `letsencrypt-prod`). |
+| **B. BYO CA** | `spec.globalParameters.ca_secret_name` | `parameters.global.ca_secret_name` | **Required.** The name of your CA Secret. |
+| **C. BYO Cert** | `spec.globalParameters.portal_certificate_secret` | `parameters.global.portal_certificate_secret` | **Required.** The name of your Certificate Secret. |
+| **D. Self-signed** | N/A | N/A | **Default behavior.** (No configuration required). |
+
+## 6. Block storage (Database & logs)
+
+> **Optionality:** Strictly required.
+
+You must define a Kubernetes `StorageClass` that presents persistent storage volumes (PVCs).
+
+The default storage class used for the **HM Control Plane** is set in your HM configuration.
+The same storage class is an option for all Postgres instances' deployments as well.
+However, for the **Data Plane** (your Postgres deployments), you may establish any number of additional storage classes in the cluster. 
+All of them are available options for Postgres deployments, providing the flexibility needed for critical or intensive workloads.
+
+### Control plane requirements
+
+Block storage demands for the HM Control Plane are relatively light. 
+A storage class roughly equivalent to the capability of **AWS gp2** is sufficient.
+
+#### Data plane requirements (Postgres)
+
+Postgres workloads may require specialized configurations depending on their specific I/O patterns.
+
+* **Latency Sensitivity:** Postgres is generally more sensitive to latency—and specifically the *consistency* of latency—than raw throughput.
+
+* **Example: Analytics:** Analytic capabilities perform as expected with approximately **16,000 IOPS** capacity per PVC.
+
+* **Example: Azure:** In Azure, IOPS-capable storage (Premium SSD) is highly preferred—even when provisioning low IOPS capacity—due to its highly consistent latency compared to Standard tiers.
+
+### Notable considerations
+
+Hybrid Manager and containerized Postgres are particularly well suited to leverage **Local Storage**.
+Unlike traditional applications, these solutions do not strictly depend on the PVC being replicated across the Kubernetes cluster by the storage provider. 
+If a Postgres instance loses its underlying node (and local disk), the new pod does not need to remount the old PVC. 
+Instead, the Hybrid Manager High Availability (HA) logic rebuilds the new node from its peers or backup.
+
+### Configuration dependencies
+
+| Parameter | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Value / Format |
+| :--- | :--- | :--- | :--- |
+| **Storage Class** | `spec.globalParameters.storage_class` | `parameters.global.storage_class` | The exact name of your K8s StorageClass. |
+
+##### Validation
+
+Verify available storage classes:
+
+```bash
+kubectl get sc
+```
+
+### 6.1 Volume snapshots
+
+* **Optionality:** Required for an optimal experience (backups will be limited without it).
+
+The underlying storage provider **must support Volume Snapshots** to enable the backup and recovery features of the platform.
+
+* **Mechanism:** Hybrid Manager automatically utilizes volume snapshots if the capability is exposed via the Kubernetes API.
+
+* **Implementation note:**
+    * **Cloud:** Typically handled by the CSP's CSI driver (e.g., AWS EBS CSI), but often requires installing a "Snapshot Controller" add-on.
+    * **On-Premises:** Your storage backend must support the CSI Snapshotter specification, and you must define a `VolumeSnapshotClass` that maps to it.
+
+##### Validation
+
+Verify that a snapshot class is configured and available:
+
+```bash
+kubectl get volumesnapshotclass
+```
+
+### 6.2 Excluding storage from Hybrid Manager discovery
+
+In shared Kubernetes environments, some `StorageClasses` or `VolumeSnapshotClasses` may not be suitable for Postgres workloads — for example, GPU- or HM-only classes.
+By default, every discovered class appears in the Hybrid Manager **Create Cluster** dropdowns, which can lead operators to pick a class on which a Postgres cluster will never successfully deploy.
+
+To hide a class from the Hybrid Manager provisioning UI, apply the `beacon.enterprisedb.com/exclude-storage-from-dbaas` label with value `true`:
+
+```bash
+kubectl label storageclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+kubectl label volumesnapshotclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+```
+
+Behavior:
+
+* **Opt-in:** Only the exact value `"true"` excludes a class. An absent label, or any other value, preserves current behavior — the feature is a no-op for existing deployments.
+
+* **Default-safe:** An excluded `StorageClass` is never promoted to Hybrid Manager's discovered default, even if it carries the `storageclass.kubernetes.io/is-default-class` annotation.
+
+* **Takes effect on the next agent heartbeat:** No agent restart is required.
+
+* **UI-only:** The label hides the class from Hybrid Manager's provisioning UI. Workloads that reference the class by name — for example, a custom resource or a direct `kubectl apply` — can still use it.
+
+To restore a class to the provisioning UI, remove the label:
+
+```bash
+kubectl label storageclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas-
+kubectl label volumesnapshotclass <name> beacon.enterprisedb.com/exclude-storage-from-dbaas-
+```
+
+##### Validation
+
+Audit which classes are currently excluded:
+
+```bash
+kubectl get sc,volumesnapshotclass -l beacon.enterprisedb.com/exclude-storage-from-dbaas=true
+```
+
+## 7. Object storage
+
+> **Optionality:** Strictly required.
+
+Object storage is the backbone of disaster recovery and data mobility. It is used for:
+
+* Velero backups (Cluster DR)
+* Postgres WAL archiving (Point-in-Time Recovery)
+* Unstructured data for GenAI/AIDB
+* Parquet files for Lake Keeper
+* Log files
+
+### General requirements
+
+* **Protocol:** Must be fully **S3 Compatible**.
+
+* **Consistency:** In multi-location deployments, the object storage configuration must be available equally across all locations. (See [multi-dc guidance](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/) for details.)
+
+!!! Note
+You must provision a Kubernetes Secret named `edb-object-storage` in the `default` namespace. 
+The contents of this secret must be identical in every cluster. 
+You are not expected to run `kubectl create secret` at this point in the process. 
+Here, you are gathering the raw credentials (API keys, certificates, passwords) so you have them ready to inject into the cluster in [Phase 4: Preparing your environment](./environment_prep).
+!!!
+
+!!! Important
+Your object storage must be dedicated entirely to the Hybrid Manager. 
+Any prior data existing in your object storage interferes with the successful operation of the HM. 
+Similarly, if HM is removed and reinstalled, then the object storage must be emptied prior to beginning the new installation.
+!!!
+
+### Authentication strategies
+
+Choose the authentication method supported by your provider:
+
+| Provider | Auth Method | Example Use Case |
+| :--- | :--- | :--- |
+| **AWS (EKS/ROSA)** | Workload Identity (IAM) | Native AWS integration (Recommended). |
+| **AWS (Other K8s)** | Static Keys | Generic Kubernetes connecting to AWS S3. |
+| **Azure Blob** | Static Keys | Connect via Connection String/Key. |
+| **GCP Storage** | Static Keys | Base64-encoded Service Account JSON. |
+| **S3 Compatible**| Static Keys | On-Premises (MinIO, Ceph, etc.). |
+
+### Configuration dependencies
+
+#### Configuration file
+
+These are the configuration keys for your HM installation.
+
+## 8. Container registry
+
+> **Optionality:** A local container registry is a **required option for an optimal experience**.
+
+You require a container registry that is accessible from your Kubernetes Cluster to host HM and Postgres images.
+
+* **Purpose:** To serve the specific application images required for the Control Plane and Data Plane.
+
+* **Access Requirement:** The cluster must be able to pull images from this registry.
+
+* **Permissions:** The authentication credential used must have permissions to **List Repositories**, **List Tags**, and **Read Tag Manifests**.
+
+If your environment cannot access the public EDB repository, you must pull the artifacts and push them to your local private registry using `edbctl`.
+
+### Choosing a registry approach
+
+You have two registry options:
+
+* **External private registry (recommended).** Use your organization's existing registry — for example, AWS ECR, Google Artifact Registry, Azure Container Registry, or Harbor. Best for environments with established registry tooling, scanning, and access control. See [Syncing images to a local private registry](../configuration/sync_images).
+
+* **In-cluster container registry.** A registry embedded in the EDB HCP Operator itself. Suitable only for fully air-gapped clusters whose nodes have no public IPs. See [Using the in-cluster container registry](../configuration/in_cluster_registry).
+
+!!! Warning In-cluster registry security
+The in-cluster registry serves images over plain HTTP without authentication and exposes itself to nodes through a NodePort. It's only safe when every cluster node is on a private subnet with no public IP. If any node has a public IP, the registry — and every image it stores — is reachable from the internet without credentials.
+
+If your nodes have public IPs, don't use the in-cluster registry. Use an external private registry instead.
+!!!
+
+### Supported providers & authentication
+
+| Registry provider | Supported Auth | Recommended Auth |
+| :--- | :--- | :--- |
+| **Azure (ACR)** | Token, Basic | Token |
+| **Amazon (ECR)** | EKS Managed Identity | EKS Managed Identity |
+| **Google (GAR)** | Token, Basic | Basic |
+| **EDB Repo** | Token | Token (PoC/Pilot only!) |
+    # Examples: Azure CR: myregistry.azurecr.io, AWS ECR: 123456079902.dkr.ecr.us-east-1.amazonaws.com,
+    #           GCP GAR: us-east1-docker.pkg.dev, EDB CloudSmith Repos 2.0: docker.enterprisedb.com/pgai-platform
+
+### Preparation
+
+* **Sync images to your local container registry:** You must use `edbctl` to synchronize images if using a private registry.
+  * [**SOP: Sync images to local registry**](../configuration/sync_images)
+    * *Guidance: Using `edbctl` to mirror Platform and Operator images.*
+
+* **Secret:** You must provision a Kubernetes Secret with pull credentials. (See [Phase 4: Preparing your environment](./environment_prep/#create-image-pull-secret) for implementation details.)
+
+!!! Note
+**Configure image discovery:** Once images are synced to your local registry, you may need to configure the installer to locate them. 
+This ensures the cluster pulls artifacts from the correct location (local registry vs. public registry).
+* [**SOP: Image discovery configuration**](/edb-postgres-ai/current/hybrid-manager/install/configuration/image_discovery/)
+    * *Guidance: Configuring registry mirrors and pull policies.*
+!!!
+
+### Configuration dependencies
+
+Collect these values for your HM configuration in the next phase (Phase 3).
+
+| Parameter | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Value / Format |
+| :--- | :--- | :--- | :--- |
+| **Registry URL** | `spec.imageRegistry` | `containerRegistryURL` | `<Registry Domain>/pgai-platform` |
+| **Image version** | `spec.version` | `bootstrapImageTag` | HM version tag (e.g., `"v2026.5.1"`). |
+| **Bootstrap image** | N/A | `bootstrapImageName` | Bootstrap only: `<Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<K8s_Flavor>` |
+| **Pull Secret** | `spec.imagePullSecrets[]` | `imagePullSecrets` | Kubernetes image pull secret references (for example, `[{name: edb-cred, namespace: edbpgai-bootstrap}]`). |
+| **Discovery Registry** | `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | `beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | `<Registry Domain>/pgai-platform` |
+| **Discovery Auth** | `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | `beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | `<Auth Type>` (e.g., `token`, `basic`, `eks_managed_identity`) |
+| **TLS Validation** | `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | `beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Set to `true` only if intentionally allowing insecure (no/invalid TLS) registry discovery. |
+
+## 9. Identity provider (IdP)
+
+Hybrid Manager is **not intended** to provide user authentication directly. 
+It relies on an external Identity Provider (IdP) to manage user access securely.
+
+**Optionality:** Required for optimal experience and security.
+
+* **Mechanism:** Connects to your existing directory service via OIDC.
+* **Supported Backends:** LDAP or SAML.
+
+You must prepare the following values and artifacts for [Preparing your environment](environment_prep) (Phase 4):
+
+## 10. Key management service (KMS)
+
+Integrating an external Key Management Service (KMS) is required to enable **Transparent Data Encryption (TDE)** for your Postgres databases.
+
+* **Optionality:** Required for optimal security and compliance.
+
+* **Mechanism:** Hybrid Manager integrates with cloud providers or external vaults to manage encryption keys securely.
+
+**Supported Authentication**
+
+* **Workload Identity:** Native cloud authentication (Recommended for EKS/GKE/AKS).
+
+* **Credentials:** Static keys stored in Kubernetes secrets.
+
+### Configuration dependencies
+
+#### Configuration file
+
+You must prepare the following values for your HM configuration in [Phase 4](./environment_prep.mdx):
+
+| Parameter | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Value / Format |
+| :--- | :--- | :--- | :--- |
+| **TDE Providers** | `spec.beaconAgent.transparentDataEncryptionMethods` | `beaconAgent.transparentDataEncryptionMethods` | List of enabled methods (e.g., `passphrase`, `aws_kms`, `azure_kms`, `gcp_kms`, `hashicorp_vault`). |
+
+* **Auth Secrets:** If using `credentials` mode, specific Kubernetes Secrets must be provisioned with API keys. 
+
+## Impact on configuration
+
+The infrastructure specifications detailed in this document, combined with your architecture decisions from Phase 1, dictate the values you use in the next phase.
+
+### Requirements inventory guide
+
+Use this inventory guide to ensure you have every required value determined before proceeding to Phase 3.
+
+Keys for both the CR for the Operator method and the `values.yaml` for the Helm chart method are specified for each requirement.
+
+### General & platform
+
+| Source | Requirement | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Condition |
+| :--- | :--- | :--- | :--- | :--- |
+| **Phase 1** | **K8s Flavor** | `spec.flavour` | `system` | **Required** (e.g., `eks`, `gke`, `aks`, `rhos`) |
+| **Phase 1** | **Provider** | `spec.beaconAgent.provisioning.provider` | `beaconAgent.provisioning.provider` | **Required** (e.g., `AWS`, `GCP`) |
+| **Phase 1** | **OpenShift** | `spec.beaconAgent.provisioning.openshift` | `beaconAgent.provisioning.openshift` | **Required** if using RHOS (`true`) |
+| **Phase 1** | **Location** | `spec.componentsParameters.upm-beacon.beacon_location_id` | `parameters.upm-beacon.beacon_location_id` | **Required** (String ID) |
+| **Phase 1** | **Installation scenarios** | `spec.scenarios[]` | `scenarios` | **Optional**. All scenarios enabled by default. Customize with `core` plus any of `migration`, `ai`, `dbaas` or `analytics`. |
+
+### Networking & ingress
+
+| Source | Requirement | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Condition |
+| :--- | :--- | :--- | :--- | :--- |
+| **Phase 2** | **Portal Domain** | `spec.globalParameters.portal_domain_name` | `parameters.global.portal_domain_name` | **Required** |
+| **Phase 2** | **Agent Domain** | `spec.componentsParameters.upm-beacon.server_host` | `parameters.upm-beacon.server_host` | **Required** |
+| **Phase 2** | **Migration Domain** | `spec.componentsParameters.transporter-rw-service.domain_name` | `parameters.transporter-rw-service.domain_name` | **Required** |
+| **Phase 2** | **Migration URL** | `spec.componentsParameters.transporter-dp-agent.rw_service_url` | `parameters.transporter-dp-agent.rw_service_url` | **Required** |
+| **Phase 2** | **Load Balancer Mode** | `spec.globalParameters.load_balancer_mode` | `parameters.global.load_balancer_mode` | **Required** (`"public"`, `"private"`, or `"disabled"`) |
+| **Phase 2** | **LB Annotations** | `spec.resourceAnnotations[]` | `resourceAnnotations` | **Required** if using CSP LB (e.g., AWS) |
+| **Phase 2** | **NodePort Domain** | `spec.globalParameters.node_port_domain` | `parameters.global.node_port_domain` | Required if load balancer mode is `"disabled"` |
+
+### Storage & registry
+
+| Source | Requirement | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Condition |
+| :--- | :--- | :--- | :--- | :--- |
+| **Phase 2** | **Storage Class** | `spec.globalParameters.storage_class` | `parameters.global.storage_class` | **Required** |
+| **Phase 2** | **Registry URL** | `spec.imageRegistry` | `containerRegistryURL` | **Required** |
+| **Phase 2** | **Image Version** | `spec.version` | `bootstrapImageTag` | **Required** |
+| **Phase 2** | **Bootstrap Image** | N/A | `bootstrapImageName` | Bootstrap only |
+| **Phase 2** | **Discovery Reg.** | `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | `beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | **Required** |
+| **Phase 2** | **Registry Auth** | `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | `beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | **Required** |
+| **Phase 2** | **Insecure TLS** | `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | `beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Optional (if using self-signed registry) |
+
+### Security & identity
+
+| Source | Requirement | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Condition |
+| :--- | :--- | :--- | :--- | :--- |
+| **Phase 2** | **IDP Secret** | `spec.componentsParameters.pgai.portal.authentication.clientSecret` | `pgai.portal.authentication.clientSecret` | **Required** (if using OIDC) |
+| **Phase 2** | **IDP Config** | `spec.componentsParameters.pgai.portal.authentication.idpConnectors` | `pgai.portal.authentication.idpConnectors` | **Required** (if using OIDC) |
+| **Phase 2** | **Static User** | `spec.componentsParameters.pgai.portal.authentication.staticPasswords.*` | `pgai.portal.authentication.staticPasswords.*` | **PoC Only** (if no IdP) |
+| **Phase 2** | **TDE Keys** | `spec.beaconAgent.transparentDataEncryptionMethods` | `beaconAgent.transparentDataEncryptionMethods` | Optional (if using TDE) |
+
+### Certificates (Choose one strategy)
+
+Select **one** strategy (A, B, C, or D) and record the corresponding value(s).
+
+| Strategy | Custom Resource key (Operator method) | `values.yaml` key (Bootstrap method) | Description |
+| :--- | :--- | :--- | :--- |
+| **A. Cert Manager** | `spec.globalParameters.portal_certificate_issuer_kind` | `parameters.global.portal_certificate_issuer_kind` | **Required.** The Resource Kind (e.g., `ClusterIssuer`). |
+| **A. Cert Manager** | `spec.globalParameters.portal_certificate_issuer_name` | `parameters.global.portal_certificate_issuer_name` | **Required.** The Resource Name (e.g., `letsencrypt-prod`). |
+| **B. BYO CA** | `spec.globalParameters.ca_secret_name` | `parameters.global.ca_secret_name` | **Required.** The name of your CA Secret. |
+| **C. BYO Cert** | `spec.globalParameters.portal_certificate_secret` | `parameters.global.portal_certificate_secret` | **Required.** The name of your Certificate Secret. |
+| **D. Self-signed** | N/A | N/A | **Default behavior.** (No configuration required). |
+
+### Example configurations
+
+According to the decisions made in previous steps, your configuration file should reflect those choices. Examples are shown for both installation methods.
+
+#### Operator method (`HybridControlPlane` CR) — recommended
+
+Here is the configuration for a `HybridControlPlane` CR for the Operator installation method. 
+For a complete field reference and mapping, see the [Configuration mapping reference](../migrate_bootstrap_to_operator#configuration-mapping-reference).
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  flavour: <Kubernetes> # e.g., eks, gke, rhos, rke2
+  imageRegistry: <Container Registry Domain>/pgai-platform
+  version: <Version>
+
+  imagePullSecrets:
+    - name: edb-cred
+      namespace: edbpgai-bootstrap
+
+  globalParameters:
+    CONTAINER_REGISTRY_URL: <Container Registry Domain>/pgai-platform
+    portal_domain_name: <Portal Domain>
+    storage_class: <Block Storage>
+    portal_certificate_issuer_kind: <ClusterIssuer>
+    portal_certificate_issuer_name: <my-issuer>
+    trust_domain: <Portal Domain>
+
+  componentsParameters:
+    upm-beacon:
+      beacon_location_id: <Location>
+      server_host: <Agent Domain>
+    transporter-rw-service:
+      domain_name: <Migration Domain>
+    transporter-dp-agent:
+      rw_service_url: https://<Migration Domain>/transporter
+
+  beaconAgent:
+    provisioning:
+      imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+      imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+    transparentDataEncryptionMethods:
+      - <available_encryption_method>
+
+  scenarios:
+    - core
+    - <if required, migration>
+    - <if required, ai>
+    - <if required, analytics>
+    - <if required, dbaas>
+
+  resourceAnnotations:
+    - name: istio-ingressgateway
+      kind: Service
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+        service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+```
+
+#### Bootstrap method (`values.yaml`) — deprecated
+
+Here is an example of a production-oriented `values.yaml` using all options "required for optimal experience":
+
+```yaml
+system: <Kubernetes>
+bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
+bootstrapImageTag: <image-tag-version>
+containerRegistryURL: "<Container Registry Domain>/pgai-platform"
+scenarios: "core,migration,ai,analytics,dbaas"
+parameters:
+  global:
+    portal_domain_name: <Portal Domain>
+    storage_class: <Block Storage>
+    portal_certificate_issuer_kind: <ClusterIssuer>
+    portal_certificate_issuer_name: <my-issuer>
+    dms_domain_name: <Migration Domain>
+    load_balancer_mode: "public"
+    load_balancer_provider: <cloud_provider>
+  upm-beacon:
+    beacon_location_id: "<"Location>"
+    server_host: <Agent Domain>
+beaconAgent:
+  provisioning:
+    imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
+    imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
+    imagesetDiscoveryAllowInsecureRegistry: false
+  transparentDataEncryptionMethods:
+    - <available_encryption_method>
+resourceAnnotations:
+  - name: istio-ingressgateway
+    kind: Service
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
+spec:
+  scenarios:
+    - core
+    - <if required, migration>
+    - <if required, ai>
+    - <if required, analytics>
+    - <if required, dbaas>
+```
+
+## Next phase
+
+You now have a complete inventory and deployment strategy, as well as initial inputs for your HM configuration — either a `HybridControlPlane` CR (Operator method, recommended) or a `values.yaml` (Bootstrap method). Continue building your configuration as you go, or use these inputs to assemble the file at the end of [Phase 4: Preparing your environment](environment_prep).
+
+**Proceed to [Phase 3: Deploying your Kubernetes cluster →](k8s_install) to provision and deploy your Kubernetes clsuter.**

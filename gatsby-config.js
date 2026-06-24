@@ -59,6 +59,10 @@ const sourceToPluginConfig = {
   },
   pgaa: { name: "pgaa", path: "product_docs/docs/pgaa" },
   aidb: { name: "aidb", path: "product_docs/docs/aidb" },
+  "agent-governance": {
+    name: "agent-governance",
+    path: "product_docs/docs/agent-governance",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },

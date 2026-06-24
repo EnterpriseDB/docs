@@ -1,0 +1,95 @@
+---
+title: Azure Key Vault (Key Management Service)
+navTitle: Azure KMS
+description: Learn about using Azure Key Vault (KMS) with Hybrid Manager.
+redirects:
+- /edb-postgres-ai/latest/hybrid-manager/install/customization/kms_for_tde/azure_kms/
+---
+
+Before you can create TDE-enabled clusters with an Azure Key Vault key, an administrator must install and configure Azure Key Vault for the Hybrid Manager instance.
+
+This example creates a customer-managed key in Azure Key Vault, configures the KMS provider in the Hybrid Manager, and then uses the key to enable TDE for provisioning a new database cluster with encryption enabled.
+
+If you are running the Hybrid Manager on Azure Kubernetes Service (AKS), it can be practical to use Azure Key Vault for key management, as it provides a native integration and alignment with the Azure ecosystem's best practices.
+
+## Prerequisites
+
+Ensure you have set the parameter for Azure KMS in the `values.yaml` of the Hybrid Manager. See [Adding KMS support](adding_kms_support.mdx) to enable it. Specifically, `azure_kms` must be present in the agent's `transparentDataEncryptionMethods` list, otherwise **Azure** won't appear as an option under **Select key management system provider** when adding a key in the Console.
+
+## Creating the Azure Key Vault key
+
+[Create a key in Azure Key Vault](https://learn.microsoft.com/en-us/azure/key-vault/keys/quick-create-portal) using the Azure portal, Azure CLI, or Azure API in the same Azure region where the Hybrid Manager is installed.
+
+Use the following configuration for the new key:
+
+-   **Key type**: RSA or EC (as supported by your vault)
+
+-   **Key operations**: Ensure at minimum the following permitted operations are enabled:
+
+    | Action | Purpose |
+    |--------|---------|
+    | `encrypt` / `decrypt` | Wrap and unwrap the data encryption key |
+    | `wrapKey` / `unwrapKey` | Key wrap operations |
+    | `get` / `read` | Read key metadata |
+
+## Granting workload identity access to the key
+
+The Postgres cluster uses TDE backed by your Azure Key Vault key. The workload identity associated with the cluster's pods must be authorized to perform cryptographic operations on that key.
+
+Assign the built-in role **Key Vault Crypto User** to the workload identity. This role grants only the operations TDE needs:
+
+| Action | Purpose |
+|--------|---------|
+| `Microsoft.KeyVault/vaults/keys/encrypt/action` | Wrap the data encryption key |
+| `Microsoft.KeyVault/vaults/keys/decrypt/action` | Unwrap the data encryption key |
+| `Microsoft.KeyVault/vaults/keys/wrapKey/action` | Key wrap operations |
+| `Microsoft.KeyVault/vaults/keys/unwrapKey/action` | Key unwrap operations |
+| `Microsoft.KeyVault/vaults/keys/read` | Read key metadata |
+
+Assign the role using Azure CLI:
+
+```shell
+az role assignment create \
+    --role "Key Vault Crypto User" \
+    --assignee-object-id <WORKLOAD_IDENTITY_OBJECT_ID> \
+    --assignee-principal-type ServicePrincipal \
+    --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>/providers/Microsoft.KeyVault/vaults/<VAULT_NAME>/keys/<KEY_NAME>"
+```
+
+Verify the assignment:
+
+```shell
+az role assignment list \
+    --assignee <WORKLOAD_IDENTITY_OBJECT_ID> \
+    --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>/providers/Microsoft.KeyVault/vaults/<VAULT_NAME>" \
+    -o table
+```
+
+You should see a row with **Role: Key Vault Crypto User**.
+
+Once you have created an Azure Key Vault key, add it to a project in the Hybrid Manager Console.
+
+## Assigning the Azure Key Vault key to a project
+
+Add the created key to a project:
+
+1.  On the Console, go to the project under which you'll create TDE-enabled clusters.
+    You can use a key for several clusters in a project, but we recommend setting up a new key per additional Hybrid Manager project.
+
+1.  On the left-side navigation, select **Settings** -> **Security**, and then **+ Add a key**.
+
+1.  Select a location to configure the key.
+
+1.  Select **Azure** under **Select key management system provider**.
+
+1.  In **Key Vault Name**, enter the name of the Azure Key Vault that holds the key.
+
+1.  In **Key Name**, enter the key name in your Microsoft Azure account. This name must match the name of the key in Azure Key Vault.
+
+1.  In **Key Version**, enter the version of the key that will be used for encryption and decryption.
+
+1.  If desired, you can enter an alternative key name that is easy to remember in **(Optional) Enter a friendly name for your key**.
+
+1.  Select **Add Key**.
+
+You can now use this key if you want to enable encryption when you create clusters. The added key will appear as an option when you [enable TDE during cluster creation](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/additional-settings/#security).
