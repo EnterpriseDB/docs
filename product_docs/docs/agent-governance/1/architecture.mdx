@@ -5,9 +5,11 @@ description: How AI agent activity travels from Postgres logs through Loki and t
 deepToC: true
 ---
 
-This page explains how AI agent activity becomes auditable in the viewer — from the SQL an agent runs, through Postgres logs and Loki, to the screens you read. Understanding the path helps you reason about what the viewer can show and why session data sometimes needs to sync before it appears.
+AI agent activity travels from the SQL an agent runs, through Postgres logs and Loki, to the screens you read. Understanding the path helps you reason about what the viewer can show and why session data sometimes needs to sync before it appears.
 
 ## The data path
+
+Each query an AI agent runs passes through four stages before it appears as an auditable session in the viewer.
 
 ```
 AI agent (Airman MCP)
@@ -28,13 +30,13 @@ Viewer (browser)
      Renders clusters, sessions, and session detail
 ```
 
-The browser never talks to Loki or Hybrid Manager (HM) directly. All upstream access is mediated by the viewer's backend, which keeps credentials server-side. See [Security and data handling](./security_and_data).
-
 ## Component responsibilities
 
-**Viewer (browser).** The single-page application renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data.
+Three components handle distinct parts of the data path, with the backend mediating all upstream access so credentials never reach the browser.
 
-**Viewer backend.** A lightweight service that:
+**Viewer (browser):** The single-page application renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data.
+
+**Viewer backend:** A lightweight service that:
 
 - Stores instance configuration and the associated upstream credentials.
 - Routes each request to the correct HM or Loki endpoint based on the instance type.
@@ -42,18 +44,20 @@ The browser never talks to Loki or Hybrid Manager (HM) directly. All upstream ac
 - Caches session summaries and syncs them incrementally to avoid redundant queries.
 - Injects the appropriate authentication header on every proxied request, so credentials never reach the browser.
 
-**Upstream sources.** Either an HM deployment — which exposes projects, clusters, and Loki log queries through its API and authenticates with a machine user API key — or a standalone Loki instance queried directly, with optional bearer-token authentication.
+**Upstream sources:** Either an HM deployment — which exposes projects, clusters, and Loki log queries through its API and authenticates with a machine user API key — or a standalone Loki instance queried directly, with optional bearer-token authentication.
 
 ## How agent activity is tagged
 
-Every query Airman MCP runs is tagged through the Postgres `application_name` session variable:
+Airman MCP automatically sets the Postgres `application_name` session variable on every connection it opens:
 
-```sql
-SET application_name = 'airman:<purpose>/<session-short>'
+```
+SET application_name = 'airman:<purpose>/<session-short>';
 ```
 
-- **purpose** — a static label configured per Airman instance through `AIRMAN_MCP_PURPOSE` (for example, `billing`, `support`, or `analytics`). Defaults to `_` when unset.
-- **session-short** — the first eight hexadecimal characters of the MCP session token, used to group all the queries in one interaction.
+Where:
+
+- `purpose` — a static label configured per Airman instance through `AIRMAN_MCP_PURPOSE` (for example, `billing`, `support`, or `analytics`). Defaults to `_` when unset.
+- `session-short` — the first eight hexadecimal characters of the MCP session token, used to group all the queries in one interaction.
 
 The tag is set at the Postgres session level and persists for every subsequent statement on that connection.
 
@@ -84,9 +88,11 @@ The backend extracts the SQL text and duration from the `message` field and maps
 
 ## Query paths
 
-**Sessions list.** When you open a cluster, the backend reads its sync watermark, backfills any uncached history from Loki, loads the cached session summaries, appends a live query for the most recent day, and merges the results — sorting sessions by most recently seen.
+The viewer issues different Loki queries depending on what you're viewing.
 
-**Session detail.** When you open a session, the backend issues a LogQL query scoped to that cluster and filtered to the session short, then parses each returned log line into an ordered list of steps.
+**Sessions list:** When you open a cluster, the backend reads its sync watermark, backfills any uncached history from Loki, loads the cached session summaries, appends a live query for the most recent day, and merges the results — sorting sessions by most recently seen.
+
+**Session detail:** When you open a session, the backend issues a LogQL query scoped to that cluster and filtered to the session short, then parses each returned log line into an ordered list of steps.
 
 The backend uses LogQL queries of this shape:
 

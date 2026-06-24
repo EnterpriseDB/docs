@@ -1,15 +1,15 @@
 ---
-title: Deployment and configuration
-navTitle: Deployment and configuration
+title: Deploying and configuring
+navTitle: Deploying and configuring
 description: For administrators deploying and configuring the AI governance audit log viewer — the container stack, prerequisites, key settings, and identity provider management.
 deepToC: true
 ---
 
-This page is for administrators who deploy and configure the audit log viewer for Hybrid Manager (HM). It describes the container stack, the prerequisites, the settings you provide, and how to manage the identity providers users sign in through. For the authentication model and credential handling behind these settings, see [Security and data handling](./security_and_data).
+Deploy and configure the EDB Agent Governance audit log viewer. For the authentication model and credential handling behind these settings, see [Securing access and handling credentials](./security_and_data).
 
-## The container stack
+## Understanding the container stack
 
-The viewer runs as a Dex-fronted stack of four containers:
+The audit log viewer deploys as a Dex-fronted stack of four containers:
 
 | Service | Role |
 |---------|------|
@@ -18,30 +18,19 @@ The viewer runs as a Dex-fronted stack of four containers:
 | `dex` | Identity federation — brokers login to your upstream identity providers. |
 | `bootstrap` | A one-shot helper that generates secrets and the internal certificates the stack needs on first run. |
 
-A shared Postgres service backs the stack, hosting both the backend's database (instance configuration and sessions) and the Dex database (identity provider connectors).
+A shared Postgres service backs the stack, hosting the backend's database for instance configuration and sessions, and the Dex database for identity provider connectors.
 
 ## Prerequisites
 
 - A container host with Docker 24 or later and Compose v2.
 - A TLS certificate and key for your domain, from any certificate authority your users trust. A self-signed certificate is acceptable for local testing.
-- At least one upstream data source to audit: an HM instance with a machine user API key, or a standalone Loki instance receiving Postgres logs from AI agent workloads.
+- At least one upstream data source to audit: an [HM instance with a machine user API key](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/governance/), or a standalone Loki instance receiving Postgres logs from AI agent workloads.
 
-## Deploying with pre-built images
+## Pre-deployment configuration
 
-The production deployment pulls pre-built EDB-published images, so it doesn't build from source.
+Set the following values before running the bootstrap helper. The bootstrap helper generates and persists everything else automatically.
 
-1. **Provide your TLS certificate.** Place your certificate and private key where the stack expects them (the full chain and the private key).
-2. **Configure the deployment.** Copy the example environment file and set the required values — at minimum the public base URL and the bootstrap admin email, plus the image registry and tag (see [Required configuration](#required-configuration)).
-3. **Generate secrets and start.** Run the production start script. It runs the bootstrap helper — which generates the shared secrets, session and encryption keys, the bootstrap admin's identifier and password, and the internal certificates — and then brings the stack up.
-4. **Sign in and federate.** Open the deployment in a browser and sign in as the bootstrap admin, using the password the bootstrap helper recorded. Then add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
-
-!!! Note
-Pin the image tag to a released version rather than running `latest`, so deployments are reproducible.
-!!!
-
-## Required configuration
-
-You set only a small number of values by hand. The bootstrap helper generates and persists the rest, and re-running it is a no-op.
+### Required
 
 | Setting | Required | Description |
 |---------|----------|-------------|
@@ -51,32 +40,47 @@ You set only a small number of values by hand. The bootstrap helper generates an
 | Image registry | Production | The registry for the pre-built images. |
 | Image tag | Production | The image tag — pin to a released version. |
 
-The values the bootstrap helper generates — the shared client secret, the session signing key, the token encryption key, and the bootstrap admin's identifier and password hash — are written for you and shouldn't be set by hand.
+The values the bootstrap helper generates — the shared client secret, the session signing key, the token encryption key, and the bootstrap admin's identifier and password hash — are written for you and don't set by hand.
 
-## Optional configuration
+### Optional
 
-A few backend settings are worth knowing for production:
+These settings are recommended for production deployments:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Database connection | Points at the shared Postgres service | The connection string for the backend's database. |
-| Upstream egress to private ranges | Blocked | Whether registered instances may reach private network ranges. Allow only for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Security and data handling](./security_and_data#network-protections). |
+| Upstream egress to private ranges | Blocked | Whether registered instances may reach private network ranges. Allow only for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Securing access and handling credentials](./security_and_data#protecting-the-network). |
 | OIDC CA bundle | — | A CA bundle to trust a self-signed or private-CA OIDC issuer. OIDC TLS verification stays on; this adds trust rather than bypassing it. |
 | Session idle timeout | 2h | How long an idle session lasts before it expires. |
 | Session absolute lifetime | 12h | The maximum lifetime of a session regardless of activity. |
 | Admin allowlist | The bootstrap admin email | The emails granted administrator access, in addition to anyone whose `groups` claim includes `governance-admin`. |
 
+## Deploying with pre-built images
+
+Use the pre-built EDB-published images — no need to build from source.
+
+1. **Provide your TLS certificate.** Place your certificate and private key where the stack expects them (the full chain and the private key).
+2. **Configure the deployment.** Copy the example environment file and set the required values — at minimum the public base URL and the bootstrap admin email, plus the image registry and tag (see [Required](#required)).
+3. **Generate secrets and start.** Run the production start script. It runs the bootstrap helper — which generates the shared secrets, session and encryption keys, the bootstrap admin's identifier and password, and the internal certificates — and then brings the stack up.
+4. **Sign in and federate.** Open the deployment in a browser and sign in as the bootstrap admin, using the password the bootstrap helper recorded. Then add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
+
+!!! Note
+Pin the image tag to a released version rather than running `latest`, so deployments are reproducible.
+!!!
+
 ## Managing identity providers
 
-Administrators add and edit the upstream identity providers users sign in through, under **Settings → Identity Providers**:
+Configure the identity providers your users sign in through in the audit log viewer under **Settings → Identity Providers**:
 
-- Add an OIDC, SAML, or LDAP connector for your organization's identity provider.
-- After federating, switch day-to-day login away from the bootstrap admin to the federated provider, keeping the bootstrap admin as a break-glass account.
-- Restrict the admin allowlist to the people who should hold administrator access.
+1. Add an OIDC, SAML, or LDAP connector for your organization's identity provider.
+2. After federating, switch day-to-day login away from the bootstrap admin to the federated provider, keeping the bootstrap admin as a break-glass account.
+3. Restrict the admin allowlist to the people who hold administrator access.
 
-## Persistent storage and operational notes
+## Securing and monitoring your deployment
 
-- **Encrypt the data volume.** The shared Postgres volume holds instance access keys, sessions, and identity provider connector secrets. Keep it on encrypted-at-rest storage. If the volume is lost, the databases are recreated empty — instances and connectors must be re-added or restored from a backup. See [Security and data handling](./security_and_data#credential-storage-at-rest).
+Keep the following in mind once the deployment is running:
+
+- **Encrypt the data volume.** The shared Postgres volume holds instance access keys, sessions, and identity provider connector secrets. Keep it on encrypted-at-rest storage. If the volume is lost, the databases are recreated empty — instances and connectors must be re-added or restored from a backup. See [Securing access and handling credentials](./security_and_data#storing-credentials-at-rest).
 - **Protect the bootstrap credentials.** Treat the recorded bootstrap admin password as sensitive and remove the file once you've stored the password securely.
 - **Keep upstream TLS verification on.** Don't disable TLS verification for upstream HM or Loki sources in production.
 - **Monitor liveness.** Dex exposes a health endpoint that gates startup of the backend and nginx. Observe overall liveness through the container status and nginx upstream errors.
