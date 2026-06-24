@@ -200,8 +200,8 @@ const Page = () => {
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="Agent Factory"
-              to="/edb-postgres-ai/agent-factory"
+              headingText="Agentic AI"
+              to="/edb-postgres-ai/agentic-ai"
             >
               <BannerCardLink to="/aidb/latest">
                 AI Database (AIDB)
