@@ -1,0 +1,120 @@
+---
+title: Upgrade the operator to 2.0.0 on Red Hat OpenShift
+navTitle: Operator 2.0.0 on Red Hat OpenShift
+description: Upgrade the EDB Postgres AI operator to 2.0.0 on Red Hat OpenShift by switching the OperatorHub subscription to the stable channel.
+deepToC: true
+---
+
+> **Role:** Infrastructure engineer / OpenShift administrator
+
+Starting with `2.0.0`, the EDB Postgres AI operator is decoupled from the Hybrid Manager (HM) release cadence: a single `2.x` operator covers the HM 1.4 LTS line and future Innovation Releases. As part of this change, the operator is published to a single **`stable`** channel that replaces the previous per-lineage channels (`innovation` for `2026.x.x`, `lts-v1.3` for `1.3.x`).
+
+On Red Hat OpenShift (RHOS), the operator is installed and upgraded through OperatorHub (OLM). This page describes how to move an operator that was installed from the `innovation` channel (`2026.x.x`) or the `lts-v1.3` channel (`1.3.x`) to `2.0.0` on the `stable` channel.
+
+!!!Note
+`2.0.0` is numerically *lower* than the `2026.x.x` Innovation versions, but this does **not** prevent the upgrade. OLM resolves operator upgrades through the bundle's upgrade graph (`replaces`/`skips` edges), not by comparing semantic versions — the `2.0.0` bundle explicitly declares `2026.5.1`, `1.3.9`, and `1.3.10` as valid upgrade sources. Switching the subscription to the `stable` channel therefore correctly offers `2.0.0` as the upgrade.
+!!!
+
+## Prerequisites
+
+-   The EDB Postgres AI operator already installed on RHOS from OperatorHub, on either the `innovation` channel (a `2026.x.x` version) or the `lts-v1.3` channel (a `1.3.x` version).
+-   Permissions to manage the operator subscription (typically `cluster-admin`).
+-   `edbctl` available, for the secrets step below.
+
+## Before you upgrade: refresh the install secrets
+
+Before moving the Hybrid Manager itself to a 1.4 release, create or refresh the secrets required by the target version:
+
+```shell
+edbctl hm create-install-secrets --version v1.4.0
+```
+
+Running this is harmless when the secrets already exist, and it prevents the operator's pre-upgrade job from stalling on a missing secret once you bump the `HybridControlPlane` version. Run it before the operator upgrade so everything is in place.
+
+## Upgrade the operator (switch to the stable channel)
+
+This is the recommended path. You change the operator subscription's channel to `stable`; OLM detects `2.0.0` as the upgrade target and installs it in place, keeping the existing `HybridControlPlane` and its workloads running.
+
+### Using the OpenShift web console
+
+1.  Go to **Operators** → **Installed Operators** and select **EDB Postgres AI**.
+2.  Open the **Subscription** tab and click the channel under **Update channel**.
+3.  Select **`stable`**. The dialog shows the resulting version as **`2.0.0`** in place of the current `2026.x.x` / `1.3.x` version. Click **Save**.
+4.  OLM generates an InstallPlan for `2.0.0`:
+    -   **Automatic** approval — the upgrade applies on its own.
+    -   **Manual** approval — the operator shows **Upgrade available**; open the pending InstallPlan, **Preview** it (confirm it targets `edb-hcp-operator.v2.0.0`), and **Approve** it.
+5.  The operator rolls to `2.0.0` and continues reconciling the existing `HybridControlPlane`.
+
+### Using the CLI
+
+The same steps with `oc` (operator installed in the `edb-hcp-operator-system` namespace):
+
+```shell
+# 1. Switch the subscription channel to stable
+oc patch subscription edb-hcp-operator -n edb-hcp-operator-system \
+  --type merge -p '{"spec":{"channel":"stable"}}'
+
+# 2. OLM creates a new InstallPlan targeting edb-hcp-operator.v2.0.0
+oc get installplan -n edb-hcp-operator-system
+
+# 3. If the subscription uses Manual approval, approve the new InstallPlan
+oc patch installplan <install-plan-name> -n edb-hcp-operator-system \
+  --type merge -p '{"spec":{"approved":true}}'
+```
+
+### Verify
+
+```shell
+oc get subscription edb-hcp-operator -n edb-hcp-operator-system \
+  -o jsonpath='channel={.spec.channel}{"\n"}installed={.status.installedCSV}{"\n"}state={.status.state}{"\n"}'
+```
+
+A successful upgrade shows `channel=stable`, `installed=edb-hcp-operator.v2.0.0`, and `state=AtLatestKnown`. The `edb-hcp-operator.v2.0.0` ClusterServiceVersion is in the `Succeeded` phase (with `Replaces` pointing at your previous version), and the operator's controller-manager pod runs the `2.0.0` image.
+
+## Update the HybridControlPlane version
+
+With the operator on `2.0.0`, set your `HybridControlPlane` to the target 1.4 release so the operator reconciles the rest of the platform:
+
+```shell
+kubectl patch hybridcontrolplane <name> -n edbpgai-bootstrap \
+  --type merge -p '{"spec":{"version":"v1.4.0"}}'
+```
+
+## Fallback: reinstall on the stable channel
+
+If the channel switch doesn't surface the upgrade, you can remove the operator and reinstall it on `stable`. This removes the running operator only — the `HybridControlPlane` and its workloads keep running, and the new operator adopts the existing resources.
+
+```shell
+# Record the currently installed CSV
+oc get subscription edb-hcp-operator -n edb-hcp-operator-system -o jsonpath='{.status.installedCSV}'
+
+# Remove the subscription (stops channel tracking) and the CSV (removes the operator)
+oc delete subscription edb-hcp-operator -n edb-hcp-operator-system
+oc delete csv <installed-csv-from-above> -n edb-hcp-operator-system
+
+# Recreate the subscription on the stable channel (Manual approval shown; use Automatic to apply immediately)
+oc apply -f - <<'EOF'
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: edb-hcp-operator
+  namespace: edb-hcp-operator-system
+spec:
+  channel: stable
+  installPlanApproval: Manual
+  name: edb-hcp-operator
+  source: certified-operators
+  sourceNamespace: openshift-marketplace
+EOF
+
+# Approve the InstallPlan OLM generates for 2.0.0
+oc get installplan -n edb-hcp-operator-system
+oc patch installplan <install-plan-name> -n edb-hcp-operator-system \
+  --type merge -p '{"spec":{"approved":true}}'
+```
+
+You can do the same from the web console: uninstall the operator, then install it again from OperatorHub on the `stable` channel — rather than editing the channel on the installed operator.
+
+!!!Note
+On Red Hat OpenShift, manage the operator through OperatorHub (OLM), as described above. Do **not** use `edbctl hm upgrade-operator` for this: it installs the operator with Helm, so the operator won't be tracked by OLM and won't appear under **Installed Operators** in the OperatorHub UI.
+!!!
