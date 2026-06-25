@@ -61,7 +61,7 @@ Only the organization owner can set the global-level notifications.
 1.  Select the **Notifications** tab.
 1.  Select the edit icon next to **Webhook** and provide the details:
 
-    -   **Host** &mdash; The endpoint URL of the webhook.
+    -   **Host** &mdash; The full endpoint URL of the webhook, including the scheme. Begin the URL with `https://` (recommended) or `http://`. HM rejects a URL that omits the scheme.
     -   **Method** &mdash; HTTP method for the request: POST or PUT.
     -   **HTTP Headers** (optional) &mdash; Custom HTTP headers to include in the request, as key-value pairs.
     -   **Authentication** &mdash; Select an authentication type and provide credentials:
@@ -69,6 +69,38 @@ Only the organization owner can set the global-level notifications.
         -   **Bearer Token** &mdash; Provide a bearer token.
 
 1.  Select **Save**.
+
+!!! Note Webhook endpoint restrictions
+To protect against server-side request forgery (SSRF), HM validates the webhook **Host** when you save the channel and again each time it delivers a notification, rejecting any endpoint that resolves to an internal or reserved address. The blocked addresses fall into two categories:
+
+-   **Always blocked — can't be overridden.** Loopback addresses (such as `127.0.0.1` or `localhost`) and link-local addresses, including the cloud metadata endpoint `169.254.169.254`. These remain blocked even if an administrator adds them to the allowlist described below.
+-   **Blocked by default — can be allowed.** Private network ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and IPv6 unique local addresses. An administrator can permit specific ranges for legitimate in-cluster receivers, as described in [Allowing an internal webhook or SMTP receiver](#allowing-an-internal-webhook-or-smtp-receiver).
+
+If the **Host** resolves to a blocked address, the save fails with a validation error. Use a publicly reachable endpoint. HM also doesn't follow HTTP redirects returned by the endpoint, so the endpoint must accept the request directly.
+!!!
+
+##### Allowing an internal webhook or SMTP receiver
+
+By default, HM blocks webhook and SMTP (email) endpoints that resolve to private or in-cluster addresses. If you operate a legitimate receiver within the cluster or on a private network, a Kubernetes administrator can allow specific IP ranges via the `WEBHOOK_ALLOWED_INTERNAL_CIDRS` environment variable on the notification service. Despite its name, this single allowlist applies to both webhook hosts and the SMTP host used for email notifications. This is a deployment-level, administrator-only action, intentionally kept separate from setting the webhook or email host in the console.
+
+The allowlist relaxes only the private ranges. Loopback and link-local addresses — including the cloud metadata endpoint `169.254.169.254` — remain blocked and can't be re-enabled via this variable.
+
+The value is a comma-separated list of CIDR ranges. Use the narrowest range that covers your receiver (for example, a single `/32`) rather than a broad range, which would also re-expose other in-cluster services.
+
+To set it, update the environment variable on the `upm-notification-system` deployment (container `apiservice`) in the `upm-notification-system` namespace:
+
+```shell
+kubectl -n upm-notification-system set env deployment/upm-notification-system \
+  WEBHOOK_ALLOWED_INTERNAL_CIDRS="192.168.10.25/32,10.20.0.0/24"
+```
+
+The variable is read only at startup, so the change takes effect after the pods restart. `kubectl set env` rolls the deployment automatically. If you edit the deployment manifest directly instead, trigger a restart:
+
+```shell
+kubectl -n upm-notification-system rollout restart deployment/upm-notification-system
+```
+
+Persist the change in your deployment configuration so it isn't reverted on the next upgrade. Leaving the variable empty or unset keeps the secure default of blocking all private and internal targets.
 
 #### Pager Duty
 
@@ -105,6 +137,10 @@ Then you can configure the channel:
     !!!
 
 1.  Select **Save**.
+
+!!! Note SMTP host restrictions
+The same SSRF protection applies to the email **Host** (your SMTP server). HM validates it when you save the channel and rejects a host that resolves to an internal or reserved address, using the same rules as webhooks. To use an SMTP server on a private network, an administrator allows its IP range through the same allowlist described in [Allowing an internal webhook or SMTP receiver](#allowing-an-internal-webhook-or-smtp-receiver).
+!!!
 
 ### Configure notifications at project level
 
