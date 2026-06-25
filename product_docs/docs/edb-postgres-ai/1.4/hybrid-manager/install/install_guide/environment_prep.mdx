@@ -25,7 +25,7 @@ redirects:
 
 -   *Any chosen advanced features configured (IDP, multi-location, KMS for TDE)*
 
--   *A finalized and validated configuration ready for Hybrid Manager (HM) installation—either a `HybridControlPlane` Custom Resource manifest if using the recommended Operator method, or a `values.yaml` file if using the legacy "Bootstrap" method*
+-   *A finalized and validated configuration ready for Hybrid Manager (HM) installation—a `HybridControlPlane` Custom Resource manifest*
 
 !!!Note
 
@@ -113,43 +113,44 @@ Depending on the KMS you are using, refer to the guides below to create the corr
 ### Name your backup folder
 
 1.  Create a new folder to store the HM backups for disaster recovery. 
-1.  Assign a unique folder name (e.g., using a UUID generator) and provide it in your HM configuration under `parameters.global.internal_backup_folder`. 
+1.  Assign a unique folder name (e.g., using a UUID generator) and provide it in your HM configuration under `spec.globalParameters.internal_backup_folder`. 
 1.  The string must be 12 characters comprised of letters and numbers i.e. `internal_backup_folder: "a7462dbc7106"`.
 
 ### Add required component configuration
 
-The following component-specific parameters should be added to your HM configuration under `parameters`:
+The following component-specific parameters should be added to your HM configuration under `spec.componentsParameters`:
 
 ```yaml
-parameters:
-  edb-migration-portal:
-    enable_pdb: "false"
-  upm-api-pnxt-metric:
-    log_level: "info"
-    tsdb_host: "thanos-query.monitoring.svc.cluster.local"
-    tsdb_port: "9090"
-  upm-api-pnxt-pd:
-    log_level: "info"
-  upm-beaco-ff-base:
-    aes_key_rotation_interval: 2160h
-    usage_generator_interval: 24h
-  upm-beaco-usages:
-    usage_generator_interval: "24h"
-  upm-beacon:
-    beacon_location_id: <your-location-id>
-    server_host: <your-beacon-server-host>
-  upm-istio-gateway:
-    enable_server_session: "true"
-    openshift_console_domain_name: <your-openshift-console-domain>
-  upm-prometheus:
-    memory: "4Gi"
-  upm-thanos:
-    memcached_cpu: "500m"
-    memcached_memory: "2Gi"
-    query_frontend_cpu: "200m"
-    query_frontend_memory: "120Mi"
-  upm-trust-manager:
-    cert_manager_namespace: "cert-manager"
+spec:
+  componentsParameters:
+    edb-migration-portal:
+      enable_pdb: "false"
+    upm-api-pnxt-metric:
+      log_level: "info"
+      tsdb_host: "thanos-query.monitoring.svc.cluster.local"
+      tsdb_port: "9090"
+    upm-api-pnxt-pd:
+      log_level: "info"
+    upm-beaco-ff-base:
+      aes_key_rotation_interval: 2160h
+      usage_generator_interval: 24h
+    upm-beaco-usages:
+      usage_generator_interval: "24h"
+    upm-beacon:
+      beacon_location_id: <your-location-id>
+      server_host: <your-beacon-server-host>
+    upm-istio-gateway:
+      enable_server_session: "true"
+      openshift_console_domain_name: <your-openshift-console-domain>
+    upm-prometheus:
+      memory: "4Gi"
+    upm-thanos:
+      memcached_cpu: "500m"
+      memcached_memory: "2Gi"
+      query_frontend_cpu: "200m"
+      query_frontend_memory: "120Mi"
+    upm-trust-manager:
+      cert_manager_namespace: "cert-manager"
 ```
 
 * * *
@@ -160,67 +161,11 @@ You now construct or update the final configuration for your HM installation.
 
 This configuration references your **system requirements** from Phase 2 and the environment settings and feature configurations you prepared here in Phase 4.
 
-### Choose your configuration method
+### Create the HybridControlPlane Custom Resource
 
-There are two ways to configure your Hybrid Manager installation:
-
-1.  **Operator method (HybridControlPlane CR) - Recommended** - Kubernetes Custom Resource used with the `edb-hcp-operator` chart
-1.  **Bootstrap method (values.yaml) - Deprecated** - Helm values file used with the `edbpgai-bootstrap` chart
-
-!!!Warning
-
-The **Bootstrap method** (`values.yaml` with `edbpgai-bootstrap` chart) is deprecated and will be removed in a future release. New installations should use the **Operator method** with the `HybridControlPlane` Custom Resource. See [Phase 5: Installing Hybrid Manager](./install_hm) for details.
-!!!
-
-Both operator and bootstrap method use the same configuration values, just in different formats. 
-The secrets and preparation steps are identical for both approaches.
-
-### Using the Operator method: HybridControlPlane Custom Resource (Recommended)
-
-If you're using the recommended **Operator method**, create a `HybridControlPlane` Custom Resource.
+Configure your Hybrid Manager installation as a `HybridControlPlane` Custom Resource, used with the `edb-hcp-operator` chart. It provides version management and Kubernetes-native resource handling.
 
 -   [**SOP: Install with the Operator**](./install_hm#example-hybridcontrolplane-manifest) guide for a complete HybridControlPlane manifest template and field mapping reference.
-
-The Operator method is the recommended approach for all new installations. 
-It provides better version management and Kubernetes-native resource handling.
-
-### Using the Bootstrap method: values.yaml template
-
-Below is a template configuration with all of the necessary keys you have determined following the guide for a successful HM install using the **Bootstrap method**:
-
-```yaml
-system: <Kubernetes>
-bootstrapImageName: <Container Registry Domain>/pgai-platform/edbpgai-bootstrap/bootstrap-<Kubernetes>
-bootstrapImageTag: <image-tag-version>
-containerRegistryURL: "<Container Registry Domain>/pgai-platform"
-scenarios: "core,migration,ai,analytics,dbaas"
-parameters:
-  global:
-    internal_backup_folder: "<twelveCharacterString>"
-    portal_domain_name: <Portal Domain>
-    storage_class: <Block Storage>
-    portal_certificate_issuer_kind: <ClusterIssuer>
-    portal_certificate_issuer_name: <my-issuer>
-    trust_domain: <Portal Domain>
-  upm-beacon:
-    beacon_location_id: "<Location>"
-    server_host: <Beacon Server Domain>
-beaconAgent:
-  provisioning:
-    openshift: <true | false>
-    imagesetDiscoveryAuthenticationType: <token | basic | eks_managed_identity>
-    imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
-  transparentDataEncryptionMethods:
-    - passphrase
-    - hashicorp_vault
-    # Additional options: aws_kms, azure_kms, gcp_kms
-resourceAnnotations:
-  - name: istio-ingressgateway
-    kind: Service
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-scheme: internal
-      service.beta.kubernetes.io/load-balancer-source-ranges: 10.0.0.0/8
-```
 
 ## Validating the configuration file, secrets, LoadBalancer, and cluster readiness
 
@@ -230,32 +175,13 @@ Before proceeding to deployment, validate both your configuration file and the r
 
 Validate your configuration file before proceeding.
 
-**Operator method:** Use `kubectl` dry-run to validate your `HybridControlPlane` manifest:
+Use `kubectl` dry-run to validate your `HybridControlPlane` manifest:
 
 ```bash
 kubectl apply --dry-run=client -f hybridmanager.yaml
 ```
 
 If this command completes without error, your manifest syntax is valid.
-
-**Bootstrap method:** Ensure your `values.yaml` can be processed by Helm.
-
-First, run `add` and `update` the Helm repository:
-
-```bash
-helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
-helm repo update
-```
-
-Then validate your `values.yaml` against the Helm chart:
-
-```bash
-helm template edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
-  --values values.yaml \
-  --version <target-helm-version> > /dev/null
-```
-
-If this command completes without error, your YAML syntax is valid.
 
 ### Validate secrets
 
