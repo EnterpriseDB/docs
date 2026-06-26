@@ -1,14 +1,15 @@
 ---
-title: whpg-dr configuration reference
-navTitle: Configuration
+title: WarehousePG Disaster Recovery configuration files
+navTitle: Configuration files
 description: YAML schemas for whpg-dr backup configuration, restore configuration, and the global.yaml host-level defaults file.
 ---
 
+The backup configuration file is used when setting up the primary cluster, and the restore configuration file is used when preparing the DR cluster. The global configuration file sets host-level defaults shared across both.
+
 ## Backup configuration YAML
 
-Used with `whpg-dr configure backup`. Contains the cluster name, storage backend, and optional Barman tuning.
+Used with `whpg-dr configure backup`. Contains the cluster name, storage backend, and optional Barman tuning. See [Configuring the primary cluster](../setting-up-primary/configuring-primary) for setup instructions.
 
-### Full schema
 
 ```yaml
 # Required
@@ -43,37 +44,68 @@ barman_options:
   network_compression: "on" | "off"  # POSIX only
 ```
 
-### Field reference
+| Field | Required | Description |
+|-------|----------|-------------|
+| `cluster_name` | Yes | Unique name for the cluster. Used as the namespace for all artifacts in the storage repository. |
+| `storage.type` | Yes | Storage backend type. |
+| `storage.path` | If POSIX | Absolute path to the backup directory. Must be reachable from all segment hosts. |
+| `storage.bucket` | If S3 | S3 bucket name. The bucket must already exist. |
+| `storage.prefix` | If S3 | Path prefix within the bucket for this cluster's data. |
+| `storage.region` | If S3 | AWS region or region configured on the S3-compatible store. |
+| `storage.credential_source` | No | How credentials are provided. `static` distributes inline keys to all segment hosts. `default` uses the AWS credential chain on each host. Inferred from `access_key_id` when omitted. |
+| `storage.profile` | No | AWS credentials profile name. Defaults to `whpg-dr` when `credential_source: static`. When `credential_source: default`, references a named profile in each host's `~/.aws` files. |
+| `storage.endpoint_url` | No | Custom endpoint URL for S3-compatible stores. Omit for AWS S3. |
+| `storage.access_key_id` | No | AWS access key ID. Required together with `secret_access_key`; implies `credential_source: static`. |
+| `storage.secret_access_key` | No | AWS secret access key. Required together with `access_key_id`. |
+| `storage.session_token` | No | Temporary STS session token. Requires `access_key_id` and `secret_access_key`. Tokens expire and aren't refreshed; use `credential_source: default` with an instance role instead. |
+| `storage.local_staging` | No | Local path for WAL staging during S3 uploads. S3 storage only. |
+| `whpg_dr_home` | No | Override for `WHPG_DR_HOME`. Defaults to `$HOME/.whpg-dr`. |
+| `ssh_user` | No | OS user for SSH connections to segment hosts. Defaults to `gpadmin`. |
+| `pg_user` | No | Postgres user for Barman's connections to segments. Defaults to `gpadmin`. |
+| `barman_options.compression` | No | Compression algorithm for WAL archiving. |
+| `barman_options.compression_level` | No | Compression level for WAL archiving. |
+| `barman_options.network_compression` | No | Enable rsync network compression. POSIX storage only. |
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `cluster_name` | string | Yes | Unique name for this cluster. Used as the namespace for all artifacts in the storage repository. |
-| `storage.type` | `posix` or `s3` | Yes | Storage backend type. |
-| `storage.path` | string | If `type: posix` | Absolute path to the backup directory. Must be reachable from all segment hosts. |
-| `storage.bucket` | string | If `type: s3` | S3 bucket name. The bucket must already exist. |
-| `storage.prefix` | string | If `type: s3` | Path prefix within the bucket for this cluster's data. |
-| `storage.region` | string | If `type: s3` | AWS region or region configured on the S3-compatible store. |
-| `storage.credential_source` | `static` or `default` | No | Credential mode. `static` uses inline keys distributed to all segment hosts; `default` uses the AWS credential chain on each host (instance profile, environment, `~/.aws`). Inferred from whether `access_key_id` is set when omitted. |
-| `storage.profile` | string | No | AWS credentials profile name. With `credential_source: static`, names the generated profile (default `whpg-dr`). With `credential_source: default`, references a named profile in each host's `~/.aws` files. |
-| `storage.endpoint_url` | string | No | Custom endpoint URL for S3-compatible stores. Omit for AWS S3. |
-| `storage.access_key_id` | string | No | AWS access key ID. Required together with `secret_access_key`; implies `credential_source: static`. |
-| `storage.secret_access_key` | string | No | AWS secret access key. Required together with `access_key_id`. |
-| `storage.session_token` | string | No | Temporary session token for short-lived STS credentials. Requires both `access_key_id` and `secret_access_key`. Note that STS tokens expire and aren't refreshed; prefer `credential_source: default` with an instance role for temporary credentials. |
-| `storage.local_staging` | string | No | Local path for WAL staging during S3 uploads. S3 storage only. |
-| `whpg_dr_home` | string | No | Override for `WHPG_DR_HOME`. Defaults to `$HOME/.whpg-dr`. |
-| `ssh_user` | string | No | OS user for SSH connections to segment hosts. Defaults to `gpadmin`. |
-| `pg_user` | string | No | Postgres user for Barman's connections to segments. Defaults to `gpadmin`. |
-| `barman_options.compression` | string | No | Compression algorithm for WAL archiving. |
-| `barman_options.compression_level` | string | No | Compression level for WAL archiving. |
-| `barman_options.network_compression` | `"on"` or `"off"` | No | Enable rsync network compression. POSIX storage only. |
+### Examples
+
+POSIX storage:
+
+```yaml
+cluster_name: my_cluster
+
+storage:
+  type: posix
+  path: /data/backups
+
+barman_options:
+  compression: zstd
+  compression_level: medium
+  network_compression: "on"
+```
+
+S3 storage:
+
+```yaml
+cluster_name: my_cluster
+
+storage:
+  type: s3
+  bucket: my-backup-bucket
+  prefix: whpg
+  region: us-east-1
+  profile: whpg-dr
+
+barman_options:
+  compression: zstd
+  compression_level: medium
+```
 
 ---
 
 ## Restore configuration YAML
 
-Used with `whpg-dr configure restore`. Describes the storage repository and the DR cluster's topology.
+Used with `whpg-dr configure restore`. Describes the storage repository and the DR cluster's topology. See [Installing and configuring the DR cluster](../performing-disaster-recovery/configuring-dr) for setup instructions.
 
-### Full schema
 
 ```yaml
 # Required
@@ -111,30 +143,86 @@ barman_options:
   network_compression: "on" | "off"  # POSIX only
 ```
 
-### Field reference
+| Field | Required | Description |
+|-------|----------|-------------|
+| `source_cluster_name` | Yes | The `cluster_name` from the backup YAML. Used to locate the cluster's data in the storage repository. |
+| `storage` | Yes | Same structure as the [backup configuration YAML](#backup-configuration-yaml). Must point to the same repository the primary writes to. |
+| `coordinator_host` | Yes | Hostname of the DR coordinator. |
+| `coordinator_data_directory` | Yes | Absolute path for the coordinator data directory on the DR coordinator host. |
+| `segment_hosts` | Yes | Hostnames of the DR segment hosts. The count doesn't need to match the source, but can't exceed the number of primary segments in the backup. |
+| `data_directory` | Yes | Base path for segment data directories on DR segment hosts. Doesn't need to match the primary's layout. |
+| `data_directory_prefix` | Yes | Prefix for segment directory names. Combined with `data_directory` and the content ID to form the full path. |
+| `segment_data_directory_overrides` | No | Per-host override for `data_directory`. Takes precedence over the global `data_directory` for the specified hosts. |
+| `coordinator_port` | No | Coordinator port on the DR cluster. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
+| `segment_port_base` | No | Base port for segments. Segment N uses `segment_port_base + N`. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
+| `barman_options` | No | Same fields as the [backup configuration YAML](#backup-configuration-yaml). Both sides must use matching compression settings. |
+| `whpg_dr_home` | No | Override for `WHPG_DR_HOME` on the DR cluster. |
+| `ssh_user` | No | OS user for SSH connections to DR segment hosts. Defaults to `gpadmin`. |
+| `pg_user` | No | Postgres user for Barman connections. Defaults to `gpadmin`. |
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `source_cluster_name` | string | Yes | The `cluster_name` from the backup YAML. Used to locate the cluster's data in the storage repository. |
-| `storage` | object | Yes | Same structure as the backup YAML. Must point to the same repository the primary writes to. |
-| `coordinator_host` | string | Yes | Hostname of the DR coordinator. |
-| `coordinator_data_directory` | string | Yes | Absolute path for the coordinator data directory on the DR coordinator host. |
-| `segment_hosts` | list | Yes | Hostnames of the DR segment hosts. Entries must be unique. The count doesn't need to match the source but can't exceed the number of primary segment contents in the backup. Segment content IDs are placed round-robin when counts differ from the source. |
-| `data_directory` | string | Yes | Base path for segment data directories on DR segment hosts. All segments on a host are placed under this single directory, regardless of how they were distributed on the primary. The DR layout doesn't need to match the primary's. |
-| `data_directory_prefix` | string | Yes | Prefix for segment directory names. Combined with `data_directory` and the content ID to form the full path (for example, `/data/primary/gpseg0`). |
-| `segment_data_directory_overrides` | map | No | Per-host override for the base data directory. Key is the hostname; value is an object with a `data_directory` field. Takes precedence over `data_directory` + `data_directory_prefix` for the specified hosts. All segments on the overridden host still go into the single overridden directory. |
-| `coordinator_port` | integer | No | Coordinator port on the DR cluster. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
-| `segment_port_base` | integer | No | Base port for segments. Segment N uses `segment_port_base + N`. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
-| `barman_options` | object | No | Barman tuning options. Same fields as the backup YAML. Both sides use the same block so restore-time Barman sees the same compression settings as backup-time Barman. |
-| `whpg_dr_home` | string | No | Override for `WHPG_DR_HOME` on the DR cluster. |
-| `ssh_user` | string | No | OS user for SSH connections to DR segment hosts. Defaults to `gpadmin`. |
-| `pg_user` | string | No | Postgres user for Barman connections. Defaults to `gpadmin`. |
+### Examples
+
+POSIX storage:
+
+```yaml
+source_cluster_name: my_cluster
+
+storage:
+  type: posix
+  path: /data/backups
+
+coordinator_host: new-coordinator
+coordinator_data_directory: /data/coordinator
+
+segment_hosts:
+  - new-segment-host-1
+  - new-segment-host-2
+  - new-segment-host-3
+  - new-segment-host-4
+
+data_directory: /data/primary
+data_directory_prefix: gpseg
+
+barman_options:
+  compression: zstd
+  compression_level: medium
+  network_compression: "on"
+```
+
+S3 storage:
+
+```yaml
+source_cluster_name: my_cluster
+
+storage:
+  type: s3
+  bucket: my-backup-bucket
+  prefix: whpg
+  region: us-east-1
+  profile: whpg-dr
+
+coordinator_host: new-coordinator
+coordinator_data_directory: /data/coordinator
+
+segment_hosts:
+  - new-segment-host-1
+  - new-segment-host-2
+  - new-segment-host-3
+  - new-segment-host-4
+
+data_directory: /data/primary
+data_directory_prefix: gpseg
+
+barman_options:
+  compression: zstd
+  compression_level: medium
+```
 
 ---
 
 ## global.yaml
 
-The host-level defaults file at `$WHPG_DR_HOME/global.yaml` sets values that apply to all clusters on the host. Per-cluster YAML settings override these defaults.
+The host-level defaults file at `$WHPG_DR_HOME/global.yaml` sets values that apply to all clusters on the host. Per-cluster YAML settings override these defaults. See [Customizing the home directory](../setting-up-primary/configuring-primary#customizing-the-home-directory-optional) for context.
 
 ```yaml
 log_dir: <absolute-path>          # default: $HOME/gpAdminLogs
@@ -144,4 +232,12 @@ ssh_user: <string>                # default: gpadmin
 pg_user: <string>                 # default: gpadmin
 ```
 
-All fields are optional.
+All fields are optional. Example:
+
+```yaml
+log_dir: /var/log/whpg-dr
+log_level: info
+log_file_level: debug
+ssh_user: gpadmin
+pg_user: gpadmin
+```
