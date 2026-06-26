@@ -6,40 +6,40 @@ description: Observability in EDB Postgres AI Pipelines provides detailed insigh
 
 See detailed status and progress output for all auto-processing modes.
 
-A good place to get an overview is the statistics table.
-Use the view [`aidb.knowledge_base_stats`](../../reference/knowledge-bases#aidbknowledge_base_stats), or use its short alias `aidb.kbstat`. The view shows all configured knowledge base pipelines,
-which processing mode is set, and statistics about the processed records:
+Two views cover most observability needs:
+
+- [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) (alias `aidb.pipem`) — one row per pipeline with backlog, source / destination counts, status, and error counts. This is the primary view for tracking processing progress.
+- [`aidb.knowledge_base_metrics`](../../reference/knowledge-bases#aidbknowledge_base_metrics) (alias `aidb.kbm`) — one row per knowledge base with pipeline count, embedding count, and aggregated status across all attached pipelines.
+
+### Per-pipeline progress
 
 ```sql
-SELECT * from aidb.kbstat;
+SELECT * FROM aidb.pipem;
 __OUTPUT__
-     knowledge base     | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(embeddings)
-------------------------+-----------------+-------------------------+-------------------------+-----------------------+-------------------
- kb_table_text_bg       | Background      |                       0 |                         |                    15 |                15
- kb_table_text_manual   | Disabled        |                       0 |                         |                    15 |                15
- kb_table_image_manual  | Disabled        |                       0 |                         |                     3 |                 3
- kb_table_text_live     | Live            |                       0 |                         |                    15 |                15
- kb_table_image_bg      | Background      |                       0 |                         |                     3 |                 3
- kb_volume_text_bg      | Background      |                         |                       6 |                     7 |                 7
- kb_volume_text_manual  | Disabled        |                         |                       0 |                     0 |                 0
- kb_volume_image_bg     | Background      |                         |                       4 |                   177 |                 6
- kb_volume_image_manual | Disabled        |                         |                       1 |                   177 |                 6
-(9 rows)
+      pipeline       | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(destination records) |  Status  | count(record errors) | count(blocking errors)
+---------------------+-----------------+-------------------------+-------------------------+-----------------------+----------------------------+----------+----------------------+------------------------
+ feedback_na_pipe    | Live            |                       0 |                         |                   412 |                        412 | UpToDate |                    0 |                      0
+ product_docs_pipe   | Background      |                         |                       6 |                   1842 |                       1842 | UpToDate |                    0 |                      0
+(2 rows)
 ```
 
-The [change detection](background-workers#change-detection) mechanism is central to how auto-processing works. It's different for volume and table sources.
-For this reason, the stats table has different columns for these two source types.
+The [change detection](background-workers#change-detection) mechanism is different for volume and table sources, so the view exposes both `table: unprocessed rows` and `volume: scans completed`:
 
-- `table: unprocessed rows`: How many unique rows are listed in the backlog of change events.
-  
-  - If auto-processing is disabled, no new change events are captured.
-
+- `table: unprocessed rows`: How many unique rows are listed in the backlog of change events. No new change events are captured while auto-processing is `Disabled`.
 - `volume: scans completed`: How many full listings of the source have been completed so far.
+- `count(source records)`: How many records exist in the source. Accurate for table sources at all times; updated after each full scan for volume sources.
+- `count(destination records)`: How many rows the pipeline has written to its destination (embeddings, chunks, etc.).
 
-- `count(source records)`: How many records exist in the source for this pipeline.
-  
-  - For table sources, this number is always accurate.
-  
-  - For volume sources, this number is updated only after a full scan has completed.
+### Knowledge base overview
 
-- `count(embeddings)`: How many embeddings exist in the vector destination table for this pipeline.
+```sql
+SELECT * FROM aidb.kbm;
+__OUTPUT__
+             name             | pipelines | embeddings |  status
+------------------------------+-----------+------------+----------
+ public.product_catalog_kb    |         1 |       1842 | UpToDate
+ public.customer_feedback_kb  |         2 |        915 | UpToDate
+(2 rows)
+```
+
+The `status` column rolls up the worst pipeline status across all pipelines attached to that KB — drill into `aidb.pipeline_metrics` to find which pipeline is responsible.

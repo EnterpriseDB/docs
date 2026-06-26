@@ -1,0 +1,113 @@
+---
+title: Multi-pipeline knowledge bases
+navTitle: Multi-pipeline KBs
+description: Attach multiple pipelines to a single knowledge base — useful for mixing source tables, source formats, or different processing chains under one queryable vector table.
+---
+
+A knowledge base can have more than one pipeline writing into it. Each pipeline keeps its own source, processing chain, and auto-processing mode, but all of them land embeddings in the same vector table. Retrieval queries the KB once and aggregates results across all attached pipelines.
+
+This is useful when you want to:
+
+- Combine multiple source tables into a single searchable index.
+- Mix data formats — for example, one pipeline indexes `Text` rows and another indexes `Pdf` files via a [volume](../external-data-sources).
+- Apply different preprocessing per source — one pipeline runs `ChunkText` before embedding, another embeds short texts directly.
+
+## Attach a pipeline to an existing KB
+
+The first pipeline creates the KB; subsequent pipelines attach by writing to the same `destination`. Use [`aidb.knowledge_base_config_from_kb()`](../data-pipelines/reference#aidbknowledge_base_config_from_kb) on the second and later pipelines so they inherit the KB's model, distance operator, and vector index.
+
+```sql
+-- Pipeline 1 — creates the KB from the North America customer feedback table
+SELECT aidb.create_pipeline(
+    name => 'feedback_na_pipe',
+    source => 'customers_na',
+    source_key_column => 'id',
+    source_data_column => 'feedback',
+    destination => 'customer_feedback_kb',
+    step_1 => 'KnowledgeBase',
+    step_1_options => aidb.knowledge_base_config(model => 'bert', data_format => 'Text')
+);
+
+-- Pipeline 2 — attaches the Europe customer feedback table to the same KB
+SELECT aidb.create_pipeline(
+    name => 'feedback_eu_pipe',
+    source => 'customers_eu',
+    source_key_column => 'id',
+    source_data_column => 'feedback',
+    destination => 'customer_feedback_kb',
+    step_1 => 'KnowledgeBase',
+    step_1_options => aidb.knowledge_base_config_from_kb(data_format => 'Text')
+);
+
+SELECT aidb.run_pipeline('feedback_na_pipe');
+SELECT aidb.run_pipeline('feedback_eu_pipe');
+```
+
+Retrieval returns rows from both pipelines, with `pipeline_name` identifying the source:
+
+```sql
+SELECT key, value, pipeline_name
+FROM aidb.retrieve_text('public.customer_feedback_kb', 'shipping was slow', topk => 3);
+__OUTPUT__
+ key  |                       value                        |   pipeline_name
+------+----------------------------------------------------+------------------
+ 1042 | Delivery was held up in customs for over a week    | feedback_eu_pipe
+ 318  | Order took twice as long to arrive as estimated    | feedback_na_pipe
+ 1057 | Tracking number never updated until it arrived     | feedback_eu_pipe
+```
+
+Different step chains can share one KB — for example, one pipeline chunks long documents with `ChunkText` before the `KnowledgeBase` step while another embeds short rows directly. Per-pipeline intermediate results are returned in the `intermediate_steps` JSONB column from `aidb.retrieve_text()`.
+
+## Compatibility rules
+
+All pipelines attached to a KB must agree on the embedding shape. When you create a pipeline that targets an existing KB, AIDB validates:
+
+| Constraint           | Error if violated                                            |
+|----------------------|--------------------------------------------------------------|
+| Model                | `Model mismatch: existing KB uses '<X>' but pipeline specifies '<Y>'` |
+| Distance operator    | `Distance operator mismatch: ...`                            |
+| Vector index config  | `Vector index mismatch: ...`                                 |
+| Embedding dimensions | `Embedding dimension mismatch: existing KB vector column has N dimensions but model '<X>' produces M` |
+
+`aidb.knowledge_base_config_from_kb()` inherits model, distance operator, and vector index from the existing KB, so it always passes the first three checks. The dimension check still runs and catches the edge case where a model is recreated under the same name but with a different output size.
+
+## Deletion semantics
+
+| Action                                        | Effect                                                                                              |
+|-----------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| `aidb.delete_pipeline('one_of_many')`         | Removes that pipeline and only its rows from the shared vector table. KB and other pipelines remain. |
+| `aidb.delete_pipeline('the_last_one')`        | Drops the KB registry entry and the vector table along with the pipeline.                            |
+| `aidb.delete_knowledge_base('schema.table')`  | Cascades — deletes every attached pipeline, the KB, and the vector table.                            |
+
+Source tables and source volumes are never touched by these operations.
+
+## Inspecting attached pipelines
+
+```sql
+SELECT name, model_name, distance_operator, pipeline_names
+FROM aidb.knowledge_bases
+WHERE name = 'public.customer_feedback_kb';
+__OUTPUT__
+            name             | model_name | distance_operator |          pipeline_names
+-----------------------------+------------+-------------------+------------------------------------
+ public.customer_feedback_kb | bert       | L2                | {feedback_eu_pipe,feedback_na_pipe}
+```
+
+For aggregate counts and status, query [`aidb.knowledge_base_metrics`](../reference/knowledge-bases#aidbknowledge_base_metrics); for per-pipeline progress, query [`aidb.pipeline_metrics`](../data-pipelines/reference#aidbpipeline_metrics).
+
+## Vector table schema
+
+The shared vector table includes a `pipeline_id` column so each row can be traced back to its originating pipeline. The primary key is `(pipeline_id, source_id, part_ids)`.
+
+```sql
+SELECT pipeline_id, source_id, part_ids
+FROM customer_feedback_kb
+ORDER BY pipeline_id, source_id;
+__OUTPUT__
+ pipeline_id | source_id | part_ids
+-------------+-----------+----------
+           1 | 318       | {0}
+           1 | 412       | {0}
+           2 | 1042      | {0}
+           2 | 1057      | {0}
+```
