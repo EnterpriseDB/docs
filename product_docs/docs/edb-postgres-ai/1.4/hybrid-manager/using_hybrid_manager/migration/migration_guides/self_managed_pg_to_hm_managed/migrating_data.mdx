@@ -12,7 +12,7 @@ redirects:
   - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/applying_constraints/
 ---
 
-With the EDB DMS agent running and your schema either imported or ready for HM to import, you're ready to create a migration in the HM console. This page covers the full migration lifecycle: creating the migration, monitoring its progress, finalizing it, and applying post-migration constraints.
+With the EDB Data Migration Service (DMS) agent running and your schema either imported or ready for Hybrid Manager (HM) to import, you're ready to create a migration in the HM console.
 
 The steps below vary depending on the approach you chose on the previous page. Select the tab that matches your choice.
 
@@ -39,7 +39,7 @@ A migration establishes a sync between your Postgres source and a destination da
 
     1. Sources the schema from the Migration Portal project that was created automatically when you registered your database with the EDB Postgres AI agent.
     1. Creates tables on the destination without constraints, so the initial snapshot copy isn't slowed by constraint validation.
-    1. After the snapshot completes, applies primary key and unique constraints (for tables that have them) so DMS can deliver streaming changes exactly-once. Tables without a PK or UK fall back to at-least-once delivery and require deduplication during verification.
+    1. After the snapshot completes, applies primary key and unique constraints (for tables that have them) so DMS can deliver streaming changes exactly-once. Tables without a primary key (PK) or unique key (UK) fall back to at-least-once delivery and require deduplication during verification.
     1. Defers the remaining schema (indexes, foreign keys, check constraints, `NOT NULL`, and similar) until cutover. You can optionally apply most of this work concurrently with streaming via **Finalize Schema Concurrently** to shrink the cutover window — see [Finalizing a streaming migration](#finalizing-a-streaming-migration).
     1. After you mark the migration as completed, validates deferred foreign keys, syncs sequences, and applies any remaining lightweight tasks in a final **Schema Finalization** stage.
 
@@ -168,6 +168,8 @@ No automatic schema finalization runs for the **Data only** scope. Continue to [
 
 ## Applying deferred constraints and verifying data
 
+After cutting over, confirm that deferred constraints are in place on the destination database and that migrated data matches the source.
+
 ### Reapplying deferred constraints
 
 <TabContainer syncKey="pg_schema_path">
@@ -181,6 +183,55 @@ HM applied all deferred constraints and synced sequences automatically during th
 At the beginning of your migration, you prepared and imported the schema excluding foreign key, unique, check, and exclusion constraints. Connect to the destination database and reapply those constraints now.
 
 Primary key constraints were applied automatically by the DMS writer when the migration entered the streaming phase. `NOT NULL` constraints were applied before migration and don't require any action now.
+
+For unique constraints, the procedure depends on whether the source table had a primary key:
+
+- **Tables with a primary key** — apply the unique constraint directly. PK-based deduplication during the snapshot ensures no duplicate rows remain.
+
+- **Tables with no primary key (UK-identity tables)** — deduplicate rows first, then add the constraint. See [Applying unique constraints on UK-identity tables](#applying-unique-constraints-on-uk-identity-tables).
+
+#### Applying unique constraints on UK-identity tables
+
+For tables where the unique key is the only row identifier (no primary key), the snapshot phase used plain `INSERT` operations with no conflict handling, so duplicate rows might be present. You must deduplicate before adding the unique constraint.
+
+Apply this procedure per-table as soon as each table's snapshot finishes — check the **Tables** tab on the migration details page and look for **Snapshot completed**.
+
+!!!warning
+For **Snapshot + Streaming** migrations, the unique constraint must be in place before streaming begins for that table. Once the DMS writer starts processing CDC events for a UK-identity table, it issues keyed upserts (`INSERT ... ON CONFLICT (uk_cols) DO UPDATE`). If the unique constraint is missing at that point, the writer task fails with a fatal error and the migration stops.
+!!!
+
+For each UK-identity table, run both steps against the destination database:
+
+1.  Deduplicate rows:
+
+    ```sql
+    -- Keep the double-quoted identifiers — Postgres is case-sensitive when quoted.
+    WITH d AS (
+      DELETE FROM "<schema_name>"."<table_name>" t
+      USING (
+        SELECT "<col_1>", "<col_2>", MIN(ctid) AS keep_ctid
+        FROM "<schema_name>"."<table_name>"
+        GROUP BY "<col_1>", "<col_2>"
+        HAVING COUNT(*) > 1
+      ) k
+      WHERE t."<col_1>" = k."<col_1>"
+        AND t."<col_2>" = k."<col_2>"
+        AND t.ctid <> k.keep_ctid
+      RETURNING 1
+    )
+    SELECT count(*) AS rows_removed FROM d;
+    ```
+
+2.  Add the unique constraint:
+
+    ```sql
+    ALTER TABLE "<schema_name>"."<table_name>"
+      ADD CONSTRAINT <constraint_name> UNIQUE ("<col_1>", "<col_2>");
+    ```
+
+!!!note
+Tables with a source primary key don't need this procedure — DMS handles PK application automatically via the delayed-PK path, and unique constraints on those tables can be applied directly.
+!!!
 
 </Tab>
 </TabContainer>
