@@ -168,6 +168,8 @@ No automatic schema finalization runs for the **Data only** scope. Continue to [
 
 ## Applying deferred constraints and verifying data
 
+After cutting over, confirm that deferred constraints are in place on the destination database and that migrated data matches the source.
+
 ### Reapplying deferred constraints
 
 <TabContainer syncKey="pg_schema_path">
@@ -186,13 +188,13 @@ For unique constraints, the procedure depends on whether the source table had a 
 
 - **Tables with a primary key** — apply the unique constraint directly. PK-based deduplication during the snapshot ensures no duplicate rows remain.
 
-- **Tables with no primary key (UK-identity tables)** — deduplicate rows first, then add the constraint. See [Applying unique constraints on UK-identity tables](#applying-unique-constraints-on-uk-identity-tables) below.
+- **Tables with no primary key (UK-identity tables)** — deduplicate rows first, then add the constraint. See [Applying unique constraints on UK-identity tables](#applying-unique-constraints-on-uk-identity-tables).
 
 #### Applying unique constraints on UK-identity tables
 
-For tables where the unique key is the only row identifier (no primary key), the snapshot phase used plain INSERTs with no conflict handling, so duplicate rows might be present. You must deduplicate before adding the unique constraint.
+For tables where the unique key is the only row identifier (no primary key), the snapshot phase used plain `INSERT` operations with no conflict handling, so duplicate rows might be present. You must deduplicate before adding the unique constraint.
 
-Apply this per-table as soon as each table's snapshot finishes — check the **Tables** tab on the migration details page and look for **Snapshot completed**.
+Apply this procedure per-table as soon as each table's snapshot finishes — check the **Tables** tab on the migration details page and look for **Snapshot completed**.
 
 !!!warning
 For **Snapshot + Streaming** migrations, the unique constraint must be in place before streaming begins for that table. Once the DMS writer starts processing CDC events for a UK-identity table, it issues keyed upserts (`INSERT ... ON CONFLICT (uk_cols) DO UPDATE`). If the unique constraint is missing at that point, the writer task fails with a fatal error and the migration stops.
@@ -200,32 +202,32 @@ For **Snapshot + Streaming** migrations, the unique constraint must be in place 
 
 For each UK-identity table, run both steps against the destination database:
 
-**Step 1 — deduplicate rows:**
+1.  Deduplicate rows:
 
-```sql
--- Keep the double-quoted identifiers — Postgres is case-sensitive when quoted.
-WITH d AS (
-  DELETE FROM "<schema_name>"."<table_name>" t
-  USING (
-    SELECT "<col_1>", "<col_2>", MIN(ctid) AS keep_ctid
-    FROM "<schema_name>"."<table_name>"
-    GROUP BY "<col_1>", "<col_2>"
-    HAVING COUNT(*) > 1
-  ) k
-  WHERE t."<col_1>" = k."<col_1>"
-    AND t."<col_2>" = k."<col_2>"
-    AND t.ctid <> k.keep_ctid
-  RETURNING 1
-)
-SELECT count(*) AS rows_removed FROM d;
-```
+    ```sql
+    -- Keep the double-quoted identifiers — Postgres is case-sensitive when quoted.
+    WITH d AS (
+      DELETE FROM "<schema_name>"."<table_name>" t
+      USING (
+        SELECT "<col_1>", "<col_2>", MIN(ctid) AS keep_ctid
+        FROM "<schema_name>"."<table_name>"
+        GROUP BY "<col_1>", "<col_2>"
+        HAVING COUNT(*) > 1
+      ) k
+      WHERE t."<col_1>" = k."<col_1>"
+        AND t."<col_2>" = k."<col_2>"
+        AND t.ctid <> k.keep_ctid
+      RETURNING 1
+    )
+    SELECT count(*) AS rows_removed FROM d;
+    ```
 
-**Step 2 — add the unique constraint:**
+2.  Add the unique constraint:
 
-```sql
-ALTER TABLE "<schema_name>"."<table_name>"
-  ADD CONSTRAINT <constraint_name> UNIQUE ("<col_1>", "<col_2>");
-```
+    ```sql
+    ALTER TABLE "<schema_name>"."<table_name>"
+      ADD CONSTRAINT <constraint_name> UNIQUE ("<col_1>", "<col_2>");
+    ```
 
 !!!note
 Tables with a source primary key don't need this procedure — DMS handles PK application automatically via the delayed-PK path, and unique constraints on those tables can be applied directly.

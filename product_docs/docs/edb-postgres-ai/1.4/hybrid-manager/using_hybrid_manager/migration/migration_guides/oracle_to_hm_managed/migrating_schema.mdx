@@ -109,17 +109,17 @@ After resolving all compatibility issues in Migration Portal, import the schema 
 
 Import constraints in stages to avoid performance degradation during migration:
 
-- **Include now** (before data migration): `NOT NULL` constraints. These have negligible performance impact and no conflict risk during the snapshot phase.
+- **Include now** (before data migration): `NOT NULL` constraints. These constraints have negligible performance impact and no conflict risk during the snapshot phase.
 
 - **Exclude now — DMS applies automatically**: primary key (PK) constraints. The DMS writer applies the primary key after each table's snapshot completes (delayed-PK behavior), using it to deduplicate snapshot data. Don't import PKs manually.
 
-- **Exclude now, apply after streaming starts**: unique key (UK) constraints on tables that have a primary key. PK-based deduplication during the snapshot ensures no duplicate rows exist when you apply these.
+- **Exclude now, apply after streaming starts**: unique key (UK) constraints on tables that have a primary key. PK-based deduplication during the snapshot ensures no duplicate rows exist when you apply these constraints.
 
-- **Exclude now — apply post-snapshot with deduplication**: unique key (UK) constraints on tables that have no primary key. See [UK-identity tables](#uk-identity-tables-supplemental-logging-and-post-snapshot-constraints) below for source preparation and the post-snapshot procedure. Don't create these on the destination before the snapshot completes.
+- **Exclude now — apply post-snapshot with deduplication**: unique key (UK) constraints on tables that have no primary key. See [UK-identity tables](#uk-identity-tables-supplemental-logging-and-post-snapshot-constraints) below for source preparation and the post-snapshot procedure. Don't create these constraints on the destination before the snapshot completes.
 
-- **Exclude now, reapply after migration**: foreign key, check, and exclusion constraints. These cause unnecessary CPU and memory overhead while data is actively being migrated.
+- **Exclude now, reapply after migration**: foreign key, check, and exclusion constraints. These constraints cause unnecessary CPU and memory overhead while data is actively being migrated.
 
-When following the steps below, disable **Constraints** in Migration Portal. This disables foreign key, check, and exclusion constraints. Primary key and unique constraints must also be excluded — confirm these aren't applied during the import.
+When following the steps below, disable **Constraints** in Migration Portal to disable foreign key, check, and exclusion constraints. Primary key and unique constraints must also be excluded — confirm these constraints aren't applied during the import.
 
 !!!note
 PK and UK presence on the destination affects delivery semantics — without them, DMS falls back to at-least-once delivery. `NOT NULL` has no effect on delivery semantics.
@@ -133,7 +133,7 @@ For tables without any key constraints, DMS provides at-least-once delivery. Ded
 
 A UK-identity table is a source table that has no primary key and uses a unique key as its only row identifier.
 
-Before starting the migration, enable supplemental logging on the UK columns on the **source** Oracle database for each UK-identity table. DMS needs this to emit change events keyed by those columns so streaming works correctly after you add the constraint on the destination.
+Before starting the migration, enable supplemental logging on the UK columns on the source Oracle database for each UK-identity table. DMS needs this logging to emit change events keyed by those columns so streaming works correctly after you add the constraint on the destination.
 
 ```sql
 -- Run on the source Oracle database for each UK-identity table.
@@ -141,7 +141,7 @@ ALTER TABLE <schema_name>.<table_name>
   ADD SUPPLEMENTAL LOG GROUP <log_group_name> (<col_1>, <col_2>) ALWAYS;
 ```
 
-Don't create the unique constraint on the destination before the snapshot completes. With delayed-PK enabled, the DMS writer treats tables as keyless if they have no PK on the destination — even if a UK exists. Snapshot writes use plain INSERTs with no conflict handling, and any retry before snapshot finishes will hit the UK constraint and cause an infinite retry loop.
+Don't create the unique constraint on the destination before the snapshot completes. With delayed-PK enabled, the DMS writer treats tables as keyless if they have no PK on the destination — even if a UK exists. Snapshot writes use plain `INSERT` operations with no conflict handling, and any retry before snapshot finishes will hit the UK constraint and cause an infinite retry loop.
 
 After the snapshot for a UK-identity table completes, follow the deduplication and constraint procedure in [Applying unique constraints on UK-identity tables](migrating_data#applying-unique-constraints-on-uk-identity-tables).
 
