@@ -25,10 +25,7 @@ Upgrade from 2026.4 to 2026.5.1.
 
 ## Upgrade 2026.4 → 2026.5.1
 
-HM 2026.5.1 introduces upgrade tooling that automates a complex database migration. The upgrade experience depends on your installation method:
-
-- **Operator method** (`edb-hcp-operator`): The tooling runs automatically. No additional pre-upgrade steps are required.
-- **Bootstrap method** (`edbpgai-bootstrap`): The tooling does not run by default. Follow the steps in [Bootstrap method (deprecated)](#bootstrap-method-deprecated) below.
+HM 2026.5.1 introduces upgrade tooling that automates a complex database migration. The tooling runs automatically for both operator and bootstrap helm chart installations — no manual steps are required unless an upgrade job fails.
 
 !!!Warning Bootstrap helm chart is deprecated
 The `edbpgai-bootstrap` helm chart is deprecated and will be removed in a future release. Migrating to the operator installation method is the recommended path forward. See [Migrating from Bootstrap to Operator installation](/edb-postgres-ai/current/hybrid-manager/install/migrate_bootstrap_to_operator/).
@@ -42,168 +39,30 @@ Before upgrading, create the new secrets required for this release:
 edbctl hm create-install-secrets --version v2026.5.1
 ```
 
-### Operator method
+## Troubleshooting upgrade job failures
 
-For operator-based installations, the upgrade tooling runs automatically as part of the upgrade. No additional pre-upgrade steps are required beyond creating the new secrets above.
+The upgrade operator creates and manages upgrade jobs automatically. If an upgrade job fails and does not reach a `Complete` or `Succeeded` state, the operator pauses and retries — it does not proceed applying updated manifests until the job succeeds.
 
-### Bootstrap method (deprecated)
+To investigate a failed upgrade job:
 
-If you're running the bootstrap helm chart, the upgrade tooling does not trigger automatically. Work through the following options in order — start with Option 1, and only move to the next if the previous option isn't possible or the upgrade still fails.
-
-#### Option 1: Convert to the operator method (recommended)
-
-Migrating to the operator installation method resolves the upgrade tooling issue and prepares you for future releases, since the bootstrap helm chart is being deprecated.
-
-See [Migrating from Bootstrap to Operator installation](/edb-postgres-ai/current/hybrid-manager/install/migrate_bootstrap_to_operator/) for step-by-step instructions.
-
-#### Option 2: Annotate the HCP CR
-
-If migrating to the operator method is not possible, check whether the `HybridControlPlane` resource has the required version annotations and set them if missing.
-
-1. Check the current annotations:
+1. Check the status of upgrade jobs:
 
     ```shell
-    kubectl get hcp edbpgai -o yaml | yq '.metadata.annotations | to_entries[] | select(.key | test("edbpgai")) | {.key: .value}'
+    kubectl get jobs -n edbpgai-bootstrap -l edbpgai.edb.com/hm-upgrader=true
     ```
 
-2. If `edbpgai.com/current-version` or `edbpgai.com/previous-version` are missing or empty, set them before starting the upgrade:
+1. Check the logs for the failed job:
 
     ```shell
-    kubectl annotate hcp edbpgai edbpgai.com/current-version=v2026.4.1
-    kubectl annotate hcp edbpgai edbpgai.com/previous-version=v2026.4.0
+    kubectl logs job/<job-name> -n edbpgai-bootstrap
     ```
 
-    Replace `v2026.4.1` and `v2026.4.0` with the versions currently running in your environment.
+    Replace `<job-name>` with the name of the failed job from the previous command.
 
-#### Option 3: Manually create the upgrade job
+1. Check the `HybridControlPlane` status for upgrade-related events:
 
-If the upgrade fails and the `hmupgrader` job was not created automatically, apply the following manifest to run the pre-upgrade steps manually.
+    ```shell
+    kubectl describe hybridcontrolplane edbpgai
+    ```
 
-!!!Note Customize before applying
-Update the following fields to match your environment before applying the manifest:
-
-1. **`HCP_SCENARIOS_INSTALLED`** — Set to the scenarios installed in your environment.
-1. **`storageClassName`** — Replace `gp2` with your cluster's storage class.
-1. **`tolerations`** — Adjust to match your node architecture and taints.
-!!!
-
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  labels:
-    edbpgai.edb.com/hm-upgrader: "true"
-    edbpgai.edb.com/hm-upgrader-current-version: v2026.5.1
-    edbpgai.edb.com/hm-upgrader-previous-version: v2026.4.1
-    edbpgai.edb.com/hm-upgrader-type: pre
-  name: hm-pre-upgrader-2026-4-to-2026-5
-  namespace: edbpgai-bootstrap
-spec:
-  backoffLimit: 10
-  completionMode: NonIndexed
-  completions: 1
-  manualSelector: false
-  parallelism: 1
-  podReplacementPolicy: TerminatingOrFailed
-  suspend: false
-  template:
-    metadata:
-      labels:
-        batch.kubernetes.io/job-name: hm-pre-upgrader-2026-4-to-2026-5
-        edbpgai.edb.com/hm-upgrader: "true"
-        edbpgai.edb.com/hm-upgrader-current-version: v2026.5.1
-        edbpgai.edb.com/hm-upgrader-previous-version: v2026.4.1
-        edbpgai.edb.com/hm-upgrader-type: pre
-        job-name: hm-pre-upgrader-2026-4-to-2026-5
-    spec:
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - preference:
-              matchExpressions:
-              - key: edbaiplatform.io/control-plane
-                operator: Exists
-            weight: 1
-      containers:
-      - command:
-        - /hmupgrader/entrypoint.sh
-        - -p
-        - v2026.4.1
-        - -c
-        - v2026.5.1
-        - -s
-        - pre_upgrade
-        env:
-        - name: HCP_SCENARIOS_INSTALLED
-          value: '{"ai":true,"analytics":true,"core":true,"dbaas":true,"klio":true,"migration":true}'
-        image: docker.enterprisedb.com/pgai-platform/edbpgai-bootstrap/bootstrap:v2026.5.1
-        imagePullPolicy: Always
-        name: upgrader
-        resources:
-          limits:
-            cpu: 100m
-            memory: 512Mi
-          requests:
-            cpu: 50m
-            memory: 128Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
-        volumeMounts:
-        - mountPath: /data
-          name: upgrade-data
-      dnsPolicy: ClusterFirst
-      imagePullSecrets:
-      - name: edb-cred
-      restartPolicy: Never
-      schedulerName: default-scheduler
-      securityContext:
-        fsGroup: 1000720000
-        runAsGroup: 1000720000
-        runAsNonRoot: true
-        runAsUser: 1000720000
-      serviceAccount: edb-hcp-operator-controller-manager
-      serviceAccountName: edb-hcp-operator-controller-manager
-      terminationGracePeriodSeconds: 30
-      tolerations:
-      - effect: NoSchedule
-        key: edbaiplatform.io/control-plane
-        operator: Equal
-        value: "true"
-      - effect: NoSchedule
-        key: kubernetes.io/arch
-        operator: Equal
-        value: arm64
-      volumes:
-      - ephemeral:
-          volumeClaimTemplate:
-            metadata:
-              creationTimestamp: null
-            spec:
-              accessModes:
-              - ReadWriteOnce
-              resources:
-                requests:
-                  storage: 50Gi
-              storageClassName: gp2
-              volumeMode: Filesystem
-        name: upgrade-data
-  ttlSecondsAfterFinished: 604800
-```
-
-Apply the manifest:
-
-```shell
-kubectl apply -f hm-pre-upgrader-2026-4-to-2026-5.yaml
-```
-
-Monitor the job:
-
-```shell
-kubectl get job hm-pre-upgrader-2026-4-to-2026-5 -n edbpgai-bootstrap
-kubectl logs job/hm-pre-upgrader-2026-4-to-2026-5 -n edbpgai-bootstrap
-```
+If the issue persists after the operator retries, contact EDB support with the job logs.
