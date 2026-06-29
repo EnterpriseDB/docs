@@ -1,16 +1,18 @@
 ---
 title: Connecting ClickHouse to WarehousePG
 navTitle: Connecting to WarehousePG
-description: Use the ClickHouse PostgreSQL table engine to read from and write to a WarehousePG table.
+description: Read from and write to WarehousePG tables from ClickHouse using the PostgreSQL table function, table engine, or database engine.
 ---
 
-Query WarehousePG data from ClickHouse, and write data back to WarehousePG, without ETL pipelines or data duplication. ClickHouse connects to WarehousePG using the `PostgreSQL` table engine, which maps a WarehousePG table to a ClickHouse table definition and handles reads and writes over the standard Postgres wire protocol.
+Query WarehousePG data from ClickHouse, and write data back to WarehousePG, without ETL pipelines or data duplication. ClickHouse connects to WarehousePG over the standard Postgres wire protocol through three built-in mechanisms:
 
+- [Table function](#using-the-table-function) — ad-hoc, one-off queries with no permanent object in ClickHouse.
+- [Table engine](#using-the-table-engine) — repeated access, with the connection defined once as a named table.
+- [Database engine](#using-the-database-engine) — exposing an entire WarehousePG database, with all tables becoming queryable automatically.
 
 !!! Note
-The `PostgreSQL` engine connects only to the WarehousePG coordinator. It doesn't engage WarehousePG's massively parallel processing (MPP) architecture, so queries run through the coordinator as single-node Postgres queries.
+All three mechanisms connect to the WarehousePG coordinator only and don't engage WarehousePG's massively parallel processing (MPP) architecture. Queries run through the coordinator as single-node Postgres queries. `SELECT` and `INSERT` are supported across all three mechanisms. `UPDATE`, `DELETE`, `TRUNCATE`, and DDL operations are not supported. Make those changes directly in WarehousePG.
 !!!
-
 
 ## Configuring WarehousePG to accept connections from ClickHouse
 
@@ -20,11 +22,13 @@ The `PostgreSQL` engine connects only to the WarehousePG coordinator. It doesn't
    listen_addresses = '*'
    ```
 
-1. Add an entry to `pg_hba.conf` that allows connections from the ClickHouse host. Replace `<clickhouse-host-network>` with the network range of your ClickHouse host:
+1. Add an entry to `pg_hba.conf` that allows connections from your ClickHouse host or hosts. Each node in a ClickHouse cluster connects to the coordinator independently, so the entry must cover all node addresses. A CIDR range works if all nodes are on the same subnet:
 
    ```bash
    echo "host    <database>    <user>    <clickhouse-host-network>/24    md5" >> $COORDINATOR_DATA_DIRECTORY/pg_hba.conf
    ```
+
+   Replace `<clickhouse-host-network>` with the network address of your ClickHouse host or subnet.
 
 1. Reload the coordinator configuration:
 
@@ -32,113 +36,204 @@ The `PostgreSQL` engine connects only to the WarehousePG coordinator. It doesn't
    gpstop -u
    ```
 
-1. From the ClickHouse host, verify the WarehousePG coordinator is reachable:
+1. From any ClickHouse node, open a `clickhouse-client` session and verify the WarehousePG coordinator is reachable:
 
-   ```bash
-   psql -h <coordinator-ip> -p <port> -d <database> -U <user>
+   ```sql
+   SELECT nspname
+   FROM postgresql('<coordinator-ip>:<port>', '<database>', 'pg_namespace', '<user>', '<password>', 'pg_catalog')
+   LIMIT 1;
    ```
 
-## Creating the linked table in ClickHouse
+   A successful connection returns a row. An authentication error confirms the network path is open but credentials or `pg_hba.conf` need attention.
 
-Map a WarehousePG table to a ClickHouse table definition using the `PostgreSQL` table engine. Once created, queries against the ClickHouse table go directly to WarehousePG in real time, with no data copied or cached locally.
+## Using the table function
 
-1. In WarehousePG, create the table to expose to ClickHouse. For example:
+Use the `postgresql` table function to query a WarehousePG table inline, without creating any object in ClickHouse. Each call opens a connection, runs the statement, and closes it.
+
+The function takes five positional arguments: `host:port`, database, table, user, and password. An optional sixth argument specifies the schema name and defaults to `public`. All arguments are positional, so you can't omit the password even if WarehousePG uses `trust` authentication. Pass an empty string `''` in that case.
+
+Open a `clickhouse-client` session on any node, then pass the connection details inline with each query:
+
+```sql
+SELECT *
+FROM postgresql('<coordinator-ip>:<port>', '<database>', '<table>', '<user>', '<password>')
+ORDER BY id;
+```
+
+Use `INSERT INTO TABLE FUNCTION` to write rows to WarehousePG:
+
+```sql
+INSERT INTO TABLE FUNCTION
+  postgresql('<coordinator-ip>:<port>', '<database>', '<table>', '<user>', '<password>')
+  (id, region, amount)
+VALUES (100, 'new-row', 999);
+```
+
+
+## Using the table engine
+
+Use the `PostgreSQL` table engine to register a WarehousePG table as a named object in ClickHouse and query it by name. Queries go directly to WarehousePG in real time, with no data copied or cached locally.
+
+
+### Creating the linked table
+
+1. In WarehousePG, create the table to expose to ClickHouse:
 
    ```sql
    CREATE TABLE analytics_data (
-       id         integer primary key,
+       id         integer,
        event_type varchar(50),
        event_time timestamp,
        value      numeric(12, 4)
-   );
+   ) DISTRIBUTED BY (id);
 
    INSERT INTO analytics_data (id, event_type, event_time, value)
    VALUES
        (1, 'page_view', '2025-01-01 10:00:00', 1.0),
-       (2, 'click',     '2025-01-01 10:01:00', 2.5);
+       (2, 'click',     '2025-01-01 10:05:00', 2.5);
    ```
 
-1. From your ClickHouse server, open a `clickhouse-client` session:
-
-    ```bash
-    clickhouse-client
-    ```
-
-1. Create a database and table in ClickHouse that maps to the WarehousePG table using `ENGINE = PostgreSQL`:
+1. From any ClickHouse node, open a `clickhouse-client` session and create a table mapped to the WarehousePG table using `ENGINE = PostgreSQL`. On a cluster, use `ON CLUSTER <cluster-name>` to create the table on all nodes, where `<cluster-name>` is your ClickHouse cluster name (check with `SELECT DISTINCT cluster FROM system.clusters`):
 
    ```sql
-   CREATE DATABASE whpg_connect;
-
-   CREATE TABLE whpg_connect.analytics_data
+   CREATE TABLE whpg_analytics ON CLUSTER <cluster-name>
    (
-       id         UInt64,
+       id         Int32,
        event_type String,
        event_time DateTime,
-       value      Float64
+       value      Decimal(12, 4)
    )
    ENGINE = PostgreSQL(
-       '<coordinator-ip>:<port>',  -- host:port of the WarehousePG coordinator
-       '<database>',               -- WarehousePG database name
-       'analytics_data',           -- table name in WarehousePG
-       '<user>',                   -- WarehousePG user
-       '<password>'                -- password (stored encrypted in ClickHouse)
+       '<coordinator-ip>:<port>',
+       '<database>',
+       'analytics_data',
+       '<user>',
+       '<password>'
    );
    ```
 
-   The `ENGINE = PostgreSQL` syntax takes five positional parameters: `host:port`, database, table, user, and password. An optional sixth parameter specifies the schema name (defaults to `public`). If WarehousePG is configured with `trust` authentication, pass an empty string `''` for the password.
+   The `ENGINE = PostgreSQL` syntax takes five positional arguments: `host:port`, database, table, user, and password. An optional sixth argument specifies the schema (defaults to `public`). If WarehousePG is configured with `trust` authentication, pass an empty string `''` for the password.
 
-1. Verify the table is correctly linked by inspecting its definition:
+1. In `clickhouse-client`, verify the table was created with the expected column types:
 
    ```sql
-   DESCRIBE TABLE whpg_connect.analytics_data;
+   DESCRIBE TABLE whpg_analytics;
    ```
 
    Or view the full `CREATE TABLE` statement:
 
    ```sql
-   SHOW CREATE TABLE whpg_connect.analytics_data;
+   SHOW CREATE TABLE whpg_analytics;
    ```
 
-   The password is shown as `[HIDDEN]` in the output.
+   The password appears as `[HIDDEN]` in the output.
 
-## Reading WarehousePG data from ClickHouse
+### Reading data
 
-Query the ClickHouse table. ClickHouse connects to WarehousePG, executes a `COPY ... TO STDOUT` statement, and converts the row-oriented stream into columnar format as it arrives:
+Query the ClickHouse table as you would any local table:
 
 ```sql
-SELECT * FROM whpg_connect.analytics_data;
+SELECT * FROM whpg_analytics;
 __OUTPUT__
-┌─id─┬─event_type─┬─────────event_time─┬─value─┐
-│  1 │ page_view  │ 2025-01-01 10:00:00│   1   │
-│  2 │ click      │ 2025-01-01 10:01:00│  2.5  │
-└────┴────────────┴────────────────────┴───────┘
+┌─id─┬─event_type─┬─────────event_time─┬──────value─┐
+│  1 │ page_view  │ 2025-01-01 10:00:00│     1.0000 │
+│  2 │ click      │ 2025-01-01 10:05:00│     2.5000 │
+└────┴────────────┴────────────────────┴────────────┘
 ```
 
 Data inserted into WarehousePG after the ClickHouse table is created is immediately visible on the next `SELECT`. ClickHouse doesn't cache WarehousePG data locally when using the `PostgreSQL` engine.
 
-## Writing data to WarehousePG from ClickHouse
+### Writing data
 
 Use `INSERT` on the ClickHouse table to write data to WarehousePG. ClickHouse translates the insert into a `COPY ... FROM STDIN` statement on the WarehousePG side:
 
 ```sql
--- Run in ClickHouse
-INSERT INTO whpg_connect.analytics_data (id, event_type, event_time, value)
-VALUES (3, 'purchase', '2025-01-01 10:05:00', 99.99);
+INSERT INTO whpg_analytics (id, event_type, event_time, value)
+VALUES (3, 'purchase', '2025-01-01 10:10:00', 99.99);
 ```
 
-Confirm the row is visible in WarehousePG:
+Confirm the row is visible by querying the table in WarehousePG:
 
 ```sql
--- Run in WarehousePG
 SELECT * FROM analytics_data;
 ```
 
+
+## Using the database engine
+
+Use the `PostgreSQL` database engine to expose an entire WarehousePG database in ClickHouse. Every table becomes queryable automatically without individual table definitions.
+
+1. Create the database:
+
+   ```sql
+   CREATE DATABASE whpg_db ON CLUSTER <cluster-name>  -- ClickHouse cluster name
+     ENGINE = PostgreSQL('<coordinator-ip>:<port>', '<database>', '<user>', '<password>');
+   ```
+
+1. List the available tables:
+
+   ```sql
+   SHOW TABLES FROM whpg_db;
+   ```
+
+1. Query any table directly by its WarehousePG name:
+
+   ```sql
+   SELECT count() FROM whpg_db.analytics_data;
+   ```
+
+## Storing credentials in a named collection
+
+Store connection credentials once in a named collection and reference it by name across queries and `CREATE TABLE` statements. Named collections work with all three mechanisms.
+
+1. Enable named collection management for your ClickHouse user by creating `/etc/clickhouse-server/users.d/named_collection_control.xml` on each server node with the following content:
+
+   ```xml
+   <clickhouse>
+       <users>
+           <default>
+               <named_collection_control>1</named_collection_control>
+           </default>
+       </users>
+   </clickhouse>
+   ```
+
+1. From `clickhouse-client` on each server node, reload the configuration (server nodes only, not Keeper nodes):
+
+   ```sql
+   SYSTEM RELOAD CONFIG;
+   SYSTEM RELOAD USERS;
+   ```
+
+1. Create the named collection on all server nodes using `ON CLUSTER <cluster-name>`:
+
+   ```sql
+   CREATE NAMED COLLECTION whpg ON CLUSTER <cluster-name> AS
+     host='<coordinator-ip>', port=<port>, user='<user>',
+     password='<password>', database='<database>';
+   ```
+
+1. Reference it by name in any of the three mechanisms:
+
+   ```sql
+   -- Table function
+   SELECT * FROM postgresql(whpg, table = '<table>');
+
+   -- Table engine
+   CREATE TABLE <table-name> (id Int32, event_type String, value Decimal(12, 4))
+   ENGINE = PostgreSQL(whpg, table = '<table>');
+
+   -- Database engine
+   CREATE DATABASE whpg_db ON CLUSTER <cluster-name>
+   ENGINE = PostgreSQL(whpg);
+   ```
+
 ## Understanding the query flow
 
-Use `EXPLAIN` in ClickHouse to see how data moves between the systems:
+Use `EXPLAIN` to see how data moves between the systems:
 
 ```sql
-EXPLAIN SELECT * FROM whpg_connect.analytics_data;
+EXPLAIN SELECT id, value FROM whpg_analytics WHERE id = 1;
 __OUTPUT__
 ┌─explain──────────────────────────────────────────────────────────────────────────────────────┐
 │ Expression ((Project names + (Projection + Change column names to column identifiers)))       │
@@ -146,4 +241,4 @@ __OUTPUT__
 └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The `ReadFromPostgreSQL` step establishes a TCP connection to the coordinator, sends the SQL query, and converts the incoming row-oriented stream into ClickHouse's columnar format. By the time data reaches the `Expression` step, it's already in columnar form.
+The `ReadFromPostgreSQL` step establishes a TCP connection to the coordinator, sends the SQL query, and converts the row-oriented stream into ClickHouse's columnar format. Simple filters and column projections are pushed down to WarehousePG, so only the matching rows and columns travel over the network. Each query opens a fresh connection and closes it on completion.
