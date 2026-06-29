@@ -92,9 +92,38 @@ Checked backup 20260601T120000 on server my_cluster-seg3
 All backup checks completed successfully
 ```
 
-## Deleting old backups
+## Managing backup retention
 
-Run on the primary coordinator to remove a base backup and all its associated restore points from storage:
+Automatically expire old backups to keep storage use under control. Without this setup, backups accumulate indefinitely and you must remove them manually with `whpg-dr delete`.
+
+1. Add retention settings to `barman_options` in your [backup configuration YAML](../reference/configuration#backup-configuration-yaml):
+
+   - `retention_policy` — sets the expiry rule. It accepts `REDUNDANCY <n>` to keep the n most recent backups, or `RECOVERY WINDOW OF <n> DAYS|WEEKS|MONTHS` to keep all backups within the time window.
+   - `minimum_redundancy` — sets a floor. Barman won't expire backups below this count regardless of the retention policy. Leave it unset until at least one backup exists. Setting it to `1` or higher before the first backup causes pre-backup checks to fail.
+
+   ```yaml
+   barman_options:
+     retention_policy: RECOVERY WINDOW OF 4 WEEKS
+     minimum_redundancy: 1
+   ```
+
+1. Schedule `whpg-dr cron` to run regularly on the primary coordinator. `whpg-dr cron` applies the retention policy by running Barman maintenance for all segment servers in the cluster. After expiring backups, it also removes the corresponding restore-point metadata so `list-restore-point` never shows restore points whose backup is gone.
+
+   Add a cron job under `gpadmin`:
+
+   ```cron
+   0 2 * * * /usr/edb/whpg-dr/bin/whpg-dr cron my_cluster >> $HOME/gpAdminLogs/whpg-dr-cron.log 2>&1
+   ```
+
+   The cluster doesn't need to be running when `whpg-dr cron` executes.
+
+!!! Note
+For S3 storage, `whpg-dr cron` runs locally on the coordinator and via SSH on each segment host, and fails if any host is unreachable.
+!!!
+
+## Deleting backups
+
+For one-off manual deletion, run on the primary coordinator:
 
 ```bash
 whpg-dr delete my_cluster --backup-name 20260513T181327_base_backup

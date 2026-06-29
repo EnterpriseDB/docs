@@ -35,13 +35,15 @@ storage:
 
 # Optional
 whpg_dr_home: <absolute-path>    # overrides WHPG_DR_HOME env var
-ssh_user: <string>                # default: gpadmin
+ssh_user: <string>                # default: $USER
 pg_user: <string>                 # default: gpadmin
 
 barman_options:
   compression: gzip | bzip2 | zstd | none
   compression_level: low | medium | high
   network_compression: "on" | "off"  # POSIX only
+  retention_policy: REDUNDANCY <n> | RECOVERY WINDOW OF <n> DAYS|WEEKS|MONTHS
+  minimum_redundancy: <integer>
 ```
 
 | Field | Required | Description |
@@ -60,11 +62,13 @@ barman_options:
 | `storage.session_token` | No | Temporary STS session token. Requires `access_key_id` and `secret_access_key`. Tokens expire and aren't refreshed; use `credential_source: default` with an instance role instead. |
 | `storage.local_staging` | No | Local path for WAL staging during S3 uploads. S3 storage only. |
 | `whpg_dr_home` | No | Override for `WHPG_DR_HOME`. Defaults to `$HOME/.whpg-dr`. |
-| `ssh_user` | No | OS user for SSH connections to segment hosts. Defaults to `gpadmin`. |
+| `ssh_user` | No | OS user for SSH connections to segment hosts. Defaults to `$USER`. |
 | `pg_user` | No | Postgres user for Barman's connections to segments. Defaults to `gpadmin`. |
 | `barman_options.compression` | No | Compression algorithm for WAL archiving. |
 | `barman_options.compression_level` | No | Compression level for WAL archiving. |
 | `barman_options.network_compression` | No | Enable rsync network compression. POSIX storage only. |
+| `barman_options.retention_policy` | No | Retention policy for base backups. Accepts `REDUNDANCY <n>` to keep the n most recent backups, or `RECOVERY WINDOW OF <n> DAYS\|WEEKS\|MONTHS` to keep backups within a time window. |
+| `barman_options.minimum_redundancy` | No | Minimum number of backups to retain regardless of the retention policy. Don't set to a value greater than 0 until at least one backup exists, or `whpg-dr check` fails. |
 
 ### Examples
 
@@ -98,6 +102,8 @@ storage:
 barman_options:
   compression: zstd
   compression_level: medium
+  retention_policy: RECOVERY WINDOW OF 4 WEEKS
+  minimum_redundancy: 1
 ```
 
 ---
@@ -157,7 +163,7 @@ barman_options:
 | `segment_port_base` | No | Base port for segments. Segment N uses `segment_port_base + N`. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
 | `barman_options` | No | Same fields as the [backup configuration YAML](#backup-configuration-yaml). Both sides must use matching compression settings. |
 | `whpg_dr_home` | No | Override for `WHPG_DR_HOME` on the DR cluster. |
-| `ssh_user` | No | OS user for SSH connections to DR segment hosts. Defaults to `gpadmin`. |
+| `ssh_user` | No | OS user for SSH connections to DR segment hosts. Defaults to `$USER`. |
 | `pg_user` | No | Postgres user for Barman connections. Defaults to `gpadmin`. |
 
 ### Examples
@@ -226,9 +232,8 @@ The host-level defaults file at `$WHPG_DR_HOME/global.yaml` sets values that app
 
 ```yaml
 log_dir: <absolute-path>          # default: $HOME/gpAdminLogs
-log_level: debug | info | warn | error | fatal
 log_file_level: debug | info | warn | error | fatal
-ssh_user: <string>                # default: gpadmin
+ssh_user: <string>                # default: $USER
 pg_user: <string>                 # default: gpadmin
 ```
 
@@ -236,7 +241,6 @@ All fields are optional. Example:
 
 ```yaml
 log_dir: /var/log/whpg-dr
-log_level: info
 log_file_level: debug
 ssh_user: gpadmin
 pg_user: gpadmin

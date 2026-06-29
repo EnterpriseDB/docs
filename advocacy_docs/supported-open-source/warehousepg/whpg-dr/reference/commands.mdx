@@ -5,7 +5,7 @@ description: Full reference for all whpg-dr subcommands, options, and examples.
 deepToC: true
 ---
 
-All `whpg-dr` subcommands are listed alphabetically. Each entry links to the relevant procedure page for usage in context.
+Run all `whpg-dr` commands as the `gpadmin` user on the coordinator.
 
 ## Global options
 
@@ -14,8 +14,7 @@ All `whpg-dr` commands accept the following options:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--log-dir <path>` | `$HOME/gpAdminLogs` | Directory for log files. |
-| `--log-level <level>` | `info` | Console log level (`debug`, `info`, `warn`, `error`, `fatal`). |
-| `--log-file-level <level>` | `debug` | Log file level (`debug`, `info`, `warn`, `error`, `fatal`). |
+| `--log-file-level <level>` | `debug` | Log file verbosity (`debug`, `info`, `warn`, `error`, `fatal`). |
 
 ---
 
@@ -68,6 +67,14 @@ whpg-dr backup <cluster_name> [options]
 | Option | Description |
 |--------|-------------|
 | `--check-timeout <seconds>` | Wait up to this many seconds for Barman checks to pass before starting the backup. Pass `0` to disable the timeout entirely. |
+| `--dry-run` | List targets and commands without executing. |
+| `--name <name>` | Name for the backup. Defaults to a timestamp-based name, for example `20260624T195641_base_backup`. |
+
+**Example:**
+
+```bash
+whpg-dr backup my_cluster --name before_schema_migration
+```
 
 ---
 
@@ -82,6 +89,13 @@ whpg-dr check <cluster_name> [options]
 | Option | Description |
 |--------|-------------|
 | `--check-timeout <seconds>` | Maximum time to wait for each segment check. |
+| `--jobs <n>` | Maximum number of concurrent checks. Defaults to `16`. |
+
+**Example:**
+
+```bash
+whpg-dr check my_cluster --check-timeout 60
+```
 
 ---
 
@@ -110,8 +124,12 @@ whpg-dr check-backup my_cluster --backup-name 20260601T120000_base_backup
 Removes a stale lock file left by an interrupted `create-restore-point` command. Only run this command when no other `whpg-dr` process is running for this cluster. See [Restore point failures](../troubleshooting#restore-point-failures) for context.
 
 ```bash
-whpg-dr clean-lock-file <cluster_name>
+whpg-dr clean-lock-file <cluster_name> [options]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Show what would be cleaned without executing. |
 
 ---
 
@@ -175,6 +193,24 @@ whpg-dr configure restore /home/gpadmin/restore.yaml --backup-name 20260601T1200
 
 ---
 
+## whpg-dr cron
+
+Enforces the configured retention policy by expiring old backups and cleaning up their associated restore-point metadata. The cluster doesn't need to be running. See [Managing backup retention](../setting-up-primary/backups#managing-backup-retention) for setup instructions.
+
+```bash
+whpg-dr cron <cluster_name> [options]
+```
+
+!!! Note
+`whpg-dr cron` doesn't run concurrently with `backup`, `delete`, or `create-restore-point`. If another operation holds the cluster lock, it exits immediately. For S3 storage, the S3 endpoint must be reachable from the coordinator and all segment hosts.
+!!!
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Print the command without executing or acquiring the lock. |
+
+---
+
 ## whpg-dr create-restore-point
 
 Creates a cluster-wide consistent restore point. See [Creating a restore point](../setting-up-primary/backups#creating-a-restore-point) for usage in context.
@@ -185,6 +221,7 @@ whpg-dr create-restore-point <cluster_name> [options]
 
 | Option | Description |
 |--------|-------------|
+| `--dry-run` | Show what would be done without executing. |
 | `--suffix <text>` | Appended to the auto-generated timestamp prefix in the restore point name, for example `20260615-143022R_<suffix>`. Must not be `latest`. |
 
 **Example:**
@@ -197,7 +234,7 @@ whpg-dr create-restore-point my_cluster --suffix before_etl_load
 
 ## whpg-dr delete
 
-Deletes a base backup and all its associated restore points from the storage repository. Run on the primary cluster only. See [Deleting old backups](../setting-up-primary/backups#deleting-old-backups) for usage in context.
+Deletes a base backup and all its associated restore points from the storage repository. Run on the primary cluster only. See [Deleting backups](../setting-up-primary/backups#deleting-backups) for usage in context.
 
 ```bash
 whpg-dr delete <cluster_name> [options]
@@ -206,6 +243,8 @@ whpg-dr delete <cluster_name> [options]
 | Option | Description |
 |--------|-------------|
 | `--backup-name <name>` | Name of the base backup to delete. Required. |
+| `--dry-run` | Show what would be deleted without executing. |
+| `--jobs <n>` | Maximum number of concurrent delete operations. Defaults to `8`. |
 
 !!! Warning
 Deleting a backup removes all restore points associated with it. Retain at least one base backup at all times.
@@ -324,8 +363,14 @@ Promotes the DR cluster from recovery mode to a writable primary. After promotio
 This command is blocked while the cluster has an unfinished or failed restore state. Inspect the state with `whpg-dr list-restore` and either retry with `whpg-dr restore --resume-failed` or run a new full restore before promoting.
 
 ```bash
-whpg-dr promote <cluster_name>
+whpg-dr promote <cluster_name> [options]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Print planned actions without executing. |
+| `--gphome <path>` | Path to the WarehousePG installation directory. Defaults to `$GPHOME` or `/usr/local/greenplum-db`. |
+| `--skip-checks` | Skip the pre-promote segment state check. Only use this option if you understand the risk of promoting a cluster that hasn't fully completed recovery. |
 
 ---
 
@@ -343,9 +388,11 @@ whpg-dr restore <cluster_name> [options]
 |--------|-------------|
 | `--target-name <name>` | Name of the restore point to restore to. Use `latest` for the most recent restore point in storage. |
 | `--delta` | Advance the DR cluster from its current restore point to a later one, without applying the base backup from scratch. Requires an existing restored state. |
-| `--resume-failed` | Continue a previously interrupted restore. |
-| `--wal-replay-timeout <seconds>` | Timeout for each segment's WAL replay phase. |
 | `--dry-run` | Print the planned restore operations without executing. |
+| `--force` | Skip confirmation when superseding an unresolved restore goal. |
+| `--gphome <path>` | Path to the WarehousePG installation directory. Defaults to `$GPHOME` or `/usr/local/greenplum-db`. |
+| `--resume-failed` | Continue a previously interrupted restore, reusing the original target. Can't be combined with `--target-name`. |
+| `--wal-replay-timeout <duration>` | Timeout for each segment's WAL replay phase. Set to `0` to disable. Accepts a positive integer with a unit suffix (`30s`, `5m`, `1h`). |
 
 **Examples:**
 
@@ -360,5 +407,5 @@ whpg-dr restore my_cluster --target-name latest
 whpg-dr restore my_cluster --target-name latest --delta
 
 # Resume an interrupted restore
-whpg-dr restore my_cluster --target-name latest --resume-failed
+whpg-dr restore my_cluster --resume-failed
 ```
