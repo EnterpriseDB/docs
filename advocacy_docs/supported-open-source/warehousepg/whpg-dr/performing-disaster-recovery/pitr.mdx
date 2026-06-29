@@ -77,14 +77,42 @@ After promotion, the cluster is a writable primary and accepts connections. Exte
 
 ## Recovering individual objects
 
-PITR is useful for recovering individual tables or schemas without failing over the entire production cluster. For example, if a table was accidentally dropped, you can restore the cluster to a point before the drop, use `gpbackup` to back up that specific table, then restore it to the production cluster with `gprestore`:
+Recover individual tables or schemas from the promoted DR cluster without failing over the entire production cluster. Use `gpbackup` and `gprestore` from the `whpg-backup` package to extract the objects you need and restore them to production. Both clusters must have access to the same shared storage, either via an S3-compatible plugin or a shared NFS path.
 
-```bash
-gpbackup --dbname mydb --include-table public.my_table --backup-dir /tmp/table_recovery
-gprestore --backup-dir /tmp/table_recovery --redirect-db mydb_production
-```
+For example, to restore `public.orders` from the `mydb` database using S3 storage:
 
-Once the object is recovered, you can discard the temporary DR cluster. The base backup and WAL remain in the storage repository and can be used again for future restores.
+1. Create a plugin configuration file on the DR coordinator at `/home/gpadmin/gpbackup_s3_plugin.yaml`:
+
+   ```yaml
+   executablepath: /usr/edb/whpg7/bin/gpbackup_s3_plugin
+   options:
+     aws_access_key_id: AKIAIOSFODNN7EXAMPLE
+     aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     endpoint: https://s3.us-east-1.amazonaws.com
+     bucket: my-dr-bucket
+     folder: whpg-recovery
+   ```
+
+1. Run `gpbackup` against the full database on the DR cluster. Back up the full database rather than filtering by table. Using `--include-table` on `gpbackup` excludes dependent objects like sequences, which causes the restore to fail.
+
+   ```bash
+   gpbackup --dbname mydb --plugin-config /home/gpadmin/gpbackup_s3_plugin.yaml
+   ```
+
+   Record the backup timestamp from the output, for example `20260629133225`.
+
+1. Copy the plugin configuration file to the production coordinator and run `gprestore` with `--include-table` to restore only the target table:
+
+   ```bash
+   gprestore --timestamp 20260629133225 \
+     --plugin-config /home/gpadmin/gpbackup_s3_plugin.yaml \
+     --redirect-db mydb \
+     --include-table public.orders
+   ```
+
+Once the object is recovered, you can discard the DR cluster. The base backup and WAL remain in the storage repository for future restores.
+
+See the [WarehousePG backup and restore documentation](/warehousepg/latest/admin_guide/backup_restore/) for other storage options and full `gpbackup` and `gprestore` reference.
 
 ## Adding mirrors and standby coordinator
 
