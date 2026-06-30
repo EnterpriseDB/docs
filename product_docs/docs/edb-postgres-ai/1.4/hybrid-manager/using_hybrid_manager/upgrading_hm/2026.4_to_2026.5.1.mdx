@@ -11,25 +11,44 @@ Upgrade from 2026.4 to 2026.5.1.
 
 ## Prerequisites
 
-* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
-* Access to the HM installation configuration file or `values.yaml` file used for the current installation. To save the contents of your current installation configuration:
+- Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+- Access to the HM installation configuration file or `values.yaml` file used for the current installation. To save the contents of your current installation configuration:
 
   ```shell
   helm get values edbpgai-bootstrap -n edbpgai-bootstrap > values.yaml
   ```
 
-* Required tools:
-    * `helm` (Latest version recommended)
-    * `kubectl`
-    * `edbctl` version `1.6.0` or later (or a build from `main`)
+- Required tools:
+    - `helm` (Latest version recommended)
+    - `kubectl`
+    - `edbctl` version `1.6.0` or later (or a build from `main`)
 
 ## Upgrade 2026.4 → 2026.5.1
 
-HM 2026.5.1 introduces upgrade tooling that automates a complex database migration. The tooling runs automatically for both operator and bootstrap helm chart installations — no manual steps are required unless an upgrade job fails.
+HM 2026.5.1 introduces upgrade tooling that automates a complex database migration, including deletion of the `stats-collector-db` cluster, migration of the `edb-observability` namespace, and consolidation of `app-db`, `beacondb`, and `transporter-db` into `upm-system-db`. The tooling runs automatically for both operator and bootstrap helm chart installations via the embedded `hmupgrader` scripts. No manual data migration steps are required unless an upgrade job fails.
 
 !!!Warning Bootstrap helm chart is deprecated
 The `edbpgai-bootstrap` helm chart is deprecated and will be removed in a future release. Migrating to the operator installation method is the recommended path forward. See [Migrating from Bootstrap to Operator installation](/edb-postgres-ai/current/hybrid-manager/install/migrate_bootstrap_to_operator/).
 !!!
+
+### Check HCP CR annotations
+
+Before upgrading, verify that the `HybridControlPlane` resource has `current-version` and `previous-version` annotations set. The upgrade tooling relies on these to identify which migration scripts to run.
+
+1. Check the currently set annotations:
+
+    ```shell
+    kubectl get hcp edbpgai -o yaml | yq '.metadata.annotations | to_entries[] | select(.key | test("edbpgai")) | {.key: .value}'
+    ```
+
+1. If `edbpgai.com/current-version` or `edbpgai.com/previous-version` is missing or empty, set them before proceeding:
+
+    ```shell
+    kubectl annotate hcp edbpgai edbpgai.com/current-version=v2026.4.1
+    kubectl annotate hcp edbpgai edbpgai.com/previous-version=v2026.4.0
+    ```
+
+    Replace the version values with the version you are currently running.
 
 ### Creating new secrets
 
@@ -39,9 +58,57 @@ Before upgrading, create the new secrets required for this release:
 edbctl hm create-install-secrets --version v2026.5.1
 ```
 
+### Perform the upgrade
+
+#### For Helm-based (bootstrap) installations
+
+1. Update your Helm repository:
+
+    ```shell
+    helm repo update
+    ```
+
+1. Perform the upgrade:
+
+    ```shell
+    helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+      --version 2026.5.1 \
+      --values values.yaml \
+      --namespace edbpgai-bootstrap \
+      --wait
+    ```
+
+    The operator detects the version change and begins the rolling update, including running the automated pre-upgrade scripts.
+
+#### For operator-based installations
+
+1. Update `spec.version` to `v2026.5.1` in your `HybridControlPlane` manifest and apply it:
+
+    ```shell
+    kubectl apply -f hybridmanager.yaml
+    ```
+
+1. Trigger the upgrade:
+
+    ```shell
+    kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+    ```
+
+1. Monitor progress:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -w
+    ```
+
+    The operator runs the automated pre-upgrade scripts, then applies updated manifests once the upgrade jobs complete successfully.
+
 ## Troubleshooting upgrade job failures
 
-The upgrade operator creates and manages upgrade jobs automatically. If an upgrade job fails and does not reach a `Complete` or `Succeeded` state, the operator pauses and retries — it does not proceed applying updated manifests until the job succeeds.
+The upgrade operator creates and manages upgrade jobs automatically. If an upgrade job fails and does not reach a `Complete` or `Succeeded` state, the operator pauses and retries. It does not proceed applying updated manifests until the job succeeds.
+
+!!!note
+The upgrade job is owned and managed exclusively by the operator. Do not manually create upgrade jobs, as doing so can conflict with the operator's reconciliation loop.
+!!!
 
 To investigate a failed upgrade job:
 
