@@ -5,15 +5,23 @@ originalFilePath: 'src/image_catalog.md'
 
 
 
+`ImageCatalog` and `ClusterImageCatalog` are essential resources that empower
+you to define images for creating a `Cluster`.
+
+
 `ImageCatalog` and `ClusterImageCatalog` are Custom Resource Definitions (CRDs)
 that allow you to decouple the PostgreSQL image lifecycle from the `Cluster`
 definition. By using a catalog, you can manage image updates centrally; when a
 catalog entry is updated, all associated clusters automatically
 [roll out the new image](rolling_update.md).
 
-While you can build custom catalogs, {{name.ln}} provides
-[official catalogs](#edb-cloudnativepg-cluster-catalogs) as `ClusterImageCatalog`
-resources, covering all official Community PostgreSQL container images.
+!!!warning
+
+The operator places trust in the user-defined major version and refrains
+from conducting any PostgreSQL version detection. It is the user's
+responsibility to ensure alignment between the declared major version in
+the catalog and the PostgreSQL image.
+!!!
 
 ## Catalog scoping
 
@@ -66,7 +74,7 @@ spec:
     - major: 17
       image: docker.enterprisedb.com/k8s/postgresql:17.6-standard-ubi9
     - major: 18
-      image: docker.enterprisedb.com/k8s/postgresql:18.3-standard-ubi9
+      image: docker.enterprisedb.com/k8s/postgresql:18.4-standard-ubi9
 ```
 
 The following example defines a cluster-wide `ClusterImageCatalog`:
@@ -85,12 +93,12 @@ spec:
     - major: 17
       image: docker.enterprisedb.com/k8s/postgresql:17.6-standard-ubi9
     - major: 18
-      image: docker.enterprisedb.com/k8s/postgresql:18.3-standard-ubi9
+      image: docker.enterprisedb.com/k8s/postgresql:18.4-standard-ubi9
 ```
 
-### Referencing a Catalog in a Cluster
-
-A `Cluster` resource uses the `imageCatalogRef` to select its images:
+A `Cluster` resource has the flexibility to reference either an `ImageCatalog`
+(like in the following example) or a `ClusterImageCatalog` to precisely specify
+the desired image.
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -101,9 +109,10 @@ spec:
   instances: 3
   imageCatalogRef:
     apiGroup: postgresql.k8s.enterprisedb.io
-    kind: ClusterImageCatalog # Or 'ImageCatalog'
-    name: postgresql-global
-    major: 18
+    # Change the following to `ClusterImageCatalog` if needed
+    kind: ImageCatalog
+    name: postgresql
+    major: 16
   storage:
     size: 1Gi
 ```
@@ -113,96 +122,15 @@ spec:
 [Image Volume Extensions](imagevolume_extensions.md) allow you to bundle
 containers for extensions directly within the catalog entry:
 
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: ImageCatalog
-metadata:
-  name: postgresql
-spec:
-  images:
-    - major: 18
-      image: docker.enterprisedb.com/k8s_enterprise/postgresql:18.3-minimal-ubi9
-      extensions:
-        - name: foo
-          image:
-            reference: # registry path for your `foo` extension image
-```
-
-The `extensions` section follows the [`ExtensionConfiguration`](pg4k.v1.md#extensionconfiguration)
-API schema and structure.
-Clusters referencing an image catalog can load any of its associated extensions
-by name.
-
-!!!info
-
-Refer to the [documentation of image volume extensions](imagevolume_extensions.md)
-for details on the internal image structure, configuration options, and
-instructions on how to select or override catalog extensions within a cluster.
-!!!
-
-[Image Volume Extensions](imagevolume_extensions.md) allow you to bundle
-containers for extensions directly within the catalog entry:
-
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: ImageCatalog
-metadata:
-  name: postgresql
-spec:
-  images:
-    - major: 18
-      image: docker.enterprisedb.com/k8s_enterprise/postgresql:18.3-minimal-ubi9
-      extensions:
-        - name: foo
-          image:
-            reference: # registry path for your `foo` extension image
-```
-
-The `extensions` section follows the [`ExtensionConfiguration`](pg4k.v1.md#extensionconfiguration)
-API schema and structure.
-Clusters referencing an image catalog can load any of its associated extensions
-by name.
-
-!!!info
-Refer to the [documentation of image volume extensions](imagevolume_extensions.md)
-for details on the internal image structure, configuration options, and
-instructions on how to select or override catalog extensions within a cluster.
-!!!
-
-## EDB CloudNativePG Cluster Catalogs
-
 The {{name.ln}} project maintains `ClusterImageCatalog` manifests for all
 supported images.
 
-These catalogs are regularly updated and published in two distinct locations
-within the [artifacts repository](https://github.com/cloudnative-pg/artifacts/tree/main):
+These catalogs are regularly updated and published in the
+[artifacts repository](https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs).
 
--   **[`image-catalogs`](https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs):**
-    core catalog definitions for base image types.
-
--   **[`image-catalogs-extensions`](https://github.com/cloudnative-pg/artifacts/tree/main/image-catalogs-extensions):**
-    identical to the above catalogs, with the key difference that the `minimal`
-    image type includes extension definitions.
-
-Each catalog corresponds to a specific combination of image type and Debian
-release (e.g., `trixie`). It lists the most up-to-date container images for
-every supported PostgreSQL major version.
-
-!!!important
-
-To ensure maximum security and immutability, all images within official
-{{name.ln}} catalogs are identified by their **SHA256 digests** rather than
-just tags.
-!!!
-
-### Version Compatibility
-
-While core catalogs work with older versions of the operator, **catalogs
-containing an `extensions` section are only compatible with {{name.ln}} 1.29
-or later**. Using a catalog with extension definitions on an older operator
-will result in those definitions being rejected.
-
-### Installation and Usage
+Each catalog corresponds to a specific combination of image type (e.g.
+`minimal`) and Debian release (e.g. `trixie`). It lists the most up-to-date
+container images for every supported PostgreSQL major version.
 
 By installing these catalogs, cluster administrators can ensure that their
 PostgreSQL clusters are automatically updated to the latest patch release
@@ -221,7 +149,7 @@ You can install all the available catalogs by using the `kustomization` file
 present in the `image-catalogs` directory:
 
 ```shell
-kubectl apply -k https://github.com/cloudnative-pg/artifacts//image-catalogs?ref=main
+kubectl apply -k 'https://github.com/cloudnative-pg/artifacts//image-catalogs?ref=main'
 ```
 
 You can then view all the catalogs deployed with:
@@ -230,10 +158,7 @@ You can then view all the catalogs deployed with:
 kubectl get clusterimagecatalogs.postgresql.k8s.enterprisedb.io
 ```
 
-### Example: Using a Catalog in a Cluster
-
-To create a cluster that always tracks the latest `minimal` image for
-PostgreSQL 18 on `trixie`, define your `Cluster` as follows:
+For example, you can create a cluster with the latest `minimal` image for PostgreSQL 18 on `trixie` with:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
