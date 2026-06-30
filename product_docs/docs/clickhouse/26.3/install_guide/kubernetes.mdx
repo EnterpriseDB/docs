@@ -22,41 +22,40 @@ When installed via the Helm chart, it creates:
 - A running Kubernetes cluster (1.26 or later)
 - `kubectl` configured to talk to your cluster
 - [Helm](https://helm.sh/) 3.8 or later
-- An EDB Cloudsmith account with read access to the `clickhouse` repository. You'll use two credentials from it:
-  - **Entitlement token** — embedded in the Helm chart repo URL. Get it from your EDB account at <https://www.enterprisedb.com/accounts/login>.
-  - **Cloudsmith API key** — used as the Docker password when Kubernetes pulls images from `docker.enterprisedb.com`. Get it from <https://cloudsmith.io/user/settings/api/> (log in via EDB SSO).
+- An EDB subscription token, available from the [EDB customer portal](https://www.enterprisedb.com/accounts/login). You'll use this both in the Helm chart repo URL and as the Docker password when Kubernetes pulls images.
 
 ## Creating the image pull secret
 
 Kubernetes needs credentials to pull EDB container images from `docker.enterprisedb.com`. Create a `docker-registry` secret in the namespace you'll install the operator into:
 
 ```bash
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
 kubectl create namespace clickhouse
 kubectl create secret docker-registry cs-pull \
   --namespace=clickhouse \
   --docker-server=docker.enterprisedb.com \
-  --docker-username=<your-cloudsmith-username> \
-  --docker-password=<your-cloudsmith-api-key>
+  --docker-username=k8s \
+  --docker-password="$EDB_SUBSCRIPTION_TOKEN"
 ```
 
 You'll reference `cs-pull` both in the Helm install (so the operator pod can pull its own images) and in every `ClickHouseInstallation` (so the ClickHouse pods can pull `edb-clickhouse-server`).
 
 ## Installing the operator
 
-1. Add the EDB Helm repository. Replace `<entitlement-token>` with the token from your EDB account and `<cs-repo>` with the EDB Cloudsmith repository name listed in your release notes:
+1. Add the EDB Helm repository:
 
    ```bash
    helm repo add edb \
-     "https://dl.cloudsmith.io/<entitlement-token>/enterprisedb/<cs-repo>/helm/charts/"
+     "https://dl.cloudsmith.io/$EDB_SUBSCRIPTION_TOKEN/enterprisedb/clickhouse/helm/charts/"
    helm repo update edb
    ```
 
-1. Install the chart. Specify `--version` explicitly because the EDB release suffix (`-NedbM`) is a SemVer pre-release tag and `helm search` filters those out by default:
+1. Install the chart:
 
    ```bash
    helm upgrade --install clickhouse-operator \
      edb/edb-clickhouse-operator-chart \
-     --version <operator-version> \
+     --version 0.27.1+1edb1 \
      --namespace clickhouse \
      --set 'imagePullSecrets[0].name=cs-pull'
    ```
@@ -72,7 +71,7 @@ You'll reference `cs-pull` both in the Helm install (so the operator pod can pul
 1. Confirm the CRDs registered:
 
    ```bash
-   kubectl get crds | grep altinity
+   kubectl get crds | grep clickhouse
    ```
 
    All four CRDs listed above appear in the output.
@@ -104,7 +103,7 @@ spec:
             - name: cs-pull
           containers:
             - name: clickhouse
-              image: docker.enterprisedb.com/<cs-repo>/edb-clickhouse-server:<server-version>
+              image: docker.enterprisedb.com/clickhouse/edb-clickhouse-server:26.3.13.31-1edb1
               ports:
                 - name: http
                   containerPort: 8123
@@ -114,7 +113,7 @@ spec:
 
 Note that `imagePullSecrets` appears inside the pod template — this applies to the ClickHouse pods the operator creates, not the operator pod itself. Both need it.
 
-`<server-version>` is the Docker image tag for `edb-clickhouse-server`. The Docker tag doesn't carry the `-NedbM` suffix that the RPM packages use; only the upstream version (for example, `26.3.12.1`). Check your release notes for the version compatible with your operator version.
+Check your release notes for the `edb-clickhouse-server` version compatible with your operator version.
 
 Apply the resource and watch the cluster come up:
 
