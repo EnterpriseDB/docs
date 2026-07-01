@@ -1,0 +1,221 @@
+---
+title: Integrating pgvector
+navTitle: Integration
+deepToC: true
+---
+
+This page covers how to use `pgvector` from application code and AI/ML frameworks, including Python, JDBC/ODBC, LangChain, and LlamaIndex.
+
+## Python drivers
+
+The [`pgvector-python`](https://github.com/pgvector/pgvector-python) package adds `pgvector` support to common Python Postgres drivers.
+
+### Installing pgvector-python
+
+```bash
+pip install pgvector
+```
+
+### psycopg3
+
+[`psycopg`](https://www.psycopg.org/psycopg3/) (version 3) is the recommended driver for new projects using PostgreSQL and EPAS.
+
+```python
+import psycopg
+from pgvector.psycopg import register_vector
+
+conn = psycopg.connect("postgresql://user:password@host:5432/dbname")
+register_vector(conn)
+
+# Insert a vector
+embedding = [0.1, 0.2, 0.3, ...]  # list of floats, length must match column dimension
+conn.execute(
+    "INSERT INTO embeddings (content, embedding) VALUES (%s, %s)",
+    ("example text", embedding)
+)
+
+# Query nearest neighbors
+results = conn.execute(
+    "SELECT id, content FROM embeddings ORDER BY embedding <=> %s LIMIT 10",
+    (embedding,)
+).fetchall()
+```
+
+### psycopg2
+
+[`psycopg2`](https://www.psycopg.org/docs/) is the legacy Python driver, still widely used in existing applications.
+
+```python
+import psycopg2
+from pgvector.psycopg2 import register_vector
+
+conn = psycopg2.connect("postgresql://user:password@host:5432/dbname")
+register_vector(conn)
+
+cur = conn.cursor()
+cur.execute(
+    "SELECT id, content FROM embeddings ORDER BY embedding <=> %s LIMIT 10",
+    (embedding,)
+)
+results = cur.fetchall()
+```
+
+### asyncpg
+
+[`asyncpg`](https://magicstack.github.io/asyncpg/current/) is a high-performance async driver for applications built with Python's `asyncio`.
+
+```python
+import asyncpg
+from pgvector.asyncpg import register_vector
+import numpy as np
+
+async def main():
+    conn = await asyncpg.connect("postgresql://user:password@host:5432/dbname")
+    await register_vector(conn)
+
+    results = await conn.fetch(
+        "SELECT id, content FROM embeddings ORDER BY embedding <=> $1 LIMIT 10",
+        np.array(embedding)
+    )
+```
+
+### SQLAlchemy
+
+[SQLAlchemy](https://docs.sqlalchemy.org/) is a Python ORM that supports `pgvector` through the `pgvector-python` package.
+
+```python
+from sqlalchemy import create_engine, Column, Integer, Text
+from sqlalchemy.orm import declarative_base
+from pgvector.sqlalchemy import Vector
+
+Base = declarative_base()
+
+class Embedding(Base):
+    __tablename__ = "embeddings"
+    id = Column(Integer, primary_key=True)
+    content = Column(Text)
+    embedding = Column(Vector(1536))
+
+engine = create_engine("postgresql+psycopg2://user:password@host:5432/dbname")
+Base.metadata.create_all(engine)
+```
+
+## JDBC and ODBC
+
+`pgvector` works with the standard PostgreSQL JDBC and ODBC drivers without additional dependencies. Vector values are passed as text literals and cast to the `vector` type by the server.
+
+### JDBC
+
+The standard [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) works with `pgvector`. Use a `PGobject` to pass vector values:
+
+```java
+import org.postgresql.util.PGobject;
+import java.sql.*;
+
+Connection conn = DriverManager.getConnection(
+    "jdbc:postgresql://host:5432/dbname", "user", "password"
+);
+
+// Insert
+PGobject vector = new PGobject();
+vector.setType("vector");
+vector.setValue("[0.1,0.2,0.3]");  // format: comma-separated floats in brackets
+
+PreparedStatement insert = conn.prepareStatement(
+    "INSERT INTO embeddings (content, embedding) VALUES (?, ?)"
+);
+insert.setString(1, "example text");
+insert.setObject(2, vector);
+insert.executeUpdate();
+
+// Query
+PreparedStatement query = conn.prepareStatement(
+    "SELECT id, content FROM embeddings ORDER BY embedding <=> ? LIMIT 10"
+);
+query.setObject(1, vector);
+ResultSet rs = query.executeQuery();
+```
+
+The [pgvector-java](https://github.com/pgvector/pgvector-java) library provides a typed `PGvector` class as an alternative to using raw `PGobject`.
+
+### ODBC
+
+The standard [PostgreSQL ODBC driver (`psqlODBC`)](https://odbc.postgresql.org/) works with `pgvector`. Pass vector values as text literals in the format `'[0.1, 0.2, 0.3]'` — the server automatically casts them to the `vector` type:
+
+```
+// Example DSN connection string
+Driver={PostgreSQL Unicode};Server=host;Port=5432;Database=dbname;Uid=user;Pwd=password;
+```
+
+```sql
+-- In your application, pass vectors as text literals
+INSERT INTO embeddings (content, embedding) VALUES ('example', '[0.1,0.2,0.3]');
+SELECT id, content FROM embeddings ORDER BY embedding <=> '[0.1,0.2,0.3]' LIMIT 10;
+```
+
+## AI/ML frameworks
+
+LangChain and LlamaIndex both provide built-in `pgvector` integrations that handle table creation, embedding storage, and similarity search. These are the recommended starting points for RAG (retrieval-augmented generation) and semantic search applications.
+
+### LangChain
+
+LangChain's `PGVector` integration stores and retrieves document embeddings from a `pgvector`-enabled PostgreSQL database.
+
+```python
+from langchain_community.vectorstores import PGVector
+from langchain_openai import OpenAIEmbeddings
+
+CONNECTION_STRING = "postgresql+psycopg2://user:password@host:5432/dbname"
+
+vectorstore = PGVector.from_documents(
+    documents=docs,
+    embedding=OpenAIEmbeddings(),
+    connection_string=CONNECTION_STRING,
+    collection_name="my_collection",
+)
+
+# Similarity search
+results = vectorstore.similarity_search("my query", k=5)
+```
+
+LangChain creates its own table schema (`langchain_pg_collection` and `langchain_pg_embedding`). To use an existing table with a custom schema, use the lower-level `pgvector-python` driver directly.
+
+For more information, see the [LangChain PGVector documentation](https://python.langchain.com/docs/integrations/vectorstores/pgvector/).
+
+### LlamaIndex
+
+LlamaIndex's `PGVectorStore` stores and queries embeddings using `pgvector`.
+
+```python
+from llama_index.vector_stores.postgres import PGVectorStore
+from llama_index.core import VectorStoreIndex, StorageContext
+
+vector_store = PGVectorStore.from_params(
+    host="host",
+    port=5432,
+    database="dbname",
+    user="user",
+    password="password",
+    table_name="embeddings",
+    embed_dim=1536,
+)
+
+storage_context = StorageContext.from_defaults(vector_store=vector_store)
+index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
+
+query_engine = index.as_query_engine()
+response = query_engine.query("What is pgvector?")
+```
+
+For more information, see the [LlamaIndex Postgres documentation](https://docs.llamaindex.ai/en/stable/examples/vector_stores/postgres/).
+
+## PgBouncer
+
+If you use PgBouncer in transaction pooling mode, `SET` statements (such as `SET hnsw.ef_search = 100`) are session-level and are not preserved across pooled connections. Use `SET LOCAL` within a transaction instead:
+
+```sql
+BEGIN;
+SET LOCAL hnsw.ef_search = 100;
+SELECT id FROM embeddings ORDER BY embedding <=> '[...]'::vector LIMIT 10;
+COMMIT;
+```

@@ -1,0 +1,112 @@
+---
+title: Securing pgvector
+navTitle: Security
+deepToC: true
+---
+
+`pgvector` stores and queries data within PostgreSQL and inherits PostgreSQL's security model. This page covers access control, protecting embedding values, encryption, auditing, and compliance considerations for regulated environments.
+
+## Access control
+
+### Table-level permissions
+
+Grant access to embedding tables using standard PostgreSQL privilege commands. Follow the principle of least privilege — application service accounts typically need only `SELECT` and `INSERT`:
+
+```sql
+-- Create a dedicated role for the application
+CREATE ROLE app_embeddings_role;
+GRANT SELECT, INSERT ON embeddings TO app_embeddings_role;
+
+-- Grant the role to your application user
+GRANT app_embeddings_role TO app_user;
+```
+
+Avoid granting `UPDATE` or `DELETE` unless required, as modifying embeddings in place is less common than insert and replace patterns.
+
+### Row-level security (RLS)
+
+For multi-tenant deployments where users must be isolated from each other's embeddings, use [PostgreSQL row-level security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html):
+
+```sql
+ALTER TABLE embeddings ENABLE ROW LEVEL SECURITY;
+
+-- Users can only see rows belonging to their tenant
+CREATE POLICY tenant_isolation ON embeddings
+    USING (tenant_id = current_setting('app.tenant_id')::bigint);
+```
+
+Set the tenant context at the start of each connection or transaction:
+
+```sql
+SET app.tenant_id = '42';
+```
+
+RLS works with both HNSW and IVFFlat indexes. However, be aware that a nearest-neighbor query with an RLS filter still traverses the index broadly and then filters results — it does not restrict the index traversal itself. For strict tenant isolation, consider partitioning the embeddings table by `tenant_id` and creating separate indexes per partition.
+
+### Restricting extension creation
+
+In regulated environments, controlling which extensions can be installed reduces the attack surface. The `CREATE EXTENSION` privilege requires superuser or the `CREATE` privilege on the database. Limit this explicitly:
+
+```sql
+-- Revoke CREATE from public to prevent non-superusers from installing extensions
+REVOKE CREATE ON DATABASE mydb FROM PUBLIC;
+
+-- Grant CREATE only to a trusted DBA role
+GRANT CREATE ON DATABASE mydb TO dba_role;
+```
+
+## Protecting embedding values
+
+Vector embeddings can encode semantic information about the source content. If the source content is sensitive, treat embeddings as sensitive data:
+
+- Store embeddings in a separate table from other PII and apply the access controls described above
+- Audit access to embedding tables using edb_audit (EPAS) or pgaudit (community PostgreSQL) — see [Auditing](#auditing) below
+- Consider whether embedding values need to be masked or redacted in application logs
+
+## Encryption
+
+### Encryption in transit
+
+All connections to EPAS can be encrypted using SSL/TLS. Enforce SSL for connections from application hosts using [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html):
+
+```
+# pg_hba.conf
+hostssl  all  app_user  10.0.0.0/8  scram-sha-256
+```
+
+Verify SSL is in use from your application connection string:
+
+```
+postgresql://user:password@host:5432/dbname?sslmode=require
+```
+
+For mutual TLS (mTLS), set `sslmode=verify-full` and supply a client certificate.
+
+### Encryption at rest
+
+EDB Postgres Advanced Server supports Transparent Data Encryption (TDE), which encrypts all data files, including tables and indexes that contain vector data. No application changes are required — TDE operates at the storage layer.
+
+For more information, see [Transparent Data Encryption](/tde/latest/).
+
+Community PostgreSQL and EDB Postgres Extended Server do not include TDE. For encryption at rest in those distributions, use filesystem-level or block-device encryption (for example, LUKS on Linux or encrypted EBS volumes on AWS).
+
+## Auditing
+
+On EDB Postgres Advanced Server, [`edb_audit`](/epas/latest/managing_performance/edb_audit_logging/) logs SQL statements against vector tables alongside all other database activity. To audit all access to a sensitive embeddings table:
+
+```sql
+-- EPAS: audit all activity on the table (uses edb_audit object-level auditing)
+AUDIT ALL ON embeddings BY PUBLIC;
+```
+
+On community PostgreSQL or PGE, use the [`pgaudit`](https://github.com/pgaudit/pgaudit) extension:
+
+```sql
+CREATE EXTENSION pgaudit;
+-- In postgresql.conf:
+-- pgaudit.log = 'read, write'
+```
+
+## Compliance considerations
+
+For regulated environments such as financial services or healthcare, EPAS's row-level security, TDE, and edb_audit together address the access control, encryption, and audit logging requirements common in PCI DSS and SOC 2 frameworks. Vector data derived from regulated content (PII, PHI, financial records) may itself be subject to data residency and retention requirements — confirm the classification of your embedding data with your compliance team. No `pgvector`-specific configuration is needed; all standard PostgreSQL and EPAS security controls apply to vector data and queries without modification.

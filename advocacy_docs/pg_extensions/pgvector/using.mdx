@@ -1,0 +1,201 @@
+---
+title: Using pgvector
+navTitle: Using
+deepToC: true
+---
+
+This page covers how to store and query vector data, choose and configure an index type, and optimize storage for vector workloads.
+
+## Storing vectors
+
+After enabling the extension, add a `vector` column to a table, specifying the number of dimensions:
+
+```sql
+CREATE TABLE embeddings (
+    id        bigserial PRIMARY KEY,
+    content   text,
+    embedding vector(1536)
+);
+```
+
+The dimension count must match the output of your embedding model. Common values:
+
+| Embedding model               | Dimensions |
+|-------------------------------|------------|
+| OpenAI text-embedding-3-small | 1536       |
+| OpenAI text-embedding-3-large | 3072       |
+| Google text-embedding-004     | 768        |
+| Nomic Embed Text              | 768        |
+
+Insert a row with a vector value:
+
+```sql
+INSERT INTO embeddings (content, embedding)
+VALUES ('example text', '[0.1, 0.2, 0.3, ...]');
+```
+
+## Querying vectors
+
+`pgvector` supports four distance operators for nearest-neighbor queries:
+
+| Operator | Distance metric        | Use case                                                          |
+|----------|------------------------|-------------------------------------------------------------------|
+| `<->`    | L2 (Euclidean)         | General-purpose similarity; default for most embedding models     |
+| `<=>`    | Cosine                 | When vector magnitude varies; normalized embeddings               |
+| `<#>`    | Negative inner product | Maximum inner product search (note: returns negative values)      |
+| `<+>`    | L1 (Manhattan)         | Sparse vectors or when L1 regularization was used during training |
+
+Find the 10 nearest neighbors by cosine distance:
+
+```sql
+SELECT id, content, embedding <=> '[0.1, 0.2, ...]'::vector AS distance
+FROM embeddings
+ORDER BY distance
+LIMIT 10;
+```
+
+## Indexing
+
+Without an index, `pgvector` performs exact nearest-neighbor search by scanning the entire table (sequential scan). This is accurate and returns exact results. For tables with fewer than 1 million rows, a sequential scan is often fast enough and avoids the overhead of index maintenance — consider starting without an index and adding one only once query latency becomes a concern.
+
+For larger datasets, indexes trade a small amount of recall for significantly faster query times. `pgvector` supports two index types: HNSW and IVFFlat.
+
+!!!note "Index build memory"
+    Both HNSW and IVFFlat index builds use `maintenance_work_mem`. Increase this before building indexes on large tables:
+
+    ```sql
+    SET maintenance_work_mem = '4GB';
+    ```
+!!!
+
+### Choosing an index type
+
+Use this decision guide to pick the right approach for your workload:
+
+- **Fewer than 1 million rows**: Start with no index. Exact sequential scan is fast enough for most workloads and avoids index maintenance overhead.
+- **Static data, or periodic `REINDEX` is acceptable**: Start with IVFFlat. It builds faster and uses less memory than HNSW.
+- **More than 2 million rows with frequent inserts or deletes**: Start with IVFFlat. HNSW insert and delete latency increases with index size.
+- **98% or higher recall is a hard requirement**: Use HNSW. At high recall targets, HNSW consistently outperforms IVFFlat.
+
+### HNSW index
+
+Hierarchical Navigable Small World (HNSW) builds a multi-layer graph structure. It offers faster query performance and better recall than IVFFlat, but requires more memory and takes longer to build.
+
+```sql
+CREATE INDEX ON embeddings USING hnsw (embedding vector_cosine_ops);
+```
+
+Choose the operator class to match the distance operator you use in queries:
+
+| Distance operator | Operator class      |
+|-------------------|---------------------|
+| `<->`             | `vector_l2_ops`     |
+| `<=>`             | `vector_cosine_ops` |
+| `<#>`             | `vector_ip_ops`     |
+| `<+>`             | `vector_l1_ops`     |
+
+**HNSW index parameters:**
+
+| Parameter         | Default | Description                                                                                                                                              |
+|-------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `m`               | 16      | Number of connections per layer. Higher values improve recall and query speed but increase index size and build time. Values between 16–64 are typical.  |
+| `ef_construction` | 64      | Size of the dynamic candidate list during index build. Higher values improve recall at the cost of longer build time. Values between 64–200 are typical. |
+
+Example with custom parameters:
+
+```sql
+CREATE INDEX ON embeddings USING hnsw (embedding vector_cosine_ops)
+WITH (m = 32, ef_construction = 128);
+```
+
+**HNSW query-time parameter:**
+
+```sql
+SET hnsw.ef_search = 100;  -- default: 40
+```
+
+Increasing `ef_search` improves recall at the cost of query latency. Set this per session or per transaction for workloads that require high accuracy.
+
+### IVFFlat index
+
+Inverted File Flat (IVFFlat) divides vectors into a fixed number of lists and searches the nearest lists at query time. It builds faster and uses less memory than HNSW, but typically provides lower recall.
+
+```sql
+CREATE INDEX ON embeddings USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+```
+
+**IVFFlat index parameters:**
+
+| Parameter | Default | Description                                                                                                                     |
+|-----------|---------|---------------------------------------------------------------------------------------------------------------------------------|
+| `lists`   | 100     | Number of lists (clusters). A good starting point is `rows / 1000` for up to 1 million rows, or `sqrt(rows)` for larger tables. |
+
+**IVFFlat query-time parameter:**
+
+```sql
+SET ivfflat.probes = 10;  -- default: 1
+```
+
+Increasing `probes` searches more lists, improving recall at the cost of query latency. A value of `lists / 10` is a common starting point.
+
+!!!note
+    Build the IVFFlat index after inserting data. Building on an empty or sparsely populated table results in poor cluster quality and lower recall.
+!!!
+
+## Storage optimization
+
+For best index performance, ensure the index fits in memory (`shared_buffers` + OS page cache). If the index is too large to fit in memory, use fast NVMe storage to minimize the latency of index page reads.
+
+### fillfactor
+
+For tables with frequent updates or deletions, setting a lower `fillfactor` leaves room on data pages for updates in place, reducing index bloat:
+
+```sql
+CREATE TABLE embeddings (
+    id        bigserial PRIMARY KEY,
+    content   text,
+    embedding vector(1536)
+) WITH (fillfactor = 80);
+```
+
+### Vacuuming
+
+HNSW and IVFFlat indexes are not updated incrementally on delete or update — dead vectors remain in the index until vacuumed. Run `VACUUM` regularly on tables with frequent churn to reclaim space and maintain index quality:
+
+```sql
+VACUUM ANALYZE embeddings;
+```
+
+### Partial indexes
+
+If you only need to search a subset of rows (for example, by tenant or category), a partial index reduces size and improves performance:
+
+```sql
+CREATE INDEX ON embeddings USING hnsw (embedding vector_cosine_ops)
+WHERE tenant_id = 42;
+```
+
+## Measuring recall
+
+To measure the recall of your index configuration, compare approximate index results against exact results from a sequential scan:
+
+```sql
+-- Approximate (uses index)
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id FROM embeddings
+ORDER BY embedding <=> '[...]'::vector
+LIMIT 10;
+
+-- Exact (sequential scan)
+SET enable_indexscan = off;
+SELECT id FROM embeddings
+ORDER BY embedding <=> '[...]'::vector
+LIMIT 10;
+```
+
+Compare the two result sets to calculate recall. Adjust `ef_search` or `probes` until you reach your target recall level.
+
+## Benchmarking
+
+EDB provides [vsbt (Vector Search Benchmark Tool)](https://github.com/enterpriseDB/vsbt), an open-source benchmarking tool for vector workloads. It includes preset parameter configurations for different index types and supports custom datasets, making it straightforward to compare index strategies against your own data before committing to a production configuration.
