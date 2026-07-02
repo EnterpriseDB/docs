@@ -50,8 +50,10 @@ You must also have cert-manager installed in your cluster to complete the deploy
 To install cert-manager:
 
 ```
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.9.1/cert-manager.crds.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.2/cert-manager.yaml
 ```
+
+Alternatively, you can install cert-manager as a subchart of the EDB Postgres AI agent chart by setting `additionalCharts.cert-manager.install: true` in your `custom-values.yaml`. See the [Configuration reference](configuration_reference/).
 
 ## Required environment values
 
@@ -59,10 +61,30 @@ Export the following environment values that you will need to complete deploymen
 
 - `TARGET_NS` - The namespace of your existing CNPG cluster (or PGD Group for PGD4K).
 - `AGENT_NS` - The namespace to install the EDB Postgres AI agent.
+- `TARGET_TYPE` - The resource kind to patch when enabling the agent sidecar: `cluster` for CNPG and EDB Postgres® AI for CloudNativePG™ Cluster deployments, or `pgdgroup` for EDB Postgres® AI for CloudNativePG™ Global Cluster deployments. See [Patching clusters to enable the agent sidecar](mon_ext_k8s_clusters/#patching-clusters-to-enable-the-agent-sidecar).
 - `HM_ACCESS_KEY` - The access key for Hybrid Manager.
+
+    {/* Intentionally unchanged in this PR: the internal INSTALLATION_GUIDE.md uses two separate machine-user access keys (one for the agent, one for the target cluster's beacon-access-key secret), while this doc uses one shared HM_ACCESS_KEY. Not updating pending eng confirmation on whether two keys are required — see PR description. */}
+
 - `HM_PROJECT_ID` - The Project ID in HM.
 - `HM_CACERT` - The root CA certificate of HM. Required when `rootCAEnabled` is `true` (the default), which is the configuration described in this guide. It works with any certificate provided from the chain. If you instead set `rootCAEnabled: false` to trust HM via the system CA pool (or skip verification), you can omit this value and the `beacon-server-ca` secret in [Namespace and secrets](#namespace-and-secrets) — see the [TLS configuration options](configuration_reference/#tls-configuration-options).
-- `HM_URL` - the beacon server URL including port
+
+    Retrieve the certificate from your HM cluster:
+
+    ```shell
+    export HM_CACERT=$(kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d)
+    ```
+
+- `HM_URL` - The beacon server URL, including port.
+
+    Retrieve the host and port from the beacon server gateway on your HM cluster, then combine them:
+
+    ```shell
+    export SERVER_HOST=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .hosts[0]')
+    export SERVER_PORT=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .port.number')
+    export HM_URL="${SERVER_HOST}:${SERVER_PORT}"
+    ```
+
 - `EDB_REPO` - the name of the EDB repo matching your subscription: enterprise, standard or community360
 - `EDB_SUBSCRIPTION_TOKEN` - Your EDB token.
 - `POD_SELECTOR` - Set to `k8s.enterprisedb.io/podRole=instance` for EDB operators, or `cnpg.io/podRole=instance` for the community CNPG operator.
@@ -75,7 +97,7 @@ export TARGET_NS=cnpg
 export AGENT_NS=upm-beacon
 export HM_ACCESS_KEY=baak_YOUR_ACCESS_KEY
 export HM_PROJECT_ID=prj_3AlRuOvlbUZafFY2
-export HM_CACERT=$(cat source/k8s-agent/ca.cert)
+export HM_CACERT=$(kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d)
 export HM_URL=beacon-pm-test.edbhcp.com:9443
 export EDB_REPO=enterprise
 export POD_SELECTOR='k8s.enterprisedb.io/podRole=instance'
