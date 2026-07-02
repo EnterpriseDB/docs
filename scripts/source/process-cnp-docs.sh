@@ -37,6 +37,7 @@ function do_import {
 
   node "$DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs" \
     -f "src/**/*.md" \
+    -p "cnp/convert-rel-notes" \
     -p "cnp/add-frontmatters" \
     -p "cnp/flatten-appendices" \
     -p "cnp/replace-github-urls" \
@@ -72,7 +73,7 @@ function do_import {
     node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$api_ref_index" \
       navTitle="API Reference" \
       pdfExclude=null \
-      navigation=[`ls "$api_ref_dir" | grep ^v | sed -e 's/\.mdx$//' | sort -V -r |  paste -sd "," - `]
+      navigation=[`ls "$api_ref_dir" | grep ^v | sed -e 's/\.mdx$//' | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' |  paste -sd "," - `]
   fi 
   node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$current_api_ref" \
     originalFilePath=null
@@ -88,22 +89,26 @@ cd $SOURCE_CHECKOUT
 
 git fetch --tags
 
+# trick to make semantic version sorting work with "-rcX" versions, which are not strictly semver-compliant.
+# We append an underscore to all tags that do not contain a hyphen, sort them, and then remove the underscore again.
+# h/t: https://stackoverflow.com/questions/40390957/how-to-sort-semantic-versions-in-bash/40391207#40391207
+
 if [ -z $3 ]
 then 
-  LATEST_TAG=`git tag | sort -V -r | head -n 1`
+  LATEST_TAG=`git tag | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' | head -n 1`
 else
   LATEST_TAG="$3"
 fi
 CURRENT_TAG=`git describe --exact-match --tags || echo "$LATEST_TAG-next"`
-CURRENT_TAG_INDEX=`git tag | sort -V -r | grep -nx $CURRENT_TAG | cut -d : -f 1 || echo 0`
-PREVIOUS_TAGS=`git tag | sort -V -r | head -n $(($CURRENT_TAG_INDEX+30)) | tail -n 30`
+CURRENT_TAG_INDEX=`git tag | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' | grep -nx $CURRENT_TAG | cut -d : -f 1 || echo 0`
+PREVIOUS_TAGS=`git tag | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' | head -n $(($CURRENT_TAG_INDEX+30)) | tail -n 30`
 
 cd $DESTINATION_CHECKOUT
 
 git fetch --tags
 
-PREVIOUS_DOCS_TAGS=`git for-each-ref --format='%(refname:short)' refs/tags/product/pg4k | sort -V -r | cut -d / -f 3`
-PREVIOUS_TAG=`comm -12 <(echo "$PREVIOUS_DOCS_TAGS" | sort) <(echo "$PREVIOUS_TAGS" | sort) | sort -V -r | head -n 1`
+PREVIOUS_DOCS_TAGS=`git for-each-ref --format='%(refname:short)' refs/tags/product/pg4k | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' | cut -d / -f 3`
+PREVIOUS_TAG=`comm -12 <(echo "$PREVIOUS_DOCS_TAGS" | sort) <(echo "$PREVIOUS_TAGS" | sort) | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' | head -n 1`
 PREVIOUS_COMMIT=`git rev-list -n 1 product/pg4k/$PREVIOUS_TAG || git rev-list -n 1 HEAD`
 PREVIOUS_COMMIT_DESC=`git rev-list --format=oneline -n 1 $PREVIOUS_COMMIT`
 
