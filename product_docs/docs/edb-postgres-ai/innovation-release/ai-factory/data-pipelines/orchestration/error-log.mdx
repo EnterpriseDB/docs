@@ -102,58 +102,57 @@ __OUTPUT__
 
 The return value is the number of rows actually deleted. Clearing is ID-based, so review entries with `aidb.get_error_logs` before removing them.
 
-### Retrying failed records
+### Requeuing failed records
 
-Use [`aidb.retry_pipeline_errors`](../reference#aidbretry_pipeline_errors) to re-run failed records by error log ID:
+New in 7.5.0. Use [`aidb.requeue_pipeline_errors`](../reference#aidbrequeue_pipeline_errors) to mark failed source records dirty by error log ID. The call deletes the targeted record-level rows and marks their sources dirty on the pipeline's state surface; the next normal run does the re-processing.
 
 ```sql
-SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
 __OUTPUT__
- error_id | status   | error_message
-----------+----------+--------------------------------------------
-        1 | resolved |
-        2 | failed   | failed to extract text from page 0
-(2 rows)
+ error_id | action
+----------+------------------------
+        1 | requeued
+        2 | requeued
+       99 | not_found
+(3 rows)
 ```
 
-The returned shape is `error_id | status | error_message` only. To confirm `retry_count` and `last_retry_at` updates, re-query `aidb.get_error_logs`.
+Results are ordered by ascending `error_id`. Each row reports one of three actions:
 
-Each result row reports one of three statuses:
+- `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker on the state row.
+- `skipped_pipeline_level`: the entry has a NULL `source_id` (see below). Left in place.
+- `not_found`: the id was absent from the error log, or the pipeline has no error log table (legacy pipelines or `Empty` sources like Semantic KB).
 
-- `resolved`: the record processed cleanly and the error log entry was deleted.
-- `failed`: the record failed again. The new error stays in the log with an incremented `retry_count` and an updated `last_retry_at` timestamp.
-- `skipped`: pipeline-level error (see below).
+Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline('my_pipeline')` to actually re-process.
 
-Retry re-runs every step from the start for each affected source record, not just the step that originally failed. That keeps the retry path uniform across pipeline shapes and avoids reconstructing a mid-pipeline envelope. Earlier-step work is repeated; retry is sized for small batches a user runs after diagnosing a failure.
+Requeue is a deferred mark-dirty operation, not a synchronous retry. The call itself does no processing, so per-record success or failure only surfaces after the follow-up run. To confirm what happened after re-processing, re-query `aidb.get_error_logs`.
 
-Only one retry can run against a given pipeline at a time. A concurrent call from another session fails fast with "A retry operation is already in progress for this pipeline." Retry does not block `aidb.run_pipeline` or the background worker.
+Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks. Non-overlapping id sets proceed in parallel. Requeue does not block `aidb.run_pipeline` or the background worker.
 
 #### Pipeline-level errors
 
-Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be retried per record, so `aidb.retry_pipeline_errors` returns `status='skipped'` and leaves the entry in the log:
+Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be requeued per record, so `aidb.requeue_pipeline_errors` returns `action='skipped_pipeline_level'` and leaves the entry in the log:
 
 ```sql
-SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[7]);
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[7]);
 __OUTPUT__
- error_id | status  |                                                                              error_message
-----------+---------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-        7 | skipped | Pipeline-level error (no source record); fix the underlying pipeline issue and run the pipeline again to reprocess pending records, then use aidb.clear_error_logs() to dismiss this entry
+ error_id |         action
+----------+------------------------
+        7 | skipped_pipeline_level
 (1 row)
 ```
 
-Fix the underlying issue (model availability, config, deleted model), re-run the pipeline so the step processes cleanly, then dismiss the entry with `aidb.clear_error_logs`.
+Fix the underlying issue (model availability, config, deleted model) and re-run the pipeline. The NULL row clears automatically once the step next executes without any errors. To dismiss it without re-running, use `aidb.clear_error_logs`.
 
-#### Source deleted between failure and retry
+#### Disabled-mode volume caveat
 
-If the source record was removed from the source table or volume between the original failure and the retry call, the result is `status='failed'` with a `Source record no longer exists` message. The call does not raise.
+On a Disabled-mode pipeline with a volume source, `aidb.requeue_pipeline_errors` sets the `retry_requested_at` marker on the marked files but cannot schedule a drain, so it emits a `NOTICE` pointing at `aidb.run_pipeline`. Manual `aidb.run_pipeline` re-reads the whole volume rather than only the marked files, which pays a full-volume scan on large volumes.
 
-#### Aggregated error messages
-
-When a single source record fans out into many failing parts (for example, a PDF that parses into many pages that all fail at a later step), the returned `error_message` aggregates the first 10 messages with a trailing `... and N more (see error log table)` line. The full set stays in the error log table and can be queried with `aidb.get_error_logs`.
+For large Disabled-mode volumes, switch the pipeline to Background mode, call `aidb.requeue_pipeline_errors`, let the worker drain the marked files, then switch the pipeline back to Disabled.
 
 ## Automatic cleanup
 
-Error log entries clear without `aidb.clear_error_logs` or `aidb.retry_pipeline_errors` in three cases:
+Error log entries clear without `aidb.clear_error_logs` or `aidb.requeue_pipeline_errors` in three cases:
 
 - Source record deleted. The live `DELETE` trigger, background worker `DELETE` processing, and volume stale-state cleanup all remove matching error log entries alongside their destination rows.
 - Source envelope reaches the destination on a later run. The pipeline executor clears entries scoped by `(source_id, part_ids)` so part-granular successes do not wipe sibling errors.
@@ -189,13 +188,18 @@ __OUTPUT__
  my_pipeline  | PartialErrors |                    3 |                      0
 (1 row)
 
--- 4. After fixing the upstream rate-limit issue, retry just the rate-limited row.
-SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[3]);
+-- 4a. After fixing the upstream rate-limit issue, requeue the rate-limited row.
+--     This marks the source dirty; it does not re-process on its own.
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[3]);
 __OUTPUT__
- error_id | status   | error_message
-----------+----------+---------------
-        3 | resolved |
+ error_id |  action
+----------+----------
+        3 | requeued
 (1 row)
+
+-- 4b. Drain the requeued row. A Background pipeline picks this up automatically;
+--     Disabled or Live pipelines need an explicit call.
+SELECT aidb.run_pipeline('my_pipeline');
 
 -- 5. Dismiss the two permanent failures after triage.
 SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 2]);
