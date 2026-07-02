@@ -293,19 +293,23 @@ const DocTemplate = ({ data, pageContext }) => {
               dangerouslySetInnerHTML={{
                 __html: navRoot.displayBanner
                   .replace(
-                    new RegExp(`href="\\/${product}\\/([^:\\/]+)\\/?:splat"`),
+                    new RegExp(
+                      `href="\\/${product}\\/([^:\\/]+)\\/?:splat"`,
+                      "g",
+                    ),
                     (substring, version) => {
-                      const versionMatch = versionArray.find(
-                        (v) => v.version === version,
-                      );
+                      const versionMatch =
+                        version === "latest"
+                          ? versionArray[0]
+                          : versionArray.find((v) => v.version === version);
                       const url = versionMatch
                         ? versionMatch.url
                         : `/${product}/${version}/`;
-                      return `href="${withPrefix(url)}"`;
+                      return `href="${url}"`;
                     },
                   )
                   .replace(
-                    /href="(\/[^"]+)"/,
+                    /href="(\/[^"]+)"/g,
                     (substring, urlPath) => `href="${withPrefix(urlPath)}"`,
                   ),
               }}
@@ -320,21 +324,23 @@ const DocTemplate = ({ data, pageContext }) => {
                 "col-print-12",
               ].join(" ")}
             >
-              <ProductContext
-                value={{
-                  product,
-                  version,
-                  fullVersion: frontmatter.version,
-                  productVersions,
-                  fileAbsolutePath,
-                }}
-              >
-                <MDXRenderer>{body}</MDXRenderer>
-              </ProductContext>
-              <Tiles mode={indexCards} node={navRoot} />
-              {(!indexCards || indexCards === TileModes.None) && sections && (
-                <Sections sections={sections} />
-              )}
+              <article>
+                <ProductContext
+                  value={{
+                    product,
+                    version,
+                    fullVersion: frontmatter.version,
+                    productVersions,
+                    fileAbsolutePath,
+                  }}
+                >
+                  <MDXRenderer>{body}</MDXRenderer>
+                </ProductContext>
+                <Tiles mode={indexCards} node={navRoot} />
+                {(!indexCards || indexCards === TileModes.None) && sections && (
+                  <Sections sections={sections} />
+                )}
+              </article>
             </Col>
 
             {showToc && (

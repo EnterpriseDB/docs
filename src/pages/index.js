@@ -192,12 +192,16 @@ const Page = () => {
               <BannerCardLink to="/supported-open-source/warehousepg/">
                 WarehousePG
               </BannerCardLink>
+
+              <BannerCardLink to="/clickhouse/latest/">
+                ClickHouse
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="Vector Engine"
-              to="/edb-postgres-ai/vector-engine"
+              headingText="Agentic AI"
+              to="/edb-postgres-ai/agentic-ai"
             >
               <BannerCardLink to="/aidb/latest">
                 AI Database (AIDB)
@@ -205,11 +209,8 @@ const Page = () => {
               <BannerCardLink to="/pg_extensions/pgvector">
                 pgvector
               </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/vectorchord">
-                VectorChord
-              </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/vectorchord_bm25">
-                VectorChord-BM25
+              <BannerCardLink to="/agent-governance/latest">
+                Agent Governance
               </BannerCardLink>
             </BannerSubCard>
 
@@ -279,6 +280,22 @@ const Page = () => {
               ))}
             </div>
           </div>
+
+          <BannerWideSubCard
+            iconName={iconNames.DOWNLOAD}
+            headingText="Repositories and Downloading"
+            to="/repos/"
+          >
+            <BannerWideLink to="/repos/getting_started/get_your_token/">
+              Get your token
+            </BannerWideLink>
+            <BannerWideLink to="/repos/getting_started/">
+              Getting started
+            </BannerWideLink>
+            <BannerWideLink to="/repos/working_with_repos/">
+              Working with repositories
+            </BannerWideLink>
+          </BannerWideSubCard>
 
           <BannerWideSubCard
             iconName={iconNames.IDEA_SHARING}
@@ -491,14 +508,6 @@ const Page = () => {
               pgvector
             </BannerWideLink>
 
-            <BannerWideLink to="/pg_extensions/vectorchord">
-              VectorChord
-            </BannerWideLink>
-
-            <BannerWideLink to="/pg_extensions/vectorchord_bm25">
-              VectorChord-bm25
-            </BannerWideLink>
-
             <BannerWideLink to="/pg_extensions/pg_anonymizer">
               pg_anonymizer
             </BannerWideLink>
@@ -543,6 +552,10 @@ const Page = () => {
               SQL Profiler
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/set_user">
+              set_user
+            </BannerWideLink>
+
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/pgfs">PGFS</BannerWideLink>
@@ -576,6 +589,7 @@ const Page = () => {
             <BannerWideLink to="/mysql_data_adapter/latest">
               MySQL
             </BannerWideLink>
+            <BannerWideLink to="/tds_data_adapter/latest">TDS</BannerWideLink>
 
             <BannerDivider
               headingText="Developer Tools"

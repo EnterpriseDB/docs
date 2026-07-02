@@ -1,0 +1,176 @@
+---
+title: WarehousePG memory calculator
+---
+
+This tool calculates recommended memory limits for WarehousePG environments. It is designed to maximize database memory utilization while maintaining a conservative buffer for Linux kernel operations, ensuring system stability even under high concurrency or heavy workloads.
+
+Note: The content of this page is different to its equivalent in the open source repository <https://github.com/warehouse-pg/whpg-docs>  #
+
+import React, { useState } from 'react';
+
+export function VmemCalculator() {
+  const [systemMemory, setSystemMemory] = useState(64);
+  const [swapMemory, setSwapMemory] = useState(32);
+  const [otherMemory, setOtherMemory] = useState(0);
+  const [segsPerNode, setSegsPerNode] = useState(8);
+  const WHPGOtherMem = parseInt(otherMemory) || 0;
+  const RAM =  (parseInt(systemMemory) || 0) * 1024;
+  const SWAP = (parseInt(swapMemory) || 0) * 1024;
+  const NumOfSegs = (parseInt(segsPerNode) || 0);
+  const USERMEM = (RAM + SWAP - ((7.5 * 1024) + (RAM * 0.05)));
+  let MemSegPercent = .5882;
+  if (RAM > 262144) {
+    MemSegPercent = .85;
+  }
+  const KERNELMEM = (0.026 * (USERMEM / 1.7));
+  const OvercommitRatio = Math.floor((((RAM - KERNELMEM) / RAM) * 100) / 5) * 5;
+  const SuggestedVmem = Math
+    .round( Math.ceil(((((USERMEM - WHPGOtherMem) * MemSegPercent) / NumOfSegs))));
+  const InvalidParameters = WHPGOtherMem < 0 || RAM < 0 || SWAP < 0 || NumOfSegs < 0 || SuggestedVmem <=0 || OvercommitRatio <=0;
+  return <>
+    <form>
+      <div className="row m-3">
+        {/* Line 1 */}
+        <label className="form-label col-md-6 col-xxl-6">System Memory (GB)
+          <input className="form-control" name="SystemMemory" type="number" value={systemMemory} min="0" onChange={event => setSystemMemory(event.target.value)} />
+        </label>
+        <label className="form-label col-md-6 col-xxl-6">Swap Memory (GB)
+          <input className="form-control" name="SwapMemory" type="number" value={swapMemory} min="0" onChange={event => setSwapMemory(event.target.value)} />
+        </label>
+        {/* Line 2 */}
+        <label className="form-label col-md-6 col-xxl-6">Other Memory (MB)
+          <input className="form-control" name="OtherMemory" type="number" value={otherMemory} min="0" onChange={event => setOtherMemory(event.target.value)} />
+        </label>
+        <label className="form-label col-md-6 col-xxl-6">Primary Segments
+          <input className="form-control" name="SegsPerNode" type="number" value={segsPerNode} min="0" onChange={event => setSegsPerNode(event.target.value)} />
+        </label>
+      </div>
+    </form>
+    {InvalidParameters
+    ? <div class="alert alert-warning" role="alert">Invalid Parameters</div>
+    : <div className="card mb-3">
+        <div className="card-header">
+          Recommended Max Settings
+        </div>
+        <div className="card-body result-item">
+            <h5 className="card-title">gp_vmem_protect_limit</h5>
+            <div className="card-text">Value in MB | configured in postgresql.conf, controlled by the gpconfig command</div>
+            <code key={SuggestedVmem}>gpconfig -c gp_vmem_protect_limit -v {SuggestedVmem}</code>
+        </div>
+        <div className="card-body result-item">
+            <h5 className="card-title">vm.overcommit_ratio</h5>
+            <div className="card-text">Percentage | configured in /etc/sysctl.conf</div>
+            <code key={OvercommitRatio}>vm.overcommit_ratio = {OvercommitRatio}</code>
+        </div>
+      </div>
+    }
+  </>;
+}
+
+export function AdvancedCalculator() {
+  const [physicalMemory, setPhysicalMemory] = useState(512);
+  const [swapSpace, setSwapSpace] = useState(32);
+  const [segmentsPerHost, setSegmentsPerHost] = useState(10);
+  const [concurrentQueries, setConcurrentQueries] = useState(50);
+  const RAM = parseFloat(physicalMemory) || 0;
+  const SWAP = parseFloat(swapSpace) || 0;
+  const SEGS = parseFloat(segmentsPerHost) || 1;
+  const QUERIES = parseFloat(concurrentQueries) || 1;
+  let rq;
+  if (RAM < 256) {
+      rq = ((SWAP + RAM) - (7.5 + (0.05 * RAM))) / 1.7;
+  } else {
+      rq = ((SWAP + RAM) - (7.5 + (0.05 * RAM))) / 1.17;
+  }
+  const ratio = Math.floor(((RAM - (0.026 * rq)) / RAM) * 100);
+  const protectLimit = Math.floor((rq * 1024) / SEGS);
+  const stmtMem = Math.floor((protectLimit * 0.9) / QUERIES);
+  const maxStmtMem = Math.floor((RAM * 1024) / QUERIES);
+  const InvalidParameters = false; 
+  return <>
+    <form>
+      <div className="row m-3">
+        {/* Line 1 */}
+        <label className="form-label col-md-6 col-xxl-6">Segment Host Physical Memory (GB)
+          <input className="form-control" name="adv_ram" type="number" value={physicalMemory} min="0" onChange={event => setPhysicalMemory(event.target.value)} />
+        </label>
+        <label className="form-label col-md-6 col-xxl-6">Segment Host Swap Space (GB)
+          <input className="form-control" name="adv_swap" type="number" value={swapSpace} min="0" onChange={event => setSwapSpace(event.target.value)} />
+        </label>
+        {/* Line 2 */}
+        <label className="form-label col-md-6 col-xxl-6">Primary Segments per Host
+          <input className="form-control" name="adv_segs" type="number" value={segmentsPerHost} min="1" onChange={event => setSegmentsPerHost(event.target.value)} />
+        </label>
+        <label className="form-label col-md-6 col-xxl-6">Avg Concurrent Queries
+          <input className="form-control" name="adv_queries" type="number" value={concurrentQueries} min="1" onChange={event => setConcurrentQueries(event.target.value)} />
+        </label>
+      </div>
+    </form>
+    {InvalidParameters
+    ? <div class="alert alert-warning" role="alert">Invalid Parameters</div>
+    : <div className="card mb-3">
+        <div className="card-header">
+          Recommended Configuration
+        </div>
+        <div className="card-body result-item">
+            <h5 className="card-title">vm.overcommit_ratio</h5>
+            <div className="card-text">Kernel parameter sets % RAM used for app processes</div>
+            <code key={ratio}>vm.overcommit_ratio = {ratio}</code>
+        </div>
+        <div className="card-body result-item">
+            <h5 className="card-title">gp_vmem_protect_limit</h5>
+            <div className="card-text">Memory limit (MB) for an active segment instance</div>
+            <code key={protectLimit}>gpconfig -c gp_vmem_protect_limit -v {protectLimit}</code>
+        </div>
+        <div className="card-body result-item">
+            <h5 className="card-title">statement_mem</h5>
+            <div className="card-text">Standard query memory allocation</div>
+            <code key={stmtMem}>statement_mem = {stmtMem}MB</code>
+        </div>
+        <div className="card-body result-item">
+            <h5 className="card-title">max_statement_mem</h5>
+            <div className="card-text">Maximum allowable query memory allocation</div>
+            <code key={maxStmtMem}>max_statement_mem = {maxStmtMem}MB</code>
+        </div>
+      </div>  
+    }
+  </>;
+}
+
+<style>
+{`
+.result-item code {
+  animation: show 400ms 60ms cubic-bezier(0.38, 0.97, 0.56, 0.76) forwards;
+  opacity: 0; 
+  display: block;
+  transform: rotateY(-90deg);
+  transform-origin: left center;
+}
+@keyframes show {
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+`}
+</style>
+
+<TabContainer>
+<Tab title="Memory Calculator">
+<VmemCalculator />
+
+!!! Note Notes
+
+    Choose the value for Primary Segments Per Node based on your mirroring strategy.
+    See [Overview of Segment Mirroring](../managing/ha/overview-of-segment-mirroring.mdx) for more information on group and spread mirroring strategies.
+
+    -   Given a configuration of 6 primaries and 6 mirrors, we should set Primary Segments Per Node to 6+6=12 when using group mirroring.
+    -   Using the same configuration example for spread mirroring, the value would be 6+2=8.
+
+    For more information on memory, please refer to the [WarehousePG Memory Overview](wlmgmt_intro).
+
+</Tab>
+<Tab title="RQ Memory Calculator - version 6.X">
+<AdvancedCalculator />
+</Tab>
+</TabContainer>

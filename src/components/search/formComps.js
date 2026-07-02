@@ -5,6 +5,7 @@ import { Button } from "react-bootstrap";
 import Icon, { iconNames } from "../icon/";
 import { PageHit } from "./hitComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
+import { trackSearchEvent } from "./analytics";
 
 const Results = ({ children }) => {
   const { results } = useInstantSearch();
@@ -66,9 +67,10 @@ const PageHits = ({ arrowIndex }) => {
         <div
           className="mb-3"
           key={i}
-          onClickCapture={() =>
-            sendEvent("click", hit, "global search result clicked")
-          }
+          onClickCapture={() => {
+            sendEvent("click", hit, "global search result clicked");
+            trackSearchEvent("searchResultClicked", { _value: i });
+          }}
         >
           <PageHit hit={hit} className={arrowIndex === i && "arrow-focus"} />
         </div>

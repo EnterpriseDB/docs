@@ -2,6 +2,31 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Hybrid Manager 1.4",
+    icon: IconNames.MODULE,
+    description:
+      "The latest release of EDB Postgres® AI Hybrid Manager expands deployment flexibility with Microsoft AKS support, simplifies day-to-day operations with a new automations engine, and deepens AI capabilities across pipelines, migration, and the built-in chatbot.",
+    url: "/edb-postgres-ai/latest/hybrid-manager/",
+    moreUrl:
+      "/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_1.4_rel_notes/",
+  },
+  {
+    title: "EDB Postgres® AI for ClickHouse 26.3",
+    icon: IconNames.CLICKHOUSE,
+    description:
+      "EDB Postgres® AI for ClickHouse is the open-source ClickHouse binary, identical to the upstream release, repackaged as RPMs, container images, and a Kubernetes operator for enterprise Linux distributions, and supported by EDB.",
+    url: "/clickhouse/latest/",
+    moreUrl: "/clickhouse/latest/release_notes/rel_notes26_3_13_31/",
+  },
+  {
+    title: "Postgres Enterprise Manager 10.5.0",
+    icon: IconNames.EDB_PEM,
+    description:
+      "PEM 10.5.0 includes an improved UX for assigning and creating profiles, enhancements to the new reporting capabilities, and improved alert evaluation performance.",
+    url: "/pem/latest/",
+    moreUrl: "/pem/latest/pem_rel_notes/pem_10.5.0_rel_notes/",
+  },
+  {
     title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.29.0",
     icon: IconNames.MODULE,
     description:

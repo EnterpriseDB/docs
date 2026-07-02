@@ -1,0 +1,86 @@
+---
+title: How Quorum Commit works
+description: The internal mechanics of Quorum Commit, including consistency guarantees, conflict resolution, transaction lifecycle, automatic reconciliation, and latency considerations.
+deepToC: true
+---
+
+Quorum Commit requires all participating nodes to agree before any node commits, using eager conflict resolution to prevent inconsistencies rather than resolving them after the fact. All writes must go through a single write leader, managed by PGD's [Connection Manager](/pgd/current/connection-manager/overview/). If fewer than a majority of nodes are available, the cluster can't reach quorum and manual intervention is required.
+
+## Consistency guarantees
+
+We recommend Postgres 17 or later to ensure all guarantees hold. Earlier versions are supported, but not all guarantees apply. When used with a commit scope covering a majority or more of the nodes in the routing group, Quorum Commit provides the following guarantees:
+
+- **Committed means committed everywhere.** A transaction commits only when the required number of nodes have committed it. When the application receives a commit acknowledgment, all required nodes hold the same resulting data.
+
+- **The write leader always reflects the latest committed state.** A read from the write leader after a commit always returns the latest results. This guarantee holds across write leader changes. Transactions visible on the old write leader are visible on the new one.
+
+- **Aborted means aborted everywhere.** When a transaction aborts, its effects are rolled back on all nodes. No partial state is visible anywhere in the cluster.
+
+- **Zero recovery time objective (RTO0) on write leader change.** When the write leader changes, the new write leader can immediately accept transactions. In-flight transactions from the old write leader are resolved through reconciliation and don't block the new leader's operations.
+
+- **No data divergence.** No node diverges from the committed state of the cluster. Broken replication due to conflicting commits can't occur.
+
+!!!Warning
+To make the guarantees above possible, Quorum Commit doesn't support [`DEGRADE TO`](/pgd/current/commit-scopes/degrading/) clauses or [commit scope groups](/pgd/current/commit-scopes/origin_groups/) weaker than `MAJORITY`.
+!!!
+
+## Eager conflict resolution
+
+Rather than detecting conflicts after the fact, Quorum Commit aborts one of the conflicting transactions during the quorum phase, before either commits. Eager conflict resolution is always active with Quorum Commit and can't be disabled. Configure your application to handle serialization errors at commit time and retry failed transactions. See [Quorum Commit](/pgd/current/geo-replication-dev/using-commit-scopes/#quorum-commit) in the developer guide for a transaction template that wraps commits in a retry loop and handles serialization errors.
+
+## Transaction lifecycle
+
+Quorum Commit uses [two-phase commit (2PC)](/pgd/current/overview/terminology/#two-phase-commit-2pc) internally. No node commits until quorum is achieved. In the prepare phase, the origin node prepares the transaction locally, making the data durable but not yet visible to other transactions. The prepared transaction is replicated to all participating nodes, each of which prepares its own local copy.
+
+The origin node then collects confirmations from the required commit scope group. Once it receives the required number, it makes the commit decision and propagates it to all participating nodes, which then all commit together. When Raft consensus is used for the commit decision, PGD's built-in Raft makes the decision rather than the origin node.
+
+Configure [`max_prepared_transactions`](/pgd/current/postgres-configuration/#max_prepared_transactions) to at least as high as `max_connections` to handle all Quorum Commit transactions originating per node.
+
+## Automatic reconciliation
+
+In a Quorum Commit transaction, the origin node makes the commit decision once it receives the required confirmations, then propagates that decision to all nodes via replication. If the origin fails after preparing a transaction but before that decision reaches all nodes, the remaining nodes are left holding a prepared transaction with no outcome.
+
+Those prepared transactions hold locks and other resources and must be resolved before the cluster can make progress. The new write leader acts as coordinator and must arrive at the correct commit or abort decision for each prepared transaction. If the coordinator commits a transaction the origin had already aborted, or aborts one the origin had already committed, the cluster diverges.
+
+PGD prevents this divergence by resolving these transactions automatically through reconciliation, enabled by default via [`bdr.enable_auto_sync_reconcile`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrenable_auto_sync_reconcile).
+
+### Reconciliation phases
+
+1. When a node hasn't been heard from for `bdr.raft_global_election_timeout` (default 6s), the PGD manager process creates a reconciliation request, adding an entry to `bdr.reconcile_2pc_requests` for that origin with state `STARTED`.
+1. A new write leader is elected via Raft consensus, typically the node furthest ahead in confirmed LSN from the origin and most likely to already hold the prepared transaction and any pre-commit decisions. This write leader acts as the coordinator for reconciliation.
+1. The coordinator determines the commit or abort decision for each orphaned prepared transaction.
+
+   **With `commit_decision = group` (default):** The coordinator examines the commit decision (CD) cache.
+
+   - If a pre-commit decision is found in the CD cache, the origin had already decided to commit before it failed. Some nodes may have already committed it locally. The coordinator commits the transaction to bring all nodes into agreement.
+
+   - If a commit or abort decision is found in the CD cache, a definitive decision was already recorded, either through an earlier reconciliation round or via Raft. The coordinator follows that decision, committing or aborting locally as indicated.
+
+   - If no decision is found, the coordinator queries all nodes and checks whether any node has a commit decision or the prepared transaction. If a commit decision is found anywhere, the transaction is committed. Otherwise, the coordinator counts confirmations and commits the transaction if quorum is reached according to the commit scope rules.
+
+   **With `commit_decision = raft`:** Raft acts as the sole arbiter. The coordinator aborts all unresolved transactions, and any prior Raft decision takes precedence. If no decision was recorded, the transaction is cleanly aborted everywhere.
+
+1. The coordinator sends the decision via Raft, and each node commits or aborts the transaction accordingly.
+1. The transaction is resolved on all nodes. Locks and resources held by the prepared transaction are released.
+
+If the coordinator itself fails during reconciliation, the next write leader takes over. The process is idempotent and guaranteed not to cause decision divergence. If a decision was already sent via Raft, the new coordinator finds it in the CD cache and follows it.
+
+### Monitoring reconciliation
+
+After a node failure, query [`bdr.reconcile_2pc_requests_summary`](/pgd/current/reference/tables-views-functions/catalogs-internal/#bdrreconcile_2pc_requests_summary) to check whether reconciliation is in progress and which node is acting as coordinator. For ongoing health monitoring, [`bdr.stat_commit_scope`](/pgd/current/reference/tables-views-functions/catalogs-visible/#bdrstat_commit_scope) tracks `nreconciliations`, `ncommitted`, and `naborted` per scope.
+
+### Relationship to automatic synchronization
+
+Reconciliation runs alongside [automatic synchronization](/pgd/latest/node_management/automatic_sync/) automatically in the background. Reconciliation resolves the transaction outcomes first, and synchronization then propagates those outcomes to any nodes that missed them.
+
+## Commit latency
+
+The pre-commit coordination adds roughly two network round trips compared to asynchronous replication. If one or more nodes are lagging, the delay in getting confirmations can be significant. Before a peer node can confirm, it also needs to apply the transaction locally, which adds latency proportional to the transaction size.
+
+Logical standby nodes, subscriber-only nodes, and nodes still joining or catching up aren't included in the quorum but eventually receive changes. Witness nodes can't participate in the quorum and don't receive data changes.
+
+## Timeout handling
+
+If quorum isn't reached within the configured timeout, the transaction is aborted and rolled back on all participating nodes. A partial commit isn't possible. Either all nodes commit, or none do. Once aborted, the transaction isn't resubmitted when the network recovers. The application must retry it.
+
+If a node fails during the quorum phase, the remaining nodes wait until the timeout expires before aborting. If the failed node recovers before the timeout, the quorum attempt can still succeed. Disconnected nodes keep their transactions in a prepared state and reconcile with the majority decision once they reconnect.

@@ -1,0 +1,572 @@
+---
+title: Installing the EDB Postgres AI agent
+navTitle: Installing
+description: Installing the EDB Postgres AI agent.
+deepToC: true
+---
+
+## Installation methods
+
+!!!important
+
+Set the [environment values](installation_requirements/#required-environment-values) before proceeding with the installation of the EDB Postgres AI agent for external Kubernetes cluster.
+!!!
+
+This table outlines the configuration settings required to ensure your application deploys with the correct security permissions across various Kubernetes environments and Red Hat OpenShift:
+
+| Environment         | Configuration                                   | OpenShift Flag                           |
+| ------------------- | ----------------------------------------------- | ---------------------------------------- |
+| KIND, GKE, EKS, AKS | Uses image defaults (numeric or named)          | openshift.enabled: false (default)       |
+| OpenShift (RHOS)    | Compatible via runAsUser: null (SCC assigns ID) | openshift.enabled: false/true (optional) |
+
+Key points:
+
+-   **Universal Compatibility:** The chart defaults to `runAsUser: null`, allowing OpenShift SCCs to assign valid UIDs automatically, while standard Kubernetes falls back to the image's default user.
+-   **Security Context:** runAsNonRoot strategy varies by component to ensure compatibility with standard Kubernetes validation logic vs OpenShift named-user support.
+-   **OTEL collector:** Uses the image default user (nonroot) without explicit numeric IDs to satisfy both strict K8s validation and OpenShift SCCs.
+
+## Downloading the Helm chart and customizing the values file
+
+1.  Obtain an EDB subscription token.
+
+2.  Download the EDB Postgres AI agent chart from the EDB repository:
+
+    ```bash
+    helm repo add enterprisedb-$EDB_REPO "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/helm/charts/"
+    ```
+
+3.  Create a `custom-values.yaml` file that includes your Hybrid Manager (HM) access credentials:
+
+    ```yaml
+    # Required: Your HM access credentials
+    agentConfig:
+      accessKey: ${HM_ACCESS_KEY} 
+      projectID: ${HM_PROJECT_ID}
+      beaconServer:
+        host: ${HM_URL}
+        plaintext: false
+      metrics:
+        push:
+          endpoint: ${HM_URL}
+      webhook:
+        enabled: true
+        podSelector: ${POD_SELECTOR}
+    # Required: Docker registry credentials for EDB images
+    image:
+      repository: docker.enterprisedb.com/${EDB_REPO}/upm-beacon-agent
+      tag: ${AGENT_VERSION}
+      imageCredentials:
+        registry: docker.enterprisedb.com
+        username: ${EDB_REPO}
+        password: ${EDB_SUBSCRIPTION_TOKEN}
+
+    # OTEL collector image
+    otelImage:
+      repository: "docker.enterprisedb.com/${EDB_REPO}/upm-beacon-external-metrics-receiver"
+      tag: ${AGENT_VERSION}
+
+    # Optional: Enable additional monitoring components
+    additionalCharts:
+      cert-manager:
+        install: false 
+      opentelemetry-collector:
+        install: true  # Enable for metrics collection
+      kube-state-metrics:
+        install: true  # Enable for Kubernetes state metrics
+      prometheus-node-exporter:
+        install: true  # Enable for node metrics (requires privileged access)
+
+    # Security context for the agent
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+    podSecurityContext:
+      fsGroup: null
+
+    # kube-state-metrics uses the image default user
+    kube-state-metrics:
+      podSecurityContext: null
+
+    # Required if opentelemetry-collector.install is true:
+    opentelemetry-collector:
+      image:
+        repository: "docker.enterprisedb.com/${EDB_REPO}/upm-beacon-external-metrics-receiver"
+        tag: ${AGENT_VERSION}
+      podSecurityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+    ```
+
+    For other configuration parameters and options, see the [Configuration reference](configuration_reference/).
+
+4.  Apply the helm chart:
+
+    -   For standard Kubernetes (GKE, EKS, AKS, KIND):
+
+    ```shell
+    helm upgrade --install beacon-agent-k8s \
+     enterprisedb-$EDB_REPO/beacon-agent-k8s \
+     --create-namespace \
+     --namespace upm-beacon \
+     --values custom-values.yaml
+    ```
+
+    -   For OpenShift clusters, add the `--set openshift.enabled=true` flag:
+
+    ```shell
+    helm upgrade --install beacon-agent-k8s \
+     enterprisedb-$EDB_REPO/beacon-agent-k8s \
+     --create-namespace \
+     --namespace upm-beacon \
+     --set openshift.enabled=true \
+     --values custom-values.yaml
+    ```
+
+    !!!important
+
+    Grant SCC if using OTEL collector:
+
+    ```shell
+    oc adm policy add-scc-to-user privileged \
+      system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
+    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
+    ```
+    !!!
+
+5.  To allow your target namespace to pull the required images, copy the beacon-agent-pull-secret from the agent's namespace to the CloudNativePG™ cluster namespace:
+
+    ```
+    kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
+    ```
+
+## Deploying the external cluster with monitoring extensions
+
+The EDB Postgres AI agent collects query and wait-state metrics from extensions that must be present in the monitored cluster. Deploy your external cluster with the following `bootstrap.initdb.postInitApplicationSQL` commands in your database (`${PG_DATABASE}`) and `postgresql` settings so the monitoring extensions are created and preloaded when the cluster is initialized.
+
+!!!note
+
+Because the manifest doesn't set `bootstrap.initdb.owner`, CNPG defaults the owner to the database name. As a result, CNPG creates an unprivileged Postgres role (user) with the exact same name as the target database (`${PG_DATABASE}`) and makes it the owner of that database. The grants in the init SQL reference this role by the `${PG_DATABASE}` name.
+!!!
+
+!!!note
+
+The init SQL runs only on first initialization (`postInitApplicationSQL`). Apply it when you create the cluster. For an existing cluster, create the schema, grants, and extensions manually in the database and add the libraries to `shared_preload_libraries` (requires a restart).
+!!!
+
+The init SQL:
+
+-   Creates the `edb_internals` schema in `${PG_DATABASE}` and grants `USAGE` on it to the database owner role (`${PG_DATABASE}`, which CNPG creates with the same name as the database) and `pg_monitor`.
+-   Creates the `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions in that schema.
+-   Sets the database `search_path` and `timezone`.
+
+The `postgresql` block enables `pg_stat_statements` and preloads `aidb`, `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` via `shared_preload_libraries`.
+
+!!!important
+
+`${PG_IMAGE}` must be an EDB Postgres AI image that bundles the `aidb`, `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions. The community manifest uses the upstream CloudNativePG operator API but still requires these EDB extensions.
+
+The image name can be `postgresql`, `edb-postgres-advanced`, or `edb-postgres-extended`, depending on the Postgres distribution you want to run.
+!!!
+
+### CloudNativePG (community operator)
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ${PG_CLUSTER_NAME}
+  namespace: ${TARGET_NS}
+  labels:
+    k8s.enterprisedb.io/beacon: enabled
+spec:
+  backup:
+    target: primary
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ${PG_CLUSTER_NAME}-bck
+  bootstrap:
+    initdb:
+      database: ${PG_DATABASE}
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS edb_internals
+        - GRANT USAGE ON SCHEMA edb_internals TO ${PG_DATABASE}
+        - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
+        - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET timezone TO 'UTC'
+  imageName: ${PG_IMAGE}
+  postgresql:
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+    shared_preload_libraries:
+    - aidb
+    - edb_stat_monitor
+    - query_advisor
+    - edb_wait_states
+  instances: 2
+  storage:
+    size: 1Gi
+  inheritedMetadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+```
+
+### EDB Postgres AI for CloudNativePG (enterprise operator)
+
+The enterprise manifest uses the EDB operator API, adds an `imagePullSecrets` entry for the EDB registry, and additionally grants `USAGE` on the `public` schema to the database owner role (`${PG_DATABASE}`) and `pg_monitor`.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: ${PG_CLUSTER_NAME}
+  namespace: ${TARGET_NS}
+  labels:
+    k8s.enterprisedb.io/beacon: enabled
+spec:
+  backup:
+    target: primary
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ${PG_CLUSTER_NAME}-bck
+  bootstrap:
+    initdb:
+      database: ${PG_DATABASE}
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS edb_internals
+        - GRANT USAGE ON SCHEMA edb_internals TO ${PG_DATABASE}
+        - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
+        - GRANT USAGE ON SCHEMA public TO ${PG_DATABASE}
+        - GRANT USAGE ON SCHEMA public TO pg_monitor
+        - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET timezone TO 'UTC'
+  imagePullSecrets:
+  - name: edb-pull-secret
+  imageName: ${PG_IMAGE}
+  postgresql:
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+    shared_preload_libraries:
+    - aidb
+    - edb_stat_monitor
+    - query_advisor
+    - edb_wait_states
+  inheritedMetadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+  instances: 2
+  storage:
+    size: 1Gi
+```
+
+Apply the manifest with `kubectl apply -f <manifest>.yaml` (use `envsubst` first if you parameterized it with environment values).
+
+!!!note WAL-archiver plugin on OpenShift
+
+Both example manifests declare a `barman-cloud.cloudnative-pg.io` WAL-archiver plugin. This plugin isn't bundled with the operator and is **only needed if you want WAL archiving or backups** for the monitored cluster — it isn't required for monitoring. If you don't need it, remove the `plugins` and `backup` blocks.
+
+If you do use it on OpenShift, the upstream plugin manifest is rejected by the `restricted-v2` SCC because it sets legacy seccomp annotations and `runAsUser: 10001`. Install it with both stripped. With the enterprise (EDB) operator you must also grant the plugin `get`/`list`/`watch` on `clusters` and `patch`/`update` on `clusters/finalizers` for the `postgresql.k8s.enterprisedb.io` API group; the upstream plugin only grants this on the community `postgresql.cnpg.io` group, so without it the cluster never reconciles (`cannot set blockOwnerDeletion … can't set finalizers`).
+!!!
+
+## Patching clusters to enable the agent sidecar
+
+This section shows how to patch a single cluster. You can adapt the instructions below to patch many clusters:
+
+1.  Define the target resource you wish to patch. Export the TARGET_NAME for your CloudNativePG™ cluster or PGD group (for EDB Postgres® AI for CloudNativePG™ Cluster) to which you wish to add the agent.
+
+    ```shell
+    export TARGET_UID="$(kubectl get "${TARGET_TYPE}" "${TARGET_NAME}" -n "${TARGET_NS}" -o jsonpath='{.metadata.uid}')"
+    ```
+
+2.  Create the configuration patch. This template adds the necessary labels and ensures the agent can pull the required images:
+
+    ```shell
+     PATCH_CONTENT=$(cat <<EOF
+     metadata:
+       labels:
+         k8s.enterprisedb.io/beacon: enabled
+     spec:
+       imagePullSecrets:
+       - name: beacon-agent-pull-secret
+       inheritedMetadata:
+         labels:
+           k8s.enterprisedb.io/beacon: enabled
+           k8s.enterprisedb.io/beacon-project-id: "${HM_PROJECT_ID}"
+           k8s.enterprisedb.io/beacon-resource-id: "${TARGET_NAME}-${TARGET_UID}"
+     EOF
+     )
+    ```
+
+3.  Run the following command to merge the configuration changes into your resource:
+
+    ```
+    kubectl patch pgdgroup "${TARGET_NAME}" -n "${TARGET_NS}" --type='merge' -p "$PATCH_CONTENT"
+    ```
+
+4.  Restart the cluster to bring the agent online.
+
+    -   **For CNPG clusters:**
+
+        ```shell
+        kubectl cnp restart "$TARGET_NAME"
+        ```
+
+    -   **For EDB Postgres® AI for CloudNativePG™ Cluster clusters:**
+
+         Restart each node in the group:
+
+        ```shell
+        kubectl cnp restart region-a-1
+        kubectl cnp restart region-a-2
+        kubectl cnp restart region-a-3
+        ```
+
+## Configuring security contexts for external Kubernetes clusters
+
+### For standard Kubernetes (KIND, GKE, EKS, AKS)
+
+Configure your `custom-values.yaml` with default secure settings which include user and group IDs:
+
+```yaml
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10000
+  runAsGroup: 10000
+
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+```
+
+### For OpenShift Kubernetes clusters
+
+1.  Enable the OpenShift mode to automatically configure security contexts for SCC compatibility.
+
+2.  Enable OpenShift support in your `custom-values.yaml` file:
+
+    ```yaml
+    openshift:
+      enabled: true
+    ```
+
+    When the value is set to `openshift.enabled: true`, the chart automatically:
+
+    -   Omits `runAsUser` and `runAsGroup` from the container security contexts, allowing SCC to assign them.
+    -   Stores other security settings like `capabilities.drop`, `readOnlyRootFilesystem`, etc.
+    -   Uses numeric UID 65532 for the OTEL collector that is required for distroless image validation.
+
+3.  Alternatively, specify your configuration via the command line using the `-f custom-values.yaml` flag:
+
+    ```yaml
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      privileged: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+    ```
+
+    ```
+
+4.  Leave the fields below empty as OpenShift will assign them automatically:
+    ```yaml
+    runAsUser:
+    runAsGroup:
+    ```
+
+5.  When deploying to OpenShift, ensure the `fsGroup` field remains undefined to allow the platform to manage volume permissions automatically:
+
+    ```yaml
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
+    ```
+
+6.  To ensure OpenShift compatibility, configure the OTEL collector subchart with a restricted security context:
+
+    ```yaml
+    opentelemetry-collector:
+      podSecurityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+    ```
+
+7.  Configure the security context to prohibit root access, manage volume permissions via file system groups, and restrict system calls using the default seccomp profile.
+
+    ```yaml
+        securityContext:
+          enabled: true
+          runAsNonRoot: true
+          runAsUser:
+          runAsGroup:
+          fsGroup:
+          seccompProfile:
+            type: RuntimeDefault
+    ```
+
+    !!!note
+
+    Implementing a standardized security context for your deployments ensures seamless compatibility and enhanced security across diverse container platforms.
+
+    -   Distroless image support: The UID/GID `65532` is the standard "nonroot" user for distroless images, which lacks a traditional `/etc/passwd` file.
+
+    -   Numeric validation: Setting a specific numeric ID is required for the `runAsNonRoot: true` directive to verify the user identity correctly.
+
+    -   OpenShift compatibility: While OpenShift's Privileged SCC allows any UID, using 65532 ensures a consistent, secure identity across both OpenShift and standard Kubernetes environments.
+    !!!
+
+    **Key configuration notes:**
+
+    -   OpenShift ID management: The `runAsUser`, `runAsGroup`, and `fsGroup` fields are left empty to allow OpenShift’s SCC to automatically assign the correct UID and GID ranges for the project.
+
+    -   Security context activation: The setting `enabled: true` ensures the subchart applies the specified security settings rather than falling back to its internal defaults.
+
+    -   Non-root enforcement: The `runAsNonRoot: true` flag remains active to guarantee that the container never runs with root privileges, even when IDs are dynamically assigned by the platform.
+
+    -   Seccomp hardening: Utilizing the `RuntimeDefault` profile ensures the container uses the container runtime's default secure syscall filter.
+            
+
+8.  Harden the container-level security context by enforcing a read-only filesystem, disabling privilege escalation, and dropping all default Linux capabilities:
+
+    ```yaml
+      containerSecurityContext:
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+    ```
+
+    Alternatively, you can apply these settings via the command line:
+
+    ```shell
+    helm upgrade --install beacon-agent-k8s \
+      . \
+      --namespace upm-beacon \
+      --create-namespace \
+      # ... your other flags ...
+      --set securityContext.runAsUser=null \
+      --set securityContext.runAsGroup=null \
+      --set podSecurityContext.fsGroup=null \
+      --set opentelemetry-collector.securityContext.runAsUser=null \
+      --set opentelemetry-collector.securityContext.runAsGroup=null \
+      --set kube-state-metrics.podSecurityContext=null
+    ```
+
+## Additional requirements for OpenShift
+
+OpenShift assigns a specific UID range to each namespace. For example: 1000880000-1000889999.
+
+Specifying an explicit runAsUser (like 10000) often falls outside the UID range, triggering SCC violations. Leave these values empty so OpenShift's admission controller automatically assigns appropriate values from the allowed range.
+
+### Recommended runAsUser configurations by component
+
+This table outlines the required runAsUser settings for EDB Postgres AI agent components to ensure compatibility with different SCC.
+
+| Component               | runAsUser | Reason                                                                                                                                                      |
+| ----------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| beacon-agent            | Empty     | Uses restricted SCC; OpenShift assigns UID from namespace range                                                                                             |
+| kube-state-metrics      | Empty     | Uses restricted SCC; OpenShift assigns UID from namespace range                                                                                             |
+| opentelemetry-collector | 65532     | Uses privileged SCC for `hostPath` or `hostPorts`.                                                                                                          |
+| opentelemetry-collector | 65532     | Requires explicit numeric UID because `runAsNonRoot: true` cannot verify non-numeric users like `nonroot`. Privileged SCC allows any UID, so `65532` works. |
+
+### Granting SCC for Daemonsets
+
+To collect node-level metrics and logs on OpenShift, the `opentelemetry-collector` and `prometheus-node-exporter` subcharts require elevated permissions to access `hostPath`, `hostPorts`, and `hostNetwork`. Grant the privileged SCC to their respective service accounts using the commands below.
+
+!!!note
+
+Since OpenShift includes a built-in node-exporter, your deployment may conflict with existing monitoring; consider using the platform's native exporter instead.
+!!!
+
+#### Permission setup and deployment
+
+1.  Create the namespace (if not already present):
+
+    ```shell
+    oc new-project upm-beacon
+    ```
+
+2.  Grant the privileged SCC:
+
+    ```shell
+     oc adm policy add-scc-to-user privileged \
+       system:serviceaccount:upm-beacon:beacon-agent-k8s-opentelemetry-collector
+     
+     oc adm policy add-scc-to-user privileged \
+       system:serviceaccount:upm-beacon:beacon-agent-k8s-prometheus-node-exporter
+    ```
+
+3.  Deploy or update the Helm chart:
+
+    ```shell
+    helm upgrade --install beacon-agent . -f custom-values.yaml -n upm-beacon
+    ```
+
+4.  Restart the Daemonsets:
+    ```shell
+    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-opentelemetry-collector-agent
+    kubectl -n upm-beacon rollout restart daemonset beacon-agent-k8s-prometheus-node-exporter
+    ```
+
+!!!note
+
+On OpenShift, `prometheus-node-exporter` may conflict with OpenShift's built-in `node-exporter`. 
+For example, if port 9100 is already in use. 
+We recommend setting  `additionalCharts.prometheus-node-exporter.install: false` and relying on the `opentelemetry-collector` for container metrics via cadvisor/kubelet scraping.
+!!!
+
+### Capping the OTEL collector batch size on OpenShift
+
+On a fully-loaded OpenShift cluster, the per-node kubelet and cAdvisor scrape can produce an OTLP batch larger than the HM metrics receiver's 4 MiB gRPC message limit. When that happens the receiver rejects the batch with `ResourceExhausted` and **every datapoint in it is dropped**, so HM shows no CPU, memory, or network metrics even though the collector pods are healthy.
+
+Cap the collector's batch processor so each push stays under the limit:
+
+```yaml
+opentelemetry-collector:
+  config:
+    processors:
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+```
+
+Or via the command line:
+
+```shell
+--set 'opentelemetry-collector.config.processors.batch.send_batch_size=1000' \
+--set 'opentelemetry-collector.config.processors.batch.send_batch_max_size=1500'
+```

@@ -247,6 +247,64 @@ useful.
     Never use these commands to drop replication slots on a live PGD node
 
 
+#### Setting `max_worker_processes` on a manual restore
+
+PGD typically runs with `max_worker_processes = 100`. If a restored node starts with the Postgres default of 32, recovery aborts:
+
+```
+FATAL: recovery aborted because of insufficient parameter settings
+```
+
+`barman recover` handles this adjustment automatically. For manual restores, set `max_worker_processes` to the correct value before starting Postgres. To find the runtime value from a healthy peer:
+
+```sql
+SELECT setting FROM pg_settings WHERE name = 'max_worker_processes';
+```
+
+#### Recreating logical replication slots
+
+A physical backup taken through `pg_basebackup --wal-method=stream` doesn't include logical replication slots. The same applies to backups taken through `barman backup` with `backup_method = postgres`, because Barman runs `pg_basebackup` internally. After a `barman recover` or a manual `pg_basebackup` restore, you must recreate the slots on each restored node before BDR replication resumes.
+
+PGD names per-peer slots by the peer's `node_uuid` and a hash of the database name. After a restore, BDR's subscriber workers issue `START_REPLICATION` for slots in this exact form. If the slots aren't there, the `pgd manager` background worker enters a crash loop with `replication slot "bdr_<...>" does not exist` and replication doesn't progress.
+
+On each restored node, run the following:
+
+```sql
+-- 1. Group slot. bdr.local_group_slot_name() returns the canonical
+--    bdr_group_<group_uuid>_<dbhash> name.
+SELECT pg_create_logical_replication_slot(bdr.local_group_slot_name(), 'bdr');
+
+-- 2. One slot per peer. The name must use the peer's node_uuid and the
+--    database-name hash, because BDR subscribers ask for that exact name.
+SELECT pg_create_logical_replication_slot(
+    'bdr_node_'
+      || replace(n.node_uuid::text, '-', '')
+      || '_'
+      || lpad(to_hex(hashtext(current_database())), 8, '0'),
+    'bdr'
+)
+FROM bdr.node n
+WHERE n.node_id != (SELECT node_id FROM bdr.local_node);
+```
+
+Run these commands on every restored node. Once the slots exist on each node, the `pgd manager` background worker stops crash-looping and the per-peer slots transition to `active = t` within a few seconds. Verify with:
+
+```sql
+SELECT slot_name, slot_type, active FROM pg_replication_slots ORDER BY slot_name;
+```
+
+!!! Warning
+    Don't call `bdr.initialize_replication_slot()` to recreate slots after a restore. The function exists, but the slots it creates use the peer's `node_name` rather than the `node_uuid` form that BDR subscribers consume. The resulting slots are never used and can't be removed afterward, as `pg_drop_replication_slot()` rejects them with `cannot drop replication slot as it is created automatically by BDR`.
+
+#### Extension catalog tables that aren't in any replication set
+
+Some extensions, for example [Postgres Analytics Accelerator (PGAA)](/pgaa/latest/), register catalog tables with `set_name = NULL` in `bdr.tables`, so they aren't logically replicated. They stay consistent at runtime through PGD's global DDL lock and the extension's per-node `object_access_hook`, not through the replication stream.
+
+For backup, this means each node's basebackup contains its own physical copy of those catalog tables. Cluster-wide consistency requires a coordinated basebackup from every node. A single-node basebackup only captures that node's view.
+
+After a multi-node restore, compare row counts and a digest of each table's contents across nodes. For PGAA specifically, see [Restoring a PGD cluster](/pgaa/latest/backup_restore#restoring-a-pgd-cluster).
+
+
 ## Eventual consistency
 
 The nodes in an EDB Postgres Distributed cluster are *eventually consistent* but not

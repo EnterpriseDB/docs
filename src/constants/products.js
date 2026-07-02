@@ -41,6 +41,11 @@ const products = {
     abbreviation: "AIDB",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
+  "agent-governance": {
+    name: "EDB Agent Governance",
+    shortName: "Agent Governance",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     shortName: "EDB Postgres Distributed",
@@ -133,6 +138,10 @@ const products = {
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
+  tds_data_adapter: {
+    name: "TDS Foreign Data Wrapper",
+    iconName: IconNames.CONNECT,
+  },
   wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
   apache_age: { name: "Apache AGE", iconName: IconNames.POSTGRESQL },
   "data migration service": {
@@ -142,6 +151,11 @@ const products = {
   warehousepg: {
     name: "WarehousePG",
     iconName: IconNames.WHPG,
+  },
+  clickhouse: {
+    name: "EDB Postgres AI for ClickHouse",
+    shortName: "ClickHouse",
+    iconName: IconNames.CLICKHOUSE,
   },
 };
 

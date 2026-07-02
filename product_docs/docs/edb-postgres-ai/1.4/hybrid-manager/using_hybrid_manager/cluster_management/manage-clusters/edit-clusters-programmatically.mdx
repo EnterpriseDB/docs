@@ -1,0 +1,225 @@
+---
+title: Editing a cluster programmatically
+navTitle: Editing clusters programmatically
+description: Edit a cluster configuration from the command line using the Hybrid Manager API.
+---
+
+Use the Hybrid Manager API to update cluster configuration programmatically, enabling repeatable and auditable changes to your Postgres clusters. The API uses a partial update (PATCH) model, so only fields explicitly included in the request body are changed.
+
+Before you begin, configure a machine user and `env.sh` file. See [Creating a cluster programmatically](../create-clusters/create-cluster-programmatically.mdx) for the initial setup steps.
+
+Add your cluster ID to `env.sh`:
+
+```
+export HCP_PG_CLUSTER_ID=p-fj3ki6e0x0
+```
+
+## Retrieve current cluster configuration
+
+Before patching a cluster, retrieve its current state to confirm existing field values and identifiers such as `replicaPgId` and `groupId`. These are required when managing [replica clusters](#managing-psr-replica-clusters) and [data groups](#managing-pgd-data-groups).
+
+Create and run a script called `get-cluster.sh`:
+
+```
+#!/bin/bash
+
+set -e
+set -o pipefail
+set -u
+
+source env.sh
+
+curl \
+  --insecure \
+  --header "Content-Type: application/json" \
+  --header "x-access-key: ${HCP_API_ACCESS_KEY}" \
+  --request GET \
+  ${HCP_API_HOST}/api/v1/projects/${HCP_PROJECT_ID}/clusters/${HCP_PG_CLUSTER_ID} \
+  | jq
+```
+
+## Patch a PSR cluster
+
+To update a PSR cluster, create a JSON file containing only the fields you want to change. The following example scales the cluster to three instances and updates its resource allocation.
+
+Create a file named `patch-psr-cluster.json`:
+
+```
+{
+  "psr": {
+    "instances": 3,
+    "resourceRequest": {
+      "memory": "8Gi",
+      "cpu": "4"
+    }
+  }
+}
+```
+
+Create a script called `patch-cluster.sh`:
+
+```
+#!/bin/bash
+
+set -e
+set -o pipefail
+set -u
+
+source env.sh
+
+curl \
+  --insecure \
+  --header "Content-Type: application/json" \
+  --header "x-access-key: ${HCP_API_ACCESS_KEY}" \
+  --data-binary "@${1}" \
+  --request PATCH \
+  ${HCP_API_HOST}/api/v1/projects/${HCP_PROJECT_ID}/clusters/${HCP_PG_CLUSTER_ID}
+```
+
+Run the script, passing the JSON file as an argument:
+
+```
+./patch-cluster.sh patch-psr-cluster.json
+```
+
+A successful request returns HTTP 200 with an empty body. You can verify the changes in the Hybrid Manager console or by fetching the cluster with a GET request.
+
+## Managing PSR replica clusters
+
+PSR clusters support [read replica clusters](../create-clusters/replica-clusters.mdx) deployed in remote locations. When you include the `replicaClusters` field in a PSR patch request, the API applies a declarative list model. The list you provide becomes the complete and authoritative set of replica clusters for that PSR cluster.
+
+!!!warning Implicit removal of replica clusters
+
+When you include `replicaClusters` in a patch request, any existing replica cluster whose `replicaPgId` does not appear in the list is automatically removed. Always include every replica you want to retain, identified by its `replicaPgId`. A `replicaClusters` entry without a `replicaPgId` creates a new replica cluster.
+!!!
+
+### Add, edit, and remove replica clusters in one request
+
+The following example makes three changes in a single patch request:
+
+-   Retains an existing replica cluster in `managed-us-east-1` with no changes to its configuration.
+-   Edits an existing replica cluster in `managed-eu-west-1`, scaling it to two instances.
+-   Adds a new replica cluster in `managed-ap-southeast-1`.
+
+Create a file named `patch-psr-replicas.json`. Replace the `replicaPgId` values with those from your cluster:
+
+```
+{
+  "psr": {
+    "replicaClusters": [
+      {
+        "replicaPgId": "p-fj3ki6e0x0-b"
+      },
+      {
+        "replicaPgId": "p-fj3ki6e0x0-c",
+        "locationId": "managed-eu-west-1",
+        "instances": 2
+      },
+      {
+        "locationId": "managed-ap-southeast-1",
+        "instances": 1,
+        "resourceRequest": {
+          "memory": "4Gi",
+          "cpu": "2"
+        },
+        "storageConfiguration": {
+          "primaryStorage": {
+            "size": "10",
+            "storageClass": "hcp-aws-gp3"
+          }
+        },
+        "image": {
+          "url": "your-registry.example.com/postgresql:17.6-xxxxxxxxxx",
+          "digest": "sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "backupRetentionPeriod": "30d",
+        "backupSchedule": "0 0 * * *",
+        "networkAccessType": "NetworkAccessTypePrivate"
+      }
+    ]
+  }
+}
+```
+
+Run `patch-cluster.sh` from [Patch a PSR cluster](#patch-a-psr-cluster), passing the replicas file as the argument:
+
+```
+./patch-cluster.sh patch-psr-replicas.json
+```
+
+!!!note
+
+When retaining an existing replica with no configuration changes, supplying only its `replicaPgId` is sufficient. All other fields remain unchanged.
+!!!
+
+## Managing PGD data groups
+
+Distributed High Availability (PGD) clusters use [data groups](../create-clusters/data-groups.mdx) to organize nodes across locations. When you include the `groups` field in a PGD patch request, the API applies the same declarative list model used for PSR replica clusters.
+
+!!!warning Implicit removal of data groups
+
+When you include `groups` in a patch request, any existing data group whose `groupId` does not appear in the list is automatically removed. Always include every group you want to retain, identified by its `groupId`. A `groups` entry without a `groupId` creates a new data group.
+!!!
+
+### Add, edit, and remove data groups in one request
+
+The following example patches a PGD cluster. It retains one existing data group with an updated instance count, adds a new data group in a second location, and removes any unreferenced group.
+
+Create a file named `patch-pgd-groups.json`. Replace the `groupId` value with the one from your cluster:
+
+```
+{
+  "pgd": {
+    "groups": [
+      {
+        "groupId": "p-sdl5klb2hu2-a",
+        "locationId": "managed-us-east-1",
+        "groupName": "us-east-data-group",
+        "dataGroup": {
+          "dataInstances": 3,
+          "resourceRequest": {
+            "memory": "8Gi",
+            "cpu": "4"
+          }
+        }
+      },
+      {
+        "locationId": "managed-eu-west-1",
+        "groupName": "eu-west-data-group",
+        "dataGroup": {
+          "dataInstances": 2,
+          "resourceRequest": {
+            "memory": "4Gi",
+            "cpu": "2"
+          },
+          "storageConfiguration": {
+            "primaryStorage": {
+              "size": "20",
+              "storageClass": "hcp-aws-gp3"
+            }
+          },
+          "image": {
+            "url": "your-registry.example.com/postgresql:17.6-xxxxxxxxxx",
+            "digest": "sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          "backupRetentionPeriod": "30d",
+          "backupSchedule": "0 0 * * *",
+          "networkAccessType": "NetworkAccessTypePrivate"
+        }
+      }
+    ]
+  }
+}
+```
+
+Run `patch-cluster.sh` from [Patch a PSR cluster](#patch-a-psr-cluster), passing the groups file as the argument:
+
+```
+./patch-cluster.sh patch-pgd-groups.json
+```
+
+!!!note
+
+-   When retaining an existing PGD data group with no configuration changes, supplying only its `groupId` is sufficient. All other fields remain unchanged.
+-   If a PGD cluster has exactly two data groups, a witness group is automatically managed by the platform to maintain Raft quorum. See [Data groups](../create-clusters/data-groups.mdx) for more information.
+!!!

@@ -5,18 +5,178 @@ originalFilePath: 'src/monitoring.md'
 
 ## Monitoring Instances
 
-By default, the PG4K operator provides an HTTP/HTTPS metrics exporter for [Prometheus](https://prometheus.io/)
-and also comes with a [predefined set of metrics](/postgres_for_kubernetes/latest/monitoring/#predefined-set-of-metrics) as well as a highly configurable and customizable
-[user-defined metrics](/postgres_for_kubernetes/latest/monitoring/#user-defined-metrics).
-The PGD operator offers a central location for monitoring settings in the `spec.cnp.monitoring` section, which will be applied to all nodes in the PGD group. For more details on configuring monitoring, please refer to the [monitoring section](/postgres_for_kubernetes/latest/monitoring/).
+The PGD4K operator leverages the monitoring capabilities of the PG4K operator to provide monitoring for PGD instances.
+Therefore, all the monitoring configuration options available for PG4K are also available for PGD instances.
 
-## Monitoring Operator
+The PGD4K operator offers a central location for those monitoring settings in the `spec.cnp.monitoring` section,
+which will be applied to all nodes in the PGD group.
+
+By default, the PG4K operator provides an HTTP/HTTPS metrics exporter on port `9187` for [Prometheus](https://prometheus.io/),
+and both PG4K and PGD4K come with predefined sets of metrics as well as a highly configurable and customizable
+system to define additional queries via one or more ConfigMap or Secret resources.
+
+!!! Note
+
+    Refer to [Exposed ports](security.md#exposed-ports) for information about the ports exposed by PGD nodes
+    for monitoring purposes and the related security implications.
+
+!!! Note
+
+    Refer to [How to inspect the exported metrics](/postgres_for_kubernetes/latest/monitoring/#how-to-inspect-the-exported-metrics) for instructions on how to access and inspect the metrics exported by
+    PGD nodes and the operator pod.
+
+!!! Note
+
+    Starting from PG4K operator v1.28.3 release, the PG4K operator now uses a dedicated `cnp_metrics_exporter` role with `pg_monitor`
+    privileges to run the metric queries. This change enhances security by following the principle of least privilege.
+    In PGD nodes, the `pg_monitor` role is automatically granted the `bdr_monitor` role to query BDR tables. Refer
+    to [release notes](/postgres_for_kubernetes/latest/rel_notes/1_28_3_rel_notes/#highlights) for
+    more details about this change.
+
+### Monitoring with the Prometheus operator
+
+Like monitoring PG4K instances, you can monitor PGD nodes using the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator)'s [PodMonitor resource](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.PodMonitor).
+The recommended approach is to manually create and manage a PodMonitor for each PG4K Cluster. This method provides you with
+full control over the monitoring configuration and lifecycle.
+
+Refer to [monitoring with the Prometheus operator](/postgres_for_kubernetes/latest/monitoring/#monitoring-with-the-prometheus-operator) for more details about monitoring PG4K instances with the Prometheus operator,
+which is also applicable to PGD nodes.
+
+### Predefined set of metrics
+
+The PGD4K operator installation manifests come with a predefined ConfigMap, called `pgd-operator-default-monitoring`,
+to be used by all Clusters. `MONITORING_QUERIES_CONFIGMAP` is by default set to `pgd-operator-default-monitoring` in
+the operator configuration. This ConfigMap contains a predefined set of BDR-related monitoring queries that are automatically
+injected into each PGD node's monitoring configuration. These metrics use the `cnp_bdr_` prefix. You can customize this
+ConfigMap to add or modify the default monitoring queries for all PGD nodes.
+
+!!! Note
+
+    Refer to [predefined set of metrics](/postgres_for_kubernetes/latest/monitoring/#predefined-set-of-metrics)
+    for more information about the predefined metrics provided by the PG4K operator, which are also applicable to PGD instances.
+
+### User-defined metrics
+
+Default monitoring queries work alongside any user-defined custom queries configured in `spec.cnp.monitoring`.
+If a user-defined query has the same metric name as a default one, the user-defined query takes precedence.
+
+Here is an example of how to configure the user-defined queries in the PGDGroup manifest.
+The customized queries exist in the `example-monitoring-configmap` ConfigMap and `example-monitoring-secret`
+Secret, and they will be injected together with the default queries:
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-monitoring
+spec:
+  [...]
+  cnp:
+    [...]
+    monitoring:
+      disableDefaultQueries: false
+      customQueriesConfigMap:
+        - name: example-monitoring-configmap
+          key: custom-queries
+      customQueriesSecret:
+        - name: example-monitoring-secret
+          key: custom-queries
+```
+
+!!! Note
+
+    Refer to [user-defined metrics](/postgres_for_kubernetes/latest/monitoring/#user-defined-metrics)
+    for more information about the user-defined metrics provided by the PG4K operator, which are also applicable to PGD instances.
+
+### Default Monitoring Queries
+
+The PGD4K operator also supports distributing a set of default monitoring queries to all PGD nodes.
+This allows you to define a common set of monitoring queries that will be automatically injected into
+each node's monitoring configuration, ensuring consistent monitoring across the entire PGD group. You can
+configure the default monitoring queries by providing a ConfigMap or Secret in the operator's namespace,
+as described in the following sections.
+
+#### How it works
+
+The operator automatically replicates the source ConfigMap and/or Secret to each PGDGroup
+namespace as `pgd-operator-default-monitoring`, and injects them into every node's monitoring
+configuration. Changes to the source are synced on the next reconciliation cycle.
+
+#### Configuring default monitoring queries
+
+To configure default monitoring queries, set the following environment variables in the
+[operator configuration](operator_conf.md):
+
+| Environment Variable           | Description                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `MONITORING_QUERIES_CONFIGMAP` | Name of the ConfigMap in the operator namespace containing the default monitoring queries |
+| `MONITORING_QUERIES_SECRET`    | Name of the Secret in the operator namespace containing the default monitoring queries    |
+
+Both the ConfigMap and Secret must store the monitoring queries under the `queries` data key.
+You can check the default queries by inspecting the `pgd-operator-default-monitoring` ConfigMap
+in the operator namespace:
+
+```sh
+kubectl get configmap pgd-operator-default-monitoring \
+    -n pgd-operator-system -o yaml
+```
+
+!!! Note
+
+    In the OpenShift environment, the namespace is replaced with `openshift-operators`
+    instead of `pgd-operator-system`.
+
+!!! Important
+
+    Changes to the operator configuration require an operator restart to take effect.
+    However, once the operator is configured, any updates to the source ConfigMap or Secret
+    content are automatically propagated to all PGDGroup namespaces without restarting.
+
+#### Disabling default monitoring queries
+
+You can disable default monitoring queries for a specific PGDGroup by setting
+`disableDefaultQueries` to `true` in the `spec.cnp.monitoring` section:
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: pgdgroup-example
+spec:
+  [...]
+  cnp:
+    monitoring:
+      disableDefaultQueries: true
+  [...]
+```
+
+When default queries are disabled for a PGDGroup, the operator skips creating the default
+monitoring resources in that namespace and does not inject them into nodes.
+
+!!! Important
+
+    The `disableDefaultQueries` field controls the default metrics from both the PGD4K operator
+    and the PG4K operator. Setting it to `true` disables the
+    [default set of metrics](/postgres_for_kubernetes/latest/monitoring/#default-set-of-metrics)
+    from PG4K as well as the PGD4K operator's default monitoring queries.
+    If you only want to disable the PGD4K operator's default monitoring queries while keeping
+    the PG4K defaults, leave `disableDefaultQueries` as `false` (or unset) and instead
+    set the `MONITORING_QUERIES_CONFIGMAP` and `MONITORING_QUERIES_SECRET` environment
+    variables to empty values in the operator configuration.
+
+!!! Note
+
+    If all PGDGroups in a namespace have default queries disabled (or are deleted), the operator
+    automatically cleans up the `pgd-operator-default-monitoring` ConfigMap and Secret from
+    that namespace.
+
+## Monitoring PGD4K Operator instance
 
 Like the PG4K operator, the PGD operator also internally exposes Prometheus metrics via HTTP
 on port 8080, named `metrics`.
 
 Currently, the PGD operator exposes default Kubebuilder metrics. See [kubebuilder documentation](https://book.kubebuilder.io/reference/metrics.html) for more details.
 
-## Monitoring on Openshift
+## Monitoring on OpenShift
 
- Refer to the [Monitoring on OpenShift](/postgres_for_kubernetes/latest/monitoring/#monitoring-on-openshift) section for details.
+Refer to the [Monitoring on OpenShift](/postgres_for_kubernetes/latest/monitoring/#monitoring-on-openshift) section for details.

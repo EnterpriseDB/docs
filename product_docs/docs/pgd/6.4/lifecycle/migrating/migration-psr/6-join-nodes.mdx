@@ -1,0 +1,170 @@
+---
+title: Joining additional PGD nodes
+navTitle: Joining additional PGD nodes
+description: Expanding the PGD cluster to establish high availability and redundancy.
+---
+
+In this phase, you expand the PGD cluster beyond a single node to enable high availability features and establish redundancy before the final application cutover. Since BDR does not automatically forward data arriving from external logical replication streams, the source node must feed each PGD node individually through its own dedicated logical replication stream. This architecture ensures data consistency across the entire cluster during the migration.
+
+This procedure involves a fast data transfer through a physical copy that uses `pg_basebackup` under the hood, called a **physical join**. This process is automated through the PGD CLI.
+
+## Installing the PGD packages
+
+Additional nodes require PGD packages that match your Postgres distribution and version (e.g., `edb-pgd6-essential-epas17` for PGD Essential on EPAS 17). Ensure you have configured the appropriate PGD repository and PGD edition you want to install (Essential or Expanded) before proceeding. See [Installing the database and pgd](/pgd/latest/lifecycle/deploying/deploy-manual/03-installing-database-and-pgd/) for details.
+
+1. To enable the BDR extension, update your Postgres configuration to preload the library and enable commit timestamps on the seed node:
+
+    ```bash
+    cat >> ${PGDATA}/postgresql.conf <<EOF
+    shared_preload_libraries = 'bdr'
+    track_commit_timestamp = on
+    EOF
+    ```
+
+1. Restart Postgres to load the BDR extension:
+
+    ```bash
+    su -u enterprisedb --command "pg_ctl restart"
+    ```
+
+## Creating additional replication slots on the source node
+
+To add a new node, you must create a dedicated replication slot on the source node. To align the new node's data, use the seed node as a reference point and temporarily pause its replication to establish a consistent switch-over LSN.
+
+1. On the source node, create an additional replication slot for the additional PGD node:
+
+    ```sql
+    SELECT pg_create_logical_replication_slot('migration_node_${ADD_NODE_PGD_NAME}',
+        'pgoutput');
+    ```
+
+1. On the seed node, pause logical replication from the source node:
+
+    ```sql
+    ALTER SUBSCRIPTION migration_seed_sub DISABLE;
+    ```
+
+1. While replication is paused, align the new slot with the seed node's LSN to mark the exact switch-over point. On the source node, run the following to advance the slot
+
+    ```sql
+    SELECT pg_replication_slot_advance('migration_node_${ADD_NODE_PGD_NAME}',
+        (SELECT confirmed_flush_lsn
+            FROM pg_replication_slots
+            WHERE slot_name = 'migration_node_${SEED_NODE_PGD_NAME}'));
+    ```
+
+1. On the source node, verify that neither slot is advancing (lag should increase while LSN remains static):
+
+    ```sql
+    SELECT slot_name, active, restart_lsn, confirmed_flush_lsn,
+        pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS lag_size
+    FROM pg_replication_slots;
+    ```
+
+1. On the source node, check active connections from standbys. It mustn't show entries for the seed node nor the additional node:
+
+    ```sql
+    SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,
+        pg_size_pretty(pg_wal_lsn_diff(sent_lsn, replay_lsn)) AS replay_lag
+    FROM pg_stat_replication;
+    ```
+
+## Joining the additional PGD node
+
+PGD CLI automates the data transfer process through a physical join, which uses `pg_basebackup` internally to clone the seed node onto the new node. 
+
+1. On the additional PGD node, run:
+
+    ```sql
+    su postgres -c 'pgd node ${ADD_NODE_PGD_NAME} setup      \
+        --listen-addr="*"                                    \
+        --initial-node-count=3                               \
+        --pgdata=${PGDATA}                                   \
+        --group-name ${PGD_CLUSTER_NAME}                     \
+        --cluster-dsn "${SEED_NODE_DSN}"                     \
+        --dsn "${ADD_NODE_DSN}"                              \
+        --verbose'
+    ```
+
+1. Once complete, verify that the new node is `ACTIVE` and visible from the seed node:
+
+    ```sql
+    SELECT * FROM bdr.node_summary;
+    ```
+
+
+!!! Warning
+    The PGD cluster is now active and will replicate all changes, including most DDL operations. Disable DDL replication (`SET bdr.ddl_replication = off`) before performing node-specific operations to prevent unintended propagation.
+    You must not apply any DML changes directly to any PGD node until the application switches over.
+
+
+## Resuming replication from the source node
+
+With both nodes synchronized to the same LSN, you can resume the logical data flow.
+
+1. On the seed node, re-enable logical replication from the source node:
+
+    ```sql
+    SET bdr.ddl_replication = off;
+    ALTER SUBSCRIPTION migration_seed_sub ENABLE;
+    ```
+
+1. On the additional node, the subscription is intentionally not copied over during a physical join. You must create  it manually and point it to the dedicated slot on the source node:
+
+    ```sql
+    SET bdr.ddl_replication = off;
+    CREATE SUBSCRIPTION migration_add_sub
+        CONNECTION '${SOURCE_NODE_DSN}'
+        PUBLICATION migration_seed_pub    -- same publication, can be used multiple times
+        WITH (
+            enabled = false,
+            copy_data = false,
+            create_slot = false,
+            slot_name = 'migration_node_${ADD_NODE_PGD_NAME}'
+        );
+    ```
+
+1. On the additional node, verify that the table list in the subscription matches your configuration you obtained on [Enabling logical replication to the seed node](3-convert-to-logical-replication/#enabling-logical-replication-to-the-seed-node):
+
+    ```sql
+    SELECT n.nspname AS schemaname,
+        c.relname AS tablename,
+        sr.srsubstate AS state,
+        s.subname AS subscription_name
+    FROM pg_subscription_rel sr
+    JOIN pg_class c ON sr.srrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    JOIN pg_subscription s ON sr.srsubid = s.oid
+    WHERE s.subname = 'migration_seed_sub'
+    ORDER BY n.nspname, c.relname;
+    ```
+
+1. On the additional node, enable subscription to resume replication from the source node:
+
+    ```sql
+    SET bdr.ddl_replication = off;
+    ALTER SUBSCRIPTION migration_seed_sub ENABLE;
+    ```
+
+## Verifying all replication streams
+
+Ensure all nodes are receiving data from the source and are communicating within the PGD cluster. Note that data does not flow back from PGD to the source node.
+
+1. On the source node, verify non-PGD logical subscription lag by running the following query:
+
+    ```sql
+    SELECT slot_name, active, confirmed_flush_lsn, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) as lag FROM pg_replication_slots;
+    ```
+
+    Expect one entry per PGD node, and the lag to be minimal.
+
+1. On each PGD node, verify the status of PGD mesh and replication. Expect very little traffic due to idle state of the PGD cluster, but no lag:
+
+    ```sql
+    SELECT * FROM bdr.node_summary;
+    SELECT * FROM bdr.subscription_summary;
+    SELECT * FROM bdr.node_replication_rates;
+    ```
+
+
+Next step: [Execute application cutover](7-application-cutover).
