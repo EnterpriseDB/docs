@@ -1,0 +1,150 @@
+---
+title: Configuring Airman MCP for governance
+navTitle: Configuring Airman MCP
+description: Set up Airman MCP instances with purpose labels and access modes, and configure PostgreSQL roles so governance boundaries are enforced at the database execution boundary.
+deepToC: true
+---
+
+Configure the Airman MCP server and its corresponding PostgreSQL roles so that AI agent activity is tagged, bounded, and visible in the Agent Governance viewer.
+
+## The 1:1:1 mapping
+
+The governance model that Agent Governance audits is built on a 1:1:1 mapping:
+
+```
+One Airman MCP instance  ↔  One declared purpose  ↔  One PostgreSQL login role
+```
+
+When an AI agent operates through a specific Airman MCP instance, it connects to PostgreSQL as a login role that has only the privileges appropriate to that purpose. The database enforces this. No application code, no middleware, and no prompt can override it.
+
+This pattern gives you two independent enforcement layers:
+
+1. **Airman MCP layer** — In restricted mode, Airman performs SQL syntax analysis and rejects disallowed statement types before a query reaches PostgreSQL.
+2. **PostgreSQL RBAC layer** — Even if a query passes the MCP layer, the login role's grants determine what data it can touch. The database kernel enforces this at the execution boundary.
+
+Each layer can catch what the other misses. Together they make governance deterministic: if the role has no `GRANT` on a table, the query fails — every time, regardless of what the LLM instructs.
+
+## Configuring an Airman MCP instance
+
+Each Airman MCP instance is configured with three settings that determine what it can do and how its activity is tagged in the viewer.
+
+### Purpose
+
+Set the `AIRMAN_MCP_PURPOSE` environment variable to a label that describes the agent's operational domain, for example `billing`, `customer-insights`, or `revenue-analytics`.
+
+```bash
+AIRMAN_MCP_PURPOSE=customer-insights
+```
+
+Purpose becomes the first segment of the `application_name` tag Airman writes to every query — `airman:customer-insights/<session-short>` — so the viewer can group and filter sessions by declared intent, not just by identity.
+
+If `AIRMAN_MCP_PURPOSE` is unset, Airman defaults the purpose segment to `_`. Sessions still appear in the viewer but have no meaningful purpose label.
+
+### Access mode
+
+Airman MCP runs in either restricted or unrestricted mode, set with the `--accessmode` flag.
+
+**Restricted mode** (`--accessmode=restricted`) is the recommended posture for most agents. In restricted mode, Airman:
+
+- Performs SQL syntax analysis using `pglast` and rejects any statement not on its allowlist. `DROP`, `DELETE`, and `INSERT` are blocked at the MCP layer before the query reaches PostgreSQL.
+- Wraps every query in a `BEGIN TRANSACTION READ ONLY ... ROLLBACK` block with enforced timeouts, so a query can't commit writes even if a restriction were bypassed.
+
+**Unrestricted mode** (`--accessmode=unrestricted`) allows write operations. Use this only for agents that legitimately need to write data — for example, an executive reporting agent that persists reports to a dedicated output table. The PostgreSQL role for an unrestricted instance should still be scoped narrowly: grant write access only to the specific table or schema the agent needs to write to, and grant read access only to the certified views it reads from.
+
+### Database connection
+
+Each Airman MCP instance connects to PostgreSQL using a standard connection string:
+
+```
+postgresql://<login-user>:<password>@<host>:<port>/<database>
+```
+
+Use a distinct login user per instance — This is what makes the 1:1:1 mapping work. If two agents share a login user, their activity is indistinguishable at the database level and the purpose boundary is meaningless.
+
+## Setting up PostgreSQL roles
+
+To make purpose boundaries enforceable at the database level, create a pair of roles for each agent purpose: a functional role (which holds the grants) and a login user (which the Airman instance connects as).
+
+### Creating the functional role
+
+A functional role has no login privilege. It holds the `GRANT` statements that define what the purpose can access.
+
+```sql
+CREATE ROLE <purpose>_role NOLOGIN;
+
+-- Grant access only to the objects this purpose needs
+GRANT USAGE ON SCHEMA public TO <purpose>_role;
+GRANT SELECT ON <view_or_table> TO <purpose>_role;
+
+-- Explicitly revoke anything sensitive (belt-and-suspenders)
+REVOKE ALL ON <sensitive_table> FROM <purpose>_role;
+```
+
+Keep grants minimal — grant only what the agent's stated purpose requires, and nothing more. Using views rather than raw tables is recommended: views expose only the columns and rows appropriate to the purpose, and the raw tables behind them remain inaccessible to the role.
+
+### Creating the login user
+
+One login user per Airman MCP instance. The login user inherits the functional role's grants.
+
+```sql
+CREATE USER airman_<purpose> WITH PASSWORD '<password>' CONNECTION LIMIT 10;
+GRANT <purpose>_role TO airman_<purpose>;
+```
+
+The connection limit guards against connection exhaustion when many agent queries run in parallel. Adjust based on your expected query volume.
+
+### Pointing the Airman instance at the login user
+
+Set the Airman MCP database connection string to use the login user you created:
+
+```
+postgresql://airman_<purpose>:<password>@<host>:<port>/<database>
+```
+
+### Validating the setup
+
+Verify that the purpose boundary holds before putting the agent into service. Connect to the database, assume the login role, and confirm it can reach the data it should and can't reach data it shouldn't:
+
+```sql
+-- Should succeed
+SET ROLE airman_<purpose>;
+SELECT * FROM <permitted_view> LIMIT 1;
+RESET ROLE;
+
+-- Should fail with: ERROR: permission denied
+SET ROLE airman_<purpose>;
+SELECT * FROM <restricted_table> LIMIT 1;
+RESET ROLE;
+```
+
+A `permission denied` error on the restricted table confirms the boundary is enforced at the database level.
+
+## Verifying agent activity in real time
+
+Once agents are running, you can observe their active sessions directly in `pg_stat_activity`. The `application_name` column shows the full Airman tag — purpose and session short — for every active agent connection:
+
+```sql
+SELECT
+    pid,
+    usename,
+    application_name,
+    state,
+    query_start,
+    LEFT(query, 100) AS current_query
+FROM pg_stat_activity
+WHERE application_name LIKE 'airman:%'
+ORDER BY query_start DESC;
+```
+
+This lets you see, in real time, not just who is connected but what purpose they declared and what SQL they are executing. The Agent Governance viewer provides the same data as a structured audit interface — session history, step-by-step SQL, and filtering by purpose, cluster, and time range.
+
+## Adding a new agent purpose
+
+To add a new purpose-scoped agent:
+
+1. Create a new functional role with grants scoped to the new purpose.
+2. Create a new login user that inherits the functional role.
+3. Deploy a new Airman MCP instance pointed at the login user's connection string, with `AIRMAN_MCP_PURPOSE` set to the new purpose label.
+4. Register the instance's data source in the Agent Governance viewer. See [Connecting data sources](./connecting_data_sources).
+
+No application code changes are required. The database enforces the new boundary from the moment the role is created.

@@ -7,7 +7,7 @@ deepToC: true
 
 AI agent activity travels from the SQL an agent runs, through Postgres logs and Loki, to the screens you read. Understanding the path helps you reason about what the viewer can show and why session data sometimes needs to sync before it appears.
 
-## The data path
+## Tracing the data path
 
 Each query an AI agent runs passes through four stages before it appears as an auditable session in the viewer.
 
@@ -39,14 +39,14 @@ Three components handle distinct parts of the data path, with the backend mediat
 **Viewer backend:** A lightweight service that:
 
 - Stores instance configuration and the associated upstream credentials.
-- Routes each request to the correct HM or Loki endpoint based on the instance type.
+- Routes each request to the correct Hybrid Manager (HM) or Loki endpoint based on the instance type.
 - Parses raw Postgres JSON log lines into structured session and step data.
 - Caches session summaries and syncs them incrementally to avoid redundant queries.
 - Injects the appropriate authentication header on every proxied request, so credentials never reach the browser.
 
 **Upstream sources:** Either an HM deployment — which exposes projects, clusters, and Loki log queries through its API and authenticates with a machine user API key — or a standalone Loki instance queried directly, with optional bearer-token authentication.
 
-## How agent activity is tagged
+## Tagging agent activity
 
 Airman MCP automatically sets the Postgres `application_name` session variable on every connection it opens:
 
@@ -56,8 +56,8 @@ SET application_name = 'airman:<purpose>/<session-short>';
 
 Where:
 
-- `purpose` — a static label configured per Airman instance through `AIRMAN_MCP_PURPOSE` (for example, `billing`, `support`, or `analytics`). Defaults to `_` when unset.
-- `session-short` — the first eight hexadecimal characters of the MCP session token, used to group all the queries in one interaction.
+- `purpose` — A static label configured per Airman instance through `AIRMAN_MCP_PURPOSE` (for example, `billing`, `support`, or `analytics`). Defaults to `_` when unset.
+- `session-short` — The first eight hexadecimal characters of the MCP session token, used to group all the queries in one interaction.
 
 The tag is set at the Postgres session level and persists for every subsequent statement on that connection.
 
@@ -86,7 +86,7 @@ With JSON logging enabled, Postgres produces entries like the following, which L
 
 The backend extracts the SQL text and duration from the `message` field and maps the remaining fields directly to step metadata.
 
-## Query paths
+## Querying Loki
 
 The viewer issues different Loki queries depending on what you're viewing.
 
@@ -102,19 +102,19 @@ The backend uses LogQL queries of this shape:
 
 For session detail, the session short replaces `airman:` as the line filter.
 
-## Background sync
+## Syncing and caching
 
 To avoid expensive full-range Loki queries on every page load, the backend caches session summaries and keeps them current with a watermark-based incremental sync.
 
-### Sync pipeline
+### Running the sync pipeline
 
 When a sessions list is requested for a cluster, the backend:
 
-1. **Reads the watermark** — the per-instance, per-cluster record of the earliest known entry and how far the cache has been populated. On a first sync, both are zero.
-2. **Finds the earliest entry** — on a first sync, searches backward over 30 days, then 90, then 365, to establish the full time range to cache. If none is found, it treats today as the earliest.
-3. **Backfills history** — fills the cache from the earliest entry to today in one-day chunks, upserting session summaries and advancing the watermark as it goes. Progress is reported through the status endpoint.
-4. **Loads cached sessions** — reads all cached summaries for the cluster.
-5. **Fetches today's live data** — runs a single query for the last 24 hours. This data is always fresh and isn't cached.
+1. **Reads the watermark** — The per-instance, per-cluster record of the earliest known entry and how far the cache has been populated. On a first sync, both are zero.
+1. **Finds the earliest entry** — On a first sync, searches backward over 30 days, then 90, then 365, to establish the full time range to cache. If none is found, it treats today as the earliest.
+1. **Backfills history** — Fills the cache from the earliest entry to today in one-day chunks, upserting session summaries and advancing the watermark as it goes. Progress is reported through the status endpoint.
+1. **Loads cached sessions** — Reads all cached summaries for the cluster.
+1. **Fetches today's live data** — Runs a single query for the last 24 hours. This data is always fresh and isn't cached.
 
 The backend then merges cached and live sessions by session short, sums step counts, adjusts the first- and last-seen timestamps, and sorts by last seen.
 
@@ -122,10 +122,10 @@ The backend then merges cached and live sessions by session short, sums step cou
 
 High-verbosity clusters can exceed Loki's per-query limits. When Loki reports that a one-day chunk is too expensive, the backend splits the window in half and retries each half independently, down to a minimum chunk size of one hour. If a one-hour chunk still fails, it logs an error and skips that window.
 
-### Retry policy
+### Retrying failed requests
 
 Upstream Loki calls are wrapped in a retry policy: up to five retries with exponential backoff (starting at 2 seconds, doubling, capped at 30 seconds) for transient errors (502, 503, 504). Non-retryable errors (400, 401, 404, 500) fail immediately.
 
-### Resync
+### Resyncing
 
-When you trigger a resync from the Configure page, the backend clears the cached sessions and watermarks for the instance, then starts a background job: for a Loki instance it re-syncs the single stub cluster; for an HM instance it discovers all projects and clusters and syncs them in parallel. The request returns immediately, and the instance's status advances from **Syncing** to **Done** (or **Error**) as the job runs. See [Connecting data sources](./connecting_data_sources#resyncing-an-instance).
+When you trigger a resync from the Configure page, the backend clears the cached sessions and watermarks for the instance, then starts a background job: for a Loki instance it resyncs the single stub cluster; for an HM instance it discovers all projects and clusters and syncs them in parallel. The request returns immediately, and the instance's status advances from **Syncing** to **Done** (or **Error**) as the job runs. See [Connecting data sources](./connecting_data_sources#resyncing-an-instance).
