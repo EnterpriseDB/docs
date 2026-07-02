@@ -5,7 +5,7 @@ description: Set up Airman MCP instances with purpose labels and access modes, a
 deepToC: true
 ---
 
-Configure the Airman MCP server and its corresponding PostgreSQL roles so that AI agent activity is tagged, bounded, and visible in the Agent Governance viewer.
+Configure the Airman MCP server and its corresponding Postgres roles so that AI agent activity is tagged, bounded, and visible in the Agent Governance viewer.
 
 ## The 1:1:1 mapping
 
@@ -15,7 +15,7 @@ The governance model that Agent Governance audits is built on a 1:1:1 mapping:
 One Airman MCP instance  ↔  One declared purpose  ↔  One PostgreSQL login role
 ```
 
-When an AI agent operates through a specific Airman MCP instance, it connects to PostgreSQL as a login role that has only the privileges appropriate to that purpose. The database enforces this. No application code, no middleware, and no prompt can override it.
+When an AI agent operates through a specific Airman MCP instance, it connects to Postgres as a login role that has only the privileges appropriate to that purpose. The database enforces this. No application code, no middleware, and no prompt can override it.
 
 This pattern gives you two independent enforcement layers:
 
@@ -49,7 +49,7 @@ Airman MCP runs in either restricted or unrestricted mode, set with the `--acces
 - Performs SQL syntax analysis using `pglast` and rejects any statement not on its allowlist. `DROP`, `DELETE`, and `INSERT` are blocked at the MCP layer before the query reaches PostgreSQL.
 - Wraps every query in a `BEGIN TRANSACTION READ ONLY ... ROLLBACK` block with enforced timeouts, so a query can't commit writes even if a restriction were bypassed.
 
-**Unrestricted mode** (`--accessmode=unrestricted`) allows write operations. Use this only for agents that legitimately need to write data — for example, an executive reporting agent that persists reports to a dedicated output table. The PostgreSQL role for an unrestricted instance should still be scoped narrowly: grant write access only to the specific table or schema the agent needs to write to, and grant read access only to the certified views it reads from.
+**Unrestricted mode** (`--accessmode=unrestricted`) allows write operations. Use this mode only for agents that legitimately need to write data — for example, an executive reporting agent that persists reports to a dedicated output table. Scope the PostgreSQL role for an unrestricted instance narrowly: grant write access only to the specific table or schema the agent needs to write to, and grant read access only to the certified views it reads from.
 
 ### Database connection
 
@@ -59,7 +59,7 @@ Each Airman MCP instance connects to PostgreSQL using a standard connection stri
 postgresql://<login-user>:<password>@<host>:<port>/<database>
 ```
 
-Use a distinct login user per instance — This is what makes the 1:1:1 mapping work. If two agents share a login user, their activity is indistinguishable at the database level and the purpose boundary is meaningless.
+Use a distinct login user per instance. If two agents share a login user, their activity is indistinguishable at the database level and the purpose boundary is meaningless.
 
 ## Setting up PostgreSQL roles
 
@@ -80,11 +80,11 @@ GRANT SELECT ON <view_or_table> TO <purpose>_role;
 REVOKE ALL ON <sensitive_table> FROM <purpose>_role;
 ```
 
-Keep grants minimal — grant only what the agent's stated purpose requires, and nothing more. Using views rather than raw tables is recommended: views expose only the columns and rows appropriate to the purpose, and the raw tables behind them remain inaccessible to the role.
+Keep grants minimal — grant only what the agent's stated purpose requires, and nothing more. Use views rather than raw tables: views expose only the columns and rows appropriate to the purpose, and the raw tables behind them remain inaccessible to the role.
 
 ### Creating the login user
 
-One login user per Airman MCP instance. The login user inherits the functional role's grants.
+Configure one login user per Airman MCP instance. The login user inherits the functional role's grants.
 
 ```sql
 CREATE USER airman_<purpose> WITH PASSWORD '<password>' CONNECTION LIMIT 10;
@@ -136,7 +136,7 @@ WHERE application_name LIKE 'airman:%'
 ORDER BY query_start DESC;
 ```
 
-This lets you see, in real time, not just who is connected but what purpose they declared and what SQL they are executing. The Agent Governance viewer provides the same data as a structured audit interface — session history, step-by-step SQL, and filtering by purpose, cluster, and time range.
+This outputs shows, in real time, not only who is connected but what purpose they declared and what SQL they are executing. The Agent Governance viewer provides the same data as a structured audit interface — session history, step-by-step SQL, and filtering by purpose, cluster, and time range.
 
 ## Adding a new agent purpose
 
