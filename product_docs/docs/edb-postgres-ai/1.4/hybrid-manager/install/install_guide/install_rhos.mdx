@@ -1,0 +1,133 @@
+---
+title: Install Hybrid Manager on Red Hat OpenShift
+navTitle: Red Hat OpenShift
+description: Install Hybrid Manager on a Red Hat OpenShift cluster using the OperatorHub catalog.
+---
+
+On Red Hat OpenShift (RHOS), Hybrid Manager (HM) installs the EDB Postgres AI Operator through the OperatorHub catalog — not via Helm. Follow this page after completing [Preparing your environment](environment_prep).
+
+For standard Kubernetes, see [Installing Hybrid Manager](install_hm).
+
+## Before you start
+
+Confirm the following before installing:
+
+- Phases 1–4 of the [Step-by-step guide](index) are complete, including [Preparing your environment](environment_prep). That page covers creating the image pull secret, component secrets, and the object storage secret with `edbctl`.
+- Labels and taints are applied to your cluster nodes per your architecture plan.
+- If your cluster is in a disconnected or air-gapped environment, configure an `ImageDigestMirrorSet` to redirect image pulls to your local registry mirror before proceeding.
+- A `cluster-admin` account is available for the OperatorHub install.
+
+## 1. Update the global pull secret
+
+On OpenShift, the global pull secret must include the EDB container registry endpoint and token so all cluster nodes can pull EDB images. Run `edbctl` to update it:
+
+```bash
+edbctl image-pull-secret create
+```
+
+For the full command reference, see [edbctl image-pull-secret](/edbctl/latest/using/edbctl_image_pull_secret/).
+
+## 2. Verify container registry access
+
+Before installing the operator, confirm your cluster can reach the container registry and your credentials are valid:
+
+```bash
+docker login docker.enterprisedb.com
+```
+
+If your cluster uses a local mirror, verify that your `ImageDigestMirrorSet` correctly redirects pulls and that the mirrored images are present.
+
+## 3. Install the operator from OperatorHub
+
+The OperatorHub catalog flow creates the operator namespace (`edb-hcp-operator-system`) automatically — no manual namespace creation is required.
+
+1. Log in to the OpenShift web console with a `cluster-admin` account.
+1. Navigate to **Operators > OperatorHub**.
+1. In the filter box, enter **EDB Postgres AI**.
+1. Select the **EDB Postgres AI Operator** and click **Install**.
+1. On the Install Operator page:
+   - For **Installed Namespace**, select or enter `edb-hcp-operator-system`.
+   - Leave all other settings at their defaults.
+1. Click **Install**.
+
+## 4. Verify the operator
+
+Wait for the operator pod to reach `Running` status:
+
+```bash
+oc get pods -n edb-hcp-operator-system
+```
+
+Expected output:
+
+```
+NAME                                                    READY   STATUS    RESTARTS   AGE
+edb-hcp-operator-controller-manager-xxxxxxxxxx-xxxxx   1/1     Running   0          60s
+```
+
+## 5. Create the HybridControlPlane resource
+
+### Prepare your HM manifest
+
+Create a file named `hybridmanager.yaml`. Use the [Example in the standard install guide](install_hm#example-hybridcontrolplane-manifest) as a template and customize the values for your environment.
+
+**Critical fields to verify:**
+
+1. **`spec.flavour`**: Your Kubernetes distribution
+2. **`spec.imageRegistry`**: Your container registry URL
+3. **`spec.version`**: The HM version you want to install
+4. **`spec.globalParameters.portal_domain_name`**: Your portal FQDN
+5. **`spec.beaconAgent.provisioning`**: Your provisioning configuration
+
+### Apply the resource
+
+Apply the manifest using the OpenShift CLI or `kubectl`:
+
+```bash
+oc apply -f hybridmanager.yaml
+```
+
+Expected output:
+
+```
+hybridcontrolplane.edbpgai.edb.com/edbpgai created
+```
+
+Alternatively, apply the custom resource (CR) through the OpenShift console: **Operators > Installed Operators > EDB Postgres AI > Create HybridControlPlane**.
+
+## 6. Monitor installation progress
+
+Once the HM resource is created, the operator begins reconciling. Monitor progress from the operator status — not the logs:
+
+```bash
+oc get hcp
+```
+
+Expected output when complete:
+
+```
+NAME      PHASE      PREFLIGHT   POSTFLIGHT
+edbpgai   deployed   passed      passed
+```
+
+For a detailed status view including individual component states:
+
+```bash
+oc get hybridcontrolplane edbpgai -o yaml
+```
+
+### Check preflight results
+
+The operator runs preflight checks before deploying components. Verify they passed:
+
+```bash
+oc get postflights.edbpgai.edb.com edbpgai -o yaml
+```
+
+If any preflight check fails, review the failed check's `description` field in the output. Failed preflights are the most common cause of a stalled install — fix the underlying issue and the operator retries automatically.
+
+For a full list of monitoring commands, see [Monitor installation progress](install_hm#monitor-installation-progress).
+
+## Next steps
+
+See [Post-installation options](post_install).
