@@ -543,31 +543,47 @@ FROM aidb.get_all_error_summaries()
 GROUP BY pipeline_name;
 ```
 
-### `aidb.retry_pipeline_errors`
+### `aidb.requeue_pipeline_errors`
 
-Re-runs the pipeline for the source records named by the specified error log entries and returns per-row outcomes. A pipeline-scoped advisory lock prevents two concurrent retries on the same pipeline, but it does not block `aidb.run_pipeline` or the background worker.
+Introduced in 7.5.0. Deletes the specified record-level error log entries and marks their source records dirty on the pipeline's state surface. The call itself does no processing; the next normal pipeline run re-processes the requeued records. See [Requeuing failed records](./orchestration/error-log#requeuing-failed-records) for the workflow.
 
 #### Parameters
 
-| Parameter       | Type     | Default  | Description                                                                                                  |
-| --------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------ |
-| `pipeline_name` | TEXT     | Required | Name of the pipeline to retry. (Parameter names omit the `p_` prefix used by the other error log functions.) |
-| `error_ids`     | BIGINT[] | Required | Error log entry IDs to retry. Duplicates are deduplicated; unknown IDs raise an exception.                   |
+| Parameter         | Type     | Default  | Description                                                            |
+| ----------------- | -------- | -------- | ---------------------------------------------------------------------- |
+| `p_pipeline_name` | TEXT     | Required | Name of the pipeline whose error log entries to requeue.               |
+| `p_error_ids`     | BIGINT[] | Required | Error log entry IDs to requeue. `NULL` or empty arrays return no rows. |
 
-Raises if the pipeline does not exist, if any supplied `error_id` is missing from the error log, if the source is empty, or if another retry is already in progress for the pipeline.
+Raises if the pipeline does not exist. Ids that are absent from the error log are reported as `not_found` rather than raising.
 
 #### Returns
 
-| Column          | Type   | Description                                                                                                  |
-| --------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| `error_id`      | bigint | The supplied error log ID.                                                                                   |
-| `status`        | text   | One of `resolved`, `failed`, or `skipped`.                                                                   |
-| `error_message` | text   | NULL when `resolved`; new error text when `failed`; advisory message when `skipped` (pipeline-level errors). |
+One row per input id, ordered by ascending `error_id`.
+
+| Column     | Type   | Description                                                       |
+| ---------- | ------ | ----------------------------------------------------------------- |
+| `error_id` | bigint | The supplied error log ID.                                        |
+| `action`   | text   | `requeued`, `skipped_pipeline_level`, or `not_found` (see below). |
+
+- `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker.
+- `skipped_pipeline_level`: entry has a NULL `source_id`. Left in place. Fix the underlying issue and re-run, or dismiss with `aidb.clear_error_logs`.
+- `not_found`: id was absent from the error log, or the pipeline has no error log table (legacy pipelines or `Empty` sources).
+
+Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks; non-overlapping id sets proceed in parallel. Requeue does not block `aidb.run_pipeline` or the background worker.
+
+Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline` call. On a Disabled-mode volume source, requeue sets `retry_requested_at` and emits a `NOTICE` because it cannot schedule a drain; manual `aidb.run_pipeline` re-reads the whole volume.
 
 #### Example
 
 ```sql
-SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
+__OUTPUT__
+ error_id | action
+----------+------------------------
+        1 | requeued
+        2 | requeued
+       99 | not_found
+(3 rows)
 ```
 
 ---

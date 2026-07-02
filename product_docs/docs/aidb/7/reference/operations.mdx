@@ -158,38 +158,44 @@ __OUTPUT__
 
 ---
 
-### `aidb.retry_pipeline_errors`
+### `aidb.requeue_pipeline_errors`
 
-Re-processes specific error log entries from the step where they originally failed.
+Introduced in 7.5.0. Deletes the targeted record-level error log entries and marks their source records dirty on the pipeline's state surface. The next normal run re-processes them; the call itself does no processing. See [Requeuing failed records](../data-pipelines/orchestration/error-log#requeuing-failed-records) for the workflow.
 
 #### Parameters
 
-| Parameter       | Type     | Description                            |
-|-----------------|----------|----------------------------------------|
-| `pipeline_name` | TEXT     | Name of the pipeline.                  |
-| `error_ids`     | BIGINT[] | Array of error log entry IDs to retry. |
+| Parameter         | Type     | Description                              |
+|-------------------|----------|------------------------------------------|
+| `p_pipeline_name` | TEXT     | Name of the pipeline.                    |
+| `p_error_ids`     | BIGINT[] | Array of error log entry IDs to requeue. |
 
 #### Returns
 
-| Column          | Type   | Description                        |
-|-----------------|--------|------------------------------------|
-| `error_id`      | bigint | Error log entry ID                 |
-| `status`        | text   | `resolved`, `failed`, or `skipped` |
-| `error_message` | text   | Failure reason (empty if resolved) |
+One row per input id, ordered by ascending `error_id`.
 
-Resolved entries are removed from the error log. Failed retries remain with an incremented `retry_count` and updated `last_retry_at`.
+| Column     | Type   | Description                                                       |
+|------------|--------|-------------------------------------------------------------------|
+| `error_id` | bigint | Error log entry ID from the input array.                          |
+| `action`   | text   | `requeued`, `skipped_pipeline_level`, or `not_found` (see below). |
+
+- `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker.
+- `skipped_pipeline_level`: entry has a NULL `source_id`. Left in place. Fix the underlying issue and re-run, or dismiss with `aidb.clear_error_logs`.
+- `not_found`: id not present in the error log, or the pipeline has no error log table.
+
+Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks; non-overlapping id sets proceed in parallel. Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline` call.
 
 #### Example
 
 ```sql
-SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
 
 __OUTPUT__
- error_id | status   | error_message
-----------+----------+----------------------------------
-        1 | resolved |
-        2 | failed   | failed to extract text from page 0
-(2 rows)
+ error_id | action
+----------+------------------------
+        1 | requeued
+        2 | requeued
+       99 | not_found
+(3 rows)
 ```
 
 ---
