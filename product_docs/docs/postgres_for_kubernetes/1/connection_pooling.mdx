@@ -54,7 +54,15 @@ spec:
 ```
 
 !!!info Important
+
 The pooler name can't be the same as any cluster name in the same namespace.
+!!!
+
+!!!warning
+
+The `spec.cluster` field is immutable after creation. To point a pooler at
+a different `Cluster`, create a new `Pooler` resource instead of updating
+an existing one.
 !!!
 
 This example creates a `Pooler` resource called `pooler-example-rw`
@@ -70,6 +78,7 @@ and accepting up to 1000 connections each. The default pool size is 10
 user/database pairs toward PostgreSQL.
 
 !!!info Important
+
 The `Pooler` resource sets only the `*` fallback database in PgBouncer. This setting means that
 that all parameters in the connection strings passed from the client are
 relayed to the PostgreSQL server. For details, see ["Section \[databases\]"
@@ -80,6 +89,7 @@ in the PgBouncer documentation](https://www.pgbouncer.org/config.html#section-da
 the configuration files used with PgBouncer.
 
 !!!note API reference
+
 For details, see [`PgBouncerSpec`](pg4k.v1.md#pgbouncerspec)
 in the API reference.
 !!!
@@ -94,17 +104,18 @@ The key point to understand is that the lifecycles of the `Cluster` and
 `Pooler` resources are independent. Deleting a cluster does not automatically
 remove its poolers, and deleting a pooler does not affect the cluster.
 
-!!!info
-Once you are familiar with how poolers work, you have complete flexibility
-in designing your architecture. You can run clusters without poolers, clusters
-with a single pooler, or clusters with multiple poolers (for example, one per
-application).
+!!!info Important
+
+Once you know how a pooler works, you have full freedom in terms of
+possible architectures. You can have clusters without poolers, clusters with
+a single pooler, or clusters with several poolers, that is, one per application.
 !!!
 
 !!!info Important
-When the operator itself is upgraded, pooler pods will also undergo a
-rolling upgrade. This ensures that the instance manager inside the pooler
-pods is upgraded consistently.
+
+When the operator is upgraded, the pooler pods will undergo a rolling
+upgrade. This is necessary to ensure that the instance manager within the
+pooler pods is also upgraded.
 !!!
 
 ## Security
@@ -170,7 +181,11 @@ The built-in integration performs the following tasks:
 -   Cleans up all of the above automatically when no poolers are associated with
     the cluster
 
-#### SQL instructions
+!!!info Important
+
+If you specify your own secrets, the operator doesn't automatically
+integrate the pooler.
+!!!
 
 As part of the built-in integration, {{name.ln}} automatically executes a set
 of SQL statements during reconciliation. These statements are run by the
@@ -188,14 +203,17 @@ Grant access to the `postgres` database:
 GRANT CONNECT ON DATABASE postgres TO cnp_pooler_pgbouncer;
 ```
 
-Create the lookup function for password verification. This function is created
-in the `postgres` database with `SECURITY DEFINER` privileges and is used by
-PgBouncer’s `auth_query` option:
+Finally, as a *superuser* connect in each application database, and then create
+the authentication function inside each of the application databases. Because it
+runs as the function owner, its `search_path` is pinned to `pg_catalog, pg_temp`
+so that the function body cannot resolve operators or objects through a caller-
+or tenant-controlled `search_path`:
 
 ```sql
 CREATE OR REPLACE FUNCTION public.user_search(uname TEXT)
   RETURNS TABLE (usename name, passwd text)
-  LANGUAGE sql SECURITY DEFINER AS
+  LANGUAGE sql SECURITY DEFINER
+  SET search_path = pg_catalog, pg_temp AS
   'SELECT usename, passwd FROM pg_catalog.pg_shadow WHERE usename=$1;';
 ```
 
@@ -209,13 +227,20 @@ GRANT EXECUTE ON FUNCTION public.user_search(text)
   TO cnp_pooler_pgbouncer;
 ```
 
-### Custom authentication method
+!!!note
 
-Providing your own certificate secrets disables the built-in integration.
+Clusters created with an earlier version of {{name.ln}} carry a
+`user_search` function without the pinned `search_path`. The operator
+recreates the function with the `SET search_path` clause automatically
+during reconciliation when the cluster is upgraded.
+!!!
 
-This gives you the flexibility — and responsibility — to manage the
-authentication process yourself. You can follow the instructions above to
-replicate similar behavior to the default setup.
+!!!info Important
+
+Given that `user_search` is a `SECURITY DEFINER` function, you need to
+create it through a role with `SUPERUSER` privileges, such as the `postgres`
+user.
+!!!
 
 ## Pod templates
 
@@ -353,6 +378,7 @@ The operator by default adds a `ServicePort` with the following data:
 ```
 
 !!!warning
+
 Specifying a `ServicePort` with the name `pgbouncer` or the port `5432`  will prevent the default `ServicePort` from being added.
 This because `ServicePort` entries with the same `name` or `port` are not allowed on Kubernetes and result in errors.
 !!!
@@ -367,10 +393,11 @@ using the `rw` service) or servers (if using the `ro` service with multiple
 replicas).
 
 !!!warning
+
 If your infrastructure spans multiple availability zones with high latency
 across them, be aware of network hops. Consider, for example, the case of your
 application running in zone 2, connecting to PgBouncer running in zone 3, and
-pointing to the PostgreSQL primary in zone 1.
+pointing to the PostgreSQL primary in zone 1. 
 !!!
 
 ## PgBouncer configuration options
@@ -458,6 +485,7 @@ PgBouncer instance reloads the updated configuration without disrupting the
 service.
 
 !!!warning
+
 Every PgBouncer pod has the same configuration, aligned
 with the parameters in the specification. A mistake in these
 parameters might disrupt the operability of the whole pooler.
@@ -479,8 +507,9 @@ Like the {{name.ln}} instance, the exporter runs on port
 Go runtime (with the prefix `go_*`).
 
 !!!info
+
 You can inspect the exported metrics on a pod running PgBouncer. For instructions, see
-[How to inspect the exported metrics](monitoring.md#how-to-inspect-the-exported-metrics).
+[How to inspect the exported metrics](monitoring#how-to-inspect-the-exported-metrics).
 Make sure that you use the correct IP and the `9127` port.
 !!!
 
@@ -646,6 +675,7 @@ cnp_pgbouncer_stats_total_xact_time{database="pgbouncer"} 0
 ```
 
 !!!info
+
 For a better understanding of the metrics please refer to the PgBouncer documentation.
 !!!
 
@@ -671,6 +701,7 @@ spec:
 ### Deprecation of Automatic `PodMonitor` Creation
 
 !!!warning Feature Deprecation Notice
+
 The `.spec.monitoring.enablePodMonitor` field in the `Pooler` resource is
 now deprecated and will be removed in a future version of the operator.
 !!!
@@ -718,11 +749,13 @@ When the `paused` option is reset to `false`, the operator invokes the
 service defined in the `Pooler` resource.
 
 !!!note PAUSE
+
 For more information, see
 [`PAUSE` in the PgBouncer documentation](https://www.pgbouncer.org/usage.html#pause-db).
 !!!
 
 !!!info Important
+
 In future versions, the switchover operation will be fully integrated
 with the PgBouncer pooler and take advantage of the `PAUSE`/`RESUME`
 features to reduce the perceived downtime by client applications.
@@ -750,6 +783,7 @@ the specific use case for the single PostgreSQL cluster, the adopted criteria
 is to explicitly list the options that can be configured by users.
 
 !!!note
+
 The adopted solution likely addresses the majority of
 use cases. It leaves room for the future implementation of a separate
 operator for PgBouncer to complete the gamma with more advanced and customized
