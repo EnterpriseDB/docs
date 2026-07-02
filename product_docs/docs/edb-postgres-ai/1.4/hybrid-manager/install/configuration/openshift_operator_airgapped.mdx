@@ -1,0 +1,270 @@
+---
+title: Installing the HM operator on air-gapped OpenShift
+navTitle: Operator on air-gapped OpenShift
+description: Install and upgrade the Hybrid Manager operator through OLM/OperatorHub on disconnected or air-gapped OpenShift, either by mirroring the Red Hat certified catalog with oc-mirror or by building your own catalog from the EDB-published bundle.
+deepToC: true
+---
+
+**Related installation phase:** [Phase 4: Preparing the environment](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/)
+
+On OpenShift, the Hybrid Manager (HM) operator (`edb-hcp-operator`) is managed through the Operator Lifecycle Manager (OLM) / OperatorHub. On a **connected** cluster you install it directly from OperatorHub, from the Red Hat certified-operators catalog — nothing custom is required.
+
+This page covers **disconnected or air-gapped (restricted-egress) OpenShift**, where the public certified catalog isn't reachable and the operator must be served from a registry you host. There are two supported approaches, described below. A Helm-based install is also a valid path on OpenShift — see [Install the EDB Postgres AI Operator](../install_guide/install_hm/#install-the-edb-postgres-ai-operator).
+
+### Choosing an approach
+
+| Approach | Use when |
+|----------|----------|
+| **A — Mirror the Red Hat certified catalog** (with `oc mirror` v2) | Your cluster already follows Red Hat's disconnected-mirroring workflow. The HM operator is mirrored the same way you mirror the OpenShift release payload and every other operator. **This is the recommended path when you consume the Red Hat certified catalog.** |
+| **B — Build your own catalog from the EDB bundle** | Your security policy doesn't allow consuming Red Hat catalogs/registries, or you don't run an `oc mirror` workflow. You assemble a File-Based Catalog (FBC) from EDB's published bundle image and host it in your own registry. |
+
+Both approaches install the operator via OLM, so it appears in the OpenShift console and its lifecycle (install, upgrade) is OperatorHub-managed.
+
+* * *
+
+### Prerequisites
+
+- A working OpenShift **4.18+** cluster you can `oc` against, with cluster-admin.
+- A container registry your cluster can pull from (referred to below as `<your-registry>`).
+- `oc` and, depending on the approach, the [`oc-mirror` plugin v2](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/about-installing-oc-mirror-v2) (approach A) or the [`opm` CLI](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/cli_tools/opm-cli) plus a container build tool (approach B).
+- The HM **platform images** (the data-plane container images the operator deploys) synced into `<your-registry>`. These aren't part of any operator catalog; sync them as described in [Syncing images to a local private registry](./sync_images).
+- **cert-manager** — the HM operator depends on the cert-manager API (see the note below).
+
+!!! Note cert-manager install mode
+The `edb-hcp-operator` bundle requires the `cert-manager.io` API. You don't need to install cert-manager yourself — if it isn't present, OLM installs it automatically as a dependency (as long as a catalog that offers cert-manager, such as the Red Hat operator catalog, is available on the cluster). But if cert-manager **is** already installed, it must use the **All namespaces** install mode (an empty `spec` on its `OperatorGroup`): OLM reuses a cluster-wide cert-manager, but if it's scoped to a single namespace (OwnNamespace) OLM attempts to install a second, conflicting cert-manager.
+!!!
+
+* * *
+
+## Approach A — Mirror the Red Hat certified catalog with oc-mirror
+
+EDB publishes `edb-hcp-operator` to the Red Hat **certified-operators** catalog, so a disconnected cluster mirrors it with the same `oc mirror` v2 workflow it already uses for OpenShift and other operators.
+
+### 1. Add the operator to your ImageSetConfiguration
+
+Add `edb-hcp-operator` to the `certified-operator-index` entry of your `ImageSetConfiguration`. The catalog tag matches your cluster's OpenShift minor version — `v4.22` is used as the example throughout this page. With only a channel specified, `oc mirror` mirrors the current head of that channel:
+
+```yaml
+mirror:
+  operators:
+  - catalog: registry.redhat.io/redhat/certified-operator-index:v4.22
+    packages:
+    - name: edb-hcp-operator
+      channels:
+      - name: stable
+```
+
+To pin or bound the versions mirrored, add `minVersion`/`maxVersion` under the package or channel.
+
+### 2. Disable signature mirroring for the partner registry
+
+`oc-mirror` v2 mirrors cosign signatures by default, but Red Hat does not publish signatures for certified/partner content on `registry.connect.redhat.com` (where the operator bundle lives). Mirroring therefore fails on a missing signature unless you disable signature mirroring **for that registry only** — a supported, [documented](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/about-installing-oc-mirror-v2#oc-mirror-signature-mirroring_about-installing-oc-mirror-v2) setting. Create the following file in `/etc/containers/registries.d/` on the host running `oc mirror`:
+
+```yaml
+# /etc/containers/registries.d/registry.connect.redhat.com.yaml
+docker:
+  registry.connect.redhat.com:
+    use-sigstore-attachments: false
+```
+
+Signature mirroring stays enabled for `registry.redhat.io` and the OpenShift release payload.
+
+!!! Note
+The operator's runtime images are referenced at `docker.enterprisedb.com/pgai-platform/...`. Add your [EDB Repos 2.0 token](https://www.enterprisedb.com/docs/repos/getting_started/) (username `pgai-platform`) for that registry to the pull secret `oc mirror` uses (for example `~/.docker/config.json`) so it can mirror them. `oc mirror` then generates the `ImageDigestMirrorSet` that redirects those references to `<your-registry>`.
+!!!
+
+### 3. Run oc mirror and apply the generated resources
+
+Run `oc mirror` as usual. Alongside the mirrored images it generates cluster resources under `working-dir/cluster-resources/` — a `CatalogSource` and one or more `ImageDigestMirrorSet` objects. Apply them:
+
+```bash
+oc apply -f working-dir/cluster-resources/
+```
+
+Confirm the operator appears in the catalog:
+
+```bash
+oc get packagemanifest edb-hcp-operator -n openshift-marketplace
+```
+
+### 4. Install the operator
+
+Create an `OperatorGroup` and `Subscription` (or install from the OpenShift console) — see [Install the operator](#install-the-operator) below. `oc mirror` generates the `CatalogSource` (typically named `cs-certified-operator-index-...`), so use that name as the Subscription `source`.
+
+* * *
+
+## Approach B — Build your own catalog from the EDB bundle
+
+Use this when you can't or won't consume Red Hat catalogs. EDB publishes one bundle image per certified operator release, which you assemble into an FBC catalog hosted in your own registry.
+
+### 1. Get the bundle (and platform) images into your registry
+
+[Syncing images to a local private registry](./sync_images) copies the operator **bundle** image, the operator manager image, the operator Helm chart, and the HM platform images for a given HM version into `<your-registry>` in one step, preserving digests. That's the simplest way to get everything the install needs.
+
+To mirror a **specific bundle version** manually instead — for example an older release you want to keep in the catalog's upgrade graph — copy it with `skopeo` (authenticating to `docker.enterprisedb.com` with your [EDB Repos 2.0 token](https://www.enterprisedb.com/docs/repos/getting_started/), username `pgai-platform`), preserving digests:
+
+```bash
+skopeo copy --all --preserve-digests \
+  docker://docker.enterprisedb.com/pgai-platform/edb-hcp-operator/bundle:v2.0.0 \
+  docker://<your-registry>/edb-hcp-operator/bundle:v2.0.0
+```
+
+The bundle's CSV references the operator manager and platform images by digest at `docker.enterprisedb.com/pgai-platform/...`; those must also be present in `<your-registry>` (which the Syncing images step ensures).
+
+### 2. Assemble an FBC catalog
+
+```bash
+mkdir -p /tmp/edb-catalog/edb-hcp-operator
+cd /tmp/edb-catalog
+
+cat > edb-hcp-operator/index.yaml <<'EOF'
+---
+schema: olm.package
+name: edb-hcp-operator
+defaultChannel: stable
+---
+schema: olm.channel
+package: edb-hcp-operator
+name: stable
+entries:
+  - name: edb-hcp-operator.v2.0.0
+EOF
+
+opm render <your-registry>/edb-hcp-operator/bundle:v2.0.0 -o yaml >> edb-hcp-operator/index.yaml
+opm validate edb-hcp-operator/
+```
+
+The `entries` list is the channel's upgrade graph; with a single version it's just the channel head (see [Upgrading](#upgrading)).
+
+### 3. Build and push the catalog image
+
+```bash
+opm generate dockerfile edb-hcp-operator
+
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -f edb-hcp-operator.Dockerfile \
+  -t <your-registry>/edb-hcp-operator/catalog:latest \
+  . --push
+```
+
+### 4. Redirect the EDB image references
+
+Because the bundle's CSV references images at `docker.enterprisedb.com/pgai-platform/...` by digest, redirect those pulls to your registry with an `ImageDigestMirrorSet`:
+
+```yaml
+apiVersion: config.openshift.io/v1
+kind: ImageDigestMirrorSet
+metadata:
+  name: edb-hcp-operator-mirror
+spec:
+  imageDigestMirrors:
+  - source: docker.enterprisedb.com/pgai-platform
+    mirrors:
+    - <your-registry>
+```
+
+!!! Note
+Creating an `ImageDigestMirrorSet` is non-disruptive: the Machine Config Operator applies a `registries.conf` change via a rolling CRI-O restart — it does **not** drain or reboot nodes (per the [OCP 4.22 docs](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/images/image-configuration-classic#images-configuration-registry-mirror_image-configuration)). Modifying or deleting an existing IDMS, or any `ImageTagMirrorSet`, does drain and reboot.
+!!!
+
+Apply a `CatalogSource` pointing at your catalog image:
+
+```yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: edb-hcp-operator
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: <your-registry>/edb-hcp-operator/catalog:latest
+  displayName: HM Operator
+  publisher: EnterpriseDB
+  updateStrategy:
+    registryPoll:
+      interval: 10m
+```
+
+* * *
+
+## Install the operator
+
+Give the cluster pull access to `<your-registry>` (merge its credentials into the global pull secret), then create an `OperatorGroup` and `Subscription`:
+
+```bash
+oc get secret/pull-secret -n openshift-config -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > /tmp/pull-secret.json
+oc registry login --registry="<your-registry>" --auth-basic="<user>:<password>" --to=/tmp/pull-secret.json
+oc set data secret/pull-secret -n openshift-config --from-file=.dockerconfigjson=/tmp/pull-secret.json
+```
+
+Set the Subscription `source` to the name of your `CatalogSource`: **`edb-hcp-operator`** if you created it in approach B, or the `oc mirror`–generated name (for example `cs-certified-operator-index-v4-22`, matching your OpenShift version) in approach A.
+
+```yaml
+apiVersion: project.openshift.io/v1
+kind: Project
+metadata:
+  name: edb-hcp-operator-system
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: edb-hcp-operator-group
+  namespace: edb-hcp-operator-system
+spec: {}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: edb-hcp-operator
+  namespace: edb-hcp-operator-system
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: edb-hcp-operator
+  source: edb-hcp-operator            # your CatalogSource name (see above)
+  sourceNamespace: openshift-marketplace
+```
+
+Watch the install and confirm the CSV reaches `Succeeded`:
+
+```bash
+oc get csv -n edb-hcp-operator-system -w
+```
+
+* * *
+
+## Upgrading
+
+**Approach A.** Re-run `oc mirror`: it mirrors the current head of the `stable` channel, so a newly published release is picked up automatically, then re-apply the generated resources. To control exactly which versions are mirrored, set `minVersion`/`maxVersion` on the package or channel in your `ImageSetConfiguration`. OLM upgrades along the certified catalog's upgrade graph — the same workflow you run for every other operator.
+
+**Approach B.** Add the new release to your catalog. For example, to move from `2.0.0` to a future `2.1.0`:
+
+1. Get the new bundle (and its images) into `<your-registry>` — re-run [Syncing images](./sync_images) for the new HM version, or `skopeo copy` the specific bundle.
+2. Add it to the channel with a `replaces:` edge to the previous version and append its rendered bundle:
+
+   ```yaml
+   entries:
+     - name: edb-hcp-operator.v2.0.0
+     - name: edb-hcp-operator.v2.1.0
+       replaces: edb-hcp-operator.v2.0.0
+   ```
+
+   ```bash
+   opm render <your-registry>/edb-hcp-operator/bundle:v2.1.0 -o yaml >> edb-hcp-operator/index.yaml
+   opm validate edb-hcp-operator/
+   ```
+
+3. Rebuild and push the catalog image (step 3 above), then re-apply. Within the `CatalogSource` poll interval OLM detects the new version and (with `installPlanApproval: Automatic`) applies the upgrade.
+
+!!! Note Air-gapped HM version changes
+The operator upgrades independently of the HM platform version. When you change the HM version itself (the `HybridControlPlane` spec), the release-tagged platform images for the new version — including the `bootstrap` image the operator deploys — must already be present in `<your-registry>`. Sync them first (see [Syncing images to a local private registry](./sync_images)); a missing version-tagged image surfaces as an `ImagePullBackOff`.
+!!!
+
+* * *
+
+## Troubleshooting
+
+- **CatalogSource pod stuck `CONNECTING`** — the catalog image isn't being pulled. Verify the global pull secret includes credentials for `<your-registry>`.
+- **Operator or platform pod `ImagePullBackOff`** — the bundle references images at `docker.enterprisedb.com/pgai-platform/...`; confirm the `ImageDigestMirrorSet` redirects that source to `<your-registry>` and that the images (including the platform images and, for HM version changes, the `bootstrap` image) are actually mirrored there.
+- **OLM tries to install a second cert-manager** — the existing cert-manager is namespace-scoped. Reinstall it with the **All namespaces** install mode (see the prerequisite note above).
+- **`oc mirror` fails on `registry.connect.redhat.com` signatures** (approach A) — apply the `use-sigstore-attachments: false` registries.d file from [step 2](#2-disable-signature-mirroring-for-the-partner-registry).
