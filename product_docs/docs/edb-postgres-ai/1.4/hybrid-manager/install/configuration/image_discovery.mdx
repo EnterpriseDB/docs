@@ -39,9 +39,17 @@ spec:
     provisioning:
       imageDiscovery: true
       imagesetDiscoveryContainerRegistryURL: "<your-private-registry-uri>"
-      # Set to true only for self-signed/internal CA scenarios
+      # Keep false; to trust a private/internal CA, set imageset_discovery_ca_certs below
       imagesetDiscoveryAllowInsecureRegistry: false
     # ... your other beaconAgent settings
+  componentsParameters:
+    upm-beacon:
+      # Optional: PEM-encoded CA certificate to verify a private-CA registry over HTTPS
+      imageset_discovery_ca_certs: |
+        -----BEGIN CERTIFICATE-----
+        <your-private-CA-certificate>
+        -----END CERTIFICATE-----
+    # ... your other componentsParameters
 ```
 
 ### imageDiscovery
@@ -87,6 +95,52 @@ The recommended provider value per registry provider is as follows:
 
 If this option is enabled, it allows establishing a TLS connection without certificate validation.
 It defaults to `false`.
+
+### imageset_discovery_ca_certs
+
+Use this option to have image discovery trust a container registry that is served with a certificate signed by a private or internal certificate authority (CA), without disabling certificate validation.
+
+Set it under `spec.componentsParameters.upm-beacon` (not under `spec.beaconAgent.provisioning`). Provide the CA as an inline, PEM-encoded certificate. When this option is set and `imagesetDiscoveryAllowInsecureRegistry` is `false`, the beacon agent verifies the registry's TLS certificate against this CA in addition to the system trust store, and connects using TLS 1.2 or later.
+
+This is the recommended way to reach a private-CA registry over HTTPS in regulated or air-gapped environments that must use HTTPS and cannot enable insecure mode.
+
+```yaml
+spec:
+  beaconAgent:
+    provisioning:
+      imagesetDiscoveryAllowInsecureRegistry: false
+  componentsParameters:
+    upm-beacon:
+      imageset_discovery_ca_certs: |
+        -----BEGIN CERTIFICATE-----
+        <your-private-CA-certificate>
+        -----END CERTIFICATE-----
+```
+
+!!! note
+`imageset_discovery_ca_certs` and `imagesetDiscoveryAllowInsecureRegistry` solve the same problem in different ways. Prefer `imageset_discovery_ca_certs`, which keeps certificate validation enabled. Enable `imagesetDiscoveryAllowInsecureRegistry` only when you cannot supply a CA, because it disables validation entirely. If `imagesetDiscoveryAllowInsecureRegistry` is `true`, certificate validation is skipped and `imageset_discovery_ca_certs` has no effect.
+!!!
+
+#### Rotating the CA
+
+To rotate or replace the CA, replace the `imageset_discovery_ca_certs` value under `spec.componentsParameters.upm-beacon` on the `HybridControlPlane` CR with the new CA certificate and apply it. You do not need to keep the old certificate alongside the new one. The change is applied automatically and **no beacon agent pod restart is required**:
+
+1. The `edb-hcp-operator` reconciles the updated CR and refreshes the ConfigMap that holds the CA certificate.
+2. Kubernetes syncs the updated certificate into the beacon agent pod's mounted volume (typically within about a minute).
+3. The beacon agent re-reads the certificate file on its next discovery cycle and uses the new CA from then on.
+
+The new CA typically takes effect within a couple of minutes. Removing the field reverts image discovery to the system trust store only, so a private-CA registry stops being trusted.
+
+!!! note
+This option affects **image discovery** only — that is, the beacon agent scanning the registry for available tags. It does **not** configure the trust that the Kubernetes nodes use when they pull the discovered images to provision a cluster.
+
+If the registry is served with a private CA, node image pulls fail independently — even when discovery succeeds — with an error such as `x509: certificate signed by unknown authority`. Trusting the private CA at the node level is the responsibility of your **Kubernetes cluster administrator**; it is outside the scope of Hybrid Manager configuration. The administrator must add the CA to each node's container runtime or operating system trust store, for example:
+
+- **containerd:** add the CA under the registry's `certs.d` directory (for example, `/etc/containerd/certs.d/<registry-host>/`).
+- **Operating system:** install the CA into the node's system trust store (for example, `/etc/pki/ca-trust` or `/usr/local/share/ca-certificates`) and refresh it.
+
+Apply this configuration to every node that pulls images, and reapply it as nodes are added or replaced.
+!!!
 
 ## imagesetDiscoveryAuthenticationType
 
