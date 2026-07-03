@@ -1,0 +1,625 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB CloudNativePG Cluster
+version: 1.30.0
+date: 29 June 2026
+intro: |
+  This release of EDB Postgres® AI for CloudNativePG™ Cluster includes the following:
+components:
+  "Operator": 1.30.0
+  "CNP plugin": 1.30.0
+  upstream-merge: Upstream [1.30.0](https://cloudnative-pg.io/docs/1.30/release_notes/v1.30/)
+highlights: |
+  Updated the deprecation notice for native (in-tree) Barman Cloud support to
+  reflect that it will now be removed in EDB Postgres for Kubernetes 1.31.0,
+  rather than 1.30.0. Users are still encouraged to migrate to the Barman Cloud
+  Plugin.
+  ([#11083](https://github.com/cloudnative-pg/cloudnative-pg/pull/11083))
+
+  The `cluster` reference is now immutable on the `Database`, `Pooler`,
+  `Publication`, `Subscription`, and `ScheduledBackup` resources. Pointing one
+  of these objects at a different cluster has no well-defined semantics and
+  previously left the controllers in an inconsistent state; the update is now
+  rejected at the API server via a CEL validation rule.
+  ([#10743](https://github.com/cloudnative-pg/cloudnative-pg/pull/10743))
+relnotes:
+- relnote: |
+    Primary `Lease` for safe primary election
+  details: |
+    introduced a Kubernetes `Lease` object (named after the cluster) that acts as
+    a mutex serializing primary promotion: the instance manager must hold the
+    lease before acting as primary and releases it on clean shutdown so replicas
+    can promote without waiting for the full TTL. Timings are configurable via the
+    new `.spec.primaryLease` stanza. The lease is a promotion gate, not a fence.
+    Primary isolation remains responsible for fencing.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10627">#10627</a>
+  type: Feature
+  impact: High
+
+- relnote: |
+    `DatabaseRole` CRD for declarative role management
+  details: |
+    introduced a `DatabaseRole` custom resource that manages a PostgreSQL role as
+    a standalone Kubernetes object, instead of declaring it inline in the
+    `Cluster`'s `.spec.managed.roles` stanza. Each role gets its own lifecycle,
+    status, and RBAC, which suits GitOps workflows and lets role definitions live
+    next to the applications that own them. The spec reuses the same
+    `RoleConfiguration` structure as the inline method, so migrating a role is a
+    matter of moving the stanza into its own manifest. A
+    `databaseRoleReclaimPolicy` field (`retain`, the default, or `delete`)
+    controls what happens to the role when the resource is deleted, mirroring
+    persistent volumes.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/6155">#6155</a>
+  type: Feature
+  impact: High
+
+- relnote: |
+    TLS client certificates for declarative roles
+  details: |
+    a `DatabaseRole` can now include a `clientCertificate` block to have the
+    operator automatically generate and renew a TLS client certificate, signed by
+    the cluster's client CA and stored in a `<databaserole-name>-client-cert`
+    Secret. This enables password-free PostgreSQL `cert` authentication; the
+    Secret is cleaned up when the feature is disabled or the `DatabaseRole` is
+    deleted.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10896">#10896</a>
+  type: Feature
+  impact: High
+
+- relnote: |
+    PgBouncer image management via image catalogs
+  details: |
+    the `Pooler` resource can now reference an entry in an `ImageCatalog` or
+    `ClusterImageCatalog` through the new `spec.pgbouncer.imageCatalogRef` field,
+    centralizing PgBouncer image management. When a catalog entry is updated, all
+    referencing `Poolers` are automatically reconciled and roll out the new image
+    without any change to their spec. The resolved image is reported in
+    `status.image`, and a new `status.phase` (`active`, `paused`, `inactive`, or
+    `failed`), also surfaced as a `Phase` column in `kubectl get pooler`,
+    summarizes the lifecycle.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10568">#10568</a>
+  type: Feature
+  impact: High
+
+- relnote: |
+    Enabled `pg_upgrade` in-place major upgrades to PostgreSQL 19 or later for
+    clusters that use Image Volume extensions, building on the extension-path
+    support added to `pg_upgrade` in PostgreSQL 19.
+  details: |
+    During the upgrade `Job`, the source- and target-version extension images are
+    mounted side by side, so the old server keeps its libraries and a failed
+    upgrade reverts cleanly.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10366">#10366</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    Added TLS support for the `Pooler` metrics endpoint via
+    `.spec.monitoring.tls.enabled`.
+  details: |
+    When enabled, the metrics server is served over HTTPS, reusing the certificate
+    and key from `.spec.pgbouncer.clientTLSSecret` and reloading it on every
+    handshake to support rotation without a restart; the generated `PodMonitor`
+    scrapes over `https` accordingly.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10466">#10466</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    Added a label selector to the `Cluster` scale subresource (`status.selector`),
+    making a `Cluster` a valid `targetRef` for the Vertical Pod Autoscaler (VPA)
+    and Horizontal Pod Autoscaler (HPA), which can now map a `Cluster` to its
+    instance pods.
+  details: |
+    Contributed by @sebv004.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/8996">#8996</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    The operator now emits a `Warning` `PrimaryStatusCheckFailed` event on the
+    `Cluster` when the primary pod is `Ready` from the kubelet perspective but the
+    operator's `/pg/status` check fails and failover is deferred, giving users
+    visibility into the deferral via `kubectl describe cluster`.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10509">#10509</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    Added the `ENABLE_WEBHOOK_NAMESPACE_SUFFIX` flag, which suffixes the
+    operator's webhook configuration names with `-<OPERATOR_NAMESPACE>` so that
+    multiple operator instances can coexist on the same cluster.
+  details: |
+    The operator only looks up these configurations; users must create and
+    maintain them. Contributed by @maxlengdell.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10420">#10420</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    The operator now reloads a CNPG-i plugin automatically when its pods are
+    rolled: it watches the `EndpointSlices` backing plugin `Services` and
+    re-enqueues every cluster using the plugin once the new pods become `Ready`,
+    so an upgraded plugin is picked up without waiting for the next resync.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10836">#10836</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    Instance serial numbers are now assigned by reusing the lowest free slot among
+    existing instance names, instead of always incrementing a global counter.
+  details: |
+    Pod and PVC names stay stable across instance recreation (for example, an
+    instance recreated after a node drain comes back with the same name), and
+    serials freed by deleted instances are reclaimed. A new `Initialized` cluster
+    condition reports whether the cluster has completed its first bootstrap, and
+    `status.latestGeneratedNode` is deprecated: it is no longer written, but is
+    preserved on the CRD for backward compatibility.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10548">#10548</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    Defaulting and validation now run during reconciliation as a fallback when
+    admission webhooks are unavailable, or configured to ignore failures, so the
+    operator no longer reconciles invalid or incomplete specs.
+  details: |
+    Missing defaults are applied directly, and validation failures are surfaced in
+    the resource status instead of failing silently later.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10874">#10874</a>
+  type: Enhancement
+  impact: High
+
+- relnote: |
+    `CVE-2026-55769` / `GHSA-x8c2-3p4r-v9r6`: `search_path` pinning on
+    operator-issued connections
+  details: |
+    a database owner could plant overloaded built-in operators in the `public`
+    schema and alter the `search_path` so that operator introspection probes,
+    running as the cluster superuser, resolved those overloads before
+    `pg_catalog`, a `CWE-426` privilege-escalation chain (same class as
+    `CVE-2018-1058`) that could lead to in-pod RCE via `COPY ... FROM PROGRAM`.
+    The operator now pins `search_path = pg_catalog, public, pg_temp` on every
+    pooled connection so it ships in the startup message and takes precedence over
+    tenant-controlled defaults.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10774">#10774</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/security/advisories/GHSA-x8c2-3p4r-v9r6">GHSA-x8c2-3p4r-v9r6</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    `GHSA-7qwx-x8ff-3px9`: authenticated operator-to-instance-manager calls
+  details: |
+    the instance manager's remote webserver relied on network isolation rather
+    than authentication for its operator-only control endpoints, so any party able
+    to reach the pod's status port could invoke them, disrupting backup
+    orchestration and WAL archival and reading operational metadata. (The upgrade
+    endpoint is SHA-256-pinned, so this did not permit arbitrary code execution.)
+    The operator now generates an in-memory ECDSA P-256 client certificate at
+    startup and reconciles its SHA-256 fingerprint into the cluster status; the
+    instance manager rejects requests to sensitive endpoints that do not present a
+    matching certificate. This hardening is not backported; earlier releases
+    should continue to restrict the status port with a `NetworkPolicy`.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10579">#10579</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/security/advisories/GHSA-7qwx-x8ff-3px9">GHSA-7qwx-x8ff-3px9</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    `CVE-2026-55765` / `GHSA-w3gf-xc94-wvmj`: operator-side SCRAM-SHA-256 password
+    encoding
+  details: |
+    the operator now SCRAM-SHA-256 encodes cleartext role passwords before issuing
+    `CREATE`/`ALTER ROLE ... PASSWORD`, so the literal PostgreSQL parses (and that
+    extensions such as `pg_stat_statements` or `pgaudit` may capture) is the SCRAM
+    verifier rather than the cleartext secret. Pre-hashed (MD5 or SCRAM) values
+    are forwarded unchanged, and the per-Secret annotation
+    `k8s.enterprisedb.io/passwordPassthrough: "enabled"` opts out.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10724">#10724</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/security/advisories/GHSA-w3gf-xc94-wvmj">GHSA-w3gf-xc94-wvmj</a>
+  type: Security
+  impact: High
+
+- relnote: |
+    Added support for Kubernetes 1.36.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10900">#10900</a>
+  type: Change
+  impact: High
+
+- relnote: |
+    Updated the default PostgreSQL version to 18.4.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10719">#10719</a>
+  type: Change
+  impact: High
+
+- relnote: |
+    Updated the Kubernetes versions used to test the operator on public cloud
+    providers.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10720">#10720</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10563">#10563</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11033">#11033</a>
+  type: Change
+  impact: High
+
+- relnote: |
+    Fixed declarative `Database`, `Publication`, and `Subscription` objects
+    reporting a stale primary-side status forever after their cluster was demoted
+    to a replica; the controller now re-checks the replica condition and watches
+    the `Cluster` so a demotion is detected promptly.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10871">#10871</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed non-sequential pod names (for example `-1`, `-3`) caused by the instance
+    serial counter being advanced before the corresponding `Job` and PVCs were
+    created; the bump is now persisted only after those resources exist.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10491">#10491</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed deletion of a `Database`, `Publication`, or `Subscription` getting stuck
+    in `Terminating` on a replica cluster, where the replica gate ran before the
+    finalizer reconciler and the finalizer was never released.
+  details: |
+    On a replica the PostgreSQL object is left to the primary cluster.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10853">#10853</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a conflicting duplicate `Database` or `Subscription` with a `delete`
+    reclaim policy dropping the PostgreSQL object owned by the surviving CR; the
+    drop is now gated on a recorded reconciliation.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10870">#10870</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed the `postgres` superuser being left locked out after superuser access
+    was disabled and then re-enabled, because the cached secret version was not
+    invalidated and the password was never re-applied.
+  details: |
+    Diagnosed by @mhartmann-jaconi.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10834">#10834</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed backups getting stuck in the `started` phase when the instance manager
+    running them was restarted (for example by the in-place upgrade following an
+    operator upgrade) before the backup reached `running`; the reconciliation is
+    now rescheduled so the lost session is detected.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10859">#10859</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed `exec`/`attach` streaming to negotiate WebSocket with a SPDY fallback,
+    restoring compatibility both with Kubernetes versions that have removed SPDY
+    and with platforms such as OpenShift that reject WebSocket exec upgrades.
+  details: |
+    Contributed by @bartscheers.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10876">#10876</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10933">#10933</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed resource leaks when concurrent `Backup` objects raced: backups now run
+    in strict creation-time order, so an already-executing backup is never
+    preempted by a newer one and its replication slot and PostgreSQL session are
+    no longer orphaned on the primary.
+  details: |
+    Contributed by @GabriFedi97.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10747">#10747</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed role reconciliation clearing the password on a PostgreSQL role when the
+    referenced Secret could not be fetched; the role is now left untouched until
+    the Secret becomes available, and per-action errors are aggregated for better
+    visibility.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10053">#10053</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a bootstrap failure where a metrics-exporter setup error (commonly a
+    duplicate-key race with the controller) rolled back `streaming_replica`
+    creation and wedged replica joins.
+  details: |
+    The metrics-exporter step now runs in a separate transaction. Contributed by
+    @BlaiseAntony.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10749">#10749</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a `ScheduledBackup` controller loop that occurred when a `Backup` was
+    created but its status patch never landed; the controller now adopts an
+    existing `Backup` for the next iteration instead of looping on
+    `AlreadyExists`.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10612">#10612</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a nil-pointer panic when reconciling a `Pooler` whose `Cluster` has been
+    deleted.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10667">#10667</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed bootstrap log handling so that all named log pipes (`postgres`,
+    `postgres.csv`, and `postgres.json`) get consumers during
+    `WithActiveInstance`, preventing regular files from being created in place of
+    the named pipes.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10043">#10043</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed generation of invalid IPv6 URLs by wrapping the address in square
+    brackets.
+  details: |
+    Contributed by @Infinoid.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10682">#10682</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed an external cluster plugin still being treated as active when its
+    configuration set `enabled: false`.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10932">#10932</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a race during bootstrap recovery from an object store where the restore
+    job could read a stale `Cluster` (primary not yet recorded and timeline still
+    unset) and have its `.history` files rejected by the split-brain guard.
+  details: |
+    When this happened, recovery stopped at the base backup's timeline and
+    silently dropped transactions committed on later timelines. History files are
+    now allowed while the cluster timeline is unset. Contributed by @dennispidun.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10818">#10818</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a race where deleting an instance's PVCs could leave the instance
+    permanently stuck: if the data PVC was removed while a WAL PVC was still
+    terminating, the operator recreated the instance bound to the terminating
+    volume, leaving the Pod unschedulable and blocking all further reconciliation.
+  details: |
+    The operator now waits for terminating PVCs to be fully removed before
+    recreating or reattaching an instance, and surfaces the wait through a log
+    line and the cluster phase.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11017">#11017</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a cache race during cluster creation when the server and client CA
+    resolve to the same Secret (the default): a stale informer cache triggered a
+    redundant `Create` that failed with `AlreadyExists` and could leave the
+    cluster stuck in `Unable to create required cluster objects`.
+  details: |
+    The operator now reuses the already-fetched CA Secret when the names match.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10989">#10989</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed the `pg_basebackup` bootstrap path overwriting or failing on a
+    pre-existing `PGDATA` (for example after a replica Pod restart) by enforcing
+    the same pre-flight directory check already applied by the other bootstrap
+    methods; this also protects statically provisioned PVCs from being silently
+    overwritten.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11006">#11006</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed the `Cluster` phase flapping between `Healthy` and a plugin-failure
+    phase when a post-reconcile plugin hook returned an error; the `Healthy` phase
+    is now registered as the last step of a successful reconciliation, so a loop
+    that ends in a plugin error never reports `Healthy`.
+  details: |
+    Contributed by @GabriFedi97.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10421">#10421</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed stale certificate data and partial reads after an external server's
+    Secret was rotated (for example a CA bundle shrinking from two certificates to
+    one): the file is now written atomically, so libpq always reads either the old
+    or the new value, never a mix.
+  details: |
+    Contributed by @Anand-240.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10975">#10975</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed plugin connectivity to use the plugin `Service` FQDN instead of its
+    short name, avoiding failures when a cluster-level proxy is automatically
+    injected into pods.
+  details: |
+    Contributed by @kdautrey.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10921">#10921</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed excessive operator log noise from the per-request `Cluster`
+    create/update validation webhook messages, now logged at `debug` instead of
+    `info`.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10984">#10984</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed `spec.postgresql.parameters` accepting keys that are not valid
+    PostgreSQL parameter names, which could inject arbitrary directives into
+    `postgresql.conf`; key names are now validated by the webhook.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11029">#11029</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a switchover deadlock when a WAL-archiver plugin was enabled on an
+    existing cluster: with `primaryUpdateMethod: switchover` the primary could not
+    be rolled out because a clean demotion needs the archiver sidecar that is
+    still missing.
+  details: |
+    The operator now recreates the primary Pod in place so the sidecar is injected
+    and archiving resumes. The check also covers plugins that inject the archiver
+    as a native sidecar (an init container with `restartPolicy: Always`), such as
+    the Barman Cloud plugin.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11032">#11032</a>, <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11059">#11059</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a cluster staying in `Setting up primary` indefinitely when the
+    instance-creation Job exhausted its backoff limit; the operator now detects
+    the terminal Job failure and marks the cluster unrecoverable, naming the
+    failed Job and pointing to its logs.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11035">#11035</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a first-primary bootstrap deadlock where a status-patch conflict after
+    the data PVC was created but before the initialization Job was started left
+    the orphan Pending PVC counted as an instance, blocking the bootstrap gate;
+    the PVC-state reconciler now recreates the bootstrap Job reusing the assigned
+    serial.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11039">#11039</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed external cluster names and secret selector references being joined into
+    filesystem paths without validation, letting a `..` component or path
+    separator escape the external secrets directory when the instance manager
+    dumps connection material; these values are now rejected at the validating
+    webhook and re-checked at the write site.
+  details: |
+    Reported by @r0binak.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11045">#11045</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a backup getting stuck in `pending` forever: the concurrent-backup gate
+    ran on every reconcile and could overwrite an already-completed phase written
+    asynchronously by the instance manager.
+  details: |
+    The gate now runs only while the backup phase is still unset or `pending`.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11056">#11056</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a declarative `VolumeSnapshot` backup being permanently marked as failed
+    when a stale cache made the operator re-create a snapshot it had already
+    provisioned, failing with `AlreadyExists`.
+  details: |
+    The operator now tolerates the collision when the existing snapshot carries
+    this backup's label and adopts it; a collision with a foreign snapshot still
+    surfaces as an error.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11071">#11071</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a volume snapshot backup being discarded on a transient instance-manager
+    connection error (for example a dial timeout from a brief pod-network
+    disruption) during the finalize step, even when its snapshots were already
+    provisioned; such network errors are now retried instead of treated as
+    terminal.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11069">#11069</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed a replica switchover losing its `status.demotionToken` when a reconcile
+    was requeued between storing the token and cleaning up the transition metadata
+    (for example a cleanup patch failing against a flaky webhook); the empty
+    no-change token is no longer patched back over the stored value.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/11075">#11075</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed `kubectl cnp psql` on Windows, where execution relied on a Unix-only
+    system call and failed with "not supported by windows"; Windows now launches
+    `kubectl exec` as a child process.
+  details: |
+    Contributed by @Utkarsh-sharma47.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10972">#10972</a>
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Fixed an unbounded memory leak in `kubectl cnp logs -f` on busy clusters,
+    where a per-log-group timer was never released; timers are now reused across
+    iterations.
+  details: |
+    Contributed by @Anand-240.
+  jira:
+  addresses: <a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/10976">#10976</a>
+  type: Bug Fix
+  impact: High
+
