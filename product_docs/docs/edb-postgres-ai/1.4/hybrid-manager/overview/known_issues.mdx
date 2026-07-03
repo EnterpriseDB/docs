@@ -956,6 +956,52 @@ Resolved in HM versions 2026.5 and later.
 
 **Workaround:** On environments where an app deployment gets stuck, delete the pending PVC in the app namespace and recreate it with `storageClassName` set to the value from `hcp.spec.globalParameters.storage_class`. Alternatively, change the cluster default StorageClass to match `hcp.spec.globalParameters.storage_class` so all new PVCs automatically use the correct storage.
 
+### OSS Library app deployment fails on GKE ARM64 when the requested storage size is less than 4Gi
+
+**Description:** On Google Kubernetes Engine (GKE) clusters running on ARM64 (`arm64`/`Tau T2A`) node pools, the default storage class is `hyperdisk-balanced`. Google Cloud enforces a hard minimum volume size of **4Gi** on `hyperdisk-balanced` volumes.
+
+If you deploy an OSS Library app (for example, HammerDB, pgBadger, or pgAdmin 4) and request a persistent volume smaller than 4Gi, provisioning fails at the storage layer. The following happens:
+
+- The app's `PersistentVolumeClaim` (PVC) stays in a `Pending` state indefinitely.
+- The app never reaches the `Ready` status in **Estate > Apps**.
+- Describing the PVC (`kubectl describe pvc <pvc-name> -n <app-namespace>`) shows a `ProvisioningFailed` event with an error similar to:
+
+  ```output
+  failed to provision volume with StorageClass "hyperdisk-balanced":
+  rpc error: code = InvalidArgument desc = ... requested size ... is less than the minimum required size 4Gi
+  ```
+
+This issue only affects GKE clusters that use ARM64 node pools with the `hyperdisk-balanced` storage class. AMD64 (`x86_64`) node pools and other cloud providers aren't affected.
+
+**Workaround:** Before deploying an OSS Library app on a GKE ARM64 cluster, set the app's persistent volume size parameter to `4Gi` or larger:
+
+- For **HammerDB**, set the `size` parameter to `4Gi` or larger (default is `5Gi`, which already meets the minimum).
+- For **pgBadger**, set the persistence size to `4Gi` or larger (default is `1Gi`, which is below the minimum and must be increased).
+- For any other OSS Library app that provisions a persistent volume, set its storage-size field to `4Gi` or larger.
+
+If a deployment has already failed because of this issue, delete the app and redeploy it with a storage size of `4Gi` or greater.
+
+### HammerDB app doesn't become healthy on GKE ARM64 due to missing ARM64 toleration
+
+[UPM-118869]: #
+
+**Description:** On Google Kubernetes Engine (GKE) clusters that use ARM64 (`arm64`/`Tau T2A`) node pools, the HammerDB OSS Library app can't be scheduled onto ARM64 worker nodes. GKE ARM64 nodes are tainted (typically with `kubernetes.io/arch=arm64:NoSchedule`) so that only pods that explicitly tolerate ARM64 architecture are scheduled onto them. The HammerDB pod spec shipped with the OSS Library package currently doesn't include this toleration.
+
+As a result, when you deploy HammerDB on a GKE ARM64 cluster:
+
+- The HammerDB pod stays in a `Pending` state.
+- The HammerDB app never reaches the `Ready` status in **Estate > Apps**.
+- Running `kubectl describe pod <hammerdb-pod> -n <app-namespace>` shows a scheduling event similar to:
+
+  ```output
+  0/N nodes are available: N node(s) had untolerated taint {kubernetes.io/arch: arm64}. 
+  preemption: 0/N nodes are available: N Preemption is not helpful for scheduling.
+  ```
+
+This behavior is specific to GKE ARM64 clusters. Other OSS Library apps and other architectures (AMD64/`x86_64`) aren't affected. All other supported HM environments (GKE AMD64, AKS, EKS, RKE, OpenShift, self-managed Kubernetes) work as expected.
+
+**Workaround:** There's no supported workaround at this time. Don't deploy the HammerDB OSS Library app on GKE ARM64 clusters until this issue is resolved. If you need to run HammerDB benchmarks against a PostgreSQL cluster hosted on GKE ARM64, deploy the HammerDB app onto a project that runs on an AMD64 node pool and point it at the target PostgreSQL cluster using its connection string. EDB is tracking this issue as [UPM-118869] and will deliver the fix in a future release.
+
 ## Clusters and upgrades
 
 ### Upgrade to version 2026.4 fails due to immutable `fluent-bit-k8s-events` StatefulSet
