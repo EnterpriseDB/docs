@@ -28,10 +28,10 @@ Both approaches install the operator via OLM, so it appears in the OpenShift con
 - A container registry your cluster can pull from (referred to below as `<your-registry>`).
 - `oc` and, depending on the approach, the [`oc-mirror` plugin v2](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/about-installing-oc-mirror-v2) (approach A) or the [`opm` CLI](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/cli_tools/opm-cli) plus a container build tool (approach B).
 - The HM **platform images** (the data-plane container images the operator deploys) synced into `<your-registry>`. These aren't part of any operator catalog; sync them as described in [Syncing images to a local private registry](./sync_images).
-- **cert-manager** — the HM operator depends on the cert-manager API (see the note below).
+- **cert-manager (required)** — install the Red Hat cert-manager Operator with the **All namespaces** install mode, from the catalog, **before** installing the HM operator (see the note below).
 
-!!! Note cert-manager install mode
-The `edb-hcp-operator` bundle requires the `cert-manager.io` API. You don't need to install cert-manager yourself — if it isn't present, OLM installs it automatically as a dependency (as long as a catalog that offers cert-manager, such as the Red Hat operator catalog, is available on the cluster). But if cert-manager **is** already installed, it must use the **All namespaces** install mode (an empty `spec` on its `OperatorGroup`): OLM reuses a cluster-wide cert-manager, but if it's scoped to a single namespace (OwnNamespace) OLM attempts to install a second, conflicting cert-manager.
+!!! Note Install cert-manager first
+cert-manager is a required dependency of the HM operator, and a missing or namespace-scoped cert-manager is one of the most common causes of HM-on-OpenShift install failures. Install the Red Hat cert-manager Operator from the catalog with the **All namespaces** install mode (an empty `spec` on its `OperatorGroup`) before you install the HM operator. OLM can also pull cert-manager in automatically as a dependency, but pre-installing it AllNamespaces is the reliable path: OLM reuses a cluster-wide cert-manager, whereas a namespace-scoped (OwnNamespace) one makes OLM attempt a second, conflicting install.
 !!!
 
 * * *
@@ -42,19 +42,30 @@ EDB publishes `edb-hcp-operator` to the Red Hat **certified-operators** catalog,
 
 ### 1. Add the operator to your ImageSetConfiguration
 
-Add `edb-hcp-operator` to the `certified-operator-index` entry of your `ImageSetConfiguration`. The catalog tag matches your cluster's OpenShift minor version — `v4.22` is used as the example throughout this page. With only a channel specified, `oc mirror` mirrors the current head of that channel:
+Add `edb-hcp-operator` — plus the HM operator dependencies you need — to your `ImageSetConfiguration`. The catalog tag matches your cluster's OpenShift minor version (`v4.22` is the example used throughout this page). Confirm each operator's channel for your OpenShift version in OperatorHub, as channels vary:
 
 ```yaml
 mirror:
   operators:
+  - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.22
+    packages:
+    - name: openshift-cert-manager-operator   # required — install AllNamespaces before the HM operator
+      channels:
+      - name: stable-v1
+    - name: nfd                               # AI scenario only
+      channels:
+      - name: stable
   - catalog: registry.redhat.io/redhat/certified-operator-index:v4.22
     packages:
     - name: edb-hcp-operator
       channels:
       - name: stable
+    - name: gpu-operator-certified            # AI scenario only
+      channels:
+      - name: v26.3
 ```
 
-To pin or bound the versions mirrored, add `minVersion`/`maxVersion` under the package or channel.
+With only a channel specified, `oc mirror` mirrors the current head of that channel; to pin or bound versions, add `minVersion`/`maxVersion`. Omit `nfd` and `gpu-operator-certified` unless you're enabling the AI scenario (see [Operators HM installs during deployment](#operators-hm-installs-during-deployment)).
 
 ### 2. Disable signature mirroring for the partner registry
 
@@ -246,6 +257,21 @@ Watch the install and confirm the CSV reaches `Succeeded`:
 ```bash
 oc get csv -n edb-hcp-operator-system -w
 ```
+
+* * *
+
+## Operators HM installs during deployment
+
+If you enable the **AI scenario** (GPU/AI workloads), HM — once running — installs two more OpenShift operators through OperatorHub, with automatic approval:
+
+- **Node Feature Discovery (`nfd`)** — from the `redhat-operators` catalog (namespace `openshift-nfd`).
+- **NVIDIA GPU Operator (`gpu-operator-certified`)** — from the `certified-operators` catalog (namespace `nvidia-gpu-operator`).
+
+On disconnected/air-gapped OpenShift these must already be **mirrored into your environment** (the same way as the HM operator), or the HM deployment **hangs** waiting for them to install. Mirroring is sufficient — HM approves the installs automatically — but **pre-installing them from the catalog beforehand is a good reliability step** that avoids having to triage a stuck deployment. They come from the Red Hat catalogs regardless of how you installed the HM operator: approach B only changes where the *EDB* operator comes from, not `nfd`/`gpu-operator-certified`.
+
+!!! Note
+`nfd` and `gpu-operator-certified` are needed **only if you enable the AI scenario**. A deployment without GPU/AI workloads doesn't require them, and they can be left out of the mirror set.
+!!!
 
 * * *
 
