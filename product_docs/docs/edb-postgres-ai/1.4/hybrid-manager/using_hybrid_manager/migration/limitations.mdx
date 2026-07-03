@@ -1,0 +1,490 @@
+---
+title: Known issues, limitations, and notes
+navTitle: Limitations
+description: Review unsupported data types and features.
+deepToC: true
+redirects:
+- /edb-postgres-ai/migration-etl/data-migration-service/limitations
+---
+
+These are the known issues, limitations, and notes for:
+
+-   [Data migration limitations](#data-migration-limitations)
+
+-   [Oracle limitations](limitations.mdx#oracle-limitations)
+
+-   [Postgres limitations](limitations.mdx#postgres-limitations)
+
+-   [Schema ingestion known issues](#schema-ingestion-known-issues)
+
+-   [HM Migration Portal known issues](#hm-migration-portal-known-issues)
+
+-   [Other known issues](#other-known-issues)
+
+## Data migration limitations
+
+### Case sensitivity in object names
+
+!!!tip 
+Resolved in HM versions 2025.11 and later.
+!!!
+
+[ET-1545]: #
+
+EDB DMS doesn’t currently support migrating schemas, tables, and columns that have case-sensitive names.
+
+### Upgraded destinations clusters
+
+[limitation]: #
+
+You can't use clusters provisioned in Hybrid Manager (HM) versions 1.2 and earlier as migration destinations after you upgrade the HM instance to version 1.3 or later. You must create a new cluster in the upgraded environment to use it as a valid migration destination.
+
+### Considerations and limitations for multiple migrations to a single destination
+
+[limitation]: #
+
+The DMS supports running multiple data migrations from one source to one destination database, but certain restrictions apply.
+
+- **Table usage**: You can actively use each destination table only in a single migration at any given time. 
+
+- **Unique resourceID (applies to migrations to external destinations)**: When running multiple migrations to an external destination, you must assign a unique resourceID to each instance of the EDB DMS agent in writer mode with the `DBCONFIG_DATABASES_0__RESOURCEID=${Resource_ID}` parameter. Setting this parameter prevents concurrent migrations from attempting to use the same table simultaneously, which can cause data loss or duplication.
+
+  !!!note
+  This resourceID requirement doesn't apply to migrations targeting HM-managed Postgres instances.
+  !!!
+
+- **Performance planning (applies to migrations to external destinations)**: While performance generally remains strong with the [recommended specifications](specs), if you run five or more migrations to the same external destination database, to prevent resource contention, consider allocating additional CPU, memory, and volume IOPS/throughput to the destination. This is especially important if the destination is an external database. 
+
+- **Resource management**: Each migration job requires a dedicated, non-concurrent use of the necessary DMS agent components.
+
+  DMS agent in reader mode (source): Don't use a single running instance of the EDB DMS agent in reader mode for more than one concurrent migration from the same source database. The HM console removes a source database from the available list once it's active in a migration.
+  However, you can use a single DMS agent in reader mode for subsequent migrations or for concurrent migrations from different source databases. 
+
+  DMS agent in writer mode (external destination): Each migration requires its own instance of the DMS agent in writer mode, even if the migration shares the same destination as another migration.
+
+### Postgres-specific schema object types aren't migrated by DMS at schema migration time
+
+!!!tip
+Resolved in HM versions 2026.5 and later.
+!!!
+
+[ET-5334]: #
+
+**Description:** Postgres schema migration support is limited to simple databases with tables only. DMS is currently unable to migrate some object types and has issues with the order in which objects are migrated.
+
+**Workaround:** Migrate the schema manually and use DMS in data-only migration mode.
+
+## Oracle limitations
+
+### Unsupported Oracle data types
+
+[limitation]: #
+
+A limited number of Oracle data types and features aren't supported by EDB DMS.
+
+See the [Debezium documentation](https://debezium.io/documentation/reference/3.2/connectors/oracle.html#oracle-data-type-mappings) for detailed comments on supported data types.
+
+Unsupported Oracle data types include:
+
+-   BFILE
+-   LONG
+-   LONG RAW
+-   RAW
+-   UROWID
+-   User-defined types (REF, Varrays, Nested Tables)
+-   ANYDATA
+-   XMLTYPE
+-   Spatial
+
+EDB DMS supports replicating Oracle tables that contain BLOB, CLOB, or NCLOB columns only if these also have the primary key constraint. If the tables don't have the primary key constraint, the streaming replication supports only INSERT operations.
+
+`BINARY_FLOAT` and `BINARY_DOUBLE` types in Oracle that might contain `Nan`, `+INF`, and `-INF` values aren't supported by EDB DMS.
+
+EDB DMS doesn't support values containing a null character (0x00) for text field types like `VARCHAR` and `CLOB` in Oracle.
+
+### Oracle 21c databases
+
+[PROD-386, MIG-7544]: #
+
+The DMS agent supports migrating Oracle 21c databases. However, Migration Portal doesn't. This means that to migrate 21c databases, you must manually perform the schema migration.
+
+### Oracle XE compatibility restrictions
+
+[limitation]: #
+    
+Oracle XE (Express Edition) does not support enabling supplemental logging at the database level. Because this is a core requirement for Change Data Capture (CDC), EDB DMS is not fully compatible with Oracle XE as a source database.
+
+- Expected errors &mdash; When using Oracle XE, the DMS Agent (reader) will typically fail and log exceptions similar to - Debezium consumer $NAME stopped with exception: an exception occurred in the change event producer. This connector will be stopped.
+
+- Limited functionality &mdash; Only snapshot-only migrations are expected to function. Even during successful snapshots, Debezium error messages may still appear in the logs.
+
+- Usage policy &mdash; Snapshot-only migrations on Oracle XE are suitable only for testing or evaluation purposes. This configuration is not supported for production use cases.
+
+### Unqualified object references in migrated PL/SQL bodies
+
+[ET-5742]: #
+
+**Description:** When DMS translates Oracle triggers, procedures, functions, and packages to EDB Postgres Advanced Server (EPAS), the translated PL/SQL bodies retain unqualified object references from the Oracle source.
+
+Oracle and EPAS resolve unqualified names differently:
+
+- **Oracle**: Unqualified references inside a PL/SQL body resolve to the definer's schema (the schema that owns the object), regardless of who invokes it.
+- **EPAS**: Unqualified references resolve at execution time using the caller's `search_path`. If the calling session's `search_path` doesn't include the migrated schema, references fail at runtime.
+
+The schema migration itself succeeds because the DMS agent sets `search_path` explicitly when executing each DDL statement. The failure surfaces after migration, when applications or users invoke migrated PL/SQL objects from sessions with a different `search_path`.
+
+This limitation applies only to Oracle to EPAS migrations with a migration scope of **Schema only** or **Schema and data**. It doesn't affect **Data only** migrations, where schema objects are created by the customer before migration runs and DMS doesn't generate or translate any PL/SQL bodies.
+
+**Example:**
+
+This Oracle trigger references `test_orders_seq` without a schema prefix:
+
+```sql
+CREATE TRIGGER "DEBEZIUM"."TEST_ORDERS_TRG"
+    BEFORE INSERT ON test_orders_legacy
+    FOR EACH ROW
+BEGIN
+    IF :NEW.order_id IS NULL THEN
+        SELECT test_orders_seq.NEXTVAL INTO :NEW.order_id FROM dual;
+    END IF;
+END;
+```
+
+The DDL produced by DMS on EPAS preserves the unqualified reference:
+
+```sql
+CREATE OR REPLACE TRIGGER TEST_ORDERS_TRG
+    BEFORE INSERT ON test_orders_legacy
+    FOR EACH ROW
+BEGIN
+    IF :NEW.order_id IS NULL THEN
+        SELECT test_orders_seq.NEXTVAL INTO :NEW.order_id FROM dual;
+    END IF;
+END;
+```
+
+After migration, behavior varies by caller:
+
+- Session with `search_path = debezium`: trigger executes successfully.
+- Session with default `search_path = "$user", public`: fails with `sequence "test_orders_seq" does not exist`.
+
+**Workarounds:**
+
+Choose one of the following approaches based on your environment:
+
+- **Schema-qualify the DDL (recommended)**: Before cutover, review all translated trigger, procedure, function, and package bodies and prefix unqualified object references with the source schema name. Apply the modified DDL to the destination. This approach removes the runtime dependency on `search_path`.
+
+  The following fix schema-qualifies the sequence reference inside the trigger body. The table reference in the trigger header is also qualified to make the object ownership explicit:
+
+  ```sql
+  CREATE OR REPLACE TRIGGER TEST_ORDERS_TRG
+      BEFORE INSERT ON debezium.test_orders_legacy
+      FOR EACH ROW
+  BEGIN
+      IF :NEW.order_id IS NULL THEN
+          SELECT debezium.test_orders_seq.NEXTVAL INTO :NEW.order_id FROM dual;
+      END IF;
+  END;
+  ```
+
+- **Set a default `search_path` for the role or database**: Set a persistent default so new sessions automatically include the migrated schema in `search_path`:
+
+  ```sql
+  ALTER ROLE app_user SET search_path = debezium, public;
+  -- or, database-wide:
+  ALTER DATABASE mydb SET search_path = debezium, public;
+  ```
+
+- **Set `search_path` at connection time**: Configure all application connections to include the migrated schema in `search_path`, either in the connection string (`options=-c search_path=debezium,public`) or as the first statement after connecting:
+
+  ```sql
+  SET search_path = debezium, public;
+  ```
+
+Ad-hoc sessions that connect without an explicit `search_path` (DBA sessions, monitoring tools, or BI clients) remain at risk of failures regardless of which workaround you choose.
+
+## Postgres limitations
+
+### Unsupported domain type definitions in columns
+
+!!!tip 
+Partially resolved in HM versions 2026.4 and later.
+!!!
+
+[ET-4363, partially resolved, follow-up ticket pending]: #
+
+The EDB DMS doesn't support migrating tables with columns that have user-defined domains as data types for the following data type domains:
+
+-   DATE (Support added in Innovation Release HM 2026.4)
+-   TIME (Support added in Innovation Release HM 2026.4)
+-   TIMESTAMP (Support added in Innovation Release HM 2026.4)
+-   INTERVAL (Support added in Innovation Release HM 2026.4)
+-   UUID (Support added in Innovation Release HM 2026.4)
+-   ENUM
+-   JSON (Support added in Innovation Release HM 2026.4)
+-   XML (Support added in Innovation Release HM 2026.4)
+-   POINT (Support added in Innovation Release HM 2026.4)
+-   LTREE
+-   TSVECTOR
+
+### TSVECTOR type migration workaround
+
+Although we don't support migrating `TSVECTOR` type columns, you can apply this workaround to enable their migration. For example, this `messages` table in source database contains a `TSVECTOR` column:
+
+```sql
+CREATE TABLE messages (
+    title       text,
+    body        text,
+    tsv         tsvector
+);
+```
+
+Before starting the migration, create a table in the destination database without the `TSVECTOR` column:
+
+```sql
+CREATE TABLE messages (
+    title       text,
+    body        text,
+);
+```
+
+When you perform the migration, you must exclude the `TSVECTOR` column in the HM console when you review the tables on the **Review your Tables** page by clearing the `tsv` column check box.
+
+After the migration finishes, the `title` and `body` columns are migrated to the target database. Now you can add the `TSVECTOR` column to the target table:
+
+```sql
+ALTER TABLE messages ADD COLUMN tsv TSVECTOR DEFAULT NULL;
+```
+
+Then run the following `UPDATE` statement to populate the column for all migrated data:
+
+```sql
+UPDATE messages SET tsv = to_tsvector('english', CONCAT(title, ' ', body)) WHERE tsv IS NULL;
+```
+
+### Extension migration limitations
+
+[MIG-9836]: #
+
+When migrating between any Postgres distributions, the EDB Postgres AI agent extracts all extensions installed on the source database and applies them to the destination as part of schema migration. The agent extracts whatever is installed on the source with no allowlist or denylist. The following limitations apply.
+
+- **Per-database scope**: The agent extracts extensions on a per-database basis. Extensions installed in other databases on the same Postgres server aren't included. To migrate extensions from multiple databases, run one migration per database.
+
+- **Version pinning**: The agent installs each extension at exactly the version found on the source. If that exact version isn't available on the destination, schema migration fails. When migrating between different Postgres versions or distributions, extension behavior may vary unexpectedly even if the version is available — extension compatibility across versions isn't guaranteed.
+
+- **FDW object migration**: The agent installs the foreign data wrapper (FDW) extension itself (for example, `postgres_fdw` or `oracle_fdw`), but doesn't migrate FDW objects. Foreign servers, user mappings, and foreign tables are stripped and must be recreated manually on the destination after migration.
+
+- **Extensions requiring superuser**: Extensions that require superuser to install fail silently at apply time on managed Postgres services (such as Amazon RDS or Aurora) that don't grant superuser. The migration assessment flags these extensions as `RequiresSuperuser`, but this doesn't prevent the migration from proceeding.
+
+- **Fixed-schema extensions**: Some extensions can only be installed into a specific schema and can't be placed into a different one. If the source has such an extension in a non-default schema, the agent can't replicate that schema placement on the destination.
+
+- **Extension superuser display on Postgres 10 to 12**: On Postgres 10 to 12, the migration assessment always shows extensions as requiring superuser to install, even if they don't. This is a display-only limitation with no impact on the migration itself.
+
+## Schema ingestion known issues
+
+### Reserved schema names for Postgres DDL extraction
+
+[limitation]: #
+
+The EDB Postgres AI agent uses two synthetic schema names internally during Postgres DDL extraction:
+
+- `__extensions__` — stores `CREATE EXTENSION` DDL statements
+- `__globals__` — stores global objects (roles, permissions, and memberships from `pg_dumpall`)
+
+These names are reserved and the agent rejects any user schema that conflicts with them. The double-underscore convention is intentionally chosen to avoid collision with real schema names, so this is unlikely to affect most databases.
+
+### Additional schemas ingested for EDB Postgres Advanced Server sources
+
+!!!tip 
+Resolved in HM versions 2025.11 and later.
+!!!
+
+[MIG-7055]: #
+
+When viewing the list of schemas for a source EDB Postgres Advanced Server database that you registered with the EDB Postgres AI agent, you may observe additional schemas that don't directly correspond to schemas you explicitly created. 
+These extra schemas are generated internally by EDB Postgres Advanced Server as part of its Oracle compatibility feature set to represent Oracle PACKAGE objects. 
+This is a known issue that we expect to correct in a future release. In the meantime, you can disregard these generated schemas for migration purposes.
+
+## HM Migration Portal known issues
+
+### Disabling the automatic Migration Portal project creation requires a workaround
+
+!!!tip 
+Resolved in HM versions 2026.1 and later. See [Disabling the automatic creation of Migration Portal projects](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/controlling_project_creation/#disabling-the-automatic-creation-of-migration-portal-projects) if you have version 2026.1 or later.
+!!!
+
+[MIG-7388]:#
+
+There is a known issue in 2025.12 and earlier versions affecting the internal `beacon-server` service where setting the `autocreate_mp_projects: false` parameter in the ConfigMap doesn't prevent the automatic creation of Migration Portal projects.
+
+**Workaround**: To prevent the automatic creation of Migration Portal projects and enforce manual creation, set the parameter `max_automatic_project_creation_bytes` to an extremely low value, for example 1, within the `beacon-server` ConfigMap. This low threshold ensures that all schemas exceed the limit, successfully bypassing the automatic creation process.
+
+1.  Edit the `beacon-server` ConfigMap:
+
+    ```shell
+    kubectl edit configmap beacon-server-config -n upm-beacon
+    ```
+
+1.  Locate the `beacon_server.yaml` block and insert or modify the `max_automatic_project_creation_bytes` section under `server`. Set the value to an extremely low number, like 1, to ensure automatic creation is bypassed:
+
+    ```yaml
+    apiVersion: v1
+    data:
+      beacon_server.yaml: |
+      # [...]
+        server:
+        # [...]
+          migration_portal_configuration:
+            max_automatic_project_creation_bytes: 1
+    ```
+
+1.  Apply the changes by restarting the `beacon_server` deployment:
+
+    ```shell
+    kubectl rollout restart deployment upm-beacon-server -n upm-beacon
+    ```
+
+    !!!warning
+    The `upm-beacon-server` supports all database registration and schema ingestion activities across the entire HM instance using EDB Postgres AI agents. Restarting the `upm-beacon-server` will halt all _ongoing_ database registrations and schema ingestions, regardless of the project. Ensure you coordinate this restart with other users.
+    
+    Databases that already appear in the **Estate > Migrations** tab, for which schema ingestions have finished, are not affected by restarts.
+    !!!
+
+1.  You can monitor the status of your restarted service: 
+
+    ```shell
+    kubectl get pods -n upm-beacon
+    ```
+
+!!!note
+There is another currently known issue where the [HM console warning for manual Migration Portal project creation persists](#hm-warning-persists-after-manual-migration-portal-project-creation) after manually creating projects.
+!!!
+
+### HM warning persists after manual Migration Portal project creation
+
+!!!tip 
+Resolved in HM versions 2026.1 and later.
+!!!
+
+[MIG-7373]: #
+
+In versions 2025.12 and earlier, when the automatic creation of a Migration Portal project fails (for example, due to the ingested schemas exceeding the default size limit of 300 MB or a different specified limit), the HM console displays a persistent warning instructing the user to manually create the projects. This warning continues to display in the HM console even after the user has successfully created the necessary Migration Portal projects for their Oracle schemas.
+
+### Automatic Migration Portal project creation fails with invalid `resource_id` characters
+
+[MIG-7763, solution is the workaround]: #
+
+The automatic creation of Migration Portal projects fails (with error message **Failed to create**) if the `resource_id` specified for the registered Oracle database contains characters that are invalid.
+
+This failure occurs because the `resource_id` value is used in the construction of the Migration Portal project name, which currently doesn't support special characters like hyphens (-), which prevent project creation.
+
+**Workaround:** To ensure successful automatic creation of Migration Portal projects, the `resource_id` value specified in the EDB Postgres AI agent configuration for Oracle databases must conform to the following naming rules:
+
+- It can include alphanumeric characters (A–Z, a–z, 0–9).
+- It can include the underscore (_) character, but it cannot begin with an underscore.
+- It must not start with a number.
+- It must not contain special characters, such as the hyphen (-).
+
+### Migration Portal database pods fail to start after upgrade
+
+!!!tip 
+Resolved in HM versions 2026.2 and later.
+!!!
+
+[MIG-7530]: #
+
+**Description:** Following an upgrade to the 2026.1 Innovation Release, the PostgreSQL pods for the Migration Portal (for example, `mp-epas-16`, `mp-epas-17`) may enter a `CrashLoopBackOff` or `ImagePullBackOff` state. This occurs because the deployment is referencing an incorrect image digest or tag that is no longer available in the repository.
+
+**Workaround:** To resolve the error and restore the Migration Portal to a healthy state, manually delete the affected pods using `kubectl delete pod <pod-name>`. The deployment will automatically recreate the pods using the correct, updated image.
+
+### SSL connection error (x25519) when migrating schema to EPAS 18 using Migration Portal
+
+[MIG-7908]: #
+
+**Description:** When using the Migration Portal's **online schema migration** feature to target an EDB Postgres Advanced Server (EPAS) database version 18 in a FIPS-enforced environment, the connection may fail with the Migration Portal UI error: `Failed to connect: Failed to initialize pool: SSL error: Cannot decode named group: x25519`. This is due to the FIPS environment enabled for the Hybrid Manager Migration Portal.
+
+This issue occurs because Postgres 18 defaults to the `x25519` SSL group, which is currently not supported by certain components used by the Migration Portal application. This issue specifically affects the **Online Migration** option, where the destination database is either an HM-managed EPAS database cluster or self-managed EPAS database.
+
+**Workaround:** To resolve the connection failure, you must manually update the supported SSL groups list on the destination database cluster to include only FIPS-compliant NIST curves (such as `prime256v1`).
+
+<details><summary>Configuration example on an HM-managed EPAS database cluster version 18</summary> 
+
+1.  In the HM console, select the project that hosts the destination cluster. 
+1.  Select **Clusters** > **Postgres Clusters** and select your version 18 cluster.
+1.  Select **Quick Actions** > **Edit Cluster** and then navigate to **DB Configuration** tab.
+1.  Locate the `ssl_groups` parameter.
+1.  Change the value from the default to `prime256v1`.
+1.  Save the changes and allow the cluster to reconcile.
+
+After the cluster is updated, retry the connection test in the Migration Portal online schema migration.
+
+</details> 
+
+<br/>
+
+<details><summary>Configuration example on a self-managed EPAS database version 18</summary> 
+
+1.  Edit the `postgresql.conf` file, locate the `ssl_groups` parameter and change it to `prime256v1`. 
+
+1.  Load the new configuration by restarting the Postgres service with `systemctl`, using `psql`, or a method of your preference.
+
+After the cluster is updated, retry the connection test in the Migration Portal online schema migration.
+
+</details> 
+
+<br/>
+
+### Automatic Migration Portal project creation fails with "UNAVAILABLE: unresolved address"
+
+!!!tip
+Resolved in HM versions 2026.4 and later.
+!!!
+
+[MIG-7969]: # 
+
+**Description:** The automatic creation of Migration Portal projects may fail with an internal server error: `rpc error: code = Internal desc = Internal server error occurred: UNAVAILABLE: unresolved address`. This is typically caused by a transient network resolution issue between the Hybrid Manager components and the Migration Portal service.
+
+**Workaround:** If you encounter this error, use one of the following methods to resolve it:
+
+- Manual creation: Wait 20–40 minutes for network states to stabilize, then manually create the Migration Portal project through the HM console.
+
+- Resource ID reset: Modify the `resource_id` in your `beacon_agent.yaml` configuration file (to any new ID assigned by yourself) and restart the EDB Postgres AI agent, or create a new project and map the agent to that new project to trigger a fresh synchronization.
+
+### Upgrade to version 2026.4 fails due to immutable `ragchew-ai-vendor-secrets` secret
+
+[MIG-8373]: #
+
+**Description:** When upgrading HM to version 2026.4, the upgrade process may fail with a `Failed to install component` error for `edb-migration-copilot`. This occurs because the upgrade attempts to change the `type` field of the existing `ragchew-ai-vendor-secrets` Kubernetes Secret in the `edb-migration-copilot` namespace. The `type` field is immutable once a Secret is created, causing the Kubernetes API server to reject the update with the error: `Secret "ragchew-ai-vendor-secrets" is invalid: type: Invalid value: "Opaque": field is immutable`.
+
+**Workaround:** Before upgrading to 2026.4, manually delete the secret `ragchew-ai-vendor-secrets` in the `edb-migration-copilot` namespace. The operator will recreate it with the correct type during the upgrade:
+
+```shell
+kubectl delete secret ragchew-ai-vendor-secrets -n edb-migration-copilot
+```
+
+### SQL file assessment defaults to `Oracle_19c` as the source database type
+
+!!!tip
+Resolved in HM versions 1.4.0 and later.
+!!!
+
+[MIG-8336]: #
+
+**Description:** When uploading a SQL file for an Application Migration assessment, the HM console doesn't associate the source database resource ID with the uploaded file. Because no resource ID is provided, `upm-beacon` sends the assessment request to the Migration Portal with the source database version set to `UNKNOWN`. The Migration Portal then defaults to `Oracle_19c` as the source database type when processing the assessment. As a result, assessments may not accurately reflect the compatibility rules for your actual source database version. Additionally, at least one project must exist in the Migration Portal for the application SQL assessment to complete without errors.
+
+**Workaround:** Ensure at least one project exists in the Migration Portal before initiating an Application Migration assessment via SQL file upload. A fix that associates source database resource IDs with uploaded SQL files is being tracked for a future release.
+
+## Other known issues
+
+### Data migrations supported without a Load Balancer in RHOS environments only
+
+!!!tip
+Resolved in HM versions 2026.1 and later.
+!!!
+
+[ET-4075]: #
+
+**Description**: The primary method for exposing Kafka (which is required for data migrations) within Hybrid Manager is via Load Balancers (an exception is the RHOS environment, where a native route is used to expose Kafka). 
+Therefore, in non-RHOS environments where the Load Balancer is disabled, the data migration workflows will not function, as there is no fallback mechanism to support exposing Kafka using NodePort mode.
+
+**Workaround**: To enable data migration workflows in non-RHOS environments such as RKE, you must configure a Load Balancer.

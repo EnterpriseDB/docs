@@ -1,0 +1,111 @@
+---
+title: EDB Knowledge Base
+navTitle: EDB Knowledge Base
+description: Langflow component that performs semantic similarity search, optionally combined with column filtering, against an AIDB knowledge base in a Hybrid Manager cluster.
+deepToC: true
+---
+
+The **EDB Knowledge Base** component runs a semantic similarity search against an existing [AIDB knowledge base](/aidb/latest/knowledge-bases) in a Hybrid Manager (HM) cluster, with optional structured filtering on the knowledge base's source-table columns.
+
+## Choosing the right component
+
+Use the EDB Knowledge Base component when:
+
+-   You're building a RAG flow that retrieves relevant passages by similarity before passing them to a generation step.
+-   You want an agent tool that looks up information in a knowledge base on demand. The component is tool-mode compatible.
+-   You want hybrid search: semantic ranking combined with a structured filter on the knowledge base's source-table columns.
+
+Use a different component if:
+
+-   You need to manage pgvector index structure (create, drop, rebuild HNSW or IVFFlat indexes) on an existing vector column. Use [EDB Vector Index](vector-index).
+-   You need direct SQL access to a database, not similarity search. Use [EDB Database](database).
+-   The knowledge base doesn't exist yet. Create one through [Pipeline Designer](/edb-postgres-ai/current/hybrid-manager/ai-factory/pipeline-designer/) or by calling `aidb.create_table_knowledge_base()` against the cluster.
+
+## Prerequisites
+
+-   The Project Viewer role on the project that owns the cluster:
+
+    -   Project > **Users** > **Assign Project Roles** > **Project Viewer**.
+
+-   An HM cluster with at least one AIDB knowledge base. Create one through [Pipeline Designer](/edb-postgres-ai/current/hybrid-manager/ai-factory/pipeline-designer/) or directly via `aidb.create_table_knowledge_base()`. The knowledge base's source can be a table (filtering supported) or a volume (semantic-only).
+
+-   An HM machine-user access key and the database user/password saved in Langflow as [Global Variables](https://docs.langflow.org/configuration-global-variables).
+
+## Inputs
+
+### Connection
+
+| Field                              | Type     | Required | Default          | Notes                                                                                |
+|------------------------------------|----------|----------|------------------|--------------------------------------------------------------------------------------|
+| **Connection Mode**                | Dropdown | Yes      | Hybrid Manager   | `Hybrid Manager` or `Direct Connection`. Switches the connection fields that follow. |
+| **Hybrid Manager URL**             | Text     | No       |                  | Advanced. Override the default HM URL.                                               |
+| **HM Machine User Key**            | Secret   | Yes      | `HM_API_KEY`     | Defaults to the global variable named `HM_API_KEY`.                                  |
+| **Hybrid Manager Project**         | Dropdown | Yes      |                  | Populated from your HM projects.                                                     |
+| **Hybrid Manager Database**        | Dropdown | Yes      |                  | The cluster containing the knowledge base.                                           |
+| **Database Group**                 | Dropdown | No       |                  | Cluster group, for example primary or reader.                                        |
+| **Database Connection Type**       | Dropdown | Yes      |                  | For example, read or read/write.                                                     |
+| **User for the database**          | Text     | Yes      | `HM_DB_USER`     | Postgres role. Defaults to the `HM_DB_USER` global variable.                         |
+| **Password for the database**      | Secret   | Yes      | `HM_DB_PASSWORD` | Defaults to the `HM_DB_PASSWORD` global variable.                                    |
+| **Default database name override** | Text     | No       |                  | Advanced. Override the cluster default when listing databases.                       |
+| **Database Name**                  | Dropdown | Yes      |                  | The database holding the AIDB knowledge bases.                                       |
+
+In **Direct Connection** mode the HM cluster fields are replaced with **Database Host** and **Database Port**. The user, password, and name fields remain.
+
+### Knowledge base and query
+
+| Field              | Type           | Required | Default | Notes                                                                                                                     |
+|--------------------|----------------|----------|---------|---------------------------------------------------------------------------------------------------------------------------|
+| **Knowledge Base** | Dropdown       | Yes      |         | Populated from `aidb.knowledge_bases` in the selected database. Use the refresh button if you've just created one.        |
+| **Limit results**  | Integer        | Yes      | `10`    | Maximum rows to return.                                                                                                   |
+| **Query Value**    | Multiline text | Yes      |         | The natural-language query to search for. Tool-mode compatible: agents call the component with this as the tool argument. |
+
+### Search mode
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| **Search Mode** | Dropdown | Yes | `Vector Only` | `Vector Only` runs pure semantic search via `aidb.retrieve_*`. `Vector + Filter` adds a `WHERE` clause against the knowledge base's source table. Only `Vector Only` is offered when the KB's source is a volume. See [Hybrid search](#hybrid-search). |
+
+### Filter (Vector + Filter only)
+
+These fields appear only when **Search Mode** is **Vector + Filter** and the knowledge base has a table source.
+
+| Field             | Type     | Required | Default | Notes                                                                                                     |
+|-------------------|----------|----------|---------|-----------------------------------------------------------------------------------------------------------|
+| **Filter Column** | Dropdown | Yes      |         | Populated from the source table's columns.                                                                |
+| **Operator**      | Dropdown | Yes      | `=`     | See [Filter operators](#filter-operators).                                                                |
+| **Filter Value**  | Text     | Yes      |         | Value to compare against. For `IN`, supply a comma-separated list. Ignored for `IS NULL` / `IS NOT NULL`. |
+
+### Output options
+
+| Field               | Type    | Required | Default | Notes                                                                                                                                                                                                                                                                                          |
+|---------------------|---------|----------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Include Text**    | Boolean | No       | `false` | Applies in **Vector Only** mode: when on, the result includes the source-text column for each hit (uses `aidb.retrieve_text`); when off, only keys and distances are returned (`aidb.retrieve_key`). Has no effect under **Vector + Filter**, where the source-text column is always returned. |
+| **Include Columns** | Boolean | No       | `true`  | Advanced. Include source-table column metadata in the output. Tool-mode compatible.                                                                                                                                                                                                            |
+| **Add Error**       | Boolean | No       | `false` | Advanced. Surface query errors in the result instead of raising. Tool-mode compatible.                                                                                                                                                                                                         |
+
+## Outputs
+
+| Output | Type | Carries |
+|--------|------|---------|
+| **Result Table** | DataFrame | One row per match, with `key`, optional `value` (text), and `distance`. Distance is computed using the knowledge base's configured metric (Cosine, L2, or Inner Product). |
+
+## Hybrid search
+
+**Vector + Filter** combines semantic similarity with a structured `WHERE` clause against the knowledge base's source table. Use it when you want the top-K semantic matches *within* a subset of your data. For example, "the closest match in documents tagged `kind = 'policy'`".
+
+How it works:
+
+-   The component JOINs the KB's vector table with its source table on the source key column.
+-   The filter is applied in the `WHERE` clause before the order-by-distance.
+-   For HNSW-indexed vectors the component sets `hnsw.iterative_scan = relaxed_order` so the filtered search still returns useful results when the index would otherwise prune too aggressively.
+
+Hybrid search is only available when the knowledge base's source is a table. If the source is a volume, the **Search Mode** dropdown is restricted to **Vector Only** and the filter fields stay hidden.
+
+## Filter operators
+
+| Operator | Behavior |
+|----------|----------|
+| `=`, `!=`, `>`, `<`, `>=`, `<=` | Standard SQL comparison. Numeric values are passed unquoted. Non-numeric values are quoted. |
+| `LIKE` | SQL `LIKE` pattern match. Use `%` wildcards in **Filter Value**. |
+| `IN` | Comma-separated values in **Filter Value**, for example `policy, contract, memo`. |
+| `IS NULL`, `IS NOT NULL` | **Filter Value** is ignored. |

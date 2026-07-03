@@ -1,0 +1,127 @@
+---
+title: Bring your own Prometheus Operator
+navTitle: BYO Prometheus Operator
+description: Configure Hybrid Manager on Kubernetes to use a customer-managed Prometheus Operator to reconcile the HM observability stack.
+---
+
+Run **Hybrid Manager (HM)** on Kubernetes with a customer-managed **Prometheus Operator** in place of the bundled `upm-prometheus-operator` Deployment.
+
+**Scope of "BYO Operator":** Only the Prometheus Operator *control plane* (the Deployment that reconciles `monitoring.coreos.com` CRDs) is replaced. HM's `Prometheus`, `Alertmanager`, `ThanosRuler`, `ServiceMonitor`, `PodMonitor`, and `PrometheusRule` resources, together with HM's Grafana, dashboards, and alert rules, all remain HM-managed. The BYO operator reconciles HM's existing CRs instead of the bundled operator Deployment.
+
+For the bundled stack, see [Use the EDB observability stack](./use-edb-observability-stack).
+For architectural guidance, see [Monitoring Kubernetes best practices](/portal/kubernetes/learn/explained/hybrid-manager/monitor-kubernetes-best-practices).
+
+## What changes
+
+-   HM doesn't install the bundled `prometheus-operator` Deployment.
+-   Your existing Prometheus Operator Deployment is the only reconciler of HM's `monitoring.coreos.com` CRs in the HM namespaces. (On OpenShift, the built-in `openshift-monitoring` operator continues to reconcile its own namespace; your BYO operator is scoped to the HM namespaces, not cluster-wide.)
+-   Your operator must reconcile HM's CRs in the namespaces HM uses: `edb-observability` and `upm-api-pnxt-metric`.
+
+## Unsupported: the OpenShift built-in Prometheus Operator
+
+**The Prometheus Operator that ships with OpenShift (RHOS) as part of the [cluster monitoring stack](https://docs.redhat.com/en/documentation/openshift_container_platform/4.16/html-single/monitoring/index#understanding-the-monitoring-stack_monitoring-overview) is not a supported BYO target.** It is scoped to the `openshift-monitoring` namespace and cannot reconcile CRs created in `edb-observability` or other HM namespaces.
+
+On OpenShift, HM deploys its own Prometheus Operator instance alongside the cluster monitoring stack and uses the RHOS-supplied CRDs only. If you want a single operator on OpenShift, deploy a separate `kube-prometheus-stack` (or equivalent) operator scoped to the HM namespaces. Do **not** point HM at the default `openshift-monitoring` operator Deployment, and do **not** run the BYO operator cluster-scoped. A cluster-scoped operator also watches `openshift-monitoring` and conflicts with the built-in operator over its CRs, so scope it to the HM namespaces only (`--namespaces=edb-observability,upm-api-pnxt-metric`, or the equivalent `prometheusOperator.namespaces` values in Step 2).
+
+## Prerequisites
+
+Before you start, confirm:
+
+-   **Hybrid Manager 1.4+ (LTS) or 2026.5+ (innovation).** On earlier releases, the bundled `upm-prometheus-operator` component also owns the `edb-observability` namespace; disabling it will break the observability stack. **Do not attempt BYO on earlier releases.**
+-   A working **Prometheus Operator** Deployment in the target cluster, at a version at or above the HM-shipped baseline of `v0.91.0`. HM is validated against this version; older operators may not understand the CR fields HM sets.
+-   The full upstream CRD set is installed and reconciled by your BYO operator. HM creates `Prometheus`, `Alertmanager`, `ThanosRuler`, `ServiceMonitor`, `PodMonitor`, and `PrometheusRule` resources, so all of these must be supported by the BYO operator.
+-   Your operator's reconcile scope includes both namespaces HM uses: `edb-observability` and `upm-api-pnxt-metric` (for example, `--namespaces=edb-observability,upm-api-pnxt-metric`). `upm-api-pnxt-metric` holds `PrometheusRule` resources that HM's `ThanosRuler` selects via `ruleNamespaceSelector`, so omitting it silently drops those alert rules.
+-   Only one Prometheus Operator Deployment manages resources in the `edb-observability` and `upm-api-pnxt-metric` namespaces. Running both yours and HM's leads to conflicting reconciles and CR field flapping.
+
+## 1. Disable the bundled operator only
+
+HM disables components via the `disabledComponents` list on the `HybridControlPlane` (HCP) custom resource. The HCP controller treats this list as a per-component opt-out. Add `upm-prometheus-operator` so HM doesn't install the bundled Prometheus Operator Deployment, while the rest of HM's observability stack continues to reconcile.
+
+For operator-managed installs, set the field directly on the HCP CR. The CR name is install-specific (often `edbpgai`); find it with `kubectl get hybridcontrolplane`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  disabledComponents:
+    - upm-prometheus-operator
+```
+
+## 2. Confirm reconcile scope covers HM namespaces
+
+HM creates its monitoring instances in the `edb-observability` namespace and `PrometheusRule` resources in the `upm-api-pnxt-metric` namespace. Your BYO operator must be allowed to reconcile in both.
+
+For `kube-prometheus-stack`:
+
+```yaml
+prometheusOperator:
+  namespaces:
+    releaseNamespace: true
+    additional:
+      - edb-observability
+      - upm-api-pnxt-metric
+```
+
+For a vanilla Prometheus Operator install, check the Deployment args for `--namespaces` / `--deny-namespaces`. On non-OpenShift clusters, cluster-scoped (no `--namespaces` flag) is the simplest configuration. On OpenShift, do **not** run cluster-scoped, because it conflicts with the built-in `openshift-monitoring` operator. Scope explicitly to `edb-observability` and `upm-api-pnxt-metric`.
+
+Verify the operator sees HM's CRs:
+
+```bash
+# Find your operator deployment (the name varies by install/release; a
+# kube-prometheus-stack release is named <release>-kube-pro-operator), then
+# confirm its reconcile loop mentions the HM namespaces
+kubectl -n <byo-operator-ns> get deploy
+kubectl -n <byo-operator-ns> logs deploy/<your-operator-deployment> | grep -E 'edb-observability|upm-api-pnxt-metric'
+
+# And HM's CRs should be visible to whatever operator is running
+kubectl -n edb-observability get prometheus,alertmanager,thanosruler
+
+# PrometheusRules in the project namespace must be in scope too
+kubectl -n upm-api-pnxt-metric get prometheusrule
+# The compiled rule should appear in the operator-generated ThanosRuler rule files.
+# The configmap name embeds your ThanosRuler CR name (e.g. "edbai" -> thanos-ruler-edbai-rulefiles-0).
+kubectl -n edb-observability get configmap -o name | grep rulefiles | \
+  xargs -I{} kubectl -n edb-observability get {} -o jsonpath='{.data}' | tr ',' '\n' | grep upm-api-pnxt-metric
+```
+
+## 3. Validate
+
+After you disable the bundled operator and scope the BYO operator:
+
+```bash
+# HM CRs are present and reconciled
+kubectl -n edb-observability get prometheus,alertmanager,thanosruler
+
+# Confirm the BYO operator is actively reconciling each HM CR (not just present).
+# Its log should name all three CRs by key.
+kubectl -n <byo-operator-ns> logs deploy/<your-operator-deployment> \
+  | grep -E 'sync (prometheus|alertmanager|thanos-ruler)'
+# Expected, e.g.:
+#   sync alertmanager  ... key=edb-observability/edb
+#   sync prometheus    ... key=edb-observability/kube-prometheus
+#   sync thanos-ruler  ... key=edb-observability/edbai
+
+# Operator-managed StatefulSets exist (created by the BYO operator from HM CRs)
+kubectl -n edb-observability get statefulset
+
+# Alertmanager and ThanosRuler are healthy
+kubectl -n edb-observability get pods -l app.kubernetes.io/name=alertmanager
+kubectl -n edb-observability get pods -l app.kubernetes.io/name=thanos-ruler
+```
+
+Spot-check HM Grafana. Dashboards should still render with data. HM Grafana queries **Thanos**.
+
+If a CR shows `status.conditions[].type=Reconciled` as `False`, the most common causes are:
+
+-   The BYO operator's version is older than the CR's schema fields require.
+-   The BYO operator's reconcile scope excludes one of the HM namespaces (`edb-observability` or `upm-api-pnxt-metric`).
+
+## Related topics
+
+-   [Use the EDB observability stack](./use-edb-observability-stack)
+-   [Monitor Hybrid Manager cluster state](./monitor-hybrid-manager-cluster-state)
+-   [Monitoring Kubernetes best practices](/portal/kubernetes/learn/explained/hybrid-manager/monitor-kubernetes-best-practices)
+-   [Troubleshoot Hybrid Manager components](./troubleshoot-hybrid-manager-components)
+-   [Kubernetes in Hybrid Manager](/portal/kubernetes/learn/explained/k8s-in-hybrid-manager/)

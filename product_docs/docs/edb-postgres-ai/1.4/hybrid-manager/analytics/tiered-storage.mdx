@@ -1,0 +1,132 @@
+---
+title: Configuring tiered storage
+navTitle: Configuring tiered storage
+description: Configure tiered storage on your Hybrid Manager Distributed High Availability clusters using Postgres Analytics Accelerator.
+redirects:
+- /edb-postgres-ai/innovation-release/hybrid-manager/analytics/tiered_tables
+- /edb-postgres-ai/innovation-release/hybrid-manager/analytics/pgd
+---
+
+Replicate and offload Postgres tables to object storage, and query them with standard Postgres SQL without migrating data out of your cluster. Distributed High Availability (DHA) clusters are EDB Postgres Distributed (PGD)-based cluster types managed by Hybrid Manager (HM), with Postgres Analytics Accelerator (PGAA) pre-installed and configured automatically.
+
+For concepts, architecture, and reference documentation, see [Using tiered storage](/pgd/latest/tiered-storage/) in the PGD documentation.
+
+## Managing analytics for your cluster
+
+Object storage for your DHA clusters is configured at HM installation when [creating a storage secret](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/#create-object-storage-secret). HM automatically provisions an Iceberg catalog for each data group backed by that object storage, and configures it as the analytics write destination. PGAA is pre-installed and the catalog is ready to use, with no manual setup required. You can view and manage catalogs under **Estate > Catalogs**, or create additional shared catalogs for cross-cluster querying. See [Managing catalogs](catalogs/) for details.
+
+Use **Enable Analytics** and **Disable Analytics** from the **Actions** menu to control analytics at the data group level. Disabling analytics prevents new replication and offload operations on all tables in that data group. Existing offloaded tables remain accessible and the catalog configuration is preserved.
+
+## Viewing tables
+
+The **Tables** tab in your cluster's detail view lists all tables in the cluster, together with their type, replication status, and available actions.
+
+!!!note
+    By default, the `edb.collect_table_statistics` configuration parameter is set to `pgaa`, which collects statistics for Iceberg tables only. To include Heap and HTAP tables, set it to `all` via **Edit Cluster > Data Groups > DB Configuration**. No cluster restart is required.
+
+Each table has one of the following types:
+
+- **Heap** — a standard Postgres table with no PGAA metadata.
+- **HTAP** (Hybrid Transactional and Analytics Processing) — a heap table with analytics replication enabled. The table remains fully transactional while data is continuously replicated to object storage. See [Replicating to analytics](#replicating-to-analytics).
+- **Iceberg** — a cold analytics table stored entirely in object storage. The local copy has been truncated. See [Offloading to analytics](#offloading-to-analytics).
+- **Tiered** — a partitioned table managed by [PGD AutoPartition](/pgd/latest/autopartition/), where cold partitions are Iceberg. Hot partitions are HTAP if real-time analytics replication is enabled, or Heap if not. See [Converting to a tiered table](#converting-to-a-tiered-table).
+
+
+Selecting a table row displays a summary panel at the top of the tab with storage metrics for that table: the number of rows and total size on disk, and the number of rows and total size in object storage. These metrics reflect the current state of the table across both storage tiers.
+
+
+## Converting to a tiered table
+
+Convert a heap table to a tiered table to restructure it as a range-partitioned table managed by [PGD AutoPartition](/pgd/latest/autopartition/). Cold partitions are offloaded to Iceberg format automatically when they age past the analytics offload period. Hot partitions are HTAP and replicated to object storage continuously if real-time analytics replication is enabled, or remain as Heap if not.
+
+The table must meet the following requirements before conversion:
+
+- It has a primary key.
+- The partition column is a `DATE` or `TIMESTAMP` column that is also part of the primary key.
+- It has no foreign key constraints or sequences. Drop and recreate these after conversion.
+
+To convert a table:
+
+1. In the HM console, go to **Estate > Postgres** and select your cluster.
+2. Select the **Tables** tab.
+3. In the table row, open the three-dot menu and select **Convert to Tiered Table**.
+4. Fill in the partitioning options:
+   - **Partition Column** — the `DATE` or `TIMESTAMP` column to partition by.
+   - **Initial Lower Bound** — the start date for the first partition.
+   - **Analytics Offload Period** — how long partitions stay hot before being offloaded to Iceberg.
+   - **Enable real-time analytics replication** — when enabled, hot partitions are replicated to object storage continuously as HTAP tables. When disabled, hot partitions remain as Heap tables and are bulk-offloaded when they age out of the offload window.
+   - **Partition Increment** — the time interval for each partition.
+   - **Minimum Advance Partitions** — the minimum number of future partitions to keep created in advance.
+   - **Maximum Advance Partitions** — the maximum number of future partitions to maintain.
+5. Select **Convert to Tiered Table** and wait for the conversion to complete.
+
+After conversion, the table type changes to **Tiered**. Expanding the table row shows the individual partitions with their type (Heap, HTAP, or Iceberg) and boundary expressions. The **Tables** tab also shows a partition distribution chart with the breakdown across partition types.
+Partition lifecycle is managed automatically by PGD AutoPartition after conversion.
+
+The HM console doesn't provide actions to modify a tiered table after conversion. To change settings such as the offload period or partition increment, rerun `bdr.autopartition()` directly in your database client. See [Implementing tiered tables](/pgd/latest/tiered-storage/tiered-tables/) in the PGD documentation for details on modifying tiered table settings.
+
+## Replicating to analytics
+
+Enable replication on a heap table to start continuous replication to object storage. The table type changes to **HTAP** and data changes are streamed to the cluster's pre-configured data group catalog in near real-time. The catalog name is shown in the confirmation dialog.
+
+The table must meet the following requirements before enabling replication:
+
+- It has a primary key.
+
+To enable replication:
+
+1. In the HM console, go to **Estate > Postgres** and select your cluster.
+2. Select the **Tables** tab.
+3. In the table row, open the three-dot menu and select **Enable Replication**.
+4. Review the confirmation dialog and select **Enable Replication**.
+
+The table type changes to **HTAP** and the replication status shows **Enabled** once the initial sync is complete.
+
+Once a table is HTAP, the following actions are available:
+
+- **Disable Replication** — Stops replication and removes PGAA metadata, reverting the table to Heap. Data previously replicated to object storage isn't deleted automatically and remains in the catalog.
+- **Offload Table** — Converts the table to a cold Iceberg table and truncates the local copy.
+- **Trigger Compaction** — Consolidates fragmented Parquet files in object storage to improve query performance and reduce storage overhead.
+
+!!!note
+    Enabling replication on a table that previously had replication disabled fails due to leftover catalog metadata. To resolve the error, re-enable replication directly in your database client using the `purge_analytics_target` parameter:
+
+    ```sql
+    CALL pgaa.enable_analytics_replication('<schema>.<table>'::regclass, true);
+    ```
+
+    See [`pgaa.enable_analytics_replication`](/pgaa/latest/reference/functions/) in the PGAA documentation.
+
+## Offloading to analytics
+
+Offload an HTAP table to convert it to a cold Iceberg table, truncate the local copy, and leave only the analytics copy in object storage. The confirmation dialog shows the destination catalog (the cluster's pre-configured data group catalog) where the data will be stored.
+
+The table must meet the following requirements before offloading:
+
+- No other tables can have foreign key constraints pointing to it.
+
+To offload a table:
+
+1. In the HM console, go to **Estate > Postgres** and select your cluster.
+2. Select the **Tables** tab.
+3. In the HTAP table row, open the three-dot menu and select **Offload Table**.
+4. Review the confirmation dialog and select **Offload**.
+
+The table type changes to **Iceberg** with replication disabled. Iceberg tables are read-only and don't support direct writes. `INSERT`, `UPDATE`, and `DELETE` operations aren't supported. To write to the table again, restore it to **HTAP** first.
+
+From an Iceberg table, you can:
+
+- **Restore Table** — Moves the data back to local storage. The table reverts to **HTAP**. The copy in object storage isn't deleted automatically.
+- **Trigger Compaction** — Consolidates fragmented Parquet files in object storage to improve query performance and reduce storage overhead.
+
+## Triggering compaction
+
+Use compaction to consolidate fragmented Parquet files in object storage into larger, optimized files. Compaction improves query performance and reduces storage overhead. 
+Compaction is available on HTAP and Iceberg tables.
+
+To trigger compaction:
+
+1. In the HM console, go to **Estate > Postgres** and select your cluster.
+2. Select the **Tables** tab.
+3. In the table row, open the three-dot menu and select **Trigger Compaction**.
+4. Review the confirmation dialog and select **Trigger Compaction**.
