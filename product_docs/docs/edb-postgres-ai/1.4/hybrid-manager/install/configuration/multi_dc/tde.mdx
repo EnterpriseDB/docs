@@ -15,12 +15,24 @@ TDE uses two keys:
 
 - A **customer-managed key (KEK)**. You register this in HM as a customer key. It lives in your KMS provider or, for the passphrase option, is derived from a passphrase you supply. HM never sees the key material itself — it only invokes wrap/unwrap operations against your KMS.
 
-- A **data encryption key (DEK)**. HM generates this once per Postgres cluster at cluster creation. The DEK is what actually encrypts your on-disk data and write-ahead log files. HM stores it wrapped by your KEK in a small file inside the cluster's data directory. Postgres unwraps the DEK using your KMS at each start-up and keeps the plaintext DEK in memory to encrypt reads and writes.
+- A **data encryption key (DEK)**. HM generates this once per Postgres cluster at cluster creation. In a distributed high-availability deployment, "one Postgres cluster" means one data group — each data group generates and holds its own DEK. The DEK is what actually encrypts your on-disk data and write-ahead log files. HM stores it wrapped by your KEK in a small file inside the cluster's data directory. Postgres unwraps the DEK using your KMS at each start-up and keeps the plaintext DEK in memory to encrypt reads and writes. DEKs never leave the cluster (or, for PGD, the data group) that generated them.
 
 Two consequences follow that matter for multi-DC planning:
 
 1. Once a cluster's on-disk encryption file is written, only a KEK that can decrypt that file will let the cluster start.
 2. Whichever KEK produced the file is the KEK that must remain available for the lifetime of that cluster's data.
+
+TDE protects data **at rest**. Data **in transit** — including replication traffic between locations — is protected separately by the cluster's TLS configuration and is not the concern of TDE.
+
+## How TDE and cross-data-center replication interact
+
+Whether the customer key registered in a second location has to share key material with the primary's key, or is free to be genuinely different, depends on **how data reaches that location**:
+
+- **Physical replication** copies the source cluster's data directory byte-for-byte via Postgres base-backup, including the encryption file that stores the wrapped DEK. The destination inherits the source's DEK, and only a KEK compatible with the source's KEK can unwrap it. This is the transport used by [replica clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/) and by a distributed high-availability data group added via the physical join path (`bdr_init_physical`).
+
+- **Logical replication** decodes changes into row images inside the source's Postgres instance — after the storage layer has already decrypted the page — and streams those row images to the destination over mutually authenticated TLS. The destination's Postgres instance receives the row images, hands them to its own storage layer, and encrypts them under its own DEK before writing to disk. Wrapped keys never leave a location, and the two locations do not exchange any key material. This is the transport that runs continuously between the [data groups of a distributed high-availability cluster](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/), and it is the reason a data group initialized under its own KEK (the seed group or a group added via logical join) can safely be configured with a customer key whose underlying material is genuinely different from any other group in the cluster.
+
+The rest of this page details what each transport requires and what to verify.
 
 ## Replica clusters across data centers
 
@@ -84,6 +96,20 @@ A physically joined data group behaves the same way as a replica cluster from a 
 
 - **KEK rotation on one data group is local to that group.** Rotating a data group's KEK rewrites that group's on-disk encryption file only. Other data groups continue with their own KEKs unchanged.
 
+### What a healthy multi-region PGD cluster with per-region KEKs looks like
+
+Because each data group holds its own wrapped DEK and encrypts and decrypts pages independently, a distributed high-availability cluster whose data groups are each configured with a different customer-managed key is a **supported and normal configuration**, not a mismatch to reconcile. When you inspect such a cluster you should expect to see, per data group:
+
+- Its own encryption-file entry in the group's namespace secret and its own `pg_encryption/key.bin` inside the pods' data directory. Both name the KMS key configured for that group. The two never disagree within a group, and there is no expectation that one group's KEK identifier matches another group's.
+- Every replication slot between the group and every other data group in the cluster shown as `streaming` with `active = true` and sub-second lag under a light workload. Logical replication does not carry any key material, so cross-region slots stream normally regardless of whether the source and destination were configured with the same KEK or different KEKs.
+- A row inserted in one location becoming visible in every other location within the usual replication lag, and — if you inspect the destination's raw heap file after a `CHECKPOINT` — the inserted plaintext string is not present in that file, because the destination re-encrypted the row under its own DEK before writing.
+
+If any of these three properties do not hold, the fault is not in the per-region KEK design. Investigate the specific symptom instead:
+
+- Replication slots not `streaming` between locations: this is a PGD, network, TLS, or authorization issue between the groups, not TDE. Check the [multi-DC deployment guide](multi-dc.mdx) and the cluster's replication logs.
+- Rows not visible on another location: same as above.
+- Plaintext visible in the destination's on-disk data files: TDE is not effective on that group. Check that data encryption is enabled in `pg_controldata` on that group's pods and that the group's `pg_encryption/key.bin` and `-tde` secret are both present and reference a KMS key the group's pods can actually reach.
+
 ## Scaling from single region to multi-region
 
 **Adding a replica cluster to an existing single-region cluster** works the same way as creating a replica cluster alongside a primary at initial cluster creation. The new replica is bootstrapped from the primary using base-backup, so the primary's KEK becomes the effective KEK for the new replica. Register a compatible customer key in the target location before adding the replica.
@@ -139,7 +165,7 @@ For step 2, follow the guidance for your Postgres distribution (EDB Postgres Adv
 | Scenario | Can each location use a different KEK material? |
 |---|---|
 | Primary cluster with replica cluster(s) in different locations | Not recommended. All locations should resolve to compatible key material. The primary's KEK is the effective KEK for every replica. |
-| Distributed high-availability cluster with the seed group and any groups added via logical join in different locations | Yes. Each such data group is encrypted under its own KEK from the start. |
+| Distributed high-availability cluster with the seed group and any groups added via logical join in different locations | Yes. Each such data group is encrypted under its own KEK from the start, and PGD replicates decrypted row images between groups — no key material crosses locations. |
 | Distributed high-availability cluster with a data group added via physical join in a different location | Not recommended. The joined group inherits the source group's `key.bin` by base-backup, so the source group's KEK is the effective KEK for that group's data at rest. Same rule as a replica cluster. |
 | Adding a replica cluster to a single-region cluster later | Same as above — the primary's KEK protects the new replica's data at rest. |
 | Adding a data group to a distributed high-availability cluster later via logical join | Yes. The new group generates its own encryption file under its own KEK. |
