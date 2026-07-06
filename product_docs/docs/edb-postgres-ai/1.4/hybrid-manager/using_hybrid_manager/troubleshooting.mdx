@@ -792,9 +792,9 @@ Related concept guide: [Transparent Data Encryption across data centers](/edb-po
 
 You created a primary + replica cluster pair where the primary is configured with one customer key (for example, `region-key1`) and the replica is configured with a different customer key that resolves to genuinely different key material (for example, `region-key2`). The HM console shows the replica as healthy. Restarting the replica pod does not surface an error.
 
-This does **not** mean the replica is protected by `region-key2` at rest. When a replica is bootstrapped, `pg_basebackup` byte-copies the primary's data directory, including `pg_encryption/key.bin`. That file has a header that names the KEK that wrapped it (in this example, `region-key1`), and the on-disk unwrap tool honors that header rather than the CLI flag from the replica's configured TDE secret. As long as the replica's workload identity has KMS decrypt on `region-key1` — which is common when both keys live in the same vault — the unwrap succeeds against `region-key1` on every restart and no error is visible.
+This **doesn't** mean the replica is protected by `region-key2` at rest. When a replica is bootstrapped, `pg_basebackup` byte-copies the primary's data directory, including `pg_encryption/key.bin`. That file has a header that names the KEK that wrapped it (in this example, `region-key1`), and the on-disk unwrap tool honors that header rather than the CLI flag from the replica's configured TDE secret. As long as the replica's workload identity has KMS decrypt on `region-key1` — which is common when both keys live in the same vault — the unwrap succeeds against `region-key1` on every restart and no error is visible.
 
-The security posture you configured (`region-key2` protects the replica) is not what is actually protecting the replica's data at rest. `region-key1` is the effective KEK for the replica.
+The security posture you configured (`region-key2` protects the replica) isn't what is actually protecting the replica's data at rest. `region-key1` is the effective KEK for the replica.
 
 #### Resolution
 
@@ -805,13 +805,13 @@ The security posture you configured (`region-key2` protects the replica) is not 
     bash -c 'awk -F. "{print \$1}" /var/lib/postgresql/data/pgdata/pg_encryption/key.bin | base64 -d' ; echo
   ```
 
-  The output is a JSON header that includes `kvKey`, `kvKeyVer` (or the AWS/GCP/Vault equivalent). If it names the primary's KEK, the replica is bootstrapped under the primary's KEK, and the replica's own configured KEK is not in effect.
+  The output is a JSON header that includes `kvKey`, `kvKeyVer` (or the AWS/GCP/Vault equivalent). If it names the primary's KEK, the replica is bootstrapped under the primary's KEK, and the replica's own configured KEK isn't in effect.
 
 2. Reconfigure the replica to use a customer key whose underlying material is compatible with the primary's KEK. For details on what "compatible" means for each KMS provider, see [Replica clusters across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers).
 
 3. If you must keep the customer keys in HM different for access-control reasons, ensure both customer key rows in HM resolve to the same underlying key material at the KMS layer (for example, an AWS KMS multi-region replica key, or the same Azure key imported into two vaults). See [What "compatible" means](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers) for supported patterns.
 
-Pod restart alone is not a reliable diagnostic here. If the replica's identity retains vault-level access to the primary's KEK, restart succeeds silently under the primary's KEK regardless of what you configured on the replica.
+Pod restart alone isn't a reliable diagnostic here. If the replica's identity retains vault-level access to the primary's KEK, restart succeeds silently under the primary's KEK regardless of what you configured on the replica.
 
 ### `no rows in result set` when creating a cluster with a replica
 
@@ -828,7 +828,7 @@ error getting tde config from request: error getting tde secret from proto:
 
 #### Resolution
 
-The customer key referenced by the replica part of the request is not registered in the replica's location in HM. Customer keys in HM are stored per-location — one row per (project, location, key ID).
+The customer key referenced by the replica part of the request isn't registered in the replica's location in HM. Customer keys in HM are stored per-location — one row per (project, location, key ID).
 
 1. In the HM console, register the customer key in every location that will host the replica cluster **before** submitting the create request.
 2. If you want the replica to use the same key material as the primary, register a second HM customer-key row in the replica's location that resolves to the same underlying KMS key (multi-region replica key, alias to the same CMK, or imported same key material — see [What "compatible" means](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers)).

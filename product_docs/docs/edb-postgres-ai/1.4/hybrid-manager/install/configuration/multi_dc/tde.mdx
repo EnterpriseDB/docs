@@ -13,7 +13,7 @@ Read this page in addition to the [multi-DC deployment guide](multi-dc.mdx) and 
 
 TDE uses two keys:
 
-- A **customer-managed key (KEK)**. You register this in HM as a customer key. It lives in your KMS provider or for the passphrase option, is derived from a passphrase you supply. HM never sees the key material itself. HM only invokes wrap/unwrap operations against your KMS.
+- A **customer-managed key (KEK)**. You register this in HM as a customer key. It lives in your key management service (KMS) provider or for the passphrase option, is derived from a passphrase you supply. HM never sees the key material itself. HM only invokes wrap/unwrap operations against your KMS.
 
 - A **data encryption key (DEK)**. HM generates this once per Postgres cluster at cluster creation. In a distributed high-availability deployment, each data group generates and holds its own DEK. The DEK is what actually encrypts your on-disk data and write-ahead log files. Postgres unwraps the DEK using your KMS at each start-up and keeps the plaintext DEK in memory to encrypt reads and writes. DEKs never leave the cluster (or, for PGD, the data group) that generated them.
 
@@ -26,11 +26,11 @@ Two consequences follow that matter for multi-DC planning:
 
 Whether the customer key registered in a second location has to share key material with the source's key, or is free to be genuinely different, depends on **how data reaches that location** and on **what the operator does with the encryption file after the copy**:
 
-- **Physical replication for a replica cluster (PSR).** The source's data directory is copied byte-for-byte via Postgres base-backup, including the encryption file that stores the wrapped DEK. The replica keeps that file as-is, so only a KEK compatible with the source's KEK can unwrap it, this is the transport used by [replica clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/), and it is why the replica's own customer key must resolve to compatible key material.
+- **Physical streaming replication (PSR).** The source's data directory is copied byte-for-byte via Postgres base-backup, including the encryption file that stores the wrapped DEK. The replica keeps that file as-is, so only a KEK compatible with the source's KEK can unwrap it, this is the transport used by [replica clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/), and it is why the replica's own customer key must resolve to compatible key material.
 
 - **Adding a data group to a distributed high-availability (PGD) cluster.** A base-backup still copies the source group's data directory, but immediately after the copy completes the operator **re-wraps the DEK on the target under the target group's own configured KEK**, so the target's own KEK becomes the effective KEK for ongoing data at rest. The source group's KEK is only required to be reachable *during the join itself*, so the target pod's manager can read the DEK out of the file it just received. Once the join finishes, the target group is self-sufficient and its `key.bin` names its own KEK.
 
-- **Logical replication (PGD, ongoing).** Changes are decoded into row images inside the source's Postgres instance, after the storage layer has already decrypted the page and streamed to the destination over mutually authenticated TLS. The destination's Postgres instance receives the row images and its own storage layer encrypts them under its own DEK before writing to disk. Wrapped keys never leave a location, and the two locations do not exchange any key material. This is why a data group configured with a genuinely different KEK from every other group in the cluster keeps replicating normally.
+- **Logical replication (PGD, ongoing).** Changes are decoded into row images inside the source's Postgres instance, after the storage layer has already decrypted the page and streamed to the destination over mutually authenticated Transport Layer Security (TLS). The destination's Postgres instance receives the row images and its own storage layer encrypts them under its own DEK before writing to disk. Wrapped keys never leave a location, and the two locations don't exchange any key material. This is why a data group configured with a genuinely different KEK from every other group in the cluster keeps replicating normally.
 
 !!!note
 The takeaway for planning: **a PGD data group always ends up under its own KEK**, whether it was created as the seed or added later. Only a PSR replica cluster inherits the source's KEK for the life of its data at rest.
@@ -49,7 +49,7 @@ Missing this permission is the most common cause of a joining pod stuck in the b
 
 ## Replica clusters across data centers
 
-A replica cluster (from the [**Replica Clusters** tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/)) is a physical streaming replica of a primary cluster. When the replica is created, it is bootstrapped from the primary using Postgres's base-backup mechanism, which copies the primary's data directory in full, including the encryption file that stores the wrapped DEK.
+A replica cluster (from the [**Replica Clusters** tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/)) is a physical streaming replica of a primary cluster. When the replica is created, it's bootstrapped from the primary using Postgres's base-backup mechanism, which copies the primary's data directory in full, including the encryption file that stores the wrapped DEK.
 
 This has an important implication:
 
@@ -70,15 +70,15 @@ In practice, "compatible" means one of the following:
 
 - **Register a customer key in every location that will host a replica cluster**, and make sure they resolve to compatible key material. HM lets you configure a different customer key per replica in the create request; use this to represent per-location access control, not to swap the underlying key material.
 
-- **Do not expect the replica's own customer key to become the effective KEK after bootstrap.** HM does not re-wrap the encryption file on the replica after base-backup. The primary's KEK remains the key that must be able to unwrap the file for the life of the replica cluster.
+- **Don't expect the replica's own customer key to become the effective KEK after bootstrap.** HM doesn't re-wrap the encryption file on the replica after base-backup. The primary's KEK remains the key that must be able to unwrap the file for the life of the replica cluster.
 
-- **Plan KEK rotation as a per-cluster operation across all locations.** Rotating the KEK on the primary rewrites the primary's on-disk encryption file, but this change does not propagate over streaming replication. If you rotate the primary's KEK, you must run an equivalent rotation on each replica so their Postgres instances can continue to start.
+- **Plan KEK rotation as a per-cluster operation across all locations.** Rotating the KEK on the primary rewrites the primary's on-disk encryption file, but this change doesn't propagate over streaming replication. If you rotate the primary's KEK, you must run an equivalent rotation on each replica so their Postgres instances can continue to start.
 
-- **Cross-cloud replicas are not supported for TDE.** A multi-DC HM deployment already requires the same provider or on-premises family across all locations. TDE reinforces this: your KMS must be reachable from every location that hosts a replica.
+- **Cross-cloud replicas aren't supported for TDE.** A multi-DC HM deployment already requires the same provider or on-premises family across all locations. TDE reinforces this: your KMS must be reachable from every location that hosts a replica.
 
 ## Distributed high-availability (PGD) clusters across data centers
 
-A distributed high-availability cluster is composed of independent [data groups](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/). Each data group is a separate Postgres cluster that participates in the cluster's logical replication. Every data group ends up encrypted under its own configured KEK once it is running, regardless of whether it is the seed group or a group added later:
+A distributed high-availability cluster is composed of independent [data groups](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/). Each data group is a separate Postgres cluster that participates in the cluster's logical replication. Every data group ends up encrypted under its own configured KEK once it's running, regardless of whether it's the seed group or a group added later:
 
 | Data group | How `key.bin` is created on the target | Effective KEK after the group is running |
 |---|---|---|
@@ -106,25 +106,25 @@ The join path for a newly added data group has one requirement that the seed gro
 ## Key rotation
 
 !!!note
-HM does not currently expose a built-in workflow to rotate the customer-managed key (KEK) of an existing cluster. Rotation is a customer-driven activity that you plan and execute against your own KMS provider, where the on-disk wrapped key must also be rewritten against the running Postgres instances.
+HM doesn't currently expose a built-in workflow to rotate the customer-managed key (KEK) of an existing cluster. Rotation is a customer-driven activity that you plan and execute against your own KMS provider, where the on-disk wrapped key must also be rewritten against the running Postgres instances.
 !!!
 
 Three distinct scenarios are commonly called "key rotation." They have very different requirements.
 
 ### 1. Automatic rotation inside your KMS (transparent)
 
-Most cloud KMS providers can rotate the underlying cryptographic material of a customer-managed key on a schedule (for example, AWS KMS annual auto-rotation on customer-managed keys). In these cases the key's identifier (ARN, resource name, key URI) does not change, and prior versions of the material remain usable for decrypt. No action is required on the HM side. Your Postgres clusters continue to unwrap their on-disk encryption file transparently.
+Most cloud KMS providers can rotate the underlying cryptographic material of a customer-managed key on a schedule (for example, AWS KMS annual auto-rotation on customer-managed keys). In these cases the key's identifier (Amazon Resource Name (ARN), resource name, key URI) doesn't change, and prior versions of the material remain usable for decrypt. No action is required on the HM side. Your Postgres clusters continue to unwrap their on-disk encryption file transparently.
 
-If you are only relying on your KMS provider's built-in rotation, there is nothing further to plan.
+If you're only relying on your KMS provider's built-in rotation, there's nothing further to plan.
 
 ### 2. Replacing one customer key with a different customer key
 
-If you want to move a cluster's encryption from one customer-managed key to a different one (for example, to migrate to a new HSM, a new region's key, or to retire an old key after a compromise), this is **not currently possible through HM without manual customer intervention**. The Hybrid Manager console does not expose a rotate-key action.
+If you want to move a cluster's encryption from one customer-managed key to a different one (for example, to migrate to a new HSM, a new region's key, or to retire an old key after a compromise), this **isn't currently possible through HM without manual customer intervention**. The Hybrid Manager console doesn't expose a rotate-key action.
 
 If you need to perform this rotation, plan for it as a customer-side operation coordinated with your Postgres administrator. The high-level shape is:
 
 1. Register the new customer key in every HM location that hosts data for the cluster.
-2. On every Postgres pod that holds an on-disk encryption file for the cluster (primary and every replica for a replica-cluster topology; every data group's nodes for a distributed high-availability topology), run the Postgres-provided key rotation operation to rewrite the on-disk wrapped key under the new KEK. This is a per-pod operation and does not propagate over streaming replication.
+2. On every Postgres pod that holds an on-disk encryption file for the cluster (primary and every replica for a replica-cluster topology; every data group's nodes for a distributed high-availability topology), run the Postgres-provided key rotation operation to rewrite the on-disk wrapped key under the new KEK. This is a per-pod operation and doesn't propagate over streaming replication.
 3. Verify each pod can restart cleanly using the new key before removing access to the old key.
 4. Keep the old KMS key available and accessible until every pod has been rotated and successfully restarted. Deleting the old key prematurely will leave any un-rotated pod unable to start.
 
@@ -132,7 +132,7 @@ For step 2, follow the guidance for your Postgres distribution (EDB Postgres Adv
 
 ### 3. Rotation across a multi-DC deployment per-topology
 
-- **Replica clusters (PSR):** the primary's KEK is the KEK of record for the entire cluster (see [Replica clusters across data centers](#replica-clusters-across-data-centers)). If you rotate on the primary, you must also rotate on every replica. If you rotate a replica but not the primary, the replica's on-disk encryption file — copied from the primary at bootstrap — remains under the primary's KEK, so the replica's new KEK does not actually take effect until the file itself is rewritten by the rotation operation on that replica's pod. Plan the rotation as: primary first, then each replica in turn.
+- **Replica clusters (PSR):** the primary's KEK is the KEK of record for the entire cluster (see [Replica clusters across data centers](#replica-clusters-across-data-centers)). If you rotate on the primary, you must also rotate on every replica. If you rotate a replica but not the primary, the replica's on-disk encryption file — copied from the primary at bootstrap — remains under the primary's KEK, so the replica's new KEK doesn't actually take effect until the file itself is rewritten by the rotation operation on that replica's pod. Plan the rotation as: primary first, then each replica in turn.
 
 - **Distributed high-availability (PGD) clusters:** each data group's KEK is independent. You can rotate one group's KEK without touching the others. Rotate each group's KEK on the pods of that group only.
 
@@ -142,7 +142,7 @@ For step 2, follow the guidance for your Postgres distribution (EDB Postgres Adv
 - Verify the new key is reachable from every pod that will need to unwrap under it (the workload identity or credentials attached to the pod must have decrypt permission on the new key).
 - Take a fresh backup of the cluster.
 - Plan a maintenance window; each pod will need to restart under the new key.
-- **Do not delete the old key** in your KMS provider until every pod has been rotated and has successfully restarted at least once under the new key.
+- **Don't delete the old key** in your KMS provider until every pod has been rotated and has successfully restarted at least once under the new key.
 
 ## Summary
 
