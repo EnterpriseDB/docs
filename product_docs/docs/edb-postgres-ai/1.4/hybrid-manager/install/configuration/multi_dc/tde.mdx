@@ -26,11 +26,11 @@ Two consequences follow that matter for multi-DC planning:
 
 Whether the customer key registered in a second location has to share key material with the source's key, or is free to be genuinely different, depends on **how data reaches that location** and on **what the operator does with the encryption file after the copy**:
 
-- **Physical streaming replication (PSR).** The source's data directory is copied byte-for-byte via Postgres base-backup, including the encryption file that stores the wrapped DEK. The replica keeps that file as-is, so only a KEK compatible with the source's KEK can unwrap it, this is the transport used by [replica clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/), and it is why the replica's own customer key must resolve to compatible key material.
+- **Physical streaming replication (PSR).** The source's data directory is copied byte-for-byte via Postgres base-backup, including the encryption file that stores the wrapped DEK. The replica keeps that file as-is, so only a KEK compatible with the source's KEK can unwrap it. This is the transport used by [replica clusters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/), and it is why the replica's own customer key must resolve to compatible key material.
 
-- **Adding a data group to a distributed high-availability (PGD) cluster.** A base-backup still copies the source group's data directory, but immediately after the copy completes the operator **re-wraps the DEK on the target under the target group's own configured KEK**, so the target's own KEK becomes the effective KEK for ongoing data at rest. The source group's KEK is only required to be reachable *during the join itself*, so the target pod's manager can read the DEK out of the file it just received. Once the join finishes, the target group is self-sufficient and its `key.bin` names its own KEK.
+- **Adding a data group to a distributed high-availability (PGD) cluster.** A **physical join** (`bdr_init_physical`) copies the source group's data directory, but immediately after the copy completes the operator **re-wraps the DEK on the target under the target group's own configured KEK**, so the target's own KEK becomes the effective KEK for ongoing data at rest. The source group's KEK is only required to be reachable *during the physical join itself*, so the target pod's manager can read the DEK out of the file it just received. Once the physical join finishes, the target group is self-sufficient and its `key.bin` names its own KEK.
 
-- **Logical replication (PGD, ongoing).** Changes are decoded into row images inside the source's Postgres instance, after the storage layer has already decrypted the page and streamed to the destination over mutually authenticated Transport Layer Security (TLS). The destination's Postgres instance receives the row images and its own storage layer encrypts them under its own DEK before writing to disk. Wrapped keys never leave a location, and the two locations don't exchange any key material. This is why a data group configured with a genuinely different KEK from every other group in the cluster keeps replicating normally.
+- **How PGD data groups stay in sync after they're up.** Changes are decoded into row images inside the source's Postgres instance, after the storage layer has already decrypted the page, and streamed to the destination over mutually authenticated Transport Layer Security (TLS). The destination's Postgres instance receives the row images and its own storage layer encrypts them under its own DEK before writing to disk. Wrapped keys never leave a location, and the two locations don't exchange any key material. This is why a data group configured with a genuinely different KEK from every other group in the cluster keeps replicating normally.
 
 !!!note
 The takeaway for planning: **a PGD data group always ends up under its own KEK**, whether it was created as the seed or added later. Only a PSR replica cluster inherits the source's KEK for the life of its data at rest.
@@ -74,26 +74,26 @@ In practice, "compatible" means one of the following:
 
 - **Plan KEK rotation as a per-cluster operation across all locations.** Rotating the KEK on the primary rewrites the primary's on-disk encryption file, but this change doesn't propagate over streaming replication. If you rotate the primary's KEK, you must run an equivalent rotation on each replica so their Postgres instances can continue to start.
 
-- **Cross-cloud replicas aren't supported for TDE.** A multi-DC HM deployment already requires the same provider or on-premises family across all locations. TDE reinforces this: your KMS must be reachable from every location that hosts a replica.
+- **Cross-cloud multi-DC isn't supported.** A multi-DC HM deployment requires the same provider or on-premises family across all locations, and TDE inherits that constraint. Your KMS must be reachable from every location that hosts a replica cluster.
 
 ## Distributed high-availability (PGD) clusters across data centers
 
-A distributed high-availability cluster is composed of independent [data groups](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/). Each data group is a separate Postgres cluster that participates in the cluster's logical replication. Every data group ends up encrypted under its own configured KEK once it's running, regardless of whether it's the seed group or a group added later:
+A distributed high-availability cluster is composed of independent [data groups](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/). Each data group is a separate Postgres cluster that participates in the cluster's cross-group replication. In Hybrid Manager, every data group added after the seed is joined by a **physical join** (`bdr_init_physical`), which copies the source group's data directory in full, including the wrapped-DEK file. Every data group ends up encrypted under its own configured KEK once it's running, regardless of whether it's the seed group or a group added later:
 
 | Data group | How `key.bin` is created on the target | Effective KEK after the group is running |
 |---|---|---|
 | Seed (first) data group | Freshly generated at cluster creation, wrapped by the group's own configured KEK | The group's own configured KEK |
 | Any group added later (physical join via `bdr_init_physical`) | Copied from an existing group by base-backup, then re-wrapped by the operator under the target group's own configured KEK before the group is started | The target group's own configured KEK |
 
-The join path for a newly added data group has one requirement that the seed group doesn't: the source group's KEK must be reachable and permissioned from the joining pod **while the join is running**, because the target's manager has to read the DEK out of the copied `key.bin` once before re-wrapping it under the target's KEK.
+The physical join path for a newly added data group has one requirement that the seed group doesn't: the source group's KEK must be reachable and permissioned from the joining pod **while the physical join is running**, because the target's manager has to read the DEK out of the copied `key.bin` once before re-wrapping it under the target's KEK.
 
 ### Recommendations
 
 - **Register a customer key in every location that will host a data group**, and select the appropriate key per data group under **Security** on the **Data Groups** tab. Each group's data at rest ends up encrypted under the key you selected for that group.
 
-- **Per-region key sovereignty is supported.** For a distributed high-availability cluster with data groups in different countries or regulatory zones, you can safely configure each group with its own KMS-managed key that has genuinely different underlying material from every other group. The operator re-wraps the encryption file under the target group's own KEK as part of the join, so each group's data at rest is protected by exactly the key you selected for that group.
+- **Per-region key sovereignty is supported.** For a distributed high-availability cluster with data groups in different countries or regulatory zones, you can safely configure each group with its own KMS-managed key that has genuinely different underlying material from every other group. The operator re-wraps the encryption file under the target group's own KEK as part of the physical join, so each group's data at rest is protected by exactly the key you selected for that group. Each group's KEK can also live in a different KMS provider from the other groups', provided the same provider or on-premises family constraint that applies to the overall multi-DC deployment is respected.
 
-- **Make the source group's KEK reachable from the joining group's location for the duration of the join.** The joining group's Postgres pods use their own workload identity or credentials to run the one-time unwrap against the source's KEK. After the join completes, the source's KEK is no longer required by the joined group and you can remove that access if your security policy calls for it.
+- **Make the source group's KEK reachable from the joining group's location for the duration of the physical join.** The joining group's Postgres pods use their own workload identity or credentials to run the one-time unwrap against the source's KEK. After the physical join completes, the source's KEK is no longer required by the joined group and you can remove that access if your security policy calls for it.
 
 - **KEK rotation on one data group is local to that group.** Rotating a data group's KEK rewrites that group's on-disk encryption file only. Other data groups continue with their own KEKs unchanged.
 
@@ -101,7 +101,7 @@ The join path for a newly added data group has one requirement that the seed gro
 
 **Adding a replica cluster to an existing single-region cluster** works the same way as creating a replica cluster alongside a primary at initial cluster creation. The new replica is bootstrapped from the primary using base-backup, so the primary's KEK becomes the effective KEK for the new replica. Register a compatible customer key in the target location before adding the replica.
 
-**Adding a data group to an existing distributed high-availability cluster** finishes with the new group encrypted under its own configured KEK. The join uses `bdr_init_physical` — the source group's `key.bin` is copied to the new group and then re-wrapped by the operator under the new group's own configured KEK before the group starts. The new group's location must therefore have decrypt access on **both** the source group's KEK and the new group's KEK for the duration of the join. Once the join completes, only the new group's KEK is required. See [Distributed high-availability (PGD) clusters across data centers](#distributed-high-availability-pgd-clusters-across-data-centers) for the full comparison.
+**Adding a data group to an existing distributed high-availability cluster** finishes with the new group encrypted under its own configured KEK. The physical join uses `bdr_init_physical` — the source group's `key.bin` is copied to the new group and then re-wrapped by the operator under the new group's own configured KEK before the group starts. The new group's location must therefore have decrypt access on **both** the source group's KEK and the new group's KEK for the duration of the physical join. Once the physical join completes, only the new group's KEK is required. See [Distributed high-availability (PGD) clusters across data centers](#distributed-high-availability-pgd-clusters-across-data-centers) for the full comparison.
 
 ## Key rotation
 
@@ -126,9 +126,9 @@ If you need to perform this rotation, plan for it as a customer-side operation c
 1. Register the new customer key in every HM location that hosts data for the cluster.
 2. On every Postgres pod that holds an on-disk encryption file for the cluster (primary and every replica for a replica-cluster topology; every data group's nodes for a distributed high-availability topology), run the Postgres-provided key rotation operation to rewrite the on-disk wrapped key under the new KEK. This is a per-pod operation and doesn't propagate over streaming replication.
 3. Verify each pod can restart cleanly using the new key before removing access to the old key.
-4. Keep the old KMS key available and accessible until every pod has been rotated and successfully restarted. Deleting the old key prematurely will leave any un-rotated pod unable to start.
+4. Keep the old KMS key available and accessible until every pod has been rotated and successfully restarted. Deleting the old key prematurely leaves any un-rotated pod unable to start.
 
-For step 2, follow the guidance for your Postgres distribution (EDB Postgres Advanced Server or EDB Postgres Extended Server). Contact EDB support if you require assistance planning or executing rotation across a multi-DC deployment.
+For step 2, follow the guidance for your Postgres distribution (EDB Postgres Advanced Server or EDB Postgres Extended Server) for the exact command that rewrites the on-disk wrapped key. Contact EDB support if you require assistance planning or executing rotation across a multi-DC deployment.
 
 ### 3. Rotation across a multi-DC deployment per-topology
 
@@ -149,9 +149,9 @@ For step 2, follow the guidance for your Postgres distribution (EDB Postgres Adv
 | Scenario | Can each location use a different KEK material? |
 |---|---|
 | Primary cluster with replica cluster(s) in different locations | Not recommended. All locations should resolve to compatible key material. The primary's KEK is the effective KEK for every replica. |
-| Distributed high-availability cluster with data groups in different locations, each configured with its own customer key | Yes. Each group is encrypted under its own configured KEK. For the seed group this is true from the start; for any group added later, the operator re-wraps `key.bin` under the target group's own KEK during the join. PGD replicates decrypted row images between groups over TLS — no key material crosses locations. |
+| Distributed high-availability cluster with data groups in different locations, each configured with its own customer key | Yes. Each group is encrypted under its own configured KEK. For the seed group this is true from the start; for any group added later, the operator re-wraps `key.bin` under the target group's own KEK during the physical join. PGD replicates decrypted row images between groups over TLS — no key material crosses locations. |
 | Adding a replica cluster to a single-region cluster later | Same rule as above, the primary's KEK protects the new replica's data at rest. |
-| Adding a data group to a distributed high-availability cluster later | Yes. The new group's `key.bin` is re-wrapped under its own KEK during the join; no post-join rotation is needed. Both the source group's KEK and the new group's KEK must be reachable from the target during the join. |
+| Adding a data group to a distributed high-availability cluster later | Yes. The new group's `key.bin` is re-wrapped under its own KEK during the physical join; no post-join rotation is needed. Both the source group's KEK and the new group's KEK must be reachable from the target during the physical join. |
 | KEK rotation on the primary of a cluster with replicas | Must be run on the primary and repeated on each replica. |
 | KEK rotation on a distributed high-availability data group | Local to that group only. |
 
