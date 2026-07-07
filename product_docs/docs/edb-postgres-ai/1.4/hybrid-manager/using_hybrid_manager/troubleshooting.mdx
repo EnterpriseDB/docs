@@ -22,6 +22,9 @@ You can troubleshoot common problems in Hybrid Manager (HM).
 | na         | Database Provisioning | Postgres Cluster Provisioning Stuck at X% Complete      |                                                                        |                                                                                    |
 | na         | Database Provisioning | CPU and Memory range is much smaller than the nodegroup |                                                                        |                                                                                    |
 | na         | Database Update       | Disk scale up                                           | The new value is shown on cluster yaml but not applied on pvc/pv.      | Edit the storageclass.                                                              |
+| na         | TDE across data centers | Physical-join PGD data group stuck with `FATAL: key unwrap command produced no output` | The joining pod's identity cannot decrypt under the *source* group's KEK during the physical join. | Grant the target location's workload identity decrypt access on the source group's KEK for the duration of the join. |
+| na         | TDE across data centers | Replica cluster reports healthy despite being configured with different KEK material from the primary | The replica's `pg_encryption/key.bin` is byte-copied from the primary and its header names the primary's KEK. The unwrap tool honors that header, not the replica's own configured KEK. | Read the `key.bin` header to see which KEK is actually in use; align the replica's customer key with the primary's key material. |
+| na         | TDE across data centers | `no rows in result set` when creating a cluster with a replica | The customer key referenced by the replica request is not registered in the replica's location. | Register the customer key in every location that will host a replica before submitting the create request. |
 
 ## Errors in detail
 
@@ -744,3 +747,89 @@ Increasing the volume size above the default blocks patch version upgrades for c
 
 If you increased the disk volume size but now need to perform a minor version upgrade on HM v1.2.x, then you must first resize the database back to the default size (50GB). Contact the Support team for assistance with database resizing.
 !!!
+
+### Physical-join PGD data group stuck with `key unwrap command produced no output`
+
+Related concept guide: [Transparent Data Encryption across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/).
+
+#### Detailed error
+
+When you add a distributed high-availability (PGD) data group into a new location using physical join (`bdr_init_physical`), the join pod stays in the "waiting for physical join" or `Init` phase and never becomes ready. Inspecting the temporary Postgres log inside the join pod's data directory shows:
+
+```
+FATAL:  key unwrap command produced no output
+```
+
+accompanied by a KMS access error from the KMS provider:
+
+- Azure Key Vault: `403 Forbidden` / `Forbidden` (message names the vault key).
+- AWS KMS: `AccessDeniedException`.
+- Google Cloud KMS: `PermissionDenied`.
+- HashiCorp Vault: `permission denied` on the Transit engine key.
+
+The KMS error names the **source** location's key (for example, `region-key1`), not the joining group's own configured key (for example, `region-key2`).
+
+#### Resolution
+
+During a PGD physical join the target's manager reads the DEK out of the copied `pg_encryption/key.bin` **using the KEK named in that file's header** — which is the source group's KEK — and then re-wraps the DEK under the target group's own configured KEK before the postmaster starts. The target's workload identity therefore needs KMS decrypt access on **two** keys for the duration of the join:
+
+- The **source group's KEK** (to unwrap the copied `key.bin` once).
+- The **target group's own configured KEK** (to write the re-wrapped `key.bin`).
+
+Confirm the following before retrying the join:
+
+1. The target location's workload identity has decrypt permission on the source group's KEK in the same KMS.
+2. The KMS is reachable from the target location's network (no vault firewall / VPC endpoint gap).
+3. The source group's KEK identifier (version, ARN, resource name) has not been deleted or disabled since the source group was provisioned.
+
+Once the join completes and the target group is running, decrypt access on the source group's KEK is no longer required by the target and can be revoked from the target's identity if your security policy calls for it.
+
+### Replica cluster reports healthy despite different KEK material from the primary
+
+Related concept guide: [Transparent Data Encryption across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/).
+
+#### Detailed error
+
+You created a primary + replica cluster pair where the primary is configured with one customer key (for example, `region-key1`) and the replica is configured with a different customer key that resolves to genuinely different key material (for example, `region-key2`). The HM console shows the replica as healthy. Restarting the replica pod does not surface an error.
+
+This **doesn't** mean the replica is protected by `region-key2` at rest. When a replica is bootstrapped, `pg_basebackup` byte-copies the primary's data directory, including `pg_encryption/key.bin`. That file has a header that names the KEK that wrapped it (in this example, `region-key1`), and the on-disk unwrap tool honors that header rather than the CLI flag from the replica's configured TDE secret. As long as the replica's workload identity has KMS decrypt on `region-key1` — which is common when both keys live in the same vault — the unwrap succeeds against `region-key1` on every restart and no error is visible.
+
+The security posture you configured (`region-key2` protects the replica) isn't what is actually protecting the replica's data at rest. `region-key1` is the effective KEK for the replica.
+
+#### Resolution
+
+1. On the replica pod, read the `key.bin` header to confirm which KEK is actually in use:
+
+  ```bash
+  kubectl -n <replica-namespace> exec <replica-pod> -c postgres -- \
+    bash -c 'awk -F. "{print \$1}" /var/lib/postgresql/data/pgdata/pg_encryption/key.bin | base64 -d' ; echo
+  ```
+
+  The output is a JSON header that includes `kvKey`, `kvKeyVer` (or the AWS/GCP/Vault equivalent). If it names the primary's KEK, the replica is bootstrapped under the primary's KEK, and the replica's own configured KEK isn't in effect.
+
+2. Reconfigure the replica to use a customer key whose underlying material is compatible with the primary's KEK. For details on what "compatible" means for each KMS provider, see [Replica clusters across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers).
+
+3. If you must keep the customer keys in HM different for access-control reasons, ensure both customer key rows in HM resolve to the same underlying key material at the KMS layer (for example, an AWS KMS multi-region replica key, or the same Azure key imported into two vaults). See [What "compatible" means](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers) for supported patterns.
+
+Pod restart alone isn't a reliable diagnostic here. If the replica's identity retains vault-level access to the primary's KEK, restart succeeds silently under the primary's KEK regardless of what you configured on the replica.
+
+### `no rows in result set` when creating a cluster with a replica
+
+Related concept guide: [Transparent Data Encryption across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/).
+
+#### Detailed error
+
+Submitting a create-cluster request that includes a replica in another location returns HTTP 500 with a message similar to:
+
+```
+error getting tde config from request: error getting tde secret from proto:
+  error getting customer key data: no rows in result set
+```
+
+#### Resolution
+
+The customer key referenced by the replica part of the request isn't registered in the replica's location in HM. Customer keys in HM are stored per-location — one row per (project, location, key ID).
+
+1. In the HM console, register the customer key in every location that will host the replica cluster **before** submitting the create request.
+2. If you want the replica to use the same key material as the primary, register a second HM customer-key row in the replica's location that resolves to the same underlying KMS key (multi-region replica key, alias to the same CMK, or imported same key material — see [What "compatible" means](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers)).
+3. Re-submit the create request.

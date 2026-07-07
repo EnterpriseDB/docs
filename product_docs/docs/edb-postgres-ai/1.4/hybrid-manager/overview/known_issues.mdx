@@ -854,7 +854,7 @@ Resolved in HM versions 2026.5 and later.
 ### Asset Library apps pgAdmin4 and Apache Superset fail to deploy on RHOS
 
 !!!tip
-This issue was resolved for Apache Superset in HM versions 1.4 and later. pgAdmin4 continues to have this issue.
+This issue was resolved for Apache Superset in HM versions 1.4.0 and later. And for pgAdmin4 in HM versions 1.4.1 and later.
 !!!
 
 [UPM-88301, UPM-91744]: #
@@ -955,6 +955,48 @@ Resolved in HM versions 2026.5 and later.
 **Description:** On Red Hat OpenShift (RHOS) environments where the cluster default storage class differs from the `spec.globalParameters.storage_class` value — for example, where the default is `lvms-vm` (backed by control-plane nodes) but the configured storage class is `lvms-bm` (backed by worker nodes) — Asset Library apps that require persistent volumes, such as pgAdmin4, may get stuck in a `Pending` state indefinitely. This occurs because the app's PVC inherits the cluster default storage class, which may not have capacity available on the nodes where app pods can be scheduled.
 
 **Workaround:** On environments where an app deployment gets stuck, delete the pending PVC in the app namespace and recreate it with `storageClassName` set to the value from `hcp.spec.globalParameters.storage_class`. Alternatively, change the cluster default StorageClass to match `hcp.spec.globalParameters.storage_class` so all new PVCs automatically use the correct storage.
+
+### OSS Library app deployment fails on GKE ARM64 when the requested storage size is less than 4Gi
+
+**Description:** On GKE node pools running the `arm64` `n4a` (Google Axion) machine family, legacy Persistent Disks are unsupported, requiring a switch to a `hyperdisk-balanced` StorageClass. This transition introduces a strict Google Cloud infrastructure constraint: a hard minimum volume size of `4Gi` is enforced on all `hyperdisk-balanced` provisions.
+
+If you deploy an OSS Library app (for example pgBadger, pgAdmin 4 etc.) and request a persistent volume smaller than 4Gi, provisioning fails at the storage layer. The following happens:
+
+- The app's `PersistentVolumeClaim` (PVC) stays in a `Pending` state indefinitely.
+- The app never reaches the `Ready` status in **Estate > Apps**.
+- Describing the PVC (`kubectl describe pvc <pvc-name> -n <app-namespace>`) shows a `ProvisioningFailed` event with an error similar to:
+
+  ```output
+  failed to provision volume with StorageClass "hyperdisk-balanced":
+  rpc error: code = InvalidArgument desc = ... requested size ... is less than the minimum required size 4Gi
+  ```
+
+This issue only affects GKE node pools running the `arm64` `n4a` (Google Axion) machine family with `hyperdisk-balanced` storage class. AMD64 (`x86_64`) node pools and other cloud providers aren't affected.
+
+**Workaround:** Before deploying an OSS Library app on a GKE ARM64 cluster, set the app's persistent volume size parameter to `4Gi` or larger:
+
+If a deployment has already failed because of this issue, delete the app and redeploy it with a storage size of `4Gi` or greater.
+
+### HammerDB app doesn't become healthy on GKE ARM64 due to missing ARM64 toleration
+
+[UPM-118869]: #
+
+**Description:** On Google Kubernetes Engine (GKE) clusters that use `arm64` node pools, the HammerDB OSS Library app can't be scheduled onto ARM64 worker nodes. GKE ARM64 nodes are tainted (typically with `kubernetes.io/arch=arm64:NoSchedule`) so that only pods that explicitly tolerate ARM64 architecture are scheduled onto them. The HammerDB pod spec shipped with the OSS Library package currently doesn't include this toleration.
+
+As a result, when you deploy HammerDB on a GKE ARM64 cluster:
+
+- The HammerDB pod stays in a `Pending` state.
+- The HammerDB app never reaches the `Ready` status in **Estate > Apps**.
+- Running `kubectl describe pod <hammerdb-pod> -n <app-namespace>` shows a scheduling event similar to:
+
+  ```output
+  0/N nodes are available: N node(s) had untolerated taint {kubernetes.io/arch: arm64}. 
+  preemption: 0/N nodes are available: N Preemption is not helpful for scheduling.
+  ```
+
+This behavior is specific to GKE ARM64 clusters. Other OSS Library apps and other architectures (AMD64/`x86_64`) aren't affected.
+
+**Workaround:** There's no supported workaround at this time. Don't deploy the HammerDB OSS Library app on GKE ARM64 clusters until this issue is resolved. If you need to run HammerDB benchmarks against a PostgreSQL cluster hosted on GKE ARM64, deploy the HammerDB app onto a project that runs on an AMD64 node pool and point it at the target PostgreSQL cluster using its connection string.
 
 ## Clusters and upgrades
 
