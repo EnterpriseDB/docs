@@ -1,0 +1,146 @@
+---
+title: Managing Hybrid Manager components
+navTitle: Managing HM components
+description: Suspend, resume, or retry individual Hybrid Manager components to resolve installation conflicts, reduce resource usage, or recover from error states.
+deepToC: true
+---
+
+> **Role:** Kubernetes administrator
+
+Hybrid Manager (HM) is made up of individual components — each a distinct service deployed to its own Kubernetes namespace (for example, `upm-istio`, `upm-marketplace`). In most cases these components install and run automatically. Occasionally, you may need to interact with a specific component directly: to skip one that conflicts with your environment, to disable one that your deployment doesn't require, or to recover one that has entered an error state.
+
+This page explains when and how to use the `edbctl hm` component management commands, and when to use the `disabledComponents` field in the `HybridControlPlane` CR instead.
+
+## Component management approaches
+
+There are two ways to control which HM components run:
+
+| Approach | Command / field | Effect | Reversible? | When to use |
+|---|---|---|---|---|
+| **Temporary suspend** | `edbctl hm suspend-component` | Pauses a running component | Yes — use `resume-component` | Troubleshooting a failed component; temporarily freeing resources |
+| **Permanent disable** | `disabledComponents` in the CR | Prevents a component from being installed | Yes — remove from the list and reapply the CR | Permanently excluding an optional component from your deployment |
+
+!!!Note
+`edbctl hm suspend-component` acts on a component that's already installed. Use `disabledComponents` in the `HybridControlPlane` CR if you want to prevent a component from being installed in the first place.
+!!!
+
+## Why suspend or disable a component?
+
+### Conflict with your Kubernetes environment
+
+Some HM components manage services that may already exist in your cluster. For example, `upm-istio` installs Istio as a service mesh. If your cluster already runs Istio under a separate configuration, installing HM's `upm-istio` will conflict with it.
+
+In this case, suspend `upm-istio` during installation and configure HM to use your existing Istio instance instead.
+
+### Optional components with high resource demands
+
+Some components are included in a default scenario but aren't required for all deployments. For example, `upm-marketplace` ships as part of the `core` scenario but is optional — it provides EDB's application marketplace and can be resource-intensive. If your deployment doesn't use it, disabling it reduces CPU and memory overhead.
+
+<!-- TODO: Aaron — confirm which other components are commonly suspended/disabled, and add to the table below. -->
+
+### Component is in an error state
+
+During installation or upgrades, a component may enter a `failed` state due to a transient error (for example, an image pull failure or a timing issue). Use `edbctl hm retry-component` to trigger a fresh install attempt without restarting the entire HM deployment.
+
+## Check component status
+
+Before suspending or retrying, check the current state of all components:
+
+```shell
+edbctl hm status
+```
+
+Or inspect the `HybridControlPlane` resource directly:
+
+```shell
+kubectl get hybridcontrolplane edbpgai -o yaml
+```
+
+Look for the `status.components` section:
+
+```yaml
+status:
+  components:
+    - name: upm-marketplace
+      state: success   # Can be: pending, success, failed, deleted
+      version: "1.4.0"
+```
+
+## Suspend a component
+
+Suspending pauses the component without removing it. Use this to temporarily stop a component that's conflicting with your environment or consuming resources you need elsewhere.
+
+```shell
+edbctl hm suspend-component <component-name>
+```
+
+For example, to suspend `upm-marketplace`:
+
+```shell
+edbctl hm suspend-component upm-marketplace
+```
+
+The command prompts for confirmation. To skip the prompt in scripts or CI pipelines, add `--yes`:
+
+```shell
+edbctl hm suspend-component upm-marketplace --yes
+```
+
+## Resume a component
+
+Resume brings a suspended component back into service.
+
+```shell
+edbctl hm resume-component <component-name>
+```
+
+For example:
+
+```shell
+edbctl hm resume-component upm-marketplace
+```
+
+## Retry a component in an error state
+
+If a component has failed during installation or an upgrade, use `retry-component` to attempt re-installation without affecting other components.
+
+```shell
+edbctl hm retry-component <component-name>
+```
+
+For example:
+
+```shell
+edbctl hm retry-component upm-istio
+```
+
+## Permanently disable a component
+
+To prevent a component from being installed at all, add it to the `disabledComponents` list in your `HybridControlPlane` manifest and reapply:
+
+```yaml
+spec:
+  # ...
+  disabledComponents:
+    - upm-marketplace
+```
+
+Then apply the updated manifest:
+
+```shell
+kubectl apply -f hybridmanager.yaml
+```
+
+To re-enable it, remove the entry from `disabledComponents` and reapply.
+
+!!!Warning
+<!-- TODO: Aaron — are there any components that must never be suspended or disabled? For example, is upm-beacon required for all deployments? Confirm so we can add a warning here. -->
+Disabling a core component that your deployment depends on may cause HM features or services to become unavailable. Confirm with your EDB contact which components are safe to disable for your scenario.
+!!!
+
+## Reference
+
+- [edbctl hybrid-manager suspend-component](/edbctl/latest/using/edbctl_hybrid_manager/#edbctl-hybrid-manager-suspend-component)
+- [edbctl hybrid-manager resume-component](/edbctl/latest/using/edbctl_hybrid_manager/#edbctl-hybrid-manager-resume-component)
+- [edbctl hybrid-manager retry-component](/edbctl/latest/using/edbctl_hybrid_manager/#edbctl-hybrid-manager-retry-component)
+- [edbctl hybrid-manager status](/edbctl/latest/using/edbctl_hybrid_manager/#edbctl-hybrid-manager-status)
