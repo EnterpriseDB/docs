@@ -1,32 +1,26 @@
 ---
 title: Configuring Airman MCP for governance
 navTitle: Configuring Airman MCP
-description: Set up Airman MCP instances with purpose labels and access modes, and configure PostgreSQL roles so governance boundaries are enforced at the database execution boundary.
+description: Set up Airman MCP instances with purpose labels and access modes, and configure Postgres roles so governance boundaries are enforced at the database execution boundary.
 deepToC: true
 ---
 
 Configure the Airman MCP server and its corresponding Postgres roles so that AI agent activity is tagged, bounded, and visible in the Agent Governance viewer.
 
-## The 1:1:1 mapping
+## Understanding the governance model
 
-The governance model that Agent Governance audits is built on a 1:1:1 mapping:
+Agent Governance works because each AI agent is tied to exactly one declared purpose and one Postgres login role — one Airman MCP instance, one purpose, one role. When an agent operates through an Airman MCP instance, it connects to Postgres as a role that has only the privileges appropriate to that purpose. The database enforces this boundary. No application code, middleware, or prompt can override it.
 
-```
-One Airman MCP instance  ↔  One declared purpose  ↔  One PostgreSQL login role
-```
+This gives you two independent enforcement layers:
 
-When an AI agent operates through a specific Airman MCP instance, it connects to Postgres as a login role that has only the privileges appropriate to that purpose. The database enforces this. No application code, no middleware, and no prompt can override it.
-
-This pattern gives you two independent enforcement layers:
-
-1. **Airman MCP layer** — In restricted mode, Airman performs SQL syntax analysis and rejects disallowed statement types before a query reaches PostgreSQL.
+1. **Airman MCP layer** — In restricted mode, Airman performs SQL syntax analysis and rejects disallowed statement types before a query reaches Postgres.
 2. **PostgreSQL RBAC layer** — Even if a query passes the MCP layer, the login role's grants determine what data it can touch. The database kernel enforces this at the execution boundary.
 
 Each layer can catch what the other misses. Together they make governance deterministic: if the role has no `GRANT` on a table, the query fails — every time, regardless of what the LLM instructs.
 
 ## Configuring an Airman MCP instance
 
-Each Airman MCP instance is configured with three settings that determine what it can do and how its activity is tagged in the viewer.
+Configure each Airman MCP instance with three settings that determine what it can do and how its activity is tagged in the viewer.
 
 ### Purpose
 
@@ -42,18 +36,18 @@ If `AIRMAN_MCP_PURPOSE` is unset, Airman defaults the purpose segment to `_`. Se
 
 ### Access mode
 
-Airman MCP runs in either restricted or unrestricted mode, set with the `--accessmode` flag.
+Airman MCP runs in either restricted or unrestricted mode. Set the mode with the `--accessmode` flag when starting the Airman MCP process — **[ENGINEERING: confirm the exact invocation, for example as a CLI argument, environment variable, or config file entry]**.
 
 **Restricted mode** (`--accessmode=restricted`) is the recommended posture for most agents. In restricted mode, Airman:
 
-- Performs SQL syntax analysis using `pglast` and rejects any statement not on its allowlist. `DROP`, `DELETE`, and `INSERT` are blocked at the MCP layer before the query reaches PostgreSQL.
+- Performs SQL syntax analysis using `pglast` and rejects any statement not on its allowlist. `DROP`, `DELETE`, and `INSERT` are blocked at the MCP layer before the query reaches Postgres.
 - Wraps every query in a `BEGIN TRANSACTION READ ONLY ... ROLLBACK` block with enforced timeouts, so a query can't commit writes even if a restriction were bypassed.
 
-**Unrestricted mode** (`--accessmode=unrestricted`) allows write operations. Use this mode only for agents that legitimately need to write data — for example, an executive reporting agent that persists reports to a dedicated output table. Scope the PostgreSQL role for an unrestricted instance narrowly: grant write access only to the specific table or schema the agent needs to write to, and grant read access only to the certified views it reads from.
+**Unrestricted mode** (`--accessmode=unrestricted`) allows write operations. Use this mode only for agents that legitimately need to write data — for example, an executive reporting agent that persists reports to a dedicated output table. Scope the Postgres role for an unrestricted instance narrowly: grant write access only to the specific table or schema the agent needs to write to, and grant read access only to the certified views it reads from.
 
 ### Database connection
 
-Each Airman MCP instance connects to PostgreSQL using a standard connection string:
+Each Airman MCP instance connects to Postgres using a standard connection string:
 
 ```
 postgresql://<login-user>:<password>@<host>:<port>/<database>
@@ -63,7 +57,7 @@ Use a distinct login user per instance. If two agents share a login user, their 
 
 ## Setting up PostgreSQL roles
 
-To make purpose boundaries enforceable at the database level, create a pair of roles for each agent purpose: a functional role (which holds the grants) and a login user (which the Airman instance connects as).
+To make purpose boundaries enforceable at the database level, create a pair of roles for each agent purpose: a functional role that holds the grants, and a login user that the Airman instance connects as.
 
 ### Creating the functional role
 
@@ -95,7 +89,7 @@ The connection limit guards against connection exhaustion when many agent querie
 
 ### Pointing the Airman instance at the login user
 
-Set the Airman MCP database connection string to use the login user you created:
+Set the database connection in your Airman MCP configuration to use the login user you created — **[ENGINEERING: confirm the exact setting name, for example `AIRMAN_MCP_DATABASE_URL` as an environment variable or a config file field]**:
 
 ```
 postgresql://airman_<purpose>:<password>@<host>:<port>/<database>
@@ -167,7 +161,7 @@ To add a new purpose-scoped agent:
 
 1. Create a new functional role with grants scoped to the new purpose.
 2. Create a new login user that inherits the functional role.
-3. Deploy a new Airman MCP instance pointed at the login user's connection string, with `AIRMAN_MCP_PURPOSE` set to the new purpose label.
+3. Deploy a new Airman MCP instance with `AIRMAN_MCP_PURPOSE` set to the new purpose label and the database connection pointing at the new login user — **[ENGINEERING: add a cross-reference to Airman MCP deployment instructions or a deployment example]**.
 4. Register the instance's data source in the Agent Governance viewer. See [Connecting data sources](./connecting_data_sources).
 
 No application code changes are required. The database enforces the new boundary from the moment the role is created.
