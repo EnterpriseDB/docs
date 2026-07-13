@@ -26,6 +26,10 @@ source:
     partitions: <partition_spec>
     read_workers: <num_workers>
     read_buffer: <queue_depth>
+    key:
+      <data_format>:
+        <column_spec>
+        <other_props>
     value:
       <data_format>:
         <column_spec>
@@ -62,11 +66,12 @@ source:
 | `brokers` | List of Kafka broker addresses. |
 | `topic` | The Kafka topic to consume messages from. |
 | `partitions` | (Optional) A comma-separated list of partition numbers and/or inclusive ranges in `M...N` syntax that restricts the job to a subset of the topic's partitions, for example `2, 5...7, 13`. Surrounding parentheses are optional. If you don't specify a value, the job consumes all partitions of the topic. Use this setting to split a high-volume topic across multiple concurrent jobs, each owning a disjoint set of partitions. |
-| `read_workers` | (Optional) The number of parallel worker goroutines that format fetched Kafka records, one partition per worker per poll. The default is `0`, which uses one worker per available CPU core. Set to `1` to format records on a single thread instead of in parallel. |
+| `read_workers` | (Optional) The number of parallel worker goroutines that format fetched Kafka records. Each partition's records are always formatted by a single worker per poll. The default is `0`, which uses one worker per available CPU core. Set to `1` to format records on a single thread instead of in parallel. |
 | `read_buffer` | (Optional) The depth of the internal queue that lets the reader buffer formatted packets ahead of the batch being committed. The default is `0`, which resolves to `2 × read_workers`. |
-| `value.<data_format>` | The format of the value data (`json`, `avro`, or `csv`). See [Kafka value formats](#kafka-value-formats) below. |
+| `key.<data_format>` | (Optional) The format of the key data (`json`, `avro`, or `csv`). See [Kafka value formats](#kafka-value-formats) below. |
+| `value.<data_format>` | The format of the value data (`json`, `avro`, or `csv`). See [Kafka value formats](#kafka-value-formats) below. If you configure both `key` and `value`, neither can use the `csv` format. |
 | `metadata.json.column.name` | (Optional) Name of the column that projects Kafka record metadata (topic, partition, offset, and timestamp) into the target table as a single JSON column. Only supported when `key` and `value` use the JSON or Avro format. |
-| `metadata.json.column.type` | Type of the metadata column. The value must be `json`. |
+| `metadata.json.column.type` | Type of the metadata column. The value must be `json` or `jsonb`. |
 | `control.consistency` | The consistency level for message processing. The default is `exactly-once`. See [Values for the Kafka consistency field](#values-for-the-kafka-consistency-field) below. |
 | `control.fallback_offset` | The offset to use if there's an offset gap between the record in the history store and the Kafka watermark. Valid values are `earliest` and `latest`. If you don't specify a value, FlowServer raises an error when there's an offset gap. |
 | `task.batch_size.interval_ms` | The time interval to wait for new messages before committing loading transactions. The default is 1000 milliseconds. |
@@ -92,7 +97,7 @@ The `consistency` field accepts these values:
 | `exactly-once` (default) | The job stores offsets in the database and doesn't reprocess messages it already processed. |
 | `at-most-once` | The job doesn't store offsets in the database, and commits the offset to Kafka before committing the data loading transaction. |
 | `at-least-once` | The job doesn't store offsets in the database, and commits the offset to Kafka after committing the data loading transaction. |
-| `none` | The job doesn't store offsets in the database and auto-acknowledges the offset. |
+| `none` | The job doesn't store offsets in the database and auto-acknowledges the offset. This value falls back to `at-least-once` behavior. |
 
 ### Kafka value formats
 
@@ -220,7 +225,7 @@ The `consistency` field accepts these values:
 
 | Value | Behavior |
 | --- | --- |
-| `at-least-once` (default) | The job stores offsets in the database and doesn't reprocess messages it already processed. |
+| `at-least-once` (default) | The job doesn't store offsets in the database, and commits the offset to RabbitMQ after committing the data loading transaction. |
 | `at-most-once` | The job doesn't store offsets in the database, and commits the offset to RabbitMQ before committing the data loading transaction. |
 
 ### RabbitMQ value formats
