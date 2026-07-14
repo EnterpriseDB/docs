@@ -1,0 +1,361 @@
+---
+title: EDB Klio Operator Helm Chart
+navTitle: ''
+originalFilePath: >-
+  https://github.com/EnterpriseDB/klio/blob/main/documentation/web/versioned_docs/version-0.0.16/user/helm_chart.mdx
+sidebar_position: 90
+
+---
+
+<!-- spell-checker-disable -->
+
+import PartialValues from "./_helm_chart_values.mdx";
+
+<!-- spell-checker-enable -->
+
+The EDB Klio Operator Helm chart allows you to deploy the Klio
+Operator in your Kubernetes cluster. It is distributed as a private
+OCI image.
+
+!!!info Namespace Selection
+
+We have used the `cnpg-system` namespace for all examples on this page.
+
+If you have deployed CloudNativePG in a different namespace, ensure you replace
+`cnpg-system` with your specific namespace in all commands.
+The Klio Operator must reside in the same namespace as the CloudNativePG
+operator.
+!!!
+
+## Prerequisites
+
+Before installing the Klio Operator, ensure you have:
+
+-   **Helm** – see the [Helm installation guide](https://helm.sh/docs/intro/install/)
+-   **Kubernetes** cluster with appropriate permissions
+-   **Credentials** to access the registry hosting the Helm chart, the Klio operator
+    image, and the Klio operand image.
+-   **CloudNativePG Operator** already installed in your Kubernetes cluster.
+    See the [CloudNativePG installation guide](https://cloudnative-pg.io/documentation/current/installation_upgrade/).
+-   **cert-manager** (optional, but strongly recommended for managing TLS certificates).
+    See the [cert-manager installation guide](https://cert-manager.io/docs/installation/).
+-   **Prometheus Operator** (optional, for operator monitoring).
+    See the [Prometheus Operator installation guide](https://prometheus-operator.dev/docs/getting-started/installation/).
+
+## Installation
+
+### Step 1: Registry Authentication
+
+Authenticate with the EDB registry where the Helm chart is hosted:
+
+```sh
+helm registry login helm.oci.cloudsmith.io -u enterprisedb/k8s -p <TOKEN>
+```
+
+Replace `<TOKEN>` with the required credentials.
+
+### Step 2: Create an Image Pull Secret
+
+Create a Kubernetes secret to allow the operator to pull container
+images from the registry:
+
+```sh
+kubectl create secret docker-registry klio-registry-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --namespace cnpg-system \
+  --docker-password=<TOKEN>
+```
+
+### Step 3: Create a values file
+
+Create a `values.yaml` file with your configuration. At minimum, set
+the image pull secret created in the previous step. If you have not
+installed cert-manager or the Prometheus Operator, disable them to
+avoid errors during installation:
+
+```yaml
+controllerManager:
+  manager:
+    image:
+      pullSecrets:
+        - name: klio-registry-secret
+
+# Uncomment if cert-manager is not installed
+# certmanager:
+#   enable: false
+
+# Uncomment if the Prometheus Operator is not installed
+# prometheus:
+#   enable: false
+```
+
+See the [Configuration](#configuration) section for the full list of
+available parameters. You will reuse this file for future upgrades.
+
+### Step 4: Install the Helm Chart
+
+Deploy the Klio Operator to your cluster:
+
+<!-- x-release-please-start-version -->
+
+```sh
+helm install klio-operator \
+  oci://helm.oci.cloudsmith.io/enterprisedb/k8s/klio-operator-chart \
+  --version 0.0.16 \
+  --namespace cnpg-system \
+  -f values.yaml
+```
+
+<!-- x-release-please-end -->
+
+### Step 5: Verify Installation
+
+After installation, verify that the Klio Operator is running:
+
+```sh
+kubectl get pods -n cnpg-system -l app.kubernetes.io/name=klio
+```
+
+You should see the operator pod in a `Running` state. Check the logs to ensure
+there are no errors:
+
+```sh
+kubectl logs -n cnpg-system -l app.kubernetes.io/name=klio -f
+```
+
+Verify that the Custom Resource Definitions (CRDs) were created:
+
+```sh
+kubectl get crds | grep klio.enterprisedb.io
+```
+
+You should see CRDs like `servers.klio.enterprisedb.io` and
+`pluginconfigurations.klio.enterprisedb.io`.
+
+## Configuration
+
+### Inspecting the Chart
+
+You can download the Helm chart to inspect its contents, review the
+default values, and understand what resources it will create:
+
+<!-- x-release-please-start-version -->
+
+```sh
+helm pull oci://helm.oci.cloudsmith.io/enterprisedb/k8s/klio-operator-chart \
+  --version 0.0.16 \
+  --untar
+```
+
+<!-- x-release-please-end -->
+
+This downloads the chart and extracts it into the
+`klio-operator-chart` folder, where you can review the templates,
+the default `values.yaml`, and other chart files.
+
+### Configuration Reference
+
+<PartialValues />
+
+### CNPG API Group Detection
+
+Klio works with both [CloudNativePG](https://cloudnative-pg.io/) (API group
+`postgresql.cnpg.io`) and CNPG-based operators that use a different API group
+(for example,
+[EDB Postgres® AI for CloudNativePG™ Cluster](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/)).
+The operator detects the CNPG API group and version automatically from each
+`Cluster` resource at runtime — no configuration is required.
+
+## Upgrades
+
+A complete upgrade consists of three steps that must be performed in
+order:
+
+1.  [Upgrade the CRDs](#upgrade-the-crds) — apply updated CRD manifests
+2.  [Upgrade the Operator](#upgrade-the-operator) — run `helm upgrade`
+3.  [Upgrade the Klio Server and client](#upgrade-the-klio-server-and-client) — upgrade operand images
+
+### Upgrade the CRDs
+
+!!!warning Upgrading CRDs
+
+Helm does not upgrade CRDs after initial installation
+([details](https://helm.sh/docs/topics/charts/#custom-resource-definitions-crds)).
+When upgrading to a version that includes CRD changes, apply them
+manually before running `helm upgrade` (as explained below).
+!!!
+
+!!!warning CRD breaking changes
+
+If the CRDs contain breaking changes, old resource definitions may
+not work. In this case, resources should be edited when
+[upgrading the Klio Server and client](#upgrade-the-klio-server-and-client).
+Check the [Upgrade Notes](upgrade_notes.mdx) for version-specific
+instructions.
+!!!
+
+#### Step 1: Download the new chart
+
+Download the new version of the Helm chart to access the updated CRD
+manifests:
+
+<!-- x-release-please-start-version -->
+
+```sh
+helm pull oci://helm.oci.cloudsmith.io/enterprisedb/k8s/klio-operator-chart \
+  --version 0.0.16 \
+  --untar
+```
+
+<!-- x-release-please-end -->
+
+#### Step 2: Review CRD changes
+
+Before applying, review the CRD changes to understand what is being
+modified:
+
+```sh
+kubectl diff -f klio-operator-chart/crds/
+```
+
+#### Step 3: Apply the updated CRDs
+
+Apply the CRD manifests to your cluster:
+
+```sh
+kubectl apply --server-side --force-conflicts -f klio-operator-chart/crds/
+```
+
+#### Step 4: Clean up
+
+Remove the extracted chart directory:
+
+```sh
+rm -rf klio-operator-chart
+```
+
+### Upgrade the Operator
+
+To upgrade the Klio Operator to a newer version, run the following
+Helm upgrade command:
+
+<!-- x-release-please-start-version -->
+
+```sh
+helm upgrade klio-operator \
+  oci://helm.oci.cloudsmith.io/enterprisedb/k8s/klio-operator-chart \
+  --version 0.0.16 \
+  --namespace cnpg-system \
+  -f values.yaml
+```
+
+<!-- x-release-please-end -->
+
+See the
+[Helm upgrade documentation](https://helm.sh/docs/helm/helm_upgrade/#options)
+for more details on this and other upgrade options.
+
+### Upgrade the Klio Server and client
+
+After upgrading the operator and the CRDs, Klio images in `Server`
+resources and the ones used as sidecars in `Cluster` resources should
+be upgraded as well. We recommend using the same version for the
+operator and the operand.
+
+!!!info Future improvement
+
+We plan to reduce the amount of manual work required during upgrades in
+future versions of the operator.
+!!!
+
+#### Upgrade Klio servers
+
+Klio servers are not automatically updated when a new operand image is
+released. Update the `spec.image` field with the new image reference:
+
+<!-- x-release-please-start-version -->
+
+```sh
+kubectl patch server <server-name> -n <namespace> \
+  --type merge \
+  -p '{"spec":{"image":"docker.enterprisedb.com/k8s/klio:v0.0.16"}}'
+```
+
+<!-- x-release-please-end -->
+
+Verify that the Klio Server pods are running the latest version:
+
+```sh
+kubectl get pods -l klio.enterprisedb.io/klio-server -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,IMAGE:.spec.containers[0].image'
+```
+
+!!!warning
+
+If the Klio Pod gets into a broken state before the image upgrade, a new Pod
+with the image upgrade
+[will not be rolled out](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#forced-rollback).
+In this case you should delete the Klio Pod. The StatefulSet managing it
+will recreate it with the chosen image.
+!!!
+
+!!!warning
+
+Not all parameters can be updated in a StatefulSet. In case a new version of
+the operator requires such a change, delete the StatefulSet managing the Klio
+Server. The operator will automatically recreate the StatefulSet.
+StatefulSets [retain their PVCs by default](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention),
+make sure your data is safe before proceeding.
+
+```sh
+kubectl delete statefulset -l klio.enterprisedb.io/klio-server=<SERVER_NAME> -n <NAMESPACE>
+```
+!!!
+
+#### Upgrade Klio client sidecars
+
+The Pods of the CNPG instances need to be recreated to run the new Klio image.
+You can use the CNPG `kubectl` plugin to trigger a rolling update:
+
+```sh
+kubectl cnpg restart <cluster-name>
+```
+
+Refer to the
+[CloudNativePG documentation](https://cloudnative-pg.io/documentation/current/rolling_update/)
+for guidance on performing rolling updates.
+
+Verify that the sidecar containers are running the latest version:
+
+```sh
+kubectl get pods -l cnpg.io/cluster -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{range .spec.initContainers[?(@.name=="klio-plugin")]}{.image}{end}{"\n"}{end}'
+```
+
+## Uninstalling
+
+To uninstall the Klio Operator:
+
+```sh
+helm uninstall klio-operator --namespace cnpg-system
+```
+
+!!!warning Data Preservation
+
+Uninstalling the operator does not automatically remove:
+
+-   Custom Resource Definitions (CRDs)
+-   Existing Klio resources (Servers, PluginConfigurations)
+-   Persistent volumes containing backup data
+
+To completely remove Klio from your cluster, you must manually delete these
+resources.
+!!!
+
+To remove the CRDs after uninstalling:
+
+```sh
+kubectl delete crd servers.klio.enterprisedb.io
+kubectl delete crd pluginconfigurations.klio.enterprisedb.io
+```
