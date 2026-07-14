@@ -22,7 +22,7 @@ You can troubleshoot common problems in Hybrid Manager (HM).
 | na         | Database Provisioning | Postgres Cluster Provisioning Stuck at X% Complete      |                                                                        |                                                                                    |
 | na         | Database Provisioning | CPU and Memory range is much smaller than the nodegroup |                                                                        |                                                                                    |
 | na         | Database Update       | Disk scale up                                           | The new value is shown on cluster yaml but not applied on pvc/pv.      | Edit the storageclass.                                                              |
-| na         | TDE across data centers | Physical-join PGD data group stuck with `FATAL: key unwrap command produced no output` | The joining pod's identity cannot decrypt under the *source* group's KEK during the physical join. | Grant the target location's workload identity decrypt access on the source group's KEK for the duration of the join. |
+| na         | TDE across data centers | Physical-join PGD data group stuck with `FATAL: key unwrap command produced no output` | The joining group's own configured KEK can't unwrap the copied `key.bin` — usually because its underlying material genuinely differs from the source group's KEK. | Configure the joining group's customer key to resolve to key material compatible with the source group's KEK. Granting access to the *source* location's key vault doesn't help — the join never contacts it. |
 | na         | TDE across data centers | Replica cluster reports healthy despite being configured with different KEK material from the primary | The replica's `pg_encryption/key.bin` is byte-copied from the primary and its header names the primary's KEK. The unwrap tool honors that header, not the replica's own configured KEK. | Read the `key.bin` header to see which KEK is actually in use; align the replica's customer key with the primary's key material. |
 | na         | TDE across data centers | `no rows in result set` when creating a cluster with a replica | The customer key referenced by the replica request is not registered in the replica's location. | Register the customer key in every location that will host a replica before submitting the create request. |
 
@@ -760,29 +760,22 @@ When you add a distributed high-availability (PGD) data group into a new locatio
 FATAL:  key unwrap command produced no output
 ```
 
-accompanied by a KMS access error from the KMS provider:
+accompanied by a decrypt failure from the KMS provider — the exact shape depends on why the unwrap failed:
 
-- Azure Key Vault: `403 Forbidden` / `Forbidden` (message names the vault key).
-- AWS KMS: `AccessDeniedException`.
-- Google Cloud KMS: `PermissionDenied`.
-- HashiCorp Vault: `permission denied` on the Transit engine key.
-
-The KMS error names the **source** location's key (for example, `region-key1`), not the joining group's own configured key (for example, `region-key2`).
+- **Genuinely different key material** (the common case): the joining group's own configured KEK simply cannot decrypt data wrapped by the source group's KEK — for example, `KeyNotFound` / `BadParameter` on Azure Key Vault, `InvalidCiphertextException` on AWS KMS, or an equivalent decrypt-failure from Google Cloud KMS / HashiCorp Vault.
+- **Permission gap on the joining group's own key**: `403 Forbidden` (Azure), `AccessDeniedException` (AWS), `PermissionDenied` (GCP), or `permission denied` (HashiCorp Vault) naming the joining group's own configured key.
 
 #### Resolution
 
-During a PGD physical join the target's manager reads the DEK out of the copied `pg_encryption/key.bin` **using the KEK named in that file's header** — which is the source group's KEK — and then re-wraps the DEK under the target group's own configured KEK before the postmaster starts. The target's workload identity therefore needs KMS decrypt access on **two** keys for the duration of the join:
-
-- The **source group's KEK** (to unwrap the copied `key.bin` once).
-- The **target group's own configured KEK** (to write the re-wrapped `key.bin`).
+There is no operator step that reads the copied `pg_encryption/key.bin` with the source group's KEK and re-wraps it under the target's — the joining group starts Postgres using only its **own locally configured** wrap/unwrap commands, exactly as at every other startup. So the copied file can only be unwrapped if the joining group's own KEK resolves to key material **compatible with the source group's KEK**.
 
 Confirm the following before retrying the join:
 
-1. The target location's workload identity has decrypt permission on the source group's KEK in the same KMS.
-2. The KMS is reachable from the target location's network (no vault firewall / VPC endpoint gap).
-3. The source group's KEK identifier (version, ARN, resource name) has not been deleted or disabled since the source group was provisioned.
+1. The joining group's customer key resolves to key material compatible with the source group's KEK — see [What "compatible" means](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#replica-clusters-across-data-centers) for supported patterns per KMS provider. Configuring the joining group with genuinely different material will never let it start; this isn't a permissions issue and granting the joining location's identity access to the **source** location's key vault has no effect, because the join never contacts it.
+2. The joining group's own workload identity has decrypt permission on its **own** configured key.
+3. The KMS is reachable from the joining location's network (no vault firewall / VPC endpoint gap).
 
-Once the join completes and the target group is running, decrypt access on the source group's KEK is no longer required by the target and can be revoked from the target's identity if your security policy calls for it.
+See [Transparent Data Encryption across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/#distributed-high-availability-pgd-clusters-across-data-centers) for the full requirement, and [UPM-121917](https://enterprisedb.atlassian.net/browse/UPM-121917) for a known rough edge in how the same-material case is resolved on Azure.
 
 ### Replica cluster reports healthy despite different KEK material from the primary
 
