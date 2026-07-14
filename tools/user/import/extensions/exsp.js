@@ -89,6 +89,9 @@ const TABLE_STYLES = `
 .ext-table td.et-unbold {
   font-weight: normal;
 }
+.ext-table td.et-indent {
+  padding-left: 1em;
+}
 .ext-table td.et-align-left {
   text-align: left;
 }
@@ -107,6 +110,12 @@ const TABLE_STYLES = `
 .ext-table .et-subtitle {
   border: 1px solid;
   text-align: left;
+}
+.ext-table .et-notes {
+  font-style: italic;
+  font-weight: normal;
+  text-align: left;
+  padding-left: 2em;
 }
 .ext-table .et-yes,
 .ext-table .et-no {
@@ -158,11 +167,12 @@ function voidEl(tag, attrs) {
 // come from the base .ext-table th/td rules, so only the exceptions to those
 // defaults need a class: a data row's closing bottom border and the two data
 // columns that aren't bold+centered.
-function cellClass({ bottom, unbold, alignLeft }) {
+function cellClass({ bottom, unbold, alignLeft, indent }) {
   return classNames(
     bottom && "et-bb",
     unbold && "et-unbold",
     alignLeft && "et-align-left",
+    indent && "et-indent",
   );
 }
 
@@ -221,6 +231,14 @@ function subtitleRow(heading) {
   );
 }
 
+function notesRow(notes) {
+  return el(
+    "tr",
+    {},
+    el("td", { colspan: TOTAL_COLUMNS, class: "et-notes" }, escapeHtml(notes)),
+  );
+}
+
 // extensionrefs.json keys extensions by name with spaces turned into
 // underscores, and prefixes child extensions with "parent.".
 function refKey(name) {
@@ -241,17 +259,20 @@ function composeExtensionRow(ext, lastRow, unmapped) {
     url = undefined;
   }
 
-  const indentPrefix = ext.parent_extension ? "&nbsp;&nbsp;&nbsp;&nbsp;" : "";
   const nameText = escapeHtml(ext.extension_name);
   let nameContent =
-    indentPrefix +
-    (url != undefined ? el("a", { href: url }, nameText) : nameText);
-  if (ext.notes) {
-    nameContent += ` (${escapeHtml(ext.notes)})`;
-  }
+    url != undefined ? el("a", { href: url }, nameText) : nameText;
 
   const cells = [
-    td({ bottom: lastRow, unbold: true, alignLeft: true }, nameContent),
+    td(
+      {
+        bottom: lastRow,
+        unbold: true,
+        alignLeft: true,
+        indent: !!ext.parent_extension,
+      },
+      nameContent,
+    ),
     td({ bottom: lastRow, unbold: true }, ext.requires_superuser ? "Yes" : ""),
   ];
 
@@ -272,7 +293,11 @@ function composeExtensionRow(ext, lastRow, unmapped) {
     }
   }
 
-  return el("tr", {}, cells.join(""));
+  if (ext.notes) {
+    return [el("tr", {}, cells.join("")), notesRow(ext.notes)];
+  }
+
+  return [el("tr", {}, cells.join(""))];
 }
 
 // Column groups, in display order: extension name, requires-superuser, then
@@ -315,7 +340,7 @@ function buildSection(category, subCategories, unmapped) {
     const isLastSubCategory = subCategoryIndex == subCategoryEntries.length - 1;
     exts.forEach((ext, index) => {
       bodyRows.push(
-        composeExtensionRow(
+        ...composeExtensionRow(
           ext,
           isLastSubCategory && index == exts.length - 1,
           unmapped,
