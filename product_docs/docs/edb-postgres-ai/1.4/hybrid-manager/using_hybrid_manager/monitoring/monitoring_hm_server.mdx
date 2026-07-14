@@ -1,0 +1,124 @@
+---
+title: Enabling usage reporting in the HM server
+navTitle: Usage report in HM server
+description: Learn how to enable usage reporting in the HM server.
+deepToC: true
+---
+
+The Hybrid Manager (HM) server transmits usage telemetry to EDB to automate your core-based licensing and entitlements. This ensures your environment stays compliant with provisioning limits without the need for manual audits or tracking. This reporting works for all on-premises servers, even if you are not using HM for active monitoring.
+
+Usage reporting with the HM server is an opt-in service, hence it is not enabled by default. Data is only sent to EDB when you explicitly enable it. When enabled, the HM server sends a new report every 24 hours by default, starting with the first time the HM server runs.
+
+## What type of data is collected?
+When configured to send usage data, the HM server generates a small report containing environment metadata and resource usage. This includes information such as:
+
+- Operating system details
+- Memory and CPU usage
+- Installed database distribution (for example, PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server) and version
+
+
+!!!important
+This report does not include sensitive data or user-identifiable information.
+!!!
+
+## Where is the data sent to?
+When configured, reporting data goes to https://hm-usage.enterprisedb.com, an EDB-managed endpoint.
+
+## How do I enable usage reporting with the HM server?
+If you are using the Hybrid Manager, you can enable reporting as part of your HM server's configuration. See [Enabling HM server usage reporting](#enabling-hm-server-usage-reporting).
+
+If you have a standalone deployment of a database server (PostgreSQL, EPAS, PGE) and you don't wish to use HM, see [Enabling usage reporting for standalone databases](/../../tools/agent/stand_alone).
+
+If you are operating in an air-gapped environment, you can create a usage report as a JSON file within the EDB Postgres AI agent's configuration page and upload it through the option **PGAI Agent Reporting** under the **Tools** section in the left side pane of the **EDB Customer Portal**.
+
+
+## Enabling HM server usage reporting
+
+You can enable usage reporting for HM via the following methods:
+
+### Enable HM server usage reporting through the operator
+
+To enable telemetry and server metrics collection, you must configure the `HybridControlPlane` custom resource with your specific company and installation details.
+
+#### Requirements
+
+- Access to the cluster where the operator is installed.
+- Your unique company code is provided by the administrator.
+
+#### Enable usage reporting (operator)
+
+1. Open the `HybridControlPlane` resource for editing, using `kubectl` to edit your existing control plane configuration:
+
+   ```
+   kubectl edit hybridcontrolplane <resource-name> -n <namespace>
+   ```
+
+1. Under the `spec` section, ensure the `globalParameters` block includes your company code:
+   
+   ```
+   spec:
+     globalParameters:
+       company_code: "YOUR_COMPANY_CODE"
+   ```
+
+1. Add the `enableEDBUsageReporting` and `hybridManagerInstallation` fields to the `beaconServer` section:
+   
+   ```
+   spec:
+     beaconServer:
+       enableEDBUsageReporting: true
+       hybridManagerInstallation: <install-name>
+   ```
+
+1. Save your changes. The operator reconciles the updated spec automatically; once `HybridControlPlane` is in a healthy state, HM server will begin initializing the telemetry services.
+
+   !!! important
+   - If `enableEDBUsageReporting` is set to `false`, usage data is not collected or sent to EDB.
+   - If `enableEDBUsageReporting` is set to true, the fields `company_code` and `hybridManagerInstallation` are required. If either field is missing, the HM custom resource moves to a failure state and returns an error indicating that these fields are required when usage reporting is enabled.
+   !!!
+
+### Enable HM server usage reporting through the Helm chart
+
+To enable telemetry and server metrics collection during a Helm deployment, you must define the global company identity and the Beacon Server status in your configuration.
+
+#### Requirements
+
+- A functional Helm environment.
+- Your unique company code is provided by the administrator.
+
+#### Enable usage reporting (Helm)
+
+1. Locate your `values.yaml` configuration file used for your specific deployment.  
+
+1. Under the `parameters.global` section, add your company code:
+
+   ```yaml
+   parameters:
+     global:
+       company_code: "YOUR_COMPANY_CODE"
+   ```
+
+1. Enable server metrics collection by setting `enableEDBUsageReporting` to `true` and `hybridManagerInstallation` to `<install-name>`:
+
+   ```yaml
+   beaconServer:
+     enableEDBUsageReporting: true
+     hybridManagerInstallation: <install-name>
+   ```
+
+1. For first-time installations, apply the changes:
+
+   ```yaml
+   helm install <release-name> <chart-path> -f values.yaml
+   ```
+  
+  For updating an existing installation, run the `helm upgrade` command:
+
+   ``` yaml
+   helm upgrade <release-name> <chart-path> -f values.yaml
+   ```
+
+!!! important
+- If `enableEDBUsageReporting` is set to `false`, usage data is not collected or sent to EDB.
+- If `enableEDBUsageReporting` is set to `true`, the fields `company_code` and `hybridManagerInstallation` are required. Helm fails with an error if either value is missing while usage reporting is enabled.
+!!!

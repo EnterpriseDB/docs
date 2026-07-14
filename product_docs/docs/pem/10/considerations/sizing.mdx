@@ -55,9 +55,15 @@ The number of alert and probe executions scales with:
 Our recommended CPU numbers are calculated to ensure PEM can maintain the required execution rate for all probes and alerts using the default configuration.
 If you decide to customize your setup by enabling many additional alerts or probes or increasing the execution frequency, you may need to scale the CPU accordingly to prevent delays.
 
-!!!Note Alert threads
-In larger deployments, you need to increase the total number of alert threads in the PEM agent configuration on the PEM hosts. This modification allows PEM to efficiently use more CPU time specifically for alert evaluation, preventing bottlenecks.
+!!!Important Alert threads
+In larger deployments, you need to increase the total number of alert threads in the PEM agent configuration on the PEM hosts. 
+The number of alert threads caps the number of CPU cores PEM can use for alert evaluation, so it is essential to that this is 
+tuned correctly to avoid introducing alert latency and to effectively utilize the CPU resources provisioned for PEM.
+
 You can change the number of alert threads by modifying the `alert_threads` setting of the PEM agent running on the PEM hosts.
+
+Note that the efficiency with which alert evaluation was shared over multiple threads was significantly improved in PEM 10.5,
+so before attempting to tune this parameter in an existing system, ensure your PEM version is at least 10.5.
 !!!
 
 ### Size of historical data - storage
@@ -82,16 +88,23 @@ For all the reasons explained above, the load on the PEM server critically depen
 The size guide is a starting point. 
 For large sizes, we strongly recommend that you start by adding a subset of your monitored servers to PEM and measuring resource usage. 
 Don't be surprised if your eventual resource needs differ significantly from those we suggest.
+
+Note also that CPU and alert thread requirements scale faster than the number of agents, so do not assume that doubling the size of your system will simply double the resource requirements.
 !!!
 
 | Size&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description                                                                                   | Component | CPUs | RAM    | Storage | IOPS   | Other Notes                                                      |
 |------------------------------------------------------|-----------------------------------------------------------------------------------------------|-----------|------|--------|---------|--------|------------------------------------------------------------------|
 | Nano                                                 | For testing PEM,<br/>1–2 monitored servers,<br/> single user                                  | —         | 1    | 2 GB   | 20 GB   | &lt;100 | —                                                                |
 | Tiny                                                 | For a single HA cluster,<br/> with a few web app users                                        | —         | 2    | 4 GB   | 50 GB   | &lt;100 | —                                                                |
-| Small                                                | For ≤50 servers,<br/> &lt;5 concurrent web users;<br/> go higher if >50 k tables/indexes   | —         | 4    | 8 GB   | 200 GB  | 300  | —                                                                |
-| Medium                                               | For ≤100 servers,<br/> ~5 concurrent web users;<br/> go higher if >100 k tables/indexes | —         | 6    | 16 GB  | 300 GB  | 500  | Use **pgBouncer**<br/> if heartbeat<br/> connections are enabled |
-| Large                                                | For ≤300 servers,<br/> ~10 concurrent users;<br/> go higher if >250 k tables/indexes    | Backend   | 8    | 32 GB  | 1.5 TB  | 2000 | ~2 alert threads,<br/> **pgBouncer**                             |
+| Small                                                | For ≤50 servers,<br/> &lt;5 concurrent web users;<br/> go higher if >50 k tables/indexes      | —         | 3    | 6 GB   | 200 GB  | 300     | —                                                                |
+| Medium                                               | For ≤100 servers,<br/> ~5 concurrent web users;<br/> go higher if >100 k tables/indexes       | —         | 4    | 8 GB   | 400 GB  | 600     | Use **pgBouncer**<br/> if heartbeat<br/> connections are enabled |
+| Large                                                | For ≤300 servers,<br/> ~10 concurrent users;<br/> go higher if >250 k tables/indexes          | Backend   | 6    | 16 GB  | 2 TB    | 2000    | ~2 alert threads,<br/> **pgBouncer**                             |
 |                                                      |                                                                                               | Frontend  | 1–2  | 2–4 GB | 20 GB   | &lt;100 | —                                                                |
-| X Large                                              | For ≤600 servers,<br/> >10 concurrent users;<br/> go higher if >500 k tables/indexes    | Backend   | 12   | 48 GB  | 3 TB    | 4000 | ~3 alert threads,<br/> **pgBouncer**                             |
-|                                                      |                                                                                               | Frontend  | 2    | 4 GB   | 20 GB   | 100  | —                                                                |
-| XX Large                                             | For >600 servers,<br/> - recommend multiple PEM domains                                     | —         | —    | —      | —       | —      | Segment estate<br/> into multiple<br/> PEM deployments           |
+| X Large                                              | For ≤600 servers,<br/> >10 concurrent users;<br/> go higher if >500 k tables/indexes          | Backend   | 10   | 32 GB  | 3 TB    | 4000    | ~5 alert threads,<br/> **pgBouncer**                             |
+|                                                      |                                                                                               | Frontend  | 2    | 4 GB   | 20 GB   | 100     | —                                                                |
+| XX Large                                             | For ≤1000 servers,<br/> >10 concurrent users;<br/> go higher if >1000 k tables/indexes        | Backend   | 22   | 48 GB  | 4 TB    | 6000    | ~12 alert threads,<br/> **pgBouncer**                            |
+|                                                      |                                                                                               | Frontend  | 2    | 4 GB   | 20 GB   | 100     | —                                                                |
+
+It is possible to run a PEM system with more than 1000 agents with appropriate tuning and sufficient resources. 
+However, the increasing incremental resource cost of each agent added means that large PEM systems are far less efficient than multiple smaller ones.
+For this reason, we recommend segmenting your estate across PEM systems such that no single system exceeds 600-800 agents.

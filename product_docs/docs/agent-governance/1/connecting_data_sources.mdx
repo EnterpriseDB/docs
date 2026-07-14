@@ -1,0 +1,74 @@
+---
+title: Connecting data sources
+navTitle: Connecting data sources
+description: Register an EDB Hybrid Manager or standalone Loki instance so its AI agent sessions appear in the audit log viewer.
+deepToC: true
+---
+
+Register one or more upstream data sources to make their AI agent sessions available in the audit log viewer. An instance is a registered upstream data source — either an EDB Hybrid Manager (HM) deployment or a standalone Grafana Loki endpoint. The viewer can connect to multiple instances at the same time, aggregating clusters and sessions across all of them. Instance configuration, including access keys, is stored server-side and never sent to the browser.
+
+Manage instances on the **Configure** page, accessible from the home page's **Configure Instances** button or from **Settings → Configure instance** in the header.
+
+## Instance types
+
+| Type | Description | Authentication | Discovery |
+|------|-------------|----------------|-----------|
+| **HM** | EDB Hybrid Manager dataplane | Machine user API key, sent in the `x-access-key` header | Auto-discovers projects and clusters |
+| **Loki** | Direct Loki log store | Optional `Authorization` header | Creates a single stub project and cluster automatically |
+
+## Adding an HM instance
+
+1. Open the **Configure Instances** page.
+2. Select **Add New**.
+3. Complete the form:
+   - **Type** — HM.
+   - **Name** — a descriptive label, for example `Production EU`.
+   - **Base URL** — the HM API endpoint, for example `https://hm.example.com:8443`.
+   - **Access Key** — the machine user API key. These keys typically start with `hmak_` or `baak_`.
+4. Select **Add Instance**.
+
+On success, the viewer's backend discovers projects and clusters from the HM instance, and those clusters appear on the home page within seconds.
+
+### Requirements for an HM instance to show session data
+
+For an HM instance to surface AI agent sessions, the following must be true:
+
+- Postgres statement logging is enabled on the target clusters (`log_statement = 'all'` or `log_min_duration_statement = 0`).
+- The cluster is reachable over the network from the viewer's backend.
+- AI agent workloads run through Airman MCP with tracing enabled, so that activity is tagged and discoverable.
+
+You create the machine user API key in the HM admin portal. The viewer stores it server-side and never returns it to the browser. For more on credential handling, see [Securing access and handling credentials](./security_and_data).
+
+## Adding a Loki instance
+
+1. Open the **Configure Instances** page.
+2. Select **Add New**.
+3. Complete the form:
+   - **Type** — Loki.
+   - **Name** — a descriptive label, for example `Dev Loki`.
+   - **Base URL** — the Loki HTTP endpoint, for example `http://loki.internal:3100`.
+   - **Authorization** — optional. A bearer token or other authorization header value, if your Loki endpoint requires one.
+4. Select **Add Instance**.
+
+For Loki instances, the viewer creates a single stub project and cluster, and all Loki sessions appear under it.
+
+## Removing an instance
+
+Each instance row on the **Configure** page has a **Delete** button. Selecting it shows a confirmation popover. On confirmation, the viewer removes the instance record, its cached session data, and its sync watermarks.
+
+Removal is irreversible. Re-adding the instance requires re-syncing its history from upstream.
+
+## Resyncing an instance
+
+The backend caches session summaries for fast retrieval. Force a full resync when upstream data was corrected or backfilled, when the cache looks inconsistent, or when the cache database was lost.
+
+1. On the **Configure** page, locate the instance row.
+2. Select the **Resync** button (the sync icon).
+3. The backend clears the instance's cached data and begins a full background sync.
+
+The instance shows its sync status as **Syncing** (with a spinner), **Done** (with a session count), or **Error** (with a message). The resync runs in the background, so you can continue using the viewer while it completes. For details on how syncing works, see [Architecture and data flow](./architecture#background-sync).
+
+!!! Note
+The **Resync** button is only visible when developer tools are enabled. Otherwise the backend syncs automatically on first access to a cluster.
+!!!
+

@@ -43,6 +43,7 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
 const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
+  clickhouse: { name: "clickhouse", path: "product_docs/docs/clickhouse" },
   postgres_for_kubernetes: {
     name: "postgres_for_kubernetes",
     path: "product_docs/docs/postgres_for_kubernetes",
@@ -58,6 +59,10 @@ const sourceToPluginConfig = {
   },
   pgaa: { name: "pgaa", path: "product_docs/docs/pgaa" },
   aidb: { name: "aidb", path: "product_docs/docs/aidb" },
+  "agent-governance": {
+    name: "agent-governance",
+    path: "product_docs/docs/agent-governance",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
