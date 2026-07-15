@@ -134,6 +134,28 @@ SELECT aidb.create_model(
 Local model files are downloaded from HuggingFace and cached on first use. The Postgres process must have network access and write access to the cache directory. For air-gapped environments, pre-download the model files and use `model_path` or `cache_dir` to point to the local copy.
 !!!
 
+## Validating a model at creation
+
+By default, `aidb.create_model()` validates the model as part of registration: it downloads and loads the model files and runs a small probe inference to confirm the model is functional before the registration commits. For local models this moves the (potentially large) download and load to creation time instead of first use.
+
+If validation fails — for example, the model identifier doesn't exist on HuggingFace, a `model_path` is wrong, or the weights can't be loaded — the error is reported immediately and no model is registered.
+
+```sql
+-- Validated by default: downloads, loads, and probes the model now.
+SELECT aidb.create_model('my_bert', 'bert_local',
+    config => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2'));
+```
+
+Pass `validate => false` to register the model without downloading or loading it — useful to defer the download to first use, or to register models in an environment that doesn't have network access yet:
+
+```sql
+SELECT aidb.create_model('my_bert', 'bert_local',
+    config    => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2'),
+    validate  => false);
+```
+
+You can validate a model later — or re-check an existing one — with [`aidb.validate_model()`](../reference/models#aidbvalidate_model).
+
 ## Local model downloads
 
 When a local model is used for the first time (or any time its cache is missing or corrupt), AIDB downloads the model files from HuggingFace into the configured `cache_dir`. The downloader emits progress messages and automatically retries transient network failures.
