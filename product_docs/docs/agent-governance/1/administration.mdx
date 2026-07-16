@@ -28,41 +28,61 @@ A shared Postgres service backs the stack, hosting the backend's database for in
 
 ## Preparing to deploy
 
-Set the following values before running the bootstrap helper. You'll configure these parameters when you  [deploy the images](#deploying-with-pre-built-images). The bootstrap helper generates and persists everything else automatically.
+The deployment package is the [Governance-Project repository](https://github.com/EnterpriseDB/Governance-Project). Clone it and configure the values below in the `.env` file before starting the stack. Copy the example file to get started:
+
+```bash
+cp .env.example .env
+```
+
+The bootstrap helper generates and persists everything else automatically when you run `./start.prod.sh`.
 
 ### Required settings
 
-| Setting               | Description                                                                                                                                                         |
-|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Public base URL       | The public origin — Scheme and host, no path and no trailing slash, for example `https://governance.example.com`. The OIDC issuer and redirect URIs derive from it. |
-| Bootstrap admin email | The email of the initial break-glass administrator. Also the default admin allowlist.                                                                               |
-| Postgres password     | The password for the shared Postgres service. Required for production.                                                                                              |
-| Image registry        | The registry for the pre-built images. Required for production.                                                                                                     |
-| Image tag             | The image tag — Pin to a released version. Required for production.                                                                                                 |
+| Setting (`env var`)                          | Description                                                                                                                                                         | Example                          |
+|----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
+| Public base URL (`BFF_PUBLIC_BASE_URL`)       | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer and redirect URIs derive from it.                                               | `https://governance.example.com` |
+| Bootstrap admin email (`DEX_BOOTSTRAP_ADMIN_EMAIL`) | The email of the initial break-glass administrator. Also the default admin allowlist.                                                                        | `admin@example.com`              |
+| Postgres password (`POSTGRES_PASSWORD`)       | The password for the shared Postgres service. Required for production.                                                                                              | A strong password string         |
+| Image registry (`GOVERNANCE_REGISTRY`)        | The registry the Docker images are pulled from. Required for production.                                                                                            | `ghcr.io/enterprisedb`           |
+| Image tag (`GOVERNANCE_TAG`)                  | The image tag — Pin to a released version. Required for production.                                                                                                 | A released version tag; never `latest` |
 
 The values the bootstrap helper generates — the shared client secret, the session signing key, the token encryption key, and the bootstrap admin's identifier and password hash — are generated for you and don't need to be set by hand.
 
 ### Recommended for production
 
-| Setting                           | Default                               | Description                                                                                                                                                                                                                                       |
-|-----------------------------------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Database connection               | Points at the shared Postgres service | The connection string for the backend's database.                                                                                                                                                                                                 |
-| Upstream egress to private ranges | Blocked                               | Whether registered instances may reach private network ranges. Allow only for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Securing access and handling credentials](./security_and_data#protecting-the-network). |
-| OIDC CA bundle                    | —                                     | A CA bundle to trust a self-signed or private-CA OIDC issuer. OIDC TLS verification stays on; this adds trust rather than bypassing it.                                                                                                           |
-| Session idle timeout              | 2h                                    | How long an idle session lasts before it expires.                                                                                                                                                                                                 |
-| Session absolute lifetime         | 12h                                   | The maximum lifetime of a session regardless of activity.                                                                                                                                                                                         |
-| Admin allowlist                   | The bootstrap admin email             | The emails granted administrator access, in addition to anyone whose `groups` claim includes `governance-admin`.                                                                                                                                  |
+| Setting (`env var`)                                          | Default                               | Description                                                                                                                                                                                                                                       |
+|--------------------------------------------------------------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Database connection (`BFF_DATABASE_URL`)                     | Points at the shared Postgres service | The connection string for the backend's database.                                                                                                                                                                                                 |
+| Upstream egress to private ranges (`BFF_INSTANCE_BLOCK_PRIVATE`) | Blocked                          | Whether registered instances may reach private network ranges. Allow only for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Securing access and handling credentials](./security_and_data#protecting-the-network). |
+| OIDC CA bundle (`BFF_OIDC_CA_FILE`)                          | —                                     | A CA bundle to trust a self-signed or private-CA OIDC issuer. OIDC TLS verification stays on; this adds trust rather than bypassing it.                                                                                                           |
+| Session idle timeout (`BFF_SESSION_IDLE_TTL`)                | 2h                                    | How long an idle session lasts before it expires.                                                                                                                                                                                                 |
+| Session absolute lifetime (`BFF_SESSION_ABSOLUTE_TTL`)       | 12h                                   | The maximum lifetime of a session regardless of activity.                                                                                                                                                                                         |
+| Admin allowlist (`BFF_ADMIN_EMAILS`)                         | The bootstrap admin email             | The emails granted administrator access, in addition to anyone whose `groups` claim includes `governance-admin`.                                                                                                                                  |
 
 ## Deploying with pre-built images
 
 !!! Note
-Pin the image tag to a released version rather than running `latest`, so deployments are reproducible.
+Pin `GOVERNANCE_TAG` to a released version rather than `latest`, so deployments are reproducible.
 !!!
 
-1. **Provide your TLS certificate.** Place your certificate and private key where the stack expects them (the full chain and the private key).
-1. **Configure the deployment.** Copy the example environment file and set the required values — At minimum the public base URL and the bootstrap admin email, plus the image registry and tag (see [Required settings](#required-settings)).
-1. **Generate secrets and start.** Run the production start script. It runs the bootstrap helper — which generates the shared secrets, session and encryption keys, the bootstrap admin's identifier and password, and the internal certificates — and then brings the stack up.
-1. **Sign in and federate.** Open your public base URL in a browser and sign in as the bootstrap admin, using the password the bootstrap helper recorded. Then add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
+1. **Provide your TLS certificate.** Place your certificate's full chain and private key at `certs/public-tls/fullchain.pem` and `certs/public-tls/privkey.pem`.
+
+1. **Configure the deployment.** Copy the example environment file and set the required values — at minimum `BFF_PUBLIC_BASE_URL` and `DEX_BOOTSTRAP_ADMIN_EMAIL`, plus `GOVERNANCE_REGISTRY` and `GOVERNANCE_TAG` (see [Required settings](#required-settings)).
+
+   ```bash
+   cp .env.example .env
+   # edit .env and set the required values
+   ```
+
+1. **Generate secrets and start.** Run the production start script:
+
+   ```bash
+   ./start.prod.sh
+   ```
+
+   This runs the bootstrap helper — which generates the shared secrets, session and encryption keys, the bootstrap admin's identifier and password, and the internal certificates — then brings the stack up. The bootstrap admin's password is written to `secrets/admin-credentials`.
+
+1. **Sign in and federate.** Open your `BFF_PUBLIC_BASE_URL` in a browser and sign in as the bootstrap admin using the email and password from `secrets/admin-credentials`. Then add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
 
 ## Managing identity providers
 
