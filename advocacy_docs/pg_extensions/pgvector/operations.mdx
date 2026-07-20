@@ -38,7 +38,9 @@ The target database must have `pgvector` installed before restoring:
 pg_restore -d targetdb backup.dump
 ```
 
-If you restore only data (using `--data-only`), recreate indexes afterward for best performance.
+!!!note
+If the dump includes IVFFlat indexes, drop and recreate them manually after data is loaded rather than relying on `pg_restore`. IVFFlat requires data to be present in the table to build its cluster centroids — restoring the index onto an empty table produces poor cluster quality. HNSW indexes do not have this requirement.
+!!!
 
 ## Replication in EDB Postgres Distributed
 
@@ -54,7 +56,7 @@ If you restore only data (using `--data-only`), recreate indexes afterward for b
 
 ### Index replication
 
-**Indexes are not replicated by logical replication.** Each PGD node requires its own HNSW or IVFFlat index. After creating an index on one node, create the same index on all other nodes:
+**Indexes are not replicated by logical replication.** Each PGD node builds and maintains its own HNSW or IVFFlat index from its local data. If DDL replication is enabled (the default), a `CREATE INDEX` statement issued on one node is automatically executed on all nodes — each node builds the index independently. If DDL replication is disabled, create the index manually on each node:
 
 ```sql
 -- Run on each PGD node
@@ -70,7 +72,7 @@ PGD's conflict resolution applies to `vector` columns the same as other column t
 
 ### DDL replication
 
-`CREATE EXTENSION vector` and `CREATE INDEX ... USING hnsw` statements are replicated as DDL in PGD by default. Verify your PGD DDL replication configuration before running these statements in production to ensure consistent schema across nodes.
+`CREATE EXTENSION vector` and `CREATE INDEX ... USING hnsw` statements are replicated as DDL in PGD by default — meaning the command is sent to and executed on each node independently, not that the index structure itself is copied. Verify your PGD DDL replication configuration before running these statements in production to ensure consistent schema across nodes.
 
 ## Monitoring
 
@@ -91,7 +93,7 @@ FROM pg_stat_user_indexes
 WHERE relname = 'embeddings';
 ```
 
-Track this query over time in PEM's custom probes to alert on unexpected index growth.
+Track this query over time in [PEM's custom probes](/pem/latest/monitoring_performance/probes/managing_customizing_probes) to alert on unexpected index growth.
 
 ### Query performance
 
@@ -111,7 +113,7 @@ LIMIT 20;
 
 ### Table and index size
 
-Large embedding tables grow quickly. Monitor table and index size to anticipate storage requirements:
+Monitor table and index size to anticipate storage requirements:
 
 ```sql
 SELECT
