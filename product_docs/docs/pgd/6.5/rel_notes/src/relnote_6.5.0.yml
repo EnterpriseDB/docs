@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB Postgres Distributed
+version: 6.5.0
+date: 20 August 2026
+intro: |
+  EDB Postgres Distributed (PGD) 6.5.0 includes new features, enhancements, and bug fixes.
+
+relnotes:
+- relnote: Quorum Commit now works with any transaction streaming mode.
+  details: |
+    Quorum Commit previously required `bdr.default_streaming_mode` set to `file` or `off`. PGD now detects Quorum Commit transactions at the origin and streams them to file automatically, so all streaming modes work without special configuration.
+  jira: BDR-8158
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: CLI node setup no longer defaults to unwrapped TDE keys.
+  details: |
+    Node setup on a TDE-enabled cluster previously defaulted to `pg_resetwal` with no-wrap settings when no key wrap or unwrap command was specified, causing Postgres to fail to start later with a decryption error. The CLI now requires an explicit `--no-key-wrap` flag to skip key wrapping, and fails immediately with a clear error otherwise.
+  jira: BDR-7888
+  addresses: "59715"
+  type: Enhancement
+  impact: Medium
+- relnote: Added `leader_id` and `voted_for_id` columns to `bdr.stat_raft_state`, and `node_id` to `bdr.stat_raft_followers_state`.
+  details: |
+    The Raft status views previously exposed only node names, not their numeric IDs. `bdr.stat_raft_state` now includes `leader_id` alongside `leader_name`, and `voted_for_id` alongside `voted_for_name`. `bdr.stat_raft_followers_state` now includes `node_id` alongside `node_name`.
+  jira: BDR-6677
+  addresses: ""
+  type: Enhancement
+  impact: Low
+- relnote: Added `applied_state` to `bdr.node_summary`.
+  details: |
+    The view `bdr.node_summary` now includes the node's local applied state, making it easier to spot cases where a node's Raft-managed state has advanced but its subscriptions haven't caught up.
+  jira: BDR-2606
+  addresses: "82977"
+  type: Enhancement
+  impact: Low
+- relnote: Improved error code assignment for user-actionable errors.
+  details: |
+    Errors that previously defaulted to `ERRCODE_INTERNAL_ERROR` now report a more specific `SQLSTATE` where applicable, making it easier for applications and administrators to distinguish user-actionable errors from internal ones.
+  jira: BDR-1712
+  addresses: ""
+  type: Enhancement
+  impact: Low
+- relnote: Improved CLI error messages when BDR extension isn't installed.
+  details: |
+    The `pgd` CLI now gives a clearer error when it detects that the target Postgres instance doesn't have the BDR extension installed, rather than a generic connection error.
+  jira: BDR-6983
+  addresses: ""
+  type: Enhancement
+  impact: Low
+- relnote: Fixed node-join failure caused by an under-sized replication origin estimate during catch-up.
+  details: |
+    The function `bdr.get_min_required_replication_slots()` previously ignored the temporary catch-up subscription active during a node join, so joining a cluster sized to the reported minimum exhausted `max_replication_slots` and failed. The estimate now accounts for the catch-up subscription, and a new `bdr.get_min_required_active_replication_origins()` function returns the matching estimate for PostgreSQL 18's separate `max_active_replication_origins` limit.
+  jira: BDR-8135
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a crash caused by a race between a joining and a parting node.
+  details: |
+    A joining node sometimes reached the `PART_CATCHUP` phase of a concurrent node part before it had created a replication origin for the parting node, crashing the manager or writer process when it tried to access the missing origin. PGD now creates the origin in this case, and removes it automatically once the parting node reaches the `PARTED` state.
+  jira: BDR-8143
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed an internal lock leak on error while recording a Quorum Commit decision.
+  details: |
+    An error recording a Quorum Commit decision, after `PREPARE` detached the transaction, leaked an internal commit-decision lock and blocked other processes indefinitely. PGD now releases the lock on any error during the commit of a Quorum Commit transaction.
+  jira: BDR-8183
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a possible commit/abort divergence on error while recording a Quorum Commit decision.
+  details: |
+    An error while recording a Quorum Commit decision sometimes committed the transaction on the origin prematurely, before the decision was durably recorded elsewhere. PGD no longer commits the transaction early in this case.
+  jira: ""
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed commit decisions being dropped during commit-decision store maintenance.
+  details: |
+    When the commit-decision store had a large backlog to catalog, a maintenance pass that hit its time limit paused and resumed later. One commit decision was skipped at each pause and resume boundary, leaving it unavailable for transaction resolution. Cataloging now resumes from the correct position, so no decision is dropped.
+  jira: BDR-8319
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a Quorum Commit transaction hanging indefinitely when its origin node was parted mid-commit.
+  details: |
+    A Quorum Commit transaction's client connection hung indefinitely when the originating node was parted from the cluster while the transaction's final commit or abort decision was still propagating to the rest of the cluster. The transaction now completes promptly and returns a clear error.
+  jira: BDR-8331
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a performance regression affecting Commit At Most Once (CAMO) transactions introduced in 6.3.0 and 6.3.1.
+  details: |
+    CAMO transactions experienced elevated commit latency and reduced throughput compared with earlier releases. The regression is now fixed, and the improvement applies automatically after upgrade.
+  jira: BDR-8309
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a crash on dynamic partition creation for `HASH` and `LIST` subpartitions.
+  details: |
+    Creating a dynamic interval partition with `HASH` or `LIST` subpartitions crashed the originating node, and once fixed, produced duplicate partition names that looped until the server ran out of memory. The partition-naming hook is now strategy-aware, producing a unique, deterministic name for each partition across all nodes.
+  jira: BDR-7438, BDR-8200
+  addresses: "61769"
+  type: Bug Fix
+  impact: High
+- relnote: Adopt recovered global locks lazily instead of reacquiring them at writer startup.
+  details: |
+    A writer that restarted while holding a global lock previously reacquired every lock left in recovery state and bound it to itself, sometimes leaving parallel apply disabled after the lock was released. Writers now adopt an existing recovered lock for the same origin node instead, which also supports locks that apply on any streaming writer.
+  jira: BDR-7672
+  addresses: "58160"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed physical join failing when Postgres restarts on the joining node mid-join.
+  details: |
+    In some cases, a Postgres restart on the joining node during a physical join caused the join to attempt a logical sync, resulting in errors. The fix prevents the physical join from falling back to logical join logic when a restart occurs mid-join.
+  jira: BDR-8013
+  addresses: "59904"
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed resource leaks in `bdr.ri_fkey_on_del_trigger`.
+  details: |
+    The `bdr.ri_fkey_on_del_trigger` trigger function left a relation, a tuple descriptor, and a snapshot open every time it ran, logging `resource was not closed` warnings on every node. The function now closes these resources correctly.
+  jira: BDR-8257
+  addresses: ""
+  type: Bug Fix
+  impact: Low
