@@ -12,7 +12,9 @@ Protect your primary cluster against data loss by taking regular base backups an
 
 How often to take each depends on your cluster size, storage capacity, and Recovery Point Objective (RPO). More frequent base backups reduce the WAL that must be replayed at restore time, directly affecting your Recovery Time Objective (RTO). Restore point frequency determines your maximum data loss window.
 
-Factor in storage costs for both base backups and WAL. Base backup size tracks your database size directly. WAL accumulates at a rate driven by your workload. A full-table `UPDATE` rewrites every row and generates WAL roughly equal to the table size, so a write-heavy cluster fills storage faster than the database size alone suggests. WAL segment files are always 64 MB each regardless of how much data changed, and each restore point archives at least one segment file. We recommend enabling Barman compression in your [backup configuration](../reference/configuration#backup-configuration-yaml) to reduce this overhead, especially when restore points are frequent.
+Factor in storage costs for both base backups and WAL. Base backup size tracks your database size directly. WAL accumulates at a rate driven by your workload. A full-table `UPDATE` rewrites every row and generates WAL roughly equal to the table size, so a write-heavy cluster fills storage faster than the database size alone suggests. WAL segment files are always 64 MB each regardless of how much data changed, and each restore point archives at least one segment file.
+
+Enable Barman compression in your [backup configuration](../reference/configuration#backup-configuration-yaml) to reduce WAL and base-backup storage use, especially when restore points are frequent. Configure more parallel workers per segment to speed up large backups. For S3 storage, also consider splitting base-backup objects into smaller chunks to improve reliability on large restores.
 
 ## Taking a base backup
 
@@ -22,7 +24,7 @@ Run all `whpg-dr` commands as the WarehousePG cluster owner, typically `gpadmin`
 whpg-dr backup my_cluster
 ```
 
-The command backs up the coordinator and all primary segment data directories in parallel, writing the base backup to the configured storage repository. Backup time scales with the size of the largest segment, not the total cluster size. 
+The command backs up the coordinator and all primary segment data directories in parallel, writing the base backup to the configured storage repository. Backup time scales with the size of the largest segment, not the total cluster size.
 
 After the backup completes, `whpg-dr` automatically creates an initial restore point tied to that backup. This restore point is the minimum target needed to restore from the backup.
 
@@ -74,22 +76,6 @@ Filter by date range:
 
 ```bash
 whpg-dr list-restore-point my_cluster --from 2026-06-01 --to 2026-06-15
-```
-
-## Verifying backup integrity
-
-Check the integrity of a base backup periodically to confirm it's restorable before you need it. The command verifies that all backup files for each segment are present and accessible in the storage repository:
-
-```bash
-whpg-dr check-backup my_cluster --backup-name 20260601T120000_base_backup
-__OUTPUT__
-Finding backup...
-Checked backup 20260601T120000 on server my_cluster-seg-1
-Checked backup 20260601T120000 on server my_cluster-seg0
-Checked backup 20260601T120000 on server my_cluster-seg1
-Checked backup 20260601T120000 on server my_cluster-seg2
-Checked backup 20260601T120000 on server my_cluster-seg3
-All backup checks completed successfully
 ```
 
 ## Managing backup retention

@@ -44,6 +44,8 @@ barman_options:
   network_compression: "on" | "off"  # POSIX only
   retention_policy: REDUNDANCY <n> | RECOVERY WINDOW OF <n> DAYS|WEEKS|MONTHS
   minimum_redundancy: <integer>
+  jobs: <integer>                 
+  max_archive_size: <size> # S3 only       
 ```
 
 | Field | Required | Description |
@@ -69,6 +71,8 @@ barman_options:
 | `barman_options.network_compression` | No | Enable rsync network compression. POSIX storage only. |
 | `barman_options.retention_policy` | No | Retention policy for base backups. Accepts `REDUNDANCY <n>` to keep the n most recent backups, or `RECOVERY WINDOW OF <n> DAYS\|WEEKS\|MONTHS` to keep backups within a time window. |
 | `barman_options.minimum_redundancy` | No | Minimum number of backups to retain regardless of the retention policy. Don't set to a value greater than 0 until at least one backup exists, or `whpg-dr check` fails. |
+| `barman_options.jobs` | No | Number of parallel workers per segment. Defaults to `1`. The `--barman-jobs` flag on [`whpg-dr backup`](commands#whpg-dr-backup) overrides this value per run. Raise it to increase parallelism, sizing it as approximately `host_cores / primaries_per_host`. It's most impactful for S3 storage, where upload concurrency is often the bottleneck. |
+| `barman_options.max_archive_size` | No | S3 storage only. Set to a smaller archive size to reduce the impact of transient network errors on large restores. Use alongside `barman_options.jobs` to improve backup throughput. Accepts an integer with an optional case-sensitive suffix `k`, `Ki`, `M`, `Mi`, `G`, `Gi`, `T`, or `Ti`, for example `10Gi`. |
 
 ### Examples
 
@@ -104,6 +108,8 @@ barman_options:
   compression_level: medium
   retention_policy: RECOVERY WINDOW OF 4 WEEKS
   minimum_redundancy: 1
+  jobs: 4                          
+  max_archive_size: 10Gi           
 ```
 
 ---
@@ -127,14 +133,19 @@ segment_hosts:
   - <hostname>
   - ...
 
+# A single base path, or a list of mount-point directories;
+# segments are spread across the list round-robin per host
 data_directory: <absolute-path>
+# or:
+# data_directory:
+#   - <absolute-path>
+#   - <absolute-path>
 data_directory_prefix: <string>
 
-# Optional
-segment_data_directory_overrides:
-  <hostname>:
-    data_directory: <absolute-path>
-  ...
+# Optional — per-host override; same shape as data_directory (path or list)
+data_directory_overrides:
+  <hostname>: <absolute-path>
+  <hostname>: [<absolute-path>, <absolute-path>]
 
 coordinator_port: <integer>       # optional; default from backup's segment_configuration.csv
 segment_port_base: <integer>      # optional; default from backup's segment_configuration.csv
@@ -147,6 +158,8 @@ barman_options:
   compression: gzip | bzip2 | zstd | none
   compression_level: low | medium | high
   network_compression: "on" | "off"  # POSIX only
+  jobs: <integer>                 
+  wal_prefetch: <integer>         
 ```
 
 | Field | Required | Description |
@@ -156,12 +169,14 @@ barman_options:
 | `coordinator_host` | Yes | Hostname of the DR coordinator. |
 | `coordinator_data_directory` | Yes | Absolute path for the coordinator data directory on the DR coordinator host. |
 | `segment_hosts` | Yes | Hostnames of the DR segment hosts. The count doesn't need to match the source, but can't exceed the number of primary segments in the backup. |
-| `data_directory` | Yes | Base path for segment data directories on DR segment hosts. Doesn't need to match the primary's layout. |
+| `data_directory` | Yes | Base path for segment data directories on DR segment hosts. Accepts a single absolute path or a list of mount-point directories; when a list is given, segments are spread across the paths round-robin. Doesn't need to match the primary's layout. |
 | `data_directory_prefix` | Yes | Prefix for segment directory names. Combined with `data_directory` and the content ID to form the full path. |
-| `segment_data_directory_overrides` | No | Per-host override for `data_directory`. Takes precedence over the global `data_directory` for the specified hosts. |
+| `data_directory_overrides` | No | Per-host override for `data_directory`, for DR hosts whose disk layout differs from the rest. Each value takes the same shape as `data_directory`, either a single path or a list of mount-point directories. Every key must appear in `segment_hosts`; hosts not listed use the global `data_directory`. |
 | `coordinator_port` | No | Coordinator port on the DR cluster. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
 | `segment_port_base` | No | Base port for segments. Segment N uses `segment_port_base + N`. Defaults to the value recorded in the backup's `segment_configuration.csv`. |
-| `barman_options` | No | Same fields as the [backup configuration YAML](#backup-configuration-yaml). Both sides must use matching compression settings. |
+| `barman_options` | No | Barman tuning for the restore side. Shared fields (compression, network_compression) must match the backup configuration. |
+| `barman_options.jobs` | No | Number of parallel workers per segment. Defaults to `1`. The `--barman-jobs` flag on [`whpg-dr restore`](commands#whpg-dr-restore) overrides this value per run. Raise it to increase parallelism, sizing it as approximately `host_cores / primaries_per_host`. It's most impactful for S3 storage, where download concurrency is often the bottleneck. |
+| `barman_options.wal_prefetch` | No | Number of WAL files to fetch in parallel ahead of replay during restore. Distinct from `jobs`, which parallelizes the base-backup copy. `0` or unset disables prefetching. |
 | `whpg_dr_home` | No | Override for `WHPG_DR_HOME` on the DR cluster. |
 | `ssh_user` | No | OS user for SSH connections to DR segment hosts. Defaults to `$USER`. |
 | `pg_user` | No | Postgres user for Barman connections. Defaults to `ssh_user`. |
@@ -223,6 +238,42 @@ barman_options:
   compression: zstd
   compression_level: medium
 ```
+
+Multi-mount POSIX storage (segments spread across three mount points per host):
+
+```yaml
+source_cluster_name: my_cluster
+
+storage:
+  type: posix
+  path: /data/backups/whpg-dr
+
+coordinator_host: cdw-dr
+coordinator_data_directory: /data/coordinator
+
+segment_hosts:
+  - sdw1-dr
+  - sdw2-dr
+
+data_directory:
+  - /data1/primary
+  - /data2/primary
+  - /data3/primary
+data_directory_prefix: gpseg
+```
+
+Resulting layout with six primary segments across two hosts:
+
+| Content ID | Host | Segment data directory |
+|-----------|------|------------------------|
+| 0 | sdw1-dr | `/data1/primary/gpseg0` |
+| 1 | sdw1-dr | `/data2/primary/gpseg1` |
+| 2 | sdw1-dr | `/data3/primary/gpseg2` |
+| 3 | sdw2-dr | `/data1/primary/gpseg3` |
+| 4 | sdw2-dr | `/data2/primary/gpseg4` |
+| 5 | sdw2-dr | `/data3/primary/gpseg5` |
+
+A full runnable example ships as `examples/restore/posix-multi-mount-data-directories.yaml`.
 
 ---
 

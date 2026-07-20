@@ -98,9 +98,9 @@ By default, `whpg-dr` stores its configuration, state, and logs under `$HOME/.wh
 
 ## Creating the restore configuration file
 
-Create a YAML file that describes the storage repository and the DR cluster topology, then run `whpg-dr configure restore` to prepare the cluster. The storage block must point to the [same repository the primary cluster writes to](../setting-up-primary/configuring-primary#creating-the-backup-configuration-file).
+Create a YAML file that describes the storage repository and the DR cluster topology, then run `whpg-dr configure restore` to prepare the cluster. The storage block must point to the [same repository the primary cluster writes to](../setting-up-primary/configuring-primary#creating-the-backup-configuration-file). The RPM installs ready-to-adapt starting points under `/usr/edb/whpg-dr/examples/restore/`.
 
-The cluster name and storage configuration must match your primary cluster. The restore YAML also includes fields that don't exist in the backup configuration: `coordinator_host`, `coordinator_data_directory`, `segment_hosts`, `data_directory`, and `data_directory_prefix`. These fields describe your DR environment and can be set to match your infrastructure. The DR cluster doesn't need to match the primary's host layout, hostname scheme, or directory structure.
+The cluster name and storage configuration must match your primary cluster. The restore YAML also includes fields that don't exist in the backup configuration: `coordinator_host`, `coordinator_data_directory`, `segment_hosts`, `data_directory`, and `data_directory_prefix`. These fields describe your DR environment and can be set to match your infrastructure. The DR cluster doesn't need to match the primary's host layout, hostname scheme, or directory structure. `data_directory` accepts either a single path or a list of mount-point directories to spread segments across multiple disks; use `data_directory_overrides` to set a different path for specific hosts.
 
 ### Using POSIX storage
 
@@ -154,7 +154,41 @@ data_directory: /data/primary
 data_directory_prefix: gpseg
 ```
 
+To improve restore performance, use the Barman options `jobs` to parallelize the base-backup copy across segments, and `wal_prefetch` to fetch WAL files in parallel during replay. Changes to `barman_options` take effect on the next restore without requiring a new full restore. Re-run `whpg-dr configure restore` after updating the YAML.
+
 For a full description of all fields including other credential methods, see [Restore configuration YAML](../reference/configuration#restore-configuration-yaml).
+
+### Overriding data directories per host
+
+Use `data_directory_overrides` when one or more DR hosts have a different disk layout from the rest. Each value takes the same shape as `data_directory`, either a single path or a list of mount-point directories.
+
+To point a specific host to a different base path:
+
+```yaml
+segment_hosts:
+  - sdw1-dr
+  - sdw2-dr
+  - sdw3-dr
+
+data_directory: /data/primary
+data_directory_prefix: gpseg
+
+data_directory_overrides:
+  sdw3-dr: /scratch/primary
+```
+
+To spread a host's segments across multiple mount points:
+
+```yaml
+data_directory: /data/primary
+data_directory_prefix: gpseg
+
+data_directory_overrides:
+  sdw3-dr:
+    - /data1/primary
+    - /data2/primary
+```
+
 
 ## Preparing the DR cluster for restore
 
