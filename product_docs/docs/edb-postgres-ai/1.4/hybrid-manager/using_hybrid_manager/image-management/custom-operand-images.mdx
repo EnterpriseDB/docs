@@ -15,7 +15,7 @@ EDB doesn't provide support coverage for custom-built operand images or extensio
 
 - `edbctl` version 1.1.8 or later.
 - [Docker CLI](https://www.docker.com/products/cli/) with `buildx` version 0.16.0 or later.
-- A Cloudsmith API key for accessing EDB package repositories.
+- An EDB subscription token for accessing EDB package repositories.
 - A container registry configured for image discovery in your HM deployment. See [Configuring image discovery](/edb-postgres-ai/current/hybrid-manager/install/configuration/image_discovery/).
 
 ## Setting up Docker buildx
@@ -38,10 +38,10 @@ EDB doesn't provide support coverage for custom-built operand images or extensio
 
 ## Setting environment variables
 
-1.  Export your Cloudsmith API key. This is used to authenticate with EDB package repositories during the image build:
+1.  Export your EDB subscription token. This is used to authenticate with EDB package repositories during the image build:
 
     ```shell
-    export CLOUDSMITH_TOKEN=<your_cloudsmith_api_key>
+    export EDB_SUBSCRIPTION_TOKEN=<your-edb-subscription-token>
     ```
 
 1.  Set the target image variables. `TARGET_REGISTRY` must be the registry configured for image discovery in your HM deployment:
@@ -64,10 +64,10 @@ FROM docker.enterprisedb.com/pgai-platform/edb-postgres-advanced:18.3-2605132051
 
 USER root
 
-# Mount the Cloudsmith token secret, configure the enterprise repository, and install the extension
-RUN --mount=type=secret,id=cs_token,target=/run/secrets/cs_token \
+# Mount the EDB subscription token secret, configure the enterprise repository, and install the extension
+RUN --mount=type=secret,id=edb_token,target=/run/secrets/edb_token \
     set -eux -o pipefail ; \
-    curl -u token:$(cat /run/secrets/cs_token) -1sLf "https://downloads.enterprisedb.com/basic/enterprise/setup.rpm.sh" | bash ; \
+    curl -u token:$(cat /run/secrets/edb_token) -1sLf "https://downloads.enterprisedb.com/basic/enterprise/setup.rpm.sh" | bash ; \
     dnf -y install edb-as18-server-cloneschema ; \
     rm -f /etc/yum.repos.d/enterprisedb-*.repo
 
@@ -78,7 +78,7 @@ USER 26
 Note the following:
 
 - The base image must be an EDB operand image from `docker.enterprisedb.com/pgai-platform/`.
-- The Cloudsmith token is injected as a [build secret](https://docs.docker.com/build/building/secrets/) and is never stored in the image layers.
+- The EDB subscription token is injected as a [build secret](https://docs.docker.com/build/building/secrets/) and is never stored in the image layers.
 - The enterprise repository is removed after installation to keep the image clean.
 - The image must end with `USER 26`, the non-root Postgres execution user required by HM operands.
 
@@ -94,7 +94,7 @@ docker buildx build --push \
   --annotation "index,manifest:org.enterprisedb.pg.major_version=${PG_MAJOR}" \
   --annotation "index,manifest:org.enterprisedb.pg.features=psr,pgd,analytics,tde" \
   --annotation "index,manifest:org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --secret="id=cs_token,env=CLOUDSMITH_TOKEN" .
+  --secret="id=edb_token,env=EDB_SUBSCRIPTION_TOKEN" .
 ```
 
 !!!note
@@ -139,7 +139,7 @@ After pushing, you must add two sets of metadata to the image for it to work cor
 
 If you're pushing to a custom or dedicated repository name (such as `edb-postgres-advanced-custom` in this example), you must register that repository in the Asset Library before HM can discover it:
 
-1. In the HM console, navigate to **Asset Library → Manage Repositories**.
+1. In the HM console, navigate to **Asset Library > Manage Repositories**.
 1. Select **Register New Repository**.
 1. In the **Repository Name Regex** field, enter a regex matching your repository name — for example, `edb-postgres-advanced-custom`.
 1. Select **Register Repository**. HM scans the repository and makes matching images available in the Asset Library. This may take a few minutes.
