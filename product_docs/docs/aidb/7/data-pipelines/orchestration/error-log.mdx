@@ -13,7 +13,9 @@ Each pipeline has an error log table. When a record fails at any step, the log c
 - The error log table is created with the pipeline and dropped when the pipeline is deleted. Pipelines created before 7.2.0 get their table during the upgrade.
 - Writes happen inside the failing step's transaction, so a successful step never leaves orphan log rows and a failure never loses its record.
 - Each logged error also emits a Postgres `WARNING`. Toggle with [`aidb.pipeline_error_warnings`](../reference#aidbpipeline_error_warnings); errors persist to the log regardless.
-- Errors get one of four `error_category` values:
+- The query and summary functions return empty results for any pipeline whose error log table is missing.
+- Don't drop the error log table manually. As of 7.4.0, the source `DELETE` handlers and post-step cleanup raise an error if the table is missing.
+- Errors get one of four `error_category` values (see [`aidb.ErrorBlocking`](../reference#aidberrorblocking)):
 
 | Category            | Scope    | Blocks pipeline? | Description                                                         |
 |---------------------|----------|------------------|---------------------------------------------------------------------|
@@ -22,7 +24,7 @@ Each pipeline has an error log table. When a record fails at any step, the log c
 | `PipelineTemporary` | Pipeline | Yes              | Transient failure that stopped the entire step (for example, a service outage). May resolve on retry. |
 | `PipelinePermanent` | Pipeline | Yes              | Permanent failure that stopped the entire step (for example, invalid model config). |
 
-Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration.
+Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration. Specifically: `RecordTemporary` currently fires only for model rate-limit errors, `RecordPermanent` covers bad input data (corrupt PDF, malformed HTML, invalid UTF-8), `PipelineTemporary` covers transient external faults (object store outage, model service timeout), and `PipelinePermanent` is the catch-all for misconfiguration (deleted model, invalid step config).
 
 ## Querying errors
 
@@ -134,11 +136,22 @@ Results are ordered by ascending `error_id`. Each row reports one of three actio
 
 Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline('my_pipeline')` to actually re-process.
 
+Requeue is a deferred mark-dirty operation, not a synchronous retry. The call itself does no processing, so per-record success or failure only surfaces after the follow-up run. To confirm what happened after re-processing, re-query `aidb.get_error_logs`.
+
 Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks. Non-overlapping id sets proceed in parallel. Requeue does not block `aidb.run_pipeline` or the background worker.
 
 ### Pipeline-level errors
 
-Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be requeued per record, so `aidb.requeue_pipeline_errors` returns `action='skipped_pipeline_level'` and leaves the entry in the log.
+Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be requeued per record, so `aidb.requeue_pipeline_errors` returns `action='skipped_pipeline_level'` and leaves the entry in the log:
+
+```sql
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[7]);
+__OUTPUT__
+ error_id |         action
+----------+------------------------
+        7 | skipped_pipeline_level
+(1 row)
+```
 
 Fix the underlying issue (model availability, config, deleted model) and re-run the pipeline. The NULL row clears automatically once the step next executes without any errors. To dismiss it without re-running, use `aidb.clear_error_logs`.
 
