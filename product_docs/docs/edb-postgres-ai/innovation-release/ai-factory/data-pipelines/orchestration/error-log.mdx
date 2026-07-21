@@ -1,38 +1,29 @@
 ---
-title: Pipeline error log
-navTitle: Error log
+title: Error log
 description: Inspect, clear, and retry failed pipeline records using the per-pipeline error log in EDB Postgres AI.
 ---
 
-Each pipeline has an error log table. When a record fails at any step, the log captures the source record ID, which step failed, the operation type, and the error message. The rest of the batch keeps processing.
+Every pipeline has a dedicated error log table. When a record fails at any step, the log captures the source record ID, which step failed, the operation, and the error message.
+
+## Key features
+
+- **Per-pipeline error log table.** Failures land in `{source_schema}.pipeline_{pipeline_name}_errors`. A single bad record does not block the batch.
+- **Four error categories.** Record-level errors (`RecordTemporary`, `RecordPermanent`) leave the rest of the batch running. Pipeline-level errors (`PipelineTemporary`, `PipelinePermanent`) stop the step entirely. See [`aidb.ErrorBlocking`](../reference#aidberrorblocking).
+- **Postgres `WARNING` per error.** Each logged error also emits a warning. Toggle with [`aidb.pipeline_error_warnings`](../reference#aidbpipeline_error_warnings); errors persist to the log regardless.
+- **Lifecycle bound to the pipeline.** The error log table is created with the pipeline and dropped when the pipeline is deleted. Pipelines created before 7.2.0 get their table during the upgrade. Writes happen inside the failing step's transaction, so a successful step never leaves orphan log rows and a failure never loses its record.
 
 ## How it works
 
-- When a record fails, it's logged to `{source_schema}.pipeline_{pipeline_name}_errors` with the source ID, failing step number, operation type, and error message.
-- A single bad record doesn't block the pipeline. Other records in the batch continue through all remaining steps.
-- The error log table is created with the pipeline and dropped when the pipeline is deleted. Pipelines created before 7.2.0 get their table during the upgrade.
-- Writes happen inside the failing step's transaction, so a successful step never leaves orphan log rows and a failure never loses its record.
-- Each logged error also emits a Postgres `WARNING`. Toggle with [`aidb.pipeline_error_warnings`](../reference#aidbpipeline_error_warnings); errors persist to the log regardless.
+- Each error is classified along two dimensions: scope (record vs pipeline) and temporality (temporary vs permanent). `RecordTemporary` currently fires only for model rate-limit errors. `RecordPermanent` covers bad input data (corrupt PDF, malformed HTML, invalid UTF-8). `PipelineTemporary` covers transient external faults (object store outage, model service timeout). `PipelinePermanent` is the catch-all for misconfiguration (deleted model, invalid step config).
 - The query and summary functions return empty results for any pipeline whose error log table is missing.
-- Don't drop the error log table manually. As of 7.4.0, the source `DELETE` handlers and post-step cleanup raise an error if the table is missing.
-- Errors get one of four `error_category` values (see [`aidb.ErrorBlocking`](../reference#aidberrorblocking)):
+- Do not drop the error log table manually. As of 7.4.0, the source `DELETE` handlers and post-step cleanup raise an error if the table is missing.
 
-| Category            | Scope    | Blocks pipeline? | Description                                                         |
-|---------------------|----------|------------------|---------------------------------------------------------------------|
-| `RecordTemporary`   | Record   | No               | Transient failure for a single record. May succeed on retry.        |
-| `RecordPermanent`   | Record   | No               | Permanent failure for a single record (for example, corrupt data).  |
-| `PipelineTemporary` | Pipeline | Yes              | Transient failure that stopped the entire step (for example, a service outage). May resolve on retry. |
-| `PipelinePermanent` | Pipeline | Yes              | Permanent failure that stopped the entire step (for example, invalid model config). |
+## Inspecting errors
 
-Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration. Specifically: `RecordTemporary` currently fires only for model rate-limit errors, `RecordPermanent` covers bad input data (corrupt PDF, malformed HTML, invalid UTF-8), `PipelineTemporary` covers transient external faults (object store outage, model service timeout), and `PipelinePermanent` is the catch-all for misconfiguration (deleted model, invalid step config).
-
-## Querying errors
-
-Use `aidb.get_error_logs()` to inspect a pipeline's error log.
+Use [`aidb.get_error_logs`](../reference#aidbget_error_logs) to inspect a pipeline's error log:
 
 ```sql
 SELECT * FROM aidb.get_error_logs('my_pipeline');
-
 __OUTPUT__
  id | source_id | part_ids | pipeline_step | step_operation | error_message                          | error_category    | failed_at                  | retry_count | last_retry_at
 ----+-----------+----------+---------------+----------------+----------------------------------------+-------------------+----------------------------+-------------+---------------
@@ -65,15 +56,14 @@ Paginate with `p_limit` and `p_offset`:
 SELECT * FROM aidb.get_error_logs('my_pipeline', p_limit => 20, p_offset => 40);
 ```
 
-See the [Operations reference](../../reference/operations#aidbget_error_logs) for full parameter and return type details.
+See the [Pipelines API reference](../reference#aidbget_error_logs) for parameter and return type details.
 
-## Error summaries
+### Error summaries
 
-Get error counts grouped by step, operation, and category for one pipeline:
+Error counts grouped by step, operation, and category for one pipeline:
 
 ```sql
 SELECT * FROM aidb.get_error_log_summary('my_pipeline');
-
 __OUTPUT__
  pipeline_step | step_operation | error_category    | error_count | latest_failed_at
 ---------------+----------------+-------------------+-------------+----------------------------
@@ -82,11 +72,10 @@ __OUTPUT__
 (2 rows)
 ```
 
-Or get the same rollup across all pipelines at once:
+Same rollup across all pipelines:
 
 ```sql
 SELECT * FROM aidb.get_all_error_summaries();
-
 __OUTPUT__
  pipeline_name | pipeline_step | step_operation | error_category    | error_count | latest_failed_at
 ---------------+---------------+----------------+-------------------+-------------+----------------------------
@@ -96,13 +85,14 @@ __OUTPUT__
 (3 rows)
 ```
 
-## Clearing errors
+## Recovering from failures
+
+### Clearing errors
 
 Delete specific error log entries by ID:
 
 ```sql
 SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3]);
-
 __OUTPUT__
  clear_error_logs
 ------------------
@@ -110,15 +100,14 @@ __OUTPUT__
 (1 row)
 ```
 
-Returns the number of deleted rows. Clearing is ID-based; review entries with `get_error_logs()` before removing them.
+The return value is the number of rows actually deleted. Clearing is ID-based, so review entries with `aidb.get_error_logs` before removing them.
 
-## Requeuing failed records
+### Requeuing failed records
 
-New in 7.5.0. `aidb.requeue_pipeline_errors()` deletes the targeted record-level error rows and marks their source records dirty on the pipeline's state surface. The next normal run re-processes them; the call itself does no processing.
+New in 7.5.0. Use [`aidb.requeue_pipeline_errors`](../reference#aidbrequeue_pipeline_errors) to mark failed source records dirty by error log ID. The call deletes the targeted record-level rows and marks their sources dirty on the pipeline's state surface; the next normal run does the re-processing.
 
 ```sql
 SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
-
 __OUTPUT__
  error_id | action
 ----------+------------------------
@@ -140,7 +129,7 @@ Requeue is a deferred mark-dirty operation, not a synchronous retry. The call it
 
 Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks. Non-overlapping id sets proceed in parallel. Requeue does not block `aidb.run_pipeline` or the background worker.
 
-### Pipeline-level errors
+#### Pipeline-level errors
 
 Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be requeued per record, so `aidb.requeue_pipeline_errors` returns `action='skipped_pipeline_level'` and leaves the entry in the log:
 
@@ -155,7 +144,7 @@ __OUTPUT__
 
 Fix the underlying issue (model availability, config, deleted model) and re-run the pipeline. The NULL row clears automatically once the step next executes without any errors. To dismiss it without re-running, use `aidb.clear_error_logs`.
 
-### Disabled-mode volume caveat
+#### Disabled-mode volume caveat
 
 On a Disabled-mode pipeline with a volume source, `aidb.requeue_pipeline_errors` sets the `retry_requested_at` marker on the marked files but cannot schedule a drain, so it emits a `NOTICE` pointing at `aidb.run_pipeline`. Manual `aidb.run_pipeline` re-reads the whole volume rather than only the marked files, which pays a full-volume scan on large volumes.
 
@@ -231,9 +220,4 @@ __OUTPUT__
 
 ## Pipeline status integration
 
-Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline status reflects error severity:
-
-- `PartialErrors`: some records failed; the rest processed normally.
-- `BlockingErrors`: a pipeline-level error stopped the step entirely.
-
-See [Observability](observability) for more on monitoring pipeline health.
+Error counts appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view alongside the pipeline's [status](../reference#aidbpipelinestatus). See [Observability](./observability/) for monitoring guidance.
