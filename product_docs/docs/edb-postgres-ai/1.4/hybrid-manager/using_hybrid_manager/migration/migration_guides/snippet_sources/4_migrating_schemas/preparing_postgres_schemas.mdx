@@ -2,55 +2,72 @@
 title: Preparing and importing Postgres schemas
 navTitle: Preparing Postgres schemas
 deepToC: true
-# SINGLE-SOURCE FILE — edits here also affect these pages:
-#   - migration_guides/aws_rds_pg_to_hm_managed/migrating_schema.mdx
-#   - migration_guides/self_managed_pg_to_self_managed_pg/migrating_schema.mdx
+# SINGLE-SOURCE FILE — used by:
 #   - schema_migration/postgres/index.mdx
 ---
 
 <TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
-No separate schema migration is required. HM handles schema import automatically when you select the **Schema and data** scope later. Continue to the next step.
+No manual schema preparation is required. HM handles schema migration and constraint ordering automatically when you select the **Schema and data** scope when creating your migration. Before proceeding, confirm:
+
+- The EDB Postgres AI agent has ingested your source schema and a Migration Portal project exists for the database. To verify, go to **Estate > Migrations** in the HM console, select the database in the **Database Name** column, and confirm a project appears in the **MP Project** column.
+- When you configure the Data Migration Service (DMS) reader agent, set `DBCONFIG_DATABASES_<N>__RESOURCEID` to the same `resource_id` value as in `beacon_agent.yaml`. The **Schema and data** and **Schema only** scopes will fail without it.
 
 </Tab>
 <Tab title="Manual">
 
-## Schema handling for Postgres databases
+Before you use EDB DMS for data migration, export and import your schema to the destination database yourself. DMS migrates data only — the destination database must have schemas in place before migration begins.
 
-You can use several different methods to prepare your schema, exclude unsupported constraints, and import it to the destination database. The following are guidelines for how to export and import your schemas for Postgres migrations using Migration Toolkit.
+### Handling constraints
 
-Other valid routes for migrating DDL to import Postgres schemas include:
+How to handle constraints depends on the constraint type and the key structure of each source table.
 
--  Manually creating the schemas in the destination database
--  Performing a [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html) to obtain the schemas and [pg_restore](https://www.postgresql.org/docs/current/app-pgrestore.html) to restore them
--  Using [pgAdmin](https://www.pgadmin.org/docs/pgadmin4/latest/index.html) or [psql](https://www.postgresql.org/docs/7.0/app-psql.htm)
-
-## Export
-
-For data migrations from Postgres, we recommend using [EDB Migration Toolkit](https://www.enterprisedb.com/docs/migration_toolkit/latest/) to manage the schema. MTK's [offline migration](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability provides an easy way to extract a database's schema and separate constraints. Here are some guidelines:
-
--   Use the `-offlineMigration` option, so Migration Toolkit can generate SQL scripts that you can apply on destination without having to configure connectivity.
-
--   Use the `‑schemaOnly <schema_scope>` option, so Migration Toolkit can generate scripts that focus only on the export of schemas.
-
--   After you run Migration Toolkit, exclude (comment out) the following constraints from the generated SQL script before applying it on the destination database:
-    -   Foreign key constraints
-    -   Check constraints
-    -   Exclusion constraints
-
--   After you run Migration Toolkit, and if you plan to map objects to different names in the destination, modify the schema SQL script to reflect the new names. After the SQL script is generated, edit the object names directly in the script (DDL) before applying it to the destination. Also make sure that the structure and data types of the renamed object in the script exactly match the source. If you manually update object names in the DDL scripts, also update the names in other objects that reference the updated objects. For example, if you rename a table, also update any views or constraints that reference the original table name.
-
-    Later, during data migration, select the newly assigned object names. See [Mapping schema, tables and columns during a migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration) for more information.
-
-## Import
-
-After you prepare the DDL and exclude foreign key, check, and exclusion constraints, connect to the destination database and import the SQL-formatted DDL file.
-
-To start the import, execute the generated [offline migration script](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options).
+| Constraint type | Action | Notes |
+|---|---|---|
+| Primary key | Exclude now — DMS applies automatically | The DMS writer applies the primary key when the migration enters the streaming phase, using it to deduplicate snapshot data. |
+| Unique key (source table has a primary key) | Exclude now, apply after streaming starts | Primary key-based deduplication ensures no duplicate rows remain when you apply unique constraints after streaming starts. |
+| Unique key (source table has no primary key) | Exclude now — apply post-snapshot with deduplication | Don't create the unique key (UK) on the destination before the snapshot completes — doing so causes an infinite retry loop. Requires replica identity setup on the source before migration starts. See [UK-identity tables](#uk-identity-tables-replica-identity-and-post-snapshot-constraints) below. |
+| `NOT NULL` | Include now | `NOT NULL` validation adds no meaningful overhead to the data load, unlike foreign key and check constraint validation. |
+| Foreign key, check, and exclusion | Exclude now, reapply after migration | These constraints cause unnecessary CPU and memory overhead while data is actively being migrated. |
 
 !!!note
-Apply the excluded foreign key, check, and exclusion constraints on the destination database after the migration completes successfully. Keep track of the excluded constraints so you can apply them when the time comes.
+For tables with no primary key or unique key, no key constraints are needed before or after migration. DMS treats these tables as keyless and provides at-least-once delivery. Deduplicate rows as part of your post-migration verification.
+!!!
+
+#### UK-identity tables: replica identity and post-snapshot constraints
+
+A UK-identity table is a source table that has no primary key and uses a unique key as its only row identifier.
+
+Before starting the migration, set replica identity on each UK-identity table on the source database. DMS needs this configuration to emit change events keyed by the UK columns so streaming works correctly after you add the constraint on the destination.
+
+```sql
+-- Run on the source database for each UK-identity table.
+ALTER TABLE <schema_name>.<table_name>
+  REPLICA IDENTITY USING INDEX <index_name>;
+```
+
+Don't create the unique constraint on the destination before the snapshot completes. With delayed primary key (PK) behavior enabled, the DMS writer treats tables as keyless if they have no PK on the destination — even if a UK exists. This behavior means snapshot writes use plain `INSERT` operations with no conflict handling. If a retry occurs before the snapshot finishes, those rows hit the UK constraint and the migration enters an infinite retry loop.
+
+After the snapshot for a UK-identity table completes, follow the deduplication and constraint procedure described in [Applying unique constraints on UK-identity tables](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/migrating_data/#applying-unique-constraints-on-uk-identity-tables).
+
+### Exporting your schema
+
+We recommend using [EDB Migration Toolkit](/migration_toolkit/latest/) (MTK) to export your schema. MTK's [offline migration](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability generates SQL scripts you can apply on the destination without direct connectivity. Other valid export methods include `pg_dump`/`pg_restore`, pgAdmin, or `psql`.
+
+When using Migration Toolkit:
+
+- Use the `-offlineMigration` option to generate SQL scripts.
+- Use the `-schemaOnly <schema_scope>` option to export schema only.
+- Exclude (comment out) primary key, unique, foreign key, check, and exclusion constraints from the generated script before importing.
+- If you plan to map objects to different names in the destination, edit them directly in the DDL script before importing. Update all dependent objects — views, constraints, and other references — that reference renamed objects. See [Mapping schema, tables, and columns](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration) for details.
+
+### Importing your schema
+
+After preparing the DDL and excluding the deferred constraints, connect to the destination database and apply the SQL file by executing the generated [offline migration script](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options).
+
+!!!note
+Apply the excluded unique, foreign key, check, and exclusion constraints after migration completes. The DMS writer applies primary key constraints automatically — don't reapply them manually. Keep track of excluded constraints so you can reapply them when the time comes.
 !!!
 
 </Tab>
