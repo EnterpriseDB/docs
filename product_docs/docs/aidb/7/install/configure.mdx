@@ -45,6 +45,58 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
    
    For more information, see [PGFS documentation](/pg_extensions/pgfs/).
 
+## Manage user access with the aidb_users role
+
+When you create the AIDB extension, Postgres automatically creates a role named `aidb_users`. Grant a user membership in this role to give it access to AIDB's SQL functions. This role isn't removed if you later drop the extension.
+
+`aidb_users` is designed to simplify access management for AIDB features:
+
+- **Purpose:** Granting a user the `aidb_users` role gives it access to all AIDB functions, so it can use the extension's capabilities.
+- **Security:** The `aidb_users` role **doesn't** grant access to AIDB's internal tables, so only the extension's public API is exposed to users who hold it.
+- **Background workers:** When background workers are used, they execute as the user who defined them, or as a role specified by the user, provided that user has access to that role.
+
+To let a user use AIDB functions, grant them the `aidb_users` role:
+
+```sql
+GRANT aidb_users TO your_user;
+```
+
+For example, create a role named `alice` with no privileges or role membership to start with:
+
+```sql
+CREATE ROLE alice
+  LOGIN
+  PASSWORD 'change_me';   -- replace with a real password
+```
+
+Then add `alice` to the `aidb_users` role:
+
+```sql
+GRANT aidb_users TO alice;
+```
+
+`alice` now inherits whatever privileges `aidb_users` has, for example `EXECUTE` on routines in the `aidb` schema.
+
+Membership in `aidb_users` doesn't grant access to your own data. Give `alice` (not `aidb_users`) the privileges it needs on the tables AIDB will read or write. This example grants access to three arbitrary tables that would ordinarily be source tables used in a pipeline:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON public.documents,
+     public.email_text,
+     public.chats
+  TO alice;
+```
+
+If `alice` also needs to create objects in the `public` schema:
+
+```sql
+GRANT CREATE ON SCHEMA public TO alice;
+```
+
+!!!Note Using AIDB through Pipeline Designer
+If you access AIDB through Hybrid Manager's Pipeline Designer, pipeline operations run under a separate role, `visual_pipeline_user`, which must also be granted membership in `aidb_users`. See [VPU and permissions](/edb-postgres-ai/latest/hybrid-manager/ai-factory/pipeline-designer/vpu-and-permissions#configuring-vpu-permissions) for that setup.
+!!!
+
 ## Proxy settings
 
 If your environment routes outbound HTTP traffic through a proxy, set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables in the Postgres environment file. On Ubuntu with community Postgres, this file is at `/etc/postgresql/<version>/main/environment`:
