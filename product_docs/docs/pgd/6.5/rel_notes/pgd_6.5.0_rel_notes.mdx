@@ -10,13 +10,27 @@ Released: 20 August 2026
 
 EDB Postgres Distributed (PGD) 6.5.0 includes new features, enhancements, and bug fixes.
 
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Added the <code>pgd raft restore</code> command to restore Raft consensus.</summary><hr/><p>The command identifies the minimum set of nodes to remove to restore consensus, prioritizing witness nodes, and removes them after confirmation.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Added <code>pgd node start</code>, <code>stop</code>, and <code>restart</code> commands to manage the local Postgres instance.</summary><hr/><p>These commands start, stop, or restart the Postgres instance on the local node without requiring systemd.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
 ## Enhancements
 
 <table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
-<tr><td><details><summary>Quorum Commit now works with any transaction streaming mode.</summary><hr/><p>Quorum Commit previously required <code>bdr.default_streaming_mode</code> set to <code>file</code> or <code>off</code>. PGD now detects Quorum Commit transactions at the origin and streams them to file automatically, so all streaming modes work without special configuration.</p>
+<tr><td><details><summary>Quorum Commit now works with any transaction streaming mode.</summary><hr/><p>Quorum Commit previously required <code>bdr.default_streaming_mode</code> set to <code>file</code> or <code>off</code>. PGD now detects Quorum Commit transactions at the origin and streams them to file automatically, so all streaming modes work without special configuration. During a rolling upgrade, keep <code>bdr.default_streaming_mode</code> set to <code>file</code> or <code>off</code> until every node is on PGD 6.5 or later.</p>
 </details></td><td></td></tr>
 <tr><td><details><summary>CLI node setup no longer defaults to unwrapped TDE keys.</summary><hr/><p>Node setup on a TDE-enabled cluster previously defaulted to <code>pg_resetwal</code> with no-wrap settings when no key wrap or unwrap command was specified, causing Postgres to fail to start later with a decryption error. The CLI now requires an explicit <code>--no-key-wrap</code> flag to skip key wrapping, and fails immediately with a clear error otherwise.</p>
 </details></td><td>59715</td></tr>
+<tr><td><details><summary><code>pgd node upgrade</code> now automates the pre-upgrade steps.</summary><hr/><p>The command previously required you to complete several manual pre-upgrade steps before running it. It now performs these steps automatically, removing manual preparation from the upgrade process.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Improved CLI error handling to avoid panics.</summary><hr/><p>The CLI previously failed with raw panics and generic errors that gave little context for troubleshooting. Error handling now provides clearer, more actionable messages throughout the CLI.</p>
+</details></td><td></td></tr>
 <tr><td><details><summary>Added <code>leader_id</code> and <code>voted_for_id</code> columns to <code>bdr.stat_raft_state</code>, and <code>node_id</code> to <code>bdr.stat_raft_followers_state</code>.</summary><hr/><p>The Raft status views previously exposed only node names, not their numeric IDs. <code>bdr.stat_raft_state</code> now includes <code>leader_id</code> alongside <code>leader_name</code>, and <code>voted_for_id</code> alongside <code>voted_for_name</code>. <code>bdr.stat_raft_followers_state</code> now includes <code>node_id</code> alongside <code>node_name</code>.</p>
 </details></td><td></td></tr>
 <tr><td><details><summary>Added <code>peer_applied_state_name</code> to <code>bdr.node_summary</code>.</summary><hr/><p>The view <code>bdr.node_summary</code> now includes the node's local applied state, making it easier to spot cases where a node's Raft-managed state has advanced but its subscriptions haven't caught up.</p>
@@ -24,6 +38,10 @@ EDB Postgres Distributed (PGD) 6.5.0 includes new features, enhancements, and bu
 <tr><td><details><summary>Improved error code assignment for user-actionable errors.</summary><hr/><p>Errors that previously defaulted to <code>ERRCODE_INTERNAL_ERROR</code> now report a more specific <code>SQLSTATE</code> where applicable, making it easier for applications and administrators to distinguish user-actionable errors from internal ones.</p>
 </details></td><td></td></tr>
 <tr><td><details><summary>Improved CLI error messages when BDR extension isn't installed.</summary><hr/><p>The <code>pgd</code> CLI now gives a clearer error when it detects that the target Postgres instance doesn't have the BDR extension installed, rather than a generic connection error.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Added <code>leader_id</code> and <code>voted_for_id</code> to the <code>pgd raft show</code> command.</summary><hr/><p>The <code>pgd raft show</code> command now displays the <code>leader_id</code> and <code>voted_for_id</code> fields when querying a PGD 6.5 or later cluster, matching the fields added to <code>bdr.stat_raft_state</code>.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary><code>pgd node upgrade</code> now prints a closing summary after a successful upgrade.</summary><hr/><p>The command previously ended abruptly after stopping the new Postgres instance, leaving operators unsure whether the upgrade had finished. It now prints a summary confirming success along with the next steps to start the new instance.</p>
 </details></td><td></td></tr>
 </tbody></table>
 
@@ -49,8 +67,14 @@ EDB Postgres Distributed (PGD) 6.5.0 includes new features, enhancements, and bu
 </details></td><td>61769</td></tr>
 <tr><td><details><summary>Adopt recovered global locks lazily instead of reacquiring them at writer startup.</summary><hr/><p>A writer that restarted while holding a global lock previously reacquired every lock left in recovery state and bound it to itself, sometimes leaving parallel apply disabled after the lock was released. Writers now adopt an existing recovered lock for the same origin node instead, which also supports locks that apply on any streaming writer.</p>
 </details></td><td>58160</td></tr>
+<tr><td><details><summary>Fixed <code>pgd node setup</code> losing its initialization state after a restart.</summary><hr/><p>An accidental Postgres restart during setup could lose the recorded initialization state and trigger an unintended logical join. <code>pgd node setup</code> now persists this state, and checks both the node state and the applied state during setup.</p>
+</details></td><td></td></tr>
 <tr><td><details><summary>Fixed <code>ALTER PROFILE</code> replication failure on witness nodes when a password verify function is set.</summary><hr/><p>On EDB Postgres Advanced Server (EPAS), witness nodes don't replicate non-role database objects, so replicating <code>ALTER PROFILE</code> with a <code>PASSWORD_VERIFY_FUNCTION</code> failed on witness nodes with a <code>function does not exist</code> error. PGD now skips executing the function on witness nodes, since it already ran on the originating node.</p>
 </details></td><td>61289</td></tr>
+<tr><td><details><summary>Fixed <code>pgd node setup</code> duplicating configuration entries on repeated runs.</summary><hr/><p>Running <code>pgd node setup</code> more than once appended duplicate entries to <code>postgresql.conf</code> and <code>pg_hba.conf</code> on each run. The command now checks for existing entries and skips them if already present.</p>
+</details></td><td></td></tr>
+<tr><td><details><summary>Fixed <code>pgd node upgrade --prepare</code> failing when upgrading to Postgres 18 from a cluster without data checksums.</summary><hr/><p>Postgres 18 changed the <code>initdb</code> default for data checksums from off to on. Upgrading a cluster that had checksums disabled to Postgres 18 or later failed with <code>old cluster does not use data checksums but the new one does</code>. <code>pgd node upgrade --prepare</code> now handles this version mismatch automatically.</p>
+</details></td><td></td></tr>
 <tr><td><details><summary>Fixed physical join failing when Postgres restarts on the joining node mid-join.</summary><hr/><p>In some cases, a Postgres restart on the joining node during a physical join caused the join to attempt a logical sync, resulting in errors. The fix prevents the physical join from falling back to logical join logic when a restart occurs mid-join.</p>
 </details></td><td>59904</td></tr>
 <tr><td><details><summary>Fixed resource leaks in <code>bdr.ri_fkey_on_del_trigger</code>.</summary><hr/><p>The <code>bdr.ri_fkey_on_del_trigger</code> trigger function left a relation, a tuple descriptor, and a snapshot open every time it ran, logging <code>resource was not closed</code> warnings on every node. The function now closes these resources correctly.</p>
