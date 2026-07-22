@@ -53,7 +53,7 @@ openjdk version "11.0.20" 2023-07-18 LTS
 OpenJDK Runtime Environment (Red_Hat-11.0.20.0.8-1.el7_9) (build 11.0.20+8-LTS)
 OpenJDK 64-Bit Server VM (Red_Hat-11.0.20.0.8-1.el7_9) (build 11.0.20+8-LTS, mixed mode, sharing)
 ```
-!!! Note
+!!! note
     There's a temporary issue with OpenJDK version 11 on RHEL and its derivatives. When starting Failover Manager, you might see an error like the following:
 
     `java.lang.Error: java.io.FileNotFoundException: /usr/lib/jvm/java-11-openjdk-11.0.20.0.8-2.el8.x86_64/lib/tzdb.dat (No such file or directory)`
@@ -101,3 +101,130 @@ org.jgroups.protocols.TCP warn WARN: JGRP000012: discarded message from differen
 ```
 
 The cluster name and `<source_address>` information can be used to find the original cluster. Using the [efm reset-members](07_using_efm_utility/#efm-reset-members) command with that cluster should clear the address from its cache.
+
+## The network service is down, preventing connection to the local database
+
+In older versions of Failover Manager, an agent would check the status of the network service when it could no longer connect to the local database. By default, this was a simple check of `systemctl status network`, and the check was made to collect more information only. It had no effect on the agent's behavior during a failure situation. In more recent operating systems, a service with this name no longer exists. This causes the check to always fail and the warning below is logged:
+```
+<timestamp> com.enterprisedb.efm.utils.ClusterUtilscheckNetwork INFO: Starting network check after no longer able to ping database.
+<timestamp> com.enterprisedb.efm.utils.ClusterUtilscheckNetwork WARN: ProcessResult{id=14, exitValue=4, errorOut='Unit network.service could not be found.', stdOut=''}
+<timestamp> com.enterprisedb.efm.utils.ClusterUtilscheckNetwork ERROR: The network service is down, preventing connection to the local database.
+```
+
+The warning can be ignored. The check has been removed starting with Failover Manager version 5.0.
+
+## Failover Manager creates a recovery.conf file
+
+During [a primary database server failure](11_supported_scenarios/#primary-database-is-down), the primary agent will write a recovery.conf file to the directory specified by the [db.data.dir](04_configuring_efm/01_cluster_properties/#db_data_dir) property:
+
+```
+<timestamp> com.enterprisedb.efm.nodes.EfmAgent otherNodesCanPingDB INFO: No other nodes able to reach database
+<timestamp> com.enterprisedb.efm.nodes.EfmAgent startMonitoring WARN: Attempting to run stop command on database that has failed before proceeding with failover.
+<timestamp> com.enterprisedb.efm.nodes.EfmAgent stopDatabase WARN: Stopping local database.
+[...]
+<timestamp> com.enterprisedb.efm.utils.RecoveryUtils writeRecoveryConf INFO: Writing recovery.conf file to: /opt/postgres/data/recovery.conf
+<timestamp> com.enterprisedb.efm.exec.ExecUtil performExec INFO: 31:[sudo /usr/edb/efm-5.3/bin/efm_address del eth0 172.17.0.10/16]
+<timestamp> com.enterprisedb.efm.exec.ExecUtil performExec INFO: 32:[sudo -u postgres /usr/edb/efm-5.3/bin/efm_db_functions writerecoveryconf /etc/edb/efm-5.3/efm.properties]
+<timestamp> com.enterprisedb.efm.exec.ExecUtil performExec INFO: ProcessResult{id=31, exitValue=0, errorOut='', stdOut=''}
+```
+
+This file is created to prevent the database server from starting again, which could lead to having two primary databases in the cluster. With database versions 12 and later, the existence of this file prevents startup. In earlier versions of PostgreSQL, the contents of the file would prevent startup. From a PostgreSQL version 18 log:
+
+```
+<timestamp> FATAL:  using recovery command file "recovery.conf" is not supported
+<timestamp> LOG:  startup process (PID 10886) exited with exit code 1
+<timestamp> LOG:  terminating any other active server processes
+<timestamp> LOG:  shutting down due to startup process failure
+<timestamp> LOG:  database system is shut down
+```
+
+To start the database server again, remove this file. However, if another node has been promoted to primary, this database should be reconfigured as a standby before starting.
+
+## Standby priority changed after a promotion
+
+Using the [promotable](04_configuring_efm/01_cluster_properties/#promotable) property, a standby agent can be started as eligible for promotion or not. This can be overridden by using the [efm set-priority](07_using_efm_utility/#efm-set-priority) command and the [priority.standbys](04_configuring_efm/01_cluster_properties/#priority_standbys) property. It's suggested to check the standby priority list after any promotion in the cluster. See [Reviewing the cluster status report](06_monitoring_efm_cluster/#monitoring_efm_cluster) for more information on checking the standby priority.
+
+## The Failover Manager service times out but agents are running
+
+Due to a misconfiguration in the Failover Manager service file, a service start may appear to fail even though the agent is running. The following example shows a systemctl timeout while starting an agent:
+
+```
+[root@node1 /]# systemctl start edb-efm-5.3
+Job for edb-efm-5.3.service failed because a timeout was exceeded.
+See "systemctl status edb-efm-5.3.service" and "journalctl -xeu edb-efm-5.3.service" for details.
+```
+
+The journalctl output shows that the expected pid file was not found:
+
+```
+<timestamp> node1 systemd[1]: edb-efm-5.3.service: Can't open PID file /run/efm-5.3/nonmatching.pid (yet?) after start: Operation not permitted
+<timestamp> node1 systemd[1]: edb-efm-5.3.service: start operation timed out. Terminating.
+<timestamp> node1 systemd[1]: edb-efm-5.3.service: Failed with result 'timeout'.
+<timestamp> node1 systemd[1]: edb-efm-5.3.service: Unit process 13006 (java) remains running after unit stopped.
+```
+
+This is due to a mismatch between the cluster name and the pid file. From the service file, it can be seen that the pid file name and the cluster name don't match. A Failover Manager agent will use the cluster name and the directory specified by the [pid.dir](04_configuring_efm/01_cluster_properties/#pid_dir) value (if any) to create this file:
+
+```
+[Service]
+TimeoutSec=120
+Environment=CLUSTER=efm
+PIDFile=/var/run/efm-5.3/nonmatching.pid
+[...]
+```
+
+See the [Running multiple agents on a single node](05_using_efm/#running-multiple-agents-on-a-single-node) section for examples of using different cluster names in a service file.
+
+!!! note
+    Besides the journalctl output showing that the agent is running, this can be determined by reading the agent log or by running an [efm cluster-status](07_using_efm_utility/#efm-cluster-status) command.
+
+## Physical replication slots cannot be advanced
+
+The primary Failover Manager agent can send slot information to the standby agents in order for them to create and advance slots in case they're promoted. See the [update.physical.slots.period](04_configuring_efm/01_cluster_properties/#update_physical_slots_period) property for more information. If slots already exist on a standby that cannot be advanced for any reason, the agent will log a warning and send a notification:
+
+```
+<timestamp> com.enterprisedb.efm.nodes.EfmAgent advancePhysicalReplicationSlots INFO: slot info to advance: {slot_node2=0/8015CE8, slot_node3=0/8015CE8, slot_node4=0/8015CE8}
+<timestamp> com.enterprisedb.efm.DBMonitor advancePhysicalReplicationSlots WARN: Could not advance replication slot slot_node3. Error: org.postgresql.util.PSQLException: ERROR: replication slot "slot_node3" cannot be advanced
+  Detail: This slot has never previously reserved WAL, or it has been invalidated.
+[A warning level notification is sent.]
+```
+
+These slots can then be dropped. Failover Manager will recreate them the next time the primary agent sends slot information, or when the standby agent is restarted:
+
+```
+<timestamp> com.enterprisedb.efm.nodes.EfmAgent advancePhysicalReplicationSlots INFO: slot info to advance: {slot_node2=0/8015F18, slot_node3=0/8015F18, slot_node4=0/8015F18}
+<timestamp> com.enterprisedb.efm.DBMonitor createPhysicalSlotIfNeeded INFO: Physical replication slot slot_node3 created.
+```
+
+## Agent starts but does not connect to cluster
+
+If an agent fails to start when there is an existing cluster, the error should be explained in the output (see above). It may be because the agent's address was not in the allowed host list. See [Adding nodes to a cluster](05_using_efm/#adding-nodes-to-a-cluster). If the agent starts, but doesn't connect to other running agents, it will appear as its own cluster with one node. This could be because:
+1. The agent's [cluster member file](04_configuring_efm/03_cluster_members/) didn't contain the address of the cluster membership coordinator.
+2. A network issue prevents reaching the rest of the cluster.
+
+For the first case, checking the cluster members file after startup may not help because it may have been rewritten at startup. See the [stable.nodes.file](04_configuring_efm/01_cluster_properties/#stable_nodes_file) property for more information. Instead, the agent log will include the list of hosts that were used during startup to discover the members of the cluster. In this log file, an agent running on 172.17.0.5 was started without any other addresses in the membership file, and did not try to connect to any other nodes. If other addresses had been listed in the file, they would be included in the "Host list:" line of the log:
+
+```
+<timestamp> com.enterprisedb.efm.nodes.EfmNode doStartup INFO: Starting
+<timestamp> com.enterprisedb.efm.Environment parseHostList INFO: Host list: [172.17.0.5:7800]
+```
+
+In the second case, if there are no errors in the agent log, it may be that this agent cannot reach the host or port of an existing agent. In this case, it's easier to debug the network connectivity with another tool such as `telnet` or `netcat`.
+
+!!! note
+    If a test does connect to the running agent successfully, the connection will still be closed by the remote Failover Manager agent.
+
+For example, this is a successful check that node1:7800 is accessible:
+
+```
+[root@node3 /]# nc -zv node1 7800
+Connection to node1 (172.17.0.2) 7800 port [tcp/asr] succeeded!
+```
+
+The agent running on node1 logs:
+
+```
+<timestamp> org.jgroups.protocols.TCP warn WARN: JGRP000006: 172.17.0.2:7800: failed accepting connection from peer Socket[addr=/172.17.0.4,port=33540,localport=7800]: java.io.EOFException
+java.io.EOFException
+```
+
