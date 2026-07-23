@@ -5,7 +5,7 @@ description: How AI agent activity travels from Postgres logs through Loki and t
 deepToC: true
 ---
 
-AI agent activity travels from the SQL an agent runs, through Postgres logs and Loki, to the screens you read. Understanding the path helps you reason about what the viewer can show and why session data sometimes needs to sync before it appears.
+AI agent activity travels from the SQL an agent runs, through Postgres logs and Loki, to the screens you read. Five components handle distinct parts of this path in sequence. Understanding how they interact helps you reason about what the viewer can show and why session data sometimes needs to sync before it appears.
 
 ## Tracing the data path
 
@@ -30,11 +30,9 @@ Viewer (browser)
      Renders clusters, sessions, and session detail
 ```
 
-## Component responsibilities
+## Airman MCP
 
-Five components handle distinct parts of the data path, in the order they process each query.
-
-**Airman MCP:** The MCP server AI agents call to run Postgres operations. It enforces the access mode — rejecting disallowed statement types in restricted mode — and tags every connection by setting the Postgres `application_name` session variable:
+Airman MCP is the MCP server AI agents call to run Postgres operations. It enforces the access mode — rejecting disallowed statement types in restricted mode — and tags every connection by setting the Postgres `application_name` session variable:
 
 ```
 SET application_name = 'airman:<purpose>/<session-short>';
@@ -42,30 +40,38 @@ SET application_name = 'airman:<purpose>/<session-short>';
 
 Where `purpose` is a static label configured per instance through `AIRMAN_MCP_PURPOSE` (for example, `billing`, `support`, or `analytics`; defaults to `_` when unset), and `session-short` is the first eight hexadecimal characters of the MCP session token. The tag persists for every subsequent statement on that connection, so all queries in one agent interaction are grouped under a single session short. See [Configuring Airman MCP](./configuring_airman_mcp).
 
-**Postgres cluster:** Receives queries from Airman MCP and, with JSON logging enabled, records every statement with its application_name, SQL text, duration, error severity, database, role, and process ID.
+## Postgres cluster
 
-**Loki (HM Loki pipeline or standalone Loki instance):** Ingests the Postgres JSON log lines, labels them by container and cluster, and makes them queryable via LogQL.
+The Postgres cluster receives queries from Airman MCP and, with JSON logging enabled, records every statement with its application_name, SQL text, duration, error severity, database, role, and process ID. These log lines are the raw material for everything the viewer displays.
 
-**Viewer backend:** A lightweight service that queries Loki via LogQL, parses the results into structured session and step data, caches session summaries for fast retrieval, and injects upstream credentials server-side so they never reach the browser. For the sessions list, the backend reads its sync watermark, backfills uncached history, loads cached summaries, and appends a live query for the most recent day — sorting sessions by most recently seen. For session detail, it queries by session short. Both views use LogQL queries of this shape, with the line filter scoped accordingly:
+## Loki
+
+Loki ingests the Postgres JSON log lines, labels them by container and cluster, and makes them queryable via LogQL. EDB Agent Governance works with both the HM-managed Loki pipeline and standalone Loki instances.
+
+## Viewer backend
+
+The viewer backend is a lightweight service that queries Loki via LogQL, parses the results into structured session and step data, caches session summaries for fast retrieval, and injects upstream credentials server-side so they never reach the browser. Both the sessions list and session detail views use LogQL queries of this shape, with the line filter scoped accordingly:
 
 ```logql
 {container="postgres", cnp_cluster_id=~"<clusterId>.*"} |= "airman:"
 ```
 
-**Viewer (browser):** The single-page application that renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data.
+For the sessions list, the backend reads its sync watermark, backfills uncached history, loads cached summaries, and appends a live query for the most recent day — sorting sessions by most recently seen. For session detail, it queries by session short.
 
-## Syncing and caching
+### Caching and sync
 
 The backend caches session summaries and keeps them current with a watermark-based incremental sync, so repeated visits to the same cluster don't require a full-range Loki query.
-
-### Running the sync pipeline
 
 When a sessions list is requested for a cluster, the backend:
 
 1. **Reads the watermark** — The per-instance, per-cluster record of the earliest known entry and how far the cache has been populated. On a first sync, both are zero.
+
 1. **Finds the earliest entry** — On a first sync, searches backward over 30 days, then 90, then 365, to establish the full time range to cache. If none is found, it treats today as the earliest.
+
 1. **Backfills history** — Fills the cache from the earliest entry to today in one-day chunks, upserting session summaries and advancing the watermark as it goes. Progress is reported through the status endpoint.
+
 1. **Loads cached sessions** — Reads all cached summaries for the cluster.
+
 1. **Fetches today's live data** — Runs a single query for the last 24 hours. This data is always fresh and isn't cached.
 
 The backend then merges cached and live sessions by session short, sums step counts, adjusts the first- and last-seen timestamps, and sorts by last seen.
@@ -80,8 +86,12 @@ The backend uses two retry policies depending on the call path.
 
 **Sync:** Loki calls made during the background sync pipeline retry up to ten times with exponential backoff starting at 2 seconds and capped at 60 seconds.
 
-**Proxy:** Requests proxied to HM or Loki on behalf of the viewer retry up to three times with exponential backoff starting at 250 ms and capped at 1 second. 503 errors are not retried.
+**Proxy:** Requests proxied to HM or Loki on behalf of the viewer retry up to three times with exponential backoff starting at 250 ms and capped at 1 second. 503 errors aren't retried.
 
 ### Resyncing
 
-When you trigger a resync from the Configure page, the backend clears the cached sessions and watermarks for the instance, then starts a background job: for a Loki instance it resyncs the single stub cluster; for an HM instance it discovers all projects and clusters and syncs them in parallel. The request returns immediately, and the instance's status advances from **Syncing** to **Done** (or **Error**) as the job runs. See [Connecting data sources](./connecting_data_sources#resyncing-an-instance).
+Resyncing clears all cached sessions and watermarks for an instance and restarts the sync pipeline from scratch. For a Loki instance, the backend resyncs the single stub cluster. For an HM instance, it discovers all projects and clusters and syncs them in parallel as a background job, so the viewer remains usable while the resync runs.
+
+## Viewer (browser)
+
+The viewer is a single-page application that renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data. Credentials never reach the browser — the backend injects them on every proxied request.
