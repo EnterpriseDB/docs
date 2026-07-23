@@ -1,0 +1,96 @@
+---
+title: Publishing bundles
+navTitle: Publishing bundles
+description: Package one or more Langflow flows into an immutable bundle in the Hybrid Manager Asset Library.
+deepToC: true
+---
+
+A **bundle** (also called a "published flow") is an immutable package of one or more Langflow flows in the HM Asset Library, identified by a name and a version. Publishing is the first step in the [flow deployment lifecycle](.).
+
+## Opening the publish dialog
+
+The publish dialog has two entry points, both opening the same three-step sidebar:
+
+-   **From the Langflow editor.** While editing a flow, select **Share > Publish to Asset Library**. The HM UI opens with the current flow already selected in step 1.
+
+-   **From the Asset Library.** Navigate to **Asset Library > Published Flows** in the HM console and select **+ Add New Flow**. No flows are pre-selected.
+
+## Publish dialog
+
+### Step 1: Select flows
+
+1. The sidebar opens with a checklist of every flow in the current Langflow project. Each row shows the flow name and a checkbox on the left.
+1. If you opened the dialog from the Langflow editor, the flow you were editing is already ticked. Confirm it is the flow you want to publish.
+1. To include additional flows in the same bundle, tick their checkboxes. A bundle can contain multiple flows — they are all deployed together as a single unit.
+1. To remove a flow from the selection, untick its checkbox.
+1. Confirm that at least one flow is selected. The **Next** button remains disabled until at least one flow is ticked.
+1. Select **Next** to proceed to step 2.
+
+!!!note
+When multiple flows in a bundle reference the same Langflow global variable, they share a single parameter in the published bundle. Any default you set for that parameter applies to every flow that uses it.
+!!!
+
+### Step 2: Configure
+
+| Field            | Required    | Notes                                                                                                                                                                                                                                               |
+|------------------|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Name**         | Yes         | Up to 64 characters. Used as the display name in the Asset Library and as the basis for the deployed flow's identity.                                                                                                                               |
+| **Description**  | No          | Free-text. Shown in the published-flow detail view.                                                                                                                                                                                                 |
+| **Version Tag**  | Yes         | Up to 128 characters. An opaque string — HM does not interpret it as semver. Avoid using `latest` as a literal tag; HM reserves it as an alias that always resolves to the most recently published version. Pick a scheme (`1.0.0`, `2026-05-28`, `rc1`) and use it consistently. |
+| **Parameters**   | Conditional | One entry per deduplicated global variable. See [Parameters and credentials](#parameters-and-credentials).                                                                                                                                          |
+| **Access Level** | Yes         | **Project** (default) or **Global**. See [Access level](#access-level).                                                                                                                                                                             |
+
+
+Note that **Name** is immutable after publishing — to rename, publish a new version. When all required fields are filled, select **Next** to review before publishing.
+
+### Step 3: Review
+
+The review step shows everything you've configured. Selecting **Publish** writes the bundle to the Asset Library and returns you to the published-flow list. The new bundle is the first version. Subsequent publishes with the same name create new versions of the same bundle.
+
+## Parameters and credentials
+
+Parameters are the values in your flow that use a Langflow [global variable](https://docs.langflow.org/configuration-global-variables). HM extracts them from each flow's definition at publish time and presents them in step 2 of the dialog.
+
+How a parameter is treated depends on its Langflow input type:
+
+| Langflow input type | Treated as                   | Default at publish time                                    | Value at deploy time                                                                                |
+|---------------------|------------------------------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| `SecretStrInput`    | **Credential**               | Not allowed. The input is read-only in the publish dialog. | **Required**. Supplied per deployment, stored as a Kubernetes secret in the deployment's namespace. |
+| Anything else       | **Non-credential parameter** | Optional default value                                     | If no default was set and no value is supplied at deploy time, the flow runs without one.           |
+
+Credential defaults are never persisted, even if you supply them via the API. Hybrid Manager strips any defaults for credential parameters at publish time. This keeps the bundle safe to share across projects.
+
+### Deduplication
+
+Parameters are deduplicated across the bundle by global-variable name. If two flows in the bundle each reference `DB_USER`, the publish dialog shows a single `DB_USER` parameter, and any default you set is reused by both flows. The bundle records which flows reference each parameter, so the deployment can wire the same value into every consumer.
+
+## Access level
+
+The access level controls who can see the bundle in the Asset Library and who can deploy it.
+
+-   **Project** (default). You must select at least one project. The bundle is visible to users with the appropriate role in any of the listed projects. Promoting a project bundle to global, or moving it between projects, requires that you have access to every project currently on the list.
+-   **Global**. Visible to everyone in the organization. Use sparingly: once global, anyone with the deploy role on any project can instantiate the bundle.
+
+Access is enforced server-side: lists and reads only return bundles whose `allowed_projects` overlap the requesting user's authorized projects, or whose access level is global.
+
+## Editing a published bundle
+
+From **Asset Library > Published Flows**, select the pencil icon on the row for the version you want to change. The edit sidebar opens. The following are editable:
+
+-   **Description**
+-   **Access level** (project ↔ global) and the **allowed projects** list
+-   **Parameter defaults** for non-credential parameters
+
+The following are immutable for a given version:
+
+-   **Name**
+-   **Version tag**
+-   **The set of flows in the bundle and their definitions**
+
+To change immutable fields, publish a new version of the bundle.
+
+## Deleting a published bundle
+
+Deleting a bundle version removes it from the Asset Library. Existing deployments created from the version continue to run: they hold a downloaded copy of the bundle and do not re-fetch unless the deployment is explicitly updated. Deletion is a permissioned operation (see [Required roles](.#required-roles)).
+
+To turn a published bundle into a running deployment, see [Deploying flows](deploying-flows).

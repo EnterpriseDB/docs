@@ -1,0 +1,120 @@
+---
+title: External inference services
+navTitle: External inference services
+description: How external AI model providers reach Pipeline Designer, including HM's external inference proxy and AIDB-native model registration.
+deepToC: true
+---
+
+Pipeline Designer can use models from external AI providers (OpenAI, AWS Bedrock, NVIDIA NIM, and other API-compatible endpoints) in addition to Hybrid Manager (HM)-hosted models. Two distinct mechanisms make external models available, and which one applies depends on whether the cluster has connectivity to the HM control plane.
+
+Understanding the delivery mechanism matters because it determines which clusters can use a given model and how credentials are managed.
+
+## How external models reach AIDB
+
+AI Database (AIDB), the Postgres extension that powers Pipeline Designer, maintains a model registry. Pipeline steps reference models by name from this registry. External models can enter the registry through two independent paths.
+
+### HM external inference service proxy
+
+When you register an external inference service through the Hybrid Manager UI (Sovereign AI > Model Serving, when available), HM deploys a managed proxy on the primary location that forwards inference requests to the external provider's API endpoint. HM manages the provider's API credentials, which aren't stored in the database.
+
+From AIDB's perspective, the proxy is indistinguishable from an HM-hosted model: AIDB discovers it automatically and routes inference requests to it in the same way. The fact that inference ultimately reaches an external provider is transparent to AIDB and to Pipeline Designer.
+
+Key characteristics of this path:
+
+-   **Managed by the HM control plane.** Registration, credential storage, and lifecycle management happen through the HM UI and backend services.
+
+-   **Credentials managed by HM.** The provider's API key (or equivalent) is stored and injected by HM infrastructure. AIDB doesn't handle external provider credentials directly.
+
+-   **Same reachability constraint as HM-hosted models.** The proxy runs on the primary location, so a cluster needs network connectivity to the primary to use this path. The external provider itself is internet-accessible, but traffic from AIDB goes through the proxy, not to the provider directly. In a default deployment, secondary locations and self-managed clusters don't have this connectivity and must use AIDB-native registration instead.
+
+#### Registering an external inference service in HM
+
+!!!Note "Model Serving interface not available in current release"
+The **Sovereign AI > Model Serving** interface described in this section isn't available in the current Portal release. To register external models, use [AIDB-native model registration](#registering-aidb-native-models) (described below on this page), which works on any cluster with the AIDB extension.
+!!!
+
+1.  Navigate to [**Sovereign AI > Model Serving**](../models) in your Hybrid Manager project.
+
+1.  Select **Register External Service**.
+
+1.  Fill in the registration form:
+    
+    -   **Service name**: A descriptive name for this service connection.
+    
+    -   **Provider**: The external provider type (for example, OpenAI, AWS Bedrock, NVIDIA NIM).
+    
+    -   **Endpoint URL**: The API endpoint for the external service.
+    
+    -   **API Protocol Version**: The protocol version to use when communicating with the provider. For most providers, the default value is correct. Select a specific version only if your provider requires it or you need to pin to a particular API revision.
+    
+    -   **Credentials**: The authentication credentials for the provider. This is typically an API key. For AWS Bedrock, this may include access key and secret.
+
+1.  Select **Register**.
+
+The service is registered and its models become available after the next model sync cycle (typically within a few minutes).
+
+#### Managing external services in HM
+
+!!!Note "Model Serving interface not available in current release"
+The management interface described in this section isn't available in the current Portal release. External models registered via AIDB-native registration are managed through SQL. See [AIDB-native model registration](#registering-aidb-native-models).
+!!!
+
+From the Sovereign AI model serving interface, you can:
+
+-   **View registered services**: See all external inference service connections, including their status and activity logs.
+
+-   **Edit a service**: Update the endpoint URL, credentials, or API protocol version.
+
+-   **Deregister a service**: Remove the external service connection. Models are cleaned up during the next model sync cycle.
+
+!!! Warning
+    Unregistering an external service will cause any pipelines using that service's models to fail on their next execution. Before unregistering, ensure no active pipelines depend on the service's models, or update those pipelines to use alternative models.
+
+### Registering AIDB-native models
+
+AIDB has its own model registration mechanism that works independently of HM. The `aidb.create_model()` SQL function creates a model entry backed by a Foreign Data Wrapper (FDW), pointing directly at an external provider's API endpoint. When a pipeline step uses an AIDB-native model, the Postgres process contacts the provider directly, with no intermediary proxy.
+
+Key characteristics of this path:
+
+-   **SQL-level, works anywhere.** Any Postgres cluster running the AIDB extension can register models this way, regardless of whether HM infrastructure is present or reachable.
+
+-   **Credentials stored as FDW user mappings.** API keys are stored using `CREATE USER MAPPING FOR PUBLIC`, making them accessible to all database users. Credentials are scoped to the provider (foreign server), not to individual models. All models using the same provider share a single set of credentials.
+
+-   **Direct network access required.** The Postgres process must be able to reach the external provider's API endpoint. There is no proxy or intermediary.
+
+-   **No HM UI management.** Models registered this way don't appear in the HM model serving interface. They are managed entirely through SQL.
+
+For details on `aidb.create_model()`, provider types, and credential configuration, see the AIDB model registry reference documentation.
+
+### Choosing the right mechanism for your cluster
+
+The HM external inference proxy runs on the primary location. Clusters outside the primary location can use it only if they have network connectivity to the primary's model-serving endpoints, which isn't available by default. AIDB-native registration works on any cluster with the AIDB extension, because the Postgres process contacts the provider directly.
+
+| Deployment type                                      | HM external inference proxy | AIDB-native registration |
+|------------------------------------------------------|-----------------------------|--------------------------| 
+| Primary location                                     | Yes                         | Yes                      |
+| Secondary location or self-managed                   | Not by default ¹            | Yes                      |
+
+¹ Requires network connectivity to the primary location's model-serving endpoints, which is not present in a default deployment.
+
+For the full model availability picture (including HM-hosted KServe models and built-in AIDB models), see [Executing pipelines: How models reach pipeline steps](executing-pipelines#how-models-reach-pipeline-steps).
+
+## Using external models in pipeline steps
+
+Regardless of which mechanism registered them, external models appear in Pipeline Designer's model picker alongside HM-hosted and on-database models. Pipeline Designer doesn't distinguish between registration paths and shows every model in the AIDB model registry that's compatible with the step being configured.
+
+When configuring a step that requires a model:
+
+-   **KnowledgeBase step**: External text embedding models (such as OpenAI embedding models) appear in the embedding model list.
+
+-   **SummarizeText step**: External text completion models (such as OpenAI completion models) appear in the language model list.
+
+-   **PerformOCR step**: External OCR models appear in the OCR model list, if the provider offers compatible endpoints.
+
+The model picker filters by function type, so only models compatible with the step being configured are shown.
+
+The function types that a model supports are determined by its provider. When you register an external inference service through the HM UI, the **Provider** you select (for example, OpenAI or NVIDIA NIM) determines which function types the service's models expose. Similarly, when you register a model with `aidb.create_model()`, the provider argument (the second parameter) controls the function types. For example, a model registered with the `openai_embeddings` provider supports text embedding, while one registered with `nim_paddle_ocr` supports OCR. There is no separate step to configure function types; they follow from the provider.
+
+## Handling credentials
+
+External service credentials are shared across all database users, regardless of registration path. HM-registered external services store credentials in Kubernetes secrets (used by the proxymodel) and, after sync, as FDW user mappings in the database. AIDB-native models store credentials as FDW user mappings directly. In both cases, there is no per-user or per-pipeline credential isolation. For a full discussion of the credential sharing model and its security implications, see [VPU and permissions: Shared model credentials](vpu-and-permissions#shared-model-credentials).

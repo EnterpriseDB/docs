@@ -1,0 +1,93 @@
+---
+title: Upgrading from 1.4.0 to 1.4.1
+navTitle: 1.4.0 to 1.4.1
+description: Follow the step-by-step procedures for upgrading from HM 1.4.0 to HM 1.4.1.
+deepToC: true
+---
+
+> **Role:** Infrastructure engineer
+
+## Prerequisites
+
+- Administrative access to the Kubernetes cluster.
+- Required tools:
+    - `helm` (latest version recommended)
+    - `kubectl`
+    - `edbctl` — see the [edbctl compatibility matrix](/edbctl/latest/compatibility_matrix/) for the supported version.
+
+## Upgrade 1.4.0 → 1.4.1
+
+### Create new secrets
+
+Before upgrading, create the new secrets required for this release:
+
+```shell
+edbctl hm create-install-secrets --version v1.4.1
+```
+
+For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
+
+### Upgrade the operator Helm chart
+
+!!!Note Red Hat OpenShift
+On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
+!!!
+
+The commands below use `edb-hcp-operator-system` — use the namespace where your operator is actually installed. If you migrated from the bootstrap method, the conversion transfers Helm ownership onto `edbpgai-bootstrap`, so use that namespace instead.
+
+Upgrade the `edb-hcp-operator` Helm chart using `edbctl`:
+
+```shell
+edbctl hm upgrade-operator \
+  --release-name edb-hcp-operator \
+  --namespace edb-hcp-operator-system \
+  --registry-uri docker.enterprisedb.com/pgai-platform \
+  --registry-username pgai-platform \
+  --registry-password <password>
+```
+
+Or upgrade directly with Helm:
+
+1. Create the values file:
+
+    ```shell
+    cat <<EOF > edb-hcp-operator.values.yaml
+    controllerManager:
+      manager:
+        image:
+          repository: docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager
+          tag: <OPERATOR_VERSION>
+    imagePullSecrets:
+      - name: edb-cred
+    EOF
+    ```
+
+1. Run the upgrade:
+
+    ```shell
+    helm upgrade --install \
+      --version <OPERATOR_VERSION> \
+      --values edb-hcp-operator.values.yaml \
+      -n edb-hcp-operator-system \
+      edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
+    ```
+
+### Apply the updated CR
+
+1. Update `spec.version` to `v1.4.1` in your `HybridControlPlane` manifest and apply it:
+
+    ```shell
+    kubectl apply -f hybridmanager.yaml
+    ```
+
+1. Trigger the upgrade:
+
+    ```shell
+    kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+    ```
+
+1. Monitor progress:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -w
+    ```

@@ -1,0 +1,50 @@
+---
+title: Configure dedicated object storage for a project
+navTitle: Configure dedicated object storage
+description: Learn how to configure dedicated object storage for individual projects in Hybrid Manager to isolate backup and WAL data.
+---
+
+By default, all projects share the same object storage configured during the installation. If you need to isolate project resources, you can configure dedicated object storage for each project.
+
+1.  In the Hybrid Manager console (HM), select the **Projects** tab.
+2.  Select the project for which you want to configure dedicated object storage.
+3.  Get the project ID from the URL. The project ID is the string of characters after `/projects/` in the URL. 
+
+    For example, in the URL `https://hybrid-manager.example.com/projects/prj_Abc123`, the project ID is `prj_Abc123`.
+4.  Normalize the project ID by replacing all underscores (`_`) with hyphens (`-`) and convert all letters to lowercase. For example, `prj_Abc123` becomes `prj-abc123`.
+5.  Create the object storage secret in your Kubernetes cluster. Use the provider-specific `stringData:` block from [Configuring object storage](/edb-postgres-ai/current/hybrid-manager/install/configuration/object_storage/). The secret body is identical to the default `edb-object-storage` secret — only the name differs, and it must be `edb-object-storage-<normalized-project-id>`.
+
+    ```yaml
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: edb-object-storage-<normalized-project-id>
+      namespace: default
+    stringData:
+      # Provider-specific fields — see Configuring object storage.
+      ...
+    ```
+
+!!!Important
+
+-   Configure dedicated object storage before creating any Postgres workloads in the project. Once a project is bound to an object storage secret, the association can't be changed.
+-   If your HM deployment has multiple locations, apply the object storage secret to all locations.
+!!!
+
+## Verifying the binding
+
+HM stores project-to-storage mappings in the `slo-kv-store` ConfigMap in the `default` namespace. To check which object storage a project is bound to, run:
+
+```shell
+kubectl get cm slo-kv-store -o yaml -n default
+```
+
+The `data` section maps each project ID to its object storage secret name. For example:
+
+```yaml
+data:
+  prj_C9cgaIh5QAZdX977: edb-object-storage-prj-c9cgaih5qazdx977  # dedicated storage
+  prj_EyHfzLGVDmQCsEC2: edb-object-storage                        # default storage
+```
+
+If a project ID doesn't appear in the ConfigMap, the project hasn't been bound yet. Binding happens automatically when the first Postgres workload is created within the project.
