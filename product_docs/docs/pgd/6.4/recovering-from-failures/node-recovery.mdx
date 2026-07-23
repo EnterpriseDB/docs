@@ -1,0 +1,273 @@
+---
+title: Recovering a failed node
+navTitle: Recovering a failed node
+description: How to recover failed nodes in a PGD cluster configured with synchronous commit scopes.
+redirects:
+  - /pgd/latest/node-recovery/
+  - /pgd/latest/node-recovery/ #generated for DOCS-3995-new
+---
+
+PGD automatically recovers failed nodes from brief outages, such as a restart or a transient network blip. 
+The failed node reconnects, catches up with any changes it missed, and rejoins the cluster without intervention. 
+You can confirm that the node transitions through `CATCHUP` back to `ACTIVE` by running `pgd nodes list`.
+
+When automatic recovery doesn't succeed, you must manually recover the node. This typically happens when:
+
+- The node's data directory is corrupted and Postgres won't start.
+- The node has been offline long enough that its replication slot on the healthy nodes has been invalidated or is causing write-ahead log (WAL) to accumulate dangerously.
+- The underlying hardware failed and the node needs to be rebuilt.
+- The node is in a state (such as `JOINING`) that it can't progress out of on its own.
+
+Perform recovery by parting the failed node and bringing it back as a fresh member. 
+This procedure applies to PGD clusters using any [synchronous commit scope](/pgd/current/commit-scopes/). It covers:
+
+1. [Assessing the cluster state](#assessing-the-cluster-state)
+1. [Removing the failed nodes from the cluster](#removing-the-failed-nodes-from-the-cluster)
+1. [Recovering the failed nodes](#recovering-the-failed-nodes)
+1. [Validating the recovered node](#validating-the-recovered-node)
+1. [Verifying cluster health](#verifying-cluster-health)
+
+!!!Warning
+Don't leave failed nodes unattended for extended periods. Each healthy node holds WAL and replication data for offline peers, which can exhaust disk space and block catalog vacuuming. If a node is permanently lost or has been down too long, part it and rejoin a new one in its place. The replacement can reuse the original node's name.
+
+Never manually remove replication slots created by PGD, as doing so can damage your cluster.
+!!!
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- Access to the [PGD CLI](../reference/cli).
+- Connection strings (DSN) for the healthy nodes.
+- The [`bdr_superuser` role](/pgd/current/advanced-functionality/security/) or equivalent to run `pgd` and SQL commands on the cluster.
+
+## Assessing the cluster state
+
+Before taking any action, confirm the current state of all nodes and replication.
+
+1. Check which nodes are `ACTIVE` and which are down or lagging:
+
+   ```shell
+   pgd nodes list
+   ```
+
+   Use the output to determine the type of failure. 
+   If fewer than half the nodes are down, you have a [minority failure](#minority-failure-quorum-maintained) and the cluster retains quorum. 
+   If half or more are down, you have a [majority failure](#majority-failure-quorum-lost) and the cluster has lost quorum. 
+   This determines which recovery approach to use in the next step.
+
+1. Check for inactive or lagging replication slots:
+
+   ```shell
+   pgd replication show --slots
+   ```
+
+   Each healthy node holds a replication slot for offline peers, causing WAL to accumulate. 
+   A lagging slot indicates disk pressure; an invalidated slot means WAL has been discarded and the node may not be able to rejoin cleanly.
+
+1. Identify the current write leader:
+
+   ```shell
+   pgd group <group_name> show
+   ```
+
+## Removing the failed nodes from the cluster
+
+The approach differs depending on how many nodes have failed.
+
+### Minority failure (quorum maintained)
+
+A minority failure is when fewer than half the nodes have failed. The remaining nodes still form a majority, so the cluster retains quorum, which means it can still reach agreement on writes and continues operating normally.
+
+Use the PGD CLI to part each failed node — this is the recommended method for minority failure. Replace `<healthy_node_dsn>` with the connection string of a healthy node and `<failed_node_name>` with the name of the node to remove. 
+If multiple nodes have failed, repeat the command for each one.
+
+```shell
+pgd --dsn "<healthy_node_dsn>" node <failed_node_name> part
+```
+
+For example:
+
+```shell
+pgd --dsn "host=node2.example.com dbname=bdrdb user=enterprisedb" node node1 part
+```
+
+Alternatively, use the `bdr.part_node` function from a healthy node, replacing `<failed_node_name>` with the name of the node to remove. 
+If multiple nodes have failed, repeat the command for each one.
+
+```sql
+SELECT bdr.part_node('<failed_node_name>',
+                     wait_for_completion => true,
+                     force => false,
+                     concurrent => true);
+```
+
+The parting operation initiates and the node is automatically removed once it's safe. The node transitions through the following states:
+
+`ACTIVE` → `PART_START` → `PARTING` → `PART_CATCHUP` → `PART_TX_RESOLVE` → `PART_CLEANUP` → `PARTED` → Automatically dropped.
+
+During the `PART_CATCHUP` phase, the remaining nodes synchronize any missing data from the parted node before the operation completes. This ensures no data loss and keeps the cluster consistent.
+
+The automatic drop happens once all remaining nodes have consumed all changes from the parted node. You don't need to perform any manual catalog cleanup.
+
+### Majority failure (quorum lost)
+
+A majority failure is when half or more of the nodes have failed. 
+The remaining nodes can no longer form a majority, so the cluster loses quorum, which means it can no longer reach agreement on writes and write operations are blocked until the failed nodes are removed.
+
+When a majority of nodes have failed, you can't use `pgd node part` because it requires cluster consensus. 
+Instead, use `bdr.drop_node()` with `force => true`, wrapped in a transaction with a local commit scope. 
+Run this on every remaining healthy node:
+
+```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'local';
+SELECT bdr.drop_node('<failed_node_1>', force => true);
+SELECT bdr.drop_node('<failed_node_2>', force => true);
+COMMIT;
+```
+
+Unlike the standard parting process, forced drops are immediate, which means the nodes are removed without waiting for consensus.
+
+!!!Note
+There is no PGD CLI equivalent for forced drop; you must use SQL. `bdr.part_node(force => true)` is deprecated in PGD 6 and is an alias for `bdr.drop_node(force => true)`.
+!!!
+
+### Verifying the nodes have been removed from the cluster
+
+Replace `<healthy_node_dsn>` with the connection string of a healthy node:
+
+```shell
+pgd --dsn "<healthy_node_dsn>" nodes list
+```
+
+For minority failure, wait for the automatic cleanup to complete before confirming the nodes are gone. 
+For majority failure, which uses forced drop, the nodes are removed immediately.
+
+## Recovering the failed nodes
+
+Repeat the following process for each failed node that needs to rejoin the cluster. 
+A recovered node can reuse its original name as PGD allows parted or dropped node names to be reused.
+
+### Stopping the database and preparing the data directory
+
+On the failed node:
+
+1. Stop the Postgres service and verify it's stopped:
+
+   ```shell
+   sudo systemctl stop postgresql.service
+   sudo systemctl status postgresql.service
+   ```
+
+1. Back up or move the existing data directory before clearing it:
+
+   ```shell
+   cd /path/to/postgres/
+   mv data data_old
+   ```
+
+1. Clean the data directory, including any tablespace directories:
+
+   ```shell
+   rm -rf <pgdata>/*
+   rm -rf /path/to/tablespace/*
+   ```
+
+### Running pgd node setup
+
+```shell
+pgd node <new_node_name> setup \
+  --pgdata <pgdata> \
+  --dsn "host=localhost port=<port> dbname=<dbname> user=<username>" \
+  --cluster-dsn "host=<healthy_node_host> port=5432 dbname=<dbname> user=<username>" \
+  --log-file <log_file> \
+  --group-name <group_name> \
+  --initial-node-count <initial_node_count>
+```
+
+Where:
+
+- `<new_node_name>`: Name of the recovered node. PGD allows reusing the original node name if the node is in a `PARTED` state.
+- `--pgdata`: Data directory for the recovered node.
+- `--dsn`: Connection string for the node being recovered.
+- `--cluster-dsn`: Connection string to a healthy node in the cluster.
+- `--log-file`: Path to the Postgres log file.
+- `--group-name`: Node group name. Mandatory for the first node of a group. If not provided, the node joins the group of the active node.
+- `--initial-node-count`: Number of nodes in the cluster (or planned). Used to calculate resource settings.
+
+The command automatically initializes the data directory, joins the cluster, and starts the Postgres server. 
+Look for `Node <new_node_name> added to the cluster successfully` in the output to confirm completion.
+
+## Validating the recovered node
+
+Confirm the recovered node has fully rejoined the cluster.
+Verify the node's join state is `ACTIVE`:
+
+```shell
+pgd --output-format psql --dsn "<recovered_node_dsn>" node <new_node_name> show
+```
+
+Check that Raft consensus is established. 
+All nodes must show `RAFT_LEADER` or `RAFT_FOLLOWER`:
+
+```shell
+pgd --output-format psql --dsn "<recovered_node_dsn>" raft show
+```
+
+Confirm all expected replication slots are present and active:
+
+```shell
+pgd --output-format psql --dsn "<recovered_node_dsn>" replication show --slots
+```
+
+Verify cluster visibility from both the recovered node and other healthy nodes. All nodes must appear as `ACTIVE` or `CATCHUP`:
+
+```shell
+pgd --output-format psql --dsn "<node_dsn>" nodes list
+```
+
+## Verifying cluster health
+
+While the node catches up with the cluster, monitor replication lag:
+
+```shell
+pgd --output-format psql --dsn "<node_dsn>" replication show --slots
+```
+
+If routing is enabled, verify routing information is available and correct on the recovered node:
+
+```shell
+pgd --output-format psql --dsn "<node_dsn>" node <new_node_name> show
+```
+
+Commit scope behavior resumes automatically once recovery is complete, and no manual reconfiguration is needed.
+
+While the node is catching up, keep an eye on replication lag, disk space, Postgres logs, and network connectivity between nodes.
+
+## Troubleshooting
+
+The following are common issues you may encounter during node recovery and how to resolve them.
+
+**Recovery fails with a timeout** 
+
+Check network connectivity between nodes and ensure the source node is responding and healthy.
+
+**Recovered node shows as `JOINING` instead of `ACTIVE`**
+
+Check the Postgres logs on the recovered node for errors, particularly any issues with the restore phase. Verify that replication slots exist on the other nodes by running `pgd replication show --slots` from a healthy node.
+
+**Replication lag increases after recovery**
+
+Check for resource constraints (CPU, disk I/O, memory), verify network bandwidth between nodes, and confirm that the Postgres configuration allows sufficient workers and replication slots (see [Postgres configuration](/pgd/current/postgres-configuration/)).
+
+## Post-recovery checklist
+
+Use the following checklist to confirm the cluster is fully healthy before returning to normal operations.
+
+- [ ] All recovered nodes show `join_state` as `ACTIVE`.
+- [ ] Raft consensus is established — all nodes show `RAFT_LEADER` or `RAFT_FOLLOWER`.
+- [ ] Replication slots are active on all nodes.
+- [ ] All nodes see each other in `pgd nodes list`.
+- [ ] No errors in Postgres logs on any node.
+- [ ] Replication lag is within acceptable limits.
