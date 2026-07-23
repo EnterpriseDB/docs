@@ -1,0 +1,149 @@
+---
+title: Point-in-time recovery with WarehousePG Disaster Recovery
+navTitle: Point-in-time recovery
+description: Restore a WarehousePG cluster to a specific restore point to recover from data corruption or accidental data loss.
+deepToC: true
+---
+
+Use PITR to restore the cluster to a specific past point. Use it to recover from accidental or unwanted changes committed to the primary. PITR also lets you inspect the database as it was at a specific past point, for example to analyze historical data or seed a development environment.
+
+## Prerequisites
+
+Configure the DR cluster for restore before proceeding. See [Setting up the DR cluster](../configuring-dr).
+
+## Restoring to a restore point
+
+Run all commands as the WarehousePG cluster owner, typically `gpadmin` on the DR coordinator.
+
+1. Inspect the available restore points:
+
+    ```bash
+    whpg-dr list-backup my_cluster
+    ```
+
+1. Restore to a specific restore point:
+
+    ```bash
+    whpg-dr restore my_cluster --target-name 20260615-143022R_before_etl_load
+    ```
+
+    The command applies the base backup that the restore point belongs to, then replays WAL forward to that exact point. When replay finishes, all segments stop in recovery mode.
+
+!!! Note
+The DR cluster remains in recovery mode after performing a restore and doesn't accept client connections. To bring it online, [promote the cluster](#promoting-the-dr-cluster) and start it with `gpstart`.
+!!!
+
+### Advancing to a later restore point
+
+If the DR cluster already has a restore applied and you want to move it forward to a later restore point without a full re-restore, use `--delta`:
+
+```bash
+whpg-dr restore my_cluster --target-name 20260615-143022R_before_etl_load --delta
+```
+
+`--delta` replays only the WAL between the current DR state and the target restore point. It requires that the DR cluster already has a valid restored state (data directories contain `PG_VERSION`).
+
+### Checking restore status
+
+Check the current restore state at any time:
+
+```bash
+whpg-dr list-restore my_cluster
+```
+
+### Resuming a failed restore
+
+If the restore is interrupted, retry with `--resume-failed`:
+
+```bash
+whpg-dr restore my_cluster --resume-failed
+```
+
+## Promoting the DR cluster
+
+Once the restore is complete and you're ready to bring the DR cluster online:
+
+1. Promote the DR cluster:
+
+    ```bash
+    whpg-dr promote my_cluster
+    ```
+
+1. Start the cluster. Source the WarehousePG environment and set `COORDINATOR_DATA_DIRECTORY` before running `gpstart`:
+
+    ```bash
+    source /usr/edb/whpg7/greenplum_path.sh
+    export COORDINATOR_DATA_DIRECTORY=<coordinator_data_directory>
+    gpstart -a
+    ```
+
+1. Rebuild system indexes and collect statistics on each database. Without this step, queries generate warnings about missing table statistics. Repeat for each database in the cluster, replacing `<database_name>` accordingly:
+
+    ```bash
+    reindexdb --system -d <database_name> -e
+    analyzedb -as pg_catalog -d <database_name> -p 10 -v
+    analyzedb -d <database_name> -p 10 -v
+    ```
+
+After these steps, the cluster is a writable primary and accepts connections. Extension data is restored as part of the cluster state.
+
+## Recovering individual objects
+
+Recover individual tables or schemas from the promoted DR cluster without failing over the entire production cluster. Use `gpbackup` and `gprestore` from the `whpg-backup` package to extract the objects you need and restore them to production. Both clusters must have access to the same shared storage, either via an S3-compatible plugin or a shared NFS path.
+
+For example, to restore `public.orders` from the `mydb` database using S3 storage:
+
+1. Create a plugin configuration file on the DR coordinator at `/home/gpadmin/gpbackup_s3_plugin.yaml`:
+
+   ```yaml
+   executablepath: /usr/edb/whpg7/bin/gpbackup_s3_plugin
+   options:
+     aws_access_key_id: AKIAIOSFODNN7EXAMPLE
+     aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     endpoint: https://s3.us-east-1.amazonaws.com
+     bucket: my-dr-bucket
+     folder: whpg-recovery
+   ```
+
+1. Run `gpbackup` against the full database on the DR cluster. Back up the full database rather than filtering by table. Using `--include-table` on `gpbackup` excludes dependent objects like sequences, which causes the restore to fail.
+
+   ```bash
+   gpbackup --dbname mydb --plugin-config /home/gpadmin/gpbackup_s3_plugin.yaml
+   ```
+
+   Record the backup timestamp from the output, for example `20260629133225`.
+
+1. Copy the plugin configuration file to the production coordinator and run `gprestore` with `--include-table` to restore only the target table:
+
+   ```bash
+   gprestore --timestamp 20260629133225 \
+     --plugin-config /home/gpadmin/gpbackup_s3_plugin.yaml \
+     --redirect-db mydb \
+     --include-table public.orders
+   ```
+
+Once the object is recovered, you can discard the DR cluster. The base backup and WAL remain in the storage repository for future restores.
+
+See the [WarehousePG backup and restore documentation](/warehousepg/latest/admin_guide/backup_restore/) for other storage options and full `gpbackup` and `gprestore` reference.
+
+## Adding mirrors and standby coordinator
+
+Optionally, add mirrors and a standby coordinator after promotion. `whpg-dr` doesn't restore these components, so the promoted cluster has only primary segments. See the WarehousePG documentation for [enabling segment mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-segment-mirroring/) and [enabling coordinator mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-coordinator-mirroring/).
+
+## Performing a fresh restore
+
+To restore to an earlier restore point than the one currently applied, or to restore a cluster that has already been promoted, clear the data directories first and run a full restore from scratch.
+
+1. Stop the cluster if it's running:
+
+    ```bash
+    gpstop -af
+    ```
+
+1. Remove the data directories on all DR hosts:
+
+    ```bash
+    gpssh -f all_hosts -e "rm -rf /data/coordinator/gpseg-1 /data/primary/gpseg*"
+    ```
+
+1. Run a full restore to the target restore point.
