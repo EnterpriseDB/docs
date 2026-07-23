@@ -9,14 +9,15 @@ Deploy and configure EDB Agent Governance. For the authentication model and cred
 
 ## Understanding the container stack
 
-EDB Agent Governance deploys as a Dex-fronted stack of four containers:
+EDB Agent Governance deploys as a Dex-fronted stack of five containers:
 
 | Service     | Description                                                                                                                                                   |
 |-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `bootstrap` | A one-shot helper that generates secrets and the internal certificates the stack needs on first run.                                                          |
+| `migrate`   | A one-shot helper that applies database schema migrations before the stack starts.                                                                            |
 | `dex`       | Identity federation — Brokers login to your upstream identity providers.                                                                                      |
 | `nginx`     | Terminates HTTPS, serves the viewer's static assets, and routes API and single-sign-on requests to the right service so the browser talks to a single origin. |
-| `bff`       | The backend — OIDC client of Dex, instance management, and the Hybrid Manager (HM)/Loki proxy that parses logs and caches sessions.                                            |
+| `bff`       | The backend — OIDC client of Dex, instance management, and the Hybrid Manager (HM)/Loki proxy that parses logs and caches sessions.                           |
 
 A shared Postgres service backs the stack, hosting the backend's database for instance configuration and sessions, and the Dex database for identity provider connectors.
 
@@ -38,26 +39,32 @@ The bootstrap helper generates and persists everything else automatically when y
 
 ### Required settings
 
-| Setting (`env var`)                          | Description                                                                                                                                                         | Example                          |
-|----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
-| Public base URL (`BFF_PUBLIC_BASE_URL`)       | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer and redirect URIs derive from it.                                               | `https://governance.example.com` |
-| Bootstrap admin email (`DEX_BOOTSTRAP_ADMIN_EMAIL`) | The email of the initial break-glass administrator. Also the default admin allowlist.                                                                        | `admin@example.com`              |
-| Postgres password (`POSTGRES_PASSWORD`)       | The password for the shared Postgres service. Required for production.                                                                                              | A strong password string         |
-| Image registry (`GOVERNANCE_REGISTRY`)        | The registry the Docker images are pulled from. Required for production.                                                                                            | `ghcr.io/enterprisedb`           |
-| Image tag (`GOVERNANCE_TAG`)                  | The image tag — Pin to a released version. Required for production.                                                                                                 | A released version tag; never `latest` |
+| Setting (`env var`)                                    | Description                                                                                                           | Example                               |
+|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| Public base URL (`BFF_PUBLIC_BASE_URL`)                | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer and redirect URIs derive from it. | `https://governance.example.com`      |
+| Bootstrap admin email (`DEX_BOOTSTRAP_ADMIN_EMAIL`)    | The email of the initial break-glass administrator. Also the default admin allowlist.                                 | `admin@example.com`                   |
+| Postgres password (`POSTGRES_PASSWORD`)                | The password for the shared Postgres service. Required for production.                                                | A strong password string              |
+| Image registry (`GOVERNANCE_REGISTRY`)                 | The registry the Docker images are pulled from. Required for production.                                              | `ghcr.io/enterprisedb`                |
+| Image tag (`GOVERNANCE_TAG`)                           | The image tag — Pin to a released version. Required for production.                                                   | A released version tag; never `latest` |
 
-The values the bootstrap helper generates — the shared client secret, the session signing key, the token encryption key, and the bootstrap admin's identifier and password hash — are generated for you and don't need to be set by hand.
+The bootstrap helper generates the following values automatically — don't set them by hand:
+
+- `BFF_OIDC_CLIENT_SECRET` and `DEX_BFF_CLIENT_SECRET` — the shared OIDC client secret between the backend and Dex.
+- `BFF_SESSION_HASH_KEY` — the session signing key.
+- `BFF_REFRESH_TOKEN_ENC_KEY` and `BFF_INSTANCE_ENC_KEY` — the token and instance encryption keys.
+- The bootstrap admin's identifier and password hash.
+
+**[ENGINEERING: confirm that all five env vars above are generated by the bootstrap helper and not manually set in docker-compose.prod.yml]**
 
 ### Recommended for production
 
-| Setting (`env var`)                                          | Default                               | Description                                                                                                                                                                                                                                       |
-|--------------------------------------------------------------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Database connection (`BFF_DATABASE_URL`)                     | Points at the shared Postgres service | The connection string for the backend's database.                                                                                                                                                                                                 |
-| Upstream egress to private ranges (`BFF_INSTANCE_BLOCK_PRIVATE`) | Blocked                          | Whether registered instances may reach private network ranges. Allow only for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Securing access and handling credentials](./security_and_data#protecting-the-network). |
-| OIDC CA bundle (`BFF_OIDC_CA_FILE`)                          | —                                     | A CA bundle to trust a self-signed or private-CA OIDC issuer. OIDC TLS verification stays on; this adds trust rather than bypassing it.                                                                                                           |
-| Session idle timeout (`BFF_SESSION_IDLE_TTL`)                | 2h                                    | How long an idle session lasts before it expires.                                                                                                                                                                                                 |
-| Session absolute lifetime (`BFF_SESSION_ABSOLUTE_TTL`)       | 12h                                   | The maximum lifetime of a session regardless of activity.                                                                                                                                                                                         |
-| Admin allowlist (`BFF_ADMIN_EMAILS`)                         | The bootstrap admin email             | The emails granted administrator access, in addition to anyone whose `groups` claim includes `governance-admin`.                                                                                                                                  |
+| Setting (`env var`)                                              | Default | Description                                                                                                                                                                                                                                               |
+|------------------------------------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Database file path (`BFF_DB`)                                    | —       | Path to the SQLite file the backend uses for instance configuration and sessions.                                                                                                                                                                         |
+| Upstream egress to private ranges (`BFF_INSTANCE_BLOCK_PRIVATE`) | `false` | Set to `1` or `true` to block registered instances from reaching private network ranges. Required for public deployments; leave unset for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Securing access and handling credentials](./security_and_data/#protecting-the-network). |
+| Session idle timeout (`BFF_SESSION_IDLE_TTL`)                    | 2h                                    | How long an idle session lasts before it expires.                                                                                                                                                                                                 |
+| Session absolute lifetime (`BFF_SESSION_ABSOLUTE_TTL`)           | 12h                                   | The maximum lifetime of a session regardless of activity.                                                                                                                                                                                         |
+| Admin allowlist (`BFF_ADMIN_EMAILS`)                             | The bootstrap admin email             | The emails granted administrator access, in addition to anyone whose `groups` claim includes `governance-admin`.                                                                                                                                  |
 
 ## Deploying with pre-built images
 
