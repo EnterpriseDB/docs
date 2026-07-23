@@ -4,25 +4,23 @@ navTitle: Warm DR
 description: Keep a DR cluster continuously current by scheduling restore-point creation on the primary and delta WAL replay on the DR cluster.
 ---
 
-Use warm DR when you need a short Recovery Time Objective (RTO) and can keep a pre-provisioned DR cluster running continuously. The DR cluster runs continuously in recovery mode, staying close to current by applying WAL from the primary at regular intervals. When a failure occurs, promote the DR cluster.
+Use warm DR when you need a short Recovery Time Objective (RTO) and can keep a pre-provisioned DR cluster running continuously. The DR cluster stays close to current by applying WAL at regular intervals. When a failure occurs, promote the DR cluster to take over as the new primary.
 
 !!! Note
-The DR cluster remains in recovery mode after performing a restore and doesn't accept client connections. To bring it online, [promote the cluster](#promoting-the-dr-cluster) and start it with `gpstart`.
+You must complete most of the steps on this page before a failure occurs. The DR cluster runs continuously in recovery mode, applying WAL at regular intervals, and doesn't accept client connections until promoted. When a failure occurs, proceed to [Failing over](#failing-over).
 !!!
 
 ## Prerequisites
 
 Configure the DR cluster for restore before proceeding. See [Setting up the DR cluster](../configuring-dr).
 
-## Setting up warm DR
+## Configuring scheduled restores
 
-Setting up warm DR involves running a one-time full restore to establish the DR cluster's baseline state, then scheduling two coordinated cron jobs to keep it current. One job on the primary creates a new restore point on a schedule, and one on the DR cluster applies it at a slight offset to ensure it's in storage before the DR job runs.
-
-The restore-point interval determines your RPO. For example, a 15-minute interval gives at most 15 minutes of data loss. RTO is determined by the time for the final delta restore plus promotion, which is low when the WAL gap is small.
+Complete these before a failure occurs. Run a one-time full restore to establish the DR cluster's baseline state, then schedule delta restores on the DR cluster to keep it current.
 
 ### Running the initial restore
 
-Before the delta schedule can run, the DR cluster needs a baseline state. Run all commands as the WarehousePG cluster owner, typically `gpadmin` on the DR coordinator.
+Establish a baseline state on the DR cluster before scheduling regular delta restores. Run all commands as the WarehousePG cluster owner, typically `gpadmin` on the DR coordinator.
 
 1. Check what restore points are available:
 
@@ -36,26 +34,25 @@ Before the delta schedule can run, the DR cluster needs a baseline state. Run al
     whpg-dr restore my_cluster --target-name latest
     ```
 
-    The full restore requires empty target data directories. If the directories already contain data from a previous restore, clear them first.
 
-### Scheduling restore points on the primary cluster
-
-As the WarehousePG cluster owner, typically `gpadmin`, add the following entry to the crontab (`crontab -e`) on the primary to create a restore point, for example every 15 minutes:
-
-```cron
-*/15 * * * * source /usr/edb/whpg7/greenplum_path.sh && /usr/edb/whpg-dr/bin/whpg-dr create-restore-point my_cluster --suffix scheduled >> $HOME/gpAdminLogs/whpg-dr-crp.log 2>&1
-```
+!!! Note
+A full restore requires empty target data directories. If the directories already contain data from a previous restore, clear them first.
+!!!
 
 ### Scheduling delta restores on the DR cluster
 
-As the WarehousePG cluster owner, typically `gpadmin`, add the following entry to the crontab (`crontab -e`) on the DR coordinator to apply the latest restore point, offset by a few minutes to allow archiving to complete:
+Configure a cron job on the DR coordinator that applies new restore points at regular intervals, keeping the cluster current. The restore-point interval determines your RPO. For example, a 15-minute interval gives at most 15 minutes of data loss. RTO is determined by the time for the final delta restore plus promotion, which is low when the WAL gap is small.
+
+As the WarehousePG cluster owner, typically `gpadmin`, add the following entry to the crontab (`crontab -e`), offset by a few minutes to allow archiving to complete:
 
 ```cron
 5,20,35,50 * * * * source /usr/edb/whpg7/greenplum_path.sh && /usr/edb/whpg-dr/bin/whpg-dr restore my_cluster --target-name latest --delta >> $HOME/gpAdminLogs/whpg-dr-restore.log 2>&1
 ```
 
+This example runs a delta restore every 15 minutes (at :05, :20, :35, and :50), applying the latest available restore point and logging output to `$HOME/gpAdminLogs/whpg-dr-restore.log`. Adjust the schedule to match your RPO target.
+
 !!! Note
-The offset between the two jobs (5 minutes in this example) must be long enough for the restore point to be fully archived to storage before the DR job runs. If `create-restore-point` takes longer than the offset on your cluster, increase the offset accordingly.
+Offset the delta restore cron job from the restore point creation schedule on the primary to allow archiving to complete before the DR job runs. If `create-restore-point` takes longer than the offset on your cluster, increase the offset accordingly.
 !!!
 
 ## Verifying warm DR
@@ -96,9 +93,9 @@ segment 3    shut down in recovery  0/78000120      sdw2          /data1/primary
 
 When the DR cluster is current, the restore-point name in `list-restore` matches the latest entry in `list-backup`. The `Replay End LSN` values advance with each delta restore cycle.
 
-## Promoting the DR cluster
+## Failing over
 
-When the primary cluster fails or becomes unavailable, promote the DR cluster to take over as the new primary. The DR cluster is already close to current, at most one restore-point interval behind, so the Recovery Time Objective (RTO) is low.
+When the primary cluster fails or becomes unavailable, or when testing your DR setup, promote the DR cluster. The DR cluster is at most one restore-point interval behind, so the RTO is low.
 
 1. Stop the delta restore cron job on the DR coordinator (`crontab -r`, or comment out the `whpg-dr` line) to prevent a partial restore from interfering with promotion. If the primary is still accessible, stop its restore-point cron job too.
 
