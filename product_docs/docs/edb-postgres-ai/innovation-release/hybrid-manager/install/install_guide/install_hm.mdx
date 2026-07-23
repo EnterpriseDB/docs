@@ -1,7 +1,7 @@
 ---
-title: Install Hybrid Manager
-navTitle: Installing Hybrid Manager
-description: Deploy Hybrid Manager using either the recommended Operator method or the legacy Bootstrap method.
+title: Install Hybrid Manager on Kubernetes
+navTitle: Installing Hybrid Manager on Kubernetes
+description: Deploy Hybrid Manager using the operator method.
 deepToC: true
 ---
 
@@ -27,40 +27,13 @@ If you have a [Sovereign System](/edb-postgres-ai/current/hybrid-manager/system/
 
 **Next phase:** Phase 6: [Exploring post-installation options](./post_install)
 
-## Choose your installation method
+## Install Hybrid Manager
 
 With your environment prepared and your configuration validated, you are ready to deploy HM.
 
 This phase involves applying your configuration artifact to your Kubernetes cluster and monitoring the deployment.
 
-There are two methods for installing Hybrid Manager. Both result in the same deployed platform:
-
-| Method | Configuration | Status |
-|--------|---------------|--------|
-| **Operator (Recommended)** | Uses `HybridControlPlane` Custom Resource with `edb-hcp-operator` helm chart | **Active - Recommended** |
-| **Bootstrap (Deprecated)** | Uses `values.yaml` with `edbpgai-bootstrap` helm chart | **Deprecated - Will be removed in future release** |
-
-!!! Warning
-The **Bootstrap installation method** is to be deprecated in an upcoming release.
-New installations should use the **Operator installation method** to ensure long-term support and access to the latest features.
-
-**Existing Bootstrap users:** If you want to migrate to the Operator method, see the [Migration guide](../migrate_bootstrap_to_operator) for step-by-step instructions.
-!!!
-
-Select your installation method using the tabs below:
-
-<TabContainer>
-<Tab title="Operator (Recommended)">
-
-!!! Important
-The operator method is the **recommended installation method** for Hybrid Manager. It provides better version flexibility, Kubernetes-native resource management, and GitOps support.
-!!!
-
-This installation method uses the **EDB Postgres AI Operator** helm chart and a **HybridControlPlane Custom Resource** instead of the bootstrap helm chart with `values.yaml`.
-
-!!! Warning
-If you have an **existing Bootstrap installation** and want to migrate to the Operator method, you **cannot** install the operator directly on top of it. You must first uninstall the bootstrap deployment to avoid Helm ownership conflicts. See the [Migration guide](../migrate_bootstrap_to_operator) for detailed instructions.
-!!!
+Hybrid Manager is installed using the **EDB Postgres AI Operator** helm chart and a **HybridControlPlane Custom Resource**. This approach provides version flexibility, Kubernetes-native resource management, and GitOps support.
 
 ### Understanding the HybridControlPlane Custom Resource
 
@@ -69,17 +42,13 @@ The `HybridControlPlane` is a Kubernetes Custom Resource that defines the desire
 #### Key benefits of the operator approach
 
 1. **Kubernetes-native:** Follows standard Kubernetes patterns with Custom Resources
-2. **Version flexibility:** Can install different HM versions independently from the operator version
-3. **GitOps friendly:** CR manifests work seamlessly with GitOps tools (ArgoCD, Flux)
-4. **Declarative:** The operator reconciles the actual state to match your desired state
+1. **Version flexibility:** Can install different HM versions independently from the operator version
+1. **GitOps friendly:** CR manifests work seamlessly with GitOps tools (ArgoCD, Flux)
+1. **Declarative:** The operator reconciles the actual state to match your desired state
 
 ### Verify final configuration
 
 Before installing, prepare your `HybridControlPlane` manifest using the example below as a template.
-
-!!! Note Coming from Bootstrap?
-If you have an existing `values.yaml` and want to convert it to a `HybridControlPlane` CR, see the [configuration mapping reference and conversion script](../migrate_bootstrap_to_operator#convert-your-configuration) in the migration guide.
-!!!
 
 #### Example HybridControlPlane manifest
 
@@ -91,7 +60,6 @@ kind: HybridControlPlane
 metadata:
   name: edbpgai
   annotations:
-    edbpgai.com/ready-for-upgrade: "true"
     biganimal.enterprisedb.io/deletion-protect: enabled
 spec:
   # Basic configuration
@@ -110,7 +78,7 @@ spec:
     - name: edb-cred
       namespace: edbpgai-bootstrap
 
-  # Global parameters (maps from values.yaml parameters.global)
+  # Global parameters
   globalParameters:
     CONTAINER_REGISTRY_URL: docker.enterprisedb.com/pgai-platform
     internal_backup_folder: "abc123xyz789"
@@ -150,7 +118,7 @@ spec:
     accessKey: "your-access-key"
     logLevel: info
     providers:
-      - kubernetes
+      - appliance
     provisioning:
       imageDiscovery: true
       imagesetDiscoveryAuthenticationType: "basic"
@@ -190,6 +158,10 @@ spec:
   # disabledComponents:
   #   - component-name
 
+  # Optional: provision an internal container registry (not for use except on fully air-gapped clusters!)
+  # hmRegistryRef:
+  #   name: hm-registry
+
   # Optional: Resource annotations
   resourceAnnotations:
     - name: istio-ingressgateway
@@ -218,79 +190,53 @@ Create a dedicated namespace for the operator:
 
 ```bash
 kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
-___OUTPUT___
+__OUTPUT__
 namespace/edbpgai-bootstrap created
 ```
 
 #### Install the operator helm chart
 
-Execute the operator deployment using Helm:
+Install the operator with `edbctl hm upgrade-operator`. The command lists the operator image tags available in the target registry, selects the latest one, and installs (or upgrades) the chart. No operator version needs to be picked by hand — starting with HM 1.4, the operator is decoupled from the HM release cadence and a single operator version supports multiple HM lines.
+
+!!! Note Minimum edbctl version
+`edbctl hm upgrade-operator` ships in edbctl `1.7.0` and later. Earlier versions require the manual Helm flow shown in the [Manual Helm fallback](#manual-helm-fallback) section below.
+!!!
+
+The recommended path is to mirror the HM artifacts (operator images + chart included) to your private registry first — see [Syncing images to a local private registry](../configuration/sync_images) — and then install the operator from that private registry. Re-using the same variables defined in the sync step (`LOCAL_REGISTRY_URI`, `LOCAL_REGISTRY_USER`, `LOCAL_REGISTRY_PWD`):
 
 ```bash
-kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
-
-# Create a pull secret for the EDB cloudsmith:
-kubectl create secret docker-registry edb-cred \
-  --namespace edbpgai-bootstrap \
-  --docker-server=docker.enterprisedb.com \
-  --docker-username=<USERNAME> \
-  --docker-password=<PASSWORD> \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Install the operator using Helm:
-helm template \
-  --namespace edbpgai-bootstrap \
-  --install \
-  --version <OPERATOR_VERSION> \
-  --include-crds \
-  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
-  --set "controllerManager.manager.image.repository=docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager" \
-  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
-  --set "imagePullSecrets[0].name=edb-cred" \
-  | kubectl apply -f -
+edbctl hm upgrade-operator \
+  --registry-uri "${LOCAL_REGISTRY_URI}" \
+  --registry-username "${LOCAL_REGISTRY_USER}" \
+  --registry-password "${LOCAL_REGISTRY_PWD}"
+__OUTPUT__
+Latest HM Operator version found in "${LOCAL_REGISTRY_URI}": 2.0.0
+Namespace "edb-hcp-operator-system" does not exist, creating it...
+namespaces/edb-hcp-operator-system created
+Creating image pull secret "edb-hcp-operator-pull-secret" in namespace "edb-hcp-operator-system"...
+secrets/edb-hcp-operator-pull-secret created
+Installing HM Operator chart "edb-hcp-operator" (version 2.0.0) into namespace "edb-hcp-operator-system"...
+HM Operator chart "edb-hcp-operator" is now at version 2.0.0 in namespace "edb-hcp-operator-system".
 ```
 
-If you are using an air-gapped environment, you can load the operator image into your cluster and reference it in the Helm command:
+If your private registry uses a self-signed certificate, add `--registry-insecure`. To pass extra Helm values (for example to enable the in-cluster HM Registry component), use `--set`:
 
 ```bash
-kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
-
-# Create a pull secret for your private registry:
-kubectl create secret docker-registry edb-cred \
-  --namespace edbpgai-bootstrap \
-  --docker-server=<PRIVATE_REGISTRY_URL> \
-  --docker-username=<USERNAME> \
-  --docker-password=<PASSWORD> \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Load the operator image into your private registry from cloudsmith:
-edbctl operator sync-to-local-registry \
-  --source-registry-username=<CLOUDSMITH_REGISTRY_USERNAME> \
-  --source-registry-password=<CLOUDSMITH_REGSIRT_PASSWORD> \
-  --destination-registry-uri=<PRIVATE_REGISTRY_URL> \
-  --destination-registry-username=<PRIVATE_REGISTRY_USERNAME> \
-  --destination-registry-password=<PRIVATE_REGISTRY_PASSWORD> \
-  --version <OPERATOR_VERSION>
-
-# Install the operator using Helm, referencing your private registry:
-helm template \
-  --namespace edbpgai-bootstrap \
-  --install \
-  --version <OPERATOR_VERSION> \
-  --include-crds \
-  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
-  --set "controllerManager.manager.image.repository=<PRIVATE_REGISTRY_URL>/edb-hcp-operator/manager" \
-  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
-  --set "imagePullSecrets[0].name=edb-cred" \
-  | kubectl apply -f -
+edbctl hm upgrade-operator \
+  --registry-uri "${LOCAL_REGISTRY_URI}" \
+  --registry-username "${LOCAL_REGISTRY_USER}" \
+  --registry-password "${LOCAL_REGISTRY_PWD}" \
+  --set hmRegistry.enabled=true
 ```
+
+If you don't operate a private registry, you can also pull directly from EDB Repos 2.0 by pointing `--registry-uri` at `docker.enterprisedb.com/pgai-platform` and passing your EDB Repos 2.0 token as `--registry-password` (with `--registry-username pgai-platform`).
 
 #### Verify operator installation
 
-Check that the operator pod is running:
+`edbctl hm upgrade-operator` waits for the operator pod to be ready before returning. If you want to double-check:
 
 ```bash
-kubectl get pods -n edbpgai-bootstrap
+kubectl get pods -n edb-hcp-operator-system
 ```
 
 You should see output similar to:
@@ -299,6 +245,37 @@ You should see output similar to:
 NAME                                READY   STATUS    RESTARTS   AGE
 edb-hcp-operator-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
 ```
+
+#### Manual Helm fallback
+
+For environments still on edbctl `< 1.7.0`, the previous manual Helm flow still works. Re-using the same private-registry variables defined in [Syncing images to a local private registry](../configuration/sync_images) (`LOCAL_REGISTRY_URI`, `LOCAL_REGISTRY_USER`, `LOCAL_REGISTRY_PWD`):
+
+```bash
+kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
+
+# Create a pull secret for your private registry:
+kubectl create secret docker-registry edb-cred \
+  --namespace edbpgai-bootstrap \
+  --docker-server="${LOCAL_REGISTRY_URI}" \
+  --docker-username="${LOCAL_REGISTRY_USER}" \
+  --docker-password="${LOCAL_REGISTRY_PWD}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Install the operator using Helm:
+helm template \
+  --namespace edbpgai-bootstrap \
+  --version <OPERATOR_VERSION> \
+  --include-crds \
+  edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator \
+  --set "controllerManager.manager.image.repository=${LOCAL_REGISTRY_URI}/edb-hcp-operator/manager" \
+  --set "controllerManager.manager.image.tag=<OPERATOR_VERSION>" \
+  --set "imagePullSecrets[0].name=edb-cred" \
+  | kubectl apply -n edbpgai-bootstrap -f -
+```
+
+`<OPERATOR_VERSION>` for HM 1.4 is `2.0.0` or later from the `2.x` lineage. Check the [release notes](../../release_notes/) for the version supported on the HM release you are installing.
+
+If you don't operate a private registry, swap `${LOCAL_REGISTRY_URI}` for `docker.enterprisedb.com/pgai-platform` and use your EDB Repos 2.0 token (with username `pgai-platform`).
 
 ### Create the HybridControlPlane resource
 
@@ -314,13 +291,15 @@ Create a file named `hybridmanager.yaml` with your configuration. Use the [examp
 4. **`spec.globalParameters.portal_domain_name`**: Your portal FQDN
 5. **`spec.beaconAgent.provisioning`**: Your provisioning configuration
 
+If a component conflicts with an existing service in your cluster, or if your deployment doesn't require a particular optional component, you can suspend or permanently disable it. See [Managing HM components](../../using_hybrid_manager/manage_components/) for guidance on when and how to use `edbctl hm suspend-component` and the `disabledComponents` CR field.
+
 #### Apply the HM resource
 
 Deploy the HybridControlPlane:
 
 ```bash
 kubectl apply -f hybridmanager.yaml
-___OUTPUT___
+__OUTPUT__
 hybridcontrolplane.edbpgai.edb.com/edbpgai created
 ```
 
@@ -377,7 +356,7 @@ View all components and their status:
 
 ```bash
 kubectl get hcp edbpgai -o jsonpath='{.status.components[*].name}' | tr ' ' '\n'
-___OUTPUT___
+__OUTPUT__
 upm-beacon
 upm-istio-gateway
 transporter-rw-service
@@ -399,7 +378,7 @@ Verify postflight status of the HM:
 
 ```bash
 kubectl get postflights.edbpgai.edb.com edbpgai -o yaml
-___OUTPUT___
+__OUTPUT__
 ...
 status:
   checkResults:
@@ -441,191 +420,28 @@ If postflight checks fail, review the `checkResults` for specific failure reason
 To update your HM configuration:
 
 1. Edit your `hybridmanager.yaml` manifest
-2. Apply the changes:
+
+1. Apply the changes:
+
    ```bash
    kubectl apply -f hybridmanager.yaml
-   ___OUTPUT___
+   __OUTPUT__
    hybridcontrolplane.edbpgai.edb.com/edbpgai configured
    ```
-3. The operator will reconcile and apply the changes
+
+1. The operator will reconcile and apply the changes
 
 #### Checking operator logs
 
 If you encounter issues, check the operator logs:
 
 ```bash
-kubectl logs -n edbpgai-bootstrap deployment/edb-hcp-operator -f
+kubectl logs -n edb-hcp-operator-system deployment/edb-hcp-operator-controller-manager -f
 ```
 
 #### Upgrading HM version
 
-To upgrade to a new HM version, upgrade the operator version to your target HM version first, then update the `spec.version` field in your HCP manifest to the new version and apply the changes.
-
-</Tab>
-
-<Tab title="Bootstrap (Deprecated)">
-
-!!! Warning
-The Bootstrap method is deprecated and will be removed in a future release. For new installations, use the **Operator** tab above. If you have an existing Bootstrap installation and want to migrate, see the [Migration guide](../migrate_bootstrap_to_operator).
-!!!
-
-### Verify final configuration
-
-Perform one final sanity check on the critical values in your `values.yaml` before proceeding to ensure a smooth install procedure.
-
-These are the most common causes of deployment failures.
-
-**Open your `values.yaml` and confirm:**
-
-#### Global & image settings
-
-1. **`containerRegistryURL`**: Ensure this points to the registry containing your images (e.g., `docker.enterprisedb.com/pgai-platform` or your private mirror).
-1. **`bootstrapImageName`**: Must match the bootstrap image path defined in [Environment Prep](./environment_prep).
-1. **`bootstrapImageTag`**: Must match the target version you are installing.
-
-#### Domain & network parameters
-
-1. **`parameters.global.portal_domain_name`**: The FQDN for the HM console (e.g., `portal.my-company.com`).
-1. **`parameters.global.trust_domain`**: The SPIRE trust domain. Must match `portal_domain_name`.
-1. **`parameters.global.dms_domain_name`**: The domain name for the Data Migration Service (e.g., `migration.my-company.com`).
-1. **`parameters.upm-beacon.server_host`**: The hostname the HM-internal beacon agent uses to connect back to the control plane.
-1. **`parameters.global.load_balancer_mode`**: Whether the load balancer is `"public"`, `"private"`, or `"disabled"`.
-1. **`parameters.global.load_balancer_provider`**: Cloud provider for load balancer provisioning — `"aws"`, `"gcp"`, or `"azure"`. Leave empty if using a self-managed load balancer.
-1. **`parameters.global.node_port_domain`**: *(NodePort only)* Domain name for accessing Kubernetes worker nodes. Required only when `load_balancer_mode` is `"disabled"`.
-
-#### Security & authentication
-
-1. **`parameters.upm-istio-gateway.cookie_aeskey`**: Ensure this 16/32-byte key is set for session encryption.
-
-!!! Note
-Admin user credentials (User-0) and component secrets are configured in [Phase 4](./environment_prep) using `edbctl setup create-install-secrets`. Confirm that step is complete before proceeding.
-!!!
-
-#### Installation scenarios
-
-**`spec.scenarios`**: Optional. Ensure you have listed the installation scenarios you require (options are `core`, `migration`, `ai`, `dbaas`, and `analytics`). However, if you don't have this option in your `values.yaml`, all scenarios are installed by default.
-
-### Install Hybrid Manager
-
-Use the following Standard Kubernetes installation flow, unless you are deploying on RHOS and prefer to [install using the EDB Postgres AI Operator from the catalog](#use-openshift-console) in the RHOS UI.
-
-#### Standard Kubernetes
-
-Use the Helm client to install the Hybrid Manager chart (`values.yaml`). We use the `--install` flag (or `upgrade --install`) to ensure the command is idempotent.
-
-##### Add the EDB Helm repository
-
-If you haven't already added the EDB Helm chart repository (for example, during the [Operator installation](#add-the-edb-helm-repository)), register it now. Replace `<EDB_SUBSCRIPTION_TOKEN>` with your EDB Repos 2.0 token.
-
-```bash
-helm repo add enterprisedb-edbpgai \
-  "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
-helm repo update
-```
-
-##### Create namespace
-
-Create a dedicated namespace for the bootstrap operator.
-
-```bash
-kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
-```
-
-##### Run installation
-
-Execute the deployment using the OCI registry path.
-
-* **`[REGISTRY]`:** Use `docker.enterprisedb.com` (Public) or your private registry domain.
-* **`<"VERSION">`:** The target version tag (e.g., `1.3.0`).
-
-```bash
-helm upgrade \
-  --namespace edbpgai-bootstrap \
-  --install \
-  --version "<helm-version>" \
-  -f <path>/values.yaml \
-  edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap
-```
-
-#### Use OpenShift Console
-
-If you are deploying on RHOS, you can install the operator directly from the Catalog:
-
-1. **Adapt Configuration:** Ensure your `values.yaml` is compatible with OpenShift Security Context Constraints (SCC).
-1. **Install from Catalog:**
-     * Navigate to **Operators > OperatorHub** in the OpenShift Console.
-     * Search for **EDB Postgres AI**.
-     * Follow the on-screen wizard to deploy into the `edbpgai-bootstrap` project.
-
-### Monitor installation progress
-
-Once the Helm command completes, the **bootstrap operator** takes over.
-It interprets your configuration and spins up the HM platform.
-
-#### Check preflight status
-
-After the bootstrap operator creates the `HybridControlPlane` resource, it automatically generates a `Preflight` resource to validate required secrets. This controller reflects the cluster state and will re-run every 30 seconds until all requirements pass (or fail). If the resource hasn't been created yet, the command will return "No resources found."
-
-```bash
-kubectl get preflight -o yaml
-```
-
-If all entries in `status.secretRequirementsStatus` show the `Valid` status, proceed with the next checks.
-
-If any entry in `status.secretRequirementsStatus` shows `SecretNotFound` or `Invalid`, the operator is blocked waiting for those secrets to be fixed. See [Understanding Preflight checks](../troubleshooting/preflight_checks/) for details on interpreting results and resolving failures.
-
-#### Check HM control plane status
-
-Monitor the custom resource to see the high-level status of the platform:
-
-```bash
-kubectl get hybridcontrolplane edbpgai -o yaml
-```
-
-* **Expected output:** You should see an object named `edbpgai` (or similar).
-* **Status column:** Look for `Running` or `Ready`. If it says `Reconciling`, wait a few moments.
-
-#### Check pod health
-
-Verify that all pods in the namespace are coming up healthy.
-
-```bash
-kubectl get pods -n edbpgai-bootstrap
-```
-
-**What to look for:**
-
-* **`edbpgai-operator`:** Must be `Running`.
-* **`edb-portal`:** The web interface.
-* **`edb-beacon`:** The agent handling cluster communication.
-* **`transporter`:** Services related to migration.
-
-!!! Note Troubleshooting
-If pods are stuck in `ImagePullBackOff`, verify your **Image Pull Secret** from [Phase 4](./environment_prep).
-If they are `Pending`, verify your **Storage Class** availability.
-!!!
-
-### Monitor deployment with postflight check
-
-The bootstrap operator automatically creates a `Postflight` resource once the `HybridControlPlane` reaches the Deployed phase. This resource monitors your installation by verifying that pods, databases, backups, nodes, and certificates are correctly configured and valid.
-
-Before moving on to post-installation configurations, ensure your installation is healthy:
-
-```bash
-kubectl get postflight
-```
-
-The output should look like this:
-
-```bash
-NAME                  PHASE     LAST CHECK
-edbpgai-postflight    Healthy   2025-01-15T10:30:00Z
-```
-
-If the phase is `Healthy` continue with the next phase. If the phase is `Unhealthy`, obtain more detailed results with `kubectl get postflight <name> -o yaml`. See [Monitoring with postflight checks](../troubleshooting/postflight_checks/) for details on interpreting results and resolving failures.
-
-</Tab>
-</TabContainer>
+Run `edbctl hm upgrade-operator` (it picks up the latest operator version available in your registry — no version needs to be set by hand), then update the `spec.version` field in your `HybridControlPlane` manifest to the target HM version and `kubectl apply` it. The operator is decoupled from the HM release cadence, so the same `2.x` operator covers a range of HM versions — see the [release notes](../../release_notes/) for the operator version supported on the HM release you are upgrading to.
 
 ## Verify portal access
 

@@ -449,22 +449,6 @@ of a CNP node
 | `preProvisioned` *boolean* | PreProvisioned is true if the certificate is preProvisioned           |          |         |            |
 | `nodeName` *string*        | NodeName is the name of the CNP cluster using this certificate        | True     |         |            |
 
-#### NodeExtensionStatus
-
-NodeExtensionStatus show the status of the node
-
-*Appears in:*
-
--   NodesExtensionsStatus
-
-| Field                           | Description                                                                       | Required | Default | Validation |
-| ------------------------------- | --------------------------------------------------------------------------------- | -------- | ------- | ---------- |
-| `Name` *string*                 | Name of the node                                                                  | True     |         |            |
-| `NeedBdrInstallation` *boolean* | NeedBdrInstallation true if the node does not have the BDR extension installed    | True     |         |            |
-| `NeedJoin` *boolean*            | NeedJoin true if the node need join the group                                     | True     |         |            |
-| `Parted` *boolean*              | Parted true if the node is already parted                                         | True     |         |            |
-| `Error` *string*                | Error is populated if any error is encountered during the PGD discovery execution | True     |         |            |
-
 #### NodeKindName
 
 *Underlying type:* *string*
@@ -559,6 +543,7 @@ OperatorPhase it represents a phase of the PGDGroup controller
 | `PGDGroup - Waiting for nodes to be ready`                    | PhaseWaitingForNodesToBeReady triggers when a PGDGroup node is not in status ready<br />                                            |
 | `PGDGroup - Waiting for nodes major version in-place upgrade` | PhaseWaitingForNodesInPlaceUpgrade is the phase where a in-place major version upgrade (postgres, bdr, etc)<br />is happening<br /> |
 | `PGDGroup - Unable to detect a phase for the PGD group`       | PhaseUnableToDetectPhase triggers when a PGDGroup phase cannot be calculated. This is a programmatic error<br />                    |
+| `Default Metrics - Reconcile Resources`                       | PhaseDefaultMetricsReconcileResources triggers when resources need to be created or updated<br />                                   |
 
 #### OperatorPhaseCleanup
 
@@ -570,13 +555,13 @@ OperatorPhaseCleanup it represents a phase of the PGDGroupCleanup controller
 
 -   [PGDGroupCleanupStatus](#pgdgroupcleanupstatus)
 
-| Field                                                                 | Description |
-| --------------------------------------------------------------------- | ----------- |
-| `PGDGroupCleanup - No reliable node found in the executor PGDGroup`   |             |
-| `PGDGroupCleanup - Completed`                                         |             |
-| `PGDGroupCleanup - Parting the nodes`                                 |             |
-| `PGDGroupCleanup - Removing the PGDGroup`                             |             |
-| `PGDGroupCleanup - Waiting for nodes in target PGDGroup to be parted` |             |
+| Field                                                                       | Description                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PGDGroupCleanup - Failed, no reliable node found in the executor PGDGroup` | NoExecutorFound the phase when the executor PGDGroup cannot be found or has no reliable node,<br />which is required for the cleanup process, and the cleanup cannot proceed. This phase indicates<br />a failure state for the PGDGroupCleanup operation.<br />This is a terminal phase, and the PGDGroupCleanup will not be requeued anymore when it is in this phase.<br /> |
+| `PGDGroupCleanup - Completed`                                               | Completed the phase when the cleanup process has been completed successfully<br />This is a terminal phase, and the PGDGroupCleanup will not be requeued anymore when it is in this phase.<br />                                                                                                                                                                               |
+| `PGDGroupCleanup - Parting the nodes`                                       | PartingNodes the phase when the cleanup process is parting the nodes in the target PGDGroup<br />                                                                                                                                                                                                                                                                              |
+| `PGDGroupCleanup - Removing the PGDGroup`                                   | RemovingGroup the phase when the cleanup process is removing the PGDGroup after all the nodes<br />in the target PGDGroup are parted<br />                                                                                                                                                                                                                                     |
+| `PGDGroupCleanup - Waiting for nodes in target PGDGroup to be parted`       | TargetNotParted the phase when the cleanup process is waiting for the nodes in the target PGDGroup to<br />be parted, which is required before removing the PGDGroup. This phase happens when force flag in<br />PGDGroupCleanup is false and waiting for nodes to be parted.<br />                                                                                            |
 
 #### PGDGroup
 
@@ -696,6 +681,7 @@ in the PGD configuration
 | Field                            | Description                                                                                                                                                                               | Required | Default | Validation |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
 | `name` *string*                  | Name is the name of the node group                                                                                                                                                        | True     |         |            |
+| `uuid` *string*                  | UUID is the UUID of the group                                                                                                                                                             |          |         |            |
 | `enableProxyRouting` *boolean*   | EnableProxyRouting is true is the node group allows running PGD Proxies                                                                                                                   |          |         |            |
 | `enableRaft` *boolean*           | EnableRaft is true if the node group has a subgroup raft instance                                                                                                                         |          |         |            |
 | `routeWriterMaxLag` *integer*    | RouteWriterMaxLag Maximum lag in bytes of the new write candidate to be<br /> selected as write leader, if no candidate passes this, there will be no writer<br /> selected automatically |          |         |            |
@@ -821,6 +807,8 @@ PGDStatus any relevant status for the operator about PGD
 | `raftConsensusLastChangedTimestamp` *string*                       | RaftConsensusLastChangedTimestamp indicates when the status and message were first reported       |          |         |            |
 | `registeredProxies` *[PGDProxyEntry](#pgdproxyentry) array*        | RegisteredProxies is the status of the registered proxies                                         |          |         |            |
 | `nodeGroup` *[PGDNodeGroupEntry](#pgdnodegroupentry)*              | NodeGroup is the status of the node group associated with the PGDGroup                            |          |         |            |
+| `globalNodeGroup` *[PGDNodeGroupEntry](#pgdnodegroupentry)*        | GlobalNodeGroup is the status of the global node group associated with the PGDGroup               |          |         |            |
+| `extensionVersion` *string*                                        | ExtensionVersion is the pgd extension version detected on the raft lead node                      |          |         |            |
 
 #### ParentGroupConfiguration
 
@@ -1145,11 +1133,11 @@ VolumeSnapshotRestoreStatus the volumeSnapshot to restore
 
 -   [RestoreStatus](#restorestatus)
 
-| Field                           | Description                                                                                           | Required | Default | Validation |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
-| `snapshotName` *string*         | SnapshotName is the snapshot name to restore                                                          |          |         |            |
-| `pvcRole` *PVCRole* | PVCRole is the pvcRole snapshot to restore                                                            |          |         |            |
-| `tablespaceName` *string*       | TablespaceName is the tablespace name the snapshot<br />belongs to, if the pvcRole is `PG_TABLESPACE` |          |         |            |
+| Field                                                                                                | Description                                                                                           | Required | Default | Validation |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `snapshotName` *string*                                                                              | SnapshotName is the snapshot name to restore                                                          |          |         |            |
+| `pvcRole` *[PVCRole](https://pkg.go.dev/github.com/cloudnative-pg/cloudnative-pg/pkg/utils#PVCRole)* | PVCRole is the pvcRole snapshot to restore                                                            |          |         |            |
+| `tablespaceName` *string*                                                                            | TablespaceName is the tablespace name the snapshot<br />belongs to, if the pvcRole is `PG_TABLESPACE` |          |         |            |
 
 #### VolumeSnapshotsConfiguration
 

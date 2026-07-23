@@ -1,7 +1,7 @@
 ---
 title: Installing the EDB Postgres AI agent
 navTitle: Installing
-description: Installing the EDB Postgres AI agent
+description: Installing the EDB Postgres AI agent.
 deepToC: true
 ---
 
@@ -76,11 +76,33 @@ Key points:
       prometheus-node-exporter:
         install: true  # Enable for node metrics (requires privileged access)
 
+    # Security context for the agent
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+    podSecurityContext:
+      fsGroup: null
+
+    # kube-state-metrics uses the image default user
+    kube-state-metrics:
+      podSecurityContext: null
+
     # Required if opentelemetry-collector.install is true:
     opentelemetry-collector:
       image:
         repository: "docker.enterprisedb.com/${EDB_REPO}/upm-beacon-external-metrics-receiver"
         tag: ${AGENT_VERSION}
+      podSecurityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
     ```
 
     For other configuration parameters and options, see the [Configuration reference](configuration_reference/).
@@ -89,21 +111,19 @@ Key points:
 
     -   For standard Kubernetes (GKE, EKS, AKS, KIND):
 
-    ```helm
+    ```shell
     helm upgrade --install beacon-agent-k8s \
-     enterprisedb-enterprise/beacon-agent-k8s \
+     enterprisedb-$EDB_REPO/beacon-agent-k8s \
      --create-namespace \
      --namespace upm-beacon \
      --values custom-values.yaml
     ```
 
-    -   For OpenShift clusters:
-
-    Add the `--set openshift.enabled=true` flag:
+    -   For OpenShift clusters, add the `--set openshift.enabled=true` flag:
 
     ```shell
     helm upgrade --install beacon-agent-k8s \
-     enterprisedb-enterprise/beacon-agent-k8s \
+     enterprisedb-$EDB_REPO/beacon-agent-k8s \
      --create-namespace \
      --namespace upm-beacon \
      --set openshift.enabled=true \
@@ -126,6 +146,146 @@ Key points:
     ```
     kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
     ```
+
+## Deploying the external cluster with monitoring extensions
+
+The EDB Postgres AI agent collects query and wait-state metrics from extensions that must be present in the monitored cluster. Deploy your external cluster with the following `bootstrap.initdb.postInitApplicationSQL` commands in your database (`${PG_DATABASE}`) and `postgresql` settings so the monitoring extensions are created and preloaded when the cluster is initialized.
+
+!!!note
+
+Because the manifest doesn't set `bootstrap.initdb.owner`, CNPG defaults the owner to the database name. As a result, CNPG creates an unprivileged Postgres role (user) with the exact same name as the target database (`${PG_DATABASE}`) and makes it the owner of that database. The grants in the init SQL reference this role by the `${PG_DATABASE}` name.
+!!!
+
+!!!note
+
+The init SQL runs only on first initialization (`postInitApplicationSQL`). Apply it when you create the cluster. For an existing cluster, create the schema, grants, and extensions manually in the database and add the libraries to `shared_preload_libraries` (requires a restart).
+!!!
+
+The init SQL:
+
+-   Creates the `edb_internals` schema in `${PG_DATABASE}` and grants `USAGE` on it to the database owner role (`${PG_DATABASE}`, which CNPG creates with the same name as the database) and `pg_monitor`.
+-   Creates the `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions in that schema.
+-   Sets the database `search_path` and `timezone`.
+
+The `postgresql` block enables `pg_stat_statements` and preloads `aidb`, `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` via `shared_preload_libraries`.
+
+!!!important
+
+`${PG_IMAGE}` must be an EDB Postgres AI image that bundles the `aidb`, `edb_stat_monitor`, `query_advisor`, and `edb_wait_states` extensions. The community manifest uses the upstream CloudNativePG operator API but still requires these EDB extensions.
+
+The image name can be `postgresql`, `edb-postgres-advanced`, or `edb-postgres-extended`, depending on the Postgres distribution you want to run.
+!!!
+
+### CloudNativePG (community operator)
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ${PG_CLUSTER_NAME}
+  namespace: ${TARGET_NS}
+  labels:
+    k8s.enterprisedb.io/beacon: enabled
+spec:
+  backup:
+    target: primary
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ${PG_CLUSTER_NAME}-bck
+  bootstrap:
+    initdb:
+      database: ${PG_DATABASE}
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS edb_internals
+        - GRANT USAGE ON SCHEMA edb_internals TO ${PG_DATABASE}
+        - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
+        - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET timezone TO 'UTC'
+  imageName: ${PG_IMAGE}
+  postgresql:
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+    shared_preload_libraries:
+    - aidb
+    - edb_stat_monitor
+    - query_advisor
+    - edb_wait_states
+  instances: 2
+  storage:
+    size: 1Gi
+  inheritedMetadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+```
+
+### EDB Postgres AI for CloudNativePG (enterprise operator)
+
+The enterprise manifest uses the EDB operator API, adds an `imagePullSecrets` entry for the EDB registry, and additionally grants `USAGE` on the `public` schema to the database owner role (`${PG_DATABASE}`) and `pg_monitor`.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: ${PG_CLUSTER_NAME}
+  namespace: ${TARGET_NS}
+  labels:
+    k8s.enterprisedb.io/beacon: enabled
+spec:
+  backup:
+    target: primary
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: ${PG_CLUSTER_NAME}-bck
+  bootstrap:
+    initdb:
+      database: ${PG_DATABASE}
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS edb_internals
+        - GRANT USAGE ON SCHEMA edb_internals TO ${PG_DATABASE}
+        - GRANT USAGE ON SCHEMA edb_internals TO pg_monitor
+        - GRANT USAGE ON SCHEMA public TO ${PG_DATABASE}
+        - GRANT USAGE ON SCHEMA public TO pg_monitor
+        - CREATE EXTENSION IF NOT EXISTS edb_stat_monitor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS query_advisor WITH SCHEMA edb_internals
+        - CREATE EXTENSION IF NOT EXISTS edb_wait_states WITH SCHEMA edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET search_path TO "\$user", public, edb_internals
+        - ALTER DATABASE ${PG_DATABASE} SET timezone TO 'UTC'
+  imagePullSecrets:
+  - name: edb-pull-secret
+  imageName: ${PG_IMAGE}
+  postgresql:
+    parameters:
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+    shared_preload_libraries:
+    - aidb
+    - edb_stat_monitor
+    - query_advisor
+    - edb_wait_states
+  inheritedMetadata:
+    labels:
+      k8s.enterprisedb.io/beacon: enabled
+  instances: 2
+  storage:
+    size: 1Gi
+```
+
+Apply the manifest with `kubectl apply -f <manifest>.yaml` (use `envsubst` first if you parameterized it with environment values).
+
+!!!note WAL-archiver plugin on OpenShift
+
+Both example manifests declare a `barman-cloud.cloudnative-pg.io` WAL-archiver plugin. This plugin isn't bundled with the operator and is **only needed if you want WAL archiving or backups** for the monitored cluster — it isn't required for monitoring. If you don't need it, remove the `plugins` and `backup` blocks.
+
+If you do use it on OpenShift, the upstream plugin manifest is rejected by the `restricted-v2` SCC because it sets legacy seccomp annotations and `runAsUser: 10001`. Install it with both stripped. With the enterprise (EDB) operator you must also grant the plugin `get`/`list`/`watch` on `clusters` and `patch`/`update` on `clusters/finalizers` for the `postgresql.k8s.enterprisedb.io` API group; the upstream plugin only grants this on the community `postgresql.cnpg.io` group, so without it the cluster never reconciles (`cannot set blockOwnerDeletion … can't set finalizers`).
+!!!
 
 ## Patching clusters to enable the agent sidecar
 
@@ -170,7 +330,7 @@ This section shows how to patch a single cluster. You can adapt the instructions
         kubectl cnp restart "$TARGET_NAME"
         ```
 
-    -   **For PEDB Postgres® AI for CloudNativePG™ Cluster clusters:**
+    -   **For EDB Postgres® AI for CloudNativePG™ Cluster clusters:**
 
          Restart each node in the group:
 
@@ -180,13 +340,23 @@ This section shows how to patch a single cluster. You can adapt the instructions
         kubectl cnp restart region-a-3
         ```
 
+## Verifying the installation
+
+After the cluster restarts, confirm the EDB Postgres® AI agent is reporting to HM:
+
+1.  Log in to the HM console and select **Estate**.
+2.  Locate your cluster. It shows the **External CNP Cluster** label under the **Management** column.
+3.  Allow up to six minutes for metrics to appear (a five-minute backend refresh plus up to a one-minute console refresh).
+
+If the cluster or its metrics haven't appeared after that, double-check the secrets, labels, and Helm values from the previous steps. For more information, see [Troubleshooting](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/troubleshooting/).
+
 ## Configuring security contexts for external Kubernetes clusters
 
 ### For standard Kubernetes (KIND, GKE, EKS, AKS)
 
 Configure your `custom-values.yaml` with default secure settings which include user and group IDs:
 
-```Yaml
+```yaml
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -222,7 +392,7 @@ podSecurityContext:
 
 3.  Alternatively, specify your configuration via the command line using the `-f custom-values.yaml` flag:
 
-    ```Yaml
+    ```yaml
     securityContext:
       allowPrivilegeEscalation: false
       capabilities:
@@ -231,7 +401,7 @@ podSecurityContext:
       privileged: false
       readOnlyRootFilesystem: true
       runAsNonRoot: true
-    ``
+    ```
 
     ```
 
@@ -328,11 +498,9 @@ podSecurityContext:
 
 ## Additional requirements for OpenShift
 
-OpenShift assigns a specific UID range to each namespace.  For example:  1000880000-1000889999.
+OpenShift assigns a specific UID range to each namespace. For example: 1000880000-1000889999.
 
-For example: 1000880000-1000889999.
-
-Specifying an explicit runAsUser (like 10000) often falls outside the UID range range, triggering SCC violations. Leave these values empty so OpenShift's admission controller automatically assigns appropriate values from the allowed range.
+Specifying an explicit runAsUser (like 10000) often falls outside the UID range, triggering SCC violations. Leave these values empty so OpenShift's admission controller automatically assigns appropriate values from the allowed range.
 
 ### Recommended runAsUser configurations by component
 
@@ -388,5 +556,27 @@ Since OpenShift includes a built-in node-exporter, your deployment may conflict 
 
 On OpenShift, `prometheus-node-exporter` may conflict with OpenShift's built-in `node-exporter`. 
 For example, if port 9100 is already in use. 
-We recommend seting  `additionalCharts.prometheus-node-exporter.install: false` and relying on the `opentelemetry-collector` for container metrics via cadvisor/kubelet scraping.
+We recommend setting  `additionalCharts.prometheus-node-exporter.install: false` and relying on the `opentelemetry-collector` for container metrics via cadvisor/kubelet scraping.
 !!!
+
+### Capping the OTEL collector batch size on OpenShift
+
+On a fully-loaded OpenShift cluster, the per-node kubelet and cAdvisor scrape can produce an OTLP batch larger than the HM metrics receiver's 4 MiB gRPC message limit. When that happens the receiver rejects the batch with `ResourceExhausted` and **every datapoint in it is dropped**, so HM shows no CPU, memory, or network metrics even though the collector pods are healthy.
+
+Cap the collector's batch processor so each push stays under the limit:
+
+```yaml
+opentelemetry-collector:
+  config:
+    processors:
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+```
+
+Or via the command line:
+
+```shell
+--set 'opentelemetry-collector.config.processors.batch.send_batch_size=1000' \
+--set 'opentelemetry-collector.config.processors.batch.send_batch_max_size=1500'
+```

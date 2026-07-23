@@ -2,16 +2,58 @@
 title: edbctl image
 navTitle: edbctl image
 description: Use the edbctl utility to manage and sync images for Hybrid Manager.
+deepToC: true
 ---
 
-This command helps managing the images for Hybrid Manager (HM). With this command, you can sync or list container images from EDB's repository to a local registry and manage artifacts for internet-disconnected OpenShift environments.
+This command helps managing the images for Hybrid Manager (HM). With this command, you can sync or list container images from EDB's repository to a local registry, manage artifacts for internet-disconnected OpenShift environments, and clean up unused images from the HM registry.
 
 ## Commands
 
-`edbctl image` command has following options:
+`edbctl image` command has the following options:
 
+-   [edbctl image cleanup-registry](#edbctl-image-cleanup-registry) — Clean up unused images from the HM registry to free up space.
 -   [edbctl image list-image-tags](#edbctl-image-list-image-tags) — Displays a list of all the available images for provisioning.
 -   [edbctl image sync-to-local-registry](#edbctl-image-sync-to-local-registry) — Syncs container images from EDB Repos 2.0 to a local registry.
+
+### edbctl image cleanup-registry
+
+Cleans up unused images from an HM registry to free up space after an upgrade. The command determines which images are no longer needed by comparing the image lists of the current and previous HM versions, excludes any image still referenced by a running pod, deletes the remaining manifests from the registry, and then triggers a garbage collection (GC) to reclaim the underlying storage.
+
+Currently, only the HM registry is supported.
+
+!!!note
+   Do not sync images to the registry while this command is running. The GC step may otherwise delete newly synced images and leave the registry in an inconsistent state.
+
+!!!note
+   If the delete or GC step fails, it is safe to re-run this command. Image deletion is idempotent — images that were already removed are skipped — so a retry simply resumes the cleanup.
+
+!!!note
+   If an image is deleted that should have been kept, restore it by re-syncing the images with `edbctl image sync-to-local-registry`.
+
+```
+edbctl image cleanup-registry --hm-registry-name <registry-name> [options]
+```
+
+Where `options` are:
+
+```
+    --hm-registry-name string          The name of the HM registry to clean up (required).
+    --hm-registry-local-port int       The local port used to access the HM registry when performing cleanup (default 5000).
+    --previous-hm-version string       The previous version of HM, used to determine which images to delete. If not provided,
+                                       the command tries to detect the previous version from the HM instance in the cluster.
+                                       If detection fails, no images are deleted and a warning is printed.
+    --edb-cloudsmith-username string   Username for EDB Cloudsmith, used to retrieve the image list for the previous HM version.
+    --edb-cloudsmith-password string   Password for EDB Cloudsmith, used to retrieve the image list for the previous HM version.
+    --dry-run                          Perform a dry run of the cleanup operation without deleting any images.
+-y, --yes                              Auto-confirm all confirmations.
+-h, --help                             Help for cleanup-registry.
+```
+
+This example shows how to clean up images from the HM registry:
+
+```
+edbctl image cleanup-registry --hm-registry-name <registry-name> --previous-hm-version <previous-hm-version> --edb-cloudsmith-username <username> --edb-cloudsmith-password <password>
+```
 
 ### edbctl image list-image-tags
 

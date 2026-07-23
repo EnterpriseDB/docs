@@ -1,13 +1,13 @@
 ---
-title: Migrating from Bootstrap to Operator installation
-navTitle: Migrating to Operator
-description: Guide for migrating existing Bootstrap installations to the Operator-based installation method.
+title: Migrating from bootstrap to operator installation
+navTitle: Migrating to operator
+description: Guide for migrating existing bootstrap installations to the operator-based installation method.
 deepToC: true
 ---
 
 ## Overview
 
-If you previously installed Hybrid Manager using the **Bootstrap method** (`edbpgai-bootstrap` helm chart with `values.yaml`) and want to migrate to the **Operator method** (`edb-hcp-operator` helm chart with `HybridControlPlane` CR), this guide provides the necessary steps.
+If you previously installed Hybrid Manager using the **bootstrap method** (`edbpgai-bootstrap` helm chart with `values.yaml`) and want to migrate to the **operator method** (`edb-hcp-operator` helm chart with `HybridControlPlane` CR), this guide provides the necessary steps.
 
 !!! Danger Critical Warning - Read This First
 **DO NOT use `helm uninstall edbpgai-bootstrap` without following this guide!**
@@ -56,29 +56,82 @@ The bootstrap installation manages CRDs (Custom Resource Definitions) that defin
 
 If these CRDs are deleted, Kubernetes automatically deletes **all instances** of these custom resources, rendering your HM platform non-functional.
 
-## Convert your configuration
+## Prepare the migration with edbctl
 
-Before transferring Helm ownership, you must convert your existing `values.yaml` into a `HybridControlPlane` Custom Resource manifest. The operator does not read `values.yaml` — it requires a CR to define the desired state of your HM installation.
+The recommended way to migrate from the bootstrap installation to the operator installation is `edbctl hm prepare-bootstrap-operator-conversion`. The command does both halves of the migration in a single invocation:
+
+1. **Exports** the current `HybridControlPlane` CR to a local YAML file (defaults to `hybridmanager.yaml`) so you have a starting point for the operator-managed manifest.
+2. **Transfers Helm ownership** of the bootstrap-installed resources (CRDs, ClusterRoles, ClusterRoleBindings, Roles, RoleBindings, ServiceAccounts, Services, webhook configurations) from the `edbpgai-bootstrap` release to the `edb-hcp-operator` release, so a subsequent `helm install`/`edbctl hm upgrade-operator` adopts the existing resources cleanly without ownership errors.
+
+CRDs and custom resources are preserved — your database clusters keep running throughout the migration.
+
+!!! Note Minimum edbctl version
+`edbctl hm prepare-bootstrap-operator-conversion` ships in edbctl `1.7.0` and later. Earlier versions require the manual flow shown in the [Manual fallback](#manual-fallback-for-edbctl-less-than-170) section below.
+!!!
+
+### Run the conversion
+
+With your kubeconfig pointed at the cluster where the bootstrap-installed HM lives, run:
+
+```bash
+edbctl hm prepare-bootstrap-operator-conversion
+__OUTPUT__
+Migration prepared. Next steps:
+  1. Review the generated CR: hybridmanager.yaml
+  2. Install the operator chart for release "edb-hcp-operator" into namespace "edbpgai-bootstrap" — the transfer
+     stamped Helm ownership for that namespace, so install there (not elsewhere):
+       helm install edb-hcp-operator <chart> -n edbpgai-bootstrap
+     or install the latest operator with edbctl:
+       edbctl hm upgrade-operator --release-name edb-hcp-operator --namespace edbpgai-bootstrap --registry-uri <uri> --registry-username <user> --registry-password <password>
+  3. Apply the reviewed CR: kubectl apply -f hybridmanager.yaml
+```
+
+Defaults:
+- `--namespace edbpgai-bootstrap` — namespace where the bootstrap release lives.
+- `--operator-namespace <same as --namespace>` — namespace the operator chart will be installed into. The ownership transfer stamps this namespace, so the subsequent `helm install`/`edbctl hm upgrade-operator` **must** target it.
+- `--source-release edbpgai-bootstrap` — Helm release currently owning the resources.
+- `--target-release edb-hcp-operator` — Helm release to transfer ownership to.
+- `--output hybridmanager.yaml` — file where the exported CR is written.
+
+Override any of them if your installation uses non-default names. Use `--dry-run` to preview deletions and annotations without changing the cluster.
+
+!!! Important
+Review the generated `hybridmanager.yaml` before applying it. In particular:
+- **`spec.version`**: derived from the live CR. The operator uses its own versioning scheme — `spec.version` is the HM bootstrap version (e.g., `v1.4.0`), not the operator's own version (`2.0.0` or later from the `2.x` lineage).
+- **`spec.imagePullSecrets`**: each entry needs both `name` and `namespace`; verify they reference the right namespace if you store secrets outside `edbpgai-bootstrap`.
+!!!
+
+### Next steps after running the command
+
+1. Review the generated `hybridmanager.yaml`.
+
+1. Install (or upgrade to) the operator chart in the namespace the conversion stamped — `edbctl hm upgrade-operator --namespace edbpgai-bootstrap --registry-uri <REGISTRY_URI> --registry-username <USER> --registry-password <PASSWORD>` (auto-discovers the latest operator version from the registry). On edbctl `< 1.7.0`, fall back to `helm install edb-hcp-operator <chart> -n edbpgai-bootstrap`.
+
+1. Apply the reviewed CR: `kubectl apply -f hybridmanager.yaml`. The exported file deliberately omits the bootstrap release's `meta.helm.sh/release-name=edbpgai-bootstrap` annotation that the live CR still carries; applying the file overwrites that stale annotation, so a later `helm uninstall edbpgai-bootstrap` (cleaning up the bootstrap release) does not cascade-delete the HybridControlPlane CR (and your database clusters with it).
+
+## Manual fallback for edbctl less than 1.7.0
+
+For environments still on edbctl `< 1.7.0`, the previous manual flow still works. The rest of this guide preserves it for reference — but the `edbctl hm prepare-bootstrap-operator-conversion` path above is the recommended one.
 
 ### Configuration mapping reference
 
-The following table shows how `values.yaml` fields map to `HybridControlPlane` CR fields:
+The following table shows how `values.yaml` fields map to `HybridControlPlane` CR fields, if you need to hand-write the CR from a bootstrap `values.yaml`:
 
-| values.yaml field | HybridControlPlane field | Description |
-|-------------------|--------------------------|-------------|
-| `system` | `spec.flavour` | Kubernetes distribution (eks, aks, gke, rhos, etc.) |
-| `containerRegistryURL` | `spec.imageRegistry` | Container registry URL |
-| `bootstrapImageTag` | `spec.version` | HM version to install |
-| `imagePullSecrets` | `spec.imagePullSecrets[]` | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields. |
-| `disabledComponents` | `spec.disabledComponents[]` | Components to disable |
-| `parameters.global.*` | `spec.globalParameters` | Global configuration parameters |
-| `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters |
-| `beaconServer` | `spec.beaconServer` | Beacon server configuration |
-| `beaconAgent` | `spec.beaconAgent` | Beacon agent configuration |
-| `clusterGroups` | `spec.clusterGroups` | Multi-DC cluster topology |
-| `scenarios` | `spec.scenarios[]` | Installation scenarios (core, migration, ai, analytics). In `values.yaml` this is a comma-separated string (e.g., `"core,migration,ai"`). In the CR, it is a YAML list. |
-| `resourceAnnotations` | `spec.resourceAnnotations[]` | Custom resource annotations |
-| `source.remote` | `spec.source.remote` | Use remote bootstrap image for manifests |
+| values.yaml field          | HybridControlPlane field                | Description                                                                                                                                                             |
+|----------------------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `system`                   | `spec.flavour`                          | Kubernetes distribution (eks, aks, gke, rhos, etc.)                                                                                                                     |
+| `containerRegistryURL`     | `spec.imageRegistry`                    | Container registry URL                                                                                                                                                  |
+| `bootstrapImageTag`        | `spec.version`                          | HM version to install                                                                                                                                                   |
+| `imagePullSecrets`         | `spec.imagePullSecrets[]`               | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields.                  |
+| `disabledComponents`       | `spec.disabledComponents[]`             | Components to disable                                                                                                                                                   |
+| `parameters.global.*`      | `spec.globalParameters`                 | Global configuration parameters                                                                                                                                         |
+| `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters                                                                                                                                           |
+| `beaconServer`             | `spec.beaconServer`                     | Beacon server configuration                                                                                                                                             |
+| `beaconAgent`              | `spec.beaconAgent`                      | Beacon agent configuration                                                                                                                                              |
+| `clusterGroups`            | `spec.clusterGroups`                    | Multi-DC cluster topology                                                                                                                                               |
+| `scenarios`                | `spec.scenarios[]`                      | Installation scenarios (core, dbaas, migration, ai, and analytics). In `values.yaml` this is a comma-separated string (for example, `"core,migration,ai"`). In the CR, it is a YAML list. |
+| `resourceAnnotations`      | `spec.resourceAnnotations[]`            | Custom resource annotations                                                                                                                                             |
+| `source.remote`            | `spec.source.remote`                    | Use remote bootstrap image for manifests                                                                                                                                |
 
 ### Convert using the migration script
 
@@ -89,7 +142,7 @@ Use the following script to automatically generate a `HybridControlPlane` CR fro
 ```bash
 #!/bin/bash
 # convert-values-to-hcp.sh
-# Converts a Bootstrap values.yaml to a HybridControlPlane Custom Resource manifest.
+# Converts a bootstrap values.yaml to a HybridControlPlane Custom Resource manifest.
 #
 # Usage: ./convert-values-to-hcp.sh <values.yaml> [output-file]
 #   If output-file is omitted, prints to stdout.
@@ -114,7 +167,6 @@ HCP=$(yq -n '
   .apiVersion = "edbpgai.edb.com/v1alpha1" |
   .kind = "HybridControlPlane" |
   .metadata.name = "edbpgai" |
-  .metadata.annotations."edbpgai.com/ready-for-upgrade" = "true" |
   .metadata.annotations."biganimal.enterprisedb.io/deletion-protect" = "enabled"
 ')
 
@@ -224,7 +276,7 @@ Review the generated manifest carefully before applying it:
 
 Once you have a validated `hybridmanager.yaml`, proceed with the Helm ownership transfer below. You will apply the CR after the transfer is complete.
 
-## Helm ownership transfer
+### Helm ownership transfer (manual)
 
 This approach transfers Helm ownership of existing resources from the `edbpgai-bootstrap` release to the `edb-hcp-operator` release. 
 This allows the operator to adopt and manage the existing infrastructure without recreating anything.
@@ -233,17 +285,21 @@ This allows the operator to adopt and manage the existing infrastructure without
 This method preserves **all resources** (CRDs, RBAC, webhooks, database clusters) and simply changes the Helm ownership annotations. Your database clusters will remain running throughout the migration, and the operator will seamlessly take over management.
 !!!
 
-### How it works
+#### How it works
 
 The migration works by changing the `meta.helm.sh/release-name` annotation on all resources from `edbpgai-bootstrap` to `edb-hcp-operator`. This tells Helm that these resources now belong to the operator release instead of the bootstrap release.
 
 **Key benefits of this approach:**
 
 1. **No resource deletion** - CRDs, hybridControlPlane, preflight and postflight resources remain intact
-2. **No Helm conflicts** - The operator can adopt existing resources without ownership errors
-3. **Minimal downtime** - Only the HM operator pods are affected during the transition
-4. **Simple rollback** - Can transfer annotations back if needed
-5. **Clean migration** - After verification, the bootstrap namespace can be safely removed
+
+1. **No Helm conflicts** - The operator can adopt existing resources without ownership errors
+
+1. **Minimal downtime** - Only the HM operator pods are affected during the transition
+
+1. **Simple rollback** - Can transfer annotations back if needed
+
+1. **Clean migration** - After verification, the bootstrap namespace can be safely removed
 
 **What gets transferred:**
 
@@ -254,7 +310,7 @@ The migration works by changing the `meta.helm.sh/release-name` annotation on al
 - Services
 - Webhook configurations
 
-### Prerequisites
+#### Prerequisites
 
 * Access to kubectl and helm CLI tools
 * `jq` command-line JSON processor installed
@@ -265,7 +321,7 @@ The following script performs all migration steps in sequence. You can run it as
 #!/bin/bash
 set -e
 
-echo "Starting migration from Bootstrap to Operator installation..."
+echo "Starting migration from bootstrap to operator installation..."
 
 echo "Step 1: Deleting bootstrap deployments..."
 kubectl delete deployments -n edbpgai-bootstrap --all
@@ -340,14 +396,14 @@ kubectl annotate validatingwebhookconfiguration \
 echo "migration completed successfully! Now the operator can be installed without conflicts."
 ```
 
-### Step 1: Delete bootstrap deployments
+#### Step 1: Delete bootstrap deployments
 
 Remove all deployments in the bootstrap namespace. This stops the bootstrap controllers:
 
 ```bash
 # Delete all deployments in the bootstrap namespace
 kubectl delete deployments -n edbpgai-bootstrap --all
-___OUTPUT___
+__OUTPUT__
 deployment.apps "edb-hcp-operator-controller-manager" deleted
 deployment.apps "file-server" deleted
 ```
@@ -355,7 +411,7 @@ deployment.apps "file-server" deleted
 ```bash
 # Verify deployments are removed
 kubectl get deployments -n edbpgai-bootstrap
-___OUTPUT___
+__OUTPUT__
 No resources found in edbpgai-bootstrap namespace.
 ```
 
@@ -363,7 +419,7 @@ No resources found in edbpgai-bootstrap namespace.
 This only removes the running controllers, not the CRDs or custom resources. Your hybrid manager remain untouched.
 !!!
 
-### Step 2: Transfer Helm ownership - ServiceAccount
+#### Step 2: Transfer Helm ownership - ServiceAccount
 
 Transfer the service account ownership annotation:
 
@@ -373,11 +429,11 @@ kubectl annotate sa edb-hcp-operator-controller-manager \
   meta.helm.sh/release-name=edb-hcp-operator \
   --overwrite \
   -n edbpgai-bootstrap
-___OUTPUT___
+__OUTPUT__
 serviceaccount/edb-hcp-operator-controller-manager annotated
 ```
 
-### Step 3: Transfer Helm ownership - CRDs
+#### Step 3: Transfer Helm ownership - CRDs
 
 Transfer ownership of all CRDs under `edbpgai.edb.com`:
 
@@ -388,7 +444,7 @@ for line in $(kubectl get crd | grep edbpgai.edb.com | awk '{print $1}'); do
     meta.helm.sh/release-name=edb-hcp-operator \
     --overwrite
 done
-___OUTPUT___
+__OUTPUT__
 customresourcedefinition.apiextensions.k8s.io/hybridcontrolplanes.edbpgai.edb.com annotated
 customresourcedefinition.apiextensions.k8s.io/postflights.edbpgai.edb.com annotated
 customresourcedefinition.apiextensions.k8s.io/preflights.edbpgai.edb.com annotated
@@ -401,7 +457,7 @@ kubectl get crd | grep edbpgai.edb.com | head -5 | while read crd rest; do
   kubectl get crd $crd -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}'
   echo ""
 done
-___OUTPUT___
+__OUTPUT__
 CRD: hybridcontrolplanes.edbpgai.edb.com
 edb-hcp-operator
 CRD: postflights.edbpgai.edb.com
@@ -410,7 +466,7 @@ CRD: preflights.edbpgai.edb.com
 edb-hcp-operator
 ```
 
-### Step 4: Transfer Helm ownership - ClusterRoles
+#### Step 4: Transfer Helm ownership - ClusterRoles
 
 Transfer ownership of ClusterRoles:
 
@@ -422,7 +478,7 @@ for line in $(kubectl get clusterroles -o json | \
     meta.helm.sh/release-name=edb-hcp-operator \
     --overwrite
 done
-___OUTPUT___
+__OUTPUT__
 clusterrole.rbac.authorization.k8s.io/create-hcp annotated
 clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-hybridcontrolplane-editor-role annotated
 clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-hybridcontrolplane-viewer-role annotated
@@ -437,7 +493,7 @@ clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-preflight-editor-role ann
 clusterrole.rbac.authorization.k8s.io/edb-hcp-operator-preflight-viewer-role annotated
 ```
 
-### Step 5: Transfer Helm ownership - ClusterRoleBindings
+#### Step 5: Transfer Helm ownership - ClusterRoleBindings
 
 Transfer ownership of ClusterRoleBindings:
 
@@ -449,13 +505,13 @@ for line in $(kubectl get clusterrolebindings -o json | \
     meta.helm.sh/release-name=edb-hcp-operator \
     --overwrite
 done
-___OUTPUT___
+__OUTPUT__
 clusterrolebinding.rbac.authorization.k8s.io/create-hcp annotated
 clusterrolebinding.rbac.authorization.k8s.io/edb-hcp-operator-manager-rolebinding annotated
 clusterrolebinding.rbac.authorization.k8s.io/edb-hcp-operator-metrics-auth-rolebinding annotated
 ```
 
-### Step 6: Transfer Helm ownership - Roles
+#### Step 6: Transfer Helm ownership - Roles
 
 Transfer ownership of Roles in the bootstrap namespace:
 
@@ -468,11 +524,11 @@ for line in $(kubectl get roles -n edbpgai-bootstrap -o json | \
     --overwrite \
     -n edbpgai-bootstrap
 done
-___OUTPUT___
+__OUTPUT__
 role.rbac.authorization.k8s.io/edb-hcp-operator-leader-election-role annotated
 ```
 
-### Step 7: Transfer Helm ownership - RoleBindings
+#### Step 7: Transfer Helm ownership - RoleBindings
 
 Transfer ownership of RoleBindings in the bootstrap namespace:
 
@@ -485,11 +541,11 @@ for line in $(kubectl get rolebindings -n edbpgai-bootstrap -o json | \
     --overwrite \
     -n edbpgai-bootstrap
 done
-___OUTPUT___
+__OUTPUT__
 rolebinding.rbac.authorization.k8s.io/edb-hcp-operator-leader-election-rolebinding annotated
 ```
 
-### Step 8: Transfer Helm ownership - Services
+#### Step 8: Transfer Helm ownership - Services
 
 Transfer ownership of Services in the bootstrap namespace:
 
@@ -502,12 +558,12 @@ for line in $(kubectl get svc -n edbpgai-bootstrap -o json | \
     --overwrite \
     -n edbpgai-bootstrap
 done
-___OUTPUT___
+__OUTPUT__
 service/edb-hcp-operator-controller-manager-metrics-service annotated
 service/edb-hcp-operator-webhook-service annotated
 ```
 
-### Step 9: Transfer Helm ownership - Webhook Configurations
+#### Step 9: Transfer Helm ownership - Webhook Configurations
 
 Transfer ownership of webhook configurations:
 
@@ -517,7 +573,7 @@ kubectl annotate mutatingwebhookconfiguration \
   edb-hcp-operator-mutating-webhook-configuration \
   meta.helm.sh/release-name=edb-hcp-operator \
   --overwrite
-___OUTPUT___
+__OUTPUT__
 mutatingwebhookconfiguration.admissionregistration.k8s.io/edb-hcp-operator-mutating-webhook-configuration annotated
 ```
 
@@ -527,11 +583,11 @@ kubectl annotate validatingwebhookconfiguration \
   edb-hcp-operator-validating-webhook-configuration \
   meta.helm.sh/release-name=edb-hcp-operator \
   --overwrite
-___OUTPUT___
+__OUTPUT__
 validatingwebhookconfiguration.admissionregistration.k8s.io/edb-hcp-operator-validating-webhook-configuration annotated
 ```
 
-### Step 10: Verify ownership transfer
+#### Step 10: Verify ownership transfer
 
 Verify that resources now have the correct Helm ownership:
 
@@ -559,6 +615,6 @@ If you encounter issues during migration:
 
 After successful migration:
 
-* Review the [Operator installation guide](install_guide/install_hm) for ongoing management
+* Review the [operator installation guide](install_guide/install_hm) for ongoing management
 * Learn about [updating HCP configuration](install_guide/install_hm#managing-the-hybridcontrolplane)
 * See [upgrading HM version](install_guide/install_hm#upgrading-hm-version) using the operator

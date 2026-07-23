@@ -24,10 +24,12 @@ The `edbctl hybrid-manager` command manages Hybrid Manager (HM) instances, inclu
 -   [edbctl hybrid-manager open-grafana](#edbctl-hybrid-manager-open-grafana) — Open Grafana UI.
 -   [edbctl hybrid-manager open-prometheus](#edbctl-hybrid-manager-open-prometheus) — Open Prometheus UI.
 -   [edbctl hybrid-manager open-thanos](#edbctl-hybrid-manager-open-thanos) — Open Thanos Query UI.
+-   [edbctl hybrid-manager prepare-bootstrap-operator-conversion](#edbctl-hybrid-manager-prepare-bootstrap-operator-conversion) — Prepare a Bootstrap-installed Hybrid Manager for conversion to the Operator method.
 -   [edbctl hybrid-manager resume-component](#edbctl-hybrid-manager-resume-component) — Resume a suspended hybrid manager component.
 -   [edbctl hybrid-manager retry-component](#edbctl-hybrid-manager-retry-component) — Retry a hybrid manager component that is in error state.
 -   [edbctl hybrid-manager status](#edbctl-hybrid-manager-status) — Check the status of Hybrid Manager and its components.
 -   [edbctl hybrid-manager suspend-component](#edbctl-hybrid-manager-suspend-component) — Suspend a hybrid manager component.
+-   [edbctl hybrid-manager upgrade-operator](#edbctl-hybrid-manager-upgrade-operator) — Install or upgrade the Hybrid Manager Operator to the latest version.
 
 ### edbctl hybrid-manager create-install-secrets
 
@@ -363,6 +365,10 @@ edbctl hybrid-manager open-thanos
 edbctl hybrid-manager open-thanos --background
 ```
 
+!!!note
+   The `resume-component`, `retry-component`, and `suspend-component` commands prompt for confirmation by default. Use `--yes` (`-y`) to skip the prompt for CI or scripted use. For guidance on when and why to use these commands, see [Managing HM components](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/manage_components/).
+!!!
+
 ### edbctl hybrid-manager resume-component
 
 Resumes a suspended Hybrid Manager component.
@@ -445,4 +451,101 @@ This example shows how to suspend a component:
 
 ```
 edbctl hybrid-manager suspend-component upm-istio
+```
+
+### edbctl hybrid-manager prepare-bootstrap-operator-conversion
+
+Prepares a Bootstrap-installed Hybrid Manager for conversion to the Operator installation method. The command does two things in a single run: exports the existing `HybridControlPlane` CR (created by the bootstrap install) to a manifest so it can be re-applied under the operator, and transfers Helm ownership of the existing cluster resources from the bootstrap release to the operator release by deleting the bootstrap controller Deployments and re-annotating CRDs, RBAC, Services, the ServiceAccount, and webhook configurations.
+
+No CRDs or database clusters are deleted. The transfer is idempotent and safe to re-run. Installing the operator chart and applying the exported CR remain manual follow-up steps.
+
+You can also use the `edbctl hm` alias for this command.
+
+```
+edbctl hybrid-manager prepare-bootstrap-operator-conversion [options]
+```
+
+Where `options` are:
+
+```
+-o, --output string              File to write the exported HybridControlPlane CR (default "hybridmanager.yaml").
+-n, --namespace string           Bootstrap namespace (default "edbpgai-bootstrap").
+    --operator-namespace string  Namespace the operator chart will be installed into (default: same as --namespace).
+    --source-release string      Helm release currently owning the resources (default "edbpgai-bootstrap").
+    --target-release string      Helm release to transfer ownership to (default "edb-hcp-operator").
+    --dry-run                    Preview deletions and annotations without changing the cluster.
+-y, --yes                        Auto-confirm all confirmations.
+-h, --help                       Help for prepare-bootstrap-operator-conversion.
+```
+
+These examples show how to prepare a Bootstrap-installed Hybrid Manager for conversion:
+
+```
+# Export the CR and transfer ownership (prompts before the transfer)
+edbctl hm prepare-bootstrap-operator-conversion
+
+# Preview everything without changing the cluster
+edbctl hm prepare-bootstrap-operator-conversion --dry-run
+
+# Write the exported CR to a specific path
+edbctl hm prepare-bootstrap-operator-conversion -o hm.yaml
+```
+
+### edbctl hybrid-manager upgrade-operator
+
+Installs or upgrades the Hybrid Manager (HM) Operator to the latest available LTS version using Helm. Run this command to ensure the operator is up to date before installing or upgrading Hybrid Manager itself.
+
+From the 1.4.0 LTS release (or the 2026.6.0 Innovation release) onwards, operator images are embedded in the HM release and synced with `edbctl image sync-to-local-registry`. As a result, you can install the operator directly from Cloudsmith or from a private registry.
+
+!!!note
+   When deploying from a private registry, run this command only after you finish syncing images for the target HM version to that registry. Otherwise the operator image may not be present and the upgrade fails.
+
+!!!note
+   This command uses Helm to install the operator. To uninstall it, run `helm uninstall` against the release.
+
+!!!note
+   On OpenShift, installing the operator from the OperatorHub certified operator is often a better option than this command.
+
+You can also use the `edbctl hm` alias for this command.
+
+```
+edbctl hybrid-manager upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> [options]
+```
+
+Where `options` are:
+
+```
+    --registry-uri string        Container registry URI to pull the operator image from (required).
+    --registry-username string   Username for authenticating to the container registry (required).
+    --registry-password string   Password for authenticating to the container registry (required).
+    --registry-insecure          Allow insecure connections to the container registry (for example, self-signed TLS).
+    --release-name string        Helm release name to use for the operator chart (default "edb-hcp-operator").
+    --namespace string           Kubernetes namespace where the operator is or will be installed (default "edb-hcp-operator-system").
+    --set stringArray            Additional Helm chart values to set (for example, --set key=value).
+    --timeout duration           Time to wait for the operator release to become ready before rolling back (default 5m0s).
+    --verbose                    Show verbose Helm output (chart pull, resource creation, and readiness progress).
+-y, --yes                        Auto-confirm all confirmations.
+-h, --help                       Help for upgrade-operator.
+```
+
+These examples show how to install or upgrade the operator:
+
+```
+# Install or upgrade the operator directly from EDB Cloudsmith
+edbctl hm upgrade-operator --registry-uri docker.enterprisedb.com/pgai-platform --registry-username <edb-cloudsmith-username> --registry-password <edb-cloudsmith-password>
+
+# Install or upgrade the operator from a private registry
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password>
+
+# Install into a custom namespace with a custom Helm release name
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --namespace my-operator-ns --release-name my-operator
+
+# Skip TLS verification for a registry with a self-signed certificate
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --registry-insecure
+
+# Override additional chart values and extend the readiness timeout
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --set hmRegistry.enabled=true --timeout 10m
+
+# Auto-confirm the prompt (non-interactive)
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --yes
 ```

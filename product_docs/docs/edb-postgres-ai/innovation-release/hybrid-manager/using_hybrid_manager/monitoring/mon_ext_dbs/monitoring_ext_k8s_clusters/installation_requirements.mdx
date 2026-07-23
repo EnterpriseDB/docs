@@ -30,7 +30,7 @@ You must have an existing external Kubernetes cluster (other than the Kubernetes
 
 - [EDB Postgres® AI for CloudNativePG™ Cluster (formerly EDB Postgres for Kubernetes)](/postgres_for_kubernetes/latest/installation_upgrade/)
 
-- [EDB Postgres® AI for CloudNativePG™ Global Cluster (formerly EDB Postgres Distributed for Kubernetes)](/postgres_distributed_for_kubernetes/latest/installation_upgrade/) 
+- [EDB Postgres® AI for CloudNativePG™ Global Cluster (formerly EDB Postgres Distributed for Kubernetes)](/postgres_distributed_for_kubernetes/latest/installation_upgrade/)
 
 - [CloudNativePG™](https://cloudnative-pg.io/docs/devel/installation_upgrade/)
 
@@ -43,15 +43,17 @@ Ensure the Kubernetes cluster where you are running the Postgres databases also 
 - Cluster access: Admin privileges to create namespaces, RBAC resources, and deployments.
 - Required Kubernetes operators to monitor the metrics.
 
-## Cert-manager 
+## Cert-manager
 
 You must also have cert-manager installed in your cluster to complete the deployment.
 
 To install cert-manager:
 
 ```
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.9.1/cert-manager.crds.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.2/cert-manager.yaml
 ```
+
+Alternatively, you can install cert-manager as a subchart of the EDB Postgres AI agent chart by setting `additionalCharts.cert-manager.install: true` in your `custom-values.yaml`. See the [Configuration reference](configuration_reference/).
 
 ## Required environment values
 
@@ -59,10 +61,27 @@ Export the following environment values that you will need to complete deploymen
 
 - `TARGET_NS` - The namespace of your existing CNPG cluster (or PGD Group for PGD4K).
 - `AGENT_NS` - The namespace to install the EDB Postgres AI agent.
+- `TARGET_TYPE` - The resource kind to patch when enabling the agent sidecar: `cluster` for CNPG and EDB Postgres® AI for CloudNativePG™ Cluster deployments, or `pgdgroup` for EDB Postgres® AI for CloudNativePG™ Global Cluster deployments. See [Patching clusters to enable the agent sidecar](mon_ext_k8s_clusters/#patching-clusters-to-enable-the-agent-sidecar).
 - `HM_ACCESS_KEY` - The access key for Hybrid Manager.
 - `HM_PROJECT_ID` - The Project ID in HM.
-- `HM_CACERT` - The root CA certificate of HM (currently required even if the root is already present in the system. It works with any certificate provided from the chain).
-- `HM_URL` - the beacon server URL including port
+- `HM_CACERT` - The root CA certificate of HM. Required when `rootCAEnabled` is `true` (the default), which is the configuration described in this guide. It works with any certificate provided from the chain. If you instead set `rootCAEnabled: false` to trust HM via the system CA pool (or skip verification), you can omit this value and the `beacon-server-ca` secret in [Namespace and secrets](#namespace-and-secrets) — see the [TLS configuration options](configuration_reference/#tls-configuration-options).
+
+    Retrieve the certificate from your HM cluster:
+
+    ```shell
+    export HM_CACERT=$(kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d)
+    ```
+
+- `HM_URL` - The beacon server URL, including port.
+
+    Retrieve the host and port from the beacon server gateway on your HM cluster, then combine them:
+
+    ```shell
+    export SERVER_HOST=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .hosts[0]')
+    export SERVER_PORT=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .port.number')
+    export HM_URL="${SERVER_HOST}:${SERVER_PORT}"
+    ```
+
 - `EDB_REPO` - the name of the EDB repo matching your subscription: enterprise, standard or community360
 - `EDB_SUBSCRIPTION_TOKEN` - Your EDB token.
 - `POD_SELECTOR` - Set to `k8s.enterprisedb.io/podRole=instance` for EDB operators, or `cnpg.io/podRole=instance` for the community CNPG operator.
@@ -73,14 +92,27 @@ For example:
 ```shell
 export TARGET_NS=cnpg
 export AGENT_NS=upm-beacon
-export HM_ACCESS_KEY=baak_1DMvAduJeigwIcCJyk2pc6BxllJxAbjFa5Nlc1c680lqSj0sj
+export HM_ACCESS_KEY=baak_YOUR_ACCESS_KEY
 export HM_PROJECT_ID=prj_3AlRuOvlbUZafFY2
-export HM_CACERT=$(cat source/k8s-agent/ca.cert)
-export HM_URL=beacon-pm-test.edbhcp.com:9443
+export HM_CACERT=$(kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d)
+export HM_URL=<beacon-server-host>:<port>
 export EDB_REPO=enterprise
 export POD_SELECTOR='k8s.enterprisedb.io/podRole=instance'
 export AGENT_VERSION=v1.337.18
 ```
+
+### Getting the Beacon server URL
+
+If you don't already know your `HM_URL` value, retrieve the host and port from the HM (HCP) cluster:
+
+```shell
+# On the Hybrid Manager (HCP) cluster
+export server_host=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .hosts[0]')
+export server_port=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .port.number')
+export HM_URL="${server_host}:${server_port}"
+```
+
+This command requires `kubectl` access to the Kubernetes cluster where HM is installed, not the external cluster you're monitoring.
 
 ## Namespace and secrets
 
@@ -100,3 +132,8 @@ kubectl create secret generic beacon-server-ca --from-literal=ca.crt="${HM_CACER
 kubectl create secret generic beacon-access-key --from-literal=access-key="${HM_ACCESS_KEY}" -n "${TARGET_NS}"
 kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
 ```
+
+!!!note
+
+The two `beacon-server-ca` secrets are only required when `rootCAEnabled` is `true` (the default). If you set `rootCAEnabled: false`, skip creating them — see the [TLS configuration options](configuration_reference/#tls-configuration-options).
+!!!

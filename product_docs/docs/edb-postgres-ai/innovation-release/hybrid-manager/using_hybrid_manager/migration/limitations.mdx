@@ -120,6 +120,89 @@ Oracle XE (Express Edition) does not support enabling supplemental logging at th
 
 - Usage policy &mdash; Snapshot-only migrations on Oracle XE are suitable only for testing or evaluation purposes. This configuration is not supported for production use cases.
 
+### Unqualified object references in migrated PL/SQL bodies
+
+[ET-5742]: #
+
+**Description:** When DMS translates Oracle triggers, procedures, functions, and packages to EDB Postgres Advanced Server (EPAS), the translated PL/SQL bodies retain unqualified object references from the Oracle source.
+
+Oracle and EPAS resolve unqualified names differently:
+
+- **Oracle**: Unqualified references inside a PL/SQL body resolve to the definer's schema (the schema that owns the object), regardless of who invokes it.
+- **EPAS**: Unqualified references resolve at execution time using the caller's `search_path`. If the calling session's `search_path` doesn't include the migrated schema, references fail at runtime.
+
+The schema migration itself succeeds because the DMS agent sets `search_path` explicitly when executing each DDL statement. The failure surfaces after migration, when applications or users invoke migrated PL/SQL objects from sessions with a different `search_path`.
+
+This limitation applies only to Oracle to EPAS migrations with a migration scope of **Schema only** or **Schema and data**. It doesn't affect **Data only** migrations, where schema objects are created by the customer before migration runs and DMS doesn't generate or translate any PL/SQL bodies.
+
+**Example:**
+
+This Oracle trigger references `test_orders_seq` without a schema prefix:
+
+```sql
+CREATE TRIGGER "DEBEZIUM"."TEST_ORDERS_TRG"
+    BEFORE INSERT ON test_orders_legacy
+    FOR EACH ROW
+BEGIN
+    IF :NEW.order_id IS NULL THEN
+        SELECT test_orders_seq.NEXTVAL INTO :NEW.order_id FROM dual;
+    END IF;
+END;
+```
+
+The DDL produced by DMS on EPAS preserves the unqualified reference:
+
+```sql
+CREATE OR REPLACE TRIGGER TEST_ORDERS_TRG
+    BEFORE INSERT ON test_orders_legacy
+    FOR EACH ROW
+BEGIN
+    IF :NEW.order_id IS NULL THEN
+        SELECT test_orders_seq.NEXTVAL INTO :NEW.order_id FROM dual;
+    END IF;
+END;
+```
+
+After migration, behavior varies by caller:
+
+- Session with `search_path = debezium`: trigger executes successfully.
+- Session with default `search_path = "$user", public`: fails with `sequence "test_orders_seq" does not exist`.
+
+**Workarounds:**
+
+Choose one of the following approaches based on your environment:
+
+- **Schema-qualify the DDL (recommended)**: Before cutover, review all translated trigger, procedure, function, and package bodies and prefix unqualified object references with the source schema name. Apply the modified DDL to the destination. This approach removes the runtime dependency on `search_path`.
+
+  The following fix schema-qualifies the sequence reference inside the trigger body. The table reference in the trigger header is also qualified to make the object ownership explicit:
+
+  ```sql
+  CREATE OR REPLACE TRIGGER TEST_ORDERS_TRG
+      BEFORE INSERT ON debezium.test_orders_legacy
+      FOR EACH ROW
+  BEGIN
+      IF :NEW.order_id IS NULL THEN
+          SELECT debezium.test_orders_seq.NEXTVAL INTO :NEW.order_id FROM dual;
+      END IF;
+  END;
+  ```
+
+- **Set a default `search_path` for the role or database**: Set a persistent default so new sessions automatically include the migrated schema in `search_path`:
+
+  ```sql
+  ALTER ROLE app_user SET search_path = debezium, public;
+  -- or, database-wide:
+  ALTER DATABASE mydb SET search_path = debezium, public;
+  ```
+
+- **Set `search_path` at connection time**: Configure all application connections to include the migrated schema in `search_path`, either in the connection string (`options=-c search_path=debezium,public`) or as the first statement after connecting:
+
+  ```sql
+  SET search_path = debezium, public;
+  ```
+
+Ad-hoc sessions that connect without an explicit `search_path` (DBA sessions, monitoring tools, or BI clients) remain at risk of failures regardless of which workaround you choose.
+
 ## Postgres limitations
 
 ### Unsupported domain type definitions in columns
@@ -178,6 +261,24 @@ Then run the following `UPDATE` statement to populate the column for all migrate
 ```sql
 UPDATE messages SET tsv = to_tsvector('english', CONCAT(title, ' ', body)) WHERE tsv IS NULL;
 ```
+
+### Extension migration limitations
+
+[MIG-9836]: #
+
+When migrating between any Postgres distributions, the EDB Postgres AI agent extracts all extensions installed on the source database and applies them to the destination as part of schema migration. The agent extracts whatever is installed on the source with no allowlist or denylist. The following limitations apply.
+
+- **Per-database scope**: The agent extracts extensions on a per-database basis. Extensions installed in other databases on the same Postgres server aren't included. To migrate extensions from multiple databases, run one migration per database.
+
+- **Version pinning**: The agent installs each extension at exactly the version found on the source. If that exact version isn't available on the destination, schema migration fails. When migrating between different Postgres versions or distributions, extension behavior may vary unexpectedly even if the version is available — extension compatibility across versions isn't guaranteed.
+
+- **FDW object migration**: The agent installs the foreign data wrapper (FDW) extension itself (for example, `postgres_fdw` or `oracle_fdw`), but doesn't migrate FDW objects. Foreign servers, user mappings, and foreign tables are stripped and must be recreated manually on the destination after migration.
+
+- **Extensions requiring superuser**: Extensions that require superuser to install fail silently at apply time on managed Postgres services (such as Amazon RDS or Aurora) that don't grant superuser. The migration assessment flags these extensions as `RequiresSuperuser`, but this doesn't prevent the migration from proceeding.
+
+- **Fixed-schema extensions**: Some extensions can only be installed into a specific schema and can't be placed into a different one. If the source has such an extension in a non-default schema, the agent can't replicate that schema placement on the destination.
+
+- **Extension superuser display on Postgres 10 to 12**: On Postgres 10 to 12, the migration assessment always shows extensions as requiring superuser to install, even if they don't. This is a display-only limitation with no impact on the migration itself.
 
 ## Schema ingestion known issues
 
@@ -351,7 +452,7 @@ Resolved in HM versions 2026.4 and later.
 
 ### Upgrade to version 2026.4 fails due to immutable `ragchew-ai-vendor-secrets` secret
 
-[MIG-8373]: #
+[MIG-8373, limitation]: #
 
 **Description:** When upgrading HM to version 2026.4, the upgrade process may fail with a `Failed to install component` error for `edb-migration-copilot`. This occurs because the upgrade attempts to change the `type` field of the existing `ragchew-ai-vendor-secrets` Kubernetes Secret in the `edb-migration-copilot` namespace. The `type` field is immutable once a Secret is created, causing the Kubernetes API server to reject the update with the error: `Secret "ragchew-ai-vendor-secrets" is invalid: type: Invalid value: "Opaque": field is immutable`.
 
@@ -362,6 +463,10 @@ kubectl delete secret ragchew-ai-vendor-secrets -n edb-migration-copilot
 ```
 
 ### SQL file assessment defaults to `Oracle_19c` as the source database type
+
+!!!tip
+Resolved in HM versions 1.4.0 and later.
+!!!
 
 [MIG-8336]: #
 

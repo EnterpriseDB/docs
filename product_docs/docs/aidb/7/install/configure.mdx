@@ -45,21 +45,57 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
    
    For more information, see [PGFS documentation](/pg_extensions/pgfs/).
 
-## Enable VectorChord (optional)
+## Manage user access with the aidb_users role
 
-If you installed VectorChord, create the extension in your database:
+When you create the AIDB extension, Postgres automatically creates a role named `aidb_users`. Grant a user membership in this role to give it access to AIDB's SQL functions. This role isn't removed if you later drop the extension.
+
+`aidb_users` is designed to simplify access management for AIDB features:
+
+- **Purpose:** Granting a user the `aidb_users` role gives it access to all AIDB functions, so it can use the extension's capabilities.
+- **Security:** The `aidb_users` role **doesn't** grant access to AIDB's internal tables, so only the extension's public API is exposed to users who hold it.
+- **Background workers:** When background workers are used, they execute as the user who defined them, or as a role specified by the user, provided that user has access to that role.
+
+To let a user use AIDB functions, grant them the `aidb_users` role:
 
 ```sql
-CREATE EXTENSION vectorchord;
+GRANT aidb_users TO your_user;
 ```
 
-To also enable hybrid search (BM25 + vector):
+For example, create a role named `alice` with no privileges or role membership to start with:
 
 ```sql
-CREATE EXTENSION vectorchord_bm25;
+CREATE ROLE alice
+  LOGIN
+  PASSWORD 'change_me';   -- replace with a real password
 ```
 
-VectorChord knowledge bases can then be configured at the knowledge base level — see [Knowledge bases](/aidb/latest/knowledge-bases/).
+Then add `alice` to the `aidb_users` role:
+
+```sql
+GRANT aidb_users TO alice;
+```
+
+`alice` now inherits whatever privileges `aidb_users` has, for example `EXECUTE` on routines in the `aidb` schema.
+
+Membership in `aidb_users` doesn't grant access to your own data. Give `alice` (not `aidb_users`) the privileges it needs on the tables AIDB will read or write. This example grants access to three arbitrary tables that would ordinarily be source tables used in a pipeline:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON public.documents,
+     public.email_text,
+     public.chats
+  TO alice;
+```
+
+If `alice` also needs to create objects in the `public` schema:
+
+```sql
+GRANT CREATE ON SCHEMA public TO alice;
+```
+
+!!!Note Using AIDB through Pipeline Designer
+If you access AIDB through Hybrid Manager's Pipeline Designer, pipeline operations run under a separate role, `visual_pipeline_user`, which must also be granted membership in `aidb_users`. See [VPU and permissions](/edb-postgres-ai/latest/hybrid-manager/ai-factory/pipeline-designer/vpu-and-permissions#configuring-vpu-permissions) for that setup.
+!!!
 
 ## Proxy settings
 
@@ -79,12 +115,96 @@ sudo systemctl restart postgresql@16-main
 Replace `<your-proxy-settings>` with your proxy address, and `16` with your Postgres version. Consult the documentation for your Postgres distribution for the exact location of the environment file.
 
 !!!Note
-Air-gapped environments are not currently supported.
+Air-gapped environments aren't currently supported.
+!!!
+
+## Configuration parameters
+
+AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. All parameters below are `USERSET` — any role can change them for its own session.
+
+### Model download
+
+The following parameters control how AIDB downloads local model files from HuggingFace (see [Local models](../integrating-models/integrated-models) for applicable providers).
+
+| Parameter                    | Type    | Default  | Range | Description                                                                                                                                                                                                    |
+|------------------------------|---------|----------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.download_log_level`    | string  | `notice` | —     | Controls the output channel for routine download progress messages (download start/complete, byte-progress heartbeats, adapter load lines). Valid values: `notice`, `log`, `off`. See below.                   |
+| `aidb.download_max_attempts` | integer | `30`     | 1–500 | Maximum total download attempts per file (initial request plus retries) before AIDB aborts. See [Local model downloads](../integrating-models/integrated-models#local-model-downloads) for the retry behavior. |
+
+#### `aidb.download_log_level`
+
+Controls where routine download-progress messages are sent. Warnings and errors are unaffected.
+
+| Value    | Behavior                                                                                                                                                                        |
+|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `notice` | Send messages to the client at `NOTICE` level. Useful for interactive sessions in `psql`.                                                                                       |
+| `log`    | Send messages to the server log only (subject to `log_min_messages`). Use this for batch jobs and tests where the client output needs to be stable across cold and warm caches. |
+| `off`    | Suppress routine progress messages entirely.                                                                                                                                    |
+
+Example:
+
+```sql
+SET aidb.download_log_level = 'log';
+```
+
+#### `aidb.download_max_attempts`
+
+Caps the total number of download attempts per file. The downloader aborts early when consecutive attempts make zero progress, so this parameter is primarily a safety ceiling against excessive retry loops.
+
+Lower it (for example, to `3` or `5`) for fail-fast behavior in CI or scripted batch jobs. Raise it only for very large files on lossy links.
+
+Example:
+
+```sql
+SET aidb.download_max_attempts = 5;
+```
+
+### Network egress
+
+The following parameter restricts outbound HTTP traffic from AIDB — both calls to model provider APIs and model file downloads from HuggingFace. When unset, no restriction is applied and AIDB can reach any host.
+
+| Parameter              | Type   | Default | Description                                                                                                                                                                                          |
+|------------------------|--------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.egress_allowlist`| string | unset   | Comma-separated list of hosts and/or CIDR ranges that AIDB is allowed to reach. When set, any outbound request to a destination not on the list is rejected before the connection is made.            |
+| `edb.egress_allowlist` | string | unset   | Shared fallback allowlist used by all EDB extensions when the per-extension `aidb.egress_allowlist` is not set. Useful when AIDB and other EDB extensions (such as PGFS) share the same network policy. |
+
+#### Entry format
+
+Each comma-separated entry is one of:
+
+| Form                  | Matches                                                                                          |
+|-----------------------|--------------------------------------------------------------------------------------------------|
+| `host.example.com`    | Exact hostname match (case-insensitive).                                                         |
+| `.example.com`        | Any subdomain of `example.com` (does not match `example.com` itself).                            |
+| `203.0.113.10`        | Exact IPv4 or IPv6 literal in the destination URL.                                               |
+| `203.0.113.0/24`      | IPv4 CIDR range; matches IP literals in that range. Does not match hostnames.                    |
+| `2001:db8::/32`       | IPv6 CIDR range.                                                                                 |
+
+Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames are not resolved for matching.
+
+#### Resolution order
+
+For each outbound request, AIDB checks `aidb.egress_allowlist` first. If it isn't set, AIDB falls back to `edb.egress_allowlist`. If neither is set, no check is applied. Redirects (for example, HuggingFace redirecting to a CDN host) are re-checked against the same allowlist; a redirect to a host not on the list is rejected.
+
+#### Example
+
+Allow only direct calls to OpenAI and HuggingFace plus its CDN:
+
+```ini
+aidb.egress_allowlist = 'api.openai.com, huggingface.co, .huggingface.co, cdn-lfs.huggingface.co'
+```
+
+When a request is rejected, AIDB raises an error that names the active parameter so the operator can adjust the list.
+
+!!!Note
+PGFS implements the same allowlist mechanism under `pgfs.egress_allowlist`, applied to traffic from PGFS to cloud object-store endpoints (S3, Google Cloud Storage, Azure Blob). `edb.egress_allowlist` is the shared fallback for both extensions: set it to apply one list to AIDB and PGFS together, or use the per-extension parameters when each needs a different policy. See [PGFS — Network egress](/pg_extensions/pgfs/configuring#network-egress).
+
+If your AIDB pipelines read from external storage, both allowlists are relevant: AIDB's controls model-provider and HuggingFace traffic, and PGFS's controls the connection to your object store. See [External storage](../external-data-sources) for how AIDB and PGFS work together.
 !!!
 
 ## Validate the installation
 
-Confirm that the extensions are installed by running `\dx` in psql and looking for `aidb`, `vector`, `pgfs` (if installed), and `vectorchord` and `vectorchord_bm25` (if those extensions were installed) in the output:
+Confirm that the extensions are installed by running `\dx` in psql and looking for `aidb`, `vector`, `pgfs` (if installed), in the output:
 
 ```
 aidb=# \dx
@@ -92,9 +212,7 @@ __OUTPUT__
                                      List of installed extensions
        Name            | Version |   Schema   |                        Description
 -----------------------+---------+------------+------------------------------------------------------------
- aidb                  | 7.3.1   | aidb       | aidb: makes it easy to build AI applications with postgres
+ aidb                  | 7.4.0   | aidb       | aidb: makes it easy to build AI applications with postgres
  pgfs                  | 1.0.6   | pgfs       | pgfs: enables access to filesystem-like storage locations
  vector                | 0.8.0   | public     | vector data type and ivfflat and hnsw access methods
- vectorchord           | 0.3.0   | public     | vectorchord: fast vector search for postgres
- vectorchord_bm25      | 0.1.0   | public     | vectorchord_bm25: bm25 full-text search for postgres
 ```

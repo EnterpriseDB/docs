@@ -134,6 +134,44 @@ SELECT aidb.create_model(
 Local model files are downloaded from HuggingFace and cached on first use. The Postgres process must have network access and write access to the cache directory. For air-gapped environments, pre-download the model files and use `model_path` or `cache_dir` to point to the local copy.
 !!!
 
+## Local model downloads
+
+When a local model is used for the first time (or any time its cache is missing or corrupt), AIDB downloads the model files from HuggingFace into the configured `cache_dir`. The downloader emits progress messages and automatically retries transient network failures.
+
+### Progress messages
+
+For each file, AIDB emits a `downloading` line when the request starts and a `complete` line when it finishes. For multi-gigabyte files, a heartbeat line reports cumulative bytes and percent complete approximately every 30 seconds, so the session doesn't appear frozen during large downloads.
+
+```sql
+SELECT aidb.decode_text('t5', 'test');
+__OUTPUT__
+NOTICE:  [t5_local] loading t5-small (rev refs/pr/15) -> /var/.../snapshots/refs/pr/15
+NOTICE:  [hf] downloading https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/config.json (expected: 1.2 KB)
+NOTICE:  [hf] complete: https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/config.json (1.2 KB) in 0.9s
+NOTICE:  [hf] downloading https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/model.safetensors (size unknown)
+NOTICE:  [hf] downloading t5-small/model.safetensors: 115.4 MB / 230.8 MB (50.0%)
+NOTICE:  [hf] downloading t5-small/model.safetensors: 216.4 MB / 230.8 MB (93.7%)
+NOTICE:  [hf] complete: https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/model.safetensors (230.8 MB) in 83.5s
+```
+
+By default, these lines are sent to the client at `NOTICE` level. Use the [`aidb.download_log_level`](../install/configure#aidbdownload_log_level) parameter to route them to the server log instead, or to suppress them entirely.
+
+### Retries and resume
+
+A CDN that drops the connection partway through a multi-gigabyte download will not fail the request outright:
+
+- Each retry sends a `Range` header from wherever the previous attempt stopped, so progress accumulates across attempts instead of restarting from zero.
+- AIDB distinguishes "still receiving new bytes" from "zero progress" and only counts stalled attempts against [`aidb.download_max_attempts`](../install/configure#aidbdownload_max_attempts), with exponential backoff between attempts.
+- A `Ctrl-C` from `psql` lands between retries instead of waiting for the current request to time out.
+
+The total number of attempts per file is capped by [`aidb.download_max_attempts`](../install/configure#aidbdownload_max_attempts) (default `30`).
+
+### Verification and self-heal
+
+AIDB verifies downloaded files using the size and (when available) the SHA-256 hash advertised by HuggingFace, and writes a small sidecar file next to each completed download recording those values. On every cache hit AIDB rechecks the file size against the sidecar, so a file truncated after the original download is caught before it's used.
+
+If a cached file is detected as corrupt at model-load time, AIDB purges the affected snapshot and re-downloads it once automatically.
+
 ## Using a registered model
 
 Once registered, a model is referenced by its name in any AIDB function. Custom and built-in models are interchangeable:
@@ -144,14 +182,15 @@ SELECT aidb.encode_text('my_bert', 'Hello world');
 
 -- Use a custom BERT model in a pipeline step
 SELECT aidb.create_pipeline(
-    'my_pipeline',
-    ...
-    step_1_operation => 'Embed',
-    step_1_options   => aidb.knowledge_base_config('my_bert', 'Text'),
-    ...
+    name => 'my_pipeline',
+    source => 'my_source_table',
+    source_key_column => 'id',
+    source_data_column => 'content',
+    step_1 => 'KnowledgeBase',
+    step_1_options => aidb.knowledge_base_config(model => 'my_bert', data_format => 'Text')
 );
 ```
 
-See the [Pipelines API reference](../data-pipelines/reference#model-config-helpers) for full parameter details on all config helper functions.
+See the [Models reference](../reference/models#model-config-helpers) for full parameter details on all model config helper functions.
 
 For a list of HuggingFace model variants that have been tested and verified to work with AIDB's local providers, see [Support matrix](support-matrix).

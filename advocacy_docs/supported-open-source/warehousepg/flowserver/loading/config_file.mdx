@@ -8,7 +8,7 @@ FlowServer requires a YAML-formatted configuration file to load data into Wareho
 
 It includes properties that identify the data source and format, and information about the WHPG connection and target table. You can also schedule the job to run for a specific duration of time and automatically stop and restart based on your defined intervals.
 
-The configuration file is composed of two main sections: source and target. Source defines the data origin, which points to Kafka or RabbitMQ. The target section defines settings about the WHPG target table and how the job runs.
+The configuration file has two main sections, source and target. Source defines the data origin, which points to Kafka or RabbitMQ. The target section defines settings about the WHPG target table and how the job runs.
 
 The column names defined under `<data_format>` in the source section must match the column names defined as `<source_column_name>` under `mapping` in the target section, which maps to columns on the target WHPG database defined by `<target_column_name>`.
 
@@ -23,10 +23,22 @@ source:
     brokers:
       - <kafka_broker_host:broker_port>
     topic: <kafka_topic>
+    partitions: <partition_spec>
+    read_workers: <num_workers>
+    read_buffer: <queue_depth>
+    key:
+      <data_format>:
+        <column_spec>
+        <other_props>
     value:
       <data_format>:
         <column_spec>
         <other_props>
+    metadata:
+      json:
+        column:
+          name: <column_name>
+          type: json
     control:
       consistency: at-most-once ｜ at-least-once ｜ exactly-once ｜ none
       fallback_offset: earliest ｜ latest
@@ -38,38 +50,56 @@ source:
       window_statement: <udf_or_sql_to_run>
       prepare_statement: <udf_or_sql_to_run>
       teardown_statement: <udf_or_sql_to_run>
+    tls:
+      ca_file: <ca_cert_path>
+      cert_file: <client_cert_path>
+      key_file: <client_key_path>
+      insecure_skip_verify: <boolean>
     properties:
       <source_property_name>: <source_property_value>
 ```
 
-Where:
+`version` sets the configuration format version (FlowServer uses `v1.0`). The `source.kafka` block accepts these parameters:
 
-- `version`: The version of the configuration format (FlowServer uses `v1.0`).
-- `source`: The source configuration for the job.
-  - `kafka`: Configuration for Kafka source.
-    - `brokers`: List of Kafka broker addresses.
-    - `topic`: The Kafka topic to consume messages from.
-    - `value`: Configuration for the value data format of the Kafka messages.
-      - `<data_format>`: The format of the data (`json`, `avro`, or `csv`). See below for the different format options.
-    - `control`: Control settings for the Kafka source.
-      - `consistency`: The consistency level for message processing. The valid values are `at-most-once`, `at-least-once`, `exactly-once`, and `none`. The default is `exactly-once`.
-        - `exactly-once`: the job will store the offsets in the database and won't reprocess messages that have already been processed. 
-        - `at-most-once`: the job won't store the offsets in the database and commit the offset to Kafka before committing the data loading transaction in database. 
-        - `at-least-once`: the job won't store the offsets in the database and commit the offset to Kafka after committing the data loading transaction in database. 
-        - `none`: the job won't store the offsets in the database and will auto-ack the offset.
-      - `fallback_offset`: The offset to use if there is offset gap between the record in history store and Kafka watermark. The valid values are `earliest` and `latest`. If a value isn't specified, an error will be raised if there is offset gap.
-    - `task`: Task management settings.
-      - `batch_size`: Controls the batch size for processing messages.
-        - `interval_ms`: The time interval to wait for new messages before committing loading transactions. The default is 1000 milliseconds.
-        - `max_count`: The maximum number of rows to process in a batch. The default is 0, which means FlowServer ignores this setting. If both `interval_ms` and `max_count` are set, the job will wait for the specified time interval or until the maximum number of rows is reached, whichever comes first.
-      - `window_size`: The number of batches to process before running `window_statement`.
-      - `window_statement`: SQL or UDF to run for each `window_size` of batch data.
-      - `prepare_statement`: SQL or UDF to run before starting the job.
-      - `teardown_statement`: SQL or UDF to run after the job stops.
-    - `properties`: Additional properties for the source.
-      - `<source_property_name>`: The name of the property.
-      - `<source_property_value>`: The value of the property.
+| Parameter | Description |
+| --- | --- |
+| `brokers` | List of Kafka broker addresses. |
+| `topic` | The Kafka topic to consume messages from. |
+| `partitions` | (Optional) A comma-separated list of partition numbers and/or inclusive ranges in `M...N` syntax that restricts the job to a subset of the topic's partitions, for example `2, 5...7, 13`. Surrounding parentheses are optional. If you don't specify a value, the job consumes all partitions of the topic. Use this setting to split a high-volume topic across multiple concurrent jobs, each owning a disjoint set of partitions. |
+| `read_workers` | (Optional) The number of parallel worker goroutines that format fetched Kafka records. Each partition's records are always formatted by a single worker per poll. The default is `0`, which uses one worker per available CPU core. Set to `1` to format records on a single thread instead of in parallel. |
+| `read_buffer` | (Optional) The depth of the internal queue that lets the reader buffer formatted packets ahead of the batch being committed. The default is `0`, which resolves to `2 × read_workers`. |
+| `key.<data_format>` | (Optional) The format of the key data (`json`, `avro`, or `csv`). See [Kafka value formats](#kafka-value-formats) below. |
+| `value.<data_format>` | The format of the value data (`json`, `avro`, or `csv`). See [Kafka value formats](#kafka-value-formats) below. If you configure both `key` and `value`, neither can use the `csv` format. |
+| `metadata.json.column.name` | (Optional) Name of the column that projects Kafka record metadata (topic, partition, offset, and timestamp) into the target table as a single JSON column. Only supported when `key` and `value` use the JSON or Avro format. |
+| `metadata.json.column.type` | Type of the metadata column. The value must be `json` or `jsonb`. |
+| `control.consistency` | The consistency level for message processing. The default is `exactly-once`. See [Values for the Kafka consistency field](#values-for-the-kafka-consistency-field) below. |
+| `control.fallback_offset` | The offset to use if there's an offset gap between the record in the history store and the Kafka watermark. Valid values are `earliest` and `latest`. If you don't specify a value, FlowServer raises an error when there's an offset gap. |
+| `task.batch_size.interval_ms` | The time interval to wait for new messages before committing loading transactions. The default is 1000 milliseconds. |
+| `task.batch_size.max_count` | The maximum number of rows to process in a batch. The default is `0`, which means FlowServer ignores this setting. If you set both `interval_ms` and `max_count`, the job waits for the specified time interval or until it reaches the maximum number of rows, whichever comes first. |
+| `task.window_size` | The number of batches to process before running `window_statement`. |
+| `task.window_statement` | SQL or UDF to run for each `window_size` of batch data. |
+| `task.prepare_statement` | SQL or UDF to run before starting the job. |
+| `task.teardown_statement` | SQL or UDF to run after the job stops. |
+| `tls.ca_file` | (Optional) Path to a CA certificate, or bundle, used to verify the broker certificate. If you don't specify a value, FlowServer uses the host's system trust store. |
+| `tls.cert_file` | (Optional) Path to the client certificate presented to the broker for mutual TLS (mTLS). Set `cert_file` and `key_file` together. |
+| `tls.key_file` | (Optional) Path to the private key matching `cert_file`. Set `cert_file` and `key_file` together. |
+| `tls.insecure_skip_verify` | (Optional) When `true`, skips broker certificate verification. The default is `false`. Use this setting for development and testing only, never against production brokers. |
+| `properties.<name>` | Additional source properties, including standard Kafka consumer properties such as `group.id` (overrides the consumer group name, which otherwise defaults to the job name) and fetch-tuning properties like `fetch.max.bytes`, `max.partition.fetch.bytes`, `fetch.min.bytes`, and `fetch.max.wait.ms`. |
 
+Omit the `tls` block entirely to connect without TLS.
+
+### Values for the Kafka consistency field
+
+The `consistency` field accepts these values:
+
+| Value | Behavior |
+| --- | --- |
+| `exactly-once` (default) | The job stores offsets in the database and doesn't reprocess messages it already processed. |
+| `at-most-once` | The job doesn't store offsets in the database, and commits the offset to Kafka before committing the data loading transaction. |
+| `at-least-once` | The job doesn't store offsets in the database, and commits the offset to Kafka after committing the data loading transaction. |
+| `none` | The job doesn't store offsets in the database and auto-acknowledges the offset. This value falls back to `at-least-once` behavior. |
+
+### Kafka value formats
 
 The different options for each `<data_format>` mode are as follows:
 
@@ -81,11 +111,10 @@ The different options for each `<data_format>` mode are as follows:
         type: json | jsonb
     ```
 
-Where:
-
-- `column`: Configuration for the external table for the Kafka message.
-    - `name`: Name of the column of the external table for the Kafka message.
-    - `type`: Type of the column of the external table for the Kafka message. Valid values are `json`, and `jsonb`.
+    | Parameter | Description |
+    | --- | --- |
+    | `column.name` | Name of the column of the external table for the Kafka message. |
+    | `column.type` | Type of the column of the external table for the Kafka message. Valid values are `json` and `jsonb`. |
 
 - Avro format: 
 
@@ -95,17 +124,20 @@ Where:
         name: <column_name>
         type: json
         schema_registry: <schema_registry_url> | schema_file: <schema_file_path>
+        confluent_wire_format: <boolean>
+        bytes_to_base64: <boolean>
     ```
 
-Where:
+    | Parameter | Description |
+    | --- | --- |
+    | `column.name` | Name of the column of the external table for the Kafka message. |
+    | `column.type` | Type of the column of the external table for the Kafka message. The value must be `json`. |
+    | `column.schema_registry` | If the Avro schema of the JSON data you want to load is registered in the Confluent Schema Registry, identify the host name and port number of each Confluent Schema Registry server in your Kafka cluster. |
+    | `column.schema_file` | If you aren't using a schema registered in the Confluent Schema Registry, specify the local path to a text-based Avro schema file. |
+    | `column.confluent_wire_format` | (Optional) Set to `true` if the producers write raw Avro binary data prefixed with the 5-byte Confluent wire format header (a magic byte followed by a 4-byte schema ID), and you're using `schema_file` rather than `schema_registry`. The default is `false`. Only relevant when you use `schema_file`. |
+    | `column.bytes_to_base64` | (Optional) Set to `true` to encode Avro `bytes` and `fixed` fields as base64 strings rather than the default ISO-8859-1 JSON encoding. Use this setting when those fields contain binary data, such as nested Avro messages, that must survive the round trip into the JSON column. Decode the resulting values in a column mapping with PostgreSQL's `decode(value, 'base64')`, which returns `bytea`. The default is `false`. |
 
-- `column`: Configuration for the external table for the Kafka message.
-    - `name`: Name of the column of the external table for the Kafka message.
-    - `type`: Type of the column of the external table for the Kafka message. The value must be `json`.
-    - `schema_registry`: If the Avro schema of the JSON data you want to load is registered in the Confluent Schema Registry, you must identify the host name and port number of each Confluent Schema Registry server in your Kafka cluster.
-    - `schema_file`: If you aren't using a schema registered in the Confluent Schema Registry, specify the local path to a text-based Avro schema file.
-
-When you specify the Avro data format, you must define only a single `json` type column.
+    When you specify the Avro data format, define only a single `json` type column. Either `schema_registry` or `schema_file` is required.
 
 - CSV format: 
 
@@ -125,21 +157,20 @@ When you specify the Avro data format, you must define only a single `json` type
       fill_missing_fields: <boolean>
     ```
 
-Where:
+    | Parameter | Description |
+    | --- | --- |
+    | `columns[].name` | Name of the column of the external table for the Kafka message. |
+    | `columns[].type` | Type of the column of the external table for the Kafka message. |
+    | `delimiter` | A single ASCII character that separates columns within each message or row of data. The default delimiter is a comma (`,`). |
+    | `quote` | The quotation character. |
+    | `null_string` | The string that represents the null value. |
+    | `escape` | The single character used for escaping data characters in the content that might otherwise be interpreted as row or column delimiters. Make sure your escape character isn't used anywhere in your actual column data. |
+    | `newline` | The new line character(s) that end each record. |
+    | `force_not_null` | A comma-separated list of column names to process as though each column were quoted, and hence not a `NULL` value. |
+    | `force_quote` | A list of columns that must always be wrapped in quotation marks, even if the data inside doesn't technically require them. Use this setting to ensure the database treats those specific fields as literal strings. |
+    | `fill_missing_fields` | The action FlowServer takes when it reads a row of data with missing trailing field values (the row is missing data fields at the end of a line or row). The default is `false`, so FlowServer returns an error. If `true`, FlowServer sets missing trailing field values to `NULL`. Blank rows, fields with a `NOT NULL` constraint, and trailing delimiters on a line still generate an error. |
 
-- `columns`: Configuration for the external table for the Kafka message.
-    - `name`: Name of the column of the external table for the Kafka message.
-    - `type`: Type of the column of the external table for the Kafka message.
-- `delimiter`: Specifies a single ASCII character that separates columns within each message or row of data. The default delimiter is a comma (,).
-- `quote`: Specifies the quotation character.
-- `null_string`: Specifies the string that represents the null value.
-- `escape`: Specifies the single character that is used for escaping data characters in the content that might otherwise be interpreted as row or column delimiters. Ensure that your escape character is not used anywhere in your actual column data.
-- `newline`: Specifies the new line character(s) that end each record.
-- `force_not_null`: Specifies a comma-separated list of column names to process as though each column were quoted and hence not a `NULL` value. 
-- `force_quote`: Specifies a list of columns that must always be wrapped in quotation marks, even if the data inside doesn't technically require them. This is used to ensure the database treats those specific fields as literal strings.
-- `fill_missing_fields`: Specifies the action of FlowServer when it reads a row of data that has missing trailing field values (the row has missing data fields at the end of a line or row). The default value is `false`, FlowServer returns an error. If set to `true`, `FlowServer` sets missing trailing field values to `NULL`. Blank rows, fields with a `NOT NULL` constraint, and trailing delimiters on a line will still generate an error.
-
-When you specify the CSV data format, the message content cannot contain line ending characters (CR and LF).
+    When you specify the CSV data format, the message content can't contain line ending characters (CR and LF).
 
 ## Construct the source section for a RabbitMQ source
 
@@ -170,32 +201,34 @@ source:
       <source_property_name>: <source_property_value>
 ```
 
-Where:
+`version` sets the configuration format version (FlowServer uses `v1.0`). The `source.rabbitmq` block accepts these parameters:
 
-- `version`: The version of the configuration format (FlowServer uses `v1.0`).
-- `source`: The source configuration for the job.
-  - `rabbitmq`: Configuration for RabbitMQ source.
-    - `server`: The RabbitMQ server connection string.
-    - `vhost`: The RabbitMQ virtual host to use.
-    - `queue`: The RabbitMQ queue to consume messages from.
-    - `format`: Configuration for the data format of the RabbitMQ messages.
-      - `<data_format>`: The format of the data (`json` or `csv`). See below for specific format sub-options.
-    - `control`: Control settings for the RabbitMQ source.
-      - `consistency`: The consistency level for message processing. The valid values are `at-most-once`, and `at-least-once`. The default is `at-least-once`.
-        - `at-least-once`: the job will store the offsets in the database and won't reprocess messages that have already been processed. 
-        - `at-most-once`: the job won't store the offsets in the database and commit the offset to RabbitMQ before committing the data loading transaction in database. 
-    - `task`: Task management settings.
-      - `batch_size`: Controls the batch size for processing messages.
-        - `interval_ms`: The time interval to wait for new messages before committing loading transactions. The default is 1000 milliseconds.
-        - `max_count`: The maximum number of rows to process in a batch. The default is 0, which means FlowServer ignores this setting. If both `interval_ms` and `max_count` are set, the job will wait for the specified time interval or until the maximum number of rows is reached, whichever comes first.
-      - `window_size`: The number of batches to process before running `window_statement`.
-      - `window_statement`: SQL or UDF to run for each `window_size` of batch data.
-      - `prepare_statement`: SQL or UDF to run before starting the job.
-      - `teardown_statement`: SQL or UDF to run after the job stops.
-    - `properties`: Additional properties for the RabbitMQ source.
-      - `eof.after.idle`: Time in milliseconds after which FlowServer treats the queue as having reached end-of-file when no new messages arrive.
-      - `consumer.name`: The RabbitMQ consumer tag.
+| Parameter | Description |
+| --- | --- |
+| `server` | The RabbitMQ server connection string. |
+| `vhost` | The RabbitMQ virtual host to use. |
+| `queue` | The RabbitMQ queue to consume messages from. |
+| `format.<data_format>` | The format of the data (`json` or `csv`). See [RabbitMQ value formats](#rabbitmq-value-formats) below. |
+| `control.consistency` | The consistency level for message processing. The default is `at-least-once`. See [Values for the RabbitMQ consistency field](#values-for-the-rabbitmq-consistency-field) below. |
+| `task.batch_size.interval_ms` | The time interval to wait for new messages before committing loading transactions. The default is 1000 milliseconds. |
+| `task.batch_size.max_count` | The maximum number of rows to process in a batch. The default is `0`, which means FlowServer ignores this setting. If you set both `interval_ms` and `max_count`, the job waits for the specified time interval or until it reaches the maximum number of rows, whichever comes first. |
+| `task.window_size` | The number of batches to process before running `window_statement`. |
+| `task.window_statement` | SQL or UDF to run for each `window_size` of batch data. |
+| `task.prepare_statement` | SQL or UDF to run before starting the job. |
+| `task.teardown_statement` | SQL or UDF to run after the job stops. |
+| `properties.eof.after.idle` | Time in milliseconds after which FlowServer treats the queue as having reached end-of-file when no new messages arrive. |
+| `properties.consumer.name` | The RabbitMQ consumer tag. |
 
+### Values for the RabbitMQ consistency field
+
+The `consistency` field accepts these values:
+
+| Value | Behavior |
+| --- | --- |
+| `at-least-once` (default) | The job doesn't store offsets in the database, and commits the offset to RabbitMQ after committing the data loading transaction. |
+| `at-most-once` | The job doesn't store offsets in the database, and commits the offset to RabbitMQ before committing the data loading transaction. |
+
+### RabbitMQ value formats
 
 The different options for each `<data_format>` mode are as follows:
 
@@ -207,11 +240,10 @@ The different options for each `<data_format>` mode are as follows:
         type: json | jsonb
     ```
 
-Where:
-
-- `column`: Configuration for the external table for the RabbitMQ message.
-    - `name`: Name of the column of the external table for the RabbitMQ message.
-    - `type`: Type of the column of the external table for the RabbitMQ message. Valid values are `json`, and `jsonb`.
+    | Parameter | Description |
+    | --- | --- |
+    | `column.name` | Name of the column of the external table for the RabbitMQ message. |
+    | `column.type` | Type of the column of the external table for the RabbitMQ message. Valid values are `json` and `jsonb`. |
 
 - CSV format: 
 
@@ -231,24 +263,24 @@ Where:
       fill_missing_fields: <boolean>
     ```
 
-Where:
+    | Parameter | Description |
+    | --- | --- |
+    | `columns[].name` | Name of the column of the external table for the RabbitMQ message. |
+    | `columns[].type` | Type of the column of the external table for the RabbitMQ message. |
+    | `delimiter` | A single ASCII character that separates columns within each message or row of data. The default delimiter is a comma (`,`). |
+    | `quote` | The quotation character. |
+    | `null_string` | The string that represents the null value. |
+    | `escape` | The single character used for escaping data characters in the content that might otherwise be interpreted as row or column delimiters. Make sure your escape character isn't used anywhere in your actual column data. |
+    | `newline` | The new line character(s) that end each record. |
+    | `force_not_null` | A comma-separated list of column names to process as though each column were quoted, and hence not a `NULL` value. |
+    | `force_quote` | A list of columns that must always be wrapped in quotation marks, even if the data inside doesn't technically require them. Use this setting to ensure the database treats those specific fields as literal strings. |
+    | `fill_missing_fields` | The action FlowServer takes when it reads a row of data with missing trailing field values (the row is missing data fields at the end of a line or row). The default is `false`, so FlowServer returns an error. If `true`, FlowServer sets missing trailing field values to `NULL`. Blank rows, fields with a `NOT NULL` constraint, and trailing delimiters on a line still generate an error. |
 
-- `columns`: Configuration for the external table for the RabbitMQ message.
-    - `name`: Name of the column of the external table for the RabbitMQ message.
-    - `type`: Type of the column of the external table for the RabbitMQ message.
-- `delimiter`: Specifies a single ASCII character that separates columns within each message or row of data. The default delimiter is a comma (,).
-- `quote`: Specifies the quotation character.
-- `null_string`: Specifies the string that represents the null value.
-- `escape`: Specifies the single character that is used for escaping data characters in the content that might otherwise be interpreted as row or column delimiters. Ensure that your escape character is not used anywhere in your actual column data.
-- `newline`: Specifies the new line character(s) that end each record.
-- `force_not_null`: Specifies a comma-separated list of column names to process as though each column were quoted and hence not a `NULL` value. 
-- `force_quote`: Specifies a list of columns that must always be wrapped in quotation marks, even if the data inside doesn't technically require them. This is used to ensure the database treats those specific fields as literal strings.
-- `fill_missing_fields`: Specifies the action of FlowServer when it reads a row of data that has missing trailing field values (the row has missing data fields at the end of a line or row). The default value is `false`, FlowServer returns an error. If set to `true`, `FlowServer` sets missing trailing field values to `NULL`. Blank rows, fields with a `NOT NULL` constraint, and trailing delimiters on a line will still generate an error.
-
-When you specify the CSV data format, the message content cannot contain line ending characters (CR and LF).
+    When you specify the CSV data format, the message content can't contain line ending characters (CR and LF).
 
 ## Construct the target section
 
+A job can write to a single target table or to multiple target tables by listing more than one entry under `tables`. When you configure more than one entry, FlowServer loads each batch from the source into a staging table once, and each target table then applies its own write mode against that staging table independently. Each target table has its own `mapping` and `filter`.
 
 ```yaml
 target:
@@ -283,32 +315,28 @@ option:
     max_restart_times: <num_restarts>
 ```
 
-Where:
+The `target.database` block, plus the optional `option.schedule` block for job scheduling, accepts these parameters:
 
-- `target`: The target database configuration for the job.
-  - `database`: Configuration for the target database.
-    - `host`: The hostname or IP address of the WarehousePG coordinator.
-    - `port`: The port number of the WarehousePG cluster.
-    - `user`: The username to connect to the WarehousePG cluster.
-    - `password`: The password for the user.
-    - `dbname`: The name of the database to connect to.
-    - `staging_schema`: The schema to use for creating internal tables. The default is `public.`
-    - `error_limit`: The limit for errors before stopping the job. It can be a number or a percentage.
-    - `filter_expression`: The filter to apply to the input data before loading data into the target tables. A valid filter expression is a SQL `WHERE` clause without the `WHERE` keyword.
-    - `tables`: List of tables to write data to.
-      - `table`: The name of the target table.
-      - `schema`: The schema of the target table.
-      - `mode`: The mode for writing data to the table. Valid values are `insert`, `update`, or `merge`. Default is `insert`. See below for specific mode sub-options.
-      - `mapping`: Column mapping between source and target.
-        - `<target_column_name>`: The name of the target column.
-          - `<source_column_name>`: The name of the source column or an expression to compute the value.
-      - `filter`: A filter expression to apply to the target table. A valid filter expression is a SQL `WHERE` clause without the `WHERE` keyword, and may it reference one or more `<source_column_name>`s.
-- `option`: Additional options for the job.
-  - `schedule`: Scheduling options for the job.
-    - `running_duration`: The duration the job should run for.
-    - `auto_stop_restart_interval`: The amount of time after which FlowServer restarts a job that it stopped due to reaching `running_duration`.
-    - `max_restart_times`: The maximum number of times the job can be automatically restarted.
+| Parameter | Description |
+| --- | --- |
+| `database.host` | The hostname or IP address of the WarehousePG coordinator. |
+| `database.port` | The port number of the WarehousePG cluster. |
+| `database.user` | The username to connect to the WarehousePG cluster. |
+| `database.password` | The password for the user. |
+| `database.dbname` | The name of the database to connect to. |
+| `database.staging_schema` | The schema to use for creating internal tables, including the staging table FlowServer creates when a job writes to more than one target table. The default is the schema of the first table listed under `tables`. |
+| `database.error_limit` | The limit for errors before stopping the job. A number or a percentage. |
+| `database.filter_expression` | The filter to apply to the input data before loading data into the target tables. A valid filter expression is a SQL `WHERE` clause without the `WHERE` keyword. |
+| `database.tables[].table` | The name of the target table. You can list more than one entry under `tables` to write to multiple target tables in a single job. |
+| `database.tables[].schema` | The schema of the target table. |
+| `database.tables[].mode` | The mode for writing data to the table. Valid values are `insert`, `update`, or `merge`. The default is `insert`. See [Writing modes](#writing-modes) below. |
+| `database.tables[].mapping.<target_column_name>` | The source column name or expression that computes the value for `<target_column_name>`. |
+| `database.tables[].filter` | A filter expression to apply to the target table. A valid filter expression is a SQL `WHERE` clause without the `WHERE` keyword, and can reference one or more source column names. |
+| `option.schedule.running_duration` | The duration the job runs for. |
+| `option.schedule.auto_stop_restart_interval` | The amount of time after which FlowServer restarts a job that it stopped due to reaching `running_duration`. |
+| `option.schedule.max_restart_times` | The maximum number of times the job can restart automatically. |
 
+### Writing modes
 
 The different options for each writing mode are as follows:
 
@@ -324,12 +352,12 @@ The different options for each writing mode are as follows:
       update_condition: <update_condition>
     ```
 
-  Where:
-
-  - `match_columns`: Columns in the target table used to identify matching rows.
-  - `order_columns`: Columns used for deduplication within a batch. When a batch contains multiple records with the same `match_columns` values, FlowServer uses a window function to partition records by `match_columns` and order them by `order_columns`, retaining only the top-ranked record per group. Without `order_columns`, the record selected from a duplicate group is arbitrary. Include a timestamp or sequence column in `order_columns` whenever your source stream might contain multiple updates for the same key within a single batch.
-  - `update_columns`: Target table columns to update when the match criteria are met.
-  - `update_condition`: An optional SQL expression (a `WHERE` clause without the `WHERE` keyword) that filters which rows are updated.
+    | Parameter | Description |
+    | --- | --- |
+    | `match_columns` | Columns in the target table used to identify matching rows. |
+    | `order_columns` | Columns used for deduplication within a batch. When a batch contains multiple records with the same `match_columns` values, FlowServer uses a window function to partition records by `match_columns` and order them by `order_columns`, retaining only the top-ranked record per group. Without `order_columns`, the record selected from a duplicate group is arbitrary. Include a timestamp or sequence column in `order_columns` whenever your source stream might contain multiple updates for the same key within a single batch. |
+    | `update_columns` | Target table columns to update when the match criteria are met. |
+    | `update_condition` | An optional SQL expression (a `WHERE` clause without the `WHERE` keyword) that filters which rows are updated. |
 
 - Merge mode has two different behaviors:
     - Inserts new rows and updates existing rows when columns are listed in `update_columns`, the `match_columns` target table column values are equal to the input data, and an optional `update_condition` is specified and met.
@@ -344,12 +372,12 @@ The different options for each writing mode are as follows:
       delete_condition: <delete_condition>
     ```
 
-  Where:
+    | Parameter | Description |
+    | --- | --- |
+    | `match_columns` | Columns in the target table used to identify matching rows. |
+    | `update_columns` | Target table columns to update when the match criteria are met. |
+    | `order_columns` | Columns used for deduplication within a batch. When a batch contains multiple records with the same `match_columns` values, FlowServer uses a window function to partition records by `match_columns` and order them by `order_columns`, retaining only the top-ranked record per group. Without `order_columns`, the record selected from a duplicate group is arbitrary. Include a timestamp or sequence column in `order_columns` whenever your source stream might contain multiple updates for the same key within a single batch. |
+    | `update_condition` | An optional SQL expression (a `WHERE` clause without the `WHERE` keyword) that filters which rows are inserted or updated. |
+    | `delete_condition` | An optional SQL expression (a `WHERE` clause without the `WHERE` keyword) that filters which rows are deleted. |
 
-  - `match_columns`: Columns in the target table used to identify matching rows.
-  - `update_columns`: Target table columns to update when the match criteria are met.
-  - `order_columns`: Columns used for deduplication within a batch. When a batch contains multiple records with the same `match_columns` values, FlowServer uses a window function to partition records by `match_columns` and order them by `order_columns`, retaining only the top-ranked record per group. Without `order_columns`, the record selected from a duplicate group is arbitrary. Include a timestamp or sequence column in `order_columns` whenever your source stream might contain multiple updates for the same key within a single batch.
-  - `update_condition`: An optional SQL expression (a `WHERE` clause without the `WHERE` keyword) that filters which rows are inserted or updated.
-  - `delete_condition`: An optional SQL expression (a `WHERE` clause without the `WHERE` keyword) that filters which rows are deleted.
-
-  FlowServer processes each batch by first updating existing rows, then inserting new rows, and finally deleting rows. When both `update_condition` and `delete_condition` are configured, a row satisfying both conditions is updated first and then deleted.
+    FlowServer processes each batch by first updating existing rows, then inserting new rows, and finally deleting rows. When both `update_condition` and `delete_condition` are configured, a row satisfying both conditions is updated first and then deleted.

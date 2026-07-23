@@ -1,20 +1,20 @@
 ---
 title: Troubleshooting
-navTitle: Troubleshooting the agent
-description: Learn how to troubleshoot the agent when setting up monitoring with Hybrid Manager.
+navTitle: Troubleshooting the EDB Postgres AI Agent
+description: Learn how to troubleshoot the EDB Postgres AI Agent when setting up monitoring with Hybrid Manager.
 ---
 
-If you're having issues configuring the agent or are getting errors when trying to run it, you can troubleshoot. Test the agent’s functionalities in an isolated way to narrow down the source of the issue. 
+If you're having issues configuring the EDB Postgres AI Agent or are getting errors when trying to run it, you can troubleshoot. Test each EDB Postgres AI Agent feature in isolation to narrow down the source of the issue. 
 
-## Testing connectivity from the agent to Hybrid Manager
+## Testing connectivity from the EDB Postgres AI Agent to Hybrid Manager
 
-To ensure there's a connection between the agent and Hybrid Manager (HM), run the agent:
+To ensure there's a connection between the EDB Postgres AI Agent and Hybrid Manager (HM), run the EDB Postgres AI Agent:
 
 ```
 beacon-agent --config
 ```
 
-See [Agent CLI](/tools/agent/agent_ref) for other agent modes and options.
+See [EDB Postgres AI Agent CLI](/tools/agent/agent_ref) for other EDB Postgres AI Agent modes and options.
 
 If the output displays no errors, your connection to HM is working properly. The issue might have to do with the connection to your databases. 
 
@@ -24,8 +24,33 @@ If the output displays errors, your connection to HM isn't working properly. Che
 
 `"fail fetching server version: pq: SSL is not enabled on the server"`
 
-If the database you are connecting to has SSL disabled, you must explicitly instruct the Agent to use an unencrypted connection. To do this, append the setting `?sslmode=disable` to the DSN used in the [Agent's configuration](../mon_with_agent/configure_agent), for example: 
+If the database you are connecting to has SSL disabled, you must explicitly instruct the EDB Postgres AI Agent to use an unencrypted connection. To do this, append the setting `?sslmode=disable` to the DSN used in the [EDB Postgres AI Agent's configuration](../mon_with_agent/configure_agent), for example: 
 
 ```shell
 export DSN="postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
 ```
+
+## Schema change events not appearing in Hybrid Manager
+
+If schema change events or other EDB Postgres AI Agent telemetry aren't appearing in the HM console, the activity service (`accm-server`) may be degraded or unavailable.
+
+To check the `accm-server` pod status, run:
+```shell
+kubectl get pods -A | grep accm
+upm-beaco-ff-base               accm-server-8c5cc7676-f2zv2                                      2/2     Running     0            8h
+```
+
+**Symptoms:**
+
+- Schema changes aren't reflected in the HM console despite the EDB Postgres AI Agent running normally.
+- Other event-driven features (such as new query detection) also aren't updating.
+- The EDB Postgres AI Agent logs show errors similar to the following while sending events to the platform.
+```shell
+{"level":"warn","error":"rpc error: code = Unavailable desc = no healthy upstream","project_id":"prj_xxxx","cluster_id":"p-xxxxx","table":"edb_admin.public.test_18653","time":1781518934,"msg":"failed to emit schema change activity"}
+```
+
+**Resolution:**
+
+This is expected behavior when the activity service is down, it's not a defect in the EDB Postgres AI Agent or the monitored database. The EDB Postgres AI Agent continues to detect changes locally and queues events for delivery. Once the activity service recovers, queued events are delivered automatically and the HM console updates.
+
+If the issue persists, verify that the `accm-server` pod is running and healthy in your HM Kubernetes deployment.

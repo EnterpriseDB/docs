@@ -127,6 +127,32 @@ Create a dedicated OS user on your auxiliary machine to run `beacon-agent`. This
 sudo useradd <agent_os_user>
 ```
 
+## Preparing for extension migration (EDB Postgres AI agent)
+
+!!!tip
+Required for schema migration with the EDB Postgres AI agent when your source database has extensions installed.
+!!!
+
+As part of schema migration, the EDB Postgres AI agent automatically extracts all extensions installed on the source database and applies them to the destination before any other schema DDL runs. If any extension fails to install, the entire schema migration aborts.
+
+Before running schema migration, check which extensions are installed on the source and confirm they're available on the destination at the same version. If an extension isn't available at the matching version, schema migration fails. When migrating across different major Postgres versions, the extension versions available on the destination may not match those on the source, which can cause migration failures.
+
+!!!note
+On managed Postgres services (such as Amazon RDS or Aurora), extensions that require superuser to install fail silently at apply time. Review your source extensions for superuser requirements before migration.
+!!!
+
+```sql
+SELECT name, installed_version
+FROM pg_available_extensions
+WHERE installed_version IS NOT NULL;
+```
+
+Run the same query on the destination to compare versions.
+
+After migration completes, if your source uses foreign data wrapper (FDW) extensions, the agent installs the FDW extension itself but doesn't migrate FDW objects. Recreate foreign servers, user mappings, and foreign tables on the destination manually.
+
+For a full list of extension migration limitations, see [Extension migration limitations](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/limitations#extension-migration-limitations).
+
 ## Preparing for data migration (DMS agent)
 
 !!!tip
@@ -181,6 +207,24 @@ Where:
 - `<original_owner>` is the original owner of the tables.
 - `<replication_group>` is the shared role that owns the source tables for publication auto-creation.
 - `<table_name>` is the name of a table to migrate (case-sensitive).
+
+You must run `ALTER TABLE ... OWNER TO <replication_group>` for every table you plan to migrate, across all schemas. To transfer ownership of all tables in the database at once:
+
+```sql
+DO $$
+DECLARE
+  s text;
+  t text;
+BEGIN
+  FOR s, t IN
+    SELECT <schemaname>, <tablename> FROM pg_tables
+    WHERE <schemaname> NOT IN ('pg_catalog', 'information_schema')
+  LOOP
+    EXECUTE 'ALTER TABLE ' || quote_ident(s) || '.' || quote_ident(t) || ' OWNER TO <replication_group>';
+  END LOOP;
+END;
+$$;
+```
 
 ### Validating your configuration
 
