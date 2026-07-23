@@ -1,0 +1,161 @@
+---
+title: whpg-anonymizer 
+navTitle: whpg-anonymizer
+description: Learn how to implement dynamic data masking and anonymization in WarehousePG.
+displayBanner: ''
+redirects:
+  - ../edb_modules/whpg-anonymizer
+---
+
+The whpg-anonymizer extension provides powerful data masking and anonymization capabilities directly within the WarehousePG (WHPG) engine. It allows organizations to conceal sensitive Personally Identifiable Information (PII) to comply with privacy regulations such as GDPR, HIPAA, and CCPA.
+
+Data anonymization is the process of altering personal data so that individuals can no longer be identified, typically to protect user privacy. The extension supports two primary strategies for protecting data:
+
+-   **Irreversible anonymization:** Irreversibly altering data in the underlying tables.
+-   **Dynamic pseudonymization:** Real-time transformation of data based on the role of the user querying the database.
+
+## Downloading, installing, and loading the extension
+
+Refer to [Downloading and installing an extension](./#downloading-and-installing-an-extension) for installation and setup instructions.
+
+Once installed, you must load the whpg-anonymizer extension as a shared library before you can use it within your databases.
+
+1.  Load the extension as a shared library before you can use it within your databases. Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+2.  Use the output of the previous command to enable the new extension, along any other shared libraries, and restart WHPG:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, anon'
+    gpstop -ar
+    ```
+
+3.  Create the extension in your database and initialize it:
+
+    ```sql
+    CREATE EXTENSION anon;
+    SELECT anon.init();
+    ```
+
+## Performing dynamic masking and anonymization
+
+To implement data masking or anonymization in WarehousePG, follow these steps:
+
+1.  **Start the masking engine:** Dynamic masking isn't active by default to prevent performance overhead on administrative tasks. Explicitly enable the dynamic masking engine for the current session or database:
+
+    ```sql
+    SELECT anon.start_dynamic_masking();
+    ```
+
+2.  **Define the masking policies:** Use `SECURITY LABEL` statements to map specific columns to masking static values or functions.
+
+    -   **Static value masking:** This method replaces every row in a column with the exact same string.
+        ```SQL
+        SECURITY LABEL FOR anon ON COLUMN <table_name>.<column_name> 
+            IS 'MASKED WITH VALUE $$<replacement_text>$$';
+        ```
+    -   **Functional masking:** This method uses a mathematical function to transform the original data. It allows the masked data to maintain its original format, length, or uniqueness without revealing the actual identity.
+
+        ```SQL
+        SECURITY LABEL FOR anon ON COLUMN <table_name>.<column_name> 
+        IS 'MASKED WITH FUNCTION <function_name>(<column_name>)';
+        ```
+
+3.  **Assign subject roles:** Identify the database roles that must see masked data and label them as `MASKED`.
+
+    ```sql
+    SECURITY LABEL FOR anon ON ROLE <role_name> IS 'MASKED';
+    ```
+
+4.  **Remove or update policies:** If you need to change a rule or stop masking a specific column, use the `NULL` label or drop the rule.
+
+    ```sql
+    -- Remove a masking rule from a column
+    SECURITY LABEL FOR anon ON COLUMN <table_name>.<column_name> IS NULL;
+
+    -- Remove the masking requirement from a user
+    SECURITY LABEL FOR anon ON ROLE <role_name> IS NULL;
+    ```
+
+### Implementation example
+
+The following example demonstrates how to conceal employee phone numbers and names from a specific user.
+
+1.  Enable the dynamic masking engine:
+
+    ```sql
+    SELECT anon.start_dynamic_masking();
+    ```
+
+2.  Create a sample table and populate it with sensitive data:
+
+    ```sql
+    CREATE TABLE employees (
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+        phone TEXT,
+        salary NUMERIC
+    );
+
+    INSERT INTO employees (name, phone, salary) VALUES
+    ('Alice', '13812345678', 25000),
+    ('Bob', '13987654321', 18000);
+    ```
+
+3.  Apply a static string rule, which masks names with a static string:
+
+    ```sql
+    SECURITY LABEL FOR anon ON COLUMN employees.name 
+    IS 'MASKED WITH VALUE $$CONFIDENTIAL$$';
+    ```
+
+4.  Apply a functional masking rule, which masks phone numbers using a partial MD5 hash:
+
+    ```sql
+    SECURITY LABEL FOR anon ON COLUMN employees.phone 
+    IS 'MASKED WITH FUNCTION pg_catalog.substring(pg_catalog.md5(phone),0,12)';
+    ```
+
+5.  Assign the `MASKED` label to the `analyst` role:
+
+    ```sql
+    CREATE ROLE analyst LOGIN;
+    GRANT SELECT ON employees TO analyst;
+    SECURITY LABEL FOR anon ON ROLE analyst IS 'MASKED';
+    ```
+
+
+1.  When logged in as the `analyst`role, the PII is automatically concealed:
+
+    ```sql
+    SELECT * FROM employees;
+    id |     name     |    phone    | salary 
+    ----+--------------+-------------+--------
+    1 | CONFIDENTIAL | 4c0115d39dd |  25000
+    2 | CONFIDENTIAL | 16d4b6356cc |  18000
+    (2 rows)
+    ```
+
+## Limitations
+
+Because WarehousePG utilizes a Massively Parallel Processing (MPP) architecture, certain features of PostgreSQL `postgresql_anonymizer` are restricted.
+
+**Unsupported functions**
+
+The `anon.fake_*` family of functions, such as `anon.fake_first_name()`, is not supported in WarehousePG for dynamic masking.
+
+These functions rely on secondary table lookups to fetch pre-generated data. In an MPP environment, segment nodes can't perform secondary relation lookups during the execution of a primary query. Attempting to use them will result in a cross-slice execution error:
+
+```sql
+ERROR:  function cannot execute on a QE slice because it accesses relation <relation>
+```
+
+Standard masking functions that do not require external table lookups are fully supported. Examples include:
+
+-   `anon.random_zip()`
+-   `anon.random_date_between()`
+-   `anon.partial()`
+-   Standard Postgres hashing and string manipulation functions
