@@ -32,13 +32,7 @@ Viewer (browser)
 
 ## Airman MCP
 
-Airman MCP is the MCP server AI agents call to run Postgres operations. It enforces the access mode — rejecting disallowed statement types in restricted mode — and tags every connection by setting the Postgres `application_name` session variable:
-
-```
-SET application_name = 'airman:<purpose>/<session-short>';
-```
-
-Where `purpose` is a static label configured per instance through `AIRMAN_MCP_PURPOSE` (for example, `billing`, `support`, or `analytics`; defaults to `_` when unset), and `session-short` is the first eight hexadecimal characters of the MCP session token. The tag persists for every subsequent statement on that connection, so all queries in one agent interaction are grouped under a single session short. See [Configuring Airman MCP](./configuring_airman_mcp).
+Airman MCP is the MCP server AI agents call to run Postgres operations. It enforces the access mode — rejecting disallowed statement types in restricted mode — and tags every query by setting the Postgres `application_name` session variable to an `airman:<purpose>/<session-short>` identifier. The tag persists for the duration of the connection, grouping all queries in one agent interaction under a single session. See [Configuring Airman MCP](./configuring_airman_mcp).
 
 ## Postgres cluster
 
@@ -46,52 +40,12 @@ The Postgres cluster receives queries from Airman MCP and, with JSON logging ena
 
 ## Loki
 
-Loki ingests the Postgres JSON log lines, labels them by container and cluster, and makes them queryable via LogQL. EDB Agent Governance works with both the HM-managed Loki pipeline and standalone Loki instances.
+Loki ingests the Postgres JSON log lines, labels them by container and cluster, and makes them queryable via LogQL. EDB Agent Governance works with both the HM-managed Loki pipeline and standalone Loki instances. See [Connecting data sources](./connecting_data_sources).
 
 ## Viewer backend
 
-The viewer backend is a lightweight service that queries Loki via LogQL, parses the results into structured session and step data, caches session summaries for fast retrieval, and injects upstream credentials server-side so they never reach the browser. Both the sessions list and session detail views use LogQL queries of this shape, with the line filter scoped accordingly:
-
-```logql
-{container="postgres", cnp_cluster_id=~"<clusterId>.*"} |= "airman:"
-```
-
-For the sessions list, the backend reads its sync watermark, backfills uncached history, loads cached summaries, and appends a live query for the most recent day — sorting sessions by most recently seen. For session detail, it queries by session short.
-
-### Caching and sync
-
-The backend caches session summaries and keeps them current with a watermark-based incremental sync, so repeated visits to the same cluster don't require a full-range Loki query.
-
-When a sessions list is requested for a cluster, the backend:
-
-1. **Reads the watermark** — The per-instance, per-cluster record of the earliest known entry and how far the cache has been populated. On a first sync, both are zero.
-
-1. **Finds the earliest entry** — On a first sync, searches backward over 30 days, then 90, then 365, to establish the full time range to cache. If none is found, it treats today as the earliest.
-
-1. **Backfills history** — Fills the cache from the earliest entry to today in one-day chunks, upserting session summaries and advancing the watermark as it goes. Progress is reported through the status endpoint.
-
-1. **Loads cached sessions** — Reads all cached summaries for the cluster.
-
-1. **Fetches today's live data** — Runs a single query for the last 24 hours. This data is always fresh and isn't cached.
-
-The backend then merges cached and live sessions by session short, sums step counts, adjusts the first- and last-seen timestamps, and sorts by last seen.
-
-### Adaptive chunk splitting
-
-High-verbosity clusters can exceed Loki's per-query limits. When Loki reports that a one-day chunk is too expensive, the backend splits the window in half and retries each half independently, down to a minimum chunk size of one hour. If a one-hour chunk still fails, it logs an error and skips that window.
-
-### Retrying failed requests
-
-The backend uses two retry policies depending on the call path.
-
-**Sync:** Loki calls made during the background sync pipeline retry up to ten times with exponential backoff starting at 2 seconds and capped at 60 seconds.
-
-**Proxy:** Requests proxied to HM or Loki on behalf of the viewer retry up to three times with exponential backoff starting at 250 ms and capped at 1 second. 503 errors aren't retried.
-
-### Resyncing
-
-Resyncing clears all cached sessions and watermarks for an instance and restarts the sync pipeline from scratch. For a Loki instance, the backend resyncs the single stub cluster. For an HM instance, it discovers all projects and clusters and syncs them in parallel as a background job, so the viewer remains usable while the resync runs.
+The viewer backend is a lightweight service that queries Loki via LogQL, parses the results into structured session and step data, caches session summaries for fast retrieval, and injects upstream credentials server-side so they never reach the browser. It uses a watermark-based incremental sync to avoid full-range Loki queries on repeated visits, splits high-verbosity query windows to stay within Loki's per-query limits, and applies separate retry policies for background sync and proxied requests. Resyncing clears all cached sessions and watermarks and restarts the pipeline from scratch. See [Deploying and configuring](./administration).
 
 ## Viewer (browser)
 
-The viewer is a single-page application that renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data. Credentials never reach the browser — the backend injects them on every proxied request.
+The viewer is a single-page application that renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data. Credentials never reach the browser — the backend injects them on every proxied request. See [Browsing sessions](./sessions_list) and [Inspecting a session](./session_detail).
