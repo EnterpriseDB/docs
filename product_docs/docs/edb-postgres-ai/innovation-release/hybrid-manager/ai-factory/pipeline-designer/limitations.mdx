@@ -1,0 +1,101 @@
+---
+title: Limitations
+navTitle: Limitations
+description: Current limitations and design constraints in Pipeline Designer for Hybrid Manager.
+deepToC: true
+---
+
+The sections below cover intentional design boundaries of the current Pipeline Designer implementation and known issues with available workarounds. For release-specific details, see the [Hybrid Manager release notes](/edb-postgres-ai/current/hybrid-manager/release_notes/).
+
+## Pipeline creation and structure
+
+### Maximum of 10 steps per pipeline
+
+A pipeline supports a maximum of 10 processing steps.
+
+### Steps cannot be modified after creation
+
+Once a pipeline is deployed, its step structure (step types, order, and configuration) is fixed. You can't add, remove, or reorder steps. To change a pipeline's structure, delete it and create a new one.
+
+### Pipeline name length limit
+
+Pipeline names are limited to 46 characters. AIDB reserves up to 17 characters of the Postgres identifier limit for internal object name suffixes (state tables, triggers, error logs).
+
+### Destination table name collision
+
+If a table named `pipeline_{your_pipeline_name}` already exists in the target schema and isn't a registered knowledge base vector table, pipeline creation will fail. Either rename the existing table or choose a different pipeline name.
+
+### External PGD and CNP clusters not supported
+
+Self-managed cluster support is limited to single-instance Postgres servers. External PGD (Postgres Distributed) clusters and Cloud Native Postgres (CNP) operator-managed clusters aren't eligible as pipeline targets, even if registered with Hybrid Manager (HM) through the EDB Postgres AI agent.
+
+## Multi-step pipelines
+
+### ChunkText overlap setting not available
+
+The `overlap_length` parameter for the ChunkText step (which controls how much text overlaps between consecutive chunks) is supported by AI Database (AIDB) but not yet configurable through Pipeline Designer. If you need chunk overlap, create the pipeline through SQL directly. See the [ChunkText step reference](/aidb/latest/data-pipelines/pipeline-steps/#chunktext) for parameter details.
+
+## Inference routing on remote clusters
+
+### HM-hosted and HM-proxied models require primary-location connectivity
+
+HM-hosted KServe models and HM external inference service proxies both run on the primary location. Clusters on secondary locations or self-managed instances don't have network connectivity to the primary location's model-serving endpoints by default. Models from these two paths appear in the model picker (because they are registered in the AIDB model registry) but fail at execution time when the pipeline runs on a cluster that can't reach the primary location.
+
+**Resolution**: For pipelines on clusters without primary-location connectivity, use AIDB-native models registered via `aidb.create_model()` (which contact the provider directly from the Postgres process) or built-in AIDB models that run locally. See [Executing pipelines: How models reach pipeline steps](executing-pipelines#how-models-reach-pipeline-steps) for the complete model availability breakdown.
+
+## Processing modes
+
+### Live mode blocks application writes
+
+Live processing executes within the triggering transaction. An `INSERT`, `UPDATE`, or `DELETE` on the source table doesn't return until the pipeline finishes processing the affected row. For steps involving inference model calls (SummarizeText, KnowledgeBase embedding), this can add significant latency to the application's write path.
+
+**Recommendation**: Use Background mode for production workloads unless real-time processing is strictly required.
+
+### Background worker overhead
+
+The background processing worker polls all databases on the cluster for pipelines in Background mode. On deployments with many databases or many pipelines, this polling can create measurable overhead.
+
+**Recommendation**: Reduce polling frequency by increasing the `background_sync_interval` for pipelines where near-real-time processing isn't required. See the [AIDB background worker documentation](/aidb/latest/data-pipelines/orchestration/background-workers) for configuration details.
+
+## Knowledge bases
+
+### No standalone knowledge base creation
+
+Knowledge bases can only be created as a side effect of deploying a pipeline with a KnowledgeBase terminal step. There is no standalone "create knowledge base" operation in Pipeline Designer.
+
+A KnowledgeBase step alone is rarely sufficient for useful results. Raw text data typically needs at least a ChunkText step before the KnowledgeBase step to split content into appropriately sized segments for embedding. A pipeline with only a KnowledgeBase step would attempt to embed entire source rows as single vectors, which can exceed model token limits or produce poor retrieval quality.
+
+## Model and access control
+
+### No per-user model isolation
+
+Model credentials are shared across all database users on a cluster. There is no per-user or per-pipeline credential isolation. See [VPU and permissions: Shared model credentials](vpu-and-permissions#shared-model-credentials) for details.
+
+## Known issues
+
+### Trigger function ownership on PGD clusters
+
+On AIDB earlier than 7.3.2, `visual_pipeline_user` must own the trigger handler functions directly, rather than acquiring ownership through role inheritance. Without direct ownership, the AIDB trigger handler functions (`aidb.pipeline_background_trigger_handler` and `aidb.pipeline_live_trigger_handler`) cause Live and Background processing modes to fail on PGD clusters.
+
+**Workaround**: Transfer ownership of the trigger handler functions to `visual_pipeline_user`:
+
+```sql
+ALTER FUNCTION aidb.pipeline_background_trigger_handler OWNER TO visual_pipeline_user;
+ALTER FUNCTION aidb.pipeline_live_trigger_handler OWNER TO visual_pipeline_user;
+```
+
+This issue will be resolved in a future AIDB release.
+
+### Knowledge base replication on PGD clusters
+
+On AIDB earlier than 7.3.2, the `bdr_setup()` function doesn't include knowledge base tables in BDR replication. Without these tables, knowledge base registry entries and knowledge base–pipeline associations created on the write leader aren't replicated to other PGD nodes. This limitation can cause inconsistencies after a write leader switchover, where the new leader has no record of knowledge bases or their pipeline bindings.
+
+**Workaround**: Run the following SQL on the PGD cluster to add the missing tables and sequence to replication:
+
+```sql
+SELECT bdr.alter_sequence_set_kind('aidb.knowledge_base_registry_id_seq'::regclass, 'galloc', 1);
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_registry');
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_pipeline');
+```
+
+This bug is resolved in AIDB 7.3.2.

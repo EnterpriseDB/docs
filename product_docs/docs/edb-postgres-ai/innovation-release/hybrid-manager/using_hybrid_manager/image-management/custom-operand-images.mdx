@@ -1,0 +1,161 @@
+---
+title: Adding extensions to custom operand images
+navTitle: Custom operand images
+description: Build and register a custom Hybrid Manager operand image that includes additional PostgreSQL extensions.
+deepToC: true
+---
+
+You can extend an EDB Hybrid Manager (HM) operand image with additional PostgreSQL extensions by building a custom container image and registering it with your HM deployment. This allows you to provision clusters with extensions not included in the standard EDB operand images.
+
+!!!warning Custom images are the customer's responsibility
+EDB doesn't provide support coverage for custom-built operand images or extensions not officially delivered by EDB. You are responsible for maintaining, updating, and supporting any custom images you build.
+!!!
+
+## Prerequisites
+
+- `edbctl` version 1.1.8 or later.
+- [Docker CLI](https://www.docker.com/products/cli/) with `buildx` version 0.16.0 or later.
+- An EDB subscription token for accessing EDB package repositories.
+- A container registry configured for image discovery in your HM deployment. See [Configuring image discovery](/edb-postgres-ai/current/hybrid-manager/install/configuration/image_discovery/).
+
+## Setting up Docker buildx
+
+1.  Verify your `docker buildx` version is 0.16.0 or later:
+
+    ```shell
+    docker buildx version
+    ```
+
+1.  Create and activate a builder using the `docker-container` driver:
+
+    ```shell
+    docker buildx create \
+      --name docker-container \
+      --driver docker-container \
+      --use \
+      --bootstrap
+    ```
+
+## Setting environment variables
+
+1.  Export your EDB subscription token. This is used to authenticate with EDB package repositories during the image build:
+
+    ```shell
+    export EDB_SUBSCRIPTION_TOKEN=<your-edb-subscription-token>
+    ```
+
+1.  Set the target image variables. `TARGET_REGISTRY` must be the registry configured for image discovery in your HM deployment:
+
+    ```shell
+    export TARGET_REGISTRY="<your-registry>"   # e.g. myregistry.azurecr.io
+    export PG_FLAVOR="epas"                     # epas or pg
+    export PG_MAJOR="18"                        # major version of the base image
+    export TARGET_IMAGE="$TARGET_REGISTRY/edb-postgres-advanced-custom:18.3-<build-tag>"
+    ```
+
+## Creating the Dockerfile
+
+Create a `Dockerfile` that uses an EDB operand image as the base and installs your extension using `dnf` (EDB operand images use a UBI base).
+
+The following example adds the `edb_cloneschema` extension to an EPAS 18 operand image. Replace the base image tag and package name with the values for your target extension and Postgres version:
+
+```docker
+FROM docker.enterprisedb.com/pgai-platform/edb-postgres-advanced:18.3-2605132051
+
+USER root
+
+# Mount the EDB subscription token secret, configure the enterprise repository, and install the extension
+RUN --mount=type=secret,id=edb_token,target=/run/secrets/edb_token \
+    set -eux -o pipefail ; \
+    curl -u token:$(cat /run/secrets/edb_token) -1sLf "https://downloads.enterprisedb.com/basic/enterprise/setup.rpm.sh" | bash ; \
+    dnf -y install edb-as18-server-cloneschema ; \
+    rm -f /etc/yum.repos.d/enterprisedb-*.repo
+
+# Switch back to the standard non-root Postgres execution user inside HCP operands
+USER 26
+```
+
+Note the following:
+
+- The base image must be an EDB operand image from `docker.enterprisedb.com/pgai-platform/`.
+- The EDB subscription token is injected as a [build secret](https://docs.docker.com/build/building/secrets/) and is never stored in the image layers.
+- The enterprise repository is removed after installation to keep the image clean.
+- The image must end with `USER 26`, the non-root Postgres execution user required by HM operands.
+
+## Building and pushing the image
+
+Build and push the image to your target registry:
+
+```shell
+docker buildx build --push \
+  --platform=linux/amd64 \
+  -t $TARGET_IMAGE \
+  --annotation "index,manifest:org.enterprisedb.pg.flavor=${PG_FLAVOR}" \
+  --annotation "index,manifest:org.enterprisedb.pg.major_version=${PG_MAJOR}" \
+  --annotation "index,manifest:org.enterprisedb.pg.features=psr,pgd,analytics,tde" \
+  --annotation "index,manifest:org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --secret="id=edb_token,env=EDB_SUBSCRIPTION_TOKEN" .
+```
+
+!!!note
+The `org.enterprisedb.pg.features` annotation controls which HM features are available for clusters provisioned with this image. Match the feature list to the capabilities of the source operand image you built from.
+!!!
+
+## Adding HM metadata
+
+After pushing, you must add two sets of metadata to the image for it to work correctly in HM.
+
+### Annotating extensions
+
+1.  Scan the image and add extension metadata:
+
+    ```shell
+    edbctl operand annotate-extensions $TARGET_IMAGE
+    ```
+
+1.  Verify the annotations were applied:
+
+    ```shell
+    edbctl operand show-extensions $TARGET_IMAGE
+    ```
+
+### Copying operandSet metadata
+
+1.  Copy the operandSet version metadata from the source image to your custom image:
+
+    ```shell
+    SRC_IMAGE="docker.enterprisedb.com/pgai-platform/edb-postgres-advanced:18.3-2605132051"
+
+    edbctl operand copy-version $SRC_IMAGE $TARGET_IMAGE
+    ```
+
+1.  Verify:
+
+    ```shell
+    edbctl operand read-version $TARGET_IMAGE
+    ```
+
+## Making the image discoverable
+
+If you're pushing to a custom or dedicated repository name (such as `edb-postgres-advanced-custom` in this example), you must register that repository in the Asset Library before HM can discover it:
+
+1. In the HM console, navigate to **Asset Library > Manage Repositories**.
+1. Select **Register New Repository**.
+1. In the **Repository Name Regex** field, enter a regex matching your repository name — for example, `edb-postgres-advanced-custom`.
+1. Select **Register Repository**. HM scans the repository and makes matching images available in the Asset Library. This may take a few minutes.
+
+For full details on repository registration options, see [Manage repositories](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/image-management/manage-repositories/).
+
+If image discovery isn't yet configured for your registry at all, set that up first: [Configuring image discovery](/edb-postgres-ai/current/hybrid-manager/install/configuration/image_discovery/).
+
+## Provisioning a cluster with the custom image
+
+Once the image appears in the Asset Library, create a PostgreSQL cluster as normal and select your custom image. The cluster provisioning process is the same as for standard EDB images. See [Creating a cluster](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/) for instructions.
+
+After the cluster is running, you can verify that your extension is available:
+
+```sql
+SELECT name, default_version, comment
+FROM pg_available_extensions
+WHERE name = '<your-extension-name>';
+```

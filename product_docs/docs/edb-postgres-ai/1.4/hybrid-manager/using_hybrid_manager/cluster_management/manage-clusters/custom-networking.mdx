@@ -1,0 +1,71 @@
+---
+title: Custom networking annotations
+navTitle: Custom networking
+description: Learn how to use custom load balancer service annotations to control cluster network access in Hybrid Manager.
+---
+
+When you create or edit a cluster, the [**Networking**](../create-clusters/cluster-settings.mdx#networking) setting normally offers **Private** or **Public** connectivity, and Hybrid Manager (HM) applies its own default Kubernetes load balancer service annotations for whichever cloud or platform you're deployed on. **Custom** networking replaces that default behavior: you supply the load balancer service annotations yourself, and HM applies exactly what you provide, without adding any annotations of its own.
+
+## Why use custom networking
+
+Custom networking is useful whenever the built-in Private/Public behavior doesn't fit your environment, for example:
+
+-   **On-premises deployments with [MetalLB](https://metallb.universe.tf/).** Platforms without a native cloud load balancer, such as Red Hat OpenShift or Rancher Kubernetes Engine, rely on MetalLB to hand out routable IP addresses. Custom annotations let you select which MetalLB IP address pool a cluster's load balancer draws from, request a specific address, or share an address across services.
+-   **Disabling Azure Private Link Service (PLS) on private AKS clusters.** By default, HM's private networking creates a PLS resource for every load balancer service. Azure enforces a hard limit of 8 PLS per load balancer, so clusters with many services, such as distributed high-availability clusters, can exhaust that quota. Custom annotations let you disable PLS creation and rely on VNet peering for private connectivity instead.
+-   **Any other load-balancer or cloud-provider-specific behavior** that HM doesn't configure automatically, such as AWS or GCP annotations for your own network setup.
+
+## Requirements
+
+Custom networking must be enabled for your deployment location by your HM administrator. It's available under any load balancer mode other than `disabled`. See [Load balancer controller](../../../install/install_guide/sys_reqs/#51-load-balancer-controller) for the full mapping of modes to available connectivity types. If custom networking isn't enabled for your location, **Custom** doesn't appear as a connectivity type option.
+
+## How it works
+
+When a cluster uses custom networking, HM skips its own cloud-provider annotation logic entirely and applies only the annotation key/value pairs you provide to the cluster's Kubernetes load balancer service. The underlying platform (MetalLB, the Azure cloud controller, or another load balancer controller) then reads those annotations to decide how to provision the service.
+
+!!!note
+Every time you update a cluster's custom annotations, HM replaces the entire annotation set with what you provide. It doesn't merge with what's already there. Always include every annotation you want to keep, not just the ones you're changing.
+!!!
+
+Custom networking is available for single-node, high-availability, and distributed high-availability clusters (including witness groups). You can set it independently for a cluster's primary connection and for its [read-only connection](../create-clusters/cluster-settings.mdx#connections-read-only).
+
+## Setting custom annotations
+
+### Using the HM console
+
+1.  On the **Cluster Settings** tab (when creating a cluster) or the cluster's **Edit** page, under **Networking**, set **Connectivity Type** to **Custom**.
+1.  Select **+ Add Annotation** and enter a **Key** and **Value**.
+1.  Repeat to add as many annotations as you need, then continue configuring your cluster as usual.
+
+### Using edbctl
+
+Set `networking: custom` and list your annotations under `serviceAnnotations` in the cluster's YAML configuration:
+
+```yaml
+networking: custom
+serviceAnnotations:
+  - key: metallb.universe.tf/address-pool
+    value: "production-pool"
+```
+
+Then create or patch the cluster as usual, for example:
+
+```shell
+edbctl cluster create -F cluster.yaml -y
+```
+
+You can also set `serviceAnnotations` under a cluster's `readOnlyConnection.configuration` to apply custom annotations to the read-only endpoint. See [Cluster templates](/edbctl/latest/using/edbctl_cluster_template/) for the full configuration reference.
+
+## Examples
+
+**Select a MetalLB IP address pool:**
+
+| Key | Value | Purpose |
+| --- | --- | --- |
+| `metallb.universe.tf/address-pool` | `production-pool` | Allocates the load balancer's IP from the named MetalLB pool. |
+
+**Disable Azure Private Link Service:**
+
+| Key | Value | Purpose |
+| --- | --- | --- |
+| `service.beta.kubernetes.io/azure-load-balancer-internal` | `true` | Keeps the load balancer internal to your VNet. |
+| `service.beta.kubernetes.io/azure-pls-create` | `false` | Prevents Azure from creating a Private Link Service for this load balancer. |

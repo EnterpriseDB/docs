@@ -1,0 +1,120 @@
+---
+title: Accessing deployed flows
+navTitle: Accessing deployed flows
+description: Invoke a deployed flow over HTTP or MCP using a Hybrid Manager machine-user access key.
+deepToC: true
+---
+
+A [deployed flow](deploying-flows) exposes two endpoints, a Langflow runtime API and an MCP server, both routed through the Hybrid Manager (HM) gateway. Clients authenticate to the gateway with an HM machine-user access key.
+
+## Finding the endpoints
+
+1. In the HM console, go to **Estate > Flows** (`/estate/flows`).
+
+1. Wait until the **Status** column shows **Ready**. Earlier statuses such as **Provisioning** or **Starting** mean the runtime is not yet accepting requests.
+
+1. Select the row to open the detail sidebar.
+
+1. Scroll to the **Endpoints** section and copy the URL for the endpoint you need.
+
+!!!note
+Do not manually construct these URLs — the route IDs are assigned by HM at deploy time and are not predictable.
+!!!
+
+| Endpoint label | Purpose                                                                                                                       |
+|----------------|-------------------------------------------------------------------------------------------------------------------------------|
+| **Langflow**   | The Langflow runtime API for listing and running flows in the bundle.                                                         |
+| **MCP**        | Model Context Protocol server endpoint. Used by MCP-capable clients (LLM agents, IDEs) to discover and invoke flows as tools. |
+
+Each route has its own route ID under the same project and app:
+
+```
+https://<hm-portal-host>/projects/<project-id>/apps/<app-id>/routes/<route-id>
+```
+
+For example, a single deployed flow might expose:
+
+```
+https://<hm-portal-host>/projects/prj_abc/apps/app-xyz/routes/a3528a9d   # HTTP runtime
+https://<hm-portal-host>/projects/prj_abc/apps/app-xyz/routes/538275d3   # MCP server
+```
+
+`<project-id>`, `<app-id>`, and the two `<route-id>` values are assigned by HM at deploy time and are stable for the lifetime of the deployment.
+
+## Authentication
+
+Every request to a deployed flow must include an HM machine-user access key in the `x-access-key` header. The HM gateway enforces this. The runtime pod itself does not handle auth.
+
+```bash
+curl -L https://<hm-portal-host>/projects/<project-id>/apps/<app-id>/routes/<route-id> \
+  -H 'x-access-key: <your-machine-user-key>'
+```
+
+To create an access key, see [Create a machine user](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/create-cluster-programmatically/#create-a-machine-user). The machine user must have the appropriate role in the deployed flow's project. See [Required roles](.#required-roles).
+
+## HTTP runtime API
+
+A `GET` against the root of the HTTP runtime route returns a plain-text index of the deployed bundle and the available endpoints:
+
+```text
+Welcome to Langflow Runtime
+Loaded flows:
+  - My Flow (4944038b-f66c-4358-bb31-0f0b5bb865fd)
+  - Another Flow (5cb0ac73-8de9-4f65-96f5-0fab4dd6a195)
+HTTP endpoints:
+  GET  /flows              - List available flows
+  POST /flows/{id}/run     - Execute a flow
+  GET  /health             - Liveness probe
+  GET  /ready              - Readiness probe
+  GET  /docs               - OpenAPI docs
+```
+
+| Endpoint          | Method | Purpose                                                                                                                                     |
+|-------------------|--------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `/`               | GET    | Index. Human-readable list of loaded flows and endpoints.                                                                                   |
+| `/flows`          | GET    | JSON list of flows in the deployed bundle, with their IDs and names.                                                                        |
+| `/flows/{id}/run` | POST   | Execute the flow with the given ID. Request body carries the flow's inputs. Response carries its outputs. See `/docs` for the exact schema. |
+| `/health`         | GET    | Liveness probe. Used by Kubernetes. Safe for external monitoring.                                                                           |
+| `/ready`          | GET    | Readiness probe. Returns 200 when the runtime has loaded all flows and is ready to serve requests.                                          |
+| `/docs`           | GET    | Interactive OpenAPI documentation for the runtime API.                                                                                      |
+
+For the authoritative request/response shapes for `POST /flows/{id}/run`, open `/docs` against your specific deployment. The schema reflects the inputs and outputs of the flows you published.
+
+### Example: list flows
+
+```bash
+curl -L https://<hm-portal-host>/projects/<project-id>/apps/<app-id>/routes/<route-id>/flows \
+  -H 'x-access-key: <your-machine-user-key>'
+```
+
+### Example: run a flow
+
+```bash
+curl -L -X POST \
+  https://<hm-portal-host>/projects/<project-id>/apps/<app-id>/routes/<route-id>/flows/<flow-id>/run \
+  -H 'x-access-key: <your-machine-user-key>' \
+  -H 'content-type: application/json' \
+  -d '{ "inputs": { "input_value": "hello" } }'
+```
+
+The exact request body depends on the input components in your flow. Open `/docs` in a browser (with `x-access-key` set via a browser extension or proxy) to see the generated schema.
+
+## MCP server endpoint
+
+The MCP server route exposes the deployed bundle's flows as Model Context Protocol tools. Point an MCP-capable client (an LLM agent, an IDE integration) at the MCP route URL and supply the same `x-access-key` header as for HTTP. The client will discover each flow as an MCP tool and can invoke it with structured arguments.
+
+For the MCP protocol itself, see the [MCP specification](https://modelcontextprotocol.io/).
+
+## Logs and observability
+
+Logs and metrics from a deployed flow go to HM's observability stack and are surfaced through the standard HM Grafana dashboards. See [Observability](../../observability) for Prometheus alert rules and Grafana dashboard setup for Langflow pods and model cluster performance.
+
+
+## Common errors
+
+| Symptom                                                        | Likely cause                                                                                                                                                                                                                        |
+|----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `401 Unauthorized` from the gateway                            | Missing or invalid `x-access-key`, or the machine user does not have the role required to access the project's deployed flows.                                                                                                      |
+| `404 Not Found` on the runtime route                           | Wrong route ID, or the deployment has been undeployed. Re-check the URL in the Estate UI.                                                                                                                                           |
+| `/ready` returns 503                                           | The runtime is still downloading the bundle at startup, or hasn't finished loading flows yet. Wait and retry. If it persists, check the deployment's logs.                                                                          |
+| Flow run returns a credential error from a downstream resource | A credential parameter (such as a DB password or model API key) was not supplied at deploy time, or the secret it carries is no longer valid against the downstream system. Edit the deployed flow's parameters from the Estate UI. |

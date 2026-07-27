@@ -1,0 +1,68 @@
+---
+title: Agent Factory Architecture on Hybrid Manager
+navTitle: Architecture
+description: Technical architecture of Agent Factory components within Hybrid Manager's Kubernetes infrastructure
+---
+
+## Architectural Overview
+
+Agent Factory deploys as a collection of containerized services within Hybrid Manager's Kubernetes infrastructure, delivering sovereign AI capabilities through integrated [model governance](/edb-postgres-ai/1.3/ai-factory/model/library/), [inference serving](/edb-postgres-ai/1.3/ai-factory/model/serving/), and Langflow-based AI flow development. The architecture ensures complete data sovereignty by processing all AI workloads within customer-controlled Kubernetes clusters, leveraging local GPU resources and object storage.
+
+The system operates across three architectural layers: a control plane for governance and orchestration, a runtime layer for model serving and flow execution, and a storage layer for model artifacts and [knowledge bases](/aidb/7/knowledge-bases/). These layers integrate through Kubernetes APIs and custom resources, providing unified management while maintaining isolation between projects and workloads.
+
+## Core Components
+
+### Model Library
+
+The [Model Library](/edb-postgres-ai/1.3/ai-factory/model/library/) operates as a control plane service managing model lifecycle and governance across the platform. This service maintains a centralized registry of approved models while enforcing security and compliance policies before models reach production environments.
+
+The library consists of several interconnected services:
+
+-   Registry synchronization service that monitors external container registries
+-   Policy engine evaluating models against organizational governance rules
+-   Metadata service tracking model versions, performance benchmarks, and approvals
+-   Storage interface managing model artifacts in object storage backends
+
+Model metadata persists in PostgreSQL databases managed by Hybrid Manager, ensuring consistency with other platform data. The library exposes models to project namespaces through Kubernetes custom resources, enabling declarative model deployment while maintaining centralized governance. See also: [Model Library explained](/edb-postgres-ai/1.3/ai-factory/model/model-library-explained/).
+
+### Inference Server Infrastructure
+
+Inference servers deploy as KServe [InferenceServices](/edb-postgres-ai/1.3/ai-factory/model/create-inferenceservice/) within project namespaces, providing scalable [Model Serving](/edb-postgres-ai/1.3/ai-factory/model/serving/) through specialized container pods. These pods encapsulate model runtime engines optimized for different frameworks and hardware configurations.
+
+Inference pod configurations include:
+
+-   Model runtime containers
+-   Resource specifications defining GPU allocation, memory limits, and CPU requirements (see [Setup GPU](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu/) and [Update GPU resources](/edb-postgres-ai/1.3/ai-factory/model/update-gpu-resources/))
+-   Volume mounts connecting to model storage and configuration data
+-   Environment variables containing endpoint configurations and runtime parameters
+-   Health check definitions for liveness and readiness probes
+
+Autoscaling configurations respond to metrics including request latency, GPU utilization, and queue depth, ensuring optimal resource utilization while meeting performance targets. For deployment options, see [Model deployment](/edb-postgres-ai/1.3/ai-factory/model/deployment/) and [Configure ServingRuntime](/edb-postgres-ai/1.3/ai-factory/model/configure-servingruntime/).
+
+### Langflow Runtime
+
+[Langflow](langflow/) runs as a managed workload in Hybrid Manager, providing a visual flow builder and a deployment lifecycle for turning flows into callable services. The runtime is containerized and deployed flows are hosted in isolated Kubernetes namespaces.
+
+The Langflow architecture within HM includes:
+
+-   A shared Langflow editor environment where flows are built and tested
+-   Per-deployment runtime containers that host published flows as long-running services
+-   EDB components (EDB Model Server, EDB Embeddings, EDB Knowledge Base, and others) that wire flows to HM-managed resources
+-   State and credentials managed as Kubernetes secrets, scoped to each deployment's namespace
+
+Flows access model endpoints through cluster-local service DNS, and all traffic between the Langflow runtime, model server pods, and Postgres clusters stays within the project namespace. See [Langflow](langflow/) for the full component and deployment reference.
+
+### Storage
+
+Agent Factory uses object storage for model artifacts, datasets, and knowledge bases, with MinIO or cloud provider services (S3, Azure Blob, GCS) as primary storage backends. This separates compute from storage, enabling independent scaling and cost optimization.
+
+Storage access occurs through standardized S3 APIs with authentication via service account credentials or cloud provider identity mechanisms. Persistent volume claims provide local caching for frequently accessed models, reducing network overhead and improving inference latency.
+
+## Infrastructure
+
+Agent Factory runs on standard Kubernetes primitives — GPU device plugins, KServe, object storage, and a service mesh. For deep-dives on GPU setup, network policies, HA configuration, and monitoring, see the hub references:
+
+-   [GPU setup](/edb-postgres-ai/1.3/ai-factory/model/setup-gpu/)
+-   [Create InferenceService](/edb-postgres-ai/1.3/ai-factory/model/create-inferenceservice/)
+-   [Configure ServingRuntime](/edb-postgres-ai/1.3/ai-factory/model/configure-servingruntime/)
+-   [Monitor InferenceService](/edb-postgres-ai/1.3/ai-factory/model/monitor-inferenceservice/)
