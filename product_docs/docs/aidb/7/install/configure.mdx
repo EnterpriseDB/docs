@@ -120,7 +120,23 @@ Air-gapped environments aren't currently supported.
 
 ## Configuration parameters
 
-AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. All parameters below are `USERSET` — any role can change them for its own session.
+AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually.
+
+### Local model threading
+
+| Parameter           | Type    | Default | Range   | Description                                                                                                                        |
+|----------------------|---------|---------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.max_threads`  | integer | `0`     | 0–1024  | Maximum number of CPU threads used for local model inference (Candle and llama.cpp). `0` uses the default: half of the available CPUs. `Suset`. |
+
+#### `aidb.max_threads`
+
+Lower this on a shared or resource-constrained database server to prevent local model inference from saturating available CPUs:
+
+```sql
+SET aidb.max_threads = 4;
+```
+
+A session-local `SET` applies immediately, to that backend only. Setting it with `ALTER SYSTEM` or in `postgresql.conf` applies after `pg_reload_conf()` (or `SIGHUP`), and propagates to all backends and background workers — no restart required.
 
 ### Model download
 
@@ -158,6 +174,28 @@ Example:
 ```sql
 SET aidb.download_max_attempts = 5;
 ```
+
+### llama.cpp native logs
+
+| Parameter                   | Type    | Default | Range | Description                                                                                                                                                                    |
+|------------------------------|---------|---------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.enable_llamacpp_logs` | boolean | `false` | —     | Controls whether llama.cpp's own diagnostic output (GGUF metadata, tensor list, backend and model initialization) is written to the server log. `Suset`. Read once at extension initialization — see below. |
+
+#### `aidb.enable_llamacpp_logs`
+
+Off by default: llama.cpp's native logging is verbose — hundreds of lines per model load — so it's suppressed unless you need it. This is separate from `aidb.download_log_level` above, which controls AIDB's own download-progress messages; the two are independent.
+
+Unlike the other parameters on this page, `aidb.enable_llamacpp_logs` is `Suset` (a superuser, or a role granted `SET` on the parameter, can change it) and is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) does **not** take effect until Postgres is restarted:
+
+```ini
+aidb.enable_llamacpp_logs = true
+```
+
+```bash
+sudo systemctl restart postgresql@16-main
+```
+
+Applies only to `llamacpp_generate` and `llamacpp_embeddings` models — it has no effect on Candle-based models (`bert_local`, `clip_local`, `t5_local`, `llama_instruct_local`). See [Local models — Troubleshooting](../integrating-models/integrated-models#troubleshooting) for when to use this.
 
 ### Network egress
 
