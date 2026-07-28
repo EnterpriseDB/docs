@@ -1,0 +1,86 @@
+---
+title: pgd raft restore
+navTitle: Restore
+deepToC: true
+---
+
+## Synopsis
+
+The `pgd raft restore` command restores Raft consensus in a cluster that has lost it, for example after losing a majority of nodes in a group. It identifies the minimum set of nodes that can be removed to restore a working Raft majority, prioritizing witness nodes over data nodes, displays the recovery plan, and removes those nodes immediately. 
+
+If consensus isn't actually lost for the target group, the command makes no changes and reports that no action is needed.
+
+!!!important
+`pgd raft restore` is a disaster recovery command. It doesn't prompt for confirmation before removing nodes, and removing nodes from a cluster is irreversible. Removing more than the minimum required can cause avoidable data loss, so use `--preview` first.
+!!!
+
+
+### Users and roles
+
+Requires the `bdr_superuser` role. See [User roles](/pgd/current/reference/cli/command_ref/#user-roles).
+
+## Syntax
+
+```plaintext
+pgd raft restore [OPTIONS]
+```
+
+## Options
+
+| Short | Long        | Description                                                                 |
+|-------|-------------|------------------------------------------------------------------------------|
+|       | --group     | Target a specific group by name. Defaults to the top-level group if not specified. |
+|       | --preview   | Show the nodes that would be removed to restore consensus, without removing them. |
+
+See [Global Options](/pgd/latest/reference/cli/command_ref/#global-options) for common global options.
+
+## Examples
+
+### Preview the nodes that would be removed
+
+```shell
+pgd raft restore --preview
+__OUTPUT__
+Recovery plan for group 'dc2_subgroup':
+  Total voting nodes: 3, Alive: 2, Down: 1
+  Nodes to remove (1):
+    - kaput (witness)
+
+Preview mode: no changes were made.
+```
+
+### Restore consensus
+
+```shell
+pgd raft restore
+__OUTPUT__
+Recovery plan for group 'dc2_subgroup':
+  Total voting nodes: 3, Alive: 2, Down: 1
+  Nodes to remove (1):
+    - kaput (witness)
+
+Connecting to alive node 'kaftan'                            ok
+Connecting to alive node 'kaolin'                            ok
+Force-parting 'kaput' on 'kaftan'                            ok
+Force-parting 'kaput' on 'kaolin'                            ok
+Waiting for force-part to complete                          ok
+
+Disabling consensus on all alive nodes                       ok
+Exporting RAFT snapshot from 'kaftan'                        ok
+Importing RAFT snapshot on 'kaolin'                          ok
+Re-enabling consensus on all alive nodes                     ok
+Waiting for RAFT leader election                             ok (leader: kaftan)
+Verifying replication health                                 ok
+
+RAFT consensus successfully restored for group 'dc2_subgroup'. 1 node(s) removed, 2 voting node(s) remaining.
+```
+
+### No action needed
+
+If consensus isn't actually lost, `pgd raft restore` makes no changes, whether or not `--preview` is used:
+
+```shell
+pgd raft restore
+__OUTPUT__
+Consensus is not lost for group 'dc2_subgroup'. No action needed.
+```
