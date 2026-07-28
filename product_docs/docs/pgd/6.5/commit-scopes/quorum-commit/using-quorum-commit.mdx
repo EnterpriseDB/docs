@@ -10,6 +10,7 @@ redirects:
 Quorum Commit scopes are created with `bdr.create_commit_scope` and configured for your topology and routing mode. Once created, a scope can be applied as the default for a node group or set per session or per transaction.
 
 !!!Note
+
 All nodes in the cluster must be running PGD 6.4.0 or later, including during a rolling upgrade.
 !!!
 
@@ -30,20 +31,20 @@ SELECT bdr.create_commit_scope(
 
 The `rule` parameter accepts the following options:
 
-- **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN GROUP`, `MAJORITY CLUSTER`, `MAJORITY CLUSTER WITH LEADER`, `MAJORITY FOR EACH GROUP (subgroup1, subgroup2, ...)`, or `MAJORITY FOR EACH GROUP IN CLUSTER`. For details on commit scope groups, see [Commit scope groups](/pgd/current/commit-scopes/origin_groups/).
+-   **`<commit_scope_group>`:** Defines which nodes must confirm the transaction before it commits. Supported values are `ALL`, `MAJORITY ORIGIN GROUP`, `MAJORITY CLUSTER`, `MAJORITY CLUSTER WITH LEADER`, `MAJORITY FOR EACH GROUP (subgroup1, subgroup2, ...)`, or `MAJORITY FOR EACH GROUP IN CLUSTER`. For details on commit scope groups, see [Commit scope groups](/pgd/current/commit-scopes/origin_groups/).
 
-    `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
+      `MAJORITY` with an explicit group list, `ANY n`, and `NOT` aren't supported.
 
-- **`commit_decision`:** Optional. Controls how the commit decision is reached, and affects how [automatic reconciliation](how-quorum-commit-works#automatic-reconciliation) behaves after a node failure.
-  - `group` (default): The origin node decides to commit once it receives the required confirmations from the commit scope group.
-  - `raft`: The commit decision goes through PGD's built-in Raft consensus. Slower than `group`, but required for certain multi-group topologies.
+-   **`commit_decision`:** Optional. Controls how the commit decision is reached, and affects how [automatic reconciliation](how-quorum-commit-works#automatic-reconciliation) behaves after a node failure.
+    -   `group` (default): The origin node decides to commit once it receives the required confirmations from the commit scope group.
+    -   `raft`: The commit decision goes through PGD's built-in Raft consensus. Slower than `group`, but required for certain multi-group topologies.
 
-- **`ON { durable | visible }`:** Optional. Sets the confirmation level, which is the point at which a remote node confirms it has processed the transaction.
+-   **`ON { durable | visible }`:** Optional. Sets the confirmation level, which is the point at which a remote node confirms it has processed the transaction.
 
-  - `durable`: Confirms after all changes are flushed to disk.
-  - `visible` (default): Confirms after all changes are flushed to disk and are visible to concurrent transactions.
+    -   `durable`: Confirms after all changes are flushed to disk.
+    -   `visible` (default): Confirms after all changes are flushed to disk and are visible to concurrent transactions.
 
-- **`ABORT ON ( timeout = <value> )`:** Mandatory. Sets how long to wait for quorum before aborting. If consensus isn't reached within this period, the transaction is aborted and rolled back on all nodes and won't be resubmitted when the network recovers. Set `<value>` to an interval, for example `10s`. For guidance on choosing a value, see [Choosing a timeout](#choosing-a-timeout).
+-   **`ABORT ON ( timeout = <value> )`:** Mandatory. Sets how long to wait for quorum before aborting. If consensus isn't reached within this period, the transaction is aborted and rolled back on all nodes and won't be resubmitted when the network recovers. Set `<value>` to an interval, for example `10s`. For guidance on choosing a value, see [Choosing a timeout](#choosing-a-timeout).
 
 ## Configuring by topology
 
@@ -115,6 +116,7 @@ SELECT bdr.create_commit_scope(
 ```
 
 !!!Note
+
 Only test failure scenarios that the cluster topology is designed to tolerate. For example, don't test the failure of two regions in a three-region cluster, or the failure of more than one node in a single-location cluster. PGD makes no guarantees for degraded clusters.
 !!!
 
@@ -139,7 +141,6 @@ When using local routing, set the timeout to be shorter than `bdr.raft_group_ele
 
 When using global routing, set the timeout to be shorter than `bdr.raft_global_election_timeout` (default 6s). If a node isn't heard from for the global election timeout, reconciliation of its transactions begins. Setting a timeout of 6s or less ensures a transaction is cleanly aborted before write leader reconciliation starts.
 
-
 ## Setting a default commit scope
 
 A commit scope can be set as the default for a node group using `bdr.alter_node_group_option`. All transactions on nodes in that group then use the commit scope automatically, ensuring consistent protection across all workloads.
@@ -149,6 +150,7 @@ SELECT bdr.alter_node_group_option('sg1', 'default_commit_scope', 'majority_qc')
 ```
 
 !!!Important
+
 Quorum Commit doesn't guarantee consistency when transactions using it execute concurrently on the same tables as transactions that don't. Setting a default commit scope on the node group ensures all transactions get the consistency benefit.
 !!!
 
@@ -177,7 +179,7 @@ Set the timeout below `bdr.raft_global_election_timeout` (default 6s) when using
 
 Quorum Commit is compatible with [Parallel Apply](/pgd/current/advanced-functionality/parallelapply/). You don't need to disable Parallel Apply when using Quorum Commit.
 
-From PGD 6.5, Quorum Commit is compatible with [transaction streaming](/pgd/current/transaction-streaming/) using any value of [`bdr.default_streaming_mode`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrdefault_streaming_mode) (`off`, `file`, `writer`, and `auto`). PGD detects Quorum Commit transactions at the origin and streams them to file regardless of the cluster's `default_streaming_mode` setting, so no special configuration is required.
+From PGD 6.5, Quorum Commit is compatible with [transaction streaming](/pgd/current/advanced-functionality/transaction-streaming/) using any value of [`bdr.default_streaming_mode`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrdefault_streaming_mode) (`off`, `file`, `writer`, and `auto`). PGD detects Quorum Commit transactions at the origin and streams them to file regardless of the cluster's `default_streaming_mode` setting, so no special configuration is required.
 
 During a rolling upgrade, keep `bdr.default_streaming_mode` set to `file` or `off` until every node is on PGD 6.5 or later. Nodes on earlier versions don't emit the hint Quorum Commit relies on, so PGD logs a warning at `create_commit_scope` time while any peer is on an earlier version.
 
