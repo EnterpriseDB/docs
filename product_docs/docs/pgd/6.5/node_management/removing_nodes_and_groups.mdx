@@ -31,6 +31,33 @@ node might be added again under the same name as a parted node.
 In rare cases, you might want to clear all metadata of a parted
 node by using the function [`bdr.drop_node()`](/pgd/latest/reference/tables-views-functions/functions-internal#bdrdrop_node).
 
+## Automatically evicting lagging nodes
+
+PGD retains the write-ahead log (WAL) a down or lagging node still needs, so the node can catch back up once it's available again. Retaining that WAL for too long can exhaust disk space on the healthy nodes.
+
+Node eviction automates the parting of a lagging node once its replication lag crosses a configured threshold, instead of requiring a manual `bdr.part_node()` call. Configure eviction with two group options, set through `bdr.alter_node_group_option()`:
+
+- `evict_node_action` sets what happens once a node exceeds the lag threshold. `none` (the default) takes no action. `part` parts the node automatically.
+- `evict_node_lag_bytes` sets the maximum lag, in bytes, a node can accumulate before eviction runs.
+
+Set the maximum lag:
+
+```sql
+SELECT bdr.alter_node_group_option('<group_name>', 'evict_node_lag_bytes', '1000000000');
+```
+
+Set the eviction action:
+
+```sql
+SELECT bdr.alter_node_group_option('<group_name>', 'evict_node_action', 'part');
+```
+
+The write leader runs eviction checks, so the group needs [routing enabled](/pgd/current/geo-replication-dba/routing). Eviction also depends on Raft, so a majority of the cluster needs to stay reachable for it to run.
+
+!!!Warning
+Setting `evict_node_lag_bytes` too low while `evict_node_action` is `part` can remove a large portion of the cluster in quick succession, node by node, as each one falls behind in turn.
+!!!
+
 ## Removing a whole PGD group
 
 PGD groups usually map to locations. When a location is no longer being deployed,
