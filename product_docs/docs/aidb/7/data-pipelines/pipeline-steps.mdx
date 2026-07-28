@@ -1,6 +1,6 @@
 ---
 title: Pipeline steps
-description: Learn how to configure each pipeline step — ChunkText, ParseHtml, ParsePdf, PerformOcr, SummarizeText, and KnowledgeBase — when building AI pipelines in EDB Postgres AI.
+description: Learn how to configure each pipeline step — ChunkText, ParseHtml, ParsePdf, PerformOcr, SummarizeText, and KnowledgeBase — and how to persist intermediate step output, when building AI pipelines in EDB Postgres AI.
 ---
 
 Each step in an AI pipeline is defined by its operation type and an optional configuration object. You pass the operation name as a string to the `step_N` parameter of `aidb.create_pipeline()`, and the configuration as JSONB to the corresponding `step_N_options` parameter.
@@ -20,6 +20,57 @@ SELECT aidb.create_pipeline(
 
 Use the helper functions described below to build the `step_N_options` value for each operation type. All helper functions return a `JSONB` configuration object.
 
+## Intermediate storage
+
+Any step can persist its own output to a dedicated table, in addition to passing it on to the next step (or, for the last step, to the pipeline's final destination). This is useful for debugging a multi-step pipeline, or for reusing an intermediate result (such as chunked text) outside the pipeline. It's off by default.
+
+Set it with an `intermediate_destination` key in that step's `step_N_options`. No step config helper (`aidb.chunk_text_config()`, `aidb.pdf_parse_config()`, and so on) has a parameter for it yet, so add it as plain JSON alongside the helper's own output, merged with the `||` operator:
+
+```sql
+step_1_options => aidb.chunk_text_config(desired_length => 100) || jsonb_build_object(
+    'intermediate_destination', jsonb_build_object('enabled', true)
+)
+```
+
+Or build the whole options object directly with `jsonb_build_object()`:
+
+```sql
+step_1_options => jsonb_build_object(
+    'desired_length', 100,
+    'intermediate_destination', jsonb_build_object('enabled', true)
+)
+```
+
+| Key           | Type    | Default  | Description                                                                              |
+|---------------|---------|----------|--------------------------------------------------------------------------------------------|
+| `enabled`     | BOOLEAN | Required | Turn on intermediate storage for this step.                                              |
+| `destination` | TEXT    | NULL     | Table to store the step's output in. Auto-generated as `pipeline_<name>_step_<N>` when omitted. |
+
+The simplest form just turns it on and lets AIDB name the table:
+
+```json
+{"enabled": true}
+```
+
+Or name the destination table explicitly:
+
+```json
+{"enabled": true, "destination": "my_custom_chunk_storage"}
+```
+
+The destination table has the same shape as any other pipeline destination table: `source_id`, `part_ids`, and a `value` column holding the step's output.
+
+Setting `intermediate_destination` on a pipeline's **last** step still creates the table and writes to it, but [`aidb.retrieve_text()`](../reference/knowledge-bases#aidbretrieve_text)'s `intermediate_steps` column never surfaces it — that lookup only considers steps before the last one, since there's no "next step" for the last one's output to be intermediate before. Query the destination table directly instead if you need to read it back. This matters most for `KnowledgeBase`, which must always be the last step in a pipeline — so there's rarely a reason to enable intermediate storage on it.
+
+!!!Note
+`intermediate_destination` must be an object with an `enabled` key (and optionally `destination`). Any other JSON type raises an error at pipeline creation:
+
+```
+ERROR:  Invalid options for step 1: intermediate_destination must be an object with keys 'enabled' and optionally 'destination'; got a string
+```
+!!!
+
+For a full worked example, see [Multi-step pipeline with intermediate storage](./example). To read intermediate results back at query time — including how this interacts with `deduplicate` — see [`aidb.retrieve_text`](../reference/knowledge-bases#aidbretrieve_text) and [Deduplication and intermediate results](../knowledge-bases#deduplication-and-intermediate-results).
 
 ## ChunkText
 
