@@ -6,6 +6,25 @@ description: API reference for AIDB model management, inference functions, and m
 
 Reference for all model-related functions and views in AIDB. For guide-style documentation, see [Integrating models](../integrating-models).
 
+## Configuration model
+
+A model's behavior is controlled two ways, and it matters which one you use for a given setting:
+
+- **Creation-time `config`** — set when you call `aidb.create_model()`, using a provider-specific [config helper](#model-config-helpers) (`aidb.bert_config()`, `aidb.completions_config()`, and so on). This is the model's persistent, stored configuration.
+- **Call-time `inference_config`** — an optional per-call override, built with [`aidb.inference_config()`](#aidbinference_config), passed directly to an inference function. It overrides the model's stored config for that one call only; anything you don't override falls back to the value set at creation time.
+
+Only some inference functions accept a call-time override — the rest are fixed entirely by the model's creation-time `config`:
+
+| Function | Call-time override? |
+|----------|----------------------|
+| `aidb.decode_text()`, `aidb.decode_text_batch()` | Yes — pass `aidb.inference_config()` (or raw JSON) as the `inference_config` argument. |
+| `aidb.summarize_text()`, `aidb.summarize_text_aggregate()` | Yes — via the `inference_config` field of [`aidb.summarize_text_config()`](../sql-functions/summarize-text#custom-prompts-and-inference-settings). |
+| `aidb.encode_text()`, `aidb.encode_text_batch()`, `aidb.encode_image()` | No. Behavior is fixed by `config` at creation time. |
+| `aidb.rerank_text()` | No. Behavior is fixed by `config` at creation time. |
+| `aidb.perform_ocr()` | No — its `options` parameter only selects which registered model to run, not inference settings. |
+
+This asymmetry follows from what each capability needs: text generation has runtime knobs worth tuning per call (temperature, system prompt, and so on); embeddings, reranking, and OCR don't, so there's nothing to override.
+
 ## Catalog views
 
 ### `aidb.model_providers`
@@ -473,6 +492,59 @@ SELECT aidb.decode_text(
 );
 ```
 
+### Tool calling and structured output
+
+Three more inference settings exist but aren't exposed as named parameters of `aidb.inference_config()` — build them as raw JSON instead, merged with the helper's output using `||` if you also need other settings. **Only the `llamacpp_generate` provider honors these**; every other provider rejects them.
+
+| Field | Type | Description |
+|-------|------|--------------|
+| `tools` | JSONB array | OpenAI-compatible `tools` array — function definitions the model can call. |
+| `tool_choice` | JSONB | OpenAI-compatible `tool_choice`: the string `"auto"`, `"required"`, or `"none"`, or `{"type": "function", "function": {"name": "..."}}` to force a specific tool. |
+| `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. |
+
+```sql
+-- Tool calling
+SELECT aidb.decode_text(
+    'my_llamacpp_chat',
+    'What is the weather in Paris?',
+    (aidb.inference_config(temperature => 0.2) || jsonb_build_object(
+        'tools', jsonb_build_array(
+            jsonb_build_object(
+                'type', 'function',
+                'function', jsonb_build_object(
+                    'name', 'get_weather',
+                    'description', 'Get current weather for a city',
+                    'parameters', jsonb_build_object(
+                        'type', 'object',
+                        'properties', jsonb_build_object('city', jsonb_build_object('type', 'string')),
+                        'required', jsonb_build_array('city')
+                    )
+                )
+            )
+        ),
+        'tool_choice', 'auto'
+    ))::json
+);
+
+-- Structured output
+SELECT aidb.decode_text(
+    'my_llamacpp_chat',
+    'Extract the city from: I live in Paris.',
+    jsonb_build_object(
+        'response_format', jsonb_build_object(
+            'type', 'json_schema',
+            'json_schema', jsonb_build_object(
+                'schema', jsonb_build_object(
+                    'type', 'object',
+                    'properties', jsonb_build_object('city', jsonb_build_object('type', 'string')),
+                    'required', jsonb_build_array('city')
+                )
+            )
+        )
+    )::json
+);
+```
+
 ---
 
 ## Model config helpers
@@ -668,6 +740,10 @@ For the `gemini` provider.
 SELECT aidb.create_model('my_gemini', 'gemini',
     config => aidb.gemini_config('AIza...', model => 'gemini-2.0-flash'));
 ```
+
+!!!note
+Unlike other remote providers, Gemini's `api_key` is a plain field of `config` rather than being passed through `aidb.create_model()`'s separate `credentials` parameter. It's stored as part of the model's config rather than the more restricted credentials store — keep that in mind if `aidb.models.options` is visible to more roles than you want to see the key.
+!!!
 
 ---
 
