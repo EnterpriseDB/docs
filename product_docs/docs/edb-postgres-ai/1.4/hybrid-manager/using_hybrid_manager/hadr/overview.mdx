@@ -10,17 +10,26 @@ A disaster recovery (DR) option allows you to restore your databases to a point-
 
 Unlike High Availability (HA), which provides Postgres database real-time failover, DR is a manual restoration process initiated when the original HM environment is unrecoverable.
 
+!!!note Control plane independence
+
+Hybrid Manager operates as a control plane, not a data path — application connections to your Postgres clusters don't route through HM. If the control plane is lost, you lose the ability to provision new clusters, view dashboards, or receive alerts, but existing clusters keep running with their replication and failover intact.
+!!!
+
 ## Recovery scenarios
 
 -   **Restore HM to the original location**: You have two data centers (DC1, DC2), and HM runs in DC1. You need to restore HM from object storage to DC1.
 
 -   **Restore HM to an alternative location**: You have two data centers (DC1, DC2), and HM runs in DC1. You need to restore HM from object storage to DC2 (because DC1 is down for an unexpected period of time). The alternative location (DC2) must have access to the same (or replicated) object storage used by DC1.
 
+-   **Restore HM across three locations**: For the highest level of resilience, HM supports a three-location architecture: Location 1 (primary) and Location 2 (synchronous standby) provide zero data loss through synchronous replication, while Location 3 receives asynchronous replication and can take over if both primary locations are lost. For EDB Postgres Distributed (PGD) deployments, Location 3 also hosts a PGD Witness Group to maintain Raft consensus quorum during a full-location failure.
+
+[SME CONFIRM, claims 6-7: eng doc describes a three-location DR topology (sync standby + async DR site + witness quorum group) not currently documented on this page, which today only describes a two-datacenter model. Please confirm this should be added as a third recovery scenario before merge.]: #
+
 ## Core components
 
 DR relies on three components:
 
-1.  [**Velero**](https://velero.io/) — An open-source tool included with your HM installation that backs up Kubernetes resources (Definitions, Secrets, and ConfigMaps). It captures the configuration and state of your HM installation, as well as the definition for Postgres database clusters created with it.
+1.  [**Velero**](https://velero.io/) — An open-source tool included with your HM installation that backs up Kubernetes resources (CRDs, Secrets, ConfigMaps, ServiceAccounts, and other resources). It captures the configuration and state of your HM installation, as well as the definition for Postgres database clusters created with it.
 2.  **Object storage** — An S3-compatible bucket (AWS S3, GCS, etc.) that holds the Velero backups for the HM installation and its Postgres database clusters.
 3.  **HM console** — Use it to re-provision Postgres database clusters and bring back their data.
 
@@ -31,11 +40,15 @@ To understand DR, you must distinguish between the two layers of data being reco
 | Layer             | Content                                                                                     | Recovery method                                                                   |
 | ----------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | **Control plane** | HM console and its applications, general settings, user accounts, and database definitions. | Velero restore, reinstalls Kubernetes definitions into the new HM installation    |
-| **Data plane**    | Actual Postgres tables, rows, and indexes from database clusters created with HM.           | HM console restore, leverages Point-in-Time Recovery (PITR) to roll data forward. |
+| **Data plane**    | Actual Postgres tables, rows, and indexes from database clusters created with HM.           | HM console restore, using Barman's Point-in-Time Recovery (PITR) or a volume snapshot restore to roll data forward. |
 
 The backups for both data layers are stored in an S3-compatible bucket managed with Velero. You define the location and frequency of the backups during the initial HM configuration and installation.
 
 ### Data recovery considerations
+
+-   **Postgres data:** Fully recoverable via Barman PITR or volume snapshot restore.
+
+-   **Cluster definitions:** Fully recoverable via Velero.
 
 -   **Migrations:** DR procedures don’t restore active migration functionality. While the HM-internal `transporter-db` and `migration-db` databases are recovered, preserving migration history for audit and record-keeping, migrations that were active and impacted by the disaster will need to be re-created.
 
@@ -55,8 +68,10 @@ When a disaster occurs, the recovery follows this sequence:
 
     !!!note Data freshness
 
-    While Velero restores the cluster definition from the time of the last backup, the re-provisioning process uses Postgres WAL (Write Ahead Logs) to perform a Point-in-Time Recovery. This allows you to recover data that is much more recent than your last Velero snapshot.
+    While Velero restores the cluster definition from the time of the last backup, the re-provisioning process uses Barman's continuous WAL (Write Ahead Log) archiving to perform a Point-in-Time Recovery. This allows you to recover data that is much more recent than your last Velero snapshot.
     !!!
+
+4.  **Validate and redirect traffic** — Verify data integrity, test application connectivity, and update your DNS or load balancer configuration to point to the restored environment.
 
 ## Critical requirements for DR success
 
@@ -64,11 +79,19 @@ For this architecture to work, the following must be true **before** a disaster:
 
 -   **Offsite backups:** Your S3-compatible bucket must be replicated to a different region or physical site. If the bucket dies with the data center, DR is impossible. See [object storage](/edb-postgres-ai/current/hybrid-manager/install/install_guide/sys_reqs/#7-object-storage) for more information.
 -   **Consistent credentials:** The new HM instance must have the same IAM permissions or secret access to the original object storage bucket to "see" the old backups.
+-   **Tested procedures:** DR is a manual process. Validate it regularly under controlled conditions.
 
 !!!note **Recovery vs. Resilience**
 
 Remember that DR doesn't provide "zero downtime." Your RTO (how long you are offline) is largely determined by the time it takes to provision new infrastructure and the speed of your network when pulling database logs.
 !!!
+
+!!!note Multi-location DR with Azure Blob Storage
+
+Failover during a region switch can take up to an hour due to Azure Blob Storage's geo-replication lag. Factor this into your RTO planning if you use Azure for multi-location DR.
+!!!
+
+[SME CONFIRM, claim 16: eng doc states failover during a region switch with Azure Blob Storage can take "up to an hour" due to geo-replication lag. The source's own verification_notes confirm pod-level status only (Velero, barman-cloud, storage-location-operator), not this specific timing figure. Please confirm before merge.]: #
 
 ## Next topic
 
