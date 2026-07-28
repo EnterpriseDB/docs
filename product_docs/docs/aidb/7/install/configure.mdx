@@ -122,21 +122,28 @@ Air-gapped environments aren't currently supported.
 
 AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually.
 
-### Local model threading
+### Threading limits
 
-| Parameter           | Type    | Default | Range   | Description                                                                                                                        |
-|----------------------|---------|---------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `aidb.max_threads`  | integer | `0`     | 0–1024  | Maximum number of CPU threads used for local model inference (Candle and llama.cpp). `0` uses the default: half of the available CPUs. `Suset`. |
+| Parameter              | Type    | Default | Range   | Description                                                                                                                        |
+|-------------------------|---------|---------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.max_threads`     | integer | `0`     | 0–1024  | Maximum number of CPU threads used for local model inference (Candle and llama.cpp). `0` uses the default: half of the available CPUs. `Suset`. |
+| `aidb.max_io_threads`  | integer | `0`     | 0–1024  | Maximum number of threads for AIDB's async I/O runtimes (remote model HTTP calls, and volume/object-store I/O). `0` falls back to the `TOKIO_WORKER_THREADS` environment variable, or Tokio's own default (one per CPU) if that isn't set either. `Suset`. |
+
+Both apply live: a session-local `SET` takes effect immediately in that backend only. Setting either with `ALTER SYSTEM` or in `postgresql.conf` takes effect after `pg_reload_conf()` (or `SIGHUP`), and propagates to all backends and background workers — no restart required.
 
 #### `aidb.max_threads`
-
-Lower this on a shared or resource-constrained database server to prevent local model inference from saturating available CPUs:
 
 ```sql
 SET aidb.max_threads = 4;
 ```
 
-A session-local `SET` applies immediately, to that backend only. Setting it with `ALTER SYSTEM` or in `postgresql.conf` applies after `pg_reload_conf()` (or `SIGHUP`), and propagates to all backends and background workers — no restart required.
+#### `aidb.max_io_threads`
+
+```sql
+SET aidb.max_io_threads = 4;
+```
+
+See [Memory limits](../memory-limits) for what these two parameters control, how they interact, and when to lower them.
 
 ### Model download
 
