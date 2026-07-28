@@ -201,7 +201,9 @@ Look for `Node <new_node_name> added to the cluster successfully` in the output 
 
 ### Recovering large databases in two steps
 
-As part of a physical join, `pgd node setup` takes its own base backup of the remote node using `pg_basebackup`. When the database is large enough that this operation takes hours, any failure after the backup completes forces you to redo the entire backup. To avoid this constraint, separate the process into two steps. Take the a manual base backup first, then run `pgd node setup` against the already-backed-up data directory. 
+As part of a physical join, `pgd node setup` takes its own base backup of the remote node using `pg_basebackup`. By default, the command then waits indefinitely for the joining node to replay WAL and promote, and a retry resumes from where a previous attempt left off rather than redoing the base backup. Set `--timeout` (or the `PGCTLTIMEOUT` environment variable) if you want to bound this wait instead of waiting indefinitely.
+
+If you need more control over a large database join, for example to monitor the base backup and the join as separate operations, or to protect the WAL with an explicit permanent replication slot, separate the process into two steps instead. Take the base backup yourself first, then run `pgd node setup` against the already-backed-up data directory.
 
 1. On the source node, take the base backup using `pg_basebackup`'s `-C`/`-S` options, which create a permanent replication slot that survives the backup completing:
 
@@ -229,13 +231,7 @@ As part of a physical join, `pgd node setup` takes its own base backup of the re
 
    `reserved` or `extended` means it's safe to run `pgd node setup` now. `unreserved` means the WAL is close to being removed, so run `pgd node setup` right away. `lost` means the WAL is already gone, and you need to redo the base backup before you can proceed.
 
-1. Explicitly export `PGCTLTIMEOUT` to a value comfortably larger than the expected WAL replay time before running `pgd node setup`. `PGCTLTIMEOUT` is in seconds, so 86400 sets a 24-hour timeout:
-
-   ```shell
-   export PGCTLTIMEOUT=86400
-   ```
-
-1. Run `pgd node setup`, pointing `--pgdata` at the directory you backed up in step 1. The command detects that the directory already contains a valid base backup of the source node and skips taking its own, going straight to the join:
+1. Run `pgd node setup`, pointing `--pgdata` at the directory you backed up in step 1. The command detects that the directory already contains a valid base backup of the source node and skips taking its own, going straight to the join. It waits indefinitely by default for WAL replay and promotion to finish, and a retry resumes rather than redoing the backup, so set `--timeout` or `PGCTLTIMEOUT` only if you want to bound the wait:
 
    ```shell
    pgd node <new_node_name> setup \
@@ -245,10 +241,6 @@ As part of a physical join, `pgd node setup` takes its own base backup of the re
      --log-file <log_file> \
      --group-name <group_name>
    ```
-
-   !!!Note
-   `pgd node setup` can still report `Node was not promoted` on a very large replay, even with `PGCTLTIMEOUT` set. This message comes from a separate, fixed 60-second promotion wait that `PGCTLTIMEOUT` doesn't affect. The server keeps running, so check `SELECT pg_catalog.pg_is_in_recovery();`. Once it returns `false`, retry `pgd node setup` against the same data directory.
-   !!!
 
 1. Once `pgd node setup` completes and the new node's join state is `ACTIVE` (see [Validating the recovered node](#validating-the-recovered-node)), drop the manual slot on the source:
 
