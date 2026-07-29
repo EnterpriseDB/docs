@@ -105,8 +105,8 @@ To change a pipeline's auto-processing mode, use [`aidb.update_pipeline`](../dat
 ### `aidb.retrieve_key`
 
 Returns the source record keys and distances for the top matching embeddings, without fetching source data.
-In `part_ids` also returns the IDs of the matching parts for each step in a multi-step pipeline.. 
-For example, if a single source record is split into 10 parts by a "ChunkText" step, then `part_ids` indicates which chunk matched.
+In `part_ids`, also returns the IDs of the matching parts for each step in a multi-step pipeline.
+For example, if a single source record is split into 10 parts by a `ChunkText` step, then `part_ids` indicates which chunk matched.
 
 #### Parameters
 
@@ -114,8 +114,8 @@ For example, if a single source record is split into 10 parts by a "ChunkText" s
 |-----------------------|---------------|----------|----------------------------------------------------------------------------------------|
 | `knowledge_base_name` | TEXT          | Required | Name of the knowledge base (`schema.vector_table`).                                    |
 | `query`               | TEXT or BYTEA | Required | Query text or image bytes. Must match the data format of the embedding model.          |
-| `topk`                | INTEGER       | `0`      | Number of results to return. `0` uses the default of 1.                                |
-| `deduplicate`         | BOOLEAN       | `true`   | Return each source result only once even if multiple "parts" (for example, chunks/pages) match |
+| `topk`                | INTEGER       | `1`      | Number of results to return. Must be a positive integer — `0` or a negative value raises an error. |
+| `deduplicate`         | BOOLEAN       | `true`   | Return each source result only once even if multiple "parts" (for example, chunks/pages) match. See [Deduplication and intermediate results](../knowledge-bases#deduplication-and-intermediate-results). |
 
 #### Returns
 
@@ -145,7 +145,7 @@ __OUTPUT__
 ### `aidb.retrieve_text`
 
 Returns source text and distances for the top matching embeddings by joining the embeddings table with the source table.
-In `part_ids`, also returns the IDs of the matching parts for each step in a multi-step pipeline. For example if a single source record is split into 10 parts by a "ChunkText" step, then `part_ids` will indicate which chunk matched.
+In `part_ids`, also returns the IDs of the matching parts for each step in a multi-step pipeline. For example, if a single source record is split into 10 parts by a `ChunkText` step, then `part_ids` indicates which chunk matched.
 The return column `intermediate_steps` contains the actual intermediate step output.
 
 #### Parameters
@@ -154,8 +154,8 @@ The return column `intermediate_steps` contains the actual intermediate step out
 |-----------------------|------------------|----------|----------------------------------------------------------------------------------------|
 | `knowledge_base_name` | TEXT             | Required | Name of the knowledge base (`schema.vector_table`).                                    |
 | `query`               | TEXT or BYTEA    | Required | Query text or image bytes. Must match the data format of the embedding model.          |
-| `topk`                | INTEGER          | `0`      | Number of results to return. `0` uses the default of 1.                                |
-| `deduplicate`         | BOOLEAN          | `true`   | Return each source result only once even if multiple "parts" (for example, chunks/pages) match |
+| `topk`                | INTEGER          | `1`      | Number of results to return. Must be a positive integer — `0` or a negative value raises an error. |
+| `deduplicate`         | BOOLEAN          | `true`   | Return each source result only once even if multiple "parts" (for example, chunks/pages) match. See [Deduplication and intermediate results](../knowledge-bases#deduplication-and-intermediate-results). |
 
 #### Returns
 
@@ -166,7 +166,13 @@ The return column `intermediate_steps` contains the actual intermediate step out
 | `distance`           | double precision | Vector distance from the query                                                                |
 | `part_ids`           | bigint[]         | Which part of the source record matched (for example, a chunk or page)                        |
 | `pipeline_name`      | text             | The name of the pipeline processing this source record                                        |
-| `intermediate_steps` | jsonb            | The matching results from the intermediate steps; that is, the values belonging to "part_ids" |
+| `intermediate_steps` | jsonb            | The matching results from any step configured with `intermediate_destination` — that is, the values belonging to `part_ids`. Empty (`[]`) if no step in the pipeline has intermediate storage enabled. See [Intermediate storage](../data-pipelines/pipeline-steps#intermediate-storage). |
+
+`intermediate_steps` is a JSON array with one entry per step that has intermediate storage enabled, each shaped like:
+
+```json
+{"value": "...", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_my_pipeline_step_1"}
+```
 
 #### Example
 
@@ -185,7 +191,7 @@ __OUTPUT__
 
 ### `aidb.delete_knowledge_base`
 
-Cascades: deletes all pipelines attached to the knowledge base, drops the vector table, and removes the registry entry. Does not delete underlying source tables.
+Cascades: deletes all pipelines attached to the knowledge base, drops the vector table, and removes the registry entry. Doesn't delete underlying source tables.
 
 To remove a single pipeline from a multi-pipeline KB while keeping the KB and the other pipelines' vectors intact, use [`aidb.delete_pipeline`](../data-pipelines/reference#aidbdelete_pipeline) instead. Deleting the last attached pipeline also drops the KB.
 
@@ -207,7 +213,7 @@ SELECT aidb.delete_knowledge_base('public.customer_feedback_kb');
 
 ### `aidb.create_volume`
 
-Creates an AIDB volume from a PGFS storage location. The volume is a foreign table that exposes the storage location's contents as rows and can be used as a knowledge base data source or queried directly with SQL. See [External data sources](../external-data-sources) for setting up the PGFS storage location first.
+Creates an AIDB volume from a PGFS storage location. The volume is a foreign table that exposes the storage location's contents as rows and can be used as a knowledge base data source or queried directly with SQL. See [External storage](../external-data-sources) for setting up the PGFS storage location first.
 
 #### Parameters
 
@@ -230,6 +236,8 @@ SELECT aidb.create_volume('pdf_volume', 'my_s3_location', '/', 'Pdf');
 
 View that lists all AIDB volumes in the database. Returns `schema`, `volume`, `storage_location`, and `path`.
 
+#### Example
+
 ```sql
 SELECT * FROM aidb.volumes;
 ```
@@ -238,7 +246,7 @@ SELECT * FROM aidb.volumes;
 
 ### `aidb.delete_volume`
 
-Deletes an AIDB volume. 
+Deletes an AIDB volume.
 
 !!!note
 Deleting the underlying PGFS storage location also deletes all volumes built on top of it.
@@ -249,6 +257,8 @@ Deleting the underlying PGFS storage location also deletes all volumes built on 
 | Parameter     | Type | Description                   |
 |---------------|------|-------------------------------|
 | `volume_name` | TEXT | Name of the volume to delete. |
+
+#### Example
 
 ```sql
 SELECT aidb.delete_volume('pdf_volume');

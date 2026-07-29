@@ -1,7 +1,7 @@
 ---
 title: Operations reference
 navTitle: Operations
-description: API reference for AIDB pipeline error log functions — inspecting, clearing, and retrying failed pipeline records.
+description: API reference for AIDB pipeline error log functions for inspecting, clearing, and requeuing failed pipeline records.
 ---
 
 Reference for pipeline error log functions. For guide-style documentation, see [Pipeline error log](../data-pipelines/orchestration/error-log).
@@ -20,7 +20,7 @@ Returns error log entries for a pipeline, with optional filters.
 
 | Parameter          | Type     | Default  | Description                                                                                            |
 |--------------------|----------|----------|--------------------------------------------------------------------------------------------------------|
-| `pipeline_name`    | TEXT     | Required | Name of the pipeline.                                                                                  |
+| `p_pipeline_name`  | TEXT     | Required | Name of the pipeline.                                                                                  |
 | `p_source_id`      | TEXT     | NULL     | Filter to a specific source record ID.                                                                 |
 | `p_pipeline_step`  | SMALLINT | NULL     | Filter to a specific pipeline step number.                                                             |
 | `p_error_category` | TEXT     | NULL     | Filter by category: `RecordTemporary`, `RecordPermanent`, `PipelineTemporary`, or `PipelinePermanent`. |
@@ -37,7 +37,7 @@ Returns error log entries for a pipeline, with optional filters.
 | `pipeline_step`  | smallint           | Step number where the failure occurred                |
 | `step_operation` | text               | Operation name (for example, `ParsePdf`, `ChunkText`) |
 | `error_message`  | text               | Error description                                     |
-| `error_category` | aidb.ErrorBlocking | Error category                                        |
+| `error_category` | [aidb.ErrorBlocking](../data-pipelines/reference#aidberrorblocking) | Error category                                        |
 | `failed_at`      | timestamptz        | Timestamp of the failure                              |
 | `retry_count`    | integer            | Number of retry attempts                              |
 | `last_retry_at`  | timestamptz        | Timestamp of the last retry                           |
@@ -54,7 +54,7 @@ SELECT * FROM aidb.get_error_logs('my_pipeline', p_source_id => 'doc_42');
 -- Filter by step and category
 SELECT * FROM aidb.get_error_logs(
     'my_pipeline',
-    p_pipeline_step  => 1::smallint,
+    p_pipeline_step  => 1::SMALLINT,
     p_error_category => 'RecordPermanent'
 );
 
@@ -72,7 +72,7 @@ Returns aggregated error counts for a single pipeline, grouped by step, operatio
 
 | Parameter       | Type | Description           |
 |-----------------|------|-----------------------|
-| `pipeline_name` | TEXT | Name of the pipeline. |
+| `p_pipeline_name` | TEXT | Name of the pipeline. |
 
 #### Returns
 
@@ -135,14 +135,14 @@ Deletes specific error log entries by ID. Review entries with `aidb.get_error_lo
 
 #### Parameters
 
-| Parameter       | Type     | Description                             |
-|-----------------|----------|-----------------------------------------|
-| `pipeline_name` | TEXT     | Name of the pipeline.                   |
-| `error_ids`     | BIGINT[] | Array of error log entry IDs to delete. |
+| Parameter         | Type     | Description                             |
+|-------------------|----------|-----------------------------------------|
+| `p_pipeline_name` | TEXT     | Name of the pipeline.                   |
+| `p_error_ids`     | BIGINT[] | Array of error log entry IDs to delete. |
 
 #### Returns
 
-`INTEGER` — the number of rows deleted.
+`BIGINT` — the number of rows deleted.
 
 #### Example
 
@@ -158,42 +158,44 @@ __OUTPUT__
 
 ---
 
-### `aidb.retry_pipeline_errors`
+### `aidb.requeue_pipeline_errors`
 
-!!!Note
-`aidb.retry_pipeline_errors()` is not yet available. It will be included in a future release. See [Known issues](../overview/known-issues).
-!!!
-
-Re-processes specific error log entries from the step where they originally failed.
+Introduced in 7.5.0. Deletes the targeted record-level error log entries and marks their source records dirty on the pipeline's state surface. The next normal run re-processes them; the call itself does no processing. See [Requeuing failed records](../data-pipelines/orchestration/error-log#requeuing-failed-records) for the workflow.
 
 #### Parameters
 
-| Parameter       | Type     | Description                            |
-|-----------------|----------|----------------------------------------|
-| `pipeline_name` | TEXT     | Name of the pipeline.                  |
-| `error_ids`     | BIGINT[] | Array of error log entry IDs to retry. |
+| Parameter         | Type     | Description                              |
+|-------------------|----------|------------------------------------------|
+| `p_pipeline_name` | TEXT     | Name of the pipeline.                    |
+| `p_error_ids`     | BIGINT[] | Array of error log entry IDs to requeue. |
 
 #### Returns
 
-| Column          | Type   | Description                        |
-|-----------------|--------|------------------------------------|
-| `error_id`      | bigint | Error log entry ID                 |
-| `status`        | text   | `resolved` or `failed`             |
-| `error_message` | text   | Failure reason (empty if resolved) |
+One row per input ID, ordered by ascending `error_id`.
 
-Resolved entries are removed from the error log. Failed retries remain with an incremented `retry_count` and updated `last_retry_at`.
+| Column     | Type   | Description                                                       |
+|------------|--------|-------------------------------------------------------------------|
+| `error_id` | bigint | Error log entry ID from the input array.                          |
+| `action`   | text   | `requeued`, `skipped_pipeline_level`, or `not_found` (see below). |
+
+- `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker.
+- `skipped_pipeline_level`: entry has a NULL `source_id` and is left in place. Fix the underlying issue and re-run, or dismiss with `aidb.clear_error_logs`.
+- `not_found`: ID not present in the error log, or the pipeline has no error log table.
+
+Concurrent requeues on overlapping IDs serialize on per-row `FOR UPDATE` locks; non-overlapping ID sets proceed in parallel. Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline` call.
 
 #### Example
 
 ```sql
-SELECT * FROM aidb.retry_pipeline_errors('my_pipeline', ARRAY[1, 2]);
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
 
 __OUTPUT__
- error_id | status   | error_message
-----------+----------+----------------------------------
-        1 | resolved |
-        2 | failed   | failed to extract text from page 0
-(2 rows)
+ error_id | action
+----------+------------------------
+        1 | requeued
+        2 | requeued
+       99 | not_found
+(3 rows)
 ```
 
 ---

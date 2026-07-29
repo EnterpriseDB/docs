@@ -3,7 +3,7 @@ title: Configuring AIDB
 navTitle: Configuring
 ---
 
-To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, and verify the installation.
+To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, manage user access, and verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
 
 ## Configure shared_preload_libraries
 
@@ -13,7 +13,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
    shared_preload_libraries = 'aidb'
    ```
 
-   !!!Note
+   !!!note
    If `shared_preload_libraries` already has other extensions listed, append `aidb` using a comma separator. The order doesn't matter.
    !!!
 
@@ -114,13 +114,36 @@ sudo systemctl restart postgresql@16-main
 
 Replace `<your-proxy-settings>` with your proxy address, and `16` with your Postgres version. Consult the documentation for your Postgres distribution for the exact location of the environment file.
 
-!!!Note
+!!!note
 Air-gapped environments aren't currently supported.
 !!!
 
 ## Configuration parameters
 
-AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. All parameters below are `USERSET` — any role can change them for its own session.
+AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually.
+
+### Threading limits
+
+| Parameter              | Type    | Default | Range   | Description                                                                                                                        |
+|-------------------------|---------|---------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.max_threads`     | integer | `0`     | 0–1024  | Maximum number of CPU threads used for local model inference (Candle and llama.cpp). `0` uses the default: half of the available CPUs. `SUSET`. |
+| `aidb.max_io_threads`  | integer | `0`     | 0–1024  | Maximum number of threads for AIDB's async I/O runtimes (remote model HTTP calls, and volume/object-store I/O). `0` falls back to the `TOKIO_WORKER_THREADS` environment variable, or Tokio's own default (one per CPU) if that isn't set either. `SUSET`. |
+
+Both apply live: a session-local `SET` takes effect immediately in that backend only. Setting either with `ALTER SYSTEM` or in `postgresql.conf` takes effect after `pg_reload_conf()` (or `SIGHUP`), and propagates to all backends and background workers — no restart required.
+
+#### `aidb.max_threads`
+
+```sql
+SET aidb.max_threads = 4;
+```
+
+#### `aidb.max_io_threads`
+
+```sql
+SET aidb.max_io_threads = 4;
+```
+
+See [Threading limits](threading-limits) for what these two parameters control, how they interact, and when to lower them.
 
 ### Model download
 
@@ -128,7 +151,7 @@ The following parameters control how AIDB downloads local model files from Huggi
 
 | Parameter                    | Type    | Default  | Range | Description                                                                                                                                                                                                    |
 |------------------------------|---------|----------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `aidb.download_log_level`    | string  | `notice` | —     | Controls the output channel for routine download progress messages (download start/complete, byte-progress heartbeats, adapter load lines). Valid values: `notice`, `log`, `off`. See below.                   |
+| `aidb.download_log_level`    | string  | `notice` | —     | Controls the output channel for routine download progress messages (for example, download start/complete, byte-progress heartbeats, and adapter load lines). Valid values: `notice`, `log`, `off`. See below.                   |
 | `aidb.download_max_attempts` | integer | `30`     | 1–500 | Maximum total download attempts per file (initial request plus retries) before AIDB aborts. See [Local model downloads](../integrating-models/integrated-models#local-model-downloads) for the retry behavior. |
 
 #### `aidb.download_log_level`
@@ -159,6 +182,28 @@ Example:
 SET aidb.download_max_attempts = 5;
 ```
 
+### llama.cpp native logs
+
+| Parameter                   | Type    | Default | Range | Description                                                                                                                                                                    |
+|------------------------------|---------|---------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.enable_llamacpp_logs` | boolean | `false` | —     | Controls whether llama.cpp's own diagnostic output (GGUF metadata, tensor shapes, and backend/model initialization) is written to the server log. `SUSET`. Read once at extension initialization — see below. |
+
+#### `aidb.enable_llamacpp_logs`
+
+Off by default: llama.cpp's native logging is verbose — hundreds of lines per model load — so it's suppressed unless you need it. This is separate from `aidb.download_log_level` above, which controls AIDB's own download-progress messages; the two are independent.
+
+Unlike the other parameters on this page, `aidb.enable_llamacpp_logs` is `SUSET` (a superuser, or a role granted `SET` on the parameter, can change it) and is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) doesn't take effect until Postgres is restarted:
+
+```ini
+aidb.enable_llamacpp_logs = true
+```
+
+```bash
+sudo systemctl restart postgresql@16-main
+```
+
+Applies only to `llamacpp_generate` and `llamacpp_embeddings` models — it has no effect on Candle-based models (`bert_local`, `clip_local`, `t5_local`, `llama_instruct_local`). See [Local models — Troubleshooting](../integrating-models/integrated-models#troubleshooting) for when to use this.
+
 ### Network egress
 
 The following parameter restricts outbound HTTP traffic from AIDB — both calls to model provider APIs and model file downloads from HuggingFace. When unset, no restriction is applied and AIDB can reach any host.
@@ -175,12 +220,12 @@ Each comma-separated entry is one of:
 | Form                  | Matches                                                                                          |
 |-----------------------|--------------------------------------------------------------------------------------------------|
 | `host.example.com`    | Exact hostname match (case-insensitive).                                                         |
-| `.example.com`        | Any subdomain of `example.com` (does not match `example.com` itself).                            |
+| `.example.com`        | Any subdomain of `example.com` (doesn't match `example.com` itself).                             |
 | `203.0.113.10`        | Exact IPv4 or IPv6 literal in the destination URL.                                               |
-| `203.0.113.0/24`      | IPv4 CIDR range; matches IP literals in that range. Does not match hostnames.                    |
+| `203.0.113.0/24`      | IPv4 CIDR range; matches IP literals in that range. Doesn't match hostnames.                      |
 | `2001:db8::/32`       | IPv6 CIDR range.                                                                                 |
 
-Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames are not resolved for matching.
+Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames aren't resolved for matching.
 
 #### Resolution order
 
@@ -196,7 +241,7 @@ aidb.egress_allowlist = 'api.openai.com, huggingface.co, .huggingface.co, cdn-lf
 
 When a request is rejected, AIDB raises an error that names the active parameter so the operator can adjust the list.
 
-!!!Note
+!!!note
 PGFS implements the same allowlist mechanism under `pgfs.egress_allowlist`, applied to traffic from PGFS to cloud object-store endpoints (S3, Google Cloud Storage, Azure Blob). `edb.egress_allowlist` is the shared fallback for both extensions: set it to apply one list to AIDB and PGFS together, or use the per-extension parameters when each needs a different policy. See [PGFS — Network egress](/pg_extensions/pgfs/configuring#network-egress).
 
 If your AIDB pipelines read from external storage, both allowlists are relevant: AIDB's controls model-provider and HuggingFace traffic, and PGFS's controls the connection to your object store. See [External storage](../external-data-sources) for how AIDB and PGFS work together.

@@ -6,6 +6,25 @@ description: API reference for AIDB model management, inference functions, and m
 
 Reference for all model-related functions and views in AIDB. For guide-style documentation, see [Integrating models](../integrating-models).
 
+## Configuration model
+
+A model's behavior is controlled two ways, and it matters which one you use for a given setting:
+
+- **Creation-time `config`** — set when you call `aidb.create_model()`, using a provider-specific [config helper](#model-config-helpers) (`aidb.bert_config()`, `aidb.completions_config()`, and so on). This is the model's persistent, stored configuration.
+- **Call-time `inference_config`** — an optional per-call override, built with [`aidb.inference_config()`](#aidbinference_config), passed directly to an inference function. It overrides the model's stored config for that one call only; anything you don't override falls back to the value set at creation time.
+
+Only some inference functions accept a call-time override — the rest are fixed entirely by the model's creation-time `config`:
+
+| Function | Call-time override? |
+|----------|----------------------|
+| `aidb.decode_text()`, `aidb.decode_text_batch()` | Yes — pass `aidb.inference_config()` (or raw JSON) as the `inference_config` argument. |
+| `aidb.summarize_text()`, `aidb.summarize_text_aggregate()` | Yes — via the `inference_config` field of [`aidb.summarize_text_config()`](../sql-functions/summarize-text#custom-prompts-and-inference-settings). |
+| `aidb.encode_text()`, `aidb.encode_text_batch()`, `aidb.encode_image()` | No. Behavior is fixed by `config` at creation time. |
+| `aidb.rerank_text()` | No. Behavior is fixed by `config` at creation time. |
+| `aidb.perform_ocr()` | No — its `options` parameter only selects which registered model to run, not inference settings. |
+
+This asymmetry follows from what each capability needs: text generation has runtime knobs worth tuning per call (temperature, system prompt, and so on); embeddings, reranking, and OCR don't, so there's nothing to override.
+
 ## Catalog views
 
 ### `aidb.model_providers`
@@ -20,7 +39,7 @@ Lists all available model providers registered in the system.
 
 ### `aidb.models`
 
-Lists all models in the registry, including built-in and user-created models.
+Lists all models in the registry, including default and user-created models.
 
 | Column     | Type  | Description                      |
 |------------|-------|----------------------------------|
@@ -59,6 +78,7 @@ Registers a new model in the AIDB model registry.
 | `config`              | JSONB   | `'{}'`   | Provider-specific configuration. Build with a [config helper](#model-config-helpers). |
 | `credentials`         | JSONB   | `'{}'`   | Provider credentials (for example, `{"api_key": "..."}`).                             |
 | `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
+| `validate`            | BOOLEAN | `true`   | If `true`, probe the model at creation time to confirm it's functional. See [Validation](#validation). |
 
 #### TLS configuration
 
@@ -70,6 +90,15 @@ To connect to HTTPS model endpoints, include a `tls_config` field inside `config
   "ca_path": "/etc/aidb/myCA.pem"
 }
 ```
+
+#### Validation
+
+By default (`validate => true`), `aidb.create_model()` runs a minimal probe inference before the registration commits, to confirm the model is functional:
+
+- **Local models** are downloaded and loaded, and a test inference is run — so a bad model identifier or unloadable weights fail at creation time rather than on first use.
+- **External models** receive a small test request — so an invalid API key, wrong URL, or unreachable endpoint is caught right away.
+
+If the probe fails, `aidb.create_model()` raises an error and registers nothing. Pass `validate => false` to skip the probe — for example, to defer a large download to first use, or to register a model before its endpoint or credentials are available. You can validate a model later with [`aidb.validate_model()`](#aidbvalidate_model).
 
 #### Examples
 
@@ -131,7 +160,7 @@ __OUTPUT__
 
 ### `aidb.delete_model`
 
-Removes a model from the registry. Does not affect pipelines or knowledge bases that reference it until they are next executed.
+Removes a model from the registry. Doesn't affect pipelines or knowledge bases that reference it until they are next executed.
 
 #### Parameters
 
@@ -152,6 +181,34 @@ __OUTPUT__
      delete_model
 ---------------------------------
  (t5,t5_local,"{""config={}""}")
+(1 row)
+```
+
+---
+
+### `aidb.validate_model`
+
+Probes a registered model to confirm it's functional, running a minimal test inference. Called automatically by `aidb.create_model()` unless `validate => false`; you can also call it directly to re-check an existing model.
+
+#### Parameters
+
+| Parameter    | Type | Description                    |
+|--------------|------|--------------------------------|
+| `model_name` | TEXT | Name of the model to validate. |
+
+#### Returns
+
+`TEXT` — the model capability that was probed (for example, `text embedding`, `language`, `reranking`, `image embedding`, or `OCR`). Raises an error if the probe fails.
+
+#### Example
+
+```sql
+SELECT aidb.validate_model('my_bert');
+
+__OUTPUT__
+ validate_model
+----------------
+ text embedding
 (1 row)
 ```
 
@@ -435,6 +492,59 @@ SELECT aidb.decode_text(
 );
 ```
 
+### Tool calling and structured output
+
+Three more inference settings exist but aren't exposed as named parameters of `aidb.inference_config()` — build them as raw JSON instead, merged with the helper's output using `||` if you also need other settings. **Only the `llamacpp_generate` provider honors these**; every other provider rejects them.
+
+| Field | Type | Description |
+|-------|------|--------------|
+| `tools` | JSONB array | OpenAI-compatible `tools` array — function definitions the model can call. |
+| `tool_choice` | JSONB | OpenAI-compatible `tool_choice`: the string `"auto"`, `"required"`, or `"none"`, or `{"type": "function", "function": {"name": "..."}}` to force a specific tool. |
+| `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. |
+
+```sql
+-- Tool calling
+SELECT aidb.decode_text(
+    'my_llamacpp_chat',
+    'What is the weather in Paris?',
+    (aidb.inference_config(temperature => 0.2) || jsonb_build_object(
+        'tools', jsonb_build_array(
+            jsonb_build_object(
+                'type', 'function',
+                'function', jsonb_build_object(
+                    'name', 'get_weather',
+                    'description', 'Get current weather for a city',
+                    'parameters', jsonb_build_object(
+                        'type', 'object',
+                        'properties', jsonb_build_object('city', jsonb_build_object('type', 'string')),
+                        'required', jsonb_build_array('city')
+                    )
+                )
+            )
+        ),
+        'tool_choice', 'auto'
+    ))::json
+);
+
+-- Structured output
+SELECT aidb.decode_text(
+    'my_llamacpp_chat',
+    'Extract the city from: I live in Paris.',
+    jsonb_build_object(
+        'response_format', jsonb_build_object(
+            'type', 'json_schema',
+            'json_schema', jsonb_build_object(
+                'schema', jsonb_build_object(
+                    'type', 'object',
+                    'properties', jsonb_build_object('city', jsonb_build_object('type', 'string')),
+                    'required', jsonb_build_array('city')
+                )
+            )
+        )
+    )::json
+);
+```
+
 ---
 
 ## Model config helpers
@@ -457,6 +567,8 @@ For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
 | `input_type_query`        | TEXT    | NULL     | Query input type hint (provider-specific). |
 | `tls_config`              | JSONB   | NULL     | TLS configuration.                         |
 | `is_hcp_model`            | BOOLEAN | NULL     | `true` if model runs on HCP.               |
+
+#### Example
 
 ```sql
 SELECT aidb.create_model(
@@ -487,10 +599,12 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 | `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                         |
 | `seed`                    | BIGINT           | NULL     | Random seed.                                        |
 | `thinking`                | BOOLEAN          | NULL     | `<think>` tag handling.                             |
-| `max_tokens`              | JSONB            | NULL     | Max tokens config (use `aidb.max_tokens_config()`). |
+| `max_tokens`              | JSONB            | NULL     | Max tokens config (use [`aidb.max_tokens_config()`](#aidbmax_tokens_config)). |
 | `max_concurrent_requests` | INTEGER          | NULL     | Max concurrent requests.                            |
 | `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.             |
 | `is_hcp_model`            | BOOLEAN          | NULL     | `true` if model runs on HCP.                        |
+
+#### Example
 
 ```sql
 SELECT aidb.create_model(
@@ -515,6 +629,8 @@ Builds the `max_tokens` object for use with `aidb.completions_config()`.
 | `size`    | INTEGER | Required | Maximum tokens to generate.                   |
 | `format`  | TEXT    | NULL     | Format: `'default'`, `'legacy'`, or `'both'`. |
 
+#### Example
+
 ```sql
 SELECT aidb.completions_config(
     model      => 'gpt-4o',
@@ -534,6 +650,8 @@ For the `bert_local` provider.
 | `revision`  | TEXT | NULL     | Model revision or branch.     |
 | `cache_dir` | TEXT | NULL     | Local cache directory.        |
 
+#### Example
+
 ```sql
 SELECT aidb.create_model('my_bert', 'bert_local',
     config => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2'));
@@ -552,6 +670,8 @@ For the `clip_local` provider.
 | `cache_dir`  | TEXT    | NULL     | Local cache directory.        |
 | `image_size` | INTEGER | NULL     | Input image size in pixels.   |
 
+#### Example
+
 ```sql
 SELECT aidb.create_model('my_clip', 'clip_local',
     config => aidb.clip_config('openai/clip-vit-base-patch32'));
@@ -561,7 +681,7 @@ SELECT aidb.create_model('my_clip', 'clip_local',
 
 ### `aidb.llama_config`
 
-For the `llama_local` provider.
+For the `llama_instruct_local` provider.
 
 | Parameter             | Type             | Default  | Description                                               |
 |-----------------------|------------------|----------|-----------------------------------------------------------|
@@ -579,8 +699,10 @@ For the `llama_local` provider.
 | `use_flash_attention` | BOOLEAN          | NULL     | Enable flash attention.                                   |
 | `use_kv_cache`        | BOOLEAN          | NULL     | Enable KV cache.                                          |
 
+#### Example
+
 ```sql
-SELECT aidb.create_model('my_llama', 'llama_local',
+SELECT aidb.create_model('my_llama', 'llama_instruct_local',
     config => aidb.llama_config(
         'meta-llama/Llama-3.2-3B-Instruct',
         temperature => 0.5
@@ -607,6 +729,8 @@ For the `t5_local` provider.
 | `repeat_penalty` | REAL             | NULL     | Repetition penalty.                       |
 | `repeat_last_n`  | INTEGER          | NULL     | Tokens considered for repetition penalty. |
 
+#### Example
+
 ```sql
 SELECT aidb.create_model('my_t5', 't5_local',
     config => aidb.t5_config('google/flan-t5-base'));
@@ -626,10 +750,16 @@ For the `gemini` provider.
 | `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                                   |
 | `thinking_budget`         | INTEGER | NULL     | Extended thinking token budget (Gemini 2.x only).          |
 
+#### Example
+
 ```sql
 SELECT aidb.create_model('my_gemini', 'gemini',
     config => aidb.gemini_config('AIza...', model => 'gemini-2.0-flash'));
 ```
+
+!!!note
+Unlike other remote providers, Gemini's `api_key` is a plain field of `config` rather than being passed through `aidb.create_model()`'s separate `credentials` parameter. It's stored as part of the model's config rather than the more restricted credentials store — keep that in mind if `aidb.models.options` is visible to more roles than you want to see the key.
+!!!
 
 ---
 
@@ -644,6 +774,8 @@ For the `nim_clip` provider (NVIDIA NIM multimodal embeddings).
 | `url`          | TEXT    | NULL    | NIM endpoint URL override.   |
 | `basic_auth`   | TEXT    | NULL    | Basic auth credentials.      |
 | `is_hcp_model` | BOOLEAN | NULL    | `true` if model runs on HCP. |
+
+#### Example
 
 ```sql
 SELECT aidb.create_model('my_nim_clip', 'nim_clip',
@@ -664,6 +796,8 @@ For the `nim_ocr` provider (NVIDIA NIM OCR).
 | `basic_auth`   | TEXT    | NULL    | Basic auth credentials.      |
 | `is_hcp_model` | BOOLEAN | NULL    | `true` if model runs on HCP. |
 
+#### Example
+
 ```sql
 SELECT aidb.create_model('my_nim_ocr', 'nim_ocr',
     config => aidb.nim_ocr_config(api_key => 'nvapi-...'));
@@ -682,6 +816,8 @@ For the `nim_reranking` provider.
 | `url`          | TEXT    | NULL    | NIM endpoint URL override.      |
 | `basic_auth`   | TEXT    | NULL    | Basic auth credentials.         |
 | `is_hcp_model` | BOOLEAN | NULL    | `true` if model runs on HCP.    |
+
+#### Example
 
 ```sql
 SELECT aidb.create_model('my_reranker', 'nim_reranking',
@@ -704,7 +840,9 @@ For the `openrouter_chat` provider.
 | `api_key`                 | TEXT    | NULL     | OpenRouter API key.                                 |
 | `url`                     | TEXT    | NULL     | API endpoint override.                              |
 | `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                            |
-| `max_tokens`              | JSONB   | NULL     | Max tokens config (use `aidb.max_tokens_config()`). |
+| `max_tokens`              | JSONB   | NULL     | Max tokens config (use [`aidb.max_tokens_config()`](#aidbmax_tokens_config)). |
+
+#### Example
 
 ```sql
 SELECT aidb.create_model('my_or_chat', 'openrouter_chat',
@@ -728,6 +866,8 @@ For the `openrouter_embeddings` provider.
 | `url`                     | TEXT    | NULL     | API endpoint override.                  |
 | `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                |
 | `max_batch_size`          | INTEGER | NULL     | Max inputs per batch.                   |
+
+#### Example
 
 ```sql
 SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
