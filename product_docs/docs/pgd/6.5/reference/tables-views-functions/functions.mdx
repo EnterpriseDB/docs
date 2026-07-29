@@ -948,7 +948,7 @@ bdr.monitor_group_versions()
 #### Notes
 
 This function returns a record with fields `status` and `message`,
-as explained in [Monitoring](../../monitoring/sql/#monitoring-pgd-versions).
+as explained in [Monitoring](/pgd/current/lifecycle/monitoring/sql/#monitoring-pgd-versions).
 
 This function calls `bdr.run_on_all_nodes()`.
 
@@ -973,7 +973,7 @@ bdr.monitor_group_raft()
 #### Notes
 
 This function returns a record with fields `status` and `message`,
-as explained in [Monitoring](../../monitoring/sql/#monitoring-raft-consensus).
+as explained in [Monitoring](/pgd/current/lifecycle/monitoring/sql/#monitoring-raft-consensus).
 
 This function calls `bdr.run_on_all_nodes()`.
 
@@ -1004,7 +1004,235 @@ This function returns a record with fields `status` and `message`.
 | CRITICAL | There is at least 1 BDR replication slot which is inactive |
 | CRITICAL | There is at least 1 BDR replication slot which is missing  |
 
-Further explaination is available in [Monitoring replication slots](../../monitoring/sql/#monitoring-replication-slots).
+Further explaination is available in [Monitoring replication slots](/pgd/current/lifecycle/monitoring/sql/#monitoring-replication-slots).
+
+### `bdr.ts_metrics`
+
+This function lists every registered timeseries metric definition. PGD Monitor
+uses this registry to give the same metric names and descriptions across SQL,
+its REST API, its web UI, and its Prometheus `/metrics` endpoint.
+
+#### Synopsis
+
+```sql
+bdr.ts_metrics()
+```
+
+#### Output columns
+
+| Column name    | Description                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `metric_id`    | Internal numeric identifier for the metric.                                                                            |
+| `metric_name`  | The metric's name. The same name is used in the REST API, the web UI, and the Prometheus `/metrics` endpoint.         |
+| `kind`         | The metric's kind, `gauge` or `histogram`.                                                                             |
+| `value_type`   | The type used to store sampled values, `int8` or `float8`.                                                             |
+| `display_kind` | How the PGD Monitor web UI charts summarize the metric when zoomed out to a coarser time range (mean, mean with a minimum/maximum band, minimum, or maximum). |
+| `unit`         | The metric's unit, for example bytes, percent, or seconds.                                                             |
+| `description`  | A description of the metric.                                                                                           |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership.
+
+See [Monitoring metrics reference](/pgd/current/reference/tables-views-functions/monitoring-metrics)
+for the full list of registered metrics, and
+[PGD Monitor](/pgd/current/lifecycle/monitoring/pgd-monitor) for the interfaces
+that expose them.
+
+### `bdr.ts_latest`
+
+This function reads the most recently sampled value for a named timeseries
+metric.
+
+#### Synopsis
+
+```sql
+bdr.ts_latest(metric_name text)
+```
+
+#### Parameters
+
+| Parameter     | Description                                                            |
+| ------------- | ----------------------------------------------------------------------- |
+| `metric_name` | The metric to read, matching a `metric_name` value from `bdr.ts_metrics()`. |
+
+#### Output columns
+
+| Column name   | Description                                                     |
+| ------------- | ----------------------------------------------------------------- |
+| `ts`          | Timestamp of the sample.                                        |
+| `value_int`   | The sampled value, when the metric's `value_type` is `int8`.   |
+| `value_float` | The sampled value, when the metric's `value_type` is `float8`. |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership.
+
+### `bdr.ts_errors`
+
+This function reads recent errors captured by the timeseries error ring
+buffer, which backs the PGD Monitor web UI's Error Log page.
+
+#### Synopsis
+
+```sql
+bdr.ts_errors(max_entries int DEFAULT 50)
+```
+
+#### Parameters
+
+| Parameter     | Description                                          |
+| ------------- | ------------------------------------------------------ |
+| `max_entries` | Maximum number of error entries to return. Defaults to 50. |
+
+#### Output columns
+
+| Column name  | Description                              |
+| ------------ | ------------------------------------------- |
+| `ts`         | Timestamp of the error.                  |
+| `sqlerrcode` | The error's SQLSTATE code.               |
+| `message`    | The error message.                       |
+| `detail`     | Additional detail for the error, if any. |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership.
+
+### `bdr.ts_samples`
+
+This function reads historical timeseries samples for a metric at a given
+downsampling frequency level, retrieved over IPC from the monitor background
+worker. It backs the timeseries charts in the PGD Monitor web UI.
+
+#### Synopsis
+
+```sql
+bdr.ts_samples(metric_name text, level int DEFAULT 0)
+```
+
+#### Parameters
+
+| Parameter     | Description                                                                     |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `metric_name` | The metric to read, matching a `metric_name` value from `bdr.ts_metrics()`.        |
+| `level`       | The downsampling frequency level to read, from `0` (finest) to `4` (coarsest). Defaults to `0`. |
+
+#### Output columns
+
+| Column name | Description                                                |
+| ----------- | -------------------------------------------------------------- |
+| `ts`        | Timestamp of the sample.                                   |
+| `value`     | The sampled value, or the mean value for a downsampled window. |
+| `min`       | The minimum value in the sample window, for a downsampled window. |
+| `max`       | The maximum value in the sample window, for a downsampled window. |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership.
+
+### `bdr.ts_histogram`
+
+For a histogram-kind metric, such as `pgd_commit_latency_milliseconds`, this
+function reads percentile summaries (p50, p90, p99) at a given downsampling
+frequency level.
+
+#### Synopsis
+
+```sql
+bdr.ts_histogram(metric_name text, level int DEFAULT 3)
+```
+
+#### Parameters
+
+| Parameter     | Description                                                          |
+| ------------- | ------------------------------------------------------------------------ |
+| `metric_name` | The histogram metric to read, matching a `metric_name` value from `bdr.ts_metrics()`. |
+| `level`       | The downsampling frequency level to read, from `3` to `4`. Defaults to `3`. |
+
+#### Output columns
+
+| Column name      | Description                                    |
+| ---------------- | --------------------------------------------------- |
+| `ts`              | Timestamp of the sample window.                     |
+| `p50`             | 50th percentile value in the window.                |
+| `p90`             | 90th percentile value in the window.                |
+| `p99`             | 99th percentile value in the window.                |
+| `count`           | Number of observations in the window.               |
+| `sum`             | Sum of observations in the window.                  |
+| `overflow_count`  | Observations that exceeded the histogram's largest bucket boundary. |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership.
+
+### `bdr.ts_histogram_distribution`
+
+For a histogram-kind metric, this function returns per-bucket observation
+counts aggregated across all samples at a given downsampling frequency level.
+
+#### Synopsis
+
+```sql
+bdr.ts_histogram_distribution(metric_name text, level int DEFAULT 3)
+```
+
+#### Parameters
+
+| Parameter     | Description                                                          |
+| ------------- | ------------------------------------------------------------------------ |
+| `metric_name` | The histogram metric to read, matching a `metric_name` value from `bdr.ts_metrics()`. |
+| `level`       | The downsampling frequency level to read, from `3` to `4`. Defaults to `3`. |
+
+#### Output columns
+
+| Column name      | Description                                    |
+| ------------------ | --------------------------------------------------- |
+| `bucket_upper_ms` | Upper boundary of the bucket, in milliseconds. |
+| `count`           | Number of observations in the bucket.          |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership.
+
+### `bdr.ts_histogram_cumulative`
+
+For a histogram-kind metric, this function returns cumulative-since-start
+bucket counters, one row per bucket boundary ending with `+Inf`. This is the
+SQL equivalent of the `_bucket`, `_sum`, and `_count` series that Prometheus
+histograms expose.
+
+#### Synopsis
+
+```sql
+bdr.ts_histogram_cumulative(metric_name text)
+```
+
+#### Parameters
+
+| Parameter     | Description                                                          |
+| ------------- | ------------------------------------------------------------------------ |
+| `metric_name` | The histogram metric to read, matching a `metric_name` value from `bdr.ts_metrics()`. |
+
+#### Output columns
+
+| Column name          | Description                                                  |
+| ----------------------- | ----------------------------------------------------------------- |
+| `bucket_le_ms`         | Bucket boundary, in milliseconds (the bucket covers values less than or equal to this boundary). |
+| `cumulative_count`     | Cumulative number of observations at or below the boundary.        |
+| `sum_ms`               | Sum of all observations, in milliseconds.                          |
+| `total_count`          | Total number of observations across all buckets.                   |
+
+#### Notes
+
+Executable by roles with `bdr_superuser`, `bdr_read_all_stats`, or `bdr_monitor`
+membership. Buckets are cumulative monotone counters, matching the convention
+`histogram_quantile()` and `rate()` expect in PromQL.
 
 ### `bdr.wal_sender_stats`
 
@@ -1051,7 +1279,7 @@ bdr.get_decoding_worker_stat()
 
 #### Notes
 
-For details, see [Monitoring WAL senders using LCR](../../monitoring/sql/#monitoring-wal-senders-using-lcr).
+For details, see [Monitoring WAL senders using LCR](/pgd/current/lifecycle/monitoring/sql/#monitoring-wal-senders-using-lcr).
 
 ### `bdr.lag_control`
 
