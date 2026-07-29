@@ -24,7 +24,7 @@ Each pipeline has an error log table. When a record fails at any step, the log c
 | `PipelineTemporary` | Pipeline | Yes              | Transient failure that stopped the entire step (for example, a service outage). May resolve on retry. |
 | `PipelinePermanent` | Pipeline | Yes              | Permanent failure that stopped the entire step (for example, invalid model config). |
 
-Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration. Specifically: `RecordTemporary` currently fires only for model rate-limit errors, `RecordPermanent` covers bad input data (corrupt PDF, malformed HTML, invalid UTF-8), `PipelineTemporary` covers transient external faults (object store outage, model service timeout), and `PipelinePermanent` is the catch-all for misconfiguration (deleted model, invalid step config).
+Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration. Specifically: `RecordTemporary` currently fires only for model rate-limit errors, `RecordPermanent` covers bad input data (for example, corrupt PDF, malformed HTML, invalid UTF-8), `PipelineTemporary` covers transient external faults (for example, object store outage, model service timeout), and `PipelinePermanent` is the general case for misconfiguration (for example, deleted model, invalid step config).
 
 ## Querying errors
 
@@ -96,21 +96,7 @@ __OUTPUT__
 (3 rows)
 ```
 
-## Clearing errors
-
-Delete specific error log entries by ID:
-
-```sql
-SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3]);
-
-__OUTPUT__
- clear_error_logs
-------------------
-                2
-(1 row)
-```
-
-Returns the number of deleted rows. Clearing is ID-based; review entries with `get_error_logs()` before removing them.
+See the [Operations reference](../../reference/operations#aidbget_error_log_summary) and [`aidb.get_all_error_summaries`](../../reference/operations#aidbget_all_error_summaries) for full parameter and return type details.
 
 ## Requeuing failed records
 
@@ -131,14 +117,14 @@ __OUTPUT__
 Results are ordered by ascending `error_id`. Each row reports one of three actions:
 
 - `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker on the state row.
-- `skipped_pipeline_level`: the entry has a NULL `source_id` (see below). Left in place.
+- `skipped_pipeline_level`: the entry has a NULL `source_id` (see below) and is left in place.
 - `not_found`: the id was absent from the error log, or the pipeline has no error log table (legacy pipelines or `Empty` sources like Semantic KB).
 
 Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline('my_pipeline')` to actually re-process.
 
 Requeue is a deferred mark-dirty operation, not a synchronous retry. The call itself does no processing, so per-record success or failure only surfaces after the follow-up run. To confirm what happened after re-processing, re-query `aidb.get_error_logs`.
 
-Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks. Non-overlapping id sets proceed in parallel. Requeue does not block `aidb.run_pipeline` or the background worker.
+Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks. Non-overlapping id sets proceed in parallel. Requeue doesn't block `aidb.run_pipeline` or the background worker.
 
 ### Pipeline-level errors
 
@@ -153,23 +139,52 @@ __OUTPUT__
 (1 row)
 ```
 
-Fix the underlying issue (model availability, config, deleted model) and re-run the pipeline. The NULL row clears automatically once the step next executes without any errors. To dismiss it without re-running, use `aidb.clear_error_logs`.
+Fix the underlying issue (for example, model availability, config, deleted model) and re-run the pipeline. The NULL row clears automatically once the step next executes without any errors. To dismiss it without re-running, use `aidb.clear_error_logs`.
 
 ### Disabled-mode volume caveat
 
-On a Disabled-mode pipeline with a volume source, `aidb.requeue_pipeline_errors` sets the `retry_requested_at` marker on the marked files but cannot schedule a drain, so it emits a `NOTICE` pointing at `aidb.run_pipeline`. Manual `aidb.run_pipeline` re-reads the whole volume rather than only the marked files, which pays a full-volume scan on large volumes.
+On a Disabled-mode pipeline with a volume source, `aidb.requeue_pipeline_errors` sets the `retry_requested_at` marker on the marked files but can't schedule a drain, so it emits a `NOTICE` pointing at `aidb.run_pipeline`. Manual `aidb.run_pipeline` re-reads the whole volume rather than only the marked files, which costs a full-volume scan on large volumes.
 
 For large Disabled-mode volumes, switch the pipeline to Background mode, call `aidb.requeue_pipeline_errors`, let the worker drain the marked files, then switch the pipeline back to Disabled.
+
+See the [Operations reference](../../reference/operations#aidbrequeue_pipeline_errors) for full parameter and return type details.
+
+## Clearing errors
+
+Delete specific error log entries by ID:
+
+```sql
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3]);
+
+__OUTPUT__
+ clear_error_logs
+------------------
+                2
+(1 row)
+```
+
+Returns the number of deleted rows. Clearing is ID-based; review entries with `get_error_logs()` before removing them.
+
+See the [Operations reference](../../reference/operations#aidbclear_error_logs) for full parameter and return type details.
 
 ## Automatic cleanup
 
 Error log entries clear without `aidb.clear_error_logs` or `aidb.requeue_pipeline_errors` in three cases:
 
 - Source record deleted. The live `DELETE` trigger, background worker `DELETE` processing, and volume stale-state cleanup all remove matching error log entries alongside their destination rows.
-- Source envelope reaches the destination on a later run. The pipeline executor clears entries scoped by `(source_id, part_ids)` so part-granular successes do not wipe sibling errors.
+- Source envelope reaches the destination on a later run. The pipeline executor clears entries scoped by `(source_id, part_ids)` so part-granular successes don't wipe sibling errors.
 - Pipeline-level rows (NULL `source_id`) for a step clear after that step next runs cleanly. Errors written by a concurrent failing executor during that run are preserved.
 
 Pipeline deletion drops the entire error log table.
+
+## Pipeline status integration
+
+Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline status reflects error severity:
+
+- `PartialErrors`: some records failed; the rest processed normally.
+- `BlockingErrors`: a pipeline-level error stopped the step entirely.
+
+See [Observability](observability) for more on monitoring pipeline health.
 
 ## End-to-end example
 
@@ -200,7 +215,7 @@ __OUTPUT__
 (1 row)
 
 -- 4a. After fixing the upstream rate-limit issue, requeue the rate-limited row.
---     This marks the source dirty; it does not re-process on its own.
+--     This marks the source dirty; it doesn't re-process on its own.
 SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[3]);
 __OUTPUT__
  error_id |  action
@@ -228,12 +243,3 @@ __OUTPUT__
  my_pipeline  | UpToDate
 (1 row)
 ```
-
-## Pipeline status integration
-
-Error counts also appear in the [`aidb.pipeline_metrics`](../reference#aidbpipeline_metrics) view. The pipeline status reflects error severity:
-
-- `PartialErrors`: some records failed; the rest processed normally.
-- `BlockingErrors`: a pipeline-level error stopped the step entirely.
-
-See [Observability](observability) for more on monitoring pipeline health.

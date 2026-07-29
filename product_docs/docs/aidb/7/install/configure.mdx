@@ -3,7 +3,7 @@ title: Configuring AIDB
 navTitle: Configuring
 ---
 
-To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, and verify the installation.
+To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, manage user access, and verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
 
 ## Configure shared_preload_libraries
 
@@ -13,7 +13,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
    shared_preload_libraries = 'aidb'
    ```
 
-   !!!Note
+   !!!note
    If `shared_preload_libraries` already has other extensions listed, append `aidb` using a comma separator. The order doesn't matter.
    !!!
 
@@ -126,8 +126,8 @@ AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` n
 
 | Parameter              | Type    | Default | Range   | Description                                                                                                                        |
 |-------------------------|---------|---------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `aidb.max_threads`     | integer | `0`     | 0–1024  | Maximum number of CPU threads used for local model inference (Candle and llama.cpp). `0` uses the default: half of the available CPUs. `Suset`. |
-| `aidb.max_io_threads`  | integer | `0`     | 0–1024  | Maximum number of threads for AIDB's async I/O runtimes (remote model HTTP calls, and volume/object-store I/O). `0` falls back to the `TOKIO_WORKER_THREADS` environment variable, or Tokio's own default (one per CPU) if that isn't set either. `Suset`. |
+| `aidb.max_threads`     | integer | `0`     | 0–1024  | Maximum number of CPU threads used for local model inference (Candle and llama.cpp). `0` uses the default: half of the available CPUs. `SUSET`. |
+| `aidb.max_io_threads`  | integer | `0`     | 0–1024  | Maximum number of threads for AIDB's async I/O runtimes (remote model HTTP calls, and volume/object-store I/O). `0` falls back to the `TOKIO_WORKER_THREADS` environment variable, or Tokio's own default (one per CPU) if that isn't set either. `SUSET`. |
 
 Both apply live: a session-local `SET` takes effect immediately in that backend only. Setting either with `ALTER SYSTEM` or in `postgresql.conf` takes effect after `pg_reload_conf()` (or `SIGHUP`), and propagates to all backends and background workers — no restart required.
 
@@ -151,7 +151,7 @@ The following parameters control how AIDB downloads local model files from Huggi
 
 | Parameter                    | Type    | Default  | Range | Description                                                                                                                                                                                                    |
 |------------------------------|---------|----------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `aidb.download_log_level`    | string  | `notice` | —     | Controls the output channel for routine download progress messages (download start/complete, byte-progress heartbeats, adapter load lines). Valid values: `notice`, `log`, `off`. See below.                   |
+| `aidb.download_log_level`    | string  | `notice` | —     | Controls the output channel for routine download progress messages (for example, download start/complete, byte-progress heartbeats, and adapter load lines). Valid values: `notice`, `log`, `off`. See below.                   |
 | `aidb.download_max_attempts` | integer | `30`     | 1–500 | Maximum total download attempts per file (initial request plus retries) before AIDB aborts. See [Local model downloads](../integrating-models/integrated-models#local-model-downloads) for the retry behavior. |
 
 #### `aidb.download_log_level`
@@ -186,13 +186,13 @@ SET aidb.download_max_attempts = 5;
 
 | Parameter                   | Type    | Default | Range | Description                                                                                                                                                                    |
 |------------------------------|---------|---------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `aidb.enable_llamacpp_logs` | boolean | `false` | —     | Controls whether llama.cpp's own diagnostic output (GGUF metadata, tensor shapes, backend/model initialization) is written to the server log. `Suset`. Read once at extension initialization — see below. |
+| `aidb.enable_llamacpp_logs` | boolean | `false` | —     | Controls whether llama.cpp's own diagnostic output (GGUF metadata, tensor shapes, and backend/model initialization) is written to the server log. `SUSET`. Read once at extension initialization — see below. |
 
 #### `aidb.enable_llamacpp_logs`
 
 Off by default: llama.cpp's native logging is verbose — hundreds of lines per model load — so it's suppressed unless you need it. This is separate from `aidb.download_log_level` above, which controls AIDB's own download-progress messages; the two are independent.
 
-Unlike the other parameters on this page, `aidb.enable_llamacpp_logs` is `Suset` (a superuser, or a role granted `SET` on the parameter, can change it) and is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) does **not** take effect until Postgres is restarted:
+Unlike the other parameters on this page, `aidb.enable_llamacpp_logs` is `SUSET` (a superuser, or a role granted `SET` on the parameter, can change it) and is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) doesn't take effect until Postgres is restarted:
 
 ```ini
 aidb.enable_llamacpp_logs = true
@@ -220,12 +220,12 @@ Each comma-separated entry is one of:
 | Form                  | Matches                                                                                          |
 |-----------------------|--------------------------------------------------------------------------------------------------|
 | `host.example.com`    | Exact hostname match (case-insensitive).                                                         |
-| `.example.com`        | Any subdomain of `example.com` (does not match `example.com` itself).                            |
+| `.example.com`        | Any subdomain of `example.com` (doesn't match `example.com` itself).                             |
 | `203.0.113.10`        | Exact IPv4 or IPv6 literal in the destination URL.                                               |
-| `203.0.113.0/24`      | IPv4 CIDR range; matches IP literals in that range. Does not match hostnames.                    |
+| `203.0.113.0/24`      | IPv4 CIDR range; matches IP literals in that range. Doesn't match hostnames.                      |
 | `2001:db8::/32`       | IPv6 CIDR range.                                                                                 |
 
-Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames are not resolved for matching.
+Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames aren't resolved for matching.
 
 #### Resolution order
 
