@@ -199,56 +199,10 @@ Where:
 The command automatically initializes the data directory, joins the cluster, and starts the Postgres server. 
 Look for `Node <new_node_name> added to the cluster successfully` in the output to confirm completion.
 
-### Recovering large databases in two steps
 
-As part of a physical join, `pgd node setup` takes its own base backup of the remote node using `pg_basebackup`. By default, the command then waits indefinitely for the joining node to replay WAL and promote, and a retry resumes from where a previous attempt left off rather than redoing the base backup. Set `--timeout` (or the `PGCTLTIMEOUT` environment variable) if you want to bound this wait instead of waiting indefinitely.
-
-If you need more control over a large database join, for example to monitor the base backup and the join as separate operations, or to protect the WAL with an explicit permanent replication slot, separate the process into two steps instead. Take the base backup yourself first, then run `pgd node setup` against the already-backed-up data directory.
-
-1. On the source node, take the base backup using `pg_basebackup`'s `-C`/`-S` options, which create a permanent replication slot that survives the backup completing:
-
-   ```shell
-   pg_basebackup -h <source_host> -D <pgdata> -X stream -C -S pgd_join_<new_node_name> -P -v
-   ```
-
-   Alternatively, create the slot explicitly first if you want to verify it before taking the backup:
-
-   ```sql
-   SELECT pg_create_physical_replication_slot('pgd_join_<new_node_name>', true);
-   ```
-
-   ```shell
-   pg_basebackup -h <source_host> -D <pgdata> -X stream -S pgd_join_<new_node_name> -P -v
-   ```
-
-1. Check `wal_status` from the source host:
-
-   ```sql
-   SELECT slot_name, active, restart_lsn, wal_status
-   FROM pg_replication_slots
-   WHERE slot_name = 'pgd_join_<new_node_name>';
-   ```
-
-   `reserved` or `extended` means it's safe to run `pgd node setup` now. `unreserved` means the WAL is close to being removed, so run `pgd node setup` right away. `lost` means the WAL is already gone, and you need to redo the base backup before you can proceed.
-
-1. Run `pgd node setup`, pointing `--pgdata` at the directory you backed up in step 1. The command detects that the directory already contains a valid base backup of the source node and skips taking its own, going straight to the join. It waits indefinitely by default for WAL replay and promotion to finish, and a retry resumes rather than redoing the backup, so set `--timeout` or `PGCTLTIMEOUT` only if you want to bound the wait:
-
-   ```shell
-   pgd node <new_node_name> setup \
-     --pgdata <pgdata> \
-     --dsn "host=localhost port=<port> dbname=<dbname> user=<username>" \
-     --cluster-dsn "host=<source_host> port=5432 dbname=<dbname> user=<username>" \
-     --log-file <log_file> \
-     --group-name <group_name>
-   ```
-
-1. Once `pgd node setup` completes and the new node's join state is `ACTIVE` (see [Validating the recovered node](#validating-the-recovered-node)), drop the manual slot on the source:
-
-   ```sql
-   SELECT pg_drop_replication_slot('pgd_join_<new_node_name>');
-   ```
-
-   Only drop the slot once the join is fully complete. If the join fails partway through and needs another attempt, leave the slot in place so its WAL stays available. Don't drop it until a fresh slot and backup are ready to take its place.
+!!!Note
+For a large database, where replaying WAL from the base backup can take a long time, see [PLACEHOLDER: link to KB article] for a procedure that takes the base backup separately first and protects the WAL with a permanent replication slot.
+!!!
 
 ## Validating the recovered node
 

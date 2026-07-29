@@ -116,51 +116,9 @@ strongly recommend that you truncate the tables rather than drop them, because:
 It's simpler and safer to truncate your nonreplicated tables, leaving them
 present but empty.
 
-#### Preparing a data directory for large databases
-
-For very large databases, where `pg_basebackup` takes hours, populate the data directory manually before running `bdr_init_physical` rather than letting the command take its own base backup. Doing so protects the write-ahead log (WAL) the new node needs during the gap between taking the backup and running the join, and avoids redoing the backup if the join has to be retried.
-
-1. On the source node, take the base backup using `pg_basebackup`'s `-C`/`-S` options, which create a permanent replication slot that survives the backup completing:
-
-   ```shell
-   pg_basebackup -h <source_host> -D <pgdata> -X stream -C -S pgd_join_<new_node_name> -P -v
-   ```
-
-   Alternatively, create the slot explicitly first if you want to verify it before taking the backup:
-
-   ```sql
-   SELECT pg_create_physical_replication_slot('pgd_join_<new_node_name>', true);
-   ```
-
-   ```shell
-   pg_basebackup -h <source_host> -D <pgdata> -X stream -S pgd_join_<new_node_name> -P -v
-   ```
-
-1. Before running `bdr_init_physical`, run this query on the source and check `wal_status`:
-
-   ```sql
-   SELECT slot_name, active, restart_lsn, wal_status
-   FROM pg_replication_slots
-   WHERE slot_name = 'pgd_join_<new_node_name>';
-   ```
-
-   `reserved` or `extended` means it's safe to run `bdr_init_physical` now. `unreserved` means the WAL is close to being removed, so run `bdr_init_physical` right away. `lost` means the WAL is already gone, and you need to redo the base backup before you can proceed.
-
-1. Run `bdr_init_physical`, pointing `-D`/`--pgdata` at the directory you backed up in step 1. Since the directory isn't empty, the command uses it as the base for the new node instead of taking its own backup, and waits as long as needed for the node to replay WAL and promote before joining the group:
-
-   ```shell
-   bdr_init_physical -D <pgdata> --node-name <new_node_name> \
-     --local-dsn "host=localhost port=<port> dbname=<dbname> user=<username>" \
-     --remote-dsn "host=<source_host> port=5432 dbname=<dbname> user=<username>"
-   ```
-
-1. Once `bdr_init_physical` completes and the new node has joined the group, drop the manual slot on the source:
-
-   ```sql
-   SELECT pg_drop_replication_slot('pgd_join_<new_node_name>');
-   ```
-
-   Only drop the slot once the join is fully complete. If the join fails partway through and needs another attempt, leave the slot in place so its WAL stays available. Don't drop it until a fresh slot and backup are ready to take its place.
+!!!Note
+For very large databases, where `pg_basebackup` takes hours, see [PLACEHOLDER: link to KB article] for a procedure that populates the data directory manually before running `bdr_init_physical` and protects the WAL with a permanent replication slot.
+!!!
 
 ### `bdr_config`
 
