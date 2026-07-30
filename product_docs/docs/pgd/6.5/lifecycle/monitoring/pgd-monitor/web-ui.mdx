@@ -1,0 +1,100 @@
+---
+title: Using the web UI
+navTitle: Web UI
+description: A tour of every page in the PGD Monitor web UI, including navigation, node group scoping, and what each page shows.
+deepToC: true
+---
+
+Use the web UI to monitor cluster health, replication lag, commit scopes, conflicts, and query activity from a browser, and scope any page down to a specific node group or node for a closer look.
+
+## Logging in
+
+Log in with a Postgres role name and password, using a role that's a member of Postgres's [`pg_monitor`](https://www.postgresql.org/docs/current/predefined-roles.html) predefined role, or a superuser. Logging in creates a cookie-based session. Use a superuser role to also see query text on the [**Activity**](#activity) page, and to view the [**Error Log**](#error-log) page at all.
+
+Open `https://<node>:<monitor_port>/` in a browser to log in.
+
+Although each node serves its own UI, the UI can display data from every cluster node. It connects to its peers using the same PGD connection strings the cluster already uses for replication, so connecting to any one node gives a cluster-wide view.
+
+## Navigating the web UI
+
+Move between monitoring pages using the navigation menu. Scope the current page to a node group or an individual node with the **Topology** tree below it, filtering tables to the selection and switching timeseries charts to one line per selected node.
+
+Adjust the time range selector on any timeseries chart to see finer or coarser resolution. Each node keeps its own history, so no external storage is needed.
+
+### Overview
+
+- Check cluster health at a glance on the landing page. Stat cards summarize uptime, the number of nodes up out of the total, CPU and memory usage, used space on the data and WAL disks, and node group and Raft leader counts. 
+- Alert banners call out issues you might otherwise miss, including nodes approaching transaction ID wraparound, WAL archiving failures, replication slots that have become unreserved or lost WAL they still need, and inactive slots retaining more than 1&nbsp;GB.
+- Look up nodes, node groups, replication lag, Connection Manager routing, and Raft status in the tables, and select a node group to open its properties, including its type, parent group, and read nodes.
+
+### Connection Management
+
+- Track Connection Manager routing with **Postgres Connections** charts of total connections and the split between read-only and read-write traffic over time. 
+- Review **Connection Strings** for ready-to-use read-write and read-only URIs and a matching [`.pgpass`](https://www.postgresql.org/docs/current/libpq-pgpass.html) snippet for connecting without typing a password.
+- Inspect **Routing State** for the current and previous write leader and read nodes, **Routing Configuration** for lag thresholds and whether routing is enabled, **Connection Manager Ports** for the effective read-write and read-only ports, and **Connection Pools** for pool mode and connection limits.
+
+### Replication
+
+- Check the stat cards for peer count and whether every peer is caught up. 
+- Review replication lag between origin-target pairs in the **Replication Lag** table, and track non-PGD replication slots, including their type, database, plugin, activity, WAL status, and retained WAL, in the **Other Replication Slots** table. 
+- Chart the cluster's maximum replay lag and the oldest lag any node is still retaining WAL for, over the selected time range, in **Lag History**.
+
+### Raft
+
+- Check consensus status per node group, including each node's role, current leader, term, and commit index, alongside cluster-wide counts of Raft members, groups, and leaders.
+
+### Commit Scopes
+
+- Check commit scope definitions and to what groups they apply.
+- Track commit latency with a **Commit Latency** chart plotting p50, p90, and p99 percentiles alongside a latency distribution histogram, both drawn from the commit latency metric. 
+- Review calls, commits, aborts, degrades, and mean, minimum, and maximum commit time per scope and group in the statistics table.
+
+### Replication Conflicts
+
+- Track conflict and apply error rates with charts, and review conflict logging configuration and any conflict resolvers overriding the defaults. 
+- Look up detected conflicts by schema, table, and conflict type in the conflict history table, including the resolution outcome and how many times each has recurred, and expand any row for the individual conflict events behind it.
+- Check each group's error policy and retry and skip limits, along with pending failed changes and recently resolved transactions.
+
+### Activity
+
+- Track active queries and the longest running transaction with charts.
+- Check database load metrics such as rollback rate, temporary file spill rate, and blocked backend count, alongside breakdowns of connections by state, waiting backends by event type, and locks by mode. 
+- Filter the backends table to client backends, PGD workers, auxiliary processes, or all of them to see each connection's PID, user, application name, and, for connections using a commit scope, its pending prepare, commit, and LSN confirmations. 
+
+!!! Note 
+Viewing the **Query** column in the **Backends** table requires a superuser role.
+!!!
+
+### Tables
+
+- Track running vacuums in the **Vacuum in Progress** table, showing each one's target table, phase, progress, dead item count, and running time. 
+- Find the largest or most bloated user tables in the **Top Tables** table, sortable by dead tuple percentage, dead tuple count, total size, or sequential scan count, and flagged if their last autovacuum is more than 24 hours old and dead tuples remain.
+
+### Query Diagnostics
+
+- Track transaction throughput and active queries with charts, and find the top queries by total execution time in a table backed by `pg_stat_statements`, including call counts, average latency, and buffer hits and reads. 
+
+!!! Note
+Add `pg_stat_statements` to `shared_preload_libraries`, restart Postgres, and run `CREATE EXTENSION pg_stat_statements` to enable this view.
+!!!
+
+### Metrics
+
+- Chart any single collected metric, selecting it from a dropdown and filtering by category, and browse the list of every available metric alongside it.
+
+### Cluster Events
+
+- Review the PGD cluster event log for the last day, week, or two weeks, showing each event's time, originating node, subtype, and message.
+
+### Error Log
+
+- Search recent `ERROR`-and-above log entries captured in memory on the node by code, message, or detail text, including the timestamp, node, message, and detail. Querying across multiple nodes raises a combined alert if any node fails to respond.
+
+!!! Note
+Viewing the **Error Log** page requires a superuser role.
+!!!
+
+
+!!! Note
+Every metric shown in the UI is also reachable as JSON under `/api/v1/` with the same authentication. The REST API is currently experimental, and its shape will change between releases, so treat it as best-effort rather than a stable integration point. The same underlying data is also queryable over SQL, using `bdr.ts_metrics()` and related functions plus the existing PGD catalogs and views covered in [Monitoring through SQL](/pgd/current/lifecycle/monitoring/sql).
+!!!
