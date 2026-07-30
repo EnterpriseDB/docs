@@ -10,6 +10,18 @@ redirects:
 
 The `pgd node upgrade` command is used to upgrade the Postgres version on a node in the EDB Postgres Distributed cluster.
 
+## Modes of operation
+
+`pgd node upgrade` runs in one of three modes, depending on whether `--prepare` or `--check` is set. `--prepare` and `--check` can't be used together.
+
+| Mode | Flag | Effect |
+|------|------|--------|
+| Prepare only | `--prepare` | Runs `initdb` on the new data directory and migrates the old cluster's configuration into it, without running `pg_upgrade`. Idempotent, so it's safe to re-run, for example to change a configuration override. |
+| Dry run | `--check` | Runs `pg_upgrade` in dry-run mode to validate that the upgrade would succeed, without performing it. Requires the new data directory to already be initialized, either manually (for example with `initdb`) or using `--prepare`. |
+| Full upgrade | Neither flag | Runs the [safety checks](#safety-checks-before-upgrading), then `pg_upgrade` against the new data directory, followed by the BDR post-upgrade steps. |
+
+For a predictable, low-downtime upgrade, run all three in sequence: prepare the new data directory ahead of the maintenance window, dry-run the upgrade to confirm it will succeed, then perform the actual upgrade. See [Preparing the new data directory ahead of the upgrade](#preparing-the-new-data-directory-ahead-of-the-upgrade) for a worked example.
+
 !!!note
 Starting from PGD 6.4, `pgd node setup` advances the `NextOID` counter before creating BDR objects in single-user mode, preventing those objects from receiving system-range OIDs (< 16384) that would cause upgrade failures. Before performing the upgrade, the command checks whether existing BDR objects were created with system-range OIDs. If detected, the command fails immediately with a clear error identifying the affected objects. See [Resolving system-range OID errors](#resolving-system-range-oid-errors) for steps to recover.
 !!!
@@ -37,9 +49,8 @@ The following table lists the options available for the `pgd node upgrade` comma
 | -d    | --old-datadir        |                     | PGDATAOLD          | Old Postgres instance data directory                                                                                                                         |
 | -D    | --new-datadir        |                     | PGDATANEW          | New Postgres instance data directory                                                                                                                         |
 |       | --database           |                     | PGDATABASE         | PGD database name                                                                                                                                            |
-| -p    | --old-port           | 5432                | PGPORTOLD          | Old Postgres instance port                                                                                                                                   |
-|       | --socketdir          | /var/run/postgresql | PGSOCKETDIR        | Directory to use for postmaster sockets during upgrade                                                                                                       |
-|       | --new-socketdir      | /var/run/postgresql | PGSOCKETDIRNEW     | Directory to use for postmaster sockets in the new cluster                                                                                                   |
+| -p    | --old-port           | Read from the old cluster's `postgresql.conf`; falls back to 5432 only if that lookup fails | PGPORTOLD          | Old Postgres instance port                                                                                                                                   |
+|       | --socketdir          | /var/run/postgresql | PGSOCKETDIR        | Directory to use for postmaster sockets during upgrade, for both the old and new instance                                                                    |
 |       | --check              |                     |                    | Run in dry-run mode, validating that the upgrade would succeed without performing it. Requires the new data directory to already be initialized, either manually (for example with `initdb`) or using `--prepare`. Can't be used with `--prepare`. |
 |       | --prepare            |                     |                    | Only perform pre-upgrade preparation (`initdb` and configuration migration) on the new data directory, without running the upgrade. Can't be used with `--check`. |
 | -j    | --jobs               | 1                   |                    | Number of simultaneous processes or threads to use                                                                                                           |
@@ -52,12 +63,30 @@ The following table lists the options available for the `pgd node upgrade` comma
 | -U    | --username           |                     | PGUSER             | Cluster's install user name                                                                                                                                  |
 |       | --clone              |                     |                    | Use efficient file cloning                                                                                                                                   |
 |       | --copy-by-block      |                     |                    | Used to migrate data between clusters with different encryption settings. This option is supported for databases that use Transparent Data Encryption (TDE)  |
+| -y    | --data-encryption    |                     |                    | Enable Transparent Data Encryption (TDE) on the new data directory. Only takes effect with `--prepare`.                                                       |
+|       | --data-encryption-keylen | 128             |                    | AES key length for TDE, either `128` or `256`. Requires `--data-encryption`.                                                                                  |
+|       | --key-wrap-command   |                     | PGDATAKEYWRAPCMD   | Command to wrap (encrypt) the data encryption key. The command must contain the placeholder `%p`. Requires `--data-encryption`. Can't be used with `--no-key-wrap`. |
 |       | --key-unwrap-command |                     | PGDATAKEYUNWRAPCMD | Command to unwrap (decrypt) the data encryption key and access the files to copy. The command must be the same specified during the server initialization using `pgd node setup` |
+|       | --no-key-wrap        |                     |                    | Store the data encryption key unwrapped (raw) on disk. Not recommended for production use. Requires `--data-encryption`.                                     |
+|       | --copy-key-from      |                     |                    | Reuse an existing data encryption key file instead of generating a new one, preserving the source cluster's key material. Requires `--data-encryption`, paired with either `--key-wrap-command` or `--no-key-wrap` to describe how the reused key is encoded on disk. |
+|       | --postgresql-conf    |                     |                    | Path of the `postgresql.conf` file to use for the new node. Only takes effect with `--prepare`.                                                               |
+|       | --postgresql-auto-conf |                   |                    | Path of the `postgresql.auto.conf` file to use for the new node. Only takes effect with `--prepare`.                                                          |
+|       | --hba-conf           |                     |                    | Path of the `pg_hba.conf` file to use for the new node. Only takes effect with `--prepare`.                                                                   |
+| -v    | --verbose            |                     |                    | Print extra diagnostic output during `--prepare` steps.                                                                                                       |
 
 
 See also [Global Options](/pgd/latest/reference/cli/command_ref/#global-options).
 
 After a successful upgrade, the command prints a closing summary confirming completion, along with next steps for starting the new Postgres instance (see [`pgd node start`](start)) and any remaining post-upgrade tasks.
+
+## Safety checks before upgrading
+
+Before invoking `pg_upgrade`, the regular upgrade and `--check` paths run several non-destructive checks:
+
+- **Leader status.** If the node being upgraded is the current write leader or Raft leader of any group, the command rejects the upgrade and prints the switchover command to run first, for example [`pgd group set-leader`](/pgd/current/reference/cli/command_ref/group/set-leader) or [`pgd raft set-leader`](/pgd/current/reference/cli/command_ref/raft/set-leader), for each group the node leads. There's no flag to skip this check, since switching leadership away from the node being upgraded is a deliberate step, not something to automate around.
+- **Old cluster reachability.** If the old cluster is reachable, the command uses it to detect encoding and configuration paths. If it's not reachable, for example because it's already stopped ahead of `pg_upgrade`, the command falls back to single-user mode against the old data directory instead of requiring the old postmaster to be running. In this case, the leader-status check is skipped rather than failing, since PGD has already re-elected a leader among the surviving nodes.
+- **New data directory initialized.** If `<new_datadir>` is missing or empty, the command fails with a message pointing at `--prepare` instead of a raw `pg_upgrade` error.
+- **BDR extension and version compatibility.** The upgrade is rejected if the BDR extension isn't installed in `<DATABASE>` on the old cluster, or if the old cluster's BDR version is below the supported minimum or higher than the new cluster's.
 
 ## Resolving system-range OID errors
 
@@ -114,8 +143,44 @@ pgd node kaolin upgrade --old-bindir /usr/pgsql-16/bin --new-bindir /usr/pgsql-1
 ```shell
 pgd node kaolin upgrade --old-bindir /usr/pgsql-16/bin --new-bindir /usr/pgsql-17/bin --old-datadir /var/lib/pgsql/16/data --new-datadir /var/lib/pgsql/17/data --database pgddb --username enterprisedb --old-port 5433 --new-port 5434
 ```
-### Upgrade the Postgres Extended version on a node with Transparent Data Encryption (TDE)
+### Preparing the new data directory ahead of the upgrade
+
+Use `--prepare` to run `initdb` and migrate the old cluster's configuration into the new data directory, without running `pg_upgrade`:
 
 ```shell
-pgd node kaolin upgrade --database pgddb -B /usr/lib/edb-pge/16/bin --socketdir /var/run/edb-pge/ --old-bindir /usr/lib/edb-pge/15/bin  --old-datadir /var/lib/edb-pge/15/main --new-datadir /var/lib/edb-pge/16/main --username postgres --key-unwrap-command "openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:secret -in %p" --copy-by-block
+pgd node kaolin upgrade --prepare --old-bindir /usr/pgsql-16/bin --new-bindir /usr/pgsql-17/bin --old-datadir /var/lib/pgsql/16/data --new-datadir /var/lib/pgsql/17/data --database pgddb --username enterprisedb
 ```
+
+`--prepare` is idempotent, so re-running the same command later skips files that are already in place and only updates what's changed. This lets you prepare the new data directory well ahead of a maintenance window, then perform the actual upgrade later with minimal downtime.
+
+### Validating a prepared upgrade before running it
+
+Once the new data directory is prepared, run the same command with `--check` instead of `--prepare` to validate that the upgrade would succeed, without changing any data:
+
+```shell
+pgd node kaolin upgrade --check --old-bindir /usr/pgsql-16/bin --new-bindir /usr/pgsql-17/bin --old-datadir /var/lib/pgsql/16/data --new-datadir /var/lib/pgsql/17/data --database pgddb --username enterprisedb
+```
+
+If the check succeeds, run the same command again with neither `--prepare` nor `--check` to perform the upgrade against the prepared data directory.
+
+### Preparing the new data directory with custom configuration files
+
+The `--postgresql-conf`, `--postgresql-auto-conf`, and `--hba-conf` overrides apply only with `--prepare`, since the regular upgrade and `--check` paths use the new data directory's existing configuration as is:
+
+```shell
+pgd node kaolin upgrade --prepare --old-bindir /usr/pgsql-16/bin --new-bindir /usr/pgsql-17/bin --old-datadir /var/lib/pgsql/16/data --new-datadir /var/lib/pgsql/17/data --database pgddb --username enterprisedb --postgresql-conf /opt/new-configs/postgresql.conf --hba-conf /opt/new-configs/pg_hba.conf
+```
+
+To change these overrides after the fact, re-run `--prepare` with the new paths. It's safe to do this any number of times before the actual upgrade runs.
+
+### Upgrade the Postgres Extended version on a node with Transparent Data Encryption (TDE)
+
+`--data-encryption` and its related flags only take effect during `--prepare`, which provisions TDE on the new data directory. `--key-unwrap-command` and `--copy-by-block` are passed again on the actual upgrade, since that's the step that decrypts the old data to copy it block by block into the newly encrypted data directory.
+
+```shell
+pgd node kaolin upgrade --prepare --database pgddb -B /usr/lib/edb-pge/16/bin --socketdir /var/run/edb-pge/ --old-bindir /usr/lib/edb-pge/15/bin --old-datadir /var/lib/edb-pge/15/main --new-datadir /var/lib/edb-pge/16/main --username postgres --data-encryption --key-wrap-command "openssl enc -aes-128-cbc -pbkdf2 -pass pass:secret -out %p" --key-unwrap-command "openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:secret -in %p"
+
+pgd node kaolin upgrade --database pgddb -B /usr/lib/edb-pge/16/bin --socketdir /var/run/edb-pge/ --old-bindir /usr/lib/edb-pge/15/bin --old-datadir /var/lib/edb-pge/15/main --new-datadir /var/lib/edb-pge/16/main --username postgres --key-unwrap-command "openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:secret -in %p" --copy-by-block
+```
+
+To preserve the old cluster's existing encryption key instead of generating a new one, add `--copy-key-from <old_datadir>/pg_encryption/key.bin` to the `--prepare` step, alongside `--key-wrap-command` or `--no-key-wrap`.
