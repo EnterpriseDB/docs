@@ -10,6 +10,18 @@ The alerting system ensures timely notifications through intuitive notifications
 
 ## View the alerts
 
+[DOCS-4068-1]: # (SME-CONFIRM: the "Estate-level alerts" cross-cluster summary view below comes from an eng doc marked verification_status: partially_verified. Please confirm this UI path exists before merging.)
+
+### Estate-level alerts
+
+To view active alerts across all clusters at a glance:
+
+1.   In the HM console, select **Estate**.
+1.   Select the **Postgres** tab.
+1.   Locate the **Active Alerts** card to see a summary of alerts across all clusters.
+
+### Cluster-level alerts
+
 You can access the alerts on the **Monitoring** tab of the cluster detail page and view the alert details for a specific cluster.
 
 -  For HM clusters:
@@ -75,26 +87,228 @@ The list of the alerts with the default configuration:
 
 ![Alerts](../../images/default_alerts_hcp.png)
 
-These alerts can be configured at database level:
+[DOCS-4068-2]: # (SME-CONFIRM: Default Severity/Threshold/Unit values in the table below come from an eng doc marked verification_status: partially_verified. Please confirm before merging. The "Node Down" row is left unconfirmed on purpose — current docs list it as a database-level alert, but the eng doc lists a "Node Down" alert only at the host level — do not assign it a value until that placement conflict is resolved.)
 
--   Connections Usage
--   No Recent WAL Archiving Successes
--   Node Down
--   Replication Lag in Bytes
--   Total Connections
--   Total Inactive Replication Slots
--   Transactions Rollback
--   WAL Keeps Growing
--   WAL Running Out of Disk Space
+### Database-level alerts
 
-These alerts can be configured at host level:
+| Alert | Default Severity | Threshold | Unit |
+|-------|-------------------|-----------|------|
+| Connections Usage | HIGH | 90 | % |
+| Transactions Rollback | HIGH | 90 | % |
+| Total Connections | HIGH | 90 | count (0–1000) |
+| Replication Lag in Bytes | MEDIUM | 1 | MiB |
+| Replicas Lagging Behind | MEDIUM | 1 | MiB |
+| Total Inactive Replication Slots | HIGH | 0 | count (0–5) |
+| No Recent WAL Archiving Successes | HIGH | 600 | seconds (60–600) |
+| WAL Keeps Growing | HIGH | — | fixed |
+| WAL Running Out of Disk Space | HIGH | — | fixed |
+| Backup Failures | HIGH | — | fixed |
+| Backup Time Since Last Success | MEDIUM | 300 | seconds |
+| PG Data Disk Usage | HIGH | 90 | % |
+| WAL Disk Usage | HIGH | 90 | % |
+| Backup Longer Than Expected | HIGH | 0 | seconds |
+| PG Buffer Cache Hit Percentage | LOW | 0 | % |
+| PG Error Restarts | MEDIUM | 10 | minutes |
+| PG Long Running Transactions | LOW | 300 | seconds |
+| PG Transaction Age | HIGH | 100 | % |
+| PG Multi-Transaction Age | HIGH | 100 | % |
+| PG Log Too Many Errors | MEDIUM | 5 | count |
+| PG Log Critical Errors | HIGH | 30 | minutes |
+| Node Down | Pending SME confirmation | Pending SME confirmation | Pending SME confirmation |
 
--   CPU Utilization
--   Disk IOPS
--   Disk Usage
--   Memory Usage
+[DOCS-4068-3]: # (SME-CONFIRM: Default Severity/Threshold/Unit values in the table below come from an eng doc marked verification_status: partially_verified. Please confirm before merging. The "CPU Utilization" and "Disk Usage" rows are left unconfirmed on purpose — the eng doc lists similarly named alerts, "CPU Usage" and "Storage Used", at HIGH/90%, but it's unconfirmed whether these are the same alerts — do not assign values until that's resolved.)
+
+### Host-level alerts
+
+| Alert | Default Severity | Threshold | Unit |
+|-------|-------------------|-----------|------|
+| CPU Utilization | Pending SME confirmation | Pending SME confirmation | Pending SME confirmation |
+| Disk IOPS | HIGH | 10,000 | count |
+| Disk Usage | Pending SME confirmation | Pending SME confirmation | Pending SME confirmation |
+| Memory Usage | HIGH | 90 | % |
+| OOM Killed PG Pod | HIGH | 10 | minutes |
+
+[DOCS-4068-4]: # (SME-CONFIRM: the third bullet below, host-level alerts limited to HM-managed clusters and external clusters only evaluating database-level alerts against exported Postgres metrics, comes from an eng doc marked verification_status: partially_verified — more specific than the existing "not available for external clusters" line. Please confirm before merging.)
 
 !!!note Notes
 
    -   Any changes made to the alert configuration are saved automatically.
    -   All the alerts aren't available for external HM clusters due to technical limitations.
+   -   Host-level alerts apply only to HM-managed clusters. On external clusters, only database-level alerts evaluate, and only against the Postgres metrics the cluster exports into HM's observability stack.
+
+!!!
+
+[DOCS-4068-5]: # (SME-CONFIRM: the "Platform alert rules" section below, including the rule-group/count table and PromQL examples, comes from an eng doc marked verification_status: partially_verified — though the rule-group/count table and PromQL examples themselves cite live-cluster kubectl extraction on HM 2026.4 as their source. Please confirm before merging.)
+
+## Platform alert rules
+
+Beyond the console-level alerts configured per project, HM deploys a comprehensive set of Prometheus alert rules that monitor the entire platform stack. These rules are defined as `PrometheusRule` custom resources in the `edb-observability` namespace and are evaluated by Thanos Ruler and the Prometheus server.
+
+HM ships a default set of platform alert rules grouped into the categories below, plus recording rules that pre-compute frequently used metrics. HM 1.4 LTS extends this inventory with additional rule groups covering the metrics-pipeline agent introduced in the LTS line.
+
+| Category | Rule groups | Alert count | Key monitors |
+|----------|-------------|-------------|--------------|
+| Postgres | postgres, postgres_backup | 16 | Connections, WAL archiving, XID wraparound, backup failures |
+| Infrastructure | infra | 21 | Certificates, Velero backups, OOM kills, node pressure, crash loops |
+| Storage | pvc, kubernetes-storage | 11 | PVC capacity (90/95/99%), PV filling up, inode exhaustion |
+| Kubernetes | kubernetes-apps, kubernetes-resources, kubernetes-system, kubernetes-system-apiserver, kubernetes-system-kubelet | 48 | Pod health, deployments, resource quotas, API server availability, kubelet, node readiness |
+| Observability | prometheus, alertmanager.rules, prometheus-operator, loki_alerts | 49 | Prometheus/Alertmanager self-monitoring, Loki health |
+| Node | node-exporter, node-network | 27 | Filesystem, CPU, memory, network, clock, RAID, systemd |
+| Platform | upm, thanos, stats-collector-db, kube-state-metrics, config-reloaders, general.rules | 14 | Internal DB, beacon heartbeat, Thanos compactor |
+
+### Real alert rule examples
+
+The following examples show actual PromQL expressions from the deployed PrometheusRule resources.
+
+**Postgres connection saturation** — Fires when a cluster reaches 90% of its configured `max_connections`:
+
+```promql
+# Alert: PostgresNinetyPercentConnectionCount
+# Severity: error | For: 15m
+sum by (hcp_instance, cluster) (cnp_backends_total)
+  / avg by (hcp_instance, cluster) (
+      cnp_pg_settings_setting{name="max_connections", cluster!=""}
+    ) >= 0.9
+```
+
+**Pod OOM killed** — Detects non-Postgres pods that were OOM killed and restarted within 10 minutes:
+
+```promql
+# Alert: PodOOMKilled
+# Severity: error | For: 10m
+(kube_pod_container_status_restarts_total{
+    pod!~"^p-[0-9a-z]{10}(?:-[a-z]{1,2}-[0-9]{1,2})?-[0-9]{1,2}$|p-.+-(rwp|rop|proxy).*"
+  } - kube_pod_container_status_restarts_total offset 10m >= 1)
+  and ignoring (reason)
+    min_over_time(
+      kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[10m]
+    ) == 1
+```
+
+**Node filesystem running low** — Fires when a filesystem drops below 5% available space (warning) or 3% (critical):
+
+```promql
+# Alert: NodeFilesystemAlmostOutOfSpace
+# Severity: warning | For: 30m
+(
+  node_filesystem_avail_bytes{job="node-exporter",fstype!="",mountpoint!=""}
+    / node_filesystem_size_bytes{job="node-exporter",fstype!="",mountpoint!=""}
+    * 100 < 5
+  and
+    node_filesystem_readonly{job="node-exporter",fstype!="",mountpoint!=""} == 0
+)
+```
+
+**CloudNativePG cluster not ready** — Fires when a database cluster remains in a not-ready state for over 1 hour:
+
+```promql
+# Alert: CNPClusterNotReady
+# Severity: warning | For: 1h
+cnpg_cluster_status_condition{type="Ready"} == 0
+```
+
+!!!note
+Alert severity is defined either as a Prometheus label or as an annotation, depending on the rule group. Infrastructure and Postgres rules use annotation-based severity, while Kubernetes and Prometheus self-monitoring rules use label-based severity.
+!!!
+
+[DOCS-4068-6]: # (SME-CONFIRM: the "Custom alert rules" section below comes from an eng doc marked verification_status: partially_verified. Please confirm before merging.)
+
+## Custom alert rules
+
+You can extend HM's built-in alerting with your own metric and log alert rules:
+
+-   **Custom metric alerts** use the `PrometheusRule` custom resource definition (CRD). Create a `PrometheusRule` in the `edb-observability` namespace with the required `app: custom` label, and the Prometheus Operator automatically loads it. Thanos Ruler then evaluates the rule.
+-   **Custom log alerts** use Loki alert rules deployed as a ConfigMap with the `loki_rule: "true"` label in the `edb-observability` namespace. Loki's Ruler component reads the ConfigMap and evaluates the LogQL expressions on the configured interval.
+
+Both alert types feed into the same Alertmanager routing pipeline described in [Alertmanager configuration](#alertmanager-configuration-advanced), so any receiver you configure (PagerDuty, Slack, email) handles built-in and custom alerts the same way.
+
+[DOCS-4068-7]: # (SME-CONFIRM: the "Alertmanager configuration (advanced)" section below comes from an eng doc marked verification_status: partially_verified. Please confirm before merging.)
+
+## Alertmanager configuration (advanced)
+
+For advanced alert routing to external services, Alertmanager acts as a proxy for routing alerts generated by Prometheus, Thanos, and Loki to services like PagerDuty, Slack, and email.
+
+By default, Alertmanager has no outbound route. Configure it by adding an `AlertmanagerConfig` custom resource to the `edb-observability` namespace with the label `edb-alertmanager-config: hcp`.
+
+### PagerDuty example
+
+```yaml
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  labels:
+    edb-alertmanager-config: hcp
+  name: pagerduty
+  namespace: edb-observability
+spec:
+  route:
+    receiver: Pagerduty
+    groupBy: ["alertname", "cluster", "service"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 15m
+    routes:
+      - receiver: Pagerduty
+  receivers:
+    - name: Pagerduty
+      pagerduty_configs:
+        - service_key:
+            name: pagerduty_service_secret
+            key: pagerduty_service_key
+```
+
+### Slack example
+
+```yaml
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  labels:
+    edb-alertmanager-config: hcp
+  name: slack
+  namespace: edb-observability
+spec:
+  route:
+    receiver: Slack
+    groupBy: ["alertname", "cluster", "service"]
+    routes:
+      - receiver: Slack
+  receivers:
+    - name: Slack
+      slack_configs:
+        - channel: '#alerts'
+          api_url:
+            name: slack_api
+            key: slack_url
+```
+
+### SMTP example
+
+```yaml
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  labels:
+    edb-alertmanager-config: hcp
+  name: smtp
+  namespace: edb-observability
+spec:
+  route:
+    receiver: SMTP
+    groupBy: ["alertname", "cluster", "service"]
+    routes:
+      - receiver: SMTP
+  receivers:
+    - name: SMTP
+      email_configs:
+        - smarthost: 'smtp.example.com:25'
+          to: 'operations@example.com'
+          from: 'alertmanager@hcp.example.com'
+```
+
+Alerts can be routed to different receivers based on labels and annotations. See the [Prometheus Alertmanager documentation](https://prometheus.io/alerting/latest/configuration/) and the [AlertmanagerConfig CRD reference](https://prometheus-operator.dev/api-reference/api/#monitoring.coreos.com/v1alpha1.AlertmanagerConfig) for full configuration options.
+
+## Related topics
+
+-   [Grafana monitoring](monitoring_grafana) — Dashboard visualization, log exploration, and custom dashboards.
+-   [Notifications](notifications.mdx) — Notification channels and delivery configuration.
