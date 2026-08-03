@@ -1,3 +1,5 @@
+external PR notification test #2: ignore, do not merge
+
 <img src="static/icons/edb-docs-logo-disc-dark.svg" alt='EDB Docs' width="200">
 
 ![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
