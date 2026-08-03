@@ -494,13 +494,17 @@ SELECT aidb.decode_text(
 
 ### Tool calling and structured output
 
-Three more inference settings exist but aren't exposed as named parameters of `aidb.inference_config()` — build them as raw JSON instead, merged with the helper's output using `||` if you also need other settings. **Only the `llamacpp_generate` provider honors these**; every other provider rejects them.
+Three more inference settings exist but aren't exposed as named parameters of `aidb.inference_config()` — build them as raw JSON instead, merged with the helper's output using `||` if you also need other settings. **Only `llamacpp_generate`, `openai_responses` (+ `openai_responses_azure`), and `anthropic_messages` (+ `anthropic_messages_azure`/`anthropic_messages_bedrock`) honor these**; every other provider rejects them.
 
 | Field | Type | Description |
 |-------|------|--------------|
 | `tools` | JSONB array | OpenAI-compatible `tools` array — function definitions the model can call. |
 | `tool_choice` | JSONB | OpenAI-compatible `tool_choice`: the string `"auto"`, `"required"`, or `"none"`, or `{"type": "function", "function": {"name": "..."}}` to force a specific tool. |
-| `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. |
+| `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. Mutually exclusive with `tools`/`tool_choice` on `openai_responses` and `anthropic_messages` (and their variants). |
+
+!!!note
+`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) and [Anthropic Messages API](../integrating-models/external-model-connections#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.decode_text()`. Any of those providers (except `t5_local`) can still back an AI agent; the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
+!!!
 
 ```sql
 -- Tool calling
@@ -617,6 +621,10 @@ SELECT aidb.create_model(
     )
 );
 ```
+
+!!!note
+For agentic use with reliable, native tool calling on OpenAI models, use [`openai_responses`](#aidbopenai_responses_config) instead — see [Tool calling and structured output](#tool-calling-and-structured-output) for how the two providers differ.
+!!!
 
 ---
 
@@ -877,3 +885,102 @@ SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
     )
 );
 ```
+
+---
+
+### `aidb.openai_responses_config`
+
+For the `openai_responses` and `openai_responses_azure` providers.
+
+| Parameter                 | Type             | Default  | Description                                                                       |
+|---------------------------|------------------|----------|-------------------------------------------------------------------------------------|
+| `model`                   | TEXT             | Required | Model identifier (for example, `gpt-5.1`).                                        |
+| `api_key`                 | TEXT             | NULL     | API key for authentication.                                                        |
+| `basic_auth`              | TEXT             | NULL     | Basic auth credentials (`user:password`).                                         |
+| `url`                     | TEXT             | NULL     | API endpoint URL. Defaults to OpenAI's Responses endpoint for `openai_responses`; required for `openai_responses_azure` (no universal default — use your resource's endpoint). |
+| `max_concurrent_requests` | INTEGER          | `25`     | Maximum concurrent requests to the endpoint.                                       |
+| `system_prompt`           | TEXT             | NULL     | Default system prompt, sent via the Responses API's native `instructions` field.   |
+| `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                                                              |
+| `max_output_tokens`       | INTEGER          | NULL     | Maximum tokens to generate.                                                        |
+| `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                                                        |
+| `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments passed directly to the API.                |
+
+#### Example
+
+```sql
+-- OpenAI
+SELECT aidb.create_model(
+    'my_gpt',
+    'openai_responses',
+    config      => aidb.openai_responses_config(model => 'gpt-5.1'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
+);
+
+-- Azure AI Foundry
+SELECT aidb.create_model(
+    'my_gpt_azure',
+    'openai_responses_azure',
+    config      => aidb.openai_responses_config(
+        model => 'gpt-5.1',
+        url   => 'https://<resource>.openai.azure.com/openai/v1/responses'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+```
+
+This provider natively supports the `tools`, `tool_choice`, and `response_format` fields described in [Tool calling and structured output](#tool-calling-and-structured-output).
+
+---
+
+### `aidb.anthropic_messages_config`
+
+For the `anthropic_messages`, `anthropic_messages_azure`, and `anthropic_messages_bedrock` providers.
+
+| Parameter                 | Type             | Default  | Description                                                                          |
+|---------------------------|------------------|----------|----------------------------------------------------------------------------------------|
+| `model`                   | TEXT             | Required | Model identifier (for example, `claude-opus-4-8`, or a Bedrock model ID for the Bedrock variant). |
+| `api_key`                 | TEXT             | NULL     | API key for authentication. For `anthropic_messages_bedrock`, this is a Bedrock API key (bearer token), not an AWS SigV4 credential. |
+| `basic_auth`              | TEXT             | NULL     | Basic auth credentials (`user:password`).                                            |
+| `url`                     | TEXT             | NULL     | API endpoint URL. Defaults to `api.anthropic.com` for `anthropic_messages`. Required for `anthropic_messages_azure` (your resource's Messages endpoint) and `anthropic_messages_bedrock` (the regional `bedrock-runtime` base endpoint — the model ID is appended automatically). |
+| `max_concurrent_requests` | INTEGER          | `25`     | Maximum concurrent requests to the endpoint.                                          |
+| `system_prompt`           | TEXT             | NULL     | Default system prompt, sent via the Messages API's native `system` field.            |
+| `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                                                                 |
+| `max_tokens`              | INTEGER          | `4096`   | Maximum tokens to generate. Anthropic's Messages API requires this field; AIDB defaults it when omitted. |
+| `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                                                          |
+| `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments passed directly to the API.                   |
+
+#### Example
+
+```sql
+-- Anthropic direct
+SELECT aidb.create_model(
+    'my_claude',
+    'anthropic_messages',
+    config      => aidb.anthropic_messages_config(model => 'claude-opus-4-8'),
+    credentials => '{"api_key": "sk-ant-..."}'::JSONB
+);
+
+-- Azure AI Foundry
+SELECT aidb.create_model(
+    'my_claude_azure',
+    'anthropic_messages_azure',
+    config      => aidb.anthropic_messages_config(
+        model => 'claude-opus-4-8',
+        url   => 'https://<resource>.services.ai.azure.com/anthropic/v1/messages'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+
+-- AWS Bedrock
+SELECT aidb.create_model(
+    'my_claude_bedrock',
+    'anthropic_messages_bedrock',
+    config      => aidb.anthropic_messages_config(
+        model => 'anthropic.claude-opus-4-8-v1:0',
+        url   => 'https://bedrock-runtime.us-east-1.amazonaws.com'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+```
+
+This provider natively supports the `tools`, `tool_choice`, and `response_format` fields described in [Tool calling and structured output](#tool-calling-and-structured-output). Anthropic's Messages API has no native structured-output field, so `response_format` is implemented as a forced call to a synthetic tool — functionally equivalent, but it means `response_format` and `tools`/`tool_choice` can't be used in the same call.

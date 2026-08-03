@@ -1,7 +1,7 @@
 ---
 title: External model connections
 navTitle: External model connections
-description: How to connect AIDB to external AI model providers, including OpenAI-compatible APIs, NVIDIA NIM, Google Gemini, and OpenRouter.
+description: How to connect AIDB to external AI model providers, including OpenAI-compatible APIs, the native OpenAI Responses and Anthropic Messages APIs, NVIDIA NIM, Google Gemini, and OpenRouter.
 ---
 
 External models are API-based models hosted outside your Postgres instance. AIDB connects to them by registering a model with `aidb.create_model()`, supplying the provider name, a configuration object, and credentials such as an API key, if required.
@@ -117,6 +117,96 @@ SELECT aidb.create_model(
 !!!note
 When using pgvector indexing, be aware that [pgvector limits indexed vectors to 2000 dimensions](https://github.com/pgvector/pgvector?tab=readme-ov-file#what-if-i-want-to-index-vectors-with-more-than-2000-dimensions). If the model you choose produces more dimensions, use `aidb.vector_index_disabled_config()` in your pipeline step and manage the index manually.
 !!!
+
+## OpenAI Responses API
+
+AIDB has two providers for OpenAI models — both work with the same model identifiers (`gpt-4o`, `gpt-5.x`, and so on), so pick between them based on what you're doing, not which models you need:
+
+| Provider             | API                                          | Best for                                                                   | Tool calling                                                                                                |
+|-----------------------|-----------------------------------------------|------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| `openai_completions`  | Chat Completions (`/v1/chat/completions`)    | Simple, one-off text generation — `aidb.decode_text()`, summarization, pipeline steps. | Rejects `tools`/`tool_choice`/`response_format` in `aidb.decode_text()`'s `inference_config`.                  |
+| `openai_responses`    | Responses API (`/v1/responses`)              | Agentic workloads — multi-step reasoning, reliable tool calling, structured output. | Native — emits the API's real `tools`/`tool_choice` request fields and parses real tool-call responses back. |
+
+Both providers can also back an `aidb.create_agent()` agent, where AIDB always gives the agent tool-calling ability regardless of provider — the difference is *how*. Backed by `openai_responses`, the agent's tool calls go over the wire as genuine Responses API tool calls. Backed by `openai_completions` (or almost any other provider), AIDB falls back to describing the available tools in the prompt text and parsing a tool call back out of the model's plain-text reply — it works, but it's a simulation, not the model's own tool-calling behavior. `openai_responses` is generally the more reliable choice for agents; reach for `openai_completions` when you just need text out and don't need tool calling.
+
+```sql
+SELECT aidb.create_model(
+    'my_gpt',
+    'openai_responses',
+    config      => aidb.openai_responses_config(model => 'gpt-5.1'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
+);
+```
+
+### Azure AI Foundry
+
+Use `openai_responses_azure` for models hosted on Azure AI Foundry's unified Responses API surface. It's the same wire shape as direct OpenAI, but `url` is required since there's no universal default — point it at your resource's endpoint:
+
+```sql
+SELECT aidb.create_model(
+    'my_gpt_azure',
+    'openai_responses_azure',
+    config      => aidb.openai_responses_config(
+        model => 'gpt-5.1',
+        url   => 'https://<resource>.openai.azure.com/openai/v1/responses'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+```
+
+See [`aidb.openai_responses_config`](../reference/models#aidbopenai_responses_config) for the full parameter list, and [Tool calling and structured output](../reference/models#tool-calling-and-structured-output) for using `tools`, `tool_choice`, and `response_format` with either provider.
+
+## Anthropic Messages API
+
+The `anthropic_messages` provider connects to Anthropic's native Messages API (`/v1/messages`), with the same native tool-calling support as `openai_responses`: real `tools`/`tool_choice` request fields, real tool-call responses, and structured output via `response_format`.
+
+```sql
+SELECT aidb.create_model(
+    'my_claude',
+    'anthropic_messages',
+    config      => aidb.anthropic_messages_config(model => 'claude-opus-4-8'),
+    credentials => '{"api_key": "sk-ant-..."}'::JSONB
+);
+```
+
+### Azure AI Foundry and AWS Bedrock
+
+Two more variants share the same config helper and wire body, differing only in auth and endpoint:
+
+- `anthropic_messages_azure` — Azure AI Foundry's native Anthropic Messages API surface. `url` is required (your resource's Messages endpoint).
+- `anthropic_messages_bedrock` — AWS Bedrock's InvokeModel API, authenticated with a Bedrock API key (bearer token, not AWS SigV4). `url` is required and should be the regional `bedrock-runtime` base endpoint — AIDB appends the model ID to the path automatically.
+
+```sql
+-- Azure AI Foundry
+SELECT aidb.create_model(
+    'my_claude_azure',
+    'anthropic_messages_azure',
+    config      => aidb.anthropic_messages_config(
+        model => 'claude-opus-4-8',
+        url   => 'https://<resource>.services.ai.azure.com/anthropic/v1/messages'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+
+-- AWS Bedrock
+SELECT aidb.create_model(
+    'my_claude_bedrock',
+    'anthropic_messages_bedrock',
+    config      => aidb.anthropic_messages_config(
+        model => 'anthropic.claude-opus-4-8-v1:0',
+        url   => 'https://bedrock-runtime.us-east-1.amazonaws.com'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+```
+
+!!!note
+Anthropic's Messages API has no native structured-output field. When you use `response_format`, AIDB translates it into a forced call to a synthetic tool internally — functionally equivalent, but it means `response_format` can't be combined with `tools`/`tool_choice` in the same call.
+!!!
+
+`anthropic_messages` is AIDB's only provider built specifically for Claude — there's no older `anthropic_completions` equivalent to `openai_completions`. If you'd rather reach Claude (or OpenAI, or other vendors) through a single unified gateway instead of a per-vendor provider, see [OpenRouter](#openrouter) below; the tradeoff is the same as `openai_completions` above — OpenRouter models get simulated (prompt-injected), not native, tool calling when backing an agent.
+
+See [`aidb.anthropic_messages_config`](../reference/models#aidbanthropic_messages_config) for the full parameter list.
 
 ## NVIDIA NIM
 
