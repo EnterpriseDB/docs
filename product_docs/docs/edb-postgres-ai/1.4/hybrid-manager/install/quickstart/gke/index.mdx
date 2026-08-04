@@ -70,7 +70,6 @@ Authenticate, select your project, and enable the required APIs:
 
 ```shell
 gcloud auth login
-gcloud auth application-default login
 
 export PROJECT_ID="my-gcp-project"
 export REGION="us-east1"
@@ -87,7 +86,7 @@ gcloud compute zones describe "$ZONE" --format="value(name,status)"  # -> <zone>
 ```
 
 !!! Note
-`TICKET` is a naming prefix — use your Jira ID, slugged to lowercase (`PLAT-12395` → `plat-12395`), since GCP resource names must be lowercase and DNS-safe. It names the cluster, the data-plane pool, the bucket, and the service account, sets a `ticket` label on the cluster, and — because you set `PORTAL_DOMAIN` from it in Phase 4 — is carried into the portal and migration DNS records too. (GKE names the control-plane pool `default-pool`; it's covered by the cluster.) So you can find and remove everything later — see [Clean up](#clean-up-optional).
+`TICKET` is a naming prefix — use your Jira ID, slugged to lowercase, since GCP resource names must be lowercase and DNS-safe. It names the cluster, the data-plane pool, the bucket, and the service account, sets a `ticket` label on the cluster, and — because you set `PORTAL_DOMAIN` from it in Phase 4 — is carried into the portal and migration DNS records too. (GKE names the control-plane pool `default-pool`; it's covered by the cluster.) So you can find and remove everything later — see [Clean up](#clean-up-optional).
 !!!
 
 Create a regional cluster — its control plane spans zones at no extra cost — with worker nodes pinned to one zone to keep node counts literal and costs down. GKE always creates one node pool at cluster-create, so size and label that initial pool as the control plane rather than discarding it, then add a data-plane pool for Postgres. HM places components by node label; see [Set your node abstractions](../../install_guide/k8s_install#set-your-node-abstractions). Each of the two operations takes roughly 4 minutes while Google provisions the VMs.
@@ -320,7 +319,19 @@ Confirm each hostname resolves to the load-balancer IP, then sign in at `https:/
 
 ## Phase 6: Explore post-installation
 
-Create a single-instance Postgres cluster from the console or the CLI, then connect. Obtain an `imageId` from `edbctl image list-image-tags --location-id <location>`.
+Create a single-instance Postgres cluster from the **console** or the **CLI**, then connect.
+
+The CLI path talks to your running HM control plane, so first authenticate `edbctl` to it with an **access key** you generate in the HM portal — see [Access key](../../../using_hybrid_manager/interacting_programmatically/access_key):
+
+```shell
+# HM portal -> your profile -> Access Keys -> Create New Key, then:
+edbctl credential import-access-key --name hm --access-key <ACCESS_KEY> --address "https://$PORTAL_DOMAIN"
+edbctl project list                       # find your project id
+edbctl config set context_credential hm
+edbctl config set context_project <PROJECT_ID>
+```
+
+Obtain an `imageId` from `edbctl image list-image-tags --location-id <location>`, then create the cluster:
 
 ```shell
 cat > pg.yaml <<'EOF'
