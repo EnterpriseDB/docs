@@ -2,6 +2,7 @@
 title: Authenticating to source databases
 navTitle: Authentication methods
 description: Learn how the EDB Postgres AI agent authenticates to Postgres and Oracle source databases, including password-less options such as Oracle Wallet, pgpass, and client certificates.
+deepToC: true
 ---
 
 The EDB Postgres AI agent (`beacon-agent`) connects to your source database using a single connection string, the Data Source Name (DSN), set in the `dsn` parameter of your `beacon_agent.yaml` file. Authentication happens at this connection level, so the same DSN and credentials apply no matter how you use the agent — whether it's collecting monitoring metrics, ingesting schema for a migration assessment, or reporting usage data for a standalone database.
@@ -19,6 +20,8 @@ If you don't want to store a password directly in the DSN or an environment vari
 ### Oracle Wallet
 
 For Oracle sources, the agent supports connecting through an Oracle auto-login wallet. The wallet stores credentials for a specific connect descriptor on disk, so the agent's driver retrieves them automatically instead of reading a password from the DSN.
+
+This method requires the `orapki` and `mkstore` command-line utilities. These aren't included with the Basic or SQL\*Plus Instant Client packages — install the Oracle Instant Client **Tools** package, or use a full Oracle Client/Database installation, before continuing. See [Oracle Instant Client downloads](https://www.oracle.com/database/technologies/instant-client/downloads.html) for your platform and Oracle version.
 
 !!!note
 An Oracle wallet used this way stores credentials, and is a separate concept from an SSL/TLS wallet used to encrypt traffic. You can use a credential wallet over a plain TCP connection or a TCPS connection — encryption is controlled independently with the `ssl` DSN parameter.
@@ -43,7 +46,7 @@ An Oracle wallet used this way stores credentials, and is a separate concept fro
     mkstore -wrl /path/to/wallet -listCredential
     ```
 
-1.  Grant the OS user running the agent read access to the wallet directory and files, following the principle of least privilege. Refer to your Oracle documentation for guidance on securing wallet permissions in production.
+1.  Grant the OS user running the agent read access to the wallet directory and files, following the principle of least privilege. Auto-login wallets rely on file system permissions rather than a wallet password for their security, so restrict access to the wallet directory accordingly. See [Creating an auto-login-only wallet](https://docs.oracle.com/en/database/oracle/oracle-database/26/dbseg/using-the-orapki-utility-to-manage-pki-elements.html#GUID-20C270E3-AC85-47F3-A1C2-D095665B7B72) in the Oracle Database Security Guide for more information.
 
 1.  Reference the wallet in your DSN instead of a password:
 
@@ -57,7 +60,7 @@ Validate the connection with `beacon-agent validate`. A successful `DSN Validati
 
 The agent's Postgres driver supports the standard `~/.pgpass` password file. If a DSN omits the password, the driver looks it up from the pgpass file instead.
 
-1.  Create the pgpass file with one line per connection, in the format `hostname:port:database:username:password`:
+1.  Create the pgpass file at `~/.pgpass` — the default location, in the home directory of the OS user running the agent. Add one line per connection, in the format `hostname:port:database:username:password`. Each field can be a literal value, or `*` to match any value. For example, use `*` for the database field to match any database on that host and port for the given user:
 
     ```
     <host>:<port>:*:<user>:<password>
@@ -121,11 +124,11 @@ Postgres LDAP authentication (`ldap` in `pg_hba.conf`) isn't password-less: the 
 
 ### Oracle LDAP with x509
 
-Oracle LDAP authentication combined with x509 hasn't been validated with the agent. We haven't implemented this combination and will only prioritize it if a customer requests it.
+Oracle LDAP authentication combined with x509 isn't currently supported with the agent. If your environment requires this combination, contact your EDB representative.
 
 ### Kerberos/GSSAPI
 
-Postgres GSSAPI authentication using a Kerberos ticket-granting ticket (TGT) was evaluated as a possible password-less option. It doesn't fully eliminate credential management: obtaining a TGT still requires a KDC username and password (or a keytab), and TGTs are short-lived, so they need to be reacquired periodically. Because of this overhead, we don't currently document GSSAPI as a password-less authentication path for the agent. If your organization already has a keytab-based Kerberos setup and wants to explore this further, contact your EDB representative.
+Postgres GSSAPI authentication using a Kerberos ticket-granting ticket (TGT) doesn't fully eliminate credential management: obtaining a TGT still requires a KDC username and password (or a keytab), and TGTs are short-lived, so they need to be reacquired periodically. For this reason, the agent doesn't currently support GSSAPI as a password-less authentication path. If your organization already has a keytab-based Kerberos setup and wants to explore this option, contact your EDB representative.
 
 ## Related topics
 
