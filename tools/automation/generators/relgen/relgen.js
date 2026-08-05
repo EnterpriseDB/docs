@@ -467,6 +467,10 @@ function prepareRelnote(meta, file, note) {
     return order.indexOf(a) - order.indexOf(b);
   });
 
+  // Products whose changes originate in private repos have nothing to link to
+  // and opt out of the Addresses column entirely via meta.yml.
+  const showAddresses = meta.addresses !== false;
+
   let rnotes = {};
 
   // Highest, High, Medium, Low, Lowest - in that order
@@ -533,17 +537,18 @@ function prepareRelnote(meta, file, note) {
   for (let type of types) {
     appendFileSync(rlout, `## ${titles(type)}`);
     appendFileSync(rlout, "\n\n");
+    let headings = "";
     if (meta.components !== undefined) {
-      appendFileSync(
-        rlout,
-        `<table class="table w-100"><thead><tr><th>Component</th><th>Version</th><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>\n`,
-      );
-    } else {
-      appendFileSync(
-        rlout,
-        `<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>\n`,
-      );
+      headings += `<th>Component</th><th>Version</th>`;
     }
+    headings += `<th>Description</th>`;
+    if (showAddresses) {
+      headings += `<th width="10%">Addresses</th>`;
+    }
+    appendFileSync(
+      rlout,
+      `<table class="table w-100"><thead><tr>${headings}</tr></thead><tbody>\n`,
+    );
     // TODO: Depending on type, we should sort the notes
     let sortednotes = rnotes[type].sort(impactSort);
 
@@ -569,17 +574,15 @@ function prepareRelnote(meta, file, note) {
         linenote.addresses = "";
       }
 
+      let cells = "";
       if (meta.components !== undefined) {
-        appendFileSync(
-          rlout,
-          `<tr><td>${linenote.component}</td><td>${note.components[linenote.component]}</td><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
-        );
-      } else {
-        appendFileSync(
-          rlout,
-          `<tr><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
-        );
+        cells += `<td>${linenote.component}</td><td>${note.components[linenote.component]}</td>`;
       }
+      cells += `<td>${composednote}</td>`;
+      if (showAddresses) {
+        cells += `<td>${linenote.addresses}</td>`;
+      }
+      appendFileSync(rlout, `<tr>${cells}</tr>\n`);
     }
     appendFileSync(rlout, "</tbody></table>\n");
     appendFileSync(rlout, "\n\n");
