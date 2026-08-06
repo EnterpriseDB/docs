@@ -20,6 +20,7 @@ Configure these parameters in `/etc/wem/wem.conf` on the WEM host.
 | `WHPG_DATABASE` | `wem` | Yes | Database on the WHPG cluster to connect to. Any database is valid, but `WHPG_USER` must be a superuser. |
 | `WHPG_USER` | `gpadmin` | Yes | WarehousePG superuser for monitoring. |
 | `WHPG_PASSWORD` | — | Yes | Password for `WHPG_USER`. |
+| `WHPG_SSLMODE` | `prefer` | No | SSL mode for the WHPG connection. Valid values are `disable`, `allow`, `prefer`, `require`, `verify-ca`, and `verify-full`. |
 
 ### Observability endpoints
 
@@ -27,7 +28,8 @@ Configure these parameters in `/etc/wem/wem.conf` on the WEM host.
 |---|---|---|---|
 | `PROMETHEUS_URL` | — | No | URL of the Prometheus server for metrics. For example, `http://prometheus.hostname:9090`. |
 | `LOKI_URL` | — | No | URL of the Loki server for log aggregation. For example, `http://loki.hostname:3100`. |
-| `ALERTMANAGER_URL` | — | No | URL of the Alertmanager endpoint for alert routing and notifications. For example, `http://prometheus.hostname:9093`. Required to enable the **Alerts** panel. |
+| `LOKI_TENANT_ID` | — | No | Tenant ID to send with requests to a multi-tenant Loki setup. |
+| `METRICS_BACKEND` | `prometheus` | No | Backend WEM uses for alert rule evaluation. Valid values are `prometheus` and `clickhouse`. |
 
 ### Application state
 
@@ -47,6 +49,16 @@ By default, WEM stores its internal state in the database defined by `WHPG_DATAB
 |---|---|---|---|
 | `PORT` | `8080` | No | HTTP port on which the WEM web portal listens. |
 
+### Performance
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `HIGH_LOAD_MODE` | `false` | No | Extends WEM's internal timeouts for large clusters. Equivalent to passing the `--high-load` flag. |
+| `WHPG_MONITORING_DB` | `WHPG_DATABASE` | No | Database WEM uses for monitoring queries, if different from `WHPG_DATABASE`. |
+| `LONG_RUNNING_THRESHOLD` | `10` | No | Duration, in minutes, after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Accepts a plain integer, not a duration string. Can also be set from the WEM interface. |
+| `LOG_MIN_DURATION_STATEMENT` | — | No | Sets WHPG's `log_min_duration_statement` configuration parameter, in milliseconds. Use `-1` to disable statement logging or `0` to log every statement. Leave unset to leave WHPG's own setting unchanged. |
+| `GPBACKUP_HISTORY_DB` | `/data/coordinator/gpseg-1/gpbackup_history.db` | No | Path to the `gpbackup` history SQLite database, used by the **Backups** feature. |
+
 ### Session security
 
 | Parameter | Default | Required | Description |
@@ -61,11 +73,28 @@ By default, WEM stores its internal state in the database defined by `WHPG_DATAB
 | `WEM_ADMIN_PASSWORD` | Auto-generated | No | Initial admin password. Auto-generated at install if empty. Only used during first-time setup if the `dashboard_users` table doesn't yet exist. |
 | `WEM_ADMIN_PASSWORD_FILE` | — | No | Path to a file containing the admin password. Use instead of `WEM_ADMIN_PASSWORD` for automated deployments. |
 
+### Alert evaluator
+
+WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertmanager. Rules are managed from the **Alert Rules** tab in the WEM interface rather than from static files.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `ALERT_EVALUATOR_ENABLED` | `true` | No | Enables WEM's internal alert rule evaluation. |
+| `ALERT_EVALUATION_INTERVAL` | `15s` | No | Frequency at which WEM evaluates alert rules. |
+
+### Log scan
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `LOG_SCAN_ENABLED` | `true` | No | Enables periodic agent-driven scanning of the coordinator's WHPG log into `wem.query_log_history`. |
+| `LOG_SCAN_INTERVAL` | `60s` | No | Frequency at which the log-scan job is enqueued. |
+
 ### AI Assistant
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | — | No | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when this parameter is unset. |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5` | No | Claude model used for AI-powered query plan explanations. |
 
 ### Exporter
 
@@ -75,7 +104,6 @@ By default, WEM stores its internal state in the database defined by `WHPG_DATAB
 | `WEM_EXPORTER_REMOTE_WRITE_ENABLED` | `true` | No | Controls whether WEM actively pushes SQL exporter metrics to Prometheus via remote write. Set to `false` to use pull-only mode or when `PROMETHEUS_URL` is not set. The `/prom/metrics` endpoint remains available regardless. |
 | `WEM_EXPORTER_REMOTE_WRITE_INTERVAL` | `15s` | No | Frequency for pushing metrics to Prometheus. For example, `15s`, `1m`, `5m`. |
 | `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT` | `30s` | No | Maximum time allowed for a remote write push. For example, `30s`, `1m`, `2m`. |
-| `LONG_RUNNING_THRESHOLD` | `10m` | No | Duration after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Can also be set from the WEM interface. |
 
 ### PXF and service identity
 
@@ -87,16 +115,25 @@ By default, WEM stores its internal state in the database defined by `WHPG_DATAB
 | `WHPG_PXF_OP_TIMEOUT_SECONDS` | `60` | No | Per-operation timeout in seconds for `pxf cluster start` and `pxf cluster stop`. Raise on large clusters, slow networks, or slow JVM start-up. Valid range: 30–600. |
 | `WHPG_ALLOW_ROOT` | — | No | Set to `1` to allow the WEM service to run as `root`. By default, WEM refuses to start as `root`. WEM logs a warning on every restart when this is set. |
 
-### Remote write receiver
+### Host agent
 
-When enabled, WEM accepts inbound time-series data from Grafana Alloy or any Prometheus-compatible remote write client via `POST /write`, and exposes received metrics at `/prom/metrics` alongside its own cluster metrics.
+WEM dispatches jobs to the host agent through its internal job-execution engine. WEM connects to that engine lazily, so if it's unreachable, agent tasks fail directly but the rest of WEM is unaffected.
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `WEM_REMOTE_WRITE_RECEIVER_ENABLED` | `false` | Yes (to enable) | Master switch for the receiver. When `false`, no `/write` endpoint is registered and no additional port is opened. |
-| `WEM_REMOTE_WRITE_RECEIVER_PORT` | `9091` | No | Port on which WEM listens for `POST /write` requests. When different from `PORT`, WEM opens a dedicated HTTP listener — only `/write` and `/api/v1/status/buildinfo` are available there. When set to the same value as `PORT`, the `/write` route is registered on the main web server instead. |
+| `WEM_AGENT_PORT` | `PORT` + 1 | No | Port the host agent connects to for WEM's internal job-execution engine. Leave unset to derive it automatically from `PORT`. |
+| `WEM_AGENT_CALLBACK_BASE_URL` | — | No | Externally reachable base URL, without a trailing slash, that host agents dial to push and pull file bytes. If left unset, WEM derives this URL from the Host header of the browser request that triggered the file transfer, which breaks whenever that request arrived over `localhost`, an SSH tunnel, or a proxy hostname the agent can't dial back to. Set it explicitly to WEM's real hostname or IP address and listen port, for example `http://wem-host:8080`, in any deployment where the host agent runs on a different host than WEM, or where you access WEM through anything other than its own direct address. Don't use `localhost` or a bind address like `0.0.0.0`. Getting this wrong surfaces as `agent could not reach callback URL` when saving a file through the host agent, for example in the HBA editor. |
+
+### Remote write receiver
+
+When enabled, WEM accepts inbound time-series data from Grafana Alloy or any Prometheus-compatible remote write client via `POST /api/v1/write`, and exposes received metrics at `/prom/metrics` alongside its own cluster metrics.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_REMOTE_WRITE_RECEIVER_ENABLED` | `false` | Yes (to enable) | Master switch for the receiver. When `false`, no `/api/v1/write` endpoint is registered and no additional port is opened. |
+| `WEM_REMOTE_WRITE_RECEIVER_PORT` | `9091` | No | Port on which WEM listens for `POST /api/v1/write` requests. When different from `PORT`, WEM opens a dedicated HTTP listener — only `/api/v1/write` and `/-/healthy` are available there. When set to the same value as `PORT`, the `/api/v1/write` route is registered on the main web server instead. |
 | `WEM_REMOTE_WRITE_RECEIVER_TTL` | `5m` | No | How long WEM retains a received time series in memory after its last sample. Set to at least twice your Alloy `remote_write` interval. With Alloy's default 60-second interval, `2m` is the minimum safe value. Accepts `s`, `m`, and `h` suffixes. |
-| `WEM_REMOTE_WRITE_RECEIVER_TOKEN` | — | Recommended | *Sensitive.* Bearer token that `POST /write` requests must present in the `Authorization: Bearer <token>` header. When empty, any client that can reach the port can push metrics and WEM logs a warning. When set, requests without a valid token are rejected with HTTP 401. Generate with `openssl rand -base64 32`. Can also be passed as the `--remote-write-token` CLI flag. |
+| `WEM_REMOTE_WRITE_RECEIVER_TOKEN` | — | Recommended | *Sensitive.* Bearer token that `POST /api/v1/write` requests must present in the `Authorization: Bearer <token>` header. When empty, any client that can reach the port can push metrics and WEM logs a warning. When set, requests without a valid token are rejected with HTTP 401. Generate with `openssl rand -base64 32`. Can also be passed as the `--remote-write-token` CLI flag. |
 
 ---
 

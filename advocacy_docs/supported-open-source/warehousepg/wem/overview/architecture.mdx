@@ -6,7 +6,7 @@ deepToC: true
 ---
 
 
-The WarehousePG Enterprise Manager (WEM) architecture is built upon a streamlined telemetry pipeline: an internal data collection layer, dedicated storage services, and the unified WEM application.
+The WarehousePG Enterprise Manager (WEM) architecture is built upon a streamlined telemetry pipeline: an internal data collection layer, dedicated storage services, and the unified WEM application. Starting with WEM 1.3, a host agent component enables privileged operations on WarehousePG coordinator hosts through WEM's internal job-execution engine.
 
 ![architecture](../images/architecture.svg)
 
@@ -16,6 +16,12 @@ The WarehousePG Enterprise Manager (WEM) architecture is built upon a streamline
 
 The Collector is a service based on Grafana Alloy that runs on the WarehousePG (WHPG) coordinator, standby, and segments. Each Collector service on the WHPG cluster collects host metrics and log files, and sends them to the Collector service on the coordinator. The Collector service on the coordinator temporarily stores these metrics in memory, then pushes the host metrics to Prometheus, and the log files to Loki.
 
+### Host agent
+
+The host agent (`acp-host-agent`) is a background service that runs on the WarehousePG coordinator host and executes privileged operations — such as editing `pg_hba.conf` and managing Safeguard — on behalf of WEM. WEM dispatches these operations through its internal job-execution engine, which ensures they're reliable and recoverable even when connectivity is interrupted.
+
+The host agent is installed separately on the WarehousePG coordinator host, alongside WEM. WEM doesn't use host agent features unless both the host agent and WEM's internal job-execution engine are running and connected. See [Installing the host agent](../installing/host-agent).
+
 ### WEM
 
 WEM is the central management and visualization service. It includes Exporter as a native service, eliminating the need for a separate installation.
@@ -24,7 +30,7 @@ WEM performs the following core functions:
 
 - **Database extraction:** The integrated Exporter engine runs SQL queries against heap and catalog tables to capture deep database metrics.
 - **Data routing:** Pushes captured SQL and cluster metrics to Prometheus for historical analysis. The `/prom/metrics` endpoint is always available for Prometheus to scrape, even if `PROMETHEUS_URL` is not configured.
-- **Remote write receiver (optional):** WEM can accept inbound time-series data from Grafana Alloy or any Prometheus-compatible remote write client via a `POST /write` endpoint. Received metrics are held in memory and exposed at `/prom/metrics` alongside WEM's own cluster metrics, providing a single scrape target for your Prometheus instance.
+- **Remote write receiver (optional):** WEM can accept inbound time-series data from Grafana Alloy or any Prometheus-compatible remote write client via a `POST /api/v1/write` endpoint. Received metrics are held in memory and exposed at `/prom/metrics` alongside WEM's own cluster metrics, providing a single scrape target for your Prometheus instance.
 - **Unified visualization:** Aggregates live data directly from the internal Exporter engine and historical data from Prometheus and Loki into a single dashboard.
 
 ### Storage services: Prometheus and Loki
@@ -47,7 +53,8 @@ The system processes telemetry across four distinct phases:
 2. **Export & routing:** 
     - **System & logs:** The Collector on the coordinator pushes system metrics to Prometheus and logs to Loki.
     - **Database metrics:** The internal WEM Exporter engine probes the WHPG engine to capture the state of queries, transactions, and resource usage. Metrics are exposed at `/prom/metrics` for Prometheus to scrape regardless of whether `PROMETHEUS_URL` is configured.
-    - **Inbound metrics (optional):** If the remote write receiver is enabled, Grafana Alloy or other Prometheus-compatible clients can push additional time-series data to WEM via `POST /write`. WEM aggregates these with its own metrics at `/prom/metrics`.
+    - **Inbound metrics (optional):** If the remote write receiver is enabled, Grafana Alloy or other Prometheus-compatible clients can push additional time-series data to WEM via `POST /api/v1/write`. WEM aggregates these with its own metrics at `/prom/metrics`.
+    - **Privileged host operations:** When WEM triggers a host-level action (such as updating `pg_hba.conf`), the request is dispatched to the host agent through WEM's internal job-execution engine, which tracks the operation and retries automatically if the connection is interrupted.
 
 3. **Storage:** Data is indexed and stored externally within Prometheus and Loki. This ensures that even if the database cluster faces downtime, its historical metrics and logs remain available for root-cause analysis.
 
