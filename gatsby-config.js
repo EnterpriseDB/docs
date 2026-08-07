@@ -145,6 +145,10 @@ const sourceToPluginConfig = {
     name: "warehousepg",
     path: "product_docs/docs/warehousepg",
   },
+  pxf: {
+    name: "pxf",
+    path: "product_docs/docs/pxf",
+  },
 };
 
 const externalSourcePlugins = () => {
