@@ -1,44 +1,42 @@
 ---
 title: Installing the observability stack
 navTitle: Installing the observability stack
-description: Install and configure Prometheus, Loki, and Alertmanager as the external observability services required by WEM.
+description: Install and configure Prometheus and Loki as the external observability services required by WEM.
 ---
 
-WEM requires Prometheus and Loki to enable monitoring and log aggregation features. Alertmanager is required to enable the alerts integration. You can deploy dedicated instances for WEM or integrate with an existing enterprise monitoring stack.
+WEM requires Prometheus and Loki to enable monitoring and log aggregation features, and a PostgreSQL database for its own configuration and application state. Alertmanager is bundled with WEM and runs as a managed subprocess, so no separate installation is required. You can deploy dedicated Prometheus and Loki instances for WEM or integrate with an existing enterprise monitoring stack.
 
-For a reference deployment using Docker Compose, see the [warehouse-pg-observability-demo](https://github.com/warehouse-pg/warehouse-pg-observability-demo) repository, which provides a working example with Prometheus, Loki, and Alertmanager pre-configured for WEM.
+You install Prometheus and Loki before WEM, since WEM's configuration depends on knowing their addresses. The steps below give you a working `prometheus.yml` to start from without needing anything from the WEM package.
 
 !!! Note
-    Once WEM is installed, an example `prometheus.yml` and pre-built alert rule files (`wem-*.rules.yml`) are available at `/usr/local/greenplum-db/wem/config/prometheus/` on the WEM host. Use these as a starting point when configuring your Prometheus instance.
+    Once WEM is installed, this same example `prometheus.yml` is also available at `/usr/local/greenplum-db/wem/config/prometheus/` on the WEM host, in case you need to refer to it again later.
 
 ## Installing Prometheus
 
-Prometheus collects and stores the metrics that WEM uses to display cluster performance data.
+Prometheus collects and stores the metrics that WEM uses to display cluster performance data. The WHPG Collector pushes host-level metrics to Prometheus using its remote-write API, and Prometheus separately scrapes WEM's own metrics endpoint for SQL and cluster data.
 
 1. Download and install Prometheus from the [official releases page](https://prometheus.io/download/), or install it using your system package manager.
 
-1. Configure a `prometheus.yml` to enable the remote write receiver, which the WEM Collector uses to push metrics. The example file at `/usr/local/greenplum-db/wem/config/prometheus/prometheus.yml` on the WEM host provides a ready-to-use starting point. At minimum, add the following:
+1. Create a `prometheus.yml` that scrapes WEM. WEM's bundled Alertmanager only listens on `localhost` on the WEM host, so it isn't reachable from Prometheus and isn't configured here. If Prometheus runs on the same host as WEM, `localhost` works as shown for the scrape target. Otherwise, replace it with the hostname or IP address of your WEM host:
 
     ```yaml
     global:
-      scrape_interval: 15s
+      scrape_interval: 30s
+      evaluation_interval: 30s
 
-    # Enable remote write receiver so the WEM Collector can push metrics
+    scrape_configs:
+      - job_name: 'wem'
+        static_configs:
+          - targets: ['localhost:8080']
+        metrics_path: /prom/metrics
+        scrape_interval: 15s
     ```
 
-    Start Prometheus with `--web.enable-remote-write-receiver` to accept inbound metrics:
+1. Start Prometheus with `--web.enable-remote-write-receiver` so the WHPG Collector can push host metrics to it:
 
     ```bash
-    ./prometheus --config.file=prometheus.yml --web.enable-remote-write-receiver
+        prometheus --config.file=prometheus.yml --web.enable-remote-write-receiver > prometheus.log 2>&1 &
     ```
-
-1. Load the WEM alert rules. Once WEM is installed, copy the pre-built rule files to the path referenced in your `prometheus.yml` under `rule_files`:
-
-    ```bash
-    cp /usr/local/greenplum-db/wem/config/prometheus/alerts/*.rules.yml /etc/wem/prometheus/alerts/
-    ```
-
-    The example `prometheus.yml` included with WEM already references this path. See [Alert rules](../reference/alert-rules) for a description of each rule.
 
 1. Verify Prometheus is running:
 
@@ -55,7 +53,7 @@ Loki receives and stores WarehousePG log data forwarded by the WEM Collector.
 1. Start Loki with a minimal configuration:
 
     ```bash
-    ./loki -config.file=loki-local-config.yaml
+    loki -config.file=/etc/loki/loki-local-config.yaml > loki.log 2>&1 &
     ```
 
 1. Verify Loki is accepting log pushes:
@@ -64,37 +62,43 @@ Loki receives and stores WarehousePG log data forwarded by the WEM Collector.
     curl http://<loki-host>:3100/ready
     ```
 
-## Installing Alertmanager
+## Installing PostgreSQL (optional)
 
-Alertmanager is required to enable WEM's alert routing and notification features. Without it, the **Alerts** panel in WEM is not available.
+WEM needs a PostgreSQL database to store its own configuration and application state, such as dashboard users, roles, and alert rules. You can use a database in your WHPG cluster, or a dedicated instance if you'd rather keep WEM's state separate. To use a dedicated instance:
 
-1. Download and install Alertmanager from the [official releases page](https://prometheus.io/download/#alertmanager), or install it using your system package manager.
+1. Download and install PostgreSQL from the [official downloads page](https://www.postgresql.org/download/), or install it using your system package manager.
 
-1. Create an `alertmanager.yml` with your notification routing. For example, to route all alerts to a Slack channel:
+1. Initialize the database and enable and start the PostgreSQL service. See the [PostgreSQL documentation](https://www.postgresql.org/docs/current/server-start.html) for details.
 
-    ```yaml
-    global:
-      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
-
-    route:
-      receiver: 'slack-notifications'
-
-    receivers:
-      - name: 'slack-notifications'
-        slack_configs:
-          - channel: '#alerts'
-            text: '{{ .CommonAnnotations.summary }}'
-    ```
-
-1. Start Alertmanager:
+1. On PostgreSQL 13 and earlier, `password_encryption` defaults to `md5`, which is incompatible with the `scram-sha-256` authentication method configured below. Check the setting, and fix it if needed, before creating the user:
 
     ```bash
-    ./alertmanager --config.file=alertmanager.yml
+    sudo -i -u postgres psql -c "SHOW password_encryption;"
+    sudo -i -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';"
+    sudo -i -u postgres psql -c "SELECT pg_reload_conf();"
     ```
 
-1. Verify Alertmanager is running:
+1. Create a dedicated database and user for WEM. The user name, password, and database name must match the `WEM_USER`, `WEM_PASSWORD`, and `WEM_DATABASE` values you configure later in [Installing WEM](wem#application-state-optional):
+
+    ```sql
+    CREATE USER wem_admin WITH PASSWORD '<your-password>';
+    CREATE DATABASE wem OWNER wem_admin;
+    ```
+
+1. Configure `pg_hba.conf` to allow `wem_admin` to authenticate with a password, using `all` for the database field since `wem setup` connects to the `postgres` maintenance database before switching to `wem`:
+
+    ```
+    host    all    wem_admin    127.0.0.1/32    scram-sha-256
+    host    all    wem_admin    ::1/128         scram-sha-256
+    ```
+
+1. Verify PostgreSQL is accepting connections:
 
     ```bash
-    curl http://<alertmanager-host>:9093/-/healthy
+    pg_isready -h <postgres-host> -p 5432
     ```
+
+## Next steps
+
+Continue to [Installing WHPG Collector](collector).
 

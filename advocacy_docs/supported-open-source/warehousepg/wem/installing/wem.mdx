@@ -24,21 +24,16 @@ Install the WarehousePG Enterprise Manager (WEM) package on your designated host
     sudo dnf install -y whpg-enterprise-manager
     ```
 
-## Performing post-installation setup
+1. To run WEM management commands (such as `setup`, `doctor`, or `setup --verify`) from any location in your terminal, add the WEM binary directory to your system `PATH`. Update your current session:
 
-To run WEM management commands (such as `setup`, `doctor`, or `setup --verify`) from any location in your terminal, add the WEM binary directory to your system `PATH`. 
+    ```bash
+    export PATH=/usr/local/greenplum-db/wem:$PATH
+    ```
 
-Update your current session:
-
-```bash
-export PATH=/usr/local/greenplum-db/wem:$PATH
-```
-
-!!! tip
     To make this change persistent, add the command above to your `~/.bashrc` or `~/.bash_profile` file.
 
 !!! note
-    Starting from WarehousePG 7.4, the default WHPG installation directory is `/usr/edb/whpg7`. For backward compatibility, a symlink is provided at `/usr/local/greenplum-db`. The WEM binary path above resolves through this symlink, so no changes are required on WarehousePG 7.4 or later systems.
+    Starting from WarehousePG 7.4 and 6.27.4, the default WHPG installation directory is `/usr/edb/whpg7`. For backward compatibility, a symlink is provided at `/usr/local/greenplum-db`. The WEM binary path above resolves through this symlink, so no changes are required on WarehousePG 7.4 or later systems.
 
 ## Configuring WEM
 
@@ -57,7 +52,7 @@ WHPG_PASSWORD=postgres
 ```
 
 !!! Note
-    You can specify any database on your WHPG cluster. However, `WHPG_USER` must be a superuser.
+    You can specify any database on your WHPG cluster. However, `WHPG_USER` must be a superuser. To use a non-default SSL mode for this connection, set `WHPG_SSLMODE`. See [Configuration reference](../reference/configuration#target-cluster) for valid values.
 
 ### Observability endpoints
 
@@ -70,23 +65,17 @@ LOKI_URL=http://loki.hostname:3100
 
 ### Application state (optional)
 
-By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`. To use a dedicated database for WEM state, configure these optional parameters. For example:
+By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`, so no further configuration is needed for most installs. To use a dedicated database for WEM state instead, configure these optional parameters. For example:
 
 ```ini
 WEM_HOST=wem-db-hostname
 WEM_PORT=5432
 WEM_DATABASE=wem
-WEM_USER=gpadmin
-WEM_PASSWORD=postgres
+WEM_USER=wem_admin
+WEM_PASSWORD=<your-password>
 ```
 
-### Alerting
-
-To enable centralized notifications, point WEM to your Alertmanager endpoint:
-
-```ini
-ALERTMANAGER_URL=http://prometheus.hostname:9093
-```
+These values must match the user, password, and database you created in [Installing PostgreSQL](observability-stack#installing-postgresql-optional), if you're using a dedicated database for WEM's application state.
 
 ### AI Assistant
 
@@ -111,7 +100,7 @@ Optionally, adjust these parameters to fine-tune logging and data intervals:
 
 - `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT`: Maximum time allowed for a data push. For example, 30s, 1m, 2m.
 
-- `LONG_RUNNING_THRESHOLD`: Duration after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. For example, 5m, 30m, 1h. This can also be configured directly from the WEM interface.
+Optional parameters also let you extend timeouts for large clusters (`HIGH_LOAD_MODE`), flag long-running queries in the interface (`LONG_RUNNING_THRESHOLD`, in minutes), adjust WHPG's own statement logging (`LOG_MIN_DURATION_STATEMENT`), tune how often WEM evaluates alert rules (`ALERT_EVALUATION_INTERVAL`) or scans the coordinator's log (`LOG_SCAN_INTERVAL`), or disable either feature entirely (`ALERT_EVALUATOR_ENABLED`, `LOG_SCAN_ENABLED`). See [Configuration reference](../reference/configuration) for the complete list, defaults, and valid formats.
 
 ### Remote write receiver (optional)
 
@@ -126,15 +115,15 @@ WEM_REMOTE_WRITE_RECEIVER_TTL=5m
 WEM_REMOTE_WRITE_RECEIVER_TOKEN=eU3zV8mK2pL9nQ4rX1yA6wB0cF5hJ7dT
 ```
 
-- `WEM_REMOTE_WRITE_RECEIVER_ENABLED`: Master switch for the receiver. Defaults to `false`. When `false`, no `/write` endpoint is registered and no additional port is opened. The `/prom/metrics` endpoint remains available regardless. WEM's own cluster metrics are always exposed there for Prometheus to scrape even when the receiver is off.
+- `WEM_REMOTE_WRITE_RECEIVER_ENABLED`: Master switch for the receiver. Defaults to `false`. When `false`, no `/api/v1/write` endpoint is registered and no additional port is opened. The `/prom/metrics` endpoint remains available regardless. WEM's own cluster metrics are always exposed there for Prometheus to scrape even when the receiver is off.
 
-- `WEM_REMOTE_WRITE_RECEIVER_PORT`: Port on which WEM listens for `POST /write` requests. Defaults to `9091`.
-    - **Different from `PORT` (default):** WEM opens a dedicated HTTP listener on this port. Only `/write` and the `/-/healthy` health endpoint are available there. This setup lets you restrict Alloy traffic independently of the main UI port using firewall rules.
-    - **Same as `PORT`:** The `/write` route is registered on the main web server and no second listener is opened. Use this in environments where opening an additional port isn't possible.
+- `WEM_REMOTE_WRITE_RECEIVER_PORT`: Port on which WEM listens for `POST /api/v1/write` requests. Defaults to `9091`.
+    - **Different from `PORT` (default):** WEM opens a dedicated HTTP listener on this port. Only `/api/v1/write` and the `/-/healthy` health endpoint are available there. This setup lets you restrict Alloy traffic independently of the main UI port using firewall rules.
+    - **Same as `PORT`:** The `/api/v1/write` route is registered on the main web server and no second listener is opened. Use this in environments where opening an additional port isn't possible.
 
 - `WEM_REMOTE_WRITE_RECEIVER_TTL`: How long WEM retains a received time series in memory after its last sample. When the TTL expires and no new sample has arrived, the series is evicted from `/prom/metrics`. Defaults to `5m`. Set this to at least twice your Alloy `remote_write` interval to avoid gaps during temporary restarts. With Alloy's default 60-second interval, `2m` is the minimum safe value. Accepts `s` (seconds), `m` (minutes), and `h` (hours).
 
-- `WEM_REMOTE_WRITE_RECEIVER_TOKEN` *(sensitive)*: Bearer token that inbound `POST /write` requests must present in the `Authorization` header:
+- `WEM_REMOTE_WRITE_RECEIVER_TOKEN`: Bearer token that inbound `POST /api/v1/write` requests must present in the `Authorization` header:
 
     ```
     Authorization: Bearer <token>
@@ -249,4 +238,8 @@ Use the following diagnostic tools to ensure all components are communicating co
 
 !!! Note Post-installation changes: 
     To modify your environment after the initial setup, see [Configuring WEM](../configuring).
+
+## Next steps
+
+Continue to [Installing the host agent](host-agent).
 
