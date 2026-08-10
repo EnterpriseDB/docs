@@ -1,0 +1,46 @@
+---
+title: Delegation
+navTitle: Delegation
+description: Let one AIDB agent hand off part of a request to another named agent.
+---
+
+An agent can hand off part of a request to another agent instead of (or alongside) calling tools directly. List the other agent's name in `delegates` when you [create or update](creating-agents) it:
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'sql_specialist',
+    instructions => 'You answer questions about the orders and customers tables precisely.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query']
+);
+
+SELECT aidb.create_agent(
+    name         => 'help_desk',
+    instructions => 'You help users with general questions, delegating data questions to the SQL specialist.',
+    model        => 'my_gpt',
+    delegates    => ARRAY['sql_specialist']
+);
+
+SELECT * FROM aidb.agent_converse('help_desk', 'How many orders came in last week?');
+```
+
+## How it's presented to the model
+
+Each configured delegate becomes an ordinary function-call tool, named after the delegate agent, with two arguments: `prompt` (required — the request to hand off) and `conversation_id` (optional — see [continuing a delegate conversation](#continuing-a-delegate-conversation) below). The delegate's own `instructions` become that tool's description, so the delegating model sees them as "what this delegate is for" — write an agent's instructions with that dual purpose in mind if you expect it to be delegated to.
+
+A delegate name must not collide with one of the agent's own `tools`, and it's validated to be a currently-registered agent at `create_agent`/`update_agent` time, the same as `tools` is.
+
+## Continuing a delegate conversation
+
+Calling a delegate returns an object with `answer` and `conversation_id`. The model can pass that `conversation_id` back on a later delegate call in the same or a future `agent_converse` run to continue that specific delegate conversation — with its own prior history — instead of starting fresh each time. Omitting it (the common case) starts a new conversation with the delegate on every call.
+
+## Behavior that carries across the hand-off
+
+- **Read-only mode propagates.** If the delegating run is [read-only](conversing-with-agents#read-only-mode), the delegate's own sub-call is forced read-only too — a read-only agent can't use delegation to reach a write through another agent. A read-only delegate call always returns `conversation_id: null` and can't be continued.
+- **Debug mode propagates.** If the top-level call passed `debug => true`, the delegate's own actions are emitted as `NOTICE`s too.
+- **Role does not propagate.** A delegate runs under its *own* configured `role` (or the current user, if it has none) — not the delegating agent's role.
+- **Budgets don't propagate.** Each delegate call gets its own fresh token/iteration budget and timeout, from its own configuration — a parent's budget doesn't constrain how much a delegate can do.
+
+## Delegation depth
+
+Delegation chains are capped at 10 levels deep (an agent delegating to a delegate delegating to a delegate, and so on). This exists mainly to fail fast on a cycle — one agent delegating back to itself, or two agents delegating back and forth — rather than recursing until Postgres's stack depth check aborts the backend. Hitting the limit stops the task immediately with an error; it isn't retried the way an ordinary tool failure might be.

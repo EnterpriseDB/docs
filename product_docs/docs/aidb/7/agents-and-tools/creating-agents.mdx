@@ -1,0 +1,103 @@
+---
+title: Creating agents
+navTitle: Creating agents
+description: Register, update, and delete AIDB agents — their model, tools, permissions, and structured output.
+---
+
+An agent is a row in `aidb.agents`, created with `aidb.create_agent()`. Nothing runs until you call [`aidb.agent_converse()`](conversing-with-agents) — creating an agent just stores its configuration.
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'db_helper',
+    instructions => 'You are a helpful assistant that answers questions about this database. Be concise.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query']
+);
+```
+
+Returns no rows on success. On failure (for example, the name is already taken), it returns a single row with an `error` column set — it never raises, so a batch of `create_agent` calls can't abort partway through:
+
+```sql
+SELECT * FROM aidb.create_agent('db_helper', 'Be helpful.', 'my_gpt');
+
+__OUTPUT__
+                error
+------------------------------------
+ agent 'db_helper' already exists
+(1 row)
+```
+
+## Choosing a model
+
+`model` must name an already-registered [model](../integrating-models) that's capable of following instructions — `t5_local` is rejected outright, since it has no instruction-following or system-prompt support. Any other provider works, but the *quality* of tool calling differs by provider:
+
+- `openai_responses`, `anthropic_messages` (and their Azure/Bedrock variants), and `llamacpp_generate` send real, provider-native tool-call requests.
+- Every other provider (`openai_completions`, `gemini`, `nim_completions`, `openrouter_chat`, and so on) still works, but AIDB simulates tool calling for it by describing the available tools in the prompt text and parsing a tool call back out of the model's plain-text reply.
+
+See [Tool calling and structured output](../reference/models#tool-calling-and-structured-output) for more on this distinction. The model doesn't need to exist yet when you call `create_agent` — only `agent_converse` requires it to be resolvable.
+
+## Tools and delegates
+
+`tools` is an array of names from the [tool catalog](tools) (`aidb.tools`) the agent is allowed to call; `delegates` is an array of names of other agents it may [hand off to](delegation). Both are validated against `aidb.tools`/`aidb.agents` at `create_agent`/`update_agent` time — an unknown name is rejected immediately rather than surfacing later inside `agent_converse`. Omit either for an agent with no tools or no delegates.
+
+## Permissions
+
+By default, an agent's tool calls run as whichever Postgres role calls `agent_converse`. Pass `role` to pin an agent to a specific role instead — for example, to give it narrower table permissions than the calling application user has. The caller must already be a member of that role (`pg_has_role(..., 'MEMBER')`); `create_agent`/`update_agent` reject an agent configured with a role you don't belong to.
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'readonly_reporter',
+    instructions => 'Answer questions about sales data. Never modify data.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query'],
+    role         => 'reporting_role'
+);
+```
+
+## Structured output
+
+By default, `agent_converse`'s answer is plain text. To get back structured JSON instead, build a schema with `aidb.output_type()` and `aidb.output_field()`:
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'sentiment_tagger',
+    instructions => 'Classify the sentiment of the given text.',
+    model        => 'my_gpt',
+    output_type  => aidb.output_type(
+        aidb.output_field('sentiment', 'TEXT', 'One of: positive, negative, neutral'),
+        aidb.output_field('confidence', 'FLOAT')
+    )
+);
+```
+
+`aidb.output_field()`'s `description` argument is optional. A call-time `output_type` argument to `agent_converse` overrides the agent's configured schema for that one call only.
+
+## Budgets, iterations, and timeouts
+
+`input_token_budget`, `output_token_budget`, `max_iterations`, and `timeout` (seconds) cap how much a single `agent_converse` call can cost and how long it can run; `budget_strategy` controls what happens when a budget is exceeded. All are optional — see [Budgets and limits](conversing-with-agents#budgets-and-limits) for the full behavior, since it's a property of how a conversation runs, not of the agent's static configuration.
+
+## Updating and deleting agents
+
+`aidb.update_agent()` takes the same fields as `create_agent`, all optional — only the fields you pass change; everything else keeps its current value:
+
+```sql
+SELECT aidb.update_agent('db_helper', model => 'my_new_gpt', max_iterations => 15);
+```
+
+There's no dedicated "list agents" function — `aidb.agents` is a normal table, so `SELECT * FROM aidb.agents` lists them. See [Agents reference](../reference/agents#aidbagents) for its full column list.
+
+`aidb.delete_agent()` removes an agent by name:
+
+```sql
+SELECT aidb.delete_agent('db_helper');
+```
+
+If the agent has any conversation history, this fails by default (its internal task records are referenced by foreign key) — pass `force => true` to delete that internal history alongside the agent. The conversation *transcript* itself is untouched either way and remains readable with [`aidb.get_conversation()`](conversing-with-agents#retrieving-conversations) even after the agent that produced it is gone.
+
+```sql
+SELECT aidb.delete_agent('db_helper', force => true);
+```
+
+!!!note
+`create_agent`/`update_agent` also accept a `preset` argument (for example, `'text_to_sql'`). It's stored on the agent but doesn't currently change its behavior — reserved for future use.
+!!!

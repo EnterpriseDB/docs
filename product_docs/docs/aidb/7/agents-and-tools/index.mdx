@@ -1,0 +1,50 @@
+---
+title: Agents and tools
+navTitle: Agents and tools
+description: Build in-database AI agents that reason over multiple steps, call tools, and delegate to other agents — all driven from SQL.
+navigation:
+- creating-agents
+- conversing-with-agents
+- delegation
+- tools
+- custom-sql-tools
+- mcp-tools
+---
+
+An **agent** is a named, reusable configuration — instructions, a model, and a set of tools it's allowed to call — that AIDB runs through a ReAct-style reasoning loop: the model thinks, optionally calls one or more tools, observes the results, and repeats until it has an answer. A **tool** is anything an agent can invoke by name: a built-in AIDB operation, a custom parameterized SQL query you register, or an operation imported from an external MCP server.
+
+!!!note
+This is a distinct, in-database capability, not [Agent Factory](/edb-postgres-ai/latest/hybrid-manager/ai-factory/) — EDB's separate platform for building and hosting AI agents. AIDB's agents run entirely as SQL function calls inside your Postgres database, with no dependency on Agent Factory or any other external service. Nothing stops the two from being used together, but this section covers AIDB's own agents.
+!!!
+
+Both are ordinary Postgres objects, created and queried with SQL:
+
+```sql
+-- Register an agent that can query the database
+SELECT aidb.create_agent(
+    name         => 'db_helper',
+    instructions => 'You are a helpful assistant that answers questions about this database.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query']
+);
+
+-- Have a conversation with it
+SELECT * FROM aidb.agent_converse('db_helper', 'How many rows are in the orders table?');
+```
+
+## Why tool calling matters here
+
+An agent's tool calls are only as reliable as the model backing it. AIDB's `openai_responses` and `anthropic_messages` providers emit real, provider-native tool-call requests; every other provider (including `openai_completions`, `gemini`, and the rest) still works with agents, but falls back to a prompt-injected simulation of tool calling. See [Tool calling and structured output](../reference/models#tool-calling-and-structured-output) and [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) for the difference. `t5_local` can't back an agent at all — it has no instruction-following ability.
+
+## Documentation map
+
+| Page                                                    | What it covers                                                                                   |
+|----------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| [Creating agents](creating-agents)                      | `aidb.create_agent()`, updating and deleting agents, roles, structured output                     |
+| [Conversing with agents](conversing-with-agents)        | `aidb.agent_converse()`, conversations and sessions, read-only mode, debug mode, budgets and limits |
+| [Delegation](delegation)                                | Letting one agent hand off part of a request to another agent                                    |
+| [Tools](tools)                                          | The unified tool catalog and AIDB's built-in native tools                                         |
+| [Custom SQL tools](custom-sql-tools)                    | Registering your own parameterized SQL queries as tools                                           |
+| [MCP tools](mcp-tools)                                  | Importing tools from external Model Context Protocol (MCP) servers                                |
+
+For full parameter tables and return types, see [Agents reference](../reference/agents) and [Tools reference](../reference/tools).

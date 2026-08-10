@@ -1,0 +1,146 @@
+---
+title: Tools
+navTitle: Tools
+description: The unified AIDB tool catalog and the native tools every installation ships with.
+---
+
+A tool is anything an agent can invoke by name. Every tool AIDB knows about — built-in, custom, or imported from an MCP server — is listed in one place, `aidb.tools`:
+
+```sql
+SELECT name, tool_type, read_only FROM aidb.tools ORDER BY tool_type, name LIMIT 5;
+
+__OUTPUT__
+        name        | tool_type   | read_only
+---------------------+-------------+-----------
+ chunk_text          | native_tool | t
+ create_agent        | native_tool | f
+ ...
+```
+
+| Column | Description |
+|--------|--------------|
+| `name` | The name an agent's `tools` array (and the model's own tool calls) refer to it by. |
+| `description` | Shown to the model as part of the tool's definition. |
+| `tool_type` | `native_tool`, `sql_tool`, or `mcp_tool` — see below. |
+| `params` | For `native_tool`/`sql_tool`: a JSON array of `{name, type, description}` objects. For `mcp_tool`: the external server's own JSON Schema `inputSchema`. |
+| `read_only` | Whether invoking the tool is known to never write. `mcp_tool` entries are always `false` here — see [read-only mode](conversing-with-agents#read-only-mode) for why that's a hard `false`, not a real classification. |
+
+Give an agent access to a tool by listing its name in `create_agent`/`update_agent`'s `tools` array. `aidb.tools` unions three kinds of tools:
+
+- **`native_tool`** — AIDB's own built-in catalog, covered below. Always available; can't be added, removed, or reconfigured.
+- **`sql_tool`** — a parameterized SQL query you register yourself. See [Custom SQL tools](custom-sql-tools).
+- **`mcp_tool`** — a tool imported from an external MCP server. See [MCP tools](mcp-tools).
+
+## Native tools
+
+AIDB ships with a large built-in catalog of native tools — mostly thin wrappers around existing AIDB functionality, so an agent can operate on pipelines, knowledge bases, models, and volumes the same way you would from SQL directly. `sleep` is always available to every agent regardless of its configured `tools` list (it backs the reasoning loop's own ability to pause and resume). Every other native tool must be explicitly listed in `tools` to be usable.
+
+A tool's exact parameters are always visible with `SELECT params FROM aidb.tools WHERE name = '<name>'`; the tables below give the one-line description and read-only status for each.
+
+### Ad hoc SQL
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `run_sql_query` | Yes | Run a read-only SQL query against the database and return its rows as JSON. |
+
+### Pipelines
+
+See [AI pipelines](../data-pipelines).
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `search_pipelines` | Yes | List all registered data pipelines. |
+| `get_pipeline` | Yes | Get a registered data pipeline's configuration by name. |
+| `delete_pipeline` | No | Delete a registered data pipeline by name. |
+| `run_pipeline` | No | Manually run a pipeline once, processing any pending source rows. |
+| `get_pipeline_metrics` | Yes | Get a pipeline's processing status and row counts. |
+| `get_error_logs` | Yes | List a pipeline's record-level processing errors, optionally filtered. |
+| `clear_error_logs` | No | Delete specific pipeline error log entries by id. |
+| `requeue_pipeline_errors` | No | Mark specific pipeline errors' source rows dirty so the next run retries them. |
+| `get_error_log_summary` | Yes | Get error counts for a pipeline, grouped by step, operation, and category. |
+| `get_all_error_summaries` | Yes | Get error counts across every pipeline, grouped by step, operation, and category. |
+
+### Semantic knowledge bases
+
+Schema-search knowledge bases, distinct from the vector knowledge bases pipelines write to.
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `create_semantic_kb` | No | Create a semantic knowledge base over one or more schemas for natural-language schema search. |
+| `delete_semantic_kb` | No | Delete a semantic knowledge base by name. |
+| `list_semantic_kbs` | Yes | List all registered semantic knowledge bases. |
+| `get_semantic_kb` | Yes | Get a registered semantic knowledge base's configuration by name. |
+| `refresh_semantic_kb` | No | Re-crawl a semantic knowledge base's schemas to pick up structural changes. |
+| `update_semantic_kb_auto_processing` | No | Change a semantic knowledge base's auto-processing mode. |
+| `get_column_definitions` | Yes | Search a semantic knowledge base for matching column/table definitions. |
+| `get_metadata` | Yes | Search a semantic knowledge base's full schema metadata (columns, tables, comments). |
+| `get_entity_definitions` | Yes | Search a semantic knowledge base for matching table/view definitions. |
+| `semantic_kb_search` | Yes | Composite semantic search over a knowledge base: one ranked list of matching tables, views, columns, and aliases with a source-type discriminator. |
+| `search_by_comment` | Yes | Search a semantic knowledge base's schema/table/column comments by similarity. |
+| `semantic_kb_stats` | Yes | Get row/entity counts for a semantic knowledge base. |
+
+### Models
+
+See [Integrating models](../integrating-models).
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `list_models` | Yes | List all registered models. |
+| `get_model` | Yes | Get a registered model's configuration by name. |
+| `create_model` | No | Register a new model with a provider and configuration. |
+| `delete_model` | No | Delete a registered model by name. |
+| `sync_hcp_models` | No | Sync models available from the configured Hybrid Cloud Platform into the model registry. |
+| `list_hcp_models` | Yes | List models already synced from the Hybrid Cloud Platform. |
+| `get_hcp_models` | Yes | List models available from the Hybrid Cloud Platform, synced or not. |
+| `create_hcp_model` | No | Register a model from the Hybrid Cloud Platform under a local name. |
+
+### Volumes
+
+See [External storage](../external-data-sources).
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `list_volumes` | Yes | List all registered volumes. |
+| `create_volume` | No | Register a new volume backed by an object store. |
+| `delete_volume` | No | Delete a volume by name. |
+| `list_volume_content` | Yes | List the files stored in a volume. |
+| `read_volume_file` | Yes | Read a file's contents from a volume. |
+| `write_volume_data` | No | Write data to a file in a volume. |
+| `delete_volume_file` | No | Delete a file from a volume. |
+
+### Embedding and document processing
+
+See [SQL functions](../sql-functions).
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `encode_text` | Yes | Compute a text embedding vector for document/search-index storage. |
+| `encode_text_query` | Yes | Compute a text embedding vector tuned for querying (vs. indexing). |
+| `encode_image` | Yes | Compute an image embedding vector. |
+| `generate_text` | Yes | Generate text from a language model. |
+| `get_model_description` | Yes | Get a human-readable description of a model. |
+| `list_model_providers` | Yes | List the foreign-server-backed model providers available for registering models against. |
+| `rerank_text` | Yes | Rerank a list of candidate texts against a query using a reranker model. |
+| `get_adapter_embedding_dimensions` | Yes | Get a model's output embedding dimensionality for text or image input. |
+| `chunk_text` | Yes | Split text into chunks suitable for embedding. |
+| `parse_html` | Yes | Parse HTML into plaintext or markdown. |
+| `parse_pdf` | Yes | Extract text from a PDF, one row per page. |
+| `pdf_to_image` | Yes | Render a PDF's pages to images, one row per page. |
+| `perform_ocr` | Yes | Run OCR over an image or scanned document. |
+| `summarize_text` | Yes | Summarize text using a language model. |
+
+### Agent management
+
+See [Creating agents](creating-agents). Letting an agent create or reconfigure *other* agents (including itself) is a powerful, self-modifying capability — grant these tools deliberately.
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `list_agents` | Yes | List all registered agents. |
+| `create_agent` | No | Create a new agent. Returns a single row with an `error` column (`NULL` on success). |
+| `update_agent` | No | Update an existing agent's configuration. Only fields explicitly passed are changed. |
+| `delete_agent` | No | Delete an agent by name. Returns a single row with an `error` column (`NULL` on success). |
+| `sleep` | Yes | Pause reasoning for a number of seconds, then automatically resume. Always available to every agent, regardless of its configured tool list. |
+
+!!!note
+Pipeline authoring (`aidb.create_pipeline`/`aidb.update_pipeline`) has no native tool. Those functions take up to 30 parameters across step/step-options pairs — impractical for a single generic tool call — so multi-step pipeline authoring isn't currently something an agent can do on its own.
+!!!
