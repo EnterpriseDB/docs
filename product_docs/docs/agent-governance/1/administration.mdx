@@ -1,87 +1,11 @@
 ---
-title: Deploying and configuring
-navTitle: Deploying and configuring
-description: For administrators deploying and configuring EDB Agent Governance — prerequisites, the container stack, pre-deployment settings, managing identity providers, and securing your deployment.
+title: Configuring
+navTitle: Configuring
+description: For administrators configuring EDB Agent Governance — managing identity providers and securing your deployment.
 deepToC: true
 ---
 
-Deploy and configure EDB Agent Governance. For the authentication model and credential handling behind these settings, see [Securing access and handling credentials](./security_and_data).
-
-## Understanding the container stack
-
-EDB Agent Governance deploys as a Dex-fronted stack of five containers:
-
-| Service     | Description                                                                                                                                                   |
-|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `bootstrap` | A one-shot helper that generates secrets and the internal certificates the stack needs on first run.                                                          |
-| `migrate`   | A one-shot helper that applies database schema migrations before the stack starts.                                                                            |
-| `dex`       | Identity federation — Brokers login to your upstream identity providers.                                                                                      |
-| `nginx`     | Terminates HTTPS, serves the viewer's static assets, and routes API and single-sign-on requests to the right service so the browser talks to a single origin. |
-| `bff`       | The backend — OIDC client of Dex, instance management, and the Hybrid Manager (HM)/Loki proxy that parses logs and caches sessions.                           |
-
-A shared Postgres service backs the stack, hosting the backend's database for instance configuration and sessions, and the Dex database for identity provider connectors.
-
-## Prerequisites
-
-- A container host with Docker 24 or later and Compose v2.
-- A TLS certificate and key for your domain, from any certificate authority your users trust. A self-signed certificate is acceptable for local testing.
-- At least one upstream data source to audit: an [HM instance with a machine user API key](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/governance/), or a standalone Loki instance receiving Postgres logs from AI agent workloads.
-
-## Preparing to deploy
-
-The deployment package is the [Governance-Project repository](https://github.com/EnterpriseDB/Governance-Project). Clone it, copy `.env.example` to `.env`, and configure the values below before starting the stack. The bootstrap helper generates and persists everything else automatically when you run `./start.prod.sh`.
-
-### Required settings
-
-| Setting (`env var`)                                    | Description                                                                                                           | Example                               |
-|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|---------------------------------------|
-| Public base URL (`BFF_PUBLIC_BASE_URL`)                | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer and redirect URIs derive from it. | `https://governance.example.com`      |
-| Bootstrap admin email (`DEX_BOOTSTRAP_ADMIN_EMAIL`)    | The email of the initial break-glass administrator. Also the default admin allowlist.                                 | `admin@example.com`                   |
-| Postgres password (`POSTGRES_PASSWORD`)                | The password for the shared Postgres service. Required for production.                                                | A strong password string              |
-| Image registry (`GOVERNANCE_REGISTRY`)                 | The registry the Docker images are pulled from. Required for production.                                              | `ghcr.io/enterprisedb`                |
-| Image tag (`GOVERNANCE_TAG`)                           | The image tag — Pin to a released version. Required for production.                                                   | A released version tag; never `latest` |
-
-The bootstrap helper generates the following values automatically — don't set them by hand:
-
-- `BFF_OIDC_CLIENT_SECRET` and `DEX_BFF_CLIENT_SECRET` — the shared OIDC client secret between the backend and Dex.
-- `BFF_SESSION_HASH_KEY` — the session signing key.
-- `BFF_REFRESH_TOKEN_ENC_KEY` and `BFF_INSTANCE_ENC_KEY` — the token and instance encryption keys.
-- The bootstrap admin's identifier and password hash.
-
-### Configuring recommended settings
-
-| Setting (`env var`)                                              | Default | Description                                                                                                                                                                                                                                               |
-|------------------------------------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Database file path (`BFF_DB`)                                    | —       | Path to the SQLite file the backend uses for instance configuration and sessions.                                                                                                                                                                         |
-| Upstream egress to private ranges (`BFF_INSTANCE_BLOCK_PRIVATE`) | `false` | Set to `1` or `true` to block registered instances from reaching private network ranges. Required for public deployments; leave unset for on-premises deployments whose HM or Loki upstreams live on private IPs. See [Securing access and handling credentials](./security_and_data/#protecting-the-network). |
-| Session idle timeout (`BFF_SESSION_IDLE_TTL`)                    | 2h                                    | How long an idle session lasts before it expires.                                                                                                                                                                                                 |
-| Session absolute lifetime (`BFF_SESSION_ABSOLUTE_TTL`)           | 12h                                   | The maximum lifetime of a session regardless of activity.                                                                                                                                                                                         |
-| Admin allowlist (`BFF_ADMIN_EMAILS`)                             | The bootstrap admin email             | The emails granted administrator access, in addition to anyone whose `groups` claim includes `governance-admin`.                                                                                                                                  |
-
-## Deploying with pre-built images
-
-!!! Note
-Pin `GOVERNANCE_TAG` to a released version rather than `latest`, so deployments are reproducible.
-!!!
-
-1. **Provide your TLS certificate.** Place your certificate's full chain and private key at `certs/public-tls/fullchain.pem` and `certs/public-tls/privkey.pem`.
-
-1. **Configure the deployment.** Copy the example environment file and set the required values — at minimum `BFF_PUBLIC_BASE_URL` and `DEX_BOOTSTRAP_ADMIN_EMAIL`, `GOVERNANCE_REGISTRY`, and `GOVERNANCE_TAG` (see [Required settings](#required-settings)).
-
-   ```bash
-   cp .env.example .env
-   # edit .env and set the required values
-   ```
-
-1. **Generate secrets and start.** Run the production start script:
-
-   ```bash
-   ./start.prod.sh
-   ```
-
-   This command runs the bootstrap helper — which generates the shared secrets, session and encryption keys, the bootstrap admin's identifier and password, and the internal certificates — then brings the stack up. The bootstrap admin's password is written to `secrets/admin-credentials`.
-
-1. **Sign in and federate.** Open your `BFF_PUBLIC_BASE_URL` in a browser and sign in as the bootstrap admin using the email and password from `secrets/admin-credentials`. Then add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
+Configure EDB Agent Governance. For the authentication model and credential handling behind these settings, see [Securing access and handling credentials](./security_and_data).
 
 ## Managing identity providers
 
