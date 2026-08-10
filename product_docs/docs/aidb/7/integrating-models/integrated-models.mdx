@@ -178,7 +178,7 @@ Local model files are downloaded from HuggingFace and cached on first use. The P
 
 ### llama.cpp
 
-llama.cpp runs GGUF-format model files — a common distribution format for quantized, open-weight models — through two providers: `llamacpp_generate` for text generation and `llamacpp_embeddings` for text embeddings. Point either one at a GGUF file, downloaded from HuggingFace or already on disk. See [Default models](#default-models) above for AIDB's pre-registered GGUF models; use the recipes below to register a different one.
+llama.cpp runs GGUF-format model files — a common distribution format for quantized, open-weight models — through three providers: `llamacpp_generate` for text generation, `llamacpp_embeddings` for text embeddings, and `llamacpp_reranking` for reranking. Point any of them at a GGUF file, downloaded from HuggingFace or already on disk. See [Default models](#default-models) above for AIDB's pre-registered GGUF models; use the recipes below to register a different one.
 
 #### llamacpp_generate
 
@@ -240,6 +240,54 @@ SELECT aidb.create_model(
 | `n_ctx`      | INTEGER | 2048                                   | Context window, in tokens. Capped at the value the GGUF was trained with.                                                               |
 | `pooling`    | TEXT    | `unspecified`                          | Pooling strategy: `unspecified` (use the GGUF's own metadata), `none`, `mean`, `cls`, or `last`.                                        |
 | `normalize`  | BOOLEAN | `true`                                 | L2-normalize output embedding vectors.                                                                                                   |
+
+#### llamacpp_reranking
+
+Serves two different reranker architectures behind one provider. The scoring mechanism auto-detects from the GGUF's metadata, or you can set it explicitly:
+
+```sql
+-- Cross-encoder (auto-detected from the GGUF's architecture)
+SELECT aidb.create_model(
+    name => 'my_llamacpp_reranker',
+    provider => 'llamacpp_reranking',
+    config => jsonb_build_object(
+        'model', 'gpustack/bge-reranker-v2-m3-GGUF',
+        'model_file', 'bge-reranker-v2-m3-Q4_K_M.gguf',
+        'revision', '3093af03b1a635e67b084b1d8c03c5f5e020fd05',
+        'n_ctx', 2048
+    )
+);
+
+-- Decoder-only (Qwen3-Reranker family), with a custom task instruction
+SELECT aidb.create_model(
+    name => 'my_llamacpp_reranker_decoder',
+    provider => 'llamacpp_reranking',
+    config => jsonb_build_object(
+        'model', 'ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF',
+        'model_file', 'qwen3-reranker-0.6b-q8_0.gguf',
+        'revision', 'a02f48bb4f057028298c21fa033da2b30d7742d5',
+        'n_ctx', 2048,
+        'instruction', 'Retrieve legal passages relevant to the query'
+    )
+);
+```
+
+| Parameter       | Type    | Default                                | Description                                                                                                                          |
+|-----------------|---------|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| `model`         | TEXT    | Required unless `local_path` is set     | HuggingFace repo id, for example, `gpustack/bge-reranker-v2-m3-GGUF`.                                                                   |
+| `model_file`    | TEXT    | Required unless `local_path` is set     | Filename of the `.gguf` inside the repo. For a split GGUF, name any one shard — every shard downloads and llama.cpp reassembles them. |
+| `revision`      | TEXT    | `main`                                   | HuggingFace revision.                                                                                                                   |
+| `local_path`    | TEXT    | NULL                                     | Absolute path to a local `.gguf` file. Overrides `model`/`model_file`/`revision`.                                                       |
+| `cache_dir`     | TEXT    | NULL                                     | Local directory for caching downloaded model files.                                                                                     |
+| `n_ctx`         | INTEGER | 2048                                     | Context window, in tokens. The query/document pair is rejected at call time if it doesn't fit, rather than silently truncated.         |
+| `reranker_type` | TEXT    | NULL (auto-detected)                     | Force the scoring mechanism: `cross_encoder` or `decoder_only`. Only needed to correct a misdetection.                                 |
+| `instruction`   | TEXT    | Built-in generic retrieval instruction   | Task instruction for decoder-only rerankers (Qwen3-Reranker family). Ignored by cross-encoders.                                        |
+
+`llamacpp_reranking` auto-detects the scoring mechanism from the GGUF's `general.architecture` metadata: BERT/XLM-RoBERTa-family architectures (`bge-reranker-v2-m3`, `jina-reranker`, and similar) score as a cross-encoder; the `qwen3` architecture scores as decoder-only, using the Qwen3-Reranker family's yes/no verdict-token prompt. Any other architecture is rejected at model-load time — set `reranker_type` explicitly only if you're sure a model matches one of these two scoring paths despite being misdetected.
+
+!!!note
+Unlike `nim_reranking` and other remote reranking providers, `llamacpp_reranking`'s `logit_score` is a raw, unbounded model logit rather than a normalized 0–1 relevance score. Compare scores within one `aidb.rerank_text()` call, not across providers or calls.
+!!!
 
 !!!note
 llama.cpp doesn't have a config helper function yet — build `config` with `jsonb_build_object()` as shown above. It's also CPU-only today; there's no GPU offload option. See [`aidb.max_threads`](../install/configure#aidbmax_threads) to control how many threads it (and the Candle runtime) can use.
@@ -332,7 +380,7 @@ For a list of HuggingFace model variants that have been tested and verified to w
 
 ### llama.cpp model loading and inference issues
 
-If a `llamacpp_generate` or `llamacpp_embeddings` model fails to load, times out, or otherwise behaves unexpectedly, AIDB's own error messages may not have enough detail to diagnose it. Enable llama.cpp's native diagnostic logging to see its own output — GGUF metadata, tensor shapes, and backend/model initialization — in the server log:
+If a `llamacpp_generate`, `llamacpp_embeddings`, or `llamacpp_reranking` model fails to load, times out, or otherwise behaves unexpectedly, AIDB's own error messages may not have enough detail to diagnose it. Enable llama.cpp's native diagnostic logging to see its own output — GGUF metadata, tensor shapes, and backend/model initialization — in the server log:
 
 ```ini
 aidb.enable_llamacpp_logs = true
