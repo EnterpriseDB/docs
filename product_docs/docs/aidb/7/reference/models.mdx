@@ -17,7 +17,7 @@ Only some inference functions accept a call-time override — the rest are fixed
 
 | Function | Call-time override? |
 |----------|----------------------|
-| `aidb.decode_text()`, `aidb.decode_text_batch()` | Yes — pass `aidb.inference_config()` (or raw JSON) as the `inference_config` argument. |
+| `aidb.generate_text()`, `aidb.generate_text_batch()` | Yes — pass `aidb.inference_config()` (or raw JSON) as the `inference_config` argument. |
 | `aidb.summarize_text()`, `aidb.summarize_text_aggregate()` | Yes — via the `inference_config` field of [`aidb.summarize_text_config()`](../sql-functions/summarize-text#custom-prompts-and-inference-settings). |
 | `aidb.encode_text()`, `aidb.encode_text_batch()`, `aidb.encode_image()` | No. Behavior is fixed by `config` at creation time. |
 | `aidb.rerank_text()` | No. Behavior is fixed by `config` at creation time. |
@@ -272,6 +272,10 @@ Synchronizes the AIDB model registry with models currently running on HCP. Creat
 
 ## Inference functions
 
+!!!note
+`aidb.generate_text()` and `aidb.generate_text_batch()` were previously named `aidb.decode_text()` and `aidb.decode_text_batch()`. The old names still work but are deprecated and will be removed in a future version — use the new names in new code.
+!!!
+
 ### `aidb.encode_text`
 
 Encodes a single text string into a vector using the specified model.
@@ -335,7 +339,7 @@ SELECT aidb.encode_image('clip_local', pg_read_binary_file('/tmp/photo.jpg')::BY
 
 ---
 
-### `aidb.decode_text`
+### `aidb.generate_text`
 
 Generates a text response from a prompt using the specified model.
 
@@ -355,10 +359,10 @@ Generates a text response from a prompt using the specified model.
 
 ```sql
 -- Basic usage
-SELECT aidb.decode_text('t5_local', 'translate to French: Hello, world.');
+SELECT aidb.generate_text('t5_local', 'translate to French: Hello, world.');
 
 -- With inference configuration
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llama',
     'Explain quantum computing in one sentence.',
     aidb.inference_config(
@@ -371,7 +375,7 @@ SELECT aidb.decode_text(
 
 ---
 
-### `aidb.decode_text_batch`
+### `aidb.generate_text_batch`
 
 Generates text responses for an array of prompts in a single call.
 
@@ -385,12 +389,12 @@ Generates text responses for an array of prompts in a single call.
 
 #### Returns
 
-`SETOF TEXT` — one row per input prompt, in input order. The result column is named `decode_text_batch`.
+`SETOF TEXT` — one row per input prompt, in input order. The result column is named `generate_text_batch`.
 
 #### Example
 
 ```sql
-SELECT aidb.decode_text_batch('t5_local', ARRAY[
+SELECT aidb.generate_text_batch('t5_local', ARRAY[
     'translate to German: hello',
     'translate to German: goodbye'
 ]);
@@ -438,7 +442,7 @@ SELECT * FROM aidb.rerank_text(
 
 ### `aidb.inference_config`
 
-Builds a JSONB configuration object for runtime inference settings. Pass the result (cast to `json`) to `aidb.decode_text()`, `aidb.decode_text_batch()`, or use it with `aidb.summarize_text_config()`.
+Builds a JSONB configuration object for runtime inference settings. Pass the result (cast to `json`) to `aidb.generate_text()`, `aidb.generate_text_batch()`, or use it with `aidb.summarize_text_config()`.
 
 All parameters are optional — omit any you don't need.
 
@@ -464,14 +468,14 @@ All parameters are optional — omit any you don't need.
 
 ```sql
 -- With temperature and token limit
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llama',
     'What is machine learning?',
     aidb.inference_config(temperature => 0.5, max_tokens => 150)::json
 );
 
 -- Full configuration
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llama',
     'Explain relativity.',
     aidb.inference_config(
@@ -485,7 +489,7 @@ SELECT aidb.decode_text(
 );
 
 -- Hide reasoning tags from a thinking model
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_reasoning_model',
     'Solve: 2x + 5 = 15',
     aidb.inference_config(thinking => false)::json
@@ -503,12 +507,12 @@ Three more inference settings exist but aren't exposed as named parameters of `a
 | `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. Mutually exclusive with `tools`/`tool_choice` on `openai_responses` and `anthropic_messages` (and their variants). |
 
 !!!note
-`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) and [Anthropic Messages API](../integrating-models/external-model-connections#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.decode_text()`. Any of those providers (except `t5_local`) can still back an AI agent; the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
+`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) and [Anthropic Messages API](../integrating-models/external-model-connections#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.generate_text()`. Any of those providers (except `t5_local`) can still back an AI agent; the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
 !!!
 
 ```sql
 -- Tool calling
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llamacpp_chat',
     'What is the weather in Paris?',
     (aidb.inference_config(temperature => 0.2) || jsonb_build_object(
@@ -531,7 +535,7 @@ SELECT aidb.decode_text(
 );
 
 -- Structured output
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llamacpp_chat',
     'Extract the city from: I live in Paris.',
     jsonb_build_object(
