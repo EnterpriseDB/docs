@@ -30,9 +30,37 @@ The `server_pool_mode` group option controls the pooling behavior.
 |------|----------|
 | `none` | No pooling. Each client connection gets a dedicated backend connection for its entire lifetime. The backend connection closes when the client disconnects. This mode is the default. |
 | `session` | A backend connection is assigned to a client on first use and returned to the pool when the client disconnects. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state. |
-| `transaction` | A backend connection is assigned when a transaction begins and returned to the pool when the transaction ends. Between transactions, the client holds no backend connection, making it available to other clients. Connection Manager runs [`DISCARD ALL`](https://www.postgresql.org/docs/current/sql-discard.html) before returning the connection for reuse, resetting session state, then re-applies the client's supported connection parameters for the next transaction. |
+| `transaction` | A backend connection is assigned when a transaction begins and returned to the pool when the transaction ends. Between transactions, the client holds no backend connection, making it available to other clients. Before returning the connection for reuse, Connection Manager cleans it up according to the `server_reset_mode` group option, then re-applies the client's supported connection parameters for the next transaction. See [Configuring the reset mode](#configuring-the-reset-mode). |
 
-The current pool mode is visible in the `server_pool_mode` column of the `bdr.node_group_summary` view.
+The current pool mode is visible in the `server_pool_mode` column of the [`bdr.node_group_summary`](/pgd/current/reference/tables-views-functions/catalogs-visible#bdrnode_group_summary) view.
+
+## Configuring the reset mode
+
+Set the reset mode for a node group to control how Connection Manager cleans up a pooled backend connection before returning it to the pool for reuse. This option only takes effect in `transaction` pool mode. See [Configuring the pool mode](#configuring-the-pool-mode) for `session` mode's cleanup behavior.
+
+Without cleanup, a backend connection can carry over session state left by the client that just used it, for example an open transaction, prepared statements, `SET` values, temporary tables, or advisory locks.
+
+Use `bdr.alter_node_group_option`:
+
+```sql
+SELECT bdr.alter_node_group_option('mygroup', 'server_reset_mode', '<value>');
+```
+
+Or use the PGD CLI:
+
+```shell
+pgd group mygroup set-option server_reset_mode <value>
+```
+
+The `server_reset_mode` option accepts two values. The current reset mode is visible in the `server_reset_mode` column of the [`bdr.node_group_summary`](/pgd/current/reference/tables-views-functions/catalogs-visible#bdrnode_group_summary) view.
+
+
+| Value | Behavior |
+|-------|----------|
+| `discard_all` | Connection Manager runs `DISCARD ALL` before returning the connection for reuse, resetting session state. This value is the default. |
+| `fast` | Connection Manager skips cleanup unless it's actually needed. If the client left a transaction open, Connection Manager rolls it back. If the number of cached prepared statements on the backend exceeds the `server_max_prepared_statements` group option, Connection Manager runs `DEALLOCATE ALL`. Otherwise, the connection returns to the pool immediately, with no cleanup query at all. It doesn't reset session-level `SET` values, release advisory locks, or clean up temporary tables, so state left behind by one client's transaction can be visible to whichever client's transaction is assigned that backend connection next. |
+
+`fast` trades the cleanup guarantees of `discard_all` for lower latency and higher throughput, following the same approach as [PgBouncer's transaction pooling default](https://www.pgbouncer.org/config.html#server_reset_query), which skips the reset query rather than running it after every transaction. Enable it only for applications that already avoid the features listed in [Unsupported features](#unsupported-features).
 
 ## Managing session parameters
 
@@ -44,7 +72,7 @@ In `transaction` mode, where the backend connection can change between transacti
 
 Prepared statements sent via the extended query protocol work seamlessly across transactions in all pool modes. Connection Manager automatically detects missing prepared statements on the backend and re-prepares them on demand, transparently managing statement naming between the client and the backend.
 
-In `transaction` mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. Issue `PREPARE`/`EXECUTE` SQL statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](/pgd/current/connection-pooling-developer#using-prepared-statements) in the developer guide for specific steps.
+In `transaction` mode with the default `discard_all` reset mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, which deallocates any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. With the `fast` reset mode, a prepared statement created with `PREPARE`/`EXECUTE` can survive on the backend past the transaction that created it, but the next transaction using that same backend connection isn't guaranteed to be from the same client, so relying on it to still exist isn't safe. Either way, issue `PREPARE`/`EXECUTE` SQL statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](/pgd/current/connection-pooling-developer#using-prepared-statements) in the developer guide for specific steps.
 
 ## Reusing connections
 
@@ -52,10 +80,10 @@ In `session` and `transaction` modes, Connection Manager returns the backend con
 
 ## Unsupported features
 
-Some Postgres features are incompatible with connection pooling and aren't supported.
+Some Postgres features aren't supported in `transaction` mode, regardless of `server_reset_mode`. With `discard_all`, relying on them fails predictably, since `DISCARD ALL` clears the state they depend on. With `fast`, that cleanup is skipped, so the failure isn't predictable, and state can instead persist and leak to another client's transaction. Only enable `fast` mode for applications that already avoid all of the following.
 
 - `SET` changes made during a session don't persist in `transaction` mode. Configure session parameters in the connection string instead. See [Managing session parameters](#managing-session-parameters) for details.
-- `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements aren't supported in `transaction` mode. `DISCARD ALL` runs when the backend connection is returned to the pool, deallocating any prepared statements. Issue these statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](#using-prepared-statements) for details.
+- `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements aren't supported in `transaction` mode. Issue these statements inside the transaction where you use them, or use the extended query protocol instead. See [Using prepared statements](#using-prepared-statements) for details.
 - Holdable cursors (`WITH HOLD`) aren't supported in `transaction` mode. They persist beyond the transaction boundary, which conflicts with returning the backend connection to the pool when the transaction ends.
 - `LISTEN` isn't supported in `transaction` mode. A `LISTEN` subscription persists beyond a single transaction, which conflicts with returning the backend connection to the pool.
 - Advisory locks held across transaction boundaries aren't supported in `transaction` mode.

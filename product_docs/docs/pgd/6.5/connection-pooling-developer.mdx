@@ -20,18 +20,18 @@ SELECT node_group_name, server_pool_mode FROM bdr.node_group_summary;
 
 The pool mode determines what session state persists between transactions.
 
-| Feature | `none`/`session` | `transaction` |
-|---------|---------------------|---------------|
-| `SET` changes persist | Yes | No |
-| `PREPARE`/`EXECUTE` statements persist | Yes | No |
-| Temporary tables persist | Yes | No |
-| Advisory locks across transactions | Yes | No |
-| Holdable cursors (`WITH HOLD`) | Yes | No |
-| `LISTEN` subscriptions | Yes | No |
+| Feature | `none`/`session` | `transaction` with `discard_all` reset mode | `transaction` with `fast` reset mode |
+|---------|---------------------|---------------|---------------|
+| `SET` changes persist | Yes | No | Not guaranteed |
+| `PREPARE`/`EXECUTE` statements persist | Yes | No | Not guaranteed |
+| Temporary tables persist | Yes | No | Not guaranteed |
+| Advisory locks across transactions | Yes | No | Not guaranteed |
+| Holdable cursors (`WITH HOLD`) | Yes | No | Not guaranteed |
+| `LISTEN` subscriptions | Yes | No | Not guaranteed |
 
 In `none` and `session` modes, your application behaves the same as with a direct Postgres connection for most purposes. The exception is that Connection Manager forwards only a specific set of connection parameters to the backend. See [Managing session parameters](#managing-session-parameters) for details. The difference between `none` and `session` is at the infrastructure level: in `session` mode, backend connections are reused after clients disconnect, reducing server overhead, but this is invisible to the application.
 
-In `transaction` mode, the backend connection is returned to the pool when each transaction ends and most session state is cleared. The next transaction can run on a different backend. Some Postgres features rely on session state that doesn't persist between transactions and don't work as a result. For a full list, see [Connection pooling's unsupported features](/pgd/current/connection-manager/connection-pooling#unsupported-features).
+In `transaction` mode, the backend connection returns to the pool when the transaction ends, and the group's `server_reset_mode` determines whether session state is cleared. The default `discard_all` mode clears it, so the next transaction starts clean. The `fast` mode skips cleanup unless needed, so state can leak to another client's transaction. Don't write application code that relies on session state surviving between transactions either way. See [Configuring the reset mode](/pgd/current/connection-manager/connection-pooling#configuring-the-reset-mode) and [Connection pooling's unsupported features](/pgd/current/connection-manager/connection-pooling#unsupported-features).
 
 If your application depends on any of these features, ask your DBA to switch to `session` or `none` mode (see [Configuring connection pooling](/pgd/current/connection-pooling-dba)), or redesign the affected code paths to keep all state within a single transaction.
 
@@ -61,7 +61,7 @@ Parameters outside the recognized list aren't re-applied on backend changes unle
 
 Connection Manager automatically detects missing prepared statements on the backend and re-prepares them on demand, so prepared statements sent via the extended query protocol work seamlessly across transactions. Most client libraries use the extended query protocol by default.
 
-`DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, deallocating any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. To avoid errors with these, follow these practices.
+With the default `discard_all` reset mode, `DISCARD ALL` runs when the backend connection is returned to the pool at the end of each transaction, deallocating any prepared statements created with `PREPARE`/`EXECUTE` SQL statements. With the `fast` reset mode, such a prepared statement can survive on the backend past the transaction that created it, but the next transaction assigned to that backend isn't guaranteed to be from the same client, so relying on it to still exist isn't safe. To avoid errors either way, follow these practices.
 
 - Avoid `PREPARE`, `EXECUTE`, and `DEALLOCATE` SQL statements. Use the extended query protocol instead, which most client libraries do by default.
 - If you need to use `PREPARE`/`EXECUTE`/`DEALLOCATE` SQL statements, issue them inside the transaction where you use them.
