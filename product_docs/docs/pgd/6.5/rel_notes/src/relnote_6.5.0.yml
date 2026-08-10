@@ -286,3 +286,38 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
+- relnote: Optimized pruning of Raft consensus log tables.
+  details: |
+    Pruning the Raft consensus catalogs (`bdr.global_consensus_journal`, `bdr.global_consensus_response_journal`, and `bdr.local_consensus_state`) previously ran slow index scans, and could contribute to a drop in transaction throughput under heavy Raft activity, such as with Quorum Commit workloads. Pruning now uses a proper lower-bound index scan, reducing the time each pruning pass takes.
+  jira: BDR-8550
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Prevent unsafe `VACUUM FULL` or `CLUSTER` on TOAST tables.
+  details: |
+    Running `VACUUM FULL` or `CLUSTER` directly on a TOAST table without also running it on the parent table removed metadata needed for PGD's extra logging, leaving a window where PGD's protection against related concurrency issues wasn't active. PGD now rejects `VACUUM FULL` and `CLUSTER` on TOAST tables by default, unless `bdr.permit_unsafe_commands` is enabled.
+  jira: BDR-134
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `bdr.raft_vacuum_interval` and `bdr.raft_vacuum_full_interval` having no effect.
+  details: |
+    Since PGD 6.2, a hard-coded one-hour minimum interval silently overrode the `bdr.raft_vacuum_interval` and `bdr.raft_vacuum_full_interval` configuration parameters, added to prevent `VACUUM FULL` from causing consensus request timeouts during operations like node group creation. The override is now removed and the configuration parameters take effect as intended, while the original timeout issue remains fixed.
+  jira: BDR-8590
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a write-leader failover bug that could promote a node that isn't the most caught-up node.
+  details: |
+    On a write-leader outage, the Raft leader could elect a node that wasn't the most caught-up node relative to the previous write leader, for example when the write leader crashed with no suitable candidate available, or when the Raft leader and write leader were the same node and crashed together, leaving the new Raft leader without leader-progress details and relying on stale replication-progress information relative to the configured `bdr.leader_progress_tracking_period`. Failover now selects the most caught-up node correctly in these cases.
+  jira: BDR-8512
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed replication becoming permanently stalled due to a miscalculated apply delay in Quorum Commit and zero clock-skew configurations.
+  details: |
+    When a node rejoined the cluster or recovered from a restart, the first transaction relayed through the catch-up path sometimes had no commit timestamp yet. The clock-skew check misread this absence as a multi-day clock discrepancy and paused replication for an effectively indefinite duration instead of a few milliseconds, wedging the affected subscription until it was manually restarted. The stall could occur with a Quorum Commit commit scope, or with `bdr.maximum_clock_skew` set and its action configured to wait. The clock-skew check now recognizes when a timestamp isn't yet available and skips the check for that transaction, so replication proceeds normally through the rejoin or recovery window.
+  jira: BDR-8661
+  addresses: ""
+  type: Bug Fix
+  impact: High
