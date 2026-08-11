@@ -4,7 +4,7 @@ navTitle: whpg-copy configuration file
 description: The complete reference to the WarehousePG Copy configuration file.
 ---
 
-This is the TOML-based configuration file reference for WarehousePG Copy TOML-based.
+This is the TOML-based configuration file reference for WarehousePG Copy.
 
 !!! Note 
     Command-line arguments take precedence over settings defined in a TOML file.
@@ -44,9 +44,11 @@ compression = true
 # Default: true
 through_partition_leaves = true
 # How to handle existing tables on the destination:
-# "append"        : Insert data into existing tables.
-# "truncate"      : Clear the destination table before copying.
-# "skip-existing" : Do not copy if the table already exists.
+# "append"   : Insert data into existing tables.
+# "truncate" : Clear the destination table before copying.
+# "skip"     : Do not copy if the table already exists.
+# "drop"     : Drop the existing destination table, recreate its DDL from
+#              the source, then copy the data.
 # Default: append
 target_mode = "append"
 # Validation method to perform after copying data:
@@ -63,6 +65,50 @@ workers = 4
 # whpg-copy will try to start listening on the port one by one from
 # the range. At least one port is required in the range.
 port_range = "60000-60001"
+# Total time, in seconds, a single transfer may spend getting ready to move
+# bytes: connecting to the destination daemon and waiting for the
+# destination's receiver to appear. A transfer that can never complete fails
+# with an error instead of hanging.
+# Set to 0 to wait forever. One exception: the preflight check below is
+# always capped at 30 seconds, because a reachability probe that waits
+# forever stalls the copy before it starts.
+# Default: 120
+timeout = 120
+# Restrict the destination addresses to one network, in CIDR notation.
+# whpg-copy finds the destination addresses by resolving the destination
+# cluster's host names. In a cluster with more than one network interface, a
+# host name usually resolves to several addresses, and only some of them can
+# be reached from the source hosts. Set this value to the network the source
+# hosts can reach. Without it, whichever address DNS returns first is used,
+# and the choice can differ between runs.
+# IPv4 only: whpg-copy resolves destination hosts to IPv4 addresses.
+# Default: none (accept any address)
+# dst_address_cidr = "10.0.0.0/8"
+# Check that every destination host is reachable before copying anything.
+# Default: true
+preflight = true
+# Copy only the schema (DDL) without transferring data.
+# Default: false
+metadata_only = false
+# Include object ownership and privilege (GRANT) information in the DDL.
+# By default, whpg-copy omits both, equivalent to running pg_dump with
+# --no-owner --no-privileges.
+# Default: false
+with_owner = false
+with_privilege = false
+# Encrypt data transfer between source and destination using Transport Layer
+# Security (TLS).
+# tls_mode selects the protection level:
+#   "disabled"    : plaintext (default)
+#   "server-auth" : one-way TLS; senders verify the daemon's certificate
+#                   against the CA but do not present a client certificate
+#   "mutual"      : mutual TLS; the daemon also requires each sender to
+#                   present a CA-signed client certificate
+# When not "disabled", tls_dir must point to a directory that exists at the
+# same path on every source and destination host and contains the
+# certificates produced by `whpg-copy gen-certs`.
+# tls_mode = "mutual"
+# tls_dir = "/etc/whpg-copy"
 # Define rules to rename schemas or tables during the copy process.
 # Each rule requires at least a source pattern.
 #
@@ -83,6 +129,13 @@ src_table = "old_table(\\d+)"
 dst_table = "new_table${1}"
 # Run the operation without actually changing any data on the destination.
 dry_run = false
+# Verbosity of the log file written by whpg-copy and the copy daemon it
+# starts on the destination cluster. Does not affect what's printed to the
+# console, which is controlled by RUST_LOG.
+# "info"  : log info-level events and above, omitting debug/trace.
+# "debug" : log debug-level events and above.
+# Default: debug
+log_level = "info"
 ```
 
 ## Keywords and values
@@ -90,11 +143,11 @@ dry_run = false
 
 **src_url**
 
-Connection string for the source database. Supports standard PostgreSQL connection strings. It follows the format `postgres://[user@]host[:port][/dbname]`.
+Connection string for the source database. Supports standard PostgreSQL connection strings. It follows the format `postgres://[user@]host[:port][/dbname]`. Required unless you provide `--src-url` on the command line.
 
 **dst_url**
 
-Connection string for the destination database. It follows the format `postgres://[user@]host[:port][/dbname]`.
+Connection string for the destination database. It follows the format `postgres://[user@]host[:port][/dbname]`. Required unless you provide `--dst-url` on the command line.
 
 **include_table**
 
@@ -102,7 +155,7 @@ Specifies tables to include. Use the format `schema.table` to specify the relati
 
 **exclude_table**
 
-Specifies tables to exclude. Uses the same format as `include-table`.
+Specifies tables to exclude. Uses the same format as `include_table`.
 
 **compression** 
 
@@ -117,7 +170,8 @@ If `true` (default), copies data directly between leaf partitions in parallel. I
 Determines how to handle existing tables on the destination. The supported options are:
 - **append**: (Default) Inserts data into existing tables.
 - **truncate**: Truncates the destination table before copying.
-- **skip-existing** : Skips the copy operation if the table already exists.
+- **skip**: Skips the copy operation if the table already exists.
+- **drop**: Drops the existing destination table, recreates it from the source DDL, then copies the data.
 
 **validate_method**
 
@@ -134,11 +188,52 @@ Specifies the number of concurrent worker tasks. Default is 4.
 
 Defines the ports on the destination cluster used to receive data from the source segments. `whpg-copy` scans this range sequentially and binds to the first available port it finds. You must specify at least one port and ensure the entire range is accessible from the source segment hosts.
 
+**timeout**
+
+Total time, in seconds, a single data transfer can spend getting ready to move bytes, covering both connecting to the destination daemon and waiting for the destination's receiver to appear. Default is `120`. Set to `0` to wait forever, except during the preflight check, which is always capped at 30 seconds.
+
+**dst_address_cidr**
+
+Restricts the destination addresses `whpg-copy` connects to, in CIDR notation (for example, `10.0.0.0/8`). Use this setting when the destination hosts resolve to multiple addresses and you need to pin the network the source hosts can reach. `whpg-copy` resolves destination hosts to IPv4 addresses only. Default is none, meaning `whpg-copy` accepts any resolved address.
+
+**preflight**
+
+Checks that every destination host is reachable before copying anything. Default is `true`.
+
+**metadata_only**
+
+Copies only the schema (DDL) to the destination and skips the data transfer. Default is `false`.
+
+**with_owner**
+
+Includes object ownership information in the DDL. By default, `whpg-copy` omits ownership, equivalent to running `pg_dump` with `--no-owner`.
+
+**with_privilege**
+
+Includes privilege (`GRANT`) information in the DDL. By default, `whpg-copy` omits privileges, equivalent to running `pg_dump` with `--no-privileges`.
+
+**tls_mode**
+
+Protects the data-transfer connection with TLS. The supported options are:
+- **disabled**: (Default) Plaintext transfer.
+- **server-auth**: One-way TLS. Senders verify the daemon's certificate against the CA but don't present a client certificate.
+- **mutual**: Mutual TLS. The daemon also requires each sender to present a CA-signed client certificate.
+
+Requires `tls_dir` when not `disabled`. Use [whpg-copy gen-certs](whpg-copy-utility#gen-certs) to generate the required certificates.
+
+**tls_dir**
+
+Directory containing the TLS certificates used to encrypt data transfer. Required when `tls_mode` isn't `disabled`. The directory must exist at the same path on every source and destination host.
+
+**log_level**
+
+Verbosity of the log file written by `whpg-copy` and the copy daemon it starts on the destination cluster. This setting doesn't affect what's printed to the console. The supported options are `info` and `debug` (default).
+
 **mapping_rules**
 
 Mapping rules allow for powerful renaming and selection logic using regular expressions (Regex). You can define multiple `[[mapping_rules]]` blocks in your configuration file. The supported options are:
 
-- **src_schema**, **scr_table**: Define the source objects. These fields use standard Rust regular expression patterns to match your source objects. Patterns are automatically anchored (wrapped in `^` and `$`). For example, `src_table = "users"` matches only the table `"users"`, not `"super_users"`. To match multiple tables, use the `.*` wildcard.
+- **src_schema**, **src_table**: Define the source objects. These fields use standard Rust regular expression patterns to match your source objects. Patterns are automatically anchored (wrapped in `^` and `$`). For example, `src_table = "users"` matches only the table `"users"`, not `"super_users"`. To match multiple tables, use the `.*` wildcard. If you omit `src_schema`, `whpg-copy` matches against the `public` schema.
 - **dst_schema**, **dst_table**: Define the destination objects. These fields support Regex's Capture Groups. If your source pattern contains groups in parentheses `()`, you can reference them in the destination using `${1}`, `${2}`, etcetera.  
 - **sql**: Custom SQL query to use for extracting data from the source table. Instead of copying the entire table, `whpg-copy` will execute this SQL and copy its result. Supports placeholders: `${src_schema}` and `${src_table}`, the utility will automatically replace them with the escaped source objects. This is ideal for joining tables, masking sensitive data, or changing data types on the fly.
 
