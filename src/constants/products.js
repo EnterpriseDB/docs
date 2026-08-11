@@ -152,6 +152,11 @@ const products = {
     name: "WarehousePG",
     iconName: IconNames.WHPG,
   },
+  pxf: {
+    name: "PXF for WarehousePG",
+    shortName: "PXF",
+    iconName: IconNames.WHPG,
+  },
   clickhouse: {
     name: "EDB Postgres AI for ClickHouse",
     shortName: "ClickHouse",
