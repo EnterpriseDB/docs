@@ -154,6 +154,7 @@ const products = {
   },
   pxf: {
     name: "PXF for WarehousePG",
+    shortName: "PXF",
     iconName: IconNames.WHPG,
   },
   clickhouse: {
