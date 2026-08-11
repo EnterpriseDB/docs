@@ -6,7 +6,37 @@ description: How to connect AIDB to external AI model providers, including OpenA
 
 External models are API-based models hosted outside your Postgres instance. AIDB connects to them by registering a model with `aidb.create_model()`, supplying the provider name, a configuration object, and credentials such as an API key, if required.
 
-Once registered, an external model is used exactly like a built-in local model — by name in any AIDB SQL function or pipeline step.
+Once registered, an external model is used exactly like a default local model — by name in any AIDB SQL function or pipeline step.
+
+## Validating a model at creation
+
+By default, `aidb.create_model()` validates an external model as part of registration by sending a small probe request to the provider. This confirms the endpoint is reachable and the configuration and credentials are correct before the registration commits, surfacing problems like an invalid API key or wrong URL immediately instead of on first use. If the probe fails, the error is reported and no model is registered.
+
+```sql
+-- Validated by default: sends a test request to the provider now.
+SELECT aidb.create_model(
+    'my_openai_embedder',
+    'openai_embeddings',
+    config => aidb.embeddings_config(model => 'text-embedding-3-small', api_key => 'sk-...')
+);
+```
+
+Pass `validate => false` to skip the probe — for example, when the endpoint or credentials aren't available yet, or to avoid the request during scripted setup:
+
+```sql
+SELECT aidb.create_model(
+    'my_openai_embedder',
+    'openai_embeddings',
+    config   => aidb.embeddings_config(model => 'text-embedding-3-small', api_key => 'sk-...'),
+    validate => false
+);
+```
+
+!!!note
+Validation sends a real request to the provider, so it requires network access from the Postgres host at creation time and may incur a small usage cost.
+!!!
+
+You can validate a model later — or re-check an existing one — with [`aidb.validate_model()`](../reference/models#aidbvalidate_model).
 
 ## OpenAI-compatible endpoints
 
@@ -84,7 +114,7 @@ SELECT aidb.create_model(
 | `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.              |
 | `is_hcp_model`            | BOOLEAN          | NULL     | Set to `true` if referencing a model running on HCP. |
 
-!!!Note
+!!!note
 When using pgvector indexing, be aware that [pgvector limits indexed vectors to 2000 dimensions](https://github.com/pgvector/pgvector?tab=readme-ov-file#what-if-i-want-to-index-vectors-with-more-than-2000-dimensions). If the model you choose produces more dimensions, use `aidb.vector_index_disabled_config()` in your pipeline step and manage the index manually.
 !!!
 
@@ -151,7 +181,7 @@ Use the `nim_ocr` provider with `aidb.nim_ocr_config()` to extract text from ima
 ```sql
 SELECT aidb.create_model(
     'my_nim_ocr',
-    'nim_paddle_ocr.',
+    'nim_paddle_ocr',
     config => aidb.nim_ocr_config(api_key => 'nvapi-...')
 );
 ```
@@ -168,7 +198,7 @@ SELECT aidb.create_model(
 
 ### Reranking (NIM reranking)
 
-Use the `nim_reranking` provider with `aidb.nim_reranking_config()` to re-score search results by relevance. See [Reranking text](../sql-functions/rerank-text) for usage with `aidb.rerank_text()`:
+Use the `nim_reranking` provider with `aidb.nim_reranking_config()` to re-score search results by relevance. See [Text reranking](../sql-functions/rerank-text) for usage with `aidb.rerank_text()`:
 
 ```sql
 SELECT aidb.create_model(
@@ -268,4 +298,4 @@ SELECT aidb.create_model(
 | `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests.                 |
 | `max_batch_size`          | INTEGER | NULL     | Maximum inputs per batch request.            |
 
-See the [Pipelines API reference](../data-pipelines/reference#model-config-helpers) for full parameter details on all config helper functions.
+See the [Models reference](../reference/models#model-config-helpers) for full parameter details on all config helper functions.

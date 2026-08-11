@@ -12,8 +12,6 @@ In this example, you load data from a RabbitMQ queue named `queue_for_whpg` into
 
 The data will be processed in batches and committed every second. It will be loaded into WHPG using the insert mode. 
 
-This example assumes that all prerequisites are met. 
-
 Create a configuration file named `rabbitmq_data.yaml` which contains the following:
 
 ```yaml
@@ -88,8 +86,6 @@ The data will be processed in batches and committed every second. It will be loa
 - It will insert new rows and update existing rows when the value of `qty` from the target table `data_from_kafka` is bigger than 20.
 - It will delete rows when the value of `name` from the target table `data_from_kafka` is equal to the input data, and the value of `name` is `customer-3`.
 
-This example assumes that all prerequisites are met. 
-
 Create a configuration file named `kafka_data.yaml` which contains the following:
 
 ```yaml 
@@ -148,4 +144,74 @@ Verify that the WHPG target table has been populated with the data loaded from t
 
 ```sql
 SELECT * from data_from_kafka;
+```
+
+## Loading JSON data from Kafka into multiple target tables
+
+In this example, you load a single Kafka topic named `orders` into two WHPG tables at once: an insert-only detail table, `orders_detail`, and a merge-maintained summary table, `orders_summary`. FlowServer reads the topic once per batch and stages the data, then applies each target table's write mode independently against that staged data.
+
+Create a configuration file named `orders.yaml` which contains the following:
+
+```yaml
+version: v1.0
+source:
+  kafka:
+    brokers:
+      - kafka_host:9092
+    topic: orders
+    value:
+      json:
+        column:
+          name: value
+          type: json
+    task:
+      batch_size:
+        interval_ms: 1000
+target:
+  database:
+    host: localhost
+    port: 5432
+    user: gpadmin
+    password: password
+    dbname: testdb
+    error_limit: "5"
+    tables:
+    - table: orders_detail
+      schema: public
+      mode:
+        insert: {}
+      mapping:
+        name: (value->>'name')::text
+        qty: (value->>'qty')::int
+    - table: orders_summary
+      schema: public
+      mode:
+        merge:
+          match_columns:
+            - name
+          update_columns:
+            - qty
+      mapping:
+        name: (value->>'name')::text
+        qty: (value->>'qty')::int
+```
+
+Create the target WHPG tables:
+
+```sql
+CREATE TABLE orders_detail (name text, qty int);
+CREATE TABLE orders_summary (name text, qty int);
+```
+
+Run FlowCLI to submit and start a job that loads the data from the Kafka topic into both WHPG tables:
+
+```bash
+flowcli submit --name orders_job orders.yaml -s
+```
+
+Verify that both WHPG target tables have been populated with the data loaded from the Kafka topic:
+
+```sql
+SELECT * from orders_detail;
+SELECT * from orders_summary;
 ```

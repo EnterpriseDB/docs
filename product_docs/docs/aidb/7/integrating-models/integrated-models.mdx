@@ -1,39 +1,80 @@
 ---
 title: Local models
 navTitle: Local models
-description: Built-in local models available in every AIDB installation, and how to register custom variants of BERT, CLIP, T5, and Llama.
+description: Default local models available in every AIDB installation, the model providers behind them, and how to register custom local models — including llama.cpp GGUF models.
+deepToC: true
 ---
 
 AIDB supports two kinds of local models — both run directly on your Postgres host without requiring an external API:
 
-- **Built-in models** — AIDB bundles a default variant of each supported model type and registers them automatically. No configuration is needed to start using them.
-- **Custom local models** — If you need a different model variant, a fine-tuned model, or a specific local path, you can register a custom version using `aidb.create_model()`.
+- **Default models** — AIDB bundles a default variant of each supported model type and registers them automatically. No configuration is needed to start using them, though the model's files still download from HuggingFace the first time it's used — see [Local model downloads](#local-model-downloads).
+- **Custom models** — If you need a different model variant, a fine-tuned model, or a specific local path, you can register a custom version using `aidb.create_model()`.
 
-## Built-in models
+Local models run on one of two inference runtimes, Candle or llama.cpp. Day-to-day usage — `aidb.create_model()`, `aidb.encode_text()`, `aidb.decode_text()`, and so on — is identical either way; each model's provider below just notes which runtime it uses.
 
-The following models are available in every AIDB installation without any configuration:
+## Default models
 
-| Model name   | Provider      | Use                                        |
-|--------------|---------------|--------------------------------------------|
-| `bert` | `bert_local`  | Text embeddings                            |
-| `clip` | `clip_local`  | Multimodal embeddings (text and image)     |
-| `t5`   | `t5_local`    | Text-to-text generation                    |
-| `llama`   | `llama_instruct_local`    | Text-to-text generation                    |
-| `dummy`      | `dummy`       | Testing and development (returns zeros)    |
+The following models are available in every AIDB installation without any configuration. See [Model providers](#model-providers) for what the provider column means:
+
+| Model name                   | Provider                          | Use                                     |
+|------------------------------|-----------------------------------|-----------------------------------------|
+| `bert`                       | `bert_local` (Candle)             | Text embeddings                         |
+| `clip`                       | `clip_local` (Candle)             | Multimodal embeddings (text and image)  |
+| `t5`                         | `t5_local` (Candle)               | Text-to-text generation                 |
+| `llama`                      | `llama_instruct_local` (Candle)   | Text-to-text generation                 |
+| `bge-small-en-v1.5-f16`      | `llamacpp_embeddings` (llama.cpp) | Text embeddings                         |
+| `nomic-embed-text-v1.5-Q8_0` | `llamacpp_embeddings` (llama.cpp) | Text embeddings                         |
+| `bge-m3-f16`                 | `llamacpp_embeddings` (llama.cpp) | Text embeddings                         |
+| `qwen3-embedding-0.6b-Q8_0`  | `llamacpp_embeddings` (llama.cpp) | Text embeddings                         |
+| `qwen3-embedding-4b-Q8_0`    | `llamacpp_embeddings` (llama.cpp) | Text embeddings                         |
+| `qwen3.5-0.8b-Q8_0`          | `llamacpp_generate` (llama.cpp)   | Text-to-text generation                 |
+| `llama-3.2-1b-instruct-Q8_0` | `llamacpp_generate` (llama.cpp)   | Text-to-text generation                 |
+| `dummy`                      | `dummy`                           | Testing and development (returns zeros) |
+
 Use them directly by name in any AIDB SQL function or pipeline step configuration:
 
 ```sql
--- Text embedding with the built-in BERT model
+-- Text embedding with the default BERT model
 SELECT aidb.encode_text('bert', 'The quick brown fox');
 
--- Image embedding with the built-in CLIP model
+-- Image embedding with the default CLIP model
 SELECT aidb.encode_image('clip', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
 
--- Text generation with the built-in T5 model
+-- Text generation with the default T5 model
 SELECT aidb.decode_text('t5', 'Translate to French: Hello, world.');
+
+-- Text embedding with a default llama.cpp embedding model
+SELECT aidb.encode_text('bge-small-en-v1.5-f16', 'The quick brown fox');
+
+-- Text generation with a default llama.cpp model
+SELECT aidb.decode_text('qwen3.5-0.8b-Q8_0', 'Translate to French: Hello, world.');
 ```
 
-## Custom local models
+## Model providers
+
+A *provider* tells `aidb.create_model()` which inference engine to use for a model. It isn't a SQL enum — it's the name of a Postgres foreign server registered for AIDB's model registry, matched against an adapter at model-creation time. List the providers registered in your installation, with their descriptions:
+
+```sql
+SELECT server_name, server_description FROM aidb.model_providers ORDER BY server_name;
+```
+
+AIDB's local providers, the runtime behind each, and what they're for:
+
+| Provider | Runtime | Description |
+|----------|---------|--------------|
+| `bert_local` | Candle | Simple language model, ideal for encoding text. |
+| `clip_local` | Candle | Vision/text model, ideal for encoding text and images. |
+| `t5_local` | Candle | Ideal for translation, summarization, and question answering. |
+| `llama_instruct_local` | Candle | Instruction variants of Meta's family of large language models. |
+| `llamacpp_generate` | llama.cpp | Local LLM inference via llama.cpp (GGUF format). |
+| `llamacpp_embeddings` | llama.cpp | Local text embeddings via llama.cpp (GGUF format). |
+| `dummy` | — | Provides fake data, ideal for testing. |
+
+`aidb.model_providers` also lists external API providers (OpenAI, NVIDIA NIM, Gemini, OpenRouter, and so on) — see [External model connections](external-model-connections) for those. See [`aidb.model_providers`](../reference/models#aidbmodel_providers) for the full column reference.
+
+Pick the provider that matches your model file format and task, then configure it with the matching config helper under [Custom models](#custom-models) — or use one of the ready-to-use [default models](#default-models) above.
+
+## Custom models
 
 Use `aidb.create_model()` to register a custom variant when you need a different model version, a fine-tuned model, or a specific local path:
 
@@ -45,12 +86,13 @@ SELECT aidb.create_model(
 );
 ```
 
-
 | Parameter  | Type  | Description                                                                        |
 |------------|-------|------------------------------------------------------------------------------------|
 | `name`     | TEXT  | A unique name for this model. Used to reference it in pipelines and SQL functions. |
 | `provider` | TEXT  | The model provider. Determines which inference engine AIDB uses.                   |
 | `config`   | JSONB | Provider-specific configuration, built with a config helper function.              |
+
+BERT, CLIP, T5, and Llama below run on Candle, each with its own config helper. llama.cpp (its own subsection, last) runs a separate runtime and doesn't have a config helper yet.
 
 ### BERT
 
@@ -65,7 +107,7 @@ SELECT aidb.create_model(
 ```
 
 | Parameter   | Type | Default  | Description                                  |
-|-------------|------|----------|----------------------------------------------|
+|-------------|------|----------|-----------------------------------------------|
 | `model`     | TEXT | Required | Model name or path (HuggingFace identifier). |
 | `revision`  | TEXT | NULL     | Model revision or branch.                    |
 | `cache_dir` | TEXT | NULL     | Local directory for caching model files.     |
@@ -83,7 +125,7 @@ SELECT aidb.create_model(
 ```
 
 | Parameter    | Type    | Default  | Description                                  |
-|--------------|---------|----------|----------------------------------------------|
+|--------------|---------|----------|-----------------------------------------------|
 | `model`      | TEXT    | Required | Model name or path (HuggingFace identifier). |
 | `revision`   | TEXT    | NULL     | Model revision or branch.                    |
 | `cache_dir`  | TEXT    | NULL     | Local directory for caching model files.     |
@@ -101,7 +143,7 @@ SELECT aidb.create_model(
 ```
 
 | Parameter    | Type | Default  | Description                                  |
-|--------------|------|----------|----------------------------------------------|
+|--------------|------|----------|-----------------------------------------------|
 | `model`      | TEXT | Required | Model name or path.                          |
 | `model_path` | TEXT | NULL     | Explicit local path to model weights (overrides `model`). |
 | `cache_dir`  | TEXT | NULL     | Local directory for caching model files.     |
@@ -113,7 +155,7 @@ Use `aidb.llama_config()` to configure a Llama-family language model for text ge
 ```sql
 SELECT aidb.create_model(
     'my_llama',
-    'llama_instruct_local.',
+    'llama_instruct_local',
     config => aidb.llama_config(
         'meta-llama/Llama-3.2-3B-Instruct',
         temperature => 0.5
@@ -122,7 +164,7 @@ SELECT aidb.create_model(
 ```
 
 | Parameter      | Type             | Default  | Description                                              |
-|----------------|------------------|----------|----------------------------------------------------------|
+|----------------|------------------|----------|------------------------------------------------------------|
 | `model`        | TEXT             | Required | Model name or path.                                      |
 | `cache_dir`    | TEXT             | NULL     | Local directory for caching model files.                 |
 | `model_path`   | TEXT             | NULL     | Explicit local path to model weights (overrides `model`). |
@@ -130,13 +172,142 @@ SELECT aidb.create_model(
 | `top_p`        | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                              |
 | `seed`         | BIGINT           | NULL     | Random seed for reproducible outputs.                    |
 
-!!!Note
+!!!note
 Local model files are downloaded from HuggingFace and cached on first use. The Postgres process must have network access and write access to the cache directory. For air-gapped environments, pre-download the model files and use `model_path` or `cache_dir` to point to the local copy.
 !!!
 
+### llama.cpp
+
+llama.cpp runs GGUF-format model files — a common distribution format for quantized, open-weight models — through two providers: `llamacpp_generate` for text generation and `llamacpp_embeddings` for text embeddings. Point either one at a GGUF file, downloaded from HuggingFace or already on disk. See [Default models](#default-models) above for AIDB's pre-registered GGUF models; use the recipes below to register a different one.
+
+#### llamacpp_generate
+
+```sql
+SELECT aidb.create_model(
+    name => 'my_llamacpp_chat',
+    provider => 'llamacpp_generate',
+    config => jsonb_build_object(
+        'local_path', '/var/lib/aidb/models/qwen2.5-3b-instruct-q4_k_m.gguf',
+        'n_ctx', 4096,
+        'temperature', 0.2
+    )
+);
+```
+
+| Parameter        | Type             | Default                              | Description                                                                                                                          |
+|------------------|------------------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| `model`          | TEXT             | Required unless `local_path` is set  | HuggingFace repo id, for example, `Qwen/Qwen2-0.5B-Instruct-GGUF`.                                                                     |
+| `model_file`     | TEXT             | Required unless `local_path` is set  | Filename of the `.gguf` inside the repo. For a split GGUF, name any one shard — every shard downloads and llama.cpp reassembles them. |
+| `revision`       | TEXT             | `main`                                | HuggingFace revision.                                                                                                                   |
+| `local_path`     | TEXT             | NULL                                  | Absolute path to a local `.gguf` file. Overrides `model`/`model_file`/`revision`.                                                       |
+| `cache_dir`      | TEXT             | NULL                                  | Local directory for caching downloaded model files.                                                                                     |
+| `n_ctx`          | INTEGER          | 4096                                  | Context window, in tokens. Capped at the value the GGUF was trained with.                                                               |
+| `chat_template`  | TEXT             | NULL                                  | Override the chat template baked into the GGUF.                                                                                         |
+| `temperature`    | DOUBLE PRECISION | 0.7                                   | Sampling temperature.                                                                                                                    |
+| `top_p`          | DOUBLE PRECISION | 0.9                                   | Nucleus sampling threshold.                                                                                                              |
+| `max_tokens`     | INTEGER          | 512                                   | Maximum tokens to generate.                                                                                                             |
+| `seed`           | BIGINT           | NULL                                  | Random seed for reproducible outputs.                                                                                                    |
+| `system_prompt`  | TEXT             | NULL                                  | System prompt prepended to every request.                                                                                               |
+| `repeat_penalty` | REAL             | 1.1                                   | Penalty applied to repeated tokens.                                                                                                      |
+| `repeat_last_n`  | INTEGER          | 64                                    | Number of trailing tokens considered for the repeat penalty.                                                                            |
+| `thinking`       | BOOLEAN          | NULL (keeps tags)                     | Controls `<think>` tag handling in the response: `false` strips them, `true`/unset keeps them.                                          |
+
+`llamacpp_generate` is also the only provider that supports `tools`, `tool_choice`, and `response_format` for tool calling and structured output — see [Tool calling and structured output](../reference/models#tool-calling-and-structured-output).
+
+#### llamacpp_embeddings
+
+```sql
+SELECT aidb.create_model(
+    name => 'my_llamacpp_embed',
+    provider => 'llamacpp_embeddings',
+    config => jsonb_build_object(
+        'model', 'nomic-ai/nomic-embed-text-v1.5-GGUF',
+        'model_file', 'nomic-embed-text-v1.5.Q4_K_M.gguf',
+        'revision', '0188c9bf409793f810680a5a431e7b899c46104c',
+        'n_ctx', 2048,
+        'normalize', true
+    )
+);
+```
+
+| Parameter    | Type    | Default                              | Description                                                                                                                          |
+|--------------|---------|----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| `model`      | TEXT    | Required unless `local_path` is set   | HuggingFace repo id, for example, `nomic-ai/nomic-embed-text-v1.5-GGUF`.                                                               |
+| `model_file` | TEXT    | Required unless `local_path` is set   | Filename of the `.gguf` inside the repo. For a split GGUF, name any one shard — every shard downloads and llama.cpp reassembles them. |
+| `revision`   | TEXT    | `main`                                 | HuggingFace revision.                                                                                                                   |
+| `local_path` | TEXT    | NULL                                   | Absolute path to a local `.gguf` file. Overrides `model`/`model_file`/`revision`.                                                       |
+| `cache_dir`  | TEXT    | NULL                                   | Local directory for caching downloaded model files.                                                                                     |
+| `n_ctx`      | INTEGER | 2048                                   | Context window, in tokens. Capped at the value the GGUF was trained with.                                                               |
+| `pooling`    | TEXT    | `unspecified`                          | Pooling strategy: `unspecified` (use the GGUF's own metadata), `none`, `mean`, `cls`, or `last`.                                        |
+| `normalize`  | BOOLEAN | `true`                                 | L2-normalize output embedding vectors.                                                                                                   |
+
+!!!note
+llama.cpp doesn't have a config helper function yet — build `config` with `jsonb_build_object()` as shown above. It's also CPU-only today; there's no GPU offload option. See [`aidb.max_threads`](../install/configure#aidbmax_threads) to control how many threads it (and the Candle runtime) can use.
+!!!
+
+## Validating a model at creation
+
+By default, `aidb.create_model()` validates the model as part of registration: it downloads and loads the model files and runs a small probe inference to confirm the model is functional before the registration commits. For local models this moves the (potentially large) download and load to creation time instead of first use.
+
+If validation fails — for example, the model identifier doesn't exist on HuggingFace, a `model_path` is wrong, or the weights can't be loaded — the error is reported immediately and no model is registered.
+
+```sql
+-- Validated by default: downloads, loads, and probes the model now.
+SELECT aidb.create_model('my_bert', 'bert_local',
+    config => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2'));
+```
+
+Pass `validate => false` to register the model without downloading or loading it — useful to defer the download to first use, or to register models in an environment that doesn't have network access yet:
+
+```sql
+SELECT aidb.create_model('my_bert', 'bert_local',
+    config    => aidb.bert_config('sentence-transformers/all-MiniLM-L6-v2'),
+    validate  => false);
+```
+
+You can validate a model later — or re-check an existing one — with [`aidb.validate_model()`](../reference/models#aidbvalidate_model).
+
+## Local model downloads
+
+When a local model is used for the first time (or any time its cache is missing or corrupt), AIDB downloads the model files from HuggingFace into the configured `cache_dir`. The downloader emits progress messages and automatically retries transient network failures.
+
+### Progress messages
+
+For each file, AIDB emits a `downloading` line when the request starts and a `complete` line when it finishes. For multi-gigabyte files, a heartbeat line reports cumulative bytes and percent complete approximately every 30 seconds, so the session doesn't appear frozen during large downloads.
+
+```sql
+SELECT aidb.decode_text('t5', 'test');
+__OUTPUT__
+NOTICE:  [t5_local] loading t5-small (rev refs/pr/15) -> /var/.../snapshots/refs/pr/15
+NOTICE:  [hf] downloading https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/config.json (expected: 1.2 KB)
+NOTICE:  [hf] complete: https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/config.json (1.2 KB) in 0.9s
+NOTICE:  [hf] downloading https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/model.safetensors (size unknown)
+NOTICE:  [hf] downloading t5-small/model.safetensors: 115.4 MB / 230.8 MB (50.0%)
+NOTICE:  [hf] downloading t5-small/model.safetensors: 216.4 MB / 230.8 MB (93.7%)
+NOTICE:  [hf] complete: https://huggingface.co/t5-small/resolve/refs%2Fpr%2F15/model.safetensors (230.8 MB) in 83.5s
+```
+
+By default, these lines are sent to the client at `NOTICE` level. Use the [`aidb.download_log_level`](../install/configure#aidbdownload_log_level) parameter to route them to the server log instead, or to suppress them entirely.
+
+### Retries and resume
+
+A CDN that drops the connection partway through a multi-gigabyte download won't fail the request outright:
+
+- Each retry sends a `Range` header from wherever the previous attempt stopped, so progress accumulates across attempts instead of restarting from zero.
+- AIDB distinguishes "still receiving new bytes" from "zero progress" and only counts stalled attempts against [`aidb.download_max_attempts`](../install/configure#aidbdownload_max_attempts), with exponential backoff between attempts.
+- A `Ctrl-C` from `psql` lands between retries instead of waiting for the current request to time out.
+
+The total number of attempts per file is capped by [`aidb.download_max_attempts`](../install/configure#aidbdownload_max_attempts) (default `30`).
+
+### Verification and self-heal
+
+AIDB verifies downloaded files using the size and (when available) the SHA-256 hash advertised by HuggingFace, and writes a small sidecar file next to each completed download recording those values. On every cache hit AIDB rechecks the file size against the sidecar, so a file truncated after the original download is caught before it's used.
+
+If a cached file is detected as corrupt at model-load time, AIDB purges the affected snapshot and re-downloads it once automatically.
+
 ## Using a registered model
 
-Once registered, a model is referenced by its name in any AIDB function. Custom and built-in models are interchangeable:
+Once registered, a model is referenced by its name in any AIDB function. Custom and default models are interchangeable:
 
 ```sql
 -- Use a custom BERT model for embedding
@@ -144,14 +315,29 @@ SELECT aidb.encode_text('my_bert', 'Hello world');
 
 -- Use a custom BERT model in a pipeline step
 SELECT aidb.create_pipeline(
-    'my_pipeline',
-    ...
-    step_1_operation => 'Embed',
-    step_1_options   => aidb.knowledge_base_config('my_bert', 'Text'),
-    ...
+    name => 'my_pipeline',
+    source => 'my_source_table',
+    source_key_column => 'id',
+    source_data_column => 'content',
+    step_1 => 'KnowledgeBase',
+    step_1_options => aidb.knowledge_base_config(model => 'my_bert', data_format => 'Text')
 );
 ```
 
-See the [Pipelines API reference](../data-pipelines/reference#model-config-helpers) for full parameter details on all config helper functions.
+See the [Models reference](../reference/models#model-config-helpers) for full parameter details on all model config helper functions. Some functions (`decode_text()`, `summarize_text()`) also accept a per-call configuration override — see [Configuration model](../reference/models#configuration-model) for creation-time vs. call-time settings.
 
 For a list of HuggingFace model variants that have been tested and verified to work with AIDB's local providers, see [Support matrix](support-matrix).
+
+## Troubleshooting
+
+### llama.cpp model loading and inference issues
+
+If a `llamacpp_generate` or `llamacpp_embeddings` model fails to load, times out, or otherwise behaves unexpectedly, AIDB's own error messages may not have enough detail to diagnose it. Enable llama.cpp's native diagnostic logging to see its own output — GGUF metadata, tensor shapes, and backend/model initialization — in the server log:
+
+```ini
+aidb.enable_llamacpp_logs = true
+```
+
+This parameter is read once at extension initialization, so restart Postgres for the change to take effect — `SET` and `pg_reload_conf()` alone won't apply it. See [`aidb.enable_llamacpp_logs`](../install/configure#aidbenable_llamacpp_logs) for the full parameter reference.
+
+It's off by default because llama.cpp's native output is verbose (hundreds of lines per model load), so turn it on only while investigating an issue, then turn it back off. It applies only to llama.cpp models; Candle-based models (`bert_local`, `clip_local`, `t5_local`, `llama_instruct_local`) are unaffected.

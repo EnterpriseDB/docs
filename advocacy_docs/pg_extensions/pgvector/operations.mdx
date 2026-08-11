@@ -1,0 +1,148 @@
+---
+title: Maintaining pgvector
+navTitle: Maintaining
+deepToC: true
+description: Backup and restore, replication behavior in EDB Postgres Distributed, and monitoring vector workloads using standard Postgres catalog views.
+---
+
+Use standard Postgres tools to back up, replicate, and monitor `pgvector` workloads — no special configuration is required.
+
+## Backup and restore
+
+pgvector data and indexes are included in standard PostgreSQL backup methods. No additional configuration is required.
+
+### Physical backups
+
+Physical backups ([pg_basebackup](https://www.postgresql.org/docs/current/app-pgbasebackup.html), [Barman](/supported-open-source/barman/), [pgBackRest](/supported-open-source/pgbackrest/)) capture vector data and index files as part of the full cluster backup.
+
+**Important**: HNSW and IVFFlat indexes are included in physical backups and restored as-is. However, if you restore to a point in time before an index was created, or restore to a server without the `pgvector` extension installed, you must recreate the extension and any indexes:
+
+```sql
+-- After restore, verify the extension is present
+SELECT extversion FROM pg_extension WHERE extname = 'vector';
+
+-- If the extension is missing, install the package and then:
+CREATE EXTENSION vector;
+
+-- Recreate indexes if needed
+CREATE INDEX ON embeddings USING hnsw (embedding vector_cosine_ops);
+```
+
+### pg_dump and logical backups
+
+`pg_dump` exports vector data and recreates the table schema, including `vector` column definitions and indexes.
+
+The target database must have `pgvector` installed before restoring:
+
+```bash
+# On target system, install the pgvector package first, then:
+pg_restore -d targetdb backup.dump
+```
+
+!!!note
+If the dump includes IVFFlat indexes, drop and recreate them manually after data is loaded rather than relying on `pg_restore`. IVFFlat requires data to be present in the table to build its cluster centroids — restoring the index onto an empty table produces poor cluster quality. HNSW indexes do not have this requirement.
+!!!
+
+## Replication in EDB Postgres Distributed
+
+[EDB Postgres Distributed (PGD)](/pgd/latest/) uses logical replication, which carries some specific behavior for `pgvector` data and indexes.
+
+!!!note
+The information in this section is based on general PGD logical replication behavior and requires review by a PGD expert before publication.
+!!!
+
+### Data replication
+
+`pgvector` data replicates normally through PGD's logical replication. Rows containing `vector` columns are replicated to all nodes without any special configuration.
+
+### Index replication
+
+**Indexes are not replicated by logical replication.** Each PGD node builds and maintains its own HNSW or IVFFlat index from its local data. If DDL replication is enabled (the default), a `CREATE INDEX` statement issued on one node is automatically executed on all nodes — each node builds the index independently. If DDL replication is disabled, create the index manually on each node:
+
+```sql
+-- Run on each PGD node
+CREATE INDEX ON embeddings USING hnsw (embedding vector_cosine_ops)
+WITH (m = 32, ef_construction = 128);
+```
+
+Index creation on each node is independent and doesn't affect replication or other nodes.
+
+### Write conflicts in PGD
+
+PGD's conflict resolution applies to `vector` columns the same as other column types. For append-only embedding tables (insert-only, no updates), conflicts are uncommon. For workloads that update embeddings in place (for example, refreshing embeddings as model versions change), configure conflict resolution to use `last-update-wins` or implement application-level conflict handling.
+
+### DDL replication
+
+`CREATE EXTENSION vector` and `CREATE INDEX ... USING hnsw` statements are replicated as DDL in PGD by default — meaning the command is sent to and executed on each node independently, not that the index structure itself is copied. Verify your PGD DDL replication configuration before running these statements in production to ensure consistent schema across nodes.
+
+## Monitoring
+
+Monitor `pgvector` workloads using standard PostgreSQL catalog views and extensions. No `pgvector`-specific configuration is required.
+
+### Index health
+
+Monitor index size and usage using `pg_stat_user_indexes`:
+
+```sql
+SELECT
+    indexrelname,
+    pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
+    idx_scan,
+    idx_tup_read,
+    idx_tup_fetch
+FROM pg_stat_user_indexes
+WHERE relname = 'embeddings';
+```
+
+Track this query over time in [PEM's custom probes](/pem/latest/monitoring_performance/probes/managing_customizing_probes) to alert on unexpected index growth.
+
+### Query performance
+
+Use [`pg_stat_statements`](https://www.postgresql.org/docs/current/pgstatstatements.html) to identify slow vector queries:
+
+```sql
+SELECT
+    query,
+    calls,
+    round(mean_exec_time::numeric, 2) AS avg_ms,
+    round(total_exec_time::numeric, 2) AS total_ms
+FROM pg_stat_statements
+WHERE query ILIKE '%<=>%' OR query ILIKE '%<->%'
+ORDER BY mean_exec_time DESC
+LIMIT 20;
+```
+
+### Table and index size
+
+Monitor table and index size to anticipate storage requirements:
+
+```sql
+SELECT
+    relname,
+    pg_size_pretty(pg_total_relation_size(oid)) AS total_size,
+    pg_size_pretty(pg_relation_size(oid))       AS table_size,
+    pg_size_pretty(pg_indexes_size(oid))        AS index_size
+FROM pg_class
+WHERE relname = 'embeddings';
+```
+
+### Vacuum and index bloat
+
+High-churn embedding tables (frequent deletes or updates) accumulate dead tuples. Monitor `pg_stat_user_tables` for tables with high `n_dead_tup` values:
+
+```sql
+SELECT
+    relname,
+    n_live_tup,
+    n_dead_tup,
+    last_autovacuum,
+    last_autoanalyze
+FROM pg_stat_user_tables
+WHERE relname = 'embeddings';
+```
+
+If `n_dead_tup` is consistently high relative to `n_live_tup`, tune `autovacuum_vacuum_scale_factor` for the table:
+
+```sql
+ALTER TABLE embeddings SET (autovacuum_vacuum_scale_factor = 0.01);
+```
