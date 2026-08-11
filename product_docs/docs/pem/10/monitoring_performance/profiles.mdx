@@ -11,7 +11,8 @@ A profile acts as a single template that bundles a specific set of probe configu
 A user must have at least: 
 
 - `pem_manage_profile` role to create, update, and delete a profile. 
-- `pem_database_server_registration` role to assign/unassign profiles to servers or agents.
+- `pem_database_server_registration` role to assign or unassign profiles on servers.
+- `pem_assign_profile` role to assign or unassign profiles on both servers and agents.
 
 How profiles work:
 
@@ -65,11 +66,14 @@ The `Manage Profiles` section provides a central interface for creating, configu
 
 - You can access `Manage Profiles` under the `Configuration` menu in the PEM console. `Manage Profiles` tab works independently of objects selected in the object tree. From here, you can:
 
-  - [Create new Profiles](#creating-profiles) 
+  - [Create new profiles](#creating-profiles) 
+  - [Clone an existing profile](#cloning-a-profile)
   - [Edit existing ones](#editing-profiles)
-  - [Assign Profiles to servers or agents](#assigning-profiles)
-  - [Un-assign Profiles from servers or agents](#un-assigning-profiles)
+  - [Assign profiles to servers or agents](#assigning-profiles)
+  - [Un-assign profiles from servers or agents](#un-assigning-profiles)
   - [Delete and reassign profiles](#deleting-profiles)
+  - [Export profiles](#exporting-profiles)
+  - [Import profiles](#importing-profiles)
 
 The main table displays key information about each profile:
 
@@ -80,6 +84,74 @@ The main table displays key information about each profile:
 | Active Assignments | The count of servers or agents currently assigned to the profile.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Apply/Revert       | Displays the synchronization status of the profile:<br/> - Apply (Green button) &mdash; Deploys the draft changes made to the profile to all currently assigned servers and agents.<br/> - Revert (Red loop button) &mdash; Discards any non-applied draft changes, resetting the profile to the last successfully deployed version.<br/> - Green Tick Icon &mdash;  Indicates that there are no pending draft changes; all configurations are synced with the assigned objects. |
 
+
+### Exporting profiles
+
+A user with the `pem_manage_profile` role can export one or more profiles as a portable `.pemprf` JSON bundle.
+
+On the **Manage Profiles** tab:
+
+1. Select one or more profiles using the row checkboxes. 
+
+1. The **Export** button activates when at least one row is selected.
+
+1. Select **Export**. 
+
+1. A file named `Export_Profiles_<timestamp>.pemprf` is downloaded.
+
+The `.pemprf` file is a JSON document with a top-level `version` field and a `profiles` array containing the exported profile configurations.
+
+If a selected profile has unsaved draft edits, the exported file contains the **published** state of the profile, not the draft.
+
+All profile settings aren't included in the exported bundle.
+
+- The following settings are preserved in the exported bundle:
+
+   - Name, description, and target kind
+   - Probe configurations like frequency, retention, and status (enabled/disabled)
+   - Alert thresholds, operators, and parameters
+   - `auto_created` flag
+   - Script execution settings (`execute_script`, `execute_script_on_clear`, `execute_script_on_pem_server`) and script code body
+
+- The following settings are stripped and must be reconfigured after import:
+
+  - Notification routing settings: `email_group_id`, per-severity email groups, webhook IDs, SNMP trap version, and Nagios service
+  - Notification enable flags: `send_email`, per-severity `send_trap`, `submit_to_nagios`, `send_notification`, `override_default_config`, and `cleared_alert_enable`
+
+After importing a profile, alerts evaluate and appear in dashboards, but **do not deliver email, SNMP, webhook, or Nagios notifications** until you re-enable each channel and configure destinations in the alert dialog, then click **Apply**. Script execution settings survive the round-trip and do not need to be re-entered.
+
+!!! Warning
+    `.pemprf` files may contain script code with credentials, tokens, or environment-specific paths. Treat them as sensitive artifacts — do not email them or commit them to public or shared repositories without review.
+
+### Importing profiles
+
+A user with the `pem_manage_profile` role can import profiles from a `.pemprf` bundle.
+
+On the **Manage Profiles** tab:
+
+1. Select **Import** in the toolbar.
+
+1. Select a `.pemprf` file to upload.
+
+1. Choose whether to enable the **Skip existing?** checkbox to control how name conflicts are handled.
+
+1. Review the **Import Summary** table, which reports the per-profile result.
+
+The **Skip existing?** checkbox controls how the import handles profiles whose names already exist on the target instance:
+
+| Scenario                                                | Result                                                                                                                                       |
+|---------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| Profile name is new                                     | Imported as a published profile.                                                                                                             |
+| Profile name exists and **Skip existing?** is checked   | Skipped. The summary reports "profile name already exists."                                                                                  |
+| Profile name exists and **Skip existing?** is unchecked | Imported as a **draft** on the existing profile. Select **Apply** on that row to publish the draft and apply the changes to assigned targets. |
+
+The import handles type mismatches and missing references as follows:
+
+- If `target_kind` differs between the imported profile and the existing one (for example, server versus agent), the import fails for that profile with a descriptive error.
+
+- If a probe or alert template referenced in the bundle doesn't exist on the target PEM instance, that item is skipped. The rest of the profile imports successfully. The summary table lists skipped items.
+
+- If a reference is ambiguous (two active matches on the target instance), the import is refused with an error.
 
 ### Creating profiles
 
@@ -95,6 +167,30 @@ On the `Manage Profiles` tab use `+` to add a new profile:
    - **Alerts** &mdash; Select and configure the alerts to include in the Profile. Only server and agent level alerts are available for selection.
 4. After configuring the Profile, click `Save` to create it. The new Profile appears in the `Manage Profiles` table.
 
+### Cloning a profile
+
+A user with `pem_manage_profile` role or a superuser can clone an existing profile to use as a starting point for a new one.
+
+On the **Manage Profiles** tab:
+
+1. Click the **Add New** button.
+1. A dialog box appears to select a target type — Server or Agent. Click **Next**.
+1. In the **General** tab of the dialog, use the **Copy from** dropdown, that lists existing profiles of the selected type, to choose a source profile.
+
+   Selecting a source profile pre-populates the new profile's **Name** (suggested as `Copy of <source>`), **Description**, **Probes**, and **Alerts** tabs. All values remain editable before saving.
+
+1. Review and adjust the pre-populated settings as needed on the **Probes** and **Alerts** tabs.
+1. Click **Save** to create the clone. The new profile appears in the **Manage Profiles** table.
+
+The cloned profile is fully independent of the source:
+
+- It's created as a published profile with no parent/child link to the source.
+- It doesn't inherit any server or agent assignments from the source.
+- Editing or deleting the source has no effect on the clone, and vice versa.
+- Auto-created alerts copied from the source remain non-deletable on the clone, as on any normally created profile.
+
+Switching the profile type (server ↔ agent) clears the **Copy from** selection — a server profile can't be used as the source for an agent profile. Clearing the **Copy from** selection resets the **Probes** and **Alerts** tabs to defaults.
+
 ### Editing profiles
 
 On the `Manage Profiles` tab:
@@ -108,7 +204,7 @@ Changes will only be synced with all assigned servers and agents when you click 
 
 ### Assigning Profiles
 
-A user with `pem_database_server_registration` role can assign profiles to servers or agents.
+A user with `pem_assign_profile` or `pem_database_server_registration` role can assign profiles to servers or agents.
 
 In the object tree on the PEM console:
 
@@ -121,7 +217,7 @@ In the object tree on the PEM console:
 
 ### Un-assigning profiles
 
-A user with `pem_database_server_registration` role can unassign profiles from servers or agents.
+A user with `pem_assign_profile` role can unassign profiles from servers or agents and a user with `pem_database_server_registration` role can unassign profiles from servers.
 
 In the object tree:
 
@@ -155,6 +251,56 @@ The reassignment process applies to both **Server** and **Agent** target types.
 The ability to delete and reassign profiles depends on your assigned PEM roles:
 
 * Users with the `pem_admin` role can delete profiles, reassign them to existing targets, or reset them to defaults.
-* Users with the `pem_manage_profile` role can delete unassigned profiles or delete assigned profiles by resetting them to defaults. They cannot reassign a new profile to existing targets.
+* Users with the `pem_manage_profile` role can delete unassigned profiles or delete assigned profiles by resetting them to defaults. They can't reassign a new profile to existing targets.
 * Users holding both `pem_manage_profile` and `pem_database_server_registration` roles have full permission to delete profiles and reassign them to new targets.
+
+## Profile Assignments page
+
+The **Profile Assignments** page gives you a single view of every monitored server and agent in your PEM environment. Use it to assign or unassign monitoring profiles in bulk, by group, or one at a time — without navigating to each server or agent individually.
+
+To open the page, go to **Management > Monitoring > Profile Assignments**.
+
+You must have the `pem_assign_profile` role to access this page. Roles that inherit `pem_assign_profile` — including `pem_manage_profile`, `pem_database_server_registration`, and the PEM admin roles — also have access. Without any of these roles, you won't see the **Profile Assignments** option in the menu, and direct navigation shows **Access denied**.
+
+### What the page shows
+
+The page displays a tree of all registered servers and agents, organized by server group. Servers that are part of a cluster appear nested inside their cluster node. Each row shows the server or agent name and its currently assigned profile.
+
+A stats card at the top shows how many servers and agents have a profile assigned, expressed as `X / Y profiled`.
+
+### Assigning and unassigning profiles
+
+**Inline assignment**
+
+To change the profile for a single server or agent, use the profile dropdown on that row and select the profile you want.
+
+**Group assignment**
+
+To assign a profile to all members of a server group at once, use the group's dropdown. For a group that contains both servers and agents, the dropdown offers separate **Set servers profile** and **Set agents profile** actions. Selecting one applies the profile to all current members of that type in the group.
+
+!!! Note
+Group assignment is a one-time bulk apply to the current members of the group. It doesn't create a persistent inheritance rule. Servers or agents added to the group later don't receive the profile automatically. The per-object **Assigned Profile** dropdown in server or agent **Properties** always reflects the last assignment made (last write wins).
+!!!
+
+**Bulk assignment**
+
+To assign a profile to multiple targets at once, select rows using the checkboxes, then select **Assign to N**. The dialog adjusts based on your selection:
+
+- Server-only selection: asks for a server profile.
+- Agent-only selection: asks for an agent profile.
+- Mixed selection: asks for both a server profile and an agent profile.
+
+A confirmation note appears when you select a large number of targets.
+
+**Unassigning profiles**
+
+To remove the profile from a server or agent, select **Unassigned** in its profile dropdown. For bulk unassignment, select the rows and use **Assign to N**, then choose **Unassigned** in the dialog.
+
+### Searching and filtering
+
+Use the search bar to find servers or agents by name. Use the filter dropdown to narrow the tree to targets assigned a specific profile, or to show only unassigned targets. You can combine search and filter.
+
+### Audit logging
+
+PEM automatically records profile assignment changes in `pem.event_history` via database triggers on `pem.server` and `pem.agent`. Both inline and bulk assignments generate an audit record. If you use PEM's event history for compliance or troubleshooting, look there to track who changed a profile assignment and when.
 

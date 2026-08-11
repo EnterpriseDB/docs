@@ -1,0 +1,89 @@
+---
+title: Upgrading from 2026.2 to the 2026.3 Innovation Release
+navTitle: 2026.2 to 2026.3
+description: Follow the step-by-step procedures for upgrading from HM 2026.2 to HM 2026.3.
+deepToC: true
+---
+
+Upgrade from 2026.2 to 2026.3.
+
+> **Role:** Infrastructure Engineer
+
+## Prerequisites
+
+* Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+* Access to the HM installation configuration file or `values.yaml` file used for the current installation. To save the contents of your current installation configuration:
+
+  ```shell
+  helm get values edbpgai-bootstrap -n edbpgai-bootstrap > values.yaml
+  ```
+
+* Required Tools:
+    * `helm` (Latest version recommended)
+    * `kubectl`
+
+## Upgrade 2026.2 → 2026.3
+
+This release moves telemetry components to a new namespace, which requires a manual step before upgrading.
+
+### Prepare the telemetry namespace
+
+Before upgrading, annotate the existing `logging` namespace to ensure telemetry components move cleanly to their new namespace:
+
+```shell
+kubectl annotate namespace logging kapp.k14s.io/delete-strategy=orphan --overwrite=true
+```
+
+### Perform the upgrade
+
+#### For Helm-based installations
+
+1. Update your Helm repository:
+
+   ```shell
+   helm repo update
+   ```
+
+1. Perform the upgrade:
+
+   ```shell
+   helm upgrade --install edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+     --version 2026.3.0 \
+     --values values.yaml \
+     --namespace edbpgai-bootstrap \
+     --wait
+   ```
+
+#### For operator-based (CRD) installations
+
+For installations managed via the operator, update the version specification within your `HybridControlPlane` resource.
+
+1. Edit the `HybridControlPlane` resource:
+
+   ```shell
+   kubectl edit hybridcontrolplane <resource-name>
+   ```
+
+   Where `<resource-name>` is the name you assigned during installation.
+
+1. In the YAML editor, locate the `spec.version` field and update it to `2026.3.0`.
+
+1. Save the changes and force a reconciliation by annotating the resource:
+
+   ```shell
+   kubectl annotate hybridcontrolplane <resource-name> --overwrite edbpgai.com/ready-for-upgrade=true
+   ```
+
+1. The operator detects the version change and begins the rolling update. Monitor the progress with:
+
+   ```shell
+   kubectl get hybridcontrolplane <resource-name> -w
+   ```
+
+### Clean up
+
+After the upgrade is complete, delete the `logging` namespace:
+
+```shell
+kubectl delete namespace logging
+```

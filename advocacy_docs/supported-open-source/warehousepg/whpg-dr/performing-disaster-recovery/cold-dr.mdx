@@ -1,0 +1,135 @@
+---
+title: Cold DR with WarehousePG Disaster Recovery
+navTitle: Cold DR
+description: Restore a WarehousePG cluster on demand from a base backup and WAL when a failure occurs.
+deepToC: true
+---
+
+Use cold DR when you want the lowest infrastructure cost and don't need a continuously available standby. When a failure occurs, provision the DR hosts, restore from the base backup and WAL in the storage repository, and promote the DR cluster. Because hosts must be provisioned and a full restore completed at the time of failure, the Recovery Time Objective (RTO) is longer than with warm DR.
+
+!!! Note
+The DR cluster remains in recovery mode after performing a restore and doesn't accept client connections. To bring it online, [promote the cluster](#promoting-the-dr-cluster) and start it with `gpstart`.
+!!!
+
+## Prerequisites
+
+Configure the DR cluster for restore before proceeding. See [Setting up the DR cluster](../configuring-dr).
+
+## Performing the restore
+
+When a failure occurs, recreate the primary cluster's state on the DR hosts from the base backup and WAL in the storage repository. Run all commands as the WarehousePG cluster owner, typically `gpadmin` on the DR coordinator.
+
+1. Inspect the backups and restore points available in the repository:
+
+    ```bash
+    whpg-dr list-backup my_cluster
+    ```
+
+1. Run a restore, replacing `<restore_point_name>` with a restore point name from the `list-backup` output:
+
+    ```bash
+    whpg-dr restore my_cluster --target-name <restore_point_name>
+    ```
+
+    To restore to the most recent available restore point without looking up its name, use `latest`:
+
+    ```bash
+    whpg-dr restore my_cluster --target-name latest
+    ```
+
+    `whpg-dr restore` applies the base backup associated with the target restore point to all segment directories in parallel, then replays WAL forward to the target. When replay finishes, all segments stop in recovery mode. `--target-name` takes a restore point name, not a base backup name. Passing a base backup name fails.
+
+### Advancing to a later restore point
+
+Use `--delta` to advance to a newer restore point when the data directories already contain a previous restore. Instead of re-applying the base backup, `--delta` replays only the WAL difference:
+
+```bash
+whpg-dr restore my_cluster --target-name latest --delta
+```
+Restores are forward-only. You can advance to a later restore point using `--delta`, but you can't go back to an earlier one without performing a fresh restore.
+
+### Checking restore status
+
+Check the current restore state at any time:
+
+```bash
+whpg-dr list-restore my_cluster
+__OUTPUT__
+Latest Completed Restore
+------------------------
+Restore point:  20260615-143022R
+Backup name:    20260601T120000_base_backup
+Restore time:   2026-06-15 15:12:44
+
+Recovery Cluster Segment Status
+-------------------------------
+Content ID   Status                 Replay End LSN  Host   Path
+----------   ------                 --------------  ----   ----
+coordinator  shut down in recovery  0/5A001780      cdw2   /data/coordinator/gpseg-1
+segment 0    shut down in recovery  0/6B001168      sdw1   /data/primary/gpseg0
+segment 1    shut down in recovery  0/6B001168      sdw2   /data/primary/gpseg1
+```
+
+### Resuming a failed restore
+
+If the restore is interrupted, retry with `--resume-failed`:
+
+```bash
+whpg-dr restore my_cluster --resume-failed
+```
+
+To set a timeout for WAL replay, for example 1 hour:
+
+```bash
+whpg-dr restore my_cluster --target-name latest --wal-replay-timeout 1h
+```
+
+## Promoting the DR cluster
+
+Once the restore is complete and you're ready to bring the DR cluster online:
+
+1. Promote the DR cluster:
+
+    ```bash
+    whpg-dr promote my_cluster
+    ```
+
+1. Start the cluster. Source the WarehousePG environment and set `COORDINATOR_DATA_DIRECTORY` before running `gpstart`:
+
+    ```bash
+    source /usr/edb/whpg7/greenplum_path.sh
+    export COORDINATOR_DATA_DIRECTORY=<coordinator_data_directory>
+    gpstart -a
+    ```
+
+1. Rebuild system indexes and collect statistics on each database. Without this step, queries generate warnings about missing table statistics. Repeat for each database in the cluster, replacing `<database_name>` accordingly:
+
+    ```bash
+    reindexdb --system -d <database_name> -e
+    analyzedb -as pg_catalog -d <database_name> -p 10 -v
+    analyzedb -d <database_name> -p 10 -v
+    ```
+
+After these steps, the cluster is a writable primary and accepts connections.
+
+## Adding mirrors and standby coordinator
+
+Optionally, add mirrors and a standby coordinator after promotion. `whpg-dr` doesn't restore these components, so the promoted cluster has only primary segments. See the WarehousePG documentation for [enabling segment mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-segment-mirroring/) and [enabling coordinator mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-coordinator-mirroring/).
+
+## Performing a fresh restore
+
+To restore to an earlier restore point, or to restore a cluster that has already been promoted, clear the data directories first and run a full restore from scratch.
+
+1. Stop the cluster if it's running:
+
+    ```bash
+    gpstop -af
+    ```
+
+1. Remove the data directories on all DR hosts:
+
+    ```bash
+    gpssh -f all_hosts -e "rm -rf /data/coordinator/gpseg-1 /data/primary/gpseg*"
+    ```
+
+1. Run a full restore.

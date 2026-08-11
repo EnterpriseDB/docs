@@ -1,0 +1,22 @@
+---
+title: Known limitations for WarehousePG Disaster Recovery
+navTitle: Known limitations
+description: Current limitations and available workarounds for whpg-dr.
+---
+
+These are the current limitations of WarehousePG Disaster Recovery. Where applicable, workarounds are included to help mitigate the impact.
+
+- **Concurrent restore-point creation from multiple hosts isn't supported.** Running `whpg-dr create-restore-point` concurrently from different machines against the same cluster produces unreliable restore-point records in the backup repository. Run restore-point creation from one designated host at a time.
+
+- **The DR cluster must not be initialized before restore.** Running `gpinitsystem` on the DR cluster before `whpg-dr restore` causes the restore to fail. Follow the [WarehousePG install guide](/warehousepg/latest/install_guide/) through [Creating the Data Storage Areas](/warehousepg/latest/install_guide/create_data_dirs/), then stop. Don't proceed to [Initializing WarehousePG](/warehousepg/latest/install_guide/init_whpg/). If `gpinitsystem` has already been run, delete the data directories on all DR hosts before attempting a restore.
+
+- **No pre-restore WAL completeness check.** `whpg-dr restore` doesn't verify that all WAL files required to reach the target restore point are present in storage before starting. If a WAL file is missing, the restore fails part-way through:
+
+    ```
+    WARNING: WAL replay did not complete. Data directories for 1 coordinator and N segments
+    were modified, but the restore-last state file has NOT been updated.
+    ```
+
+    The failing segment's `startup.log` shows a `pg_ctl start` failure but doesn't identify which WAL file is absent. Run `whpg-dr check` and verify the storage repository before restoring. If the restore fails, re-run it with `--resume-failed` after investigating log output in `$HOME/gpAdminLogs`.
+
+- **No failback automation.** After promoting the DR cluster to a writable primary, reversing roles isn't automated. To use the original primary as a DR site, re-initialize it as a new DR cluster and run a fresh base backup.

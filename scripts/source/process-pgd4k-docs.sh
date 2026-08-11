@@ -34,6 +34,7 @@ cd $SOURCE_CHECKOUT/docs-import/docs
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
+  -p "pg4k-pgd/convert-rel-notes" \
   -p "cnp/replace-github-urls" \
   -p "pg4k-pgd/replace-beta-urls" \
   -p "pg4k-pgd/update-links" \
@@ -44,7 +45,7 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
 
 node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
   "$SOURCE_CHECKOUT/docs-import/docs/src/index.mdx" \
-  "$(DESTINATION_PATH)index.mdx" \
+  "${DESTINATION_PATH}index.mdx" \
   "$SOURCE_CHECKOUT/docs-import/docs/src/index.mdx" \
   >> $SOURCE_CHECKOUT/docs-import/files-to-ignore.txt
 

@@ -11,6 +11,7 @@ redirects:
 navigation:
 - replacing_ssl_certificates
 - regenerating_agent_certificates
+- manual_cert_generation
 ---
 
 PEM uses SSL certificates:
@@ -72,11 +73,12 @@ For a worked example, see [Replacing httpd self-signed SSL certificates](https:/
 PEM implements secured SSL/TLS connections between PEM agents and the backend database. 
 Each agent has an SSL certificate that's used both to encrypt its communication with the server and to authenticate with the server in place of a password.
 
-PEM uses the sslutils extension to allow the PEM server to generate and sign SSL certificates and keys. When a new agent is registered, the PEM server issues it a certificate.
+Unless configured otherwise, PEM uses the sslutils extension to allow the PEM server to generate and sign SSL certificates and keys. When a new agent is registered, the PEM server issues it a certificate.
 Certificates issued by the PEM server are signed by the PEM server, meaning the PEM server is acting as a certificate authority (CA).
 
 If this approach isn't suitable, you can use SSL certificates and keys generated outside of PEM and signed by a trusted CA. 
-For more information, see [Trusted CA certificates and keys](#use-certificates-and-keys-signed-by-trusted-ca).
+For more information on the different SSL models supported by PEM, see [Deciding on an SSL model](../considerations/ssl_certs.mdx).
+For instructions on how to convert an existing PEM installation, see [Trusted CA certificates and keys](#use-certificates-and-keys-signed-by-trusted-ca).
 
 ### Certificates and key files on the PEM server
 
@@ -155,76 +157,7 @@ Create a user, generate an agent certificate and key pair, and use them for all 
    GRANT pem_agent TO pem_agent_common_user;
    ```
 
-1. Generate an agent key:
-
-   ```shell
-   # Running as root
-   openssl genrsa -out agent.key 4096 
-   ```
-
-1.  Generate a CSR for the agent:
-
-   ```shell
-   openssl req -new -key agent.key -out agent.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=<agent_user>'
-   ```
-
-   Where `-subj` is provided as per your requirements.
-
-1. Use the `openssl x509` command to sign the CSR and generate an agent certificate:
-
-   ```shell
-   openssl x509 -req -days 365 -in agent.csr -CA ca_certificate.crt -CAkey ca_key.key -CAcreateserial -out agent.crt
-   ```
-
-1. Change the permissions on the `agent.crt` and `agent.key` files:
-
-   ```shell
-   chmod 600 agent.crt agent.key
-   ```
-
-1. Use this agent certificate and key pair:
-
-   - For registering the new PEM agent from the remote host to the PEM server.
-
-     a. Copy the agent certificate and key pair to the remote agent host and register the agent:
-
-        ```shell
-        export PEM_SERVER_PASSWORD=edb
-
-        /usr/edb/pem/agent/bin/pemworker --register-agent \
-        --pem-server 192.168.99.130 \
-        --pem-user enterprisedb \
-        --pem-port 5444 \
-        --pem-agent-user pem_agent_common_user \
-        -o agent_ssl_crt= agent.crt \
-        -o agent_ssl_key= agent.key
-        ```
-
-     b. Enable and start the pemagent services:
-
-        ```shell
-        systemctl enable pemagent
-        systemctl start pemagent
-        ```
-
-   - To replace the agent certificate and key pair with the registered agent.
- 
-     a. Edit the `agent_user`, `agent_ssl_key`, and `agent_ssl_crt` parameters in the `agent.cfg` file of the agent host:
-
-        ```shell
-        vi /usr/edb/pem/agent/etc/agent.cfg
-        # Edit the agent username
-        agent_user=pem_agent_common_user
-        # Edit the ssl parameters with new certificate and key file location
-        agent_ssl_key=<new_location>/agent.key
-        agent_ssl_crt=<new_location>/agent.crt
-        ```
-      
-     b. Restart the pemagent service:
-
-        ```shell
-        systemctl restart pemagent
-        ```
+1. Follow the instructions in [Generating agent certificates manually](manual_cert_generation.mdx) to generate and configure a certificate and key for this user.
 
 
 ## Use certificates and keys signed by trusted CA

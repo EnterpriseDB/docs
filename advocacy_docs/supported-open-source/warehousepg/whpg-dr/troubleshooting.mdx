@@ -1,0 +1,154 @@
+---
+title: Troubleshooting WarehousePG Disaster Recovery
+navTitle: Troubleshooting
+description: Diagnose and resolve common issues with whpg-dr backup, restore, and configuration.
+deepToC: true
+---
+
+WarehousePG Disaster Recovery (`whpg-dr`) issues typically surface as backup failures, restore errors, or configuration problems. In each case, the operational logs contain the detailed output needed to identify the cause.
+
+## Finding logs
+
+`whpg-dr` writes operational logs to `$HOME/gpAdminLogs` by default. The log file for a given day is `whpg_dr-YYYY-MM-DD.log`. Barman per-segment logs are written to the same directory as `barman-<cluster_name>.log`.
+
+To increase log file verbosity for a single command, use `--log-file-level debug`:
+
+```bash
+whpg-dr check my_cluster --log-file-level debug
+```
+
+## Backup configuration failures
+
+**Symptom:**
+
+```
+Error: distribute barman configs: rsync barman_conf to host sdw1 failed: exit status 23
+rsync: [receiver] failed to set permissions on ".../.whpg-lab-global.conf.yU9Gmu": No such file or directory
+```
+
+**Cause:** The `WHPG_DR_HOME` directory doesn't exist on the target segment host. `whpg-dr` uses rsync to distribute Barman configuration to segment hosts, and rsync can't create the intermediate directories.
+
+**Resolution:** Create the `WHPG_DR_HOME` directory on all segment hosts (as `gpadmin`), then re-run `configure backup`:
+
+```bash
+gpssh -f all_hosts -e "mkdir -p $WHPG_DR_HOME/my_cluster/backup/barman_conf"
+whpg-dr configure backup /home/gpadmin/backup.yaml
+```
+
+## Verifying backup integrity
+
+Use [`whpg-dr check-backup`](reference/commands#whpg-dr-check-backup) to verify that all backup files for each segment are present and accessible in the storage repository:
+
+```bash
+whpg-dr check-backup my_cluster --backup-name 20260601T120000_base_backup
+__OUTPUT__
+Finding backup...
+Checked backup 20260601T120000 on server my_cluster-seg-1
+Checked backup 20260601T120000 on server my_cluster-seg0
+Checked backup 20260601T120000 on server my_cluster-seg1
+Checked backup 20260601T120000 on server my_cluster-seg2
+Checked backup 20260601T120000 on server my_cluster-seg3
+All backup checks completed successfully
+```
+
+## whpg-dr check failures
+
+These errors surface when running `whpg-dr check`, which verifies that Barman can reach each segment and that WAL archiving is configured correctly.
+
+### Barman can't connect to a segment
+
+**Symptom:**
+
+```
+check completed with 2 errors:
+  - my_cluster-seg0: Server my_cluster-seg0:
+      PostgreSQL: FAILED
+```
+
+**Cause:** Barman can't connect to the segment's Postgres process. Check the Barman log for the actual connection error:
+
+```bash
+cat $HOME/gpAdminLogs/barman-my_cluster.log
+```
+
+A typical entry looks like:
+
+```
+barman.postgres WARNING: Error retrieving PostgreSQL status: connection to server at "sdw1" (192.168.1.10), port 6000 failed: FATAL: no pg_hba.conf entry for host "192.168.1.10", user "gpadmin", database "postgres", SSL off
+```
+
+Barman uses the connection string:
+
+```
+host=<segment_host> user=<pg_user> dbname=postgres port=<segment_port> options='-c gp_role=utility'
+```
+
+!!! Note
+On WarehousePG 6, use `gp_session_role=utility` instead of `gp_role=utility`.
+!!!
+
+**Resolution:**
+
+1. Confirm that `pg_hba.conf` has an entry allowing the Barman user to connect from the segment host using a non-local socket:
+
+    ```
+    host    all    gpadmin    <segment_host_ip>/32    trust
+    ```
+
+1. After editing `pg_hba.conf`, reload:
+
+    ```bash
+    gpstop -u
+    ```
+
+1. Re-run the check:
+
+    ```bash
+    whpg-dr check my_cluster
+    ```
+
+## Restore point failures
+
+If a `whpg-dr create-restore-point` command is interrupted, it may leave a lock file at:
+
+```
+$WHPG_DR_HOME/state/my_cluster_backup.lock
+```
+
+If subsequent runs fail with a lock error and you're certain no other `whpg-dr` process is running, remove the lock file:
+
+```bash
+whpg-dr clean-lock-file my_cluster
+```
+
+## Restore failures
+
+### WAL replay did not complete
+
+**Symptom:**
+
+```
+WARNING: WAL replay did not complete. Data directories for 1 coordinator and N segments
+were modified, but the restore-last state file has NOT been updated.
+Error: WAL replay failed: segments are not running and not in expected recovery state
+```
+
+**Cause:** One or more segments failed to replay WAL to the target restore point. A WAL file may be missing from the storage repository, or there's a network or permission issue accessing storage.
+
+**Resolution:**
+
+1. Check the segment startup log in `$HOME/gpAdminLogs`. Look for `pg_ctl start` failures and the last line before the failure.
+
+1. Confirm all WAL files between the current restore state and the target are present in storage. For S3, list the WAL objects for the failing segment:
+
+    ```bash
+    aws s3 ls s3://my-bucket/whpg/my_cluster/my_cluster-seg0/wals/ --recursive
+    ```
+
+    WAL file names are hex-sequential (for example `000000010000000000000019`). A gap in the sequence indicates a missing file.
+
+1. If the repository is intact, re-run the restore with `--resume-failed`:
+
+    ```bash
+    whpg-dr restore my_cluster --resume-failed
+    ```
