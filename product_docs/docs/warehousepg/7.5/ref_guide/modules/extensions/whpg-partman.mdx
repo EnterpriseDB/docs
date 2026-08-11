@@ -1,0 +1,103 @@
+---
+title: whpg-partman
+navTitle: whpg-partman
+displayBanner: ''
+description: Learn how to automate time-based and serial ID partition management in WarehousePG using the whpg-partman extension.
+redirects:
+  - ../edb_modules/whpg-partman
+---
+
+`whpg-partman` is a partition management extension that automates the creation, maintenance, and retention of time-based and serial ID-based partition sets. Instead of manually creating new child partitions and dropping old ones, you configure a partition set once, and `whpg-partman` keeps it up to date.
+
+The WarehousePG `whpg-partman` module is based on the [`pg_partman`](https://github.com/pgpartman/pg_partman) extension for PostgreSQL. See [Limitations](#limitations) before you use `whpg-partman` on WarehousePG.
+
+## Downloading, installing, and loading the extension
+
+Refer to [Downloading and installing an extension](./#downloading-and-installing-an-extension) for installation and setup instructions. The package name is `edb-whpg7-pg_partman`.
+
+Once installed, create the extension in a dedicated schema:
+
+```sql
+CREATE SCHEMA partman;
+CREATE EXTENSION pg_partman SCHEMA partman;
+```
+
+## Creating a native partition set
+
+Declare the parent table with `PARTITION BY RANGE` using WarehousePG's own declarative partitioning syntax, then register it with `partman.create_parent()`. WarehousePG only supports `whpg-partman`'s native mode (`p_type := 'native'`), which requires you to build the table structure yourself. Legacy mode (`p_type := 'partman'`) isn't supported.
+
+1.  Create the parent table using `PARTITION BY RANGE`:
+
+    ```sql
+    CREATE TABLE sales (
+        id        bigint NOT NULL,
+        sale_date timestamp NOT NULL,
+        amount    numeric
+    )
+    DISTRIBUTED BY (id)
+    PARTITION BY RANGE (sale_date);
+    ```
+
+1.  Register the table with `whpg-partman`, specifying `native` as the partition type:
+
+    ```sql
+    SELECT partman.create_parent(
+        p_parent_table := 'public.sales',
+        p_control      := 'sale_date',
+        p_type         := 'native',
+        p_interval     := 'monthly',
+        p_premake      := 6
+    );
+    ```
+
+    `p_premake` sets how many partitions `whpg-partman` keeps ahead of the current one, and, on initial creation, behind it as well. It defaults to `4`. Setting it to `6`, as in this example, creates thirteen partitions in total (six behind the current partition, the current partition, and six ahead of it). To change it later, update the `premake` column in `partman.part_config`. See the [pg_partman documentation](https://github.com/pgpartman/pg_partman) for the full list of `create_parent()` parameters and all other functions.
+
+1.  Insert data. WarehousePG routes each row to the matching partition:
+
+    ```sql
+    INSERT INTO sales (id, sale_date, amount) VALUES (1, '2026-08-01', 100);
+    ```
+
+1.  Verify that the row landed in the correct partition:
+
+    ```sql
+    SELECT tableoid::regclass, * FROM sales ORDER BY id;
+    ```
+
+    To list every partition in the set, use `partman.show_partitions()`:
+
+    ```sql
+    SELECT * FROM partman.show_partitions('public.sales');
+    ```
+
+You can partition by an integer or bigint column instead of a timestamp column using the same `create_parent()` call. Set `p_control` to the ID column and `p_interval` to the integer range for each partition, given as text (for example, `'100000'`).
+
+## Maintaining partitions
+
+Schedule `partman.run_maintenance()` as a periodic job, for example with `cron`, to keep partition sets up to date:
+
+```sql
+SELECT partman.run_maintenance();
+```
+
+`run_maintenance()` creates new partitions for any set that has fewer than `p_premake` partitions ahead of the current one, and enforces the retention policy for sets that have one configured.
+
+### Setting a retention policy
+
+To automatically remove partitions that fall outside a given age or ID range, set the `retention` column in `partman.part_config`:
+
+```sql
+UPDATE partman.part_config
+SET retention = '12 months',
+    retention_keep_table = false
+WHERE parent_table = 'public.sales';
+```
+
+With `retention_keep_table` set to `false`, `run_maintenance()` drops partitions outside the retention window. The default, `true`, only detaches them and keeps the underlying table.
+
+## Limitations
+
+`whpg-partman` for WarehousePG has the following limitations:
+
+-   Only native partitioning (`p_type := 'native'`) is supported. `whpg-partman`'s legacy trigger-based mode (`p_type := 'partman'`) isn't supported on WarehousePG and fails with an error similar to `function cannot execute on a QE slice because it issues a non-SELECT statement`.
+-   Native mode requires the parent table to already be declared with `PARTITION BY RANGE` before you call `create_parent()`. Unlike legacy mode, `whpg-partman` doesn't create this structure for you.

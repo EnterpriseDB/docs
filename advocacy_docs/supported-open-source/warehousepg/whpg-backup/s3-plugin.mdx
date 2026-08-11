@@ -1,71 +1,15 @@
 ---
-# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
-# Changes made here may be overwritten. Prefer making changes in the source repo instead.
-# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
-#
-# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
-# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
-# reach out to the docs team to discuss.
-
 title: Using the S3 storage plugin
-originalFilePath: >-
-  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/whpg-backup/s3-plugin.md
-editTarget: originalFilePath
+navTitle: Using the S3 storage plugin
+description: Configure gpbackup and gprestore to back up WarehousePG tables directly to Amazon S3 or an S3-compatible storage server.
 
 ---
 
 Use the S3 storage plugin to write WarehousePG (WHPG) backups directly to Amazon Simple Storage Service (S3) or any S3-compatible storage server, and restore them without storing large dump files on local segment disks. Run the `gpbackup` and `gprestore` commands with the `--plugin-config` option and a YAML configuration file, using the same configuration file for both backup and restore.
 
-!!!tip Associated topics
-
--   [gpbackup & gprestore user guide](index.md)
--   [Incremental backups](incremental.mdx)
--   [gpbackup syntax reference](reference/gpbackup.mdx)
--   [gprestore syntax reference](reference/gprestore.mdx)
-!!!
-
-## Installing the plugin
-
-The S3 plugin is a separate package from `whpg-backup`, built from the [`warehouse-pg/whpg-backup-s3-plugin`](https://github.com/warehouse-pg/whpg-backup-s3-plugin) repository.
-
-### Prerequisites
-
-Build the plugin on a host that has Go installed, at the version given by the `go` directive in the repository's `go.mod` file, or later. The WarehousePG coordinator works well as a build host, since `make install` distributes the binary to your cluster's segment hosts directly from there.
-
-### Building and installing
-
-1.  Clone the repository and change into it:
-
-    ```shell
-    git clone https://github.com/warehouse-pg/whpg-backup-s3-plugin.git
-    cd whpg-backup-s3-plugin
-    ```
-
-2.  Build the `gpbackup_s3_plugin` binary:
-
-    ```shell
-    make build
-    ```
-
-    The binary is placed in `$GOPATH/bin`, or `$HOME/go/bin` if `GOPATH` isn't set.
-
-3.  With the WarehousePG environment sourced, install the binary on all segment hosts:
-
-    ```shell
-    make install
-    ```
-
-    The plugin executable must reside in the exact same absolute path on every WarehousePG host (coordinator and segments).
-
-4.  Verify that the binary is present and executable on every host, for example using `gpssh` with the `all_hosts` file described in [Installing WarehousePG Backup and Restore](installing.mdx):
-
-    ```shell
-    gpssh -f all_hosts -e "test -x \$GPHOME/bin/gpbackup_s3_plugin && echo ok"
-    ```
-
 ## Configuring the plugin
 
-The plugin requires a YAML configuration file located on the coordinator host. The file supports the following options:
+The `gpbackup_s3_plugin` binary ships with `whpg-backup`, installed at `$GPHOME/bin/gpbackup_s3_plugin` on every host in your cluster. Point to it in a YAML configuration file located on the coordinator host. The file supports the following options:
 
 ```yaml
 executablepath: <absolute-path-to-plugin>
@@ -86,24 +30,23 @@ options:
 
 Where:
 
--   `executablepath`: Absolute path to the plugin, for example `$GPHOME/bin/gpbackup_s3_plugin`.
--   `region`: AWS region (ignored if `endpoint` is specified).
--   `endpoint`: Custom S3-compatible endpoint.
--   `aws_access_key_id`: Your AWS/S3 access key.
--   `aws_secret_access_key`: Your AWS/S3 secret key.
--   `bucket`: The target S3 bucket (must already exist).
--   `folder`: The backup sub-location. Created automatically if missing.
--   `encryption`: Enables SSL for the S3 connection. Default is `on`.
--   `http_proxy`: (Optional) If your WarehousePG segments do not have direct internet access, provide the URL of your corporate proxy server (e.g., [http://proxy.example.com:8080](http://proxy.example.com:8080)).
--   `backup_max_concurrent_requests`: (Optional) Number of threads used to upload parts of a file simultaneously. Use this parameter in conjunction with the `gpbackup --jobs` option to increase your overall backup concurrency.
--   `backup_multipart_chunksize`: (Optional) The size of each data chunk uploaded to the S3 bucket. Use this parameter along with the `gpbackup --jobs` option and the `backup_max_concurrent_requests` parameter to fine tune your backups.
--   `restore_max_concurrent_requests`: (Optional) Number of threads used to download parts of a file during recovery.
--   `restore_multipart_chunksize`: (Optional) The size of each data chunk for each individual part of a file during a multipart transfer from S3 to the segments. Use this parameter along with `restore_max_concurrent_requests` to fine tune your restores.
+- `executablepath`: Absolute path to the plugin, for example `$GPHOME/bin/gpbackup_s3_plugin`.
+- `region`: AWS region (ignored if `endpoint` is specified).
+- `endpoint`: Custom S3-compatible endpoint.
+- `aws_access_key_id`: Your AWS/S3 access key.
+- `aws_secret_access_key`: Your AWS/S3 secret key.
+- `bucket`: The target S3 bucket (must already exist).
+- `folder`: The backup sub-location. Created automatically if missing.
+- `encryption`: Enables SSL for the S3 connection. Default is `on`.
+- `http_proxy`: (Optional) If your WarehousePG segments do not have direct internet access, provide the URL of your corporate proxy server (e.g., http://proxy.example.com:8080). 
+- `backup_max_concurrent_requests`: (Optional) Number of threads used to upload parts of a file simultaneously. Use this parameter in conjuction with the `gpbackup --jobs` option to increase your overall backup concurrency.
+- `backup_multipart_chunksize`: (Optional) The size of each data chunk uploaded to the S3 bucket. Use this parameter along with the `gpbackup --jobs` option and the `backup_max_concurrent_requests` parameter to fine tune your backups. 
+- `restore_max_concurrent_requests`: (Optional) Number of threads used to download parts of a file during recovery.
+- `restore_multipart_chunksize`: (Optional) The size of each data chunk for each individual part of a file during a multipart transfer from S3 to the segments. Use this parameter along with `restore_max_concurrent_requests` to fine tune your restores.
 
-!!!info Note
-
--   The S3 user you configure to run the backups via `aws_access_key_id` must have upload/delete permissions on that bucket for backups and open/download/view permissions for restores.
--   All segment hosts must have network access to the S3 endpoint, or the proxy configured via `http_proxy`.
+!!! note
+- The S3 user you configure to run the backups via `aws_access_key_id` must have upload/delete permissions on that bucket for backups and open/download/view permissions for restores.
+- All segment hosts must have network access to the S3 endpoint, or the proxy configured via `http_proxy`.
 !!!
 
 ## Performing a backup
@@ -130,7 +73,7 @@ gprestore --timestamp <YYYYMMDDHHMMSS> --plugin-config /<path-to-config>/s3-conf
 
 ## Example
 
-1.  Create a configuration file named `s3-test-config.yaml`:
+1. Create a configuration file named `s3-test-config.yaml`:
 
     ```yaml
     executablepath: $GPHOME/bin/gpbackup_s3_plugin
@@ -142,13 +85,13 @@ gprestore --timestamp <YYYYMMDDHHMMSS> --plugin-config /<path-to-config>/s3-conf
       folder: test/backup3
     ```
 
-2.  On the coordinator, run the backup:
+1. On the coordinator, run the backup:
 
     ```shell
     gpbackup --dbname demo --single-data-file --plugin-config /home/gpadmin/s3-test-config.yaml
     ```
 
-3.  Execute the restore (using the timestamp generated by the backup above):
+1. Execute the restore (using the timestamp generated by the backup above):
 
     ```
     gprestore --timestamp 20260318120000 --plugin-config /home/gpadmin/s3-test-config.yaml
