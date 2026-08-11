@@ -1,0 +1,113 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: Creating incremental backups of append-optimized tables
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/whpg-backup/incremental.md
+editTarget: originalFilePath
+
+---
+
+Use `gpbackup` and `gprestore` to create and restore incremental backups of append-optimized tables. Full backups contain every object in the database, making a restore, filtered or complete, straightforward, but they cost more in size and duration. Incremental backups reduce that cost when the total amount of changed append-optimized data is small compared to the data that hasn't changed since the last backup.
+
+`gpbackup` backs up an append-optimized table in an incremental backup only if one of these operations ran against the table after the last full or incremental backup:
+
+-   `ALTER TABLE`
+-   `DELETE`
+-   `INSERT`
+-   `TRUNCATE`
+-   `UPDATE`
+-   `DROP` and then re-create the table
+
+An incremental backup always includes every specified heap table, and backs up an append-optimized table, including a column-oriented table, only if it's changed. An incremental backup set consists of a full backup, plus the incremental backups that capture changes to the database since that full backup. For example, a full backup on Sunday plus three daily incremental backups on Monday, Wednesday, and Friday together form one backup set. Restoring from an incremental backup requires the complete backup set, and every backup in a set must use consistent command-line options so that `gpbackup` can build on it and `gprestore` can restore from it.
+
+!!!info Note
+
+`gpbackup` always backs up a whole table when it includes it in an incremental backup, whether that's because it's a heap table or because an append-optimized table changed. It doesn't back up just the changed rows within a table. For a partitioned append-optimized table, though, `gpbackup` backs up only the leaf partitions that changed, not the entire table, so partitioning large append-optimized tables can substantially reduce the size of your incremental backups.
+!!!
+
+## Creating an incremental backup set
+
+Start an incremental backup set with a full backup, then add incremental backups on top of it using a few required options, plus optional ones for more control. `gpbackup` checks that later backups in the set stay consistent with the ones already there.
+
+```bash
+gpbackup --dbname <database> --incremental --backup-dir <backup_directory> --leaf-partition-data
+```
+
+Include these options when you create an incremental backup:
+
+-   **`--leaf-partition-data`**: Required for every backup in the set, including the full backup that serves as its base.
+-   **`--incremental`**: Required to create an incremental backup. Not compatible with `--data-only` or `--metadata-only`.
+-   **`--from-timestamp`** (optional): Use with `--incremental` to specify the timestamp of an existing backup, either an incremental backup or the initial full backup, to build on. The new backup must use the same command-line options as the backup specified. If you don't specify `--from-timestamp`, `gpbackup` looks for a compatible backup using the [backup history database](using.mdx#understanding-the-backup-history-database).
+
+When you add an incremental backup to a set, `gpbackup` checks that these options match across the full backup and all incremental backups in the set:
+
+-   **`--dbname`**: The database must be the same.
+-   **`--backup-dir`**: The full backup and its incremental backups must be in the same location.
+-   **`--single-data-file`**: Must be either specified or absent for every backup in the set.
+-   **`--plugin-config`**: If specified, it must be specified for every backup in the set, referencing the same plugin binary.
+-   **`--include-table-file`, `--include-schema`**, and other [filtering options](using.mdx#filtering-backups-and-restores): Must be the same across the set. For schema filters, `gpbackup` checks only the schema names, not the objects they contain.
+-   **`--no-compression`**: If specified, it must be specified for every backup in the set. If the full backup uses compression, the incremental backups must too, though they can use different compression levels. The default compression level is 1.
+
+!!!warning
+
+If you try to add an incremental backup to a set and its command-line options aren't consistent with the rest of the set, the backup operation fails.
+!!!
+
+!!!warning
+
+Changing the WarehousePG segment configuration invalidates incremental backups. After you add or remove segment instances, create a full backup before creating another incremental backup.
+!!!
+
+## Planning your backup strategy
+
+Decide how many full and incremental backups to retain based on your organization's regulatory requirements for backups. Factor in your Recovery Point Objective (RPO), when you design your backup strategy. Combine `--incremental` backups, effective partitioning of append-optimized/column-oriented (AO/CO) tables, and the `--include` and `--exclude` filters for a flexible and performant backup strategy.
+
+When you archive incremental backups, archive the complete backup set, including all files created on the coordinator and all segments.
+
+The `--with-stats` option doesn't need to be consistent across a backup set. However, to restore statistics with the `gprestore --with-stats` option, the backup you restore from must have been taken with `--with-stats`.
+
+### Example
+
+This example follows a common strategy, combining a weekly full backup with daily incremental backups. Each backup's file name includes a timestamp, in `YYYYMMDDhhmmss` format, identifying when `gpbackup` created it.
+
+1.  Create the first full backup of the set on Sunday:
+
+    ```bash
+    gpbackup --dbname ww_sales --backup-dir /nfsmount/whpg_backups/ww_sales --leaf-partition-data
+    ```
+
+2.  Create an incremental backup based on that full backup each following day:
+
+    ```bash
+    gpbackup --dbname ww_sales --incremental --backup-dir /nfsmount/whpg_backups/ww_sales --leaf-partition-data
+    ```
+
+Continuing this pattern from Monday through Saturday results in a set of seven backups: one full backup and six incremental backups, each identified by its own timestamp. At the end of a week-long set like this, continue in one of two ways:
+
+-   Run another full backup the next Sunday to start a new backup set and retire or archive the previous week's set.
+-   Aggregate the week into a single incremental backup using `--from-timestamp`, pointing at the previous Sunday's full backup:
+
+    ```bash
+    gpbackup --dbname ww_sales --incremental --from-timestamp 20250518010000 --backup-dir /nfsmount/whpg_backups/ww_sales --leaf-partition-data
+    ```
+
+    This new backup captures the same changes as the whole week's incremental backups combined, since it's incremental from the same full backup they were. That makes the week's individual incremental backups redundant, and you can delete them to reclaim storage space, leaving just the full backup and this one aggregated incremental backup to cover the entire week.
+
+## Restoring incremental backup sets
+
+To restore to a point in the middle of an incremental backup set, specify that backup's timestamp with `gprestore --timestamp`. For example, to restore to Wednesday's incremental backup from the weekly set described above:
+
+```bash
+gprestore --timestamp 20250521040000 --redirect-db ww_sales_pitr --create-db
+```
+
+Every earlier backup in the set, the Monday and Tuesday incremental backups and the Sunday full backup, must also be available for this restore to succeed.
+
+Restore operations can start from any backup in the set, but changes captured in incremental backups later than the one you restore from aren't restored. When restoring from an incremental backup set, `gprestore` restores each append-optimized table from its most recent version in the set. Heap tables are always restored from the latest backup in the set.
