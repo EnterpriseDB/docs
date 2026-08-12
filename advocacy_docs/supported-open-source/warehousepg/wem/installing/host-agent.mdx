@@ -1,0 +1,55 @@
+---
+title: Installing the host agent
+navTitle: Installing the host agent
+description: Install and configure the acp-host-agent service to enable privileged operations on the WarehousePG coordinator host.
+deepToC: true
+---
+
+Install the host agent (`acp-host-agent`) on the WarehousePG (WHPG) coordinator and standby coordinator hosts to enable privileged operations on behalf of WEM, such as editing `pg_hba.conf` through the [**HBA Editor**](../system-access/access-management#modifying-authentication-rules) tab, without direct access to the coordinator. 
+
+!!! Note
+    WEM's internal job-execution engine stores its own state in an internal SQLite database and runs on the same host as WEM. Before installing the host agent, complete [Installing and configuring WEM](wem).
+
+## Installing and configuring the host agent
+
+Run these steps on the WarehousePG coordinator host. Repeat them on the standby coordinator if your cluster has one.
+
+1. Configure the EDB repository:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    ```
+
+1. Install the host agent package:
+
+    ```bash
+    sudo dnf install -y edb-acp-host-agent
+    ```
+
+1. Edit `/etc/edb/acp-host-agent/acp-host-agent.conf` and set the following parameters:
+    - `WEM_TASK_QUEUES`: the task queue or queues this agent polls for activities. On the primary coordinator, set it to `coordinator-tasks`. On a standby coordinator, set this variable to `standby-tasks`.
+    - `WEM_CONNECT_ADDRESS`: set to WEM's hostname or IP address and listen port plus 1, for example `WEM_CONNECT_ADDRESS=wem-host:8081`.
+    - `WEM_DATABASE`: set this to the same value as `WHPG_DATABASE`. The agent's passwordless `sudo` permissions are scoped to that exact database name, so changing it causes privileged operations to fail with `sudo: a password is required`. WEM creates this database automatically if it doesn't already exist.
+    - `WHPG_DATA_DIR` (optional): By default, the agent derives the WarehousePG data directory by querying the local cluster. Set this variable explicitly only if that derivation is unreliable in your environment.
+
+    For the full variable reference, including agent identity and logging, see [Host agent configuration](../reference/host-agent-config).
+
+1. Enable and start the host agent service:
+
+    ```bash
+    sudo systemctl enable --now acp-host-agent
+    ```
+
+1. Verify the service is running and connected to WEM:
+
+    ```bash
+    sudo systemctl status acp-host-agent
+    tail -f /var/log/edb/acp-host-agent/acp-host-agent.log
+    ```
+
+## Next steps
+
+Your installation is complete. See [Getting started with WEM](../get-started).
+

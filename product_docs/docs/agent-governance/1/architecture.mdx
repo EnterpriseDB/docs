@@ -1,0 +1,51 @@
+---
+title: Architecture and data flow
+navTitle: Architecture
+description: How AI agent activity travels from Postgres logs through Loki and the viewer's backend into the audit log viewer, and how background sync keeps it fast.
+deepToC: true
+---
+
+AI agent activity travels from the SQL an agent runs, through Postgres logs and Loki, to the screens you read. Five components handle distinct parts of this path in sequence. Understanding how they interact helps you reason about what the viewer can show and why session data sometimes needs to sync before it appears.
+
+## Tracing the data path
+
+Each query an AI agent runs passes through five stages before it appears as an auditable session in the viewer.
+
+```
+AI agent (Airman MCP)
+  │  Tags each query: application_name = 'airman:<purpose>/<session-short>'
+  ▼
+Postgres cluster
+  │  Logs every statement with application_name, SQL, duration,
+  │  error severity, database, role, and PID (JSON log format)
+  ▼
+Loki  (HM Loki pipeline, or a standalone Loki instance)
+  │  Stores log lines, labeled by container and cluster, queryable via LogQL
+  ▼
+Viewer backend
+  │  Queries Loki via LogQL, parses Postgres log lines into sessions,
+  │  caches session summaries, and injects upstream credentials server-side
+  ▼
+Viewer (browser)
+     Renders clusters, sessions, and session detail
+```
+
+## Airman MCP
+
+Airman MCP is the MCP server AI agents call to run Postgres operations. It enforces the access mode — rejecting disallowed statement types in restricted mode — and tags every query by setting the Postgres `application_name` session variable to an `airman:<purpose>/<session-short>` identifier. The tag persists for the duration of the connection, grouping all queries in one agent interaction under a single session. See [Configuring Airman MCP](./configuring_airman_mcp).
+
+## Postgres cluster
+
+The Postgres cluster receives queries from Airman MCP and, with JSON logging enabled, records every statement with its application_name, SQL text, duration, error severity, database, role, and process ID. These log lines are the raw material for everything the viewer displays.
+
+## Loki
+
+Loki ingests the Postgres JSON log lines, labels them by container and cluster, and makes them queryable via LogQL. EDB Agent Governance works with both the HM-managed Loki pipeline and standalone Loki instances. See [Connecting data sources](./connecting_data_sources).
+
+## Viewer backend
+
+The viewer backend is a lightweight service that queries Loki via LogQL, parses the results into structured session and step data, caches session summaries for fast retrieval, and injects upstream credentials server-side so they never reach the browser. It uses a watermark-based incremental sync to avoid full-range Loki queries on repeated visits, splits high-verbosity query windows to stay within Loki's per-query limits, and applies separate retry policies for background sync and proxied requests. Resyncing clears all cached sessions and watermarks and restarts the pipeline from scratch. See [Deploying and configuring](./administration).
+
+## Viewer (browser)
+
+The viewer is a single-page application that renders the clusters, sessions, and session-detail screens, manages client-side routing, and calls the backend for all data. Credentials never reach the browser — the backend injects them on every proxied request. See [Browsing sessions](./sessions_list) and [Inspecting a session](./session_detail).

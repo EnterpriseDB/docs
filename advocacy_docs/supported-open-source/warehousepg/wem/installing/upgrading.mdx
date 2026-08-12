@@ -6,6 +6,32 @@ description: Learn how to upgrade WEM Collector and WEM to a new version.
 
 Upgrade Collector before upgrading WarehousePG Enterprise Manager (WEM). No service shutdown is required before running the upgrade commands.
 
+## Before you upgrade
+
+Review the section for the version you're upgrading to before running any upgrade commands. Some of these changes need action on your part beforehand, not just awareness.
+
+### Upgrading to 1.3
+
+WEM requires a PostgreSQL database for its own application state, either your WHPG cluster's own database or a dedicated instance. If you don't already have one running, see [Installing PostgreSQL](observability-stack#installing-postgresql-optional).
+
+WEM 1.3 introduces the `acp-host-agent` service for privileged host operations. See [Installing the host agent](host-agent).
+
+WEM 1.3 bundles Alertmanager and runs its own instance on `127.0.0.1:9093`, and the `ALERTMANAGER_URL` parameter is removed from `/etc/wem/wem.conf`. If you had a separately installed Alertmanager configured through it, WEM stops using it after the upgrade. If that separate instance is still running on the same host, it might block WEM's bundled instance from starting. Before upgrading, shut it down if it existed only to serve WEM, or move it to a different port first if you still need it.
+
+Before upgrading, check whether you hand-added any custom alert rules to WEM's previous Prometheus rule files (`config/prometheus/alerts/*.rules.yml`). Alert rules move into WEM's own database in 1.3, so any custom rules from 1.2 are lost once the old rule files are removed. Note down their PromQL expressions and thresholds beforehand, and recreate them through the **Rules** tab after upgrading. See [Creating and managing alert rules](../monitoring/alerts#creating-and-managing-alert-rules).
+
+The RPM preserves your existing `wem.conf` and places a reference copy of the updated configuration at `wem.conf.rpmnew`, including new parameters such as `WEM_AGENT_CALLBACK_BASE_URL`. WEM 1.3 introduces many new and changed parameters beyond this one example. After upgrading, review `wem.conf.rpmnew` alongside the full [Configuration reference](../reference/configuration) and copy any new parameters you need into your existing `wem.conf`.
+
+### Upgrading to 1.2
+
+WEM 1.2 changes the service identity from `root` to `gpadmin`. The upgrade handles both common cases automatically:
+
+- **`gpadmin` exists on the WEM host** (typical when WEM is co-located with WHPG): The upgrade adjusts file ownership so the `gpadmin`-run service can write logs. The service user change takes effect on `systemctl restart wem`.
+
+- **`gpadmin` is missing** (older standalone WEM host that ran as `root`): The upgrade automatically sets `WHPG_ALLOW_ROOT=1` in `wem.conf` so the service continues running as root, with instructions written to the service configuration for switching to `gpadmin` later.
+
+If you have a custom service configuration override that sets `User=root`, the service refuses to start after the upgrade. Either remove the override or set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf`.
+
 ## Upgrading Collector
 
 Run these commands from the WarehousePG coordinator.
@@ -56,7 +82,7 @@ Run these commands from the WarehousePG coordinator.
 1. Redeploy the updated Collector service across all hosts:
 
     ```bash
-    cd /var/lib/whpg-observability/
+    cd /var/lib/whpg-observability-collector/
     ./deploy-observability
     ```
 
@@ -64,30 +90,21 @@ Run these commands from the WarehousePG coordinator.
 
 Run these commands on the WEM host:
 
-1. Download the new WEM package from the EDB repository:
+1. Configure the EDB repository:
 
     ```bash
     export EDB_SUBSCRIPTION_TOKEN=<your-token>
     export EDB_REPO=gpsupp
     curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
-    sudo dnf download whpg-enterprise-manager
     ```
 
-1. Install the new WEM package:
+1. Upgrade the WEM package:
 
     ```bash
-    sudo dnf upgrade whpg-enterprise-manager*.rpm
+    sudo dnf upgrade whpg-enterprise-manager
     ```
 
-    !!! Note "Upgrading to 1.2: service identity change"
-
-        WEM 1.2 changes the service identity from `root` to `gpadmin`. The upgrade handles both common cases automatically:
-
-        - **`gpadmin` exists on the WEM host** (typical when WEM is co-located with WHPG): The upgrade adjusts file ownership so the `gpadmin`-run service can write logs. The service user change takes effect on `systemctl restart wem`.
-
-        - **`gpadmin` is missing** (older standalone WEM host that ran as `root`): The upgrade automatically sets `WHPG_ALLOW_ROOT=1` in `wem.conf` so the service continues running as root, with instructions written to the service configuration for switching to `gpadmin` later.
-
-        If you have a custom service configuration override that sets `User=root`, the service refuses to start after the upgrade. Either remove the override or set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf`.
+    See [Before you upgrade](#before-you-upgrade) for version-specific changes that affect this step.
 
 1. Restart the WEM service to apply the update:
 
@@ -95,4 +112,16 @@ Run these commands on the WEM host:
     systemctl restart wem
     ```
 
-WEM 1.2 introduces an optional **remote write receiver** that allows WEM to accept inbound metrics from Grafana Alloy or any Prometheus-compatible client via a `POST /write` endpoint. This feature is disabled by default and requires explicit configuration to enable. See [Remote write receiver (optional)](wem#remote-write-receiver-optional) in the Configuring WEM section for details.
+1. Clear your browser cache or open WEM in a new browser session. After an upgrade, stale session data can cause a CSRF token error on first login.
+
+WEM 1.2 introduces an optional **remote write receiver** that allows WEM to accept inbound metrics from Grafana Alloy or any Prometheus-compatible client via a `POST /api/v1/write` endpoint. This feature is disabled by default and requires explicit configuration to enable. See [Remote write receiver (optional)](wem#remote-write-receiver-optional) in the Configuring WEM section for details.
+
+Upgrading `whpg-enterprise-manager` also upgrades its bundled dependencies.
+
+## Installing the host agent
+
+The `acp-host-agent` service is new in WEM 1.3. If you're upgrading from an earlier version, install it on the coordinator and standby coordinator hosts. See [Installing the host agent](host-agent) for the full procedure.
+
+## Next steps
+
+Your upgrade is complete. See [Getting started with WEM](../get-started).

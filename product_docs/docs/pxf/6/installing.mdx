@@ -1,73 +1,33 @@
 ---
-# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
-# Changes made here may be overwritten. Prefer making changes in the source repo instead.
-# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
-#
-# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
-# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
-# reach out to the docs team to discuss.
-
 title: Installing PXF for WarehousePG
 navTitle: Installing
-originalFilePath: https://github.com/warehouse-pg/whpg-docs/blob/main/docs/pxf/6x/installing.md
-description: >-
-  Learn how to install the WarehousePG Platform Extension Framework (PXF)
-  package across your WarehousePG cluster.
-editTarget: originalFilePath
-
+description: Learn how to install the WarehousePG Platform Extension Framework (PXF) package across your WarehousePG cluster.
+directoryDefaults:
+  displayBanner: ''
 ---
 
-Build `whpg-pxf` from source, then distribute the build to every host in your WarehousePG (WHPG) cluster, including the coordinator, standby coordinator, and all segment hosts.
+Install PXF on every host in your WarehousePG (WHPG) cluster, including the coordinator, standby coordinator, and all segment hosts.
 
 ## Prerequisites
 
--   **Build host:** GCC, `make`, `unzip`, a cURL development package (`libcurl-devel` on RHEL; use a version from source instead if you're on an older OS whose package only provides cURL 7.19), [Go](https://go.dev/doc/install) 1.9 or later, and JDK 8 or 11. Building directly on the WarehousePG coordinator avoids a cross-compile step, since it's already running the same OS as your segment hosts.
--   **Every host in the cluster:** JDK 8 or 11 to run. The PXF service is a Java process that runs on every host, not only the one you build on.
--   WarehousePG installed on every host in the cluster, running on RHEL 7, 8, or 9.
+- WarehousePG installed on every host in the cluster, running on RHEL 7 (WHPG 6.x only), 8, or 9.
+- Java 8 or 11 installed on every host in the cluster.
 
-## Building from source
+## Installing PXF
 
-Build PXF on the coordinator, from the `release-6.x` branch, which matches WHPG 6.x.
+Install the PXF package on the coordinator, standby coordinator, and all segment hosts. Run these steps as `gpadmin` on the coordinator.
 
-1.  Clone the repository and check out the `release-6.x` branch:
-
-    ```bash
-    git clone https://github.com/warehouse-pg/whpg-pxf.git
-    cd whpg-pxf
-    git checkout release-6.x
-    ```
-
-2.  Set `JAVA_HOME`, and source your WarehousePG environment so the build can find it:
+1. On the coordinator, download the package from the EDB repository:
 
     ```bash
-    export JAVA_HOME=<path-to-your-jdk>
-    source /usr/local/greenplum-db/greenplum_path.sh
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/gpsupp/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpg<whpg_major_version>-pxf-<version>
     ```
 
-3.  Build PXF:
+    Where `<whpg_major_version>` is your WHPG version, `6` or `7`.
 
-    ```bash
-    make
-    ```
-
-    This command compiles the PXF service, the `pxf` and `pxf cluster` CLI, and the WHPG extension, and runs PXF's unit tests.
-
-## Installing on the cluster
-
-1.  Set `GPHOME`, `PXF_HOME`, and `PXF_BASE`, then install the build locally on the coordinator:
-
-    ```bash
-    export GPHOME=/usr/local/greenplum-db
-    export PXF_HOME=/usr/local/pxf
-    export PXF_BASE=$HOME/pxf-base
-    sudo mkdir -p "$PXF_HOME"
-    sudo chown -R gpadmin:gpadmin "$GPHOME" "$PXF_HOME"
-    make install
-    ```
-
-    `make install` places the PXF service and CLI under `$PXF_HOME`, and copies the WHPG extension's control, SQL, and shared library files under `$GPHOME` on the coordinator. If you don't set `PXF_BASE`, it defaults to `PXF_HOME`, and a later PXF upgrade can delete your server configurations along with it, so always set it to a separate directory.
-
-2.  Create a file `all_hosts` listing the coordinator, standby coordinator, and all segment hosts:
+1. Create a file `all_hosts` listing the coordinator, standby coordinator, and all segment hosts:
 
     ```ini
     cdw
@@ -77,24 +37,45 @@ Build PXF on the coordinator, from the `release-6.x` branch, which matches WHPG 
     sdw3
     ```
 
-3.  Copy the built `$PXF_HOME` directory to every other host in the cluster:
+1. If you haven't already, install Java on every host. For example, to install Java 8:
 
     ```bash
-    gpsync -f all_hosts $PXF_HOME =:$PXF_HOME
+    gpssh -f all_hosts -u gpadmin -e "sudo dnf -y install java-1.8.0-openjdk-devel"
     ```
 
-4.  Set ownership of `$PXF_HOME` on every host, so `gpadmin` can run PXF:
+1. Copy the package to all hosts in the WHPG cluster, replacing `<el_version>` with your OS version:
+
+    <TabContainer syncKey="whpg-version">
+    <Tab title="WHPG 7">
 
     ```bash
-    gpssh -f all_hosts -u gpadmin -e "sudo chown -R gpadmin:gpadmin $PXF_HOME"
+    gpsync -f all_hosts edb-whpg7-pxf-<version>.<el_version>.x86_64.rpm =:/tmp/
     ```
 
-5.  Install the WHPG extension files under `$GPHOME` on every host, since `make install` only did this on the coordinator:
+    </Tab>
+    <Tab title="WHPG 6">
 
     ```bash
-    pxf cluster register
+    gpscp -f all_hosts edb-whpg6-pxf-<version>.<el_version>.x86_64.rpm =:/tmp/
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1. Install the package on all hosts:
+
+    ```bash
+    gpssh -f all_hosts -u gpadmin -e "sudo dnf install -y /tmp/edb-whpg<whpg_major_version>-pxf-<version>.<el_version>.x86_64.rpm"
+    ```
+
+    The installation creates `/usr/local/edb-whpg<whpg_major_version>-pxf`. You'll set this variable as the `$PXF_HOME` environment variable when [Configuring and starting PXF](configuring.mdx).
+
+1. Set ownership of `$PXF_HOME` on every host, so `gpadmin` can run PXF:
+
+    ```bash
+    gpssh -f all_hosts -u gpadmin -e "sudo chown -R gpadmin:gpadmin /usr/local/edb-whpg<whpg_major_version>-pxf"
     ```
 
 ## Next steps
 
-See [Configuring and starting PXF](configuring.mdx) to set up and start the PXF service across your cluster.
+See [Configuring and starting PXF](configuring.mdx) to set up and start the PXF service across your cluster. If you plan to query through `pxf_fdw` instead of `pxf://` external tables, see [Using the foreign data wrapper](foreign-data-wrapper.mdx) for its own package requirements.
