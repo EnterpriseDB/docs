@@ -103,7 +103,6 @@ PL/R is registered as an untrusted language.
 ### Uninstalling PL/R
 
 -   [Remove PL/R Support for a Database](#topic7)
--   [Uninstall R (Ubuntu)](#topic_ifv_tsf_w3b)
 
 When you remove PL/R language support from a database, the PL/R routines that you created in the database will no longer work.
 
@@ -118,19 +117,6 @@ $ psql -d testdb -c 'DROP EXTENSION plr;'
 ```
 
 The default command fails if any existing objects (such as functions) depend on the language. Specify the `CASCADE` option to also drop all dependent objects, including functions that you created with PL/R.
-
-<a id="topic_ifv_tsf_w3b"></a>
-
-#### Uninstall R (Ubuntu)
-
-For Ubuntu systems, remove R from all WarehousePG host systems. These commands remove R from an Ubuntu system.
-
-```
-$ sudo apt remove r-base
-$ sudo apt remove r-base-core
-```
-
-Removing `r-base` does not uninstall the R executable. Removing `r-base-core` uninstalls the R executable.
 
 <a id="topic9"></a>
 
