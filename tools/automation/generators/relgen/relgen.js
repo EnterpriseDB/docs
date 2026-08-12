@@ -467,10 +467,6 @@ function prepareRelnote(meta, file, note) {
     return order.indexOf(a) - order.indexOf(b);
   });
 
-  // Products whose changes originate in private repos have nothing to link to
-  // and opt out of the Addresses column entirely via meta.yml.
-  const showAddresses = meta.addresses !== false;
-
   let rnotes = {};
 
   // Highest, High, Medium, Low, Lowest - in that order
@@ -537,6 +533,10 @@ function prepareRelnote(meta, file, note) {
   for (let type of types) {
     appendFileSync(rlout, `## ${titles(type)}`);
     appendFileSync(rlout, "\n\n");
+    // Show the Addresses column only if some note in this section actually
+    // has a value there, rather than carrying an empty column when nothing
+    // in this release addresses an issue, PR, or ticket.
+    const showAddresses = rnotes[type].some((note) => note.addresses);
     let headings = "";
     if (meta.components !== undefined) {
       headings += `<th>Component</th><th>Version</th>`;

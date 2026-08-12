@@ -51,7 +51,6 @@ columns: # defines the index page columns by 0 based column number
   label: "PGD Proxy" # Column heading
   key: $pgdproxy # Taken from the components.pgdproxy value in the release note yaml
 components: [ "BDR", "PGD CLI", "PGD Proxy", "Utilities" ] # List of valid components for product
-addresses: true # Optional, defaults to true. Set to false to drop the Addresses column - use this when the product's changes come from private repos and there is nothing publicly linkable.
 intro: |
   Introduction to the release notes. Supports Markdown over multiple lines.
 precursor: # An optiona; list of preceding releases which already have release notes. Required if there are preceding releases to be included. Will be appended to the table and navigation. If component fields are in use, they are required on each precursor entry too.
