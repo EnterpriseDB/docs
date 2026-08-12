@@ -1,0 +1,51 @@
+---
+title: Threading limits
+navTitle: Threading limits
+description: Control the CPU thread pools AIDB uses for local model inference and async network/volume I/O, to cap resource usage on shared or resource-constrained hosts.
+---
+
+AIDB runs local model inference and network/volume I/O on internal thread pools that, by default, size themselves from the number of CPUs available on the host. On a database server shared with other workloads, or one that's resource-constrained (for example, a small container), an unbounded thread pool can consume more CPU than you want to give it.
+
+Two parameters cap these thread pools independently, depending on which kind of work you need to limit.
+
+## Local model inference threads
+
+[`aidb.max_threads`](configure#aidbmax_threads) caps the CPU thread pool AIDB uses for local model inference — both runtimes: Candle (`bert_local`, `clip_local`, `t5_local`, `llama_instruct_local`) and llama.cpp (`llamacpp_generate`, `llamacpp_embeddings`). See [Local models](../integrating-models/integrated-models) for the full list of local providers.
+
+More threads generally means faster inference, at the cost of higher CPU usage. On a host running many concurrent pipelines, or one with a small CPU allocation, an unbounded pool can starve other backends of CPU time.
+
+The default, `0`, uses half of the available CPUs. Set a specific number to cap it:
+
+```sql
+SET aidb.max_threads = 4;
+```
+
+## Async I/O threads
+
+[`aidb.max_io_threads`](configure#aidbmax_io_threads) caps AIDB's async I/O thread pools — used for calling remote model providers over HTTP (OpenAI-compatible endpoints, NVIDIA NIM, Gemini, and OpenRouter) and for volume/object-store I/O against PGFS-backed volumes.
+
+This is a separate resource from local model inference: it governs network and file I/O concurrency, not CPU-bound computation. A pipeline with many concurrent external-API calls, or a volume scan touching many objects at once, can open more concurrent I/O than you want on a host with limited network bandwidth or file descriptors.
+
+The default, `0`, falls back to the `TOKIO_WORKER_THREADS` environment variable if set, or otherwise to one thread per CPU (the underlying Tokio runtime's own default). Set a specific number to cap it:
+
+```sql
+SET aidb.max_io_threads = 4;
+```
+
+## How to apply a change
+
+Both parameters accept the same three ways to set them:
+
+- **Per session**, with `SET` — applies immediately, to that backend only. Useful for testing a limit before rolling it out.
+- **Per connection**, with `-c aidb.max_threads=4` on the connection string or in `PGOPTIONS`.
+- **Instance-wide**, with `ALTER SYSTEM SET aidb.max_threads = 4;` followed by `SELECT pg_reload_conf();`, or by editing `postgresql.conf` directly and reloading (`SIGHUP`). This propagates to every backend and background worker without a restart.
+
+For example, to cap both instance-wide on a shared host:
+
+```sql
+ALTER SYSTEM SET aidb.max_threads = 4;
+ALTER SYSTEM SET aidb.max_io_threads = 4;
+SELECT pg_reload_conf();
+```
+
+See [Threading limits](configure#threading-limits) for the parameter reference (type, default, range).

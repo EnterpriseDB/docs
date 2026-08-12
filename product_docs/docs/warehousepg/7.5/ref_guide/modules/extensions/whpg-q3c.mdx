@@ -1,0 +1,128 @@
+---
+title: whpg-q3c
+displayBanner: ''
+description: Learn how to use the whpg-q3c extension for spherical indexing of astronomical catalogs in WarehousePG.
+---
+
+The `whpg-q3c` module provides spherical indexing for large astronomical catalogs in WarehousePG (WHPG). It supports fast circular, elliptical, and polygonal searches on the sky, as well as fast cross-matches between catalogs, using the Q3C (Quad Tree Cube) scheme.
+
+Q3C maps a cube inscribed in the sphere to a quad tree constructed on each face of the cube. The scheme converts two-dimensional sky coordinates into a single integer pixel identifier called an `ipix`, which `q3c` indexes with a standard btree index. Throughout the `q3c` functions, angles (right ascension, declination, and distances) are in degrees, proper motions are in milliarcseconds per year, and epochs are in years, for example, `2000.5`.
+
+The WarehousePG `whpg-q3c` module is equivalent to version 2.0.3 of the [q3c extension](https://github.com/segasai/q3c) used with PostgreSQL. No WarehousePG or massively parallel processing (MPP)-specific considerations apply to the module.
+
+## Downloading, installing, and loading the extension
+
+Refer to [Downloading and installing an extension](./#downloading-and-installing-an-extension) for installation and setup instructions. The package name is `edb-whpg7-q3c`.
+
+Once installed, register the extension in each database where you want to use it:
+
+```sql
+CREATE EXTENSION q3c;
+```
+
+If upgrading from a previous version, download and install the new package, then update the extension in each database where it's registered:
+
+```sql
+ALTER EXTENSION q3c UPDATE TO '2.0.3';
+```
+
+Verify the installed version:
+
+```sql
+SELECT q3c_version();
+```
+
+The `whpg-q3c` module installs a set of functions, all prefixed with `q3c_`, including index-aware search and cross-match functions, distance and coordinate-conversion functions, and `q3c_version()`. Refer to the [q3c functions reference](https://github.com/segasai/q3c#q3c-functions) for the full list of functions and their arguments.
+
+
+## Preparing a table for whpg-q3c
+
+Before running `whpg-q3c` searches, prepare tables with `ra` and `dec` columns (right ascension and declination, in degrees). For example:
+
+1.  Create `table1` and `table2`:
+
+    ```sql
+    CREATE TABLE table1 (
+        ra    double precision,
+        dec   double precision,
+        epoch double precision,
+        pmra  double precision,
+        pmdec double precision
+    );
+
+    CREATE TABLE table2 (
+        id    serial PRIMARY KEY,
+        ra    double precision,
+        dec   double precision,
+        epoch double precision
+    );
+    ```
+
+2.  Insert some data:
+
+    ```sql
+    INSERT INTO table1 (ra, dec, epoch, pmra, pmdec) VALUES
+        (10.6847, 41.2687, 2000.0, 5.0, -3.0);
+
+    INSERT INTO table2 (ra, dec, epoch) VALUES
+        (10.685,  41.269,  2024.5),
+        (83.822,  -5.391,  2024.5),
+        (56.75,   24.117,  2024.5);
+    ```
+
+1.  Create a spatial index on the larger table:
+
+    ```sql
+    CREATE INDEX ON table2 (q3c_ang2ipix(ra, dec));
+    ```
+
+2.  Cluster the table on the new index. Clustering orders the data on disk by the `q3c` spatial index value and improves query performance on large tables. Clustering can take hours on large datasets, so skip this step if you already loaded the data in spherical-zone order.
+
+    ```sql
+    CLUSTER table2_q3c_ang2ipix_idx ON table2;
+    ```
+
+3.  Analyze the table:
+
+    ```sql
+    ANALYZE table2;
+    ```
+
+## Using whpg-q3c
+
+Use `whpg-q3c` to run cone searches, cross-match catalogs, and account for proper motion in `table1` and `table2` from [Preparing a table for whpg-q3c](#preparing-a-table-for-whpg-q3c).
+
+### Running a cone search
+
+Query all objects within 0.1 degrees of `(ra, dec) = (10.6847, 41.2687)`:
+
+```sql
+SELECT * FROM table2 WHERE q3c_radial_query(ra, dec, 10.6847, 41.2687, 0.1);
+```
+
+Put the table's `ra` and `dec` columns first in the argument list, and the search location after, so that `q3c` can use the index.
+
+### Cross-matching two catalogs
+
+Cross-match `table1` and `table2` by position, with a matching radius of 0.001 degrees:
+
+```sql
+SELECT * FROM table1 AS a, table2 AS b
+  WHERE q3c_join(a.ra, a.dec, b.ra, b.dec, 0.001);
+```
+
+Put the `ra, dec` columns from the indexed table (`table2`) after the `ra, dec` columns from the unindexed table, so that `q3c` can use the index. The query returns all pairs within the matching distance, not only the nearest neighbor. For nearest-neighbor lookups, use a `LATERAL` join with `q3c_join()` in the `WHERE` clause and `q3c_dist()` in the `ORDER BY` clause, limited to one row.
+
+### Accounting for proper motion
+
+Cross-match `table1` and `table2` while accounting for proper motion. `table1` has `epoch`, `pmra`, and `pmdec` columns (with the cosine of declination term included in `pmra`), `table2` has only an `epoch` column, and the maximum epoch difference between the catalogs is 30 years:
+
+```sql
+SELECT * FROM table1 AS a, table2 AS b
+  WHERE q3c_join_pm(a.ra, a.dec, a.pmra, a.pmdec, 1, a.epoch, b.ra, b.dec, b.epoch, 30, 0.001);
+```
+
+## Limitations
+
+-   Querying polygons that span an area with a diameter greater than about 25 degrees isn't supported.
+-   Polygons with more than 100 vertices aren't supported.

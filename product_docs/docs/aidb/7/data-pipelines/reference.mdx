@@ -1,7 +1,7 @@
 ---
 title: "Pipelines API reference"
 navTitle: "Reference"
-description: "Reference documentation for the EDB AI pipelines API — types, views, core functions, and configuration helpers."
+description: "Reference documentation for the EDB AI pipelines API: types, views, core functions, and configuration helpers."
 deepToC: true
 indexCards: none
 ---
@@ -116,27 +116,47 @@ Represents the current processing state of a pipeline.
 
 ```sql
 CREATE TYPE PipelineStatus AS ENUM (
-Stale         
-Processing    
-UpToDate      
-NoResults     
-Failed        
-Unknown       
-PartialErrors 
-BlockingErrors
+    'Stale',
+    'Processing',
+    'UpToDate',
+    'NoResults',
+    'Failed',
+    'Unknown',
+    'PartialErrors',
+    'BlockingErrors'
 );
 ```
 
-| Value         | Description                                                    |
-| ------------- | -------------------------------------------------------------- |
-| `Stale`       | Source data has changed and the pipeline needs to run.         |
-| `Processing`  | The pipeline is currently executing.                           |
-| `UpToDate`    | All source data has been processed successfully.               |
-| `NoResults`   | Processing completed but produced no output.                   |
-| `Failed`      | The last execution failed.                                     |
-| `PartialErrors`   | Some records failed to process; others succeeded.              |
-| `BlockingErrors`   | The pipeline fails to run.              |
-| `Unknown`     | Status cannot be determined.                                   |
+| Value            | Description                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| `Stale`          | Source data has changed and the pipeline needs to run.                                      |
+| `Processing`     | The pipeline is currently executing.                                                        |
+| `UpToDate`       | All source data has been processed successfully.                                            |
+| `NoResults`      | Processing completed but produced no output.                                                |
+| `Failed`         | The last execution failed.                                                                  |
+| `Unknown`        | Status can't be determined.                                                                 |
+| `PartialErrors`  | Some records failed with record-level errors. The pipeline is otherwise operational.        |
+| `BlockingErrors` | A pipeline-level error stopped processing. Resolve the issue, re-run, then clear the entry. |
+
+### `aidb.ErrorBlocking`
+
+Categorizes how a logged error affects pipeline processing. Two dimensions: scope (record vs pipeline) and temporality (temporary vs permanent).
+
+```sql
+CREATE TYPE ErrorBlocking AS ENUM (
+    'RecordTemporary',
+    'RecordPermanent',
+    'PipelineTemporary',
+    'PipelinePermanent'
+);
+```
+
+| Value               | Description                                                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `RecordTemporary`   | Transient record-level failure. Other records keep processing. Currently fires only for model rate-limit errors.        |
+| `RecordPermanent`   | Permanent record-level failure (for example, bad input data). Other records keep processing.                            |
+| `PipelineTemporary` | Transient pipeline-level failure (for example, network timeout, service outage). Blocks the step; may resolve on retry. |
+| `PipelinePermanent` | Permanent pipeline-level failure (for example, deleted model, invalid config). Blocks the step.                         |
 
 ### `aidb.DistanceOperator`
 
@@ -221,8 +241,8 @@ Also accessible as `aidb.pipem`. Shows current processing statistics for each pi
 | `count(source records)`    | bigint | Total number of records in the source.                                                        |
 | `count(destination records)` | bigint | Total number of records in the destination.                                                 |
 | `Status`                   | text   | Current [pipeline status](#aidbpipelinestatus).                                               |
-| `count(record errors)` | bigint | Total number of records the failed processing.                                                 |
-| `count(blocking errors)`                   | bigint   | Total number of errors that prevent the pipeline from running.                                               |
+| `count(record errors)`     | bigint | Number of record-level errors logged for this pipeline (`RecordTemporary` plus `RecordPermanent`).       |
+| `count(blocking errors)`   | bigint | Number of pipeline-level errors logged for this pipeline (`PipelineTemporary` plus `PipelinePermanent`). |
 
 #### Example
 
@@ -263,7 +283,7 @@ Creates a new pipeline with a source, up to 10 sequential processing steps, and 
 | `batch_size`               | INT                                                                | NULL       | Number of records to process per batch.                                           |
 | `background_sync_interval` | INTERVAL                                                           | NULL       | Interval between background executions. Must be between 1 second and 2 days.     |
 | `owner_role`               | TEXT                                                               | NULL       | Role to own and execute this pipeline.                                            |
-| `step_1_options`           | JSONB                                                              | NULL       | Configuration for step 1 (use the appropriate [step config helper](#pipeline-step-config-helpers)). |
+| `step_1_options`           | JSONB                                                              | NULL       | Configuration for step 1 (use the appropriate [step config helper](#pipeline-step-config-helpers)). Any step can also set `intermediate_destination` here to persist its output — see [Intermediate storage](./pipeline-steps#intermediate-storage). |
 | `step_2` … `step_10`       | [aidb.PipelineStepOperation](#aidbpipelinestepoperation)           | NULL       | Operation for steps 2–10.                                                         |
 | `step_2_options` … `step_10_options` | JSONB                                                    | NULL       | Configuration for steps 2–10.                                                     |
 
@@ -358,11 +378,230 @@ Manually triggers a pipeline to execute immediately, regardless of its `auto_pro
 SELECT aidb.run_pipeline('my_chunker');
 ```
 
+### `aidb.get_pipeline_metrics`
+
+Returns current processing statistics for a pipeline.
+
+#### Parameters
+
+| Parameter | Type | Default  | Description                   |
+| --------- | ---- | -------- | ----------------------------- |
+| `name`    | TEXT | Required | Name of the pipeline.         |
+
+#### Returns
+
+| Column                  | Type   | Description                                                                                              |
+| ----------------------- | ------ | -------------------------------------------------------------------------------------------------------- |
+| `name`                  | text   | Name of the pipeline.                                                                                    |
+| `auto_processing`       | text   | Current auto-processing mode.                                                                            |
+| `count_events`          | bigint | For table sources: number of unprocessed change events.                                                  |
+| `count_source`          | bigint | Total records in the source (for table sources).                                                         |
+| `count_known_objects`   | bigint | Total known objects (for volume sources).                                                                |
+| `last_full_run_id`      | bigint | ID of the last completed full scan (for volume sources).                                                 |
+| `count_destination`     | bigint | Total records in the destination.                                                                        |
+| `status`                | text   | Current [pipeline status](#aidbpipelinestatus).                                                          |
+| `count_errors_record`   | bigint | Number of record-level errors logged for this pipeline (`RecordTemporary` plus `RecordPermanent`).       |
+| `count_errors_pipeline` | bigint | Number of pipeline-level errors logged for this pipeline (`PipelineTemporary` plus `PipelinePermanent`). |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_pipeline_metrics('my_chunker');
+```
+
+---
+
+## Error log functions
+
+Functions in this group manage the per-pipeline error log table. See [Error log](./orchestration/error-log/) for the end-to-end workflow.
+
+### `aidb.get_error_logs`
+
+Returns rows from a pipeline's error log table, optionally filtered by source record, step, or error category. Results are ordered by `failed_at DESC, id DESC`.
+
+#### Parameters
+
+| Parameter          | Type                                     | Default  | Description                                            |
+| ------------------ | ---------------------------------------- | -------- | ------------------------------------------------------ |
+| `p_pipeline_name`  | TEXT                                     | Required | Name of the pipeline whose error log to query.         |
+| `p_source_id`      | TEXT                                     | NULL     | Filter to errors for a single source record.           |
+| `p_pipeline_step`  | SMALLINT                                 | NULL     | Filter to errors at a single pipeline step.            |
+| `p_error_category` | [aidb.ErrorBlocking](#aidberrorblocking) | NULL     | Filter to a single error category.                     |
+| `p_limit`          | INTEGER                                  | NULL     | Maximum rows to return. Must be non-negative when set. |
+| `p_offset`         | INTEGER                                  | 0        | Rows to skip. Must be non-negative.                    |
+
+Raises an exception if the pipeline doesn't exist. Returns an empty result set if the pipeline's error log table is missing (legacy pipelines created before 7.2.0 upgrade into the table automatically).
+
+#### Returns
+
+| Column           | Type                                                     | Description                                                       |
+| ---------------- | -------------------------------------------------------- | ----------------------------------------------------------------- |
+| `id`             | bigint                                                   | Error log entry ID.                                               |
+| `source_id`      | text                                                     | Source record ID. NULL for pipeline-level errors.                 |
+| `part_ids`       | bigint[]                                                 | Hierarchical part path (for example, `{0, 2}` = page 0, chunk 2). |
+| `pipeline_step`  | smallint                                                 | Step number (1 to 10) where the error occurred.                   |
+| `step_operation` | [aidb.PipelineStepOperation](#aidbpipelinestepoperation) | Operation that failed.                                            |
+| `error_message`  | text                                                     | Full error message.                                               |
+| `error_category` | [aidb.ErrorBlocking](#aidberrorblocking)                 | Error category.                                                   |
+| `failed_at`      | timestamptz                                              | When the error was first logged.                                  |
+| `retry_count`    | integer                                                  | Number of times this entry has been retried.                      |
+| `last_retry_at`  | timestamptz                                              | When the most recent retry ran. NULL until the first retry.       |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_error_logs('my_pipeline');
+
+-- Errors for a specific source record
+SELECT * FROM aidb.get_error_logs('my_pipeline', p_source_id => 'doc_42');
+
+-- Blocking errors at step 2
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_pipeline_step  => 2::SMALLINT,
+    p_error_category => 'PipelinePermanent'
+);
+```
+
+### `aidb.clear_error_logs`
+
+Deletes the specified entries from a pipeline's error log table and returns the count of rows actually removed.
+
+#### Parameters
+
+| Parameter         | Type     | Default  | Description                                                                 |
+| ----------------- | -------- | -------- | ---------------------------------------------------------------------------- |
+| `p_pipeline_name` | TEXT     | Required | Name of the pipeline whose error log to clear.                              |
+| `p_error_ids`     | BIGINT[] | Required | IDs from `aidb.get_error_logs` to remove. Missing IDs are skipped silently. |
+
+Raises an exception if the pipeline doesn't exist.
+
+#### Returns
+
+`BIGINT` — number of rows deleted.
+
+#### Example
+
+```sql
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3, 7]);
+
+-- Clear by filter via composition
+SELECT aidb.clear_error_logs(
+    'my_pipeline',
+    ARRAY(SELECT id FROM aidb.get_error_logs(
+        'my_pipeline',
+        p_pipeline_step  => 1::SMALLINT,
+        p_error_category => 'RecordPermanent'
+    ))
+);
+```
+
+### `aidb.get_error_log_summary`
+
+Returns error counts grouped by `(pipeline_step, step_operation, error_category)` for a single pipeline. One row per combination that has at least one error.
+
+#### Parameters
+
+| Parameter         | Type | Default  | Description                        |
+| ----------------- | ---- | -------- | ----------------------------------- |
+| `p_pipeline_name` | TEXT | Required | Name of the pipeline to summarize. |
+
+Raises an exception if the pipeline doesn't exist. Returns an empty result set if the pipeline's error log table is missing.
+
+#### Returns
+
+| Column             | Type                                                     | Description                            |
+| ------------------ | -------------------------------------------------------- | -------------------------------------- |
+| `pipeline_step`    | smallint                                                 | Step number.                           |
+| `step_operation`   | [aidb.PipelineStepOperation](#aidbpipelinestepoperation) | Operation at that step.                |
+| `error_category`   | [aidb.ErrorBlocking](#aidberrorblocking)                 | Error category.                        |
+| `error_count`      | bigint                                                   | Number of errors in this group.        |
+| `latest_failed_at` | timestamptz                                              | Most recent `failed_at` in this group. |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_error_log_summary('my_pipeline');
+
+-- Total error count
+SELECT sum(error_count) FROM aidb.get_error_log_summary('my_pipeline');
+```
+
+### `aidb.get_all_error_summaries`
+
+Returns the same row shape as `aidb.get_error_log_summary` with `pipeline_name` prepended, rolled up across every pipeline. Pipelines with zero errors, or whose error log table is missing, are omitted.
+
+#### Parameters
+
+None.
+
+#### Returns
+
+| Column             | Type                                                     | Description                            |
+| ------------------ | -------------------------------------------------------- | -------------------------------------- |
+| `pipeline_name`    | text                                                     | Pipeline name.                         |
+| `pipeline_step`    | smallint                                                 | Step number.                           |
+| `step_operation`   | [aidb.PipelineStepOperation](#aidbpipelinestepoperation) | Operation at that step.                |
+| `error_category`   | [aidb.ErrorBlocking](#aidberrorblocking)                 | Error category.                        |
+| `error_count`      | bigint                                                   | Number of errors in this group.        |
+| `latest_failed_at` | timestamptz                                              | Most recent `failed_at` in this group. |
+
+#### Example
+
+```sql
+SELECT pipeline_name, sum(error_count) AS total_errors
+FROM aidb.get_all_error_summaries()
+GROUP BY pipeline_name;
+```
+
+### `aidb.requeue_pipeline_errors`
+
+Introduced in 7.5.0. Deletes the specified record-level error log entries and marks their source records dirty on the pipeline's state surface. The call itself does no processing; the next normal pipeline run re-processes the requeued records. See [Requeuing failed records](./orchestration/error-log#requeuing-failed-records) for the workflow.
+
+#### Parameters
+
+| Parameter         | Type     | Default  | Description                                                            |
+| ----------------- | -------- | -------- | ---------------------------------------------------------------------- |
+| `p_pipeline_name` | TEXT     | Required | Name of the pipeline whose error log entries to requeue.               |
+| `p_error_ids`     | BIGINT[] | Required | Error log entry IDs to requeue. `NULL` or empty arrays return no rows. |
+
+Raises if the pipeline doesn't exist. Ids that are absent from the error log are reported as `not_found` rather than raising.
+
+#### Returns
+
+One row per input id, ordered by ascending `error_id`.
+
+| Column     | Type   | Description                                                       |
+| ---------- | ------ | ----------------------------------------------------------------- |
+| `error_id` | bigint | The supplied error log ID.                                        |
+| `action`   | text   | `requeued`, `skipped_pipeline_level`, or `not_found` (see below). |
+
+- `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker.
+- `skipped_pipeline_level`: entry has a NULL `source_id` and is left in place. Fix the underlying issue and re-run, or dismiss with `aidb.clear_error_logs`.
+- `not_found`: id was absent from the error log, or the pipeline has no error log table (legacy pipelines or `Empty` sources).
+
+Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks; non-overlapping id sets proceed in parallel. Requeue doesn't block `aidb.run_pipeline` or the background worker.
+
+Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline` call. On a Disabled-mode volume source, requeue sets `retry_requested_at` and emits a `NOTICE` because it can't schedule a drain; manual `aidb.run_pipeline` re-reads the whole volume.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
+__OUTPUT__
+ error_id | action
+----------+------------------------
+        1 | requeued
+        2 | requeued
+       99 | not_found
+(3 rows)
+```
+
 ---
 
 ## Pipeline step config helpers
 
-These functions return a `JSONB` configuration object for use in `step_N_options` parameters of `aidb.create_pipeline`.
+These functions return a `JSONB` configuration object for use in `step_N_options` parameters of `aidb.create_pipeline`. None of them have a parameter for `intermediate_destination` — see [Intermediate storage](./pipeline-steps#intermediate-storage) for how to add it to a step's options.
 
 ### `aidb.chunk_text_config`
 
@@ -452,7 +691,7 @@ Configures a `ParsePdf` step to extract content from PDF documents.
 | Parameter               | Type    | Default | Description                                                         |
 | ----------------------- | ------- | ------- | ------------------------------------------------------------------- |
 | `method`                | TEXT    | NULL    | Parsing method to use. If `NULL`, uses the default method.          |
-| `allow_partial_parsing` | BOOLEAN | NULL    | When `true`, returns partial results if some pages cannot be parsed.|
+| `allow_partial_parsing` | BOOLEAN | NULL    | When `true`, returns partial results if some pages can't be parsed. |
 
 #### Example
 
@@ -547,8 +786,8 @@ Configures an [HNSW](https://github.com/pgvector/pgvector?tab=readme-ov-file#hns
 | `ef_construction`  | INTEGER | NULL    | Build-time search depth (default: 64).|
 | `ef_search`        | INTEGER | NULL    | Query-time search depth.              |
 
-!!! note
-    HNSW supports a maximum of 2000 dimensions. For higher-dimensional vectors, use `aidb.vector_index_disabled_config()`.
+!!!note
+HNSW supports a maximum of 2000 dimensions. For higher-dimensional vectors, use `aidb.vector_index_disabled_config()`.
 !!!
 
 The following table shows how each `distance_operator` value maps to a pgvector ops class:
@@ -655,4 +894,26 @@ SELECT aidb.vector_index_disabled_config();
 ## Model config helpers
 
 Model config helpers have moved to the [Models reference](../reference/models#model-config-helpers) page.
+
+---
+
+## Configuration
+
+Session-settable GUCs that control AI pipeline behavior.
+
+### `aidb.pipeline_error_warnings`
+
+| Property | Value     |
+| -------- | --------- |
+| Type     | boolean   |
+| Default  | `true`    |
+| Context  | `SUSET`   |
+
+Superusers can change this setting per session, per role, per database, or in `postgresql.conf`. Other roles need an explicit `GRANT SET ON PARAMETER aidb.pipeline_error_warnings` before they can `SET` it.
+
+When enabled, each error logged to a pipeline's error log table also emits a Postgres `WARNING`. Errors persist to the log regardless of this setting. Disable to silence the warnings without affecting persistence:
+
+```sql
+SET aidb.pipeline_error_warnings = false;
+```
 

@@ -1,62 +1,39 @@
 ---
-# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
-# Changes made here may be overwritten. Prefer making changes in the source repo instead.
-# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
-#
-# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
-# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
-# reach out to the docs team to discuss.
-
 title: Installing WarehousePG Backup and Restore
 navTitle: Installing
-originalFilePath: >-
-  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/whpg-backup/installing.md
-description: >-
-  Learn how to install the gpbackup and gprestore utilities on your WarehousePG
-  cluster.
-editTarget: originalFilePath
-
+description: Learn how to install the gpbackup and gprestore utilities on your WarehousePG cluster.
 ---
 
-`whpg-backup` provides the `gpbackup` and `gprestore` utilities. Build them from source, then install the binaries on every host in your WarehousePG cluster.
+Install `whpg-backup` on all hosts in your WarehousePG cluster.
 
-## Prerequisites
+## Downloading and installing the utility
 
--   **Build host:** [Go](https://go.dev/doc/install) 1.23 or later, plus `sqlite3`. Building directly on the WarehousePG coordinator avoids a cross-compile step, since it's already running the same OS as your segment hosts. If you build on a macOS workstation instead, use `make build_linux` to cross-compile for the cluster.
--   **Every host in the cluster:** `sqlite3`. `gpbackup` splits work between the coordinator and every segment host, so the `sqlite3` runtime dependency needs to be present wherever `gpbackup`, `gprestore`, or `gpbackup_helper` runs, not just on the build host.
+1. On the coordinator, download the package from the EDB repository:
 
-## Building from source
-
-1.  Clone the repository and change into it:
+    <TabContainer syncKey="download">
+    <Tab title="RHEL 8, 9">
 
     ```bash
-    git clone https://github.com/warehouse-pg/whpg-backup.git
-    cd whpg-backup
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download whpg-backup
     ```
 
-2.  Build the `gpbackup`, `gprestore`, and `gpbackup_helper` binaries:
+    </Tab>
+    <Tab title="RHEL 7">
 
     ```bash
-    make depend
-    make build
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo yumdownloader whpg-backup
     ```
 
-    The binaries are placed in `$HOME/go/bin`. If you're cross-compiling from a macOS workstation, run `make build_linux` instead.
+    </Tab>
+    </TabContainer>
 
-:::: tip
-Add `$HOME/go/bin` to your `PATH` so you can run the binaries directly from the build host:
-
-```bash
-export PATH=$PATH:$HOME/go/bin
-```
-
-::::
-
-## Installing on the cluster
-
-1.  Confirm `sqlite3` is installed on every host in the cluster, including the coordinator, standby coordinator, and all segment hosts. It's installed by default on many platforms, but install it if it's missing.
-
-2.  On the coordinator, create a file `all_hosts` which lists all hosts in the WHPG cluster. For example:
+1. On the coordinator, create a file `all_hosts` which lists all hosts in the WHPG cluster. For example:
 
     ```ini
     cdw
@@ -66,21 +43,47 @@ export PATH=$PATH:$HOME/go/bin
     sdw3
     ```
 
-3.  Transfer the binaries to all hosts in the cluster and place them on `$PATH`, for example in `$GPHOME/bin`. Use the `gpsync` utility on WarehousePG 7, or the `gpscp` utility on WarehousePG 6:
+1. From the coordinator, transfer the package to all hosts in the cluster. Use the `gpsync` utility on WarehousePG 7, or the `gpscp` utility on WarehousePG 6:
 
-    ### WHPG 7
-
-    ```bash
-    gpsync -f all_hosts $HOME/go/bin/gpbackup $HOME/go/bin/gprestore $HOME/go/bin/gpbackup_helper =:$GPHOME/bin
-    ```
-
-    ### WHPG 6
+    <TabContainer syncKey="whpg-version">
+    <Tab title="WHPG 7">
 
     ```bash
-    gpscp -f all_hosts $HOME/go/bin/gpbackup $HOME/go/bin/gprestore $HOME/go/bin/gpbackup_helper =:$GPHOME/bin
+    gpsync -f all_hosts <whpg-backup-package-name> =:/tmp
     ```
 
-4.  Verify the installation by checking the `gpbackup` and `gprestore` versions:
+    </Tab>
+    <Tab title="WHPG 6">
+
+    ```bash
+    gpscp -f all_hosts <whpg-backup-package-name> =:/tmp
+    ```
+
+    </Tab>
+    </TabContainer>
+
+    Where `<whpg-backup-package-name>` is the name of the WarehousePG Backup package file you downloaded, for example `whpg-backup-1.33.1-WHPG-2.el8.x86_64.rpm`.
+
+1. From the coordinator, use the `gpssh` utility to install the package on all hosts:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash
+    gpssh -f all_hosts -e 'sudo dnf install -y /tmp/<whpg-backup-package-name>'
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash
+    gpssh -f all_hosts -e 'sudo yum install -y /tmp/<whpg-backup-package-name>'
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1. Verify the installation by checking the `gpbackup` and `gprestore` versions:
 
     ```bash
     gpbackup --version

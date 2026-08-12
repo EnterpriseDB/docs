@@ -88,8 +88,10 @@ async function cleanup() {
 async function checkoutVersionBranch({ latestVersionPath, version }) {
   console.log("Checking out version branch...");
   const branch = `REL-${version.replace(/\./g, "_")}`;
-  execSync(`cd ${workDir} && git checkout ${branch} && git fetch`);
-  execSync(`cd ${workDir} && git pull || git reset --hard ${branch}`);
+  execSync(
+    `cd ${workDir} && git fetch && git checkout ${branch} || git checkout PEM-NT`,
+  );
+  execSync(`cd ${workDir} && git pull || git reset --hard @{u}`);
 }
 
 async function loadPEMConfig() {

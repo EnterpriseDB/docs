@@ -6,6 +6,7 @@ redirects:
 ---
 
 This page covers how to generate SSL files for an HA PEM backend.
+See [Deciding on an SSL model](../../considerations/ssl_certs.mdx) for help choosing an SSL model.
 
 ## If using an external CA
 
@@ -13,16 +14,23 @@ This page covers how to generate SSL files for an HA PEM backend.
 
 If you have an existing process for provisioning SSL-enabled Postgres clusters,
 it is possible that these conditions are already met. 
-In this case no further action required.
+In this case no further action is required.
 
 !!!
 
 If you are using your own certificates, generate a server
 certificate and key for the each backend Postgres instance. Place the
-certificate and key for the local instance, along with the the public
-certificate of your CA, in PGDATA on each backend host. It is important
-that the CA is the same one you will use to sign client certificates for
-PEM agents, otherwise `cert` authentication will fail.
+certificate and key for the local instance, along with the public
+certificate of your CA, in PGDATA on each backend host. 
+
+Subsequent installation steps assume these files are called
+`server.crt`, `server.key`, and `root.crt` respectively. It is not
+necessary to use these names, but you must ensure that your Postgres
+configuration references the correct filenames.
+
+It is vital that the CA used here is the same one you use to sign
+client certificates for PEM agents, otherwise `cert` authentication will
+fail.
 
 Optionally, you may include a Certificate Revocation List (CRL) if one
 is available.
@@ -47,7 +55,7 @@ Ensure these steps are carried out as the `postgres` or
     each of the backend hosts.
 
     ```sh
-    openssl genrsa -out ca_key.key 2048
+    openssl genrsa -out ca_key.key 4096
 
     openssl req -x509 -new -nodes -key ca_key.key -sha256 -days 3650 \
     -out ca_certificate.crt \
@@ -61,7 +69,7 @@ Ensure these steps are carried out as the `postgres` or
     If you plan to use `verify-full` SSL mode for client connections, it is important that the common name matches the DNS name of the server.
 
     ```sh
-    openssl genrsa -out server.key 2048
+    openssl genrsa -out server.key 4096
 
     openssl req -new -key server.key -out server.csr \
         -subj "/C=.../ST=.../L=.../O=.../CN=..."
@@ -78,4 +86,76 @@ Ensure these steps are carried out as the `postgres` or
     chmod 0600 server.crt
     chmod 0600 server.key
     rm server.csr
+    ```
+
+## If using a local CA
+
+If you do not wish to use sslutils but do not have an organizational CA, you can manually configure a local CA on the PEM host
+(or elsewhere) and use that to issue certificates for PEM server and agent.
+
+!!! Note
+If your Postgres cluster has already been configured to use SSL during
+provisioning, you must follow these steps and replace the existing
+SSL certificates and keys with ones signed by the local CA to ensure that
+Postgres is able to verify client certificates and vice-versa.
+!!!
+
+1.  On the machine you wish to host the CA, generate a single certificate and key pair.
+    This will be your CA certificate and key.
+
+    ```sh
+    openssl genrsa -out ca_key.key 4096
+
+    openssl req -x509 -new -nodes -key ca_key.key -sha256 -days 3650 \
+    -out ca_certificate.crt \
+    -subj "/C=.../ST=.../L=.../O=.../CN=PEM CA"
+    ```
+    !!! Important
+    Keep the local CA key and certificate safe and secure, you need
+    it to generate client certificates for PEM agents.
+    !!!
+
+1.  On each PEM backend host, generate a server key, then generate a
+    certificate signing request (CSR). If you plan to use `verify-full`
+    SSL mode for client connections, it is important that the common
+    name matches the DNS name of the server.
+
+    ```sh
+    openssl genrsa -out server.key 4096
+
+    openssl req -new -key server.key -out server.csr \
+        -subj "/C=.../ST=.../L=.../O=.../CN=..."
+    ```
+
+1.  Copy each CSR to the local CA host and use it to generate a server
+    certificate.
+
+    ```sh
+    openssl x509 -req -in server.csr -CA ca_certificate.crt -CAkey ca_key.key \
+        -CAcreateserial -out server.crt -days 3650 -sha256
+    ```
+    
+    You may now delete the CSR from the PEM host if you wish.
+
+1.  Copy each generated server certificate to the PEM host from which
+    its CSR originated. Place both the server certificate and the server
+    key in PGDATA.
+
+1.  Copy the local CA public certificate (`ca_certificate.crt`) to each 
+    PEM host and place it in PGDATA, then rename it to `root.crt`
+
+1.  Ensure all three files are owned by the Postgres OS user (`postgres` or `enterprisedb`)
+    and the group of the same name.
+    ```sh
+    chown <user>:<group> root.crt
+    chown <user>:<group> server.crt
+    chown <user>:<group> server.key
+    rm server.csr
+    ```
+
+1.  Set the permissions of the key and certificate files.
+    ```sh
+    chmod 0600 root.crt
+    chmod 0600 server.crt
+    chmod 0600 server.key
     ```
