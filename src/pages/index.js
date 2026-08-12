@@ -192,12 +192,16 @@ const Page = () => {
               <BannerCardLink to="/supported-open-source/warehousepg/">
                 WarehousePG
               </BannerCardLink>
+
+              <BannerCardLink to="/clickhouse/latest/">
+                ClickHouse
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="Vector Engine"
-              to="/edb-postgres-ai/vector-engine"
+              headingText="Agentic AI"
+              to="/edb-postgres-ai/agentic-ai"
             >
               <BannerCardLink to="/aidb/latest">
                 AI Database (AIDB)
@@ -205,11 +209,8 @@ const Page = () => {
               <BannerCardLink to="/pg_extensions/pgvector">
                 pgvector
               </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/vectorchord">
-                VectorChord
-              </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/vectorchord_bm25">
-                VectorChord-BM25
+              <BannerCardLink to="/agent-governance/latest">
+                Agent Governance
               </BannerCardLink>
             </BannerSubCard>
 
@@ -507,14 +508,6 @@ const Page = () => {
               pgvector
             </BannerWideLink>
 
-            <BannerWideLink to="/pg_extensions/vectorchord">
-              VectorChord
-            </BannerWideLink>
-
-            <BannerWideLink to="/pg_extensions/vectorchord_bm25">
-              VectorChord-bm25
-            </BannerWideLink>
-
             <BannerWideLink to="/pg_extensions/pg_anonymizer">
               pg_anonymizer
             </BannerWideLink>
@@ -557,6 +550,10 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/sqlprofiler">
               SQL Profiler
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/set_user">
+              set_user
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/otel">EDB OTEL</BannerWideLink>
@@ -607,77 +604,6 @@ const Page = () => {
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
-            <BannerDivider headingText="Backup" />
-            <BannerWideLink
-              to="/partner_docs/CohesityDataProtectforPostgreSQL"
-              className="col-3"
-            >
-              Cohesity DataProtect for PostgreSQL
-            </BannerWideLink>
-            <BannerWideLink
-              to="/partner_docs/CommvaultBackupandRecovery"
-              className="col-3"
-            >
-              Commvault Backup &amp; Recovery
-            </BannerWideLink>
-            <BannerWideLink
-              to="/partner_docs/RepostorDataProtectorforPostgreSQL"
-              className="col-3"
-            >
-              Repostor Data Protector for PostgresSQL
-            </BannerWideLink>
-            <BannerWideLink to="/partner_docs/KastenbyVeeam" className="col-3">
-              Kasten by Veeam for Kasten K10
-            </BannerWideLink>
-            <BannerWideLink
-              to="/partner_docs/VeritasNetBackupforPostgreSQL"
-              className="col-3"
-            >
-              Veritas NetBackup for PostgreSQL
-            </BannerWideLink>
-
-            <BannerDivider headingText="Data Movement" />
-            <BannerWideLink
-              to="/partner_docs/PreciselyConnectCDC"
-              className="col-3"
-            >
-              Precisely Connect CDC
-            </BannerWideLink>
-
-            <BannerDivider headingText="Developer Tools" />
-            <BannerWideLink to="/partner_docs/DBeaverPRO" className="col-3">
-              DBeaver PRO
-            </BannerWideLink>
-            <BannerWideLink to="/partner_docs/LiquibasePro" className="col-3">
-              Liquibase Pro
-            </BannerWideLink>
-            <BannerWideLink to="/partner_docs/QuestToadEdge" className="col-3">
-              Quest Toad Edge
-            </BannerWideLink>
-            <BannerWideLink
-              to="/partner_docs/SIBVisionsVisionX"
-              className="col-3"
-            >
-              SIB Visions VisionX
-            </BannerWideLink>
-
-            <BannerDivider headingText="Security" />
-
-            <BannerWideLink to="/partner_docs/HashicorpVault" className="col-3">
-              Hashicorp Vault
-            </BannerWideLink>
-            <BannerWideLink
-              to="/partner_docs/HashicorpVaultTransitSecretsEngine"
-              className="col-3"
-            >
-              Hashicorp Vault Transit Secrets Engine
-            </BannerWideLink>
-            <BannerWideLink
-              to="/partner_docs/ImpervaDataSecurityFabric"
-              className="col-3"
-            >
-              Imperva Data Security Fabric
-            </BannerWideLink>
             <BannerWideLink
               to="/partner_docs/ThalesCipherTrustManager"
               className="col-3"
@@ -690,20 +616,7 @@ const Page = () => {
             >
               Thales CipherTrust Transparent Encryption
             </BannerWideLink>
-            <BannerDivider headingText="Other" />
-            <BannerWideLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
-              Chemaxon JChem PostgreSQL Cartridge
-            </BannerWideLink>
-            <BannerWideLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-              Esri ArcGIS Pro and Esri ArcGIS Enterprise
-            </BannerWideLink>
             <BannerWideLink to="/partner_docs/HPE">HPE</BannerWideLink>
-            <BannerWideLink to="/partner_docs/NutanixAHV">
-              Nutanix AHV
-            </BannerWideLink>
-            <BannerWideLink to="/partner_docs/PureStorageFlashArray">
-              Pure Storage FlashArray
-            </BannerWideLink>
           </BannerWideSubCard>
           <hr />
           <IndexSubNav />

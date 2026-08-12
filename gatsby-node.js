@@ -845,7 +845,11 @@ async function rewriteRedirects(pathPrefix, reporter) {
         purlRE,
         (match, product, component, destination) =>
           pathPrefix +
-          `/purl/${product}/${component ? component.replace(/\/?(?<!\*)$/, "/") : ""} ${destination}#${product}${component ? "_" + component.replace(/\/\*$/, "") : ""} 302`,
+          // NOTE: the hash built here must match the id PurlAnchor assigns (src/components/purl-anchor.js),
+          // which never has a trailing slash. Strip any trailing "/" and/or "/*" splat marker from
+          // `component` before using it in the hash, or the anchor navigation silently fails to scroll
+          // because no element in the DOM has a matching id.
+          `/purl/${product}/${component ? component.replace(/\/?(?<!\*)$/, "/") : ""} ${destination}#${product}${component ? "_" + component.replace(/\/?\*?$/, "") : ""} 302`,
       ),
     )
     .join("\n");

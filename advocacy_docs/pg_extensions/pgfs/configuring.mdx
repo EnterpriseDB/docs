@@ -72,5 +72,48 @@ The parameters required for static authentication vary by storage provider. For 
  - [Goggle Cloud Storage (GCS)](./using/gcs.mdx)
  - [Azure](./using/azure.mdx)
 
+## Network egress
 
+PGFS supports an optional outbound egress allowlist that restricts which hosts the extension is allowed to reach (for example, S3, Azure Blob, or GCS endpoints). When unset, no restriction is applied and PGFS can reach any host.
 
+| Parameter               | Type   | Default | Description                                                                                                                                                                                                |
+|-------------------------|--------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `pgfs.egress_allowlist` | string | unset   | Comma-separated list of hosts and/or CIDR ranges that PGFS is allowed to reach. When set, any outbound request to a destination not on the list is rejected before the connection is made.                  |
+| `edb.egress_allowlist`  | string | unset   | Shared fallback allowlist used by all EDB extensions when the per-extension `pgfs.egress_allowlist` is not set. Useful when PGFS and other EDB extensions (such as AIDB) share the same network policy.       |
+
+### Entry format
+
+Each comma-separated entry is one of:
+
+| Form                  | Matches                                                                                          |
+|-----------------------|--------------------------------------------------------------------------------------------------|
+| `host.example.com`    | Exact hostname match (case-insensitive).                                                         |
+| `.example.com`        | Any subdomain of `example.com` (does not match `example.com` itself).                            |
+| `203.0.113.10`        | Exact IPv4 or IPv6 literal in the destination URL.                                               |
+| `203.0.113.0/24`      | IPv4 CIDR range; matches IP literals in that range. Does not match hostnames.                    |
+| `2001:db8::/32`       | IPv6 CIDR range.                                                                                 |
+
+Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames are not resolved for matching. Redirects are re-checked against the same allowlist.
+
+### Resolution order
+
+For each outbound request, PGFS checks `pgfs.egress_allowlist` first. If it isn't set, PGFS falls back to `edb.egress_allowlist`. If neither is set, no check is applied.
+
+### Example
+
+Allow only `s3.amazonaws.com` and its subdomains:
+
+```sql
+SET pgfs.egress_allowlist = '.s3.amazonaws.com';
+
+SELECT pgfs.create_storage_location_with_foreign_table(
+    'my_s3',
+    's3://my-bucket',
+    options     => '{"endpoint": "http://forbidden.example.test:9000"}',
+    credentials => '{"access_key_id": "x", "secret_access_key": "x"}'
+);
+
+-- Reads against the storage location are rejected because the endpoint
+-- host is not on the allowlist.
+SELECT key FROM my_s3 LIMIT 1;
+```

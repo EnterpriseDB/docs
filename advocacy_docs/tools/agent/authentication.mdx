@@ -1,0 +1,136 @@
+---
+title: Authenticating to source databases
+navTitle: Authentication methods
+description: Learn how the EDB Postgres AI agent authenticates to Postgres and Oracle source databases, including password-less options such as Oracle Wallet, pgpass, and client certificates.
+deepToC: true
+---
+
+The EDB Postgres AI agent (`beacon-agent`) connects to your source database using a single connection string, the Data Source Name (DSN), set in the `dsn` parameter of your `beacon_agent.yaml` file. Authentication happens at this connection level, so the same DSN and credentials apply no matter how you use the agent — whether it's collecting monitoring metrics, ingesting schema for a migration assessment, or reporting usage data for a standalone database.
+
+By default, the DSN embeds a plaintext username and password:
+
+```shell
+DSN="<postgresql/oracle>://<user>:<password>@<host>:<port>/<database_name>"
+```
+
+If you don't want to store a password directly in the DSN or an environment variable, the agent also supports several password-less authentication methods, described below.
+
+## Password-less authentication methods
+
+### Oracle Wallet
+
+For Oracle sources, the agent supports connecting through an Oracle auto-login wallet. The wallet stores credentials for a specific connect descriptor on disk, so the agent's driver retrieves them automatically instead of reading a password from the DSN.
+
+This method requires the `orapki` and `mkstore` command-line utilities. These aren't included with the Basic or SQL\*Plus Instant Client packages — install the Oracle Instant Client **Tools** package, or use a full Oracle Client/Database installation, before continuing. See [Oracle Instant Client downloads](https://www.oracle.com/database/technologies/instant-client/downloads.html) for your platform and Oracle version.
+
+!!!note
+An Oracle wallet used this way stores credentials, and is a separate concept from an SSL/TLS wallet used to encrypt traffic. You can use a credential wallet over a plain TCP connection or a TCPS connection — encryption is controlled independently with the `ssl` DSN parameter.
+!!!
+
+1.  Create the wallet:
+
+    ```shell
+    mkdir -p /path/to/wallet
+    orapki wallet create -wallet /path/to/wallet -auto_login
+    ```
+
+1.  Add the credentials for your connect descriptor:
+
+    ```shell
+    mkstore -wrl /path/to/wallet -createCredential '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=<host>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<service_name>)))' '<user>' '<password>'
+    ```
+
+1.  Verify the credential was stored:
+
+    ```shell
+    mkstore -wrl /path/to/wallet -listCredential
+    ```
+
+1.  Grant the OS user running the agent read access to the wallet directory and files, following the principle of least privilege. Auto-login wallets rely on file system permissions rather than a wallet password for their security, so restrict access to the wallet directory accordingly. See [Creating an auto-login-only wallet](https://docs.oracle.com/en/database/oracle/oracle-database/26/dbseg/using-the-orapki-utility-to-manage-pki-elements.html#GUID-20C270E3-AC85-47F3-A1C2-D095665B7B72) in the Oracle Database Security Guide for more information.
+
+1.  Reference the wallet in your DSN instead of a password:
+
+    ```shell
+    dsn: "oracle://<user>@<host>:<port>/<service_name>?ssl=false&wallet=/path/to/wallet"
+    ```
+
+Validate the connection with `beacon-agent validate`. A successful `DSN Validation Summary: All DSN connections are valid` message confirms the agent authenticated without a password in the DSN.
+
+### Postgres: pgpass file
+
+The agent's Postgres driver supports the standard `~/.pgpass` password file. If a DSN omits the password, the driver looks it up from the pgpass file instead.
+
+1.  Create the pgpass file at `~/.pgpass` — the default location, in the home directory of the OS user running the agent. Add one line per connection, in the format `hostname:port:database:username:password`. Each field can be a literal value, or `*` to match any value. For example, use `*` for the database field to match any database on that host and port for the given user:
+
+    ```
+    <host>:<port>:*:<user>:<password>
+    ```
+
+1.  Restrict the file's permissions. Postgres client libraries ignore pgpass files that are readable by others:
+
+    ```shell
+    chmod 0600 ~/.pgpass
+    ```
+
+1.  Omit the password from the DSN, and set the `user` parameter instead:
+
+    ```shell
+    dsn: "postgresql://<host>:<port>/<database>?user=<user>&application_name=beacon-postgres-fetcher"
+    ```
+
+If you keep the pgpass file in a non-default location, set the `PGPASSFILE` environment variable to its path before running the agent.
+
+### Postgres: client certificate (x509)
+
+The agent's Postgres driver also supports certificate-based (`cert`) authentication, so the client certificate itself authenticates the connection and no password is required.
+
+1.  On the source database server, configure `pg_hba.conf` to require certificate authentication for the relevant connections:
+
+    ```
+    hostssl     all            all              0.0.0.0/0            cert
+    ```
+
+1.  Configure the server's SSL certificate paths in `postgresql.conf`:
+
+    ```
+    ssl_ca_file = 'root.crt'
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    ```
+
+1.  On the machine running the agent, provide the client certificate, key, and root certificate. Either place them at the default libpq locations (`~/.postgresql/postgresql.crt`, `~/.postgresql/postgresql.key`, and `~/.postgresql/root.crt`), or reference them explicitly in the DSN:
+
+    ```shell
+    dsn: "postgresql://<host>:<port>/<database>?user=<user>&sslrootcert=/path/to/root.crt&sslcert=/path/to/postgresql.crt&sslkey=/path/to/postgresql.key&application_name=beacon-postgres-fetcher"
+    ```
+
+    Alternatively, set the certificate paths using environment variables instead of DSN parameters:
+
+    ```shell
+    export PGSSLCERT="/path/to/postgresql.crt"
+    export PGSSLKEY="/path/to/postgresql.key"
+    export PGSSLROOTCERT="/path/to/root.crt"
+    ```
+
+See the [PostgreSQL SSL support documentation](https://www.postgresql.org/docs/current/ssl-tcp.html) for more information about generating and configuring these certificates.
+
+## Methods that require a password
+
+### Postgres LDAP
+
+Postgres LDAP authentication (`ldap` in `pg_hba.conf`) isn't password-less: the client must still supply the LDAP user's password over the connection, and Postgres doesn't allow you to combine `ldap` with certificate-based authentication on the same `pg_hba.conf` line. You can still avoid typing this password interactively by storing it in a pgpass file as described above, but the underlying authentication still depends on a password.
+
+## Not currently supported
+
+### Oracle LDAP with x509
+
+Oracle LDAP authentication combined with x509 isn't currently supported with the agent. If your environment requires this combination, contact your EDB representative.
+
+### Kerberos/GSSAPI
+
+Postgres GSSAPI authentication using a Kerberos ticket-granting ticket (TGT) doesn't fully eliminate credential management: obtaining a TGT still requires a KDC username and password (or a keytab), and TGTs are short-lived, so they need to be reacquired periodically. For this reason, the agent doesn't currently support GSSAPI as a password-less authentication path. If your organization already has a keytab-based Kerberos setup and wants to explore this option, contact your EDB representative.
+
+## Related topics
+
+-   [Defining source database connection parameters for migration](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/configuring_beacon_agent/#defining-source-database-connection-parameters)
+-   [Defining source database connection parameters for monitoring](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/#define-source-database-connection-parameters)

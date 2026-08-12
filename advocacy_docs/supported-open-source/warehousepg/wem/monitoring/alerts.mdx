@@ -5,38 +5,52 @@ description: Manage alerts to govern the incident lifecycle using the Prometheus
 deepToC: true
 ---
 
-Maintain high availability and resolve incidents quickly by using real-time infrastructure signals to drive your operations. By integrating with Prometheus Alertmanager, you can detect performance degradation or system failures before they result in downtime.
-
-!!! Warning "Alertmanager required"
-    You must set the `ALERTMANAGER_URL` in your system environment to enable the Alertmanager integration. See [Alerting](../installing/wem#alerting) in the WEM configuration for details.
-
-
-### Responding to cluster incidents
-
-Govern the incident lifecycle by using the **Alerts** panel on the left sidebar to identify, mute, and audit notifications. This proactive approach ensures that critical failures are addressed before they impact database availability.
-
-The **Total Active**, **Critical**, **Warning**, and **Alertmanager** header cards give an instant cluster-wide snapshot.
-
-- Identify and prioritize threats using the **Active Alerts** tab. The **Active Alerts** table shows each alert's **Severity**, **Alert** name, **Summary**, **Status**, and **Duration**. Address Critical failures first, such as service outages or segment failures, before investigating Warning or Info events. Use the **Actions** column to silence an alert directly from the table.
-- If you are performing a scheduled recovery or hardware upgrade, use the **Silences** tab to mute specific alerts. This functionality prevents notification fatigue and ensures your team stays focused on unexpected issues.
-- Verify notification delivery to key stakeholders by checking the **Notifications** tab. Review the exact timestamp and destination (such as Slack, Email, or PagerDuty) for every alert dispatched.
-- If an alert triggers too often or fails to trigger when expected, browse the **Alert Rules** tab. The **Configured Alert Rules** table shows each rule's **Active** status, **State**, **Severity**, **Alert Rule** name, **For** duration, **Query**, **Group**, and **Last Evaluated** time.
-- Identify recurring patterns after an incident is resolved with the **Alert History** tab. Filter by time range (Last 1 day through Last 14 days). The table shows each alert's **Severity**, **Alert** name, **Status**, **Started**, **Ended**, and **Duration**, helping you isolate intermittent failures or capacity constraints that require long-term planning.
+Maintain high availability and resolve incidents quickly by using real-time infrastructure signals to drive your operations. WEM bundles Alertmanager as a managed subprocess and enables the **Alerts** panel automatically, so you can detect performance degradation or system failures before they result in downtime without installing or configuring anything separately.
 
 ### Understanding alert sources and severity
 
 To respond effectively, you must understand where alerts originate and how they're categorized.
 
 **Supported alert sources**
-- **Canary check failures:** Triggered when automated SQL probes fail or exceed latency thresholds.
-- **Segment down events:** Triggered if a segment becomes unreachable or enters a recovery state.
-- **Resource threshold breaches:** Fired when CPU, Memory, or Disk Usage cross predefined limits.
-- **System errors:** Critical database engine events captured from the WarehousePG (WHPG) log stream.
-- **WEM outages**: Triggered if Prometheus is unable to reach the WEM service.
+- **Canary check failures:** Triggered by the automated canary checks, covering lock-check duration, transaction ID wraparound risk, active connection counts, and checks that fail outright or stop reporting.
+- **Segment down events:** Triggered if a segment becomes unreachable.
+- **Disk usage thresholds:** Fired when filesystem usage crosses a Warning (80%) or Critical (90%) threshold.
+- **Long-running queries:** Fired when a query's runtime crosses a threshold.
 
-WEM ships pre-built Prometheus rules that back these alert sources. See [Alert rules](../reference/alert-rules) for a full reference including conditions and thresholds.
+WEM ships built-in system rules that back these alert sources, evaluated by WEM itself rather than by a separate Prometheus rule file.
 
 **Severity levels**
 - **Critical:** Indicates a severe failure or a total loss of service. These require immediate attention.
 - **Warning:** Highlights performance degradation or resource pressure. Investigate these to prevent escalation.
 - **Info:** Routine informational notices regarding system changes or successful task completions.
+
+### Responding to cluster incidents
+
+Govern the incident lifecycle by using the **Alerts** panel on the left sidebar to identify, mute, and audit notifications. This proactive approach ensures that critical failures are addressed before they impact database availability.
+
+The **Total Active**, **Critical**, and **Warning** header cards give an instant cluster-wide snapshot. If Alertmanager itself becomes unreachable, an **Alertmanager Disconnected** banner appears above these cards until it recovers.
+
+- Identify and prioritize threats using the **Active Alerts** tab. The **Active Alerts** table shows each alert's **Severity**, **Alert** name, **Summary**, **Status**, and **Duration**. Address Critical failures first, such as service outages or segment failures, before investigating Warning or Info events.
+- If you are performing a scheduled recovery or hardware upgrade, use the **Silence** button under the **Actions** column to silence an alert directly from the table to mute specific alerts. Every alert you silence is displayed in the **Silences** tab. If Admin, select **Delete** on a silence to remove it before it expires, making the alert active again.
+
+### Reviewing alert history
+
+Identify recurring patterns after an incident is resolved with the **History** tab.
+
+- Filter entries by time range, or search by rule name to focus on a specific alert.
+- If Admin, use **Delete History** to remove entries you no longer need, either all history or a specific date range.
+
+### Creating and managing alert rules
+
+Alert rules fall into two categories, shown as a **Source** tag on the **Rules** tab: **System** rules ship with WEM and can't be deleted by anyone, including Admins, though Admins can still edit them. **User** rules are the ones you create yourself.
+
+- Select **New Rule**, or the edit action on an existing user rule, to open the rule editor. Toggle between **Builder** and **Raw** to switch between a guided form and directly editing the PromQL expression.
+- In the builder, select a **metric** to evaluate, a comparison **operator** (`>`, `<`, `>=`, `<=`, `==`, or `!=`), and a threshold value. Add one or more **label filters** to scope the rule to specific instances, databases, or other label values, rather than triggering on the metric cluster-wide.
+- Operators can edit or delete only the user rules they created themselves. Admins can edit or delete any user rule, regardless of who created it. Viewers can only view the rules.
+
+### Configuring notifications
+
+Edit the Alertmanager configuration file (`alertmanager.yml`) directly through the built-in editor on the **Notifications** tab to set up receivers such as Slack or email. 
+- Select **Validate** to check your edits for errors before saving, without applying them.
+- Select **Save & Reload** to write your changes to `alertmanager.yml` and reload Alertmanager so they take effect.
+- Select **Reload** to reload Alertmanager with whatever version of the file is currently on disk, without editing anything here first. Use this if the file was changed outside WEM.

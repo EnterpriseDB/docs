@@ -1,344 +1,368 @@
 #! /usr/bin/env node
 
-// parse data exported from Google Sheets to generate extension compatibility tables
+// parse extensiondata.json (structured extension metadata) to generate
+// extension compatibility tables
 
 import { promises as fs } from "fs";
 import { join } from "path";
 import { env, exit as _exit, argv as _argv } from "process";
 import parseArgs from "minimist";
+import escapeHtml from "escape-html";
+import beautify from "js-beautify";
 
 const EDBDOCS_PATH = join(env.HOME, ".edbdocs", "extensions");
 
-function processRow(currentState, row, nextRow) {
-  switch (currentState.rowState) {
-    case 0:
-      currentState.rowState = 1;
-      return;
-    case 1:
-      if (row.length == 0 || row[0] == "Notes : ") {
-        // We're done
-        currentState.done = true;
-        return;
-      }
+const PLATFORM_ORDER = [
+  "Virtual/physical server",
+  "Kubernetes",
+  "CloudService",
+];
+const PLATFORM_LABELS = {
+  "Virtual/physical server": "Virtual Machines/Physical Servers",
+  Kubernetes: "Kubernetes",
+  CloudService: "EDB Postgres® AI Hybrid Manager",
+};
+const PRODUCT_ORDER = [
+  "PostgreSQL",
+  "EDB Postgres Extended Server",
+  "EDB Postgres Advanced Server",
+];
 
-      currentState.output.push(`\n\n## ${row[0]}\n\n`);
-      currentState.output.push(
-        `<table data-source="This table was generated automatically. Do not edit it directly without first removing this attribute!" data-section="${row[0]}">\n`,
-      );
-      currentState.rowState = 2;
-      return;
-    case 2:
-      currentState.output.push(`<thead>`);
-      currentState.output.push(`<tr>`);
-      currentState.output.push(
-        `<th style="font-weight: bold; vertical-align: middle; border-left: none; border-right: none; border-top: none; border-bottom: none; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px"></th>`,
-      );
-      currentState.output.push(
-        `<th style="font-weight: bold; text-align: center; vertical-align: middle; border-left: none; border-right: none; border-top: none; border-bottom: none; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px"></th>`,
-      );
-      currentState.output.push(
-        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; vertical-align: middle; border-left: solid 1px; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[6]}</th>`,
-      );
-      currentState.output.push(
-        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[9]}</th>`,
-      );
-      currentState.output.push(
-        `<th rowspan="1" colspan="3" style="font-weight: bold; text-align: center; border-left: none; border-right: solid 1px; border-top: solid 1px; border-bottom: solid 1px; padding-left: 3px; padding-right: 3px; padding-top: 2px; padding-bottom: 2px">${row[12]}</th>`,
-      );
-      currentState.output.push(`</tr>\n`);
-      currentState.rowState = 3;
-      return false;
-    case 3:
-      currentState.output.push(`<tr>`);
-      currentState.output.push(
-        composeHeading(true, true, false, true, row[0], false),
-      );
-      currentState.output.push(
-        composeHeading(true, true, true, true, row[5], true),
-      );
-      currentState.output.push(
-        composeHeading(true, false, true, true, row[6], true),
-      );
-      currentState.output.push(
-        composeHeading(false, false, true, true, row[7], true),
-      );
-      currentState.output.push(
-        composeHeading(false, true, true, true, row[8], true),
-      );
-      currentState.output.push(
-        composeHeading(true, false, true, true, row[9], true),
-      );
-      currentState.output.push(
-        composeHeading(false, false, true, true, row[10], true),
-      );
-      currentState.output.push(
-        composeHeading(false, true, true, true, row[11], true),
-      );
-      currentState.output.push(
-        composeHeading(true, false, true, true, row[12], true),
-      );
-      currentState.output.push(
-        composeHeading(false, false, true, true, row[13], true),
-      );
-      currentState.output.push(
-        composeHeading(false, true, true, true, row[14], true),
-      );
+const CATEGORY_HEADINGS = {
+  "Open Source": "Open source extensions",
+  EDB: "EDB extensions",
+  "EDB-supported open source": "EDB supported open source extensions",
+};
 
-      currentState.output.push(`</tr>`);
-      currentState.rowState = 4;
-      return;
-    case 4:
-      if (row.length == 1) {
-        currentState.output.push(composeHeadingRow(row));
-        currentState.output.push(`</thead>`);
-        currentState.output.push(`<tbody>`);
-      } else {
-        currentState.output.push(`</thead>`);
-        currentState.output.push(`<tbody>`);
-        currentState.output.push(
-          composeRow(row, nextRow.length == 0, currentState),
-        );
-      }
-      currentState.rowState = 5;
-      return;
-    case 5:
-      if (row.length == 0) {
-        currentState.output.push(`</tbody></table>\n`);
-        currentState.rowState = 1;
-        return;
-      }
-      if (row.length == 1) {
-        currentState.output.push(composeHeadingRow(row, currentState));
-      } else {
-        currentState.output.push(
-          composeRow(row, nextRow.length == 0, currentState),
-        );
-      }
-      currentState.rowState = 5;
-      return;
-  }
+const SUB_CATEGORY_HEADINGS = {
+  contrib: "PostgreSQL Contrib Extensions/Modules",
+  "non-contrib": "PostgreSQL Non-Contrib Extensions/Modules",
+};
 
-  console.err("Fell out of state machine");
-  currentState.done = true;
-  return;
+function subCategoryHeading(subCategory) {
+  return SUB_CATEGORY_HEADINGS[subCategory] ?? subCategory;
 }
 
-function composeRow(row, lastRow, currentState) {
-  let output = [];
-  output.push("<tr>");
-  let fullName = row[0];
-  let trimmedName = fullName.trim();
-  let spaceDiff = 0;
-  while (spaceDiff < fullName.length && fullName[spaceDiff] == " ") {
-    spaceDiff++;
+function groupExtensions(extensions) {
+  const categories = new Map();
+  for (const ext of extensions) {
+    if (!categories.has(ext.category)) {
+      categories.set(ext.category, new Map());
+    }
+    const subCategories = categories.get(ext.category);
+    const subKey = ext.sub_category ?? null;
+    if (!subCategories.has(subKey)) {
+      subCategories.set(subKey, []);
+    }
+    subCategories.get(subKey).push(ext);
   }
-  if (spaceDiff == fullName.length) {
-    console.error("All spaces name found.", row, currentState);
-    process.exit(1);
-  }
-  let lookupName = trimmedName.replaceAll(" ", "_");
-  if (spaceDiff <= 1) {
-    // Root element, update state
-    currentState.lastRoot = lookupName;
-  } else {
-    lookupName = currentState.lastRoot + "." + trimmedName.replace(" ", "_");
-  }
+  return categories;
+}
+
+// CSS for the generated tables. Kept as a single stylesheet (rather than
+// inline styles per cell) and emitted once, wrapped the same way other
+// pages in this repo embed a <style> block in MDX (see e.g.
+// product_docs/docs/warehousepg/*/admin_guide/performance/mem_calc.mdx):
+// the template-literal wrapper keeps the CSS braces from being parsed as
+// JSX expressions.
+const TABLE_STYLES = `
+.ext-table {
+  border-collapse: collapse;
+}
+.ext-table thead tr {
+  border: solid 1px;
+}
+.ext-table th,
+.ext-table td {
+  padding: 2px 3px;
+  border: none;
+}
+.ext-table th {
+  font-weight: bold;
+  text-align: center;
+  vertical-align: bottom;
+}
+.ext-table td {
+  font-weight: bold;
+  text-align: center;
+}
+.ext-table td.et-unbold {
+  font-weight: normal;
+}
+.ext-table td.et-indent {
+  padding-left: 1em;
+}
+.ext-table td.et-align-left {
+  text-align: left;
+}
+.ext-table .et-bt {
+  border-top: solid 1px;
+}
+.ext-table .et-bb {
+  border-bottom: solid 1px;
+}
+.ext-table col.et-col-start {
+  border-left: solid 1px;
+}
+.ext-table col.et-col-end {
+  border-right: solid 1px;
+}
+.ext-table .et-subtitle {
+  border: 1px solid;
+  text-align: left;
+}
+.ext-table .et-notes {
+  font-style: italic;
+  font-weight: normal;
+  text-align: left;
+  padding-left: 2em;
+}
+.ext-table .et-yes,
+.ext-table .et-no {
+  margin: 0;
+  font-size: 0;
+}
+.ext-table .et-yes::before {
+  content: "✓";
+  font-size: 1rem;
+  color: green;
+}
+.ext-table .et-no::before {
+  content: "–";
+  font-size: 1rem;
+}
+`;
+
+function styleBlock() {
+  return `\n<style>\n{\`${TABLE_STYLES}\`}\n</style>\n`;
+}
+
+function classNames(...classes) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function attrString(attrs) {
+  return Object.entries(attrs ?? {})
+    .filter(
+      ([, value]) => value != undefined && value !== false && value !== "",
+    )
+    .map(([key, value]) =>
+      value === true ? key : `${key}="${escapeHtml(String(value))}"`,
+    )
+    .join(" ");
+}
+
+function el(tag, attrs, content) {
+  const attrs_ = attrString(attrs);
+  const open = attrs_ ? `<${tag} ${attrs_}>` : `<${tag}>`;
+  return `${open}${content ?? ""}</${tag}>`;
+}
+
+function voidEl(tag, attrs) {
+  const attrs_ = attrString(attrs);
+  return attrs_ ? `<${tag} ${attrs_}/>` : `<${tag}/>`;
+}
+
+// Vertical (column) borders come from <colgroup> and th/td bold+center+valign
+// come from the base .ext-table th/td rules, so only the exceptions to those
+// defaults need a class: a data row's closing bottom border and the two data
+// columns that aren't bold+centered.
+function cellClass({ bottom, unbold, alignLeft, indent }) {
+  return classNames(
+    bottom && "et-bb",
+    unbold && "et-unbold",
+    alignLeft && "et-align-left",
+    indent && "et-indent",
+  );
+}
+
+function td(opts, content) {
+  return el("td", { class: cellClass(opts) }, content);
+}
+
+function th(opts, content) {
+  return el(
+    "th",
+    { class: cellClass(opts), colspan: opts.colspan, rowspan: opts.rowspan },
+    content,
+  );
+}
+
+function headingCell(value, alwaysSplit, opts) {
+  const words = value.split(" ");
+  const display =
+    alwaysSplit || words.length > 2
+      ? words.map(escapeHtml).join("<br/>")
+      : escapeHtml(value);
+  return th(opts, display);
+}
+
+const GROUP_HEADER_ROW = el(
+  "tr",
+  {},
+  [
+    headingCell("Extension name", false, { rowspan: 2 }),
+    headingCell("Requires superuser access", true, { rowspan: 2 }),
+    ...PLATFORM_ORDER.map((platform) =>
+      th({ colspan: 3 }, escapeHtml(PLATFORM_LABELS[platform])),
+    ),
+  ].join(""),
+);
+
+const COLUMN_HEADER_ROW = el(
+  "tr",
+  {},
+  [
+    ...PLATFORM_ORDER.flatMap(() =>
+      PRODUCT_ORDER.map((product) => headingCell(product, true, {})),
+    ),
+  ].join(""),
+);
+
+function subtitleRow(heading) {
+  return el(
+    "tr",
+    {},
+    el(
+      "td",
+      { colspan: TOTAL_COLUMNS, class: "et-subtitle" },
+      escapeHtml(heading),
+    ),
+  );
+}
+
+function notesRow(notes) {
+  return el(
+    "tr",
+    {},
+    el("td", { colspan: TOTAL_COLUMNS, class: "et-notes" }, escapeHtml(notes)),
+  );
+}
+
+// extensionrefs.json keys extensions by name with spaces turned into
+// underscores, and prefixes child extensions with "parent.".
+function refKey(name) {
+  return name.trim().replaceAll(" ", "_");
+}
+
+function composeExtensionRow(ext, lastRow, unmapped) {
+  const lookupName = ext.parent_extension
+    ? `${refKey(ext.parent_extension)}.${refKey(ext.extension_name)}`
+    : refKey(ext.extension_name);
 
   let url = productToURL[lookupName];
-
   if (url == undefined) {
-    currentState.unmapped.push(lookupName);
+    unmapped.push(lookupName);
   }
-
   if (url == "undefined") {
     // This lets you not set a URL and not get nagged at
     url = undefined;
   }
 
-  if (spaceDiff > 3) {
-    trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName;
-  }
+  const nameText = escapeHtml(ext.extension_name);
+  let nameContent =
+    url != undefined ? el("a", { href: url }, nameText) : nameText;
 
-  output.push(
-    composeCell(true, false, false, true, trimmedName, lastRow, false, url),
-  );
-  output.push(composeCell(true, true, false, true, row[5], lastRow, true));
-  for (let i = 6; i < 15; i++) {
-    if (row[i] === true) {
-      output.push(
-        composeCell(
-          i == 6 || i == 9 || i == 12,
-          i == 14,
-          true,
-          true,
-          `<span style="color:green">✓</span>`,
-          lastRow,
-          true,
-        ),
-      );
-    } else if (row[i] === false) {
-      output.push(
-        composeCell(
-          i == 6 || i == 9 || i == 12,
-          i == 14,
-          true,
-          true,
-          `–`,
-          lastRow,
-          true,
-        ),
-      );
-    } else if (row[i] == "PREVIEW") {
-      output.push(
-        composeCell(
-          i == 6 || i == 9 || i == 12,
-          i == 14,
-          false,
-          true,
-          `Preview`,
-          lastRow,
-          true,
-        ),
-      );
-    } else if (row[i].toString().match(/Q[1-4] 20[0-9][0-9]/gm)) {
-      output.push(
-        composeCell(
-          i == 6 || i == 9 || i == 12,
-          i == 14,
-          false,
-          true,
-          row[i],
-          lastRow,
-          true,
-        ),
-      );
-    } else if (row[i] == "n/a" || row[i] == "") {
-      /* Hide n/a from spreadsheet as - (n/a is internal status only) */
-      output.push(
-        composeCell(
-          i == 6 || i == 9 || i == 12,
-          i == 14,
-          true,
-          true,
-          `–`,
-          lastRow,
-          true,
-        ),
-      );
-    } else {
-      console.log(`Unhandled value "${row[i]}"`);
+  const cells = [
+    td(
+      {
+        bottom: lastRow,
+        unbold: true,
+        alignLeft: true,
+        indent: !!ext.parent_extension,
+      },
+      nameContent,
+    ),
+    td({ bottom: lastRow, unbold: true }, ext.requires_superuser ? "Yes" : ""),
+  ];
+
+  for (const platform of PLATFORM_ORDER) {
+    for (const product of PRODUCT_ORDER) {
+      const value = ext.platforms[platform][product];
+      let cellValue;
+      if (value === true) {
+        cellValue = el("p", { class: "et-yes" }, "yes");
+      } else if (value === false) {
+        cellValue = el("p", { class: "et-no" }, "no");
+      } else {
+        // e.g. "n/a", or any other descriptive text from the data
+        cellValue = escapeHtml(String(value));
+      }
+
+      cells.push(td({ bottom: lastRow }, cellValue));
     }
   }
-  output.push("</tr>\n");
 
-  return output.join("");
+  if (ext.notes) {
+    return [el("tr", {}, cells.join("")), notesRow(ext.notes)];
+  }
+
+  return [el("tr", {}, cells.join(""))];
 }
 
-function composeHeadingRow(row) {
-  return `<tr><td rowspan="1" colspan="15" style="font-weight: bold; border-left: 1px solid; border-right: 1px solid; border-top: 1px solid; border-bottom: 1px ridge ; padding: 2px 3px;">${row[0]}</td></tr>\n`;
-}
+// Column groups, in display order: extension name, requires-superuser, then
+// one group of PRODUCT_ORDER.length columns per platform. Only the first
+// column of each group and the very last column of the table need a class
+// (colgroup borders draw the vertical dividers between/around the groups).
+const COLUMN_GROUP_SIZES = [
+  1,
+  1,
+  ...PLATFORM_ORDER.map(() => PRODUCT_ORDER.length),
+];
+const TOTAL_COLUMNS = COLUMN_GROUP_SIZES.reduce((sum, size) => sum + size, 0);
 
-function composeCell(
-  left,
-  right,
-  bold,
-  middleAlign,
-  value,
-  lastRow,
-  centered,
-  url,
-) {
-  var cellValue = value;
+const COL_GROUP = el(
+  "colgroup",
+  {},
+  COLUMN_GROUP_SIZES.flatMap((size, groupIndex, sizes) =>
+    Array.from({ length: size }, (_, i) => {
+      const isFirstOfGroup = i == 0;
+      const isLastColumn = groupIndex == sizes.length - 1 && i == size - 1;
+      return voidEl("col", {
+        class: classNames(
+          isFirstOfGroup && "et-col-start",
+          isLastColumn && "et-col-end",
+        ),
+      });
+    }),
+  ).join(""),
+);
 
-  if (url != undefined) {
-    cellValue = `<a href="${url}">${value}</a>`;
-  }
+function buildSection(category, subCategories, unmapped) {
+  const heading = CATEGORY_HEADINGS[category] ?? category;
 
-  return `<td style="${_composeCell(
-    left,
-    right,
-    bold,
-    middleAlign,
-    false,
-    lastRow,
-    centered,
-    false,
-  )}">${cellValue}</td>`;
-}
+  const bodyRows = [];
+  const subCategoryEntries = [...subCategories.entries()];
+  subCategoryEntries.forEach(([subCategory, exts], subCategoryIndex) => {
+    if (subCategory) {
+      bodyRows.push(subtitleRow(subCategoryHeading(subCategory)));
+    }
+    const isLastSubCategory = subCategoryIndex == subCategoryEntries.length - 1;
+    exts.forEach((ext, index) => {
+      bodyRows.push(
+        ...composeExtensionRow(
+          ext,
+          isLastSubCategory && index == exts.length - 1,
+          unmapped,
+        ),
+      );
+    });
+  });
 
-function composeHeading(left, right, bold, middleAlign, value, alwaysSplit) {
-  let splitValue = value.split(" ");
-  let displayValue = value;
-  if (alwaysSplit || splitValue.length > 2) {
-    displayValue = splitValue.join("<br/>");
-  }
-
-  return `<th style="${_composeCell(
-    left,
-    right,
-    bold,
-    middleAlign,
-    true,
-    true,
-    true,
-    true,
-  )}">${displayValue}</th>`;
-}
-
-function _composeCell(
-  left,
-  right,
-  bold,
-  middleAlign,
-  top,
-  bottom,
-  centered,
-  bottomAlign,
-) {
-  let options = [];
-
-  if (bold) {
-    options.push("font-weight: bold;");
-  }
-  if (left) {
-    options.push("border-left: solid 1px;");
-  } else {
-    options.push("border-left: none;");
-  }
-  if (right) {
-    options.push("border-right: solid 1px;");
-  } else {
-    options.push("border-right: none;");
-  }
-  if (middleAlign) {
-    options.push("middle-align: middle;");
-  }
-
-  if (top) {
-    options.push("border-top: solid 1px;");
-  } else {
-    options.push("border-top: none;");
-  }
-
-  if (bottom) {
-    options.push("border-bottom: solid 1px;");
-  } else {
-    options.push("border-bottom: none;");
-  }
-
-  if (centered) {
-    options.push("text-align: center;");
-  }
-
-  if (bottomAlign) {
-    options.push("vertical-align: bottom;");
-  }
-
-  options.push(
-    "padding-left: 3px; padding-right: 3px;padding-top: 2px; padding-bottom: 2px; ",
+  const table = el(
+    "table",
+    {
+      class: "ext-table",
+      "data-source":
+        "This table was generated automatically. Do not edit it directly without first removing this attribute!",
+      "data-section": heading,
+    },
+    COL_GROUP +
+      el("thead", {}, GROUP_HEADER_ROW + COLUMN_HEADER_ROW) +
+      el("tbody", {}, bodyRows.join("")),
   );
 
-  return options.join(" ");
+  return `\n\n## ${heading}\n\n${beautify.html(table, { indent_size: 2, wrap_line_length: 0 })}\n`;
 }
 
 var productToURL = {};
@@ -367,43 +391,31 @@ async function processExtensions() {
 
   productToURL = JSON.parse(extensionsContent);
 
-  const rows = JSON.parse(extensionsDataContent).map((row) => {
-    // trim trailing empty cells
-    // this will reduce empty rows to empty arrays, and "subtitle" rows
-    // to a single cell (which is what the rest of the logic expects)
-    while (row.length > 0 && row[row.length - 1].toString().trim() === "") {
-      row.pop();
-    }
-    return row;
-  });
+  const extensions = JSON.parse(extensionsDataContent);
 
-  if (!rows || rows.length === 0) {
+  if (!extensions || extensions.length === 0) {
     console.log("No data found.");
     return;
   }
 
-  var currentState = {
-    done: false,
-    output: [templateFileContent],
-    rowState: 0,
-    lastRoot: "",
-    unmapped: [],
-  };
+  const unmapped = [];
+  const categories = groupExtensions(extensions);
 
-  for (var i = 0; i < rows.length; i++) {
-    processRow(currentState, rows[i], rows[i + 1]);
-    if (currentState.done) {
-      break;
-    }
+  const sections = [];
+  for (const [category, subCategories] of categories) {
+    sections.push(buildSection(category, subCategories, unmapped));
   }
 
   const outputFile = join(argv.source, "index.mdx");
 
-  await fs.writeFile(outputFile, currentState.output.join(""));
+  await fs.writeFile(
+    outputFile,
+    [templateFileContent, styleBlock(), ...sections].join(""),
+  );
 
-  if (currentState.unmapped.length > 0) {
+  if (unmapped.length > 0) {
     console.log("Unmapped products - add to extensionrefs.json");
-    currentState.unmapped.forEach((element) => {
+    unmapped.forEach((element) => {
       console.log(`"${element}":"https:",`);
     });
   }

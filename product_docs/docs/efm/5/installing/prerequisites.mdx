@@ -75,6 +75,8 @@ If a primary node restarts, Failover Manager might detect the database is down o
 
 To prevent this condition, ensure that the Failover Manager agent auto starts before the database server. The agent starts in idle mode and checks to see if there's already a primary in the cluster. If there's a primary node, the agent verifies that a `recovery.conf` or `standby.signal` file exists. If neither file exists, the agent creates the `recovery.conf` file.
 
+To instruct the Failover Manager agent to attempt to start monitoring the database after the database server has started, use the [auto.resume.startup.period](../04_configuring_efm/01_cluster_properties/#auto_resume_startup_period) property.
+
 ## Ensure communication through firewalls
 
 If a Linux firewall (that is, iptables) is enabled on the host of a Failover Manager node, you might need to add rules to the firewall configuration that allow tcp communication between the Failover Manager processes in the cluster. For example:
@@ -99,11 +101,11 @@ The database user specified by the `db.user` property in the `efm.properties` fi
  `pg_wal_replay_pause()`
 
 
-If the `reconfigure.num.sync` or `reconfigure.sync.primary` property is set to `true`, then the db.user requires `pg_read_all_stats` privilege and permissions to run `pg_reload_conf()`.
+If the `reconfigure.num.sync` or `reconfigure.sync.primary` property is set to `true`, then the `db.user` requires pg_read_all_stats privilege and permissions to run `pg_reload_conf()`.
 
 For detailed information about each of these functions, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/index.html).
 
-If the `update.physical.slots.period` property is used, then the db.user requires the `REPLICATION` privilege. A database superuser can provide the permissions needed:
+If the `update.physical.slots.period` property is used, then the db.user requires the REPLICATION privilege. A database superuser can provide the permissions needed:
 
 ```sql
 ALTER USER <user_name> REPLICATION;
@@ -115,4 +117,23 @@ The user must also have permissions to read the values of configuration variable
 GRANT pg_read_all_settings TO <user_name>;
 ```
 
-For more information about `pg_read_all_settings`, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/default-roles.html).
+For more information about pg_read_all_settings, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/default-roles.html).
+
+If `auto.rewind` is set to `true`, then the `db.user` requires the pg_checkpoint role to be granted, as the Failover Manager agent will issue a `CHECKPOINT` command prior to executing `pg_rewind`.
+
+The required privileges are summarized in this table:
+
+Privilege   | Object                 | Condition
+------------|------------------------|----------
+EXECUTE     | `pg_current_wal_lsn()` | Always required
+EXECUTE     | `pg_last_wal_replay_lsn()` | Always required
+EXECUTE     | `pg_wal_replay_resume()` | Always required
+EXECUTE     | `pg_wal_replay_pause()` | Always required
+EXECUTE     | `pg_reload_conf()` | When `reconfigure.num.sync` or `reconfigure.sync.primary` is `true`
+REPLICATION |  | When the `update.physical.slots.period` property is in effect (non-zero value)
+
+Role                  | Condition
+----------------------|----------
+pg_read_all_settings  | Always required
+pg_read_all_stats     | When `reconfigure.num.sync` or `reconfigure.sync.primary` is `true`
+pg_checkpoint         | When `auto.rewind` is set to `true`
