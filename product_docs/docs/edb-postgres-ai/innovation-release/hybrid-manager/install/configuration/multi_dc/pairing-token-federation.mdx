@@ -1,0 +1,225 @@
+---
+title: Configuring a multi-DC deployment without shared object storage
+navTitle: Multi-DC with pairing tokens
+description: Link Hybrid Manager installations across data centers, and across cloud providers, using federation pairing tokens instead of a shared object storage bucket.
+deepToC: true
+---
+
+Hybrid Manager offers two ways to establish trust between the installations in a multi-DC deployment:
+
+- **Shared object storage.** All locations write to the same bucket, and each installation publishes its trust information there. See [Configuring a multi-DC deployment](multi-dc). This requires all locations to be on the same provider, because they must all reach the same bucket.
+
+- **Federation pairing tokens.** Each location keeps its own object storage. You mint a token on the primary and use it to join each secondary, which exchanges trust information directly between the installations. Because no bucket is shared, the locations can be in different clouds.
+
+This page covers the pairing-token method. Use it when you want locations in different clouds, or when a single bucket reachable from every location isn't acceptable for network or compliance reasons.
+
+## Choosing between the two methods
+
+| | Shared object storage | Federation pairing tokens |
+|---|---|---|
+| Object storage | One bucket, reachable from and shared by every location | Each location keeps its own |
+| Cloud providers | All locations on the same provider | Locations may be in different clouds |
+| How trust is established | Automatically, through the shared bucket | Explicitly, by minting a token and joining with it |
+| Peer domains in the CR | Declared in `clusterGroups` | Derived from the pairings |
+
+Both methods are fully supported, and a deployment uses one or the other. You choose at install time by deciding whether the locations share a bucket.
+
+## Before you start
+
+Make yourself familiar with the [multi-DC overview](overview), which covers the concepts, topologies, and the roles a location can take.
+
+## Prerequisites
+
+### Versions
+
+- HM operator 2.1 or later on every location. Earlier operator versions don't include the federation resources this method relies on.
+
+- A version of `edbctl` that provides the `edbctl federation` commands.
+
+<!-- TODO(UPM-111313): replace the line above with a concrete minimum version, for example
+     "edbctl 1.9.0 or later", once UPM-129829 un-hides the federation command group and that
+     build ships. The commands are present in released 1.8.0 and 1.8.1 but are hidden, so they
+     don't appear in `edbctl --help` and can't be referred to as publicly available yet. -->
+
+### One object store per location
+
+Each location keeps the dedicated object storage that a standard, single-location HM installation already requires. Unlike the shared-storage method, you don't align the `edb-object-storage` secret across locations — each location uses its own.
+
+Keep `beacon_location_id` unique per location. It identifies the location in the HM console and API, so it must be distinct regardless of how storage is arranged.
+
+### Network connectivity
+
+The pairing exchange, the SPIRE bundle endpoint, and the telemetry store endpoints are all addressed by each installation's **portal hostname** (`portal_domain_name`). Every location must therefore be able to resolve and reach the portal hostname of the locations it federates with:
+
+| From | To | Port | Used for |
+|---|---|---|---|
+| Each secondary | Primary portal hostname | 443/TCP | The pairing exchange when you run `edbctl federation join` |
+| Each location | Peer portal hostname | 8444/TCP | SPIRE bundle endpoint, for ongoing trust-bundle refresh |
+| Each secondary | Primary portal hostname | 9445/TCP | Beacon gRPC, so the location registers and heartbeats |
+
+!!!important
+Name resolution matters as much as reachability. Because these endpoints are addressed by portal hostname rather than by IP, each cluster must resolve its peers' portal hostnames to an address it can actually reach.
+
+If your portals are published through private load balancers, a public DNS record either won't exist or will resolve to an address the peer cluster can't route to. In that case, provide private DNS in each cluster that resolves every peer's portal hostname to that peer's private load balancer address.
+!!!
+
+### Certificates
+
+`edbctl federation create-token` pins the primary's portal certificate into the token by default, and the joining secondary verifies against that pin. This works with the default self-signed portal certificate, so no extra configuration is needed.
+
+If your portals use publicly trusted certificates and you would rather validate through the system trust store, pass `--no-pin` when creating the token. Don't use `--no-pin` with self-signed portal certificates.
+
+## Install the locations
+
+Install HM once per location, following [Phase 5: Installing Hybrid Manager](../../install_guide/install_hm), with two additions to each `HybridControlPlane` CR.
+
+Set the role on every location. The primary hosts the console and manages the deployment; each secondary is a data-only location.
+
+In `primary.yaml`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  clusterGroups:
+    role: primary
+  # ... your other spec fields
+```
+
+In each `secondary.yaml`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  clusterGroups:
+    role: secondary
+  scenarios:
+    - core
+  disabledComponents:
+    - upm-ui
+  # ... your other spec fields
+```
+
+!!!note
+Set only `role`. With operator 2.1 or later you don't declare peer portal domains: the `clusterGroups.primary` and `clusterGroups.secondaries` fields are deprecated, and the operator derives the peer topology from the federation pairings you create in the next section. Any values you do set are still honored, but they aren't needed here.
+!!!
+
+As with any multi-DC deployment, reducing secondaries to the `core` scenario and disabling the console (`upm-ui`) keeps the data-only locations lean. The console runs on the primary and manages every location.
+
+## Federate the locations
+
+The `edbctl federation` commands act on the cluster your current `kubectl` context points at, and don't need HM API credentials. Switch context between the steps below.
+
+### 1. Create a pairing token on the primary
+
+With your context pointing at the primary:
+
+```bash
+edbctl federation create-token --output pairing.token
+```
+
+The token is written to the file you name, and is valid for 24 hours by default. Use `--ttl` to choose a different lifetime, for example `--ttl 1h`.
+
+One token can be used to join several secondaries, so a three-location deployment needs only one token.
+
+!!!important
+The token is a credential: it authorizes a location to join your deployment. Transfer it over a secure channel, don't commit it to version control or paste it into tickets or chat, and keep its lifetime as short as your process allows. Revoke it as soon as the joins are done — see [Managing tokens and pairings](#managing-tokens-and-pairings).
+!!!
+
+### 2. Join from each secondary
+
+Copy the token file to a machine with context on the secondary, then:
+
+```bash
+edbctl federation join --token-file pairing.token --wait
+```
+
+The secondary contacts the primary's portal, exchanges trust bundles, and records the pairing. `--wait` blocks until the pairing reaches the `Synced` state.
+
+Repeat for each additional secondary, using the same token.
+
+!!!note
+`--wait` returns as soon as the pairing is `Synced`. The primary then needs a short time to finish registering the location and to roll out the cross-location observability components, so allow a minute or two before the next step.
+!!!
+
+### 3. Verify
+
+On the primary, confirm each pairing is established:
+
+```bash
+edbctl federation list-pairings
+```
+
+Each secondary appears with role `primary` (the primary's side of the relationship), its peer portal domain, and state `Synced`. On each secondary, the same command shows a single entry with role `secondary` pointing back at the primary.
+
+Confirm every location is registered and heartbeating:
+
+```bash
+kubectl get location
+```
+
+Each location appears as `managed-<LOCATION_ID>` with a recent `LASTHEARTBEAT`:
+
+```text
+NAME                SCOPE     LOCATIONID   LASTHEARTBEAT
+managed-primary     managed   primary      2026-01-15T10:30:00Z
+managed-secondary   managed   secondary    2026-01-15T10:30:00Z
+```
+
+## Managing tokens and pairings
+
+List and inspect the tokens you have minted on the primary, and revoke one so it can no longer be used to join:
+
+```bash
+edbctl federation list-tokens
+edbctl federation get-token <NAME>
+edbctl federation revoke-token <NAME>
+```
+
+Revoking a token has no effect on locations that already joined with it. Revoke tokens once your joins are complete rather than leaving them to expire.
+
+List, inspect, and remove pairings:
+
+```bash
+edbctl federation list-pairings
+edbctl federation get-pairing <NAME>
+edbctl federation revoke-pairing <NAME>
+```
+
+Revoking a pairing tears down the local trust for that relationship. Do this when you retire a location from the deployment.
+
+## Create a Postgres database cluster across data centers
+
+Once the locations are federated, provisioning works exactly as in a shared-storage multi-DC deployment: in the HM console, create a database cluster and select the location for each database node. See [Configuring a multi-DC deployment](multi-dc/#create-a-postgres-database-cluster-across-different-data-centers) for the topology options and their operational notes.
+
+## Trust topology and disaster recovery
+
+This method establishes trust between the primary and each secondary. Secondaries are not federated with one another.
+
+The practical consequence is that the primary is required to establish new trust relationships. If you lose the primary location entirely, restore the management console before adding or re-joining locations — see the [HM disaster recovery guide](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/).
+
+## Troubleshooting
+
+- Problem: **`join` fails to reach the primary**
+    - Confirm the secondary resolves the primary's portal hostname, and that it resolves to an address the secondary can route to. With private load balancers, check that private DNS is in place.
+    - Confirm 443/TCP to the primary's portal is open from the secondary.
+
+- Problem: **`join` fails certificate verification**
+    - The primary's portal certificate changed after the token was minted. Mint a new token and join again.
+    - If you passed `--no-pin`, the portal certificate must be trusted by the secondary's system trust store. With a self-signed portal certificate, mint the token without `--no-pin`.
+
+- Problem: **the pairing stays `Pending` and never reaches `Synced`**
+    - Confirm 8444/TCP is open between the locations, in both directions.
+    - Check that each location's portal hostname resolves correctly from its peer.
+
+- Problem: **`join` reports the token is expired**
+    - Tokens expire 24 hours after creation by default. Mint a new one on the primary.
+
+- Problem: **the pairing is `Synced` but the location isn't listed by `kubectl get location`**
+    - Confirm 9445/TCP from the secondary to the primary's portal is open.
+    - Allow a minute or two after the join for registration to complete, then check again.
