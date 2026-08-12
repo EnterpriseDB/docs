@@ -1,0 +1,172 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: PXF profiles
+navTitle: Profiles
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/pxf/6x/reference/profiles.md
+description: Reference for the built-in profiles PXF ships for each connector.
+editTarget: originalFilePath
+
+---
+
+Specify a profile as the `PROFILE` parameter in an external table's `LOCATION` clause. See [Understanding PXF profiles](../connecting#understanding-pxf-profiles) for what a profile is.
+
+## HDFS, object stores, and network file system
+
+`hdfs`, `s3`, `abfss` (Azure Data Lake Storage), `wasbs` (Azure Blob Storage), `gs` (Google Cloud Storage), and `file` (network file system) all share the same format suffixes. Combine a connector prefix with a format suffix to form a profile name, for example `s3:parquet` or `file:csv`.
+
+| Format                 | Profile suffix      | Available on                                 | Notes                                                        |
+| ---------------------- | ------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| Delimited text         | `:text`             | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` | Plain text.                                                  |
+| CSV                    | `:csv`              | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` |                                                              |
+| Multi-line text        | `:text:multi`       | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` | Supports multi-line records.                                 |
+| Fixed-width text       | `:fixedwidth`       | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` | Reads columns at fixed byte offsets.                         |
+| Parquet                | `:parquet`          | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` | Columnar, binary, with the schema embedded in the file.      |
+| ORC                    | `:orc`              | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` | Columnar, binary.                                            |
+| Avro                   | `:avro`             | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` | Row-based, binary, paired with a schema.                     |
+| JSON                   | `:json`             | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`, `file` |                                                              |
+| SequenceFile           | `:SequenceFile`     | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`         | Hadoop's binary key-value container format.                  |
+| Avro in a SequenceFile | `:AvroSequenceFile` | `hdfs`, `s3`, `abfss`, `wasbs`, `gs`         | Avro-encoded records stored inside a SequenceFile container. |
+
+`file:SequenceFile` and `file:AvroSequenceFile` aren't available, since SequenceFile is a Hadoop-specific container format. See [Object stores](../connecting/object-stores), [Hadoop](../connecting/hadoop), and [Network file system](../connecting/network-file-system.mdx) for connecting to each of these sources.
+
+Only `:text` and `:csv` use `FORMAT 'TEXT'` or `FORMAT 'CSV'`. Every other format needs `FORMAT 'CUSTOM'`, with `FORMATTER='pxfwritable_import'` on a readable external table or `FORMATTER='pxfwritable_export'` on a writable one.
+
+## Hive
+
+| Profile     | Description                                                                                                                                                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hive`      | Reads any Hive-supported storage format through Hive's SerDe layer.                                                                                                   |
+| `hive:text` | Reads a Hive table stored as text files directly, skipping the SerDe layer.                                                                                           |
+| `hive:rc`   | Reads a Hive table stored as RCFile directly, skipping the SerDe layer.                                                                                               |
+| `hive:orc`  | Reads a Hive table stored as ORC directly, skipping the SerDe layer. Supports vectorized reads, see [Hive](../connecting/hadoop/hive.mdx) for the `VECTORIZE` option. |
+
+The `hive` profile reads through Hive's SerDe (serializer/deserializer), the class Hive itself uses to parse the table's storage format, so it works with any format Hive supports. A `hive:<format>` profile instead skips the SerDe and reads the underlying files directly, which is faster but only available for the formats listed above. See [Hive](../connecting/hadoop/hive.mdx) for connecting to a Hive metastore.
+
+## HBase
+
+| Profile | Description                                                        |
+| ------- | ------------------------------------------------------------------ |
+| `hbase` | Reads an HBase table. See [HBase](../connecting/hadoop/hbase.mdx). |
+
+## JDBC
+
+| Profile | Description                                                                                                       |
+| ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `jdbc`  | Reads and writes data through a JDBC driver. See [Connecting to SQL databases over JDBC](../connecting/jdbc.mdx). |
+
+## Examples
+
+The following examples show the options and syntax specific to each format, using a mix of connectors to illustrate that the same options apply regardless of which connector you pair the format with.
+
+### Multi-byte delimiters
+
+The `:text` and `:csv` profiles only support a single-byte delimiter. To read data with a multi-byte or multi-character delimiter, such as a currency symbol, use a `:csv` profile with the `pxfdelimited_import` custom formatter instead:
+
+```sql
+CREATE EXTERNAL TABLE mbyte_delim (id int, city text, country text)
+    LOCATION ('pxf://data/multibyte_currency?PROFILE=s3:csv&SERVER=s3srvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfdelimited_import', DELIMITER='¤');
+```
+
+`DELIMITER` is required and accepts a string up to 32 bytes. Add `QUOTE` and `ESCAPE` if your data quotes or escapes values:
+
+```sql
+CREATE EXTERNAL TABLE mbyte_delim_quoted (id int, city text, country text)
+    LOCATION ('pxf://data/multibyte_quoted?PROFILE=s3:csv&SERVER=s3srvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfdelimited_import', DELIMITER='¤', QUOTE '"', ESCAPE '\');
+```
+
+If your data's line ending isn't a line feed, add `NEWLINE` (`CR` or `CRLF`) to both the formatter options and the `LOCATION` clause. This formatter only supports reading data, not writing it.
+
+### Avro
+
+Avro is a compact binary format that pairs each record with a schema describing its fields. A schema looks like this:
+
+```json
+{
+  "type": "record",
+  "name": "User",
+  "fields": [
+    { "name": "id", "type": "int" },
+    { "name": "name", "type": "string" }
+  ]
+}
+```
+
+Create a readable external table with an `:avro` profile, pointing at an existing Avro file:
+
+```sql
+CREATE EXTERNAL TABLE pxf_avro_read (id int, name text, details text[])
+    LOCATION ('pxf://data/emp_data.avro?PROFILE=gs:avro&SERVER=gcssrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import');
+
+SELECT * FROM pxf_avro_read;
+```
+
+If you don't provide a `SCHEMA` option, PXF generates the Avro schema from the external table's column definitions, using each column name as the Avro field name:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE pxf_avro_write (id int, username text, followers text[])
+    LOCATION ('pxf://data/pxf_write.avro?PROFILE=gs:avro&SERVER=gcssrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
+
+INSERT INTO pxf_avro_write VALUES (1, 'Mickey', ARRAY['Pluto', 'Donald', 'Mini']);
+```
+
+Create a separate readable external table at the same location to query the data back, since you can't query a writable external table directly. To use your own schema file instead of letting PXF generate one, add the `SCHEMA` option to the `LOCATION` clause:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE pxf_avro_write_with_schema (id int, username text, followers text[])
+    LOCATION ('pxf://data/pxf_write.avro?PROFILE=gs:avro&SERVER=gcssrvcfg&SCHEMA=/path/to/avro_schema.avsc')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
+```
+
+### JSON
+
+PXF reads and writes JSON in two layouts. The default expects one JSON object per line, known as JSON Lines. An alternate mode expects a single root object whose value is an array of records, useful when each file already holds a complete JSON document rather than one record per line.
+
+Use dot notation to project nested fields into columns:
+
+```sql
+CREATE EXTERNAL TABLE pxf_json_read (created_at text, "user.id" int, "user.location" text)
+    LOCATION ('pxf://data/pxf_examples/events.jsonl?PROFILE=file:json&SERVER=filesrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import');
+
+SELECT * FROM pxf_json_read;
+```
+
+For a file that holds a single root object with an array of records instead of one object per line, add `IDENTIFIER`, naming the field that marks the start of each record:
+
+```sql
+CREATE EXTERNAL TABLE pxf_json_read_single (created_at text, "user.id" int)
+    LOCATION ('pxf://data/pxf_examples/events.json?PROFILE=file:json&SERVER=filesrvcfg&IDENTIFIER=created_at')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import');
+```
+
+PXF writes each row as its own JSON Lines record by default:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE pxf_json_write (created_at text, id int, location text)
+    LOCATION ('pxf://data/pxf_examples/events_out?PROFILE=file:json&SERVER=filesrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
+
+INSERT INTO pxf_json_write VALUES ('2026-07-21', 1, 'Austin');
+```
+
+Add `ROOT` to write a single root object holding an array of records instead, naming the root-level attribute:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE pxf_json_write_single (created_at text, id int, location text)
+    LOCATION ('pxf://data/pxf_examples/events_root?PROFILE=file:json&SERVER=filesrvcfg&ROOT=records')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
+```
+
+Create a separate readable external table at the same location, with a matching `IDENTIFIER`, to query the data back, since you can't query a writable external table directly. PXF only writes scalar columns or one-dimensional arrays, so a writable external table can't include nested or column-projected fields.

@@ -1,0 +1,246 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: Connecting to an S3-compatible object store
+navTitle: S3-compatible stores
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/pxf/6x/connecting/object-stores/s3.md
+description: >-
+  Configure PXF to read and write data in Amazon S3 or MinIO, and query it from
+  WarehousePG.
+editTarget: originalFilePath
+
+---
+
+Configure a server for an S3-compatible object store, then read and write its data through external tables.
+
+## Configuring the server
+
+Create a server that connects to an S3-compatible object store, such as Amazon S3 or MinIO.
+
+1.  Create a server directory under `$PXF_BASE/servers`, and copy an XML template from `$PXF_HOME/templates` into it. For example, to configure a server named `s3srvcfg` for Amazon S3:
+
+    ```bash
+    mkdir -p $PXF_BASE/servers/s3srvcfg
+    cp $PXF_HOME/templates/s3-site.xml $PXF_BASE/servers/s3srvcfg
+    ```
+
+2.  Edit the site XML file to authenticate to S3, using whichever of the following methods fits your environment.
+
+    ### Static access keys
+
+    Set your AWS access key and secret key directly:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+        <property>
+            <name>fs.s3a.access.key</name>
+            <value><access_key></value>
+        </property>
+        <property>
+            <name>fs.s3a.secret.key</name>
+            <value><secret_key></value>
+        </property>
+        <property>
+            <name>fs.s3a.fast.upload</name>
+            <value>true</value>
+        </property>
+    </configuration>
+    ```
+
+    ### Temporary credentials, through AWS Assume Role
+
+    Obtain temporary credentials yourself, for example through `aws sts assume-role`, then set them along with the session token, and switch the credential provider to one that accepts a session token:
+
+    ```xml
+    <property>
+        <name>fs.s3a.access.key</name>
+        <value><temporary_access_key></value>
+    </property>
+    <property>
+        <name>fs.s3a.secret.key</name>
+        <value><temporary_secret_key></value>
+    </property>
+    <property>
+        <name>fs.s3a.session.token</name>
+        <value><session_token></value>
+    </property>
+    <property>
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider</value>
+    </property>
+    ```
+
+    ### Named AWS profile
+
+    Point PXF at a profile in `~/.aws/credentials` instead of storing keys in `s3-site.xml`:
+
+    ```xml
+    <property>
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>com.amazonaws.auth.profile.ProfileCredentialsProvider</value>
+    </property>
+    ```
+
+    Add your keys to `~/.aws/credentials` on every host, under the `default` profile or a named profile:
+
+    ```ini
+    [test]
+    aws_access_key_id = <access_key>
+    aws_secret_access_key = <secret_key>
+    ```
+
+    If you used a named profile instead of `default`, select it by setting `AWS_PROFILE` in `$PXF_BASE/conf/pxf-env.sh`:
+
+    ```bash
+    export AWS_PROFILE=test
+    ```
+
+    ### Credential process
+
+    Use the same `ProfileCredentialsProvider` as the named profile method, but point the profile at a script instead of static keys. The AWS SDK runs the script and reads its stdout as JSON, containing the access key, secret key, session token, and expiration, so this method works with credentials that rotate:
+
+    ```ini
+    [test]
+    credential_process = /path/to/credential-script.sh
+    ```
+
+    ### IAM role, through an EC2 instance profile
+
+    On EC2, attach an IAM role to the instances running PXF, and omit credentials from `s3-site.xml` entirely. PXF then pulls temporary credentials from the instance metadata service automatically. Set the credential provider explicitly only if you need to rule out another provider taking precedence:
+
+    ```xml
+    <property>
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>com.amazonaws.auth.InstanceProfileCredentialsProvider</value>
+    </property>
+    ```
+
+    ### Additional tuning properties
+
+    `s3-site.xml` accepts any other Hadoop S3A property, such as `fs.s3a.buffer.dir` for local buffering during upload, `fs.s3a.multipart.size` for the multipart upload threshold, or `fs.s3a.connection.maximum` for connection pooling. See the [S3A section of the Hadoop-AWS module documentation](https://hadoop.apache.org/docs/current/hadoop-aws/tools/hadoop-aws/index.html#S3A) for the full list of available properties.
+
+    MinIO and other S3-compatible stores also need an endpoint and path-style access, in addition to whichever authentication method you chose above:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+        <property>
+            <name>fs.s3a.endpoint</name>
+            <value>http://<host>:<port></value>
+        </property>
+        <property>
+            <name>fs.s3a.access.key</name>
+            <value><access_key></value>
+        </property>
+        <property>
+            <name>fs.s3a.secret.key</name>
+            <value><secret_key></value>
+        </property>
+        <property>
+            <name>fs.s3a.fast.upload</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>fs.s3a.path.style.access</name>
+            <value>true</value>
+        </property>
+    </configuration>
+    ```
+
+    !!!info Note
+
+    Always include the URI scheme (`http://` or `https://`) in `fs.s3a.endpoint`. Omitting it causes connection errors such as `Unsupported or unrecognized SSL message` when PXF tries to reach the endpoint.
+    !!!
+
+    See [Configuration templates](../../reference/configuration-templates.mdx#s3-sitexml) for the full list of `s3-site.xml` properties, or [minio-site.xml](../../reference/configuration-templates.mdx#minio-sitexml) for MinIO and other S3-compatible stores.
+
+3.  Sync the change to every segment host, then restart PXF to apply it:
+
+    ```bash
+    pxf cluster sync
+    pxf cluster restart
+    ```
+
+## Reading data
+
+Read data from the object store by creating a readable external table with the profile for its format and the server you configured. For example, to read a CSV file using the `s3srvcfg` server:
+
+```sql
+CREATE EXTERNAL TABLE pxf_read_example (id int, name text, age int)
+    LOCATION ('pxf://<bucket>/<path>/data.csv?PROFILE=s3:text&SERVER=s3srvcfg')
+    FORMAT 'CSV' (delimiter=',');
+
+SELECT * FROM pxf_read_example;
+```
+
+PXF also supports structured formats like Parquet, through the same profile-based syntax:
+
+```sql
+CREATE EXTERNAL TABLE pxf_parquet_example (
+    id bigint,
+    created timestamp without time zone,
+    status integer
+)
+    LOCATION ('pxf://<bucket>/<path>/?PROFILE=s3:parquet&SERVER=s3srvcfg&COMPRESSION_CODEC=snappy')
+    FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_import')
+    ENCODING 'UTF8';
+```
+
+See [PXF profiles](../../reference/profiles.mdx) for the full list of supported formats, including worked examples of Avro, JSON, and multi-byte delimiters.
+
+## Writing data
+
+Create a writable external table with the `pxfwritable_export` formatter to write WHPG data out to the object store:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE pxf_write_example (
+    id bigint,
+    created timestamp without time zone,
+    status integer
+)
+    LOCATION ('pxf://<bucket>/<path>/?PROFILE=s3:parquet&SERVER=s3srvcfg&COMPRESSION_CODEC=snappy')
+    FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')
+    ENCODING 'UTF8';
+
+INSERT INTO pxf_write_example SELECT id, created, status FROM some_local_table;
+```
+
+To query the data, create a separate readable external table at the same location:
+
+```sql
+CREATE EXTERNAL TABLE pxf_read_back (
+    id bigint,
+    created timestamp without time zone,
+    status integer
+)
+    LOCATION ('pxf://<bucket>/<path>/?PROFILE=s3:parquet&SERVER=s3srvcfg')
+    FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_import')
+    ENCODING 'UTF8';
+
+SELECT * FROM pxf_read_back;
+```
+
+## Overriding credentials per query
+
+Regardless of how the server authenticates, a user can override its access key and secret key for a single query, using custom options in the `LOCATION` clause:
+
+```sql
+CREATE EXTERNAL TABLE pxf_s3_override (id int, name text)
+    LOCATION ('pxf://<bucket>/<path>/data.csv?PROFILE=s3:text&SERVER=s3srvcfg&accesskey=<access_key>&secretkey=<secret_key>')
+    FORMAT 'CSV' (delimiter=',');
+```
+
+!!!warning Important
+
+Credentials passed this way are visible as part of the external table definition. Avoid this method in a production environment.
+!!!
+
+This override works only for plain Amazon S3, not for Azure, Google Cloud Storage, or MinIO servers.
