@@ -1,0 +1,183 @@
+---
+title: Performing a Postgres major upgrade
+navTitle: Performing a major upgrade
+deepToC: true
+---
+
+Move a cluster to a new Postgres major version, without changing your PGD version, using one of three
+approaches: [full downtime](#upgrading-with-full-downtime), a [rolling upgrade in
+place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes) one at a time. 
+
+!!! Note
+If you're also upgrading PGD to a new minor version at the same time, see [Upgrading Postgres and PGD
+together](/pgd/current/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) instead.
+!!!
+
+
+## Upgrading with full downtime
+
+Disconnect applications from the cluster, then on each node, run the same steps as [upgrading with a
+rolling upgrade, in place](#upgrading-with-a-rolling-upgrade-in-place) below, except you can skip checking
+or switching the write leader and fencing or unfencing the node, since nothing is serving traffic during
+the upgrade. Once every node is upgraded, confirm each one is running the new Postgres version and healthy,
+then reconnect applications.
+
+## Upgrading with a rolling upgrade, in place
+
+!!! Note
+If your cluster uses CAMO, see [Upgrading a CAMO-enabled
+cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluster) before performing this
+procedure.
+!!!
+
+Plan your upgrade order across the cluster, one node at a time, upgrading each group's write leader last.
+Disconnect applications from the old Postgres cluster, or redirect them to another node in the PGD cluster.
+
+Use the command-line utility [pgd node upgrade](/pgd/latest/reference/cli/command_ref/node/upgrade/) to
+upgrade a node in place. It wraps the standard [pg_upgrade](https://www.postgresql.org/docs/current/pgupgrade.html),
+adding PGD-specific steps around it so replication slots and origins carry over correctly.
+
+For each node, one at a time:
+
+1.  Install the new major version's PGD packages alongside the existing ones:
+
+    ```shell
+    sudo apt install edb-pgd6-expanded-pg<postgres_version>
+    ```
+
+    Package managers install each Postgres major version to its own path, so the old binaries are
+    untouched.
+1.  Create a fresh, empty data directory for the new cluster using the new version's
+    [`initdb`](https://www.postgresql.org/docs/current/app-initdb.html), matching the old cluster's checksum
+    and locale settings. Leave this new cluster shut down.
+1.  Copy the old cluster's [`postgresql.conf` and
+    `postgresql.auto.conf`](https://www.postgresql.org/docs/current/config-setting.html),
+    [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
+    (if present) into the new data directory, adjusting for any configuration parameters that changed between
+    Postgres major versions.
+1.  Check whether the node you're upgrading is the write leader for its group:
+
+    ```shell
+    pgd group <group_name> show --summary
+    ```
+
+    If it is, switch leadership to another node first, since `pgd node upgrade` doesn't manage this switch
+    for you:
+
+    ```shell
+    pgd group <group_name> set-leader <new_leader_node_name>
+    ```
+
+1.  Fence the node so it can't become the write leader again while it's being upgraded:
+
+    ```shell
+    pgd node <node_name> set-option route_fence true
+    ```
+
+1.  Make sure the old cluster is running. `pgd node upgrade` starts it if it's shut down.
+1.  Run `pgd node upgrade` with the `--check` option first to validate the upgrade without making changes:
+
+    ```shell
+    pgd node <node_name> upgrade --check \
+      --old-bindir <old_bindir> \
+      --new-bindir <new_bindir> \
+      --old-datadir <old_datadir> \
+      --new-datadir <new_datadir> \
+      --database <database_name> \
+      --username <install_user>
+    ```
+
+    `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
+    `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
+    directory you created earlier. `--database` is the PGD-enabled database name, and `--username` is the
+    cluster's install user. `--check` runs the PGD-specific validation and `pg_upgrade --check`, without
+    modifying either cluster. See [Steps
+    performed](/pgd/latest/reference/cli/command_ref/node/upgrade/#steps-performed) for exactly what
+    `--check` does and doesn't run.
+1.  Run `pgd node upgrade` again without `--check` to perform the upgrade, using the same options:
+
+    ```shell
+    pgd node <node_name> upgrade \
+      --old-bindir <old_bindir> \
+      --new-bindir <new_bindir> \
+      --old-datadir <old_datadir> \
+      --new-datadir <new_datadir> \
+      --database <database_name> \
+      --username <install_user>
+    ```
+1.  Unfence the node:
+
+    ```shell
+    pgd node <node_name> set-option route_fence false
+    ```
+
+1.  Confirm the node is healthy and running the new Postgres version before moving on:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Move to the next node in your planned upgrade order, upgrading write leaders last in each group.
+
+For the full set of options and flags, see the [`pgd node upgrade`](/pgd/latest/reference/cli/command_ref/node/upgrade/) command reference.
+
+#### Example
+
+Upgrade the node `kaolin` from Postgres 16 to Postgres 17:
+
+```shell
+pgd node kaolin upgrade \
+  --old-bindir /usr/lib/postgresql/16/bin \
+  --new-bindir /usr/lib/postgresql/17/bin \
+  --old-datadir /var/lib/postgresql/16/main \
+  --new-datadir /var/lib/postgresql/17/main \
+  --database bdrdb
+```
+
+See the [command reference](/pgd/latest/reference/cli/command_ref/node/upgrade/#examples) for more examples,
+including hard links, file cloning, and Transparent Data Encryption (TDE).
+
+## Upgrading with a rolling upgrade, by replacing nodes
+
+Instead of upgrading a node in place, join a new node that already has the new Postgres version installed,
+then drop one of the existing nodes running the old version. This approach avoids `pg_upgrade` entirely, at the cost
+of a full data transfer to the new node.
+
+1.  [Provision a new machine, or a new instance,](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/)
+    with the new Postgres major version and the same PGD version as the rest of the cluster already
+    installed.
+1.  Join the new node to the cluster using a logical join:
+
+    ```shell
+    pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+    ```
+
+    !!! Note
+    Don't use `bdr_init_physical`, it requires the source and joining node to run the same Postgres major
+    version, so it can't be used across a major version change. 
+    !!!
+    
+    See the [`pgd node setup`](/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of options.
+1.  Wait for the new node to catch up with the cluster before routing traffic to it.
+1.  Confirm the new node is healthy and running the new Postgres version:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Update your application's connection configuration, or the Connection Manager, to include the new node.
+
+1.  Disconnect applications from the old node before parting it, or redirect them to another node in the PGD cluster.
+
+1.  Part the old node, then decommission it:
+
+    ```shell
+    pgd node <node_name> part
+    ```
+1.  Repeat for each remaining old node, one at a time, until the whole cluster is on the new version.
+
+!!! Note
+While nodes are on mixed Postgres major versions, avoid using any feature or DDL syntax that's only available
+in the newer version, until every node has been replaced.
+!!!

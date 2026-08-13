@@ -1,0 +1,231 @@
+---
+title: "Upgrading PGD 4 to PGD 6"
+navTitle: "Upgrading PGD 4 to PGD 6"
+deepToC: true
+---
+
+Upgrade a PGD 4 cluster to PGD 6, moving from HARP Proxy to Connection Manager, with the Postgres version
+unchanged, using one of three approaches: [full downtime](#upgrading-with-full-downtime), a [rolling
+upgrade in place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes) one at a time. 
+
+!!! Note
+If you're also upgrading Postgres to a new minor version at the same time, see [Upgrading Postgres and PGD
+together](/pgd/current/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) instead.
+!!!
+
+!!! Note
+This procedure assumes HARP Proxy isn't co-located with a PGD node.
+!!!
+
+## Upgrading with full downtime
+
+1.  Disconnect applications from the cluster, and stop HARP Proxy on every node running it:
+
+    ```shell
+    sudo systemctl stop harp-proxy
+    ```
+
+1.  Stop Postgres and HARP manager on every node:
+
+    ```shell
+    sudo systemctl stop postgres
+    sudo systemctl stop harp-manager
+    ```
+
+    You can run this step one node at a time, but you must wait for each node to shut down cleanly before moving
+    to the next.
+1.  Remove the BDR 4.4 extension and CLI packages from each node once every node is stopped, then install
+    the PGD 6 packages for your current Postgres version:
+
+    ```shell
+    dnf remove edb-bdr4-<postgresversion> edb-pgd-cli
+    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    ```
+
+1.  Start Postgres on every node:
+
+    ```shell
+    systemctl start postgres
+    ```
+
+    Each node upgrades to PGD 6 on start, with Connection Manager already enabled. Don't start
+    HARP manager.
+1.  Confirm every node has rejoined the cluster and is healthy:
+
+    ```shell
+    pgd nodes list
+    ```
+
+    Every node should show `ACTIVE` under `Join State` and `Up` under `Node Status`. 
+
+1.  Continue to [Moving to Connection Manager](#moving-to-connection-manager).
+
+## Upgrading with a rolling upgrade, in place
+
+!!! Note
+If your cluster uses CAMO, see [Upgrading a CAMO-enabled
+cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluster) before performing this
+procedure.
+!!!
+
+Perform an in place upgrade so HARP Proxy continues routing on all nodes until the entire cluster is upgraded to PGD 6. It keeps
+using its own leader-election mechanism throughout, since a 4.x cluster doesn't have a write leader. Start
+the upgrade on a node that isn't the current HARP Proxy leader, where `<location>` is the HARP location
+name (a data center or site defined in the HARP configuration, not a node name):
+
+```shell
+harpctl get leader <location>
+```
+
+For each node, one at a time, starting with a node that isn't the current HARP Proxy leader:
+
+1.  Fence the node from HARP, then confirm it's fenced, so it doesn't become the leader partway through the
+    upgrade:
+
+    ```shell
+    harpctl fence <node_name>
+    harpctl get node <node_name>
+    ```
+
+1.  Stop Postgres on the node:
+
+    ```shell
+    sudo systemctl stop postgres
+    ```
+
+1.  Stop HARP manager on the node:
+
+    ```shell
+    sudo systemctl stop harp-manager
+    ```
+
+1.  Remove the BDR 4.4 extension and CLI packages, then install the PGD 6 packages for your current Postgres
+    version:
+
+    ```shell
+    dnf remove edb-bdr4-<postgresversion> edb-pgd-cli
+    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    ```
+
+1.  Start Postgres. This step performs an in-place upgrade of the local node to PGD 6, with Connection
+    Manager enabled:
+
+    ```shell
+    systemctl start postgres
+    ```
+
+1.  Start HARP manager on the node:
+
+    ```shell
+    sudo systemctl start harp-manager
+    ```
+
+1.  Unfence the node from HARP:
+
+    ```shell
+    harpctl unfence <node_name>
+    ```
+
+1.  Confirm the node is healthy and running the new version:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Repeat for each remaining node, one at a time, until every node is running PGD 6. 
+
+1.  Continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
+
+## Upgrading with a rolling upgrade, by replacing nodes
+
+Instead of upgrading the nodes, join new nodes that already have PGD 6 installed, then part and drop the existing PGD 4 nodes.
+
+1.  [Provision a new node](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/) with the
+    PGD 6 packages for your current Postgres version already installed. Connection Manager is enabled on it by default.
+1.  Join the new node to the cluster using a logical join:
+
+    ```shell
+    pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+    ```
+
+    Don't use `bdr_init_physical`, it requires the source and joining node to run the same PGD version, so
+    it can't be used across a version change. See the [`pgd node
+    setup`](/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of
+    options.
+1.  Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
+    healthy:
+
+    ```shell
+    pgd nodes list
+    ```
+
+    !!! Note
+    Confirm how a newly joined PGD 6 node interacts with HARP's leader election and routing while the rest of the
+    cluster is still on PGD 4 hasn't been confirmed for this procedure, including whether any extra step is
+    needed to bring the new node into HARP's view of the cluster.
+    !!!
+
+1.  Update your application's connection configuration to include the new node once it's ready to take
+    traffic.
+1.  Part one of the nodes still running PGD 4 and HARP Proxy, then decommission it:
+
+    ```shell
+    pgd node <node_name> part
+    ```
+1.  Repeat for each remaining PGD 4 node, one at a time, until the whole cluster is on PGD 6. 
+
+1. Continue to [Moving to Connection Manager](#moving-to-connection-manager).
+
+## Moving to Connection Manager
+
+Once every node is running PGD 6, regardless of which upgrade path you took, finish moving the cluster off
+HARP Proxy and onto Connection Manager.
+
+1.  Confirm every node is running the new version:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Run the following query from any of the upgraded nodes to ensure
+    [SCRAM](https://www.postgresql.org/docs/current/auth-password.html) hashes are the same across all
+    nodes for each user. This query is required before applications switch to Connection Manager:
+
+    ```sql
+    DO $$
+    DECLARE
+        rec RECORD;
+        command TEXT;
+        password TEXT;
+    BEGIN
+        FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+        LOOP
+            password := rec.rolpassword;
+            command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || quote_literal(password);
+            EXECUTE command;
+        END LOOP;
+    END;
+    $$;
+    SELECT bdr.wait_slot_confirm_lsn(NULL,NULL);
+    ```
+
+1.  Enable node group routing as appropriate for your global or local routing requirement. For local
+    routing, enable it on subgroups. For global routing, enable it on the top group:
+
+    ```sql
+    SELECT bdr.alter_node_group_option(node_group_name := '<group_name>', config_key := 'enable_routing', config_value := true::TEXT);
+    ```
+
+1.  Switch your application to Connection Manager.
+1.  Stop any HARP manager and HARP Proxy services still running:
+
+    ```shell
+    sudo systemctl stop harp-manager
+    sudo systemctl stop harp-proxy
+    ```
+1.  Confirm the cluster is healthy:
+
+    ```shell
+    pgd cluster show --health
+    ```

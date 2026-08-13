@@ -1,0 +1,147 @@
+---
+title: Performing a Postgres minor upgrade
+navTitle: Performing a minor upgrade
+---
+
+Move to a newer minor version of Postgres, without changing your PGD version, using one of three approaches:
+[full downtime](#upgrading-with-full-downtime), a [rolling upgrade in
+place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes). An in-place upgrade needs no new data directory
+or `pg_upgrade`, since a minor version upgrade doesn't change Postgres's on-disk format.
+
+!!! Note
+If you're also upgrading PGD to a new minor version at the same time, see [Upgrading Postgres and PGD
+together](/pgd/current/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) instead.
+!!!
+
+## Upgrading with full downtime
+
+1.  Stop Postgres on every node:
+
+    ```shell
+    sudo systemctl stop postgres
+    ```
+
+    You can run this step one node at a time, but you must wait for each node to shut down cleanly before moving to
+    the next.
+1.  Install the latest minor version of your Postgres packages on every node, for example:
+
+    ```shell
+    sudo apt update
+    sudo apt install --only-upgrade <postgres_package>
+    ```
+
+1.  Start Postgres on every node:
+
+    ```shell
+    systemctl start postgres
+    ```
+
+1.  Confirm the new version took effect on every node:
+
+    ```shell
+    psql -c "SHOW server_version;"
+    ```
+
+1. Check overall cluster health:
+
+    ```shell
+    pgd nodes list
+    ```
+
+## Upgrading with a rolling upgrade, in place
+
+!!! Note
+If your cluster uses CAMO, see [Upgrading a CAMO-enabled
+cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluster) before performing this
+procedure.
+!!!
+
+For each node, one at a time:
+
+1.  Fence the node, so it can't become the write leader until the upgrade is complete:
+
+    ```shell
+    pgd node <node_name> set-option route_fence true
+    ```
+
+1.  Stop Postgres:
+
+    ```shell
+    sudo systemctl stop postgres
+    ```
+
+1.  Install the latest minor version of your Postgres packages, for example:
+
+    ```shell
+    sudo apt update
+    sudo apt install --only-upgrade <postgres_package>
+    ```
+
+1.  Start Postgres:
+
+    ```shell
+    systemctl start postgres
+    ```
+
+1.  Unfence the node, then confirm it's healthy before moving to the next one:
+
+    ```shell
+    pgd node <node_name> set-option route_fence false
+    ```
+
+1.  Confirm the new version took effect on the node:
+
+    ```shell
+    psql -c "SHOW server_version;"
+    ```
+
+!!! Note
+Sometimes more steps, like reindexing, are recommended for specific minor version upgrades. Refer to the
+[release notes](https://www.postgresql.org/docs/current/release.html) of the version of Postgres you're
+upgrading to.
+!!!
+
+## Upgrading with a rolling upgrade, by replacing nodes
+
+!!! Note
+If your cluster uses CAMO, see [Upgrading a CAMO-enabled
+cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluster) before performing this
+procedure.
+!!!
+
+Instead of upgrading a node in place, join a new node that already has the new Postgres minor version
+installed, then part and drop one of the existing nodes. Use this approach if you're also replacing hardware
+or a base image at the same time as the minor version bump.
+
+1.  [Provision a new node](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/) with the
+    new Postgres minor version installed, and the same PGD version as the rest of the cluster.
+1.  Join the new node to the cluster. Since the PGD version isn't changing, you can use either a logical
+    join with [`pgd node setup`](/pgd/latest/reference/cli/command_ref/node/setup/):
+
+    ```shell
+    pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+    ```
+
+    or a physical join with
+    [`bdr_init_physical`](/pgd/latest/reference/tables-views-functions/nodes/#bdr_init_physical), which is
+    faster since it uses `pg_basebackup` instead of a full logical replication catch-up.
+    `bdr_init_physical` is deprecated in favor of `pgd node setup`, but it remains usable here because its
+    only version restriction is that the source and joining node run the same PGD version, which a
+    Postgres-only upgrade doesn't change.
+1.  Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
+    healthy:
+
+    ```shell
+    pgd nodes list
+    ```
+
+1.  Update your application's connection configuration to include the new node once it's ready to take
+    traffic.
+1.  Part one of the existing nodes, then decommission it:
+
+    ```shell
+    pgd node <node_name> part
+    ```
+
+1.  Repeat for each remaining node, one at a time, until the whole cluster is on the new Postgres version.

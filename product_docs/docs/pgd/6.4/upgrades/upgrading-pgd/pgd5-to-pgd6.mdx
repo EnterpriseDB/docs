@@ -1,0 +1,231 @@
+---
+title: "Upgrading PGD 5 to PGD 6"
+navTitle: "Upgrading PGD 5 to PGD 6"
+deepToC: true
+---
+
+Upgrade a PGD 5 cluster to PGD 6, moving from PGD Proxy to Connection Manager, with the Postgres version
+unchanged, using one of three approaches: [full downtime](#upgrading-with-full-downtime), a [rolling
+upgrade in place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes) one at a time. 
+
+!!! Note
+If you're also upgrading Postgres to a new minor version at the same time, see [Upgrading Postgres and PGD
+together](/pgd/current/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) instead.
+!!!
+
+!!! Note
+This procedure assumes PGD Proxy runs on a PGD node. If PGD Proxy runs on a separate server, move it to a
+PGD node first, since Connection Manager only runs on PGD data nodes.
+!!!
+
+
+## Before you begin
+
+1.  Confirm every node is currently running PGD 5.9:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Run the following query, as a database superuser connected to the PGD-enabled database on one of the
+    nodes, to ensure that [SCRAM](https://www.postgresql.org/docs/current/auth-password.html) hashes of all
+    user passwords are the same across all nodes:
+
+    ```sql
+    DO $$
+    DECLARE
+        rec RECORD;
+        command TEXT;    password TEXT;
+    BEGIN
+        FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+        LOOP
+            password := rec.rolpassword;
+            command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || quote_literal(password);
+            EXECUTE command;
+        END LOOP;
+    END;
+    $$;
+    SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
+    ```
+
+    !!! Note
+    Don't add new users to 5.9 after executing this query. If you add any, run the query again. The
+    block above doesn't change the passwords, it just ensures SCRAM hashes are the same across the cluster
+    on all nodes.
+    !!!
+
+## Upgrading with full downtime
+
+1.  Disconnect applications from the cluster, and stop PGD Proxy on every node running it:
+
+    ```shell
+    sudo systemctl stop pgd-proxy
+    ```
+
+1.  Stop Postgres on every node:
+
+    ```shell
+    sudo systemctl stop postgres
+    ```
+
+    You can run this step one node at a time, but you must wait for each node to shut down cleanly before moving
+    to the next.
+
+1.  Remove the PGD 5 CLI, proxy, and extension packages from each node once every node is stopped, then
+    install the PGD 6 packages for your current Postgres version:
+
+    ```shell
+    dnf remove edb-bdr5-<postgresversion> edb-pgd5-cli edb-pgd5-proxy
+    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    ```
+
+1.  Set the configuration parameter `bdr.enable_builtin_connection_manager` to `true` on every node, before
+    starting Postgres again, either in `postgresql.conf` or with `ALTER SYSTEM`. Since nothing is serving
+    traffic yet, you don't need the separate restart-then-enable sequence the rolling upgrade uses below.
+1.  Start Postgres on every node:
+
+    ```shell
+    systemctl start postgres
+    ```
+
+    Each node upgrades to PGD 6 on start, with Connection Manager already enabled.
+1.  Confirm every node has rejoined the cluster and is healthy:
+
+    ```shell
+    pgd nodes list
+    ```
+
+    Every node should show `ACTIVE` under `Join State` and `Up` under `Node Status`. 
+
+1. Continue to [Moving to Connection Manager](#moving-to-connection-manager).
+
+## Upgrading with a rolling upgrade, in place
+
+!!! Note
+If your cluster uses CAMO, see [Upgrading a CAMO-enabled
+cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluster) before performing this
+procedure.
+!!!
+
+PGD Proxy continues routing to each node until that node is individually migrated to Connection Manager.
+Once every node is migrated, all routing goes through Connection Manager, and you can stop PGD Proxy.
+
+For each node, one at a time:
+
+1.  Fence the node, so it doesn't become the write leader:
+
+    ```shell
+    pgd node <node_name> set-option route_fence true
+    ```
+
+1.  Set the configuration parameter `bdr.enable_builtin_connection_manager` to `true`.
+1.  Restart the server to pick up the configuration change:
+
+    ```shell
+    sudo systemctl restart postgres
+    ```
+
+1.  Stop PGD Proxy running on the server:
+
+    ```shell
+    sudo systemctl stop pgd-proxy
+    ```
+1.  Restart the server again:
+
+    ```shell
+    sudo systemctl restart postgres
+    ```
+
+    It starts with the Connection Manager running on the default port. If the proxy read and write ports
+    were different, you can change the Connection Manager read and write ports to match the proxy using
+    `bdr.alter_node_group_option()`.
+1.  Unfence the node:
+
+    ```shell
+    pgd node <node_name> set-option route_fence false
+    ```
+
+    It can now accept connections from the user and route to the write leader via Connection Manager.
+1.  Confirm the node is healthy and running the new version:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Repeat for each remaining node, one at a time, until all nodes are routing via Connection Manager.
+
+1.  Continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
+
+## Upgrading with a rolling upgrade, by replacing nodes
+
+Instead of upgrading the nodes, join new nodes that already have PGD 6 installed, then part and drop the
+existing PGD 5 nodes.
+
+1.  [Provision a new node](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/) with the
+    PGD 6 packages for your current Postgres version already installed. Connection Manager is enabled on it
+    by default.
+1.  Join the new node to the cluster using a logical join:
+
+    ```shell
+    pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+    ```
+
+    Don't use `bdr_init_physical`, it requires the source and joining node to run the same PGD version, so
+    it can't be used across a version change. See the [`pgd node
+    setup`](/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of
+    options.
+1.  Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
+    healthy:
+
+    ```shell
+    pgd nodes list
+    ```
+
+1.  Make sure PGD Proxy doesn't route to the new node while the rest of the cluster is still on PGD 5.
+
+    !!! Note
+    Confirm how a newly joined PGD 6 node interacts with PGD Proxy's routing configuration while the rest of the
+    cluster is still on PGD 5.
+    !!!
+
+1.  Update your application's connection configuration, or the Connection Manager, to include the new node
+    once it's ready to take traffic.
+1.  Part one of the nodes still running PGD 5 and PGD Proxy, then decommission it:
+
+    ```shell
+    pgd node <node_name> part
+    ```
+1.  Repeat for each remaining PGD 5 node, one at a time, until the whole cluster is on PGD 6.
+
+1.  Continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
+
+## Moving to Connection Manager
+
+Once every node is running PGD 6, regardless of which upgrade path you took, finish moving the cluster off
+PGD Proxy and onto Connection Manager.
+
+1.  Confirm every node is running the new version:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+1.  Confirm routing is enabled for every group:
+
+    ```shell
+    pgd group <group_name> show --options
+    ```
+
+    Then switch applications over to Connection Manager.
+1.  Stop any PGD Proxy services still running:
+
+    ```shell
+    sudo systemctl stop pgd-proxy
+    ```
+
+1.  Confirm the cluster is healthy:
+
+    ```shell
+    pgd cluster show --health
+    ```
