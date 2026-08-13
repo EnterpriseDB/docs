@@ -15,11 +15,14 @@ You can generate a sample configuration file using the [whpg-copy config-example
 # ==============================================================================
 # whpg-copy Configuration Example
 # ==============================================================================
+
 # Source database connection URL.
 # Supports standard PostgreSQL connection strings.
 src_url = "postgres://gpadmin:@10.0.0.1:5432/source_db"
+
 # Destination database connection URL.
 dst_url = "postgres://gpadmin:@10.0.0.2:5432/target_db"
+
 # Tables to include in the copy operation. To have uppercase letters or other
 # special characters in schema or table names, follow PostgreSQL's qualified
 # identifier rules to quote them.
@@ -28,87 +31,83 @@ include_table = [
     "public.users",
     "\"Inventory\".\"StockItems\""
 ]
+
 # Tables to exclude.
 # Default: None
 exclude_table = [
     "public.temp_cache",
     "sales.test_data"
 ]
+
 # Enable compression during data transfer to reduce network bandwidth usage.
 # Recommended for transfers over WAN or slow networks.
 # Default: true
 compression = true
+
 # Copy partitioned tables through their leaf partitions in parallel.
 # Disable this to enforce data goes through the root partition table or
 # intermediate partition table.
 # Default: true
 through_partition_leaves = true
+
 # How to handle existing tables on the destination:
-# "append"   : Insert data into existing tables.
-# "truncate" : Clear the destination table before copying.
-# "skip"     : Do not copy if the table already exists.
-# "drop"     : Drop the existing destination table, recreate its DDL from
-#              the source, then copy the data.
+# "append"        : Insert data into existing tables.
+# "truncate"      : Clear the destination table before copying.
+# "skip"          : Do not copy if the table already exists.
+# "drop"          : Drop the existing destination table, recreate its DDL from
+#                   the source, then copy the data (DROP TABLE ... CASCADE).
 # Default: append
 target_mode = "append"
+
 # Validation method to perform after copying data:
 # "none"     : No validation.
 # "count"    : Compare row counts between source and destination.
 # "checksum" : Calculate and compare data hashes.
 # Default: none
 validate_method = "count"
+
 # Number of parallel workers to run.
 # Default: 4
 workers = 4
+
 # Listening port range on the destination for data transferring. Those
 # ports need to be enabled to be accessed from the source segments.
 # whpg-copy will try to start listening on the port one by one from
 # the range. At least one port is required in the range.
 port_range = "60000-60001"
+
 # Total time, in seconds, a single transfer may spend getting ready to move
-# bytes: connecting to the destination daemon and waiting for the
-# destination's receiver to appear. A transfer that can never complete fails
-# with an error instead of hanging.
-# Set to 0 to wait forever. One exception: the preflight check below is
-# always capped at 30 seconds, because a reachability probe that waits
-# forever stalls the copy before it starts.
+# bytes: connecting to the destination daemon and waiting for the destination's
+# receiver to appear. A transfer that can never complete fails with an error
+# instead of hanging.
+#
+# Set to 0 to wait forever. One exception: the preflight check below is always
+# capped at 30 seconds, because a reachability probe that waits forever would
+# stall the copy before it starts.
 # Default: 120
 timeout = 120
+
 # Restrict the destination addresses to one network, in CIDR notation.
+#
 # whpg-copy finds the destination addresses by resolving the destination
 # cluster's host names. In a cluster with more than one network interface, a
-# host name usually resolves to several addresses, and only some of them can
-# be reached from the source hosts. Set this value to the network the source
-# hosts can reach. Without it, whichever address DNS returns first is used,
-# and the choice can differ between runs.
+# host name usually resolves to several addresses - typically one on the private
+# interconnect network and one reachable from outside - and only some of them
+# can be reached from the source hosts. Set this to the network the source hosts
+# can reach. Without it, whichever address DNS returns first is used, and the
+# choice can differ between runs.
+#
 # IPv4 only: whpg-copy resolves destination hosts to IPv4 addresses.
 # Default: none (accept any address)
 # dst_address_cidr = "10.0.0.0/8"
+
 # Check that every destination host is reachable before copying anything.
+# Probes once per source host per destination host, transferring no data, and
+# turns an unreachable destination into an immediate, specific error instead of
+# a timeout on the first table.
 # Default: true
 preflight = true
-# Copy only the schema (DDL) without transferring data.
-# Default: false
-metadata_only = false
-# Include object ownership and privilege (GRANT) information in the DDL.
-# By default, whpg-copy omits both, equivalent to running pg_dump with
-# --no-owner --no-privileges.
-# Default: false
-with_owner = false
-with_privilege = false
-# Encrypt data transfer between source and destination using Transport Layer
-# Security (TLS).
-# tls_mode selects the protection level:
-#   "disabled"    : plaintext (default)
-#   "server-auth" : one-way TLS; senders verify the daemon's certificate
-#                   against the CA but do not present a client certificate
-#   "mutual"      : mutual TLS; the daemon also requires each sender to
-#                   present a CA-signed client certificate
-# When not "disabled", tls_dir must point to a directory that exists at the
-# same path on every source and destination host and contains the
-# certificates produced by `whpg-copy gen-certs`.
-# tls_mode = "mutual"
-# tls_dir = "/etc/whpg-copy"
+
 # Define rules to rename schemas or tables during the copy process.
 # Each rule requires at least a source pattern.
 #
@@ -127,11 +126,32 @@ src_schema = "old_schema(\\d+)"
 dst_schema = "new_schema${1}"
 src_table = "old_table(\\d+)"
 dst_table = "new_table${1}"
+
 # Run the operation without actually changing any data on the destination.
 dry_run = false
-# Verbosity of the log file written by whpg-copy and the copy daemon it
-# starts on the destination cluster. Does not affect what's printed to the
-# console, which is controlled by RUST_LOG.
+
+# Copy only the schema (DDL) without transferring data.
+# When enabled, schemas and tables are created on the destination but no data is copied.
+# Default: false
+metadata_only = false
+
+# Encrypt data transfer between source and destination using TLS.
+# tls_mode selects the protection level:
+#   "disabled"    : plaintext (default)
+#   "server-auth" : one-way TLS; senders verify the daemon's certificate
+#                   against the CA but do not present a client certificate
+#   "mutual"      : mutual TLS; the daemon also requires each sender to present
+#                   a CA-signed client certificate
+# When not "disabled", tls_dir must point to a directory that exists at the SAME
+# path on every source and destination host and contains the certificates
+# produced by `whpg-copy gen-certs`:
+#   server.crt, server.key, ca.crt  (on destination hosts)
+#   client.crt, client.key, ca.crt  (on source hosts)
+# tls_mode = "mutual"
+# tls_dir = "/etc/whpg-copy"
+
+# Verbosity of the log file written by this process and the daemon it starts.
+# Does not affect what's printed to the console, which is controlled by RUST_LOG.
 # "info"  : log info-level events and above, omitting debug/trace.
 # "debug" : log debug-level events and above.
 # Default: debug
@@ -223,11 +243,11 @@ Requires `tls_dir` when not `disabled`. Use [whpg-copy gen-certs](whpg-copy-util
 
 **tls_dir**
 
-Directory containing the TLS certificates used to encrypt data transfer. Required when `tls_mode` isn't `disabled`. The directory must exist at the same path on every source and destination host.
+Directory containing the TLS certificates used to encrypt data transfer. Required when `tls_mode` isn't `disabled`. The directory must exist at the same path on every host, but its contents differ by role: destination hosts need `server.crt`, `server.key`, and `ca.crt`, and source hosts need `client.crt`, `client.key`, and `ca.crt`. Keep `ca.key` offline and don't deploy it to any host.
 
 **log_level**
 
-Verbosity of the log file written by `whpg-copy` and the copy daemon it starts on the destination cluster. This setting doesn't affect what's printed to the console. The supported options are `info` and `debug` (default).
+Verbosity of the log file written by `whpg-copy` and the copy daemon it starts on the destination cluster. This setting doesn't affect what's printed to the console, which defaults to `warning` and is controlled by the `RUST_LOG` environment variable. The supported options are `info` and `debug` (default).
 
 **mapping_rules**
 
