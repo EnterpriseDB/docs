@@ -43,12 +43,24 @@ This example shows the use of `dnf reposync`. This example serves the repository
 sudo dnf reposync --repoid=enterprisedb-enterprise --download-metadata --arch=x86_64 --remote-time --newest-only --download-path=/var/www/html/repos/
 ```
 
-After the command completes successfully, there are files in `/var/www/html/repos/enterprisedb-enterprise`. By default, SELinux blocks access to these files. To enable httpd to access these files, you can either run `httpd` in permissive mode or change the SELinux context of the files.
+!!! Note
+
+    The `--repoid` and `--arch` options each target a single repository and architecture at a time. The command above only mirrors the architecture-specific `enterprisedb-enterprise` repository — it doesn't include the separate `enterprisedb-enterprise-noarch` repository shown in the `dnf repolist` output earlier. Some packages, such as architecture-independent Java-based packages, are published only to the `-noarch` repository. If you skip syncing it, those packages won't be present in your local mirror.
+
+    To mirror the `noarch` repository as well, run a second `reposync` command against that repository id. Since `noarch` packages aren't tied to a CPU architecture, omit `--arch` for this one:
+
+    ```
+    sudo dnf reposync --repoid=enterprisedb-enterprise-noarch --download-metadata --remote-time --newest-only --download-path=/var/www/html/repos/
+    ```
+
+    Repeat this pattern for any other repository IDs from your `dnf repolist` output that you need to mirror, such as `enterprisedb-enterprise-source`.
+
+After the commands complete successfully, there are files in `/var/www/html/repos/enterprisedb-enterprise` (and `/var/www/html/repos/enterprisedb-enterprise-noarch`, if you synced it). By default, SELinux blocks access to these files. To enable httpd to access these files, you can either run `httpd` in permissive mode or change the SELinux context of the files.
 
 To change the SELinux context of the files:
 
 ```bash
-chcon -R -t httpd_sys_content_t /var/www/html/repos/enterprisedb-enterprise
+chcon -R -t httpd_sys_content_t /var/www/html/repos/
 ```
 
 To set httpd to permissive mode:
@@ -114,6 +126,23 @@ autorefresh=1
 type=rpm-md
 ```
 
+!!! Note
+
+    If you also mirrored the `enterprisedb-enterprise-noarch` repository, add a second entry pointing to it so that hosts installing from your local mirror can see those packages too:
+
+    ```
+    [gpc-enterprisedb-enterprise-noarch]
+    name=gpc-enterprisedb-enterprise-noarch
+    baseurl=http://gpc/repos/enterprisedb-enterprise-noarch/
+    repo_gpgcheck=0
+    enabled=1
+    gpgcheck=0
+    sslverify=0
+    pkg_gpgcheck=0
+    autorefresh=1
+    type=rpm-md
+    ```
+
 To test that the packages are available from the local server, use `dnf repo-pkgs {repoid} list`:
 
 ```bash
@@ -135,4 +164,4 @@ As you can see, the packages available are the ones available from the locally m
 
 ## Maintaining the locally managed repository
 
-The locally managed repository needs relatively light maintenance. However, we recommend that you configure some mechanism to keep the locally managed yum repository up to date. The easiest option is to create a cron job that runs the relevant `dnf reposync` command.
+The locally managed repository needs relatively light maintenance. However, we recommend that you configure some mechanism to keep the locally managed yum repository up to date. The easiest option is to create a cron job that runs the relevant `dnf reposync` commands, including the `-noarch` repository if you're mirroring it.
