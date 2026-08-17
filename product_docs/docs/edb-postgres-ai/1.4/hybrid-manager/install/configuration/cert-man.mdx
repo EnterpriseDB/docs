@@ -7,6 +7,26 @@ redirects:
 - /edb-postgres-ai/latest/hybrid-manager/install/customization/cert-man/
 ---
 
+## Certificate architecture overview
+
+Hybrid Manager uses TLS certificates to secure the portal, internal service communication, and database connections. By default, the system generates self-signed certificates at install time. You can replace these with your own certificates, use a cert-manager issuer, or bring your own private Certificate Authority (CA).
+
+cert-manager is a core dependency of Hybrid Manager. It manages the lifecycle of TLS certificates across the platform.
+
+| Layer | Component | Purpose |
+| --- | --- | --- |
+| Portal ingress | Istio Gateway + cert-manager | TLS termination for the portal domain |
+| Internal CA | cert-manager (self-signed CA) | Signs certificates for internal services |
+| Trust distribution | trust-manager | Distributes CA bundles to all namespaces |
+| Service mesh mTLS | cert-manager + Istio | Mutual TLS between all services in the mesh |
+| Database TLS | CloudNativePG + cert-manager | TLS for Postgres client connections |
+
+### Prerequisite for Helm installs on OpenShift
+
+On OpenShift, cert-manager must be pre-installed before running the Hybrid Manager Helm installation.
+
+On other platforms (EKS, AKS, GKE, RKE2), the bootstrap process installs cert-manager automatically as part of the `upm-cert-manager` component.
+
 ## Set up a custom x.509 certificate for the Hybrid Manager Portal
 
 You can change the self-signed x.509 certificate used by the Hybrid Manager (HM) Portal with your own.
@@ -84,7 +104,7 @@ We suggest to set up a ClusterIssuer rather than an Issuer. If you prefer to set
 Once the ClusterIssuer is configured, pass its name to HM.
 
 !!! Note
-Using a cert-manager issuer and providing your own certificate secret are mutually exclusive. If you configure an issuer, don't also set `spec.globalParameters.portal_certificate_secret` in your CR.
+Using a cert-manager issuer and providing your own certificate secret are mutually exclusive. If you configure an issuer, don't also set `spec.globalParameters.portal_certificate_secret` in your CR. If both are set, the issuer takes precedence.
 !!!
 
 Edit your `HybridControlPlane` CR to add the issuer parameters under `spec.globalParameters`:
@@ -108,6 +128,14 @@ kubectl apply -f hybridmanager.yaml
 ```
 
 The operator reconciles the change and configures the portal to use the specified issuer.
+
+### Gateway certificate source priority
+
+If more than one certificate source is configured, HM selects the gateway certificate in this order:
+
+1. cert-manager issuer (if `portal_certificate_issuer_name` is set) — cert-manager creates and rotates the certificate automatically.
+1. Static TLS secret (if `portal_certificate_secret` is set) — you manage certificate renewal manually.
+1. Self-signed certificate (default) — generated at install time.
 
 ## Bring your own private certificate authority
 
@@ -162,3 +190,55 @@ kubectl apply -f hybridmanager.yaml
 ```
 
 The operator reconciles the change and configures HM to use your private CA.
+
+## Certificate rotation
+
+### cert-manager issuer
+
+When using a cert-manager issuer, certificates are rotated automatically before expiry. cert-manager renews certificates when they reach 2/3 of their lifetime by default.
+
+To check the certificate status:
+
+```bash
+kubectl get certificate -n istio-system
+```
+
+To force an immediate renewal, delete the certificate secret. cert-manager detects the missing secret and issues a new certificate:
+
+```bash
+kubectl delete secret -n istio-system <certificate-secret-name>
+```
+
+### Static certificate
+
+When using a static TLS secret, you must manually rotate the certificate before it expires.
+
+#### Generate new certificate data
+
+Obtain a renewed certificate from your CA.
+
+#### Update the Kubernetes secret
+
+```bash
+kubectl create secret tls my-portal-certificate \
+  --cert=new-certificate.crt \
+  --key=new-certificate.key \
+  --namespace=default \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+#### Verify the update propagated
+
+The secret replicator copies the updated secret to `istio-system`. Verify:
+
+```bash
+kubectl get secret -n istio-system my-portal-certificate -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -dates -noout
+```
+
+#### Restart the Istio gateway (if needed)
+
+In most cases, Istio detects the secret change automatically. If not:
+
+```bash
+kubectl rollout restart deployment/istio-ingressgateway -n istio-system
+```
