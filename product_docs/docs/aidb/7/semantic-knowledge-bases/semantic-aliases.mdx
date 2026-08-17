@@ -1,0 +1,115 @@
+---
+title: Semantic aliases
+navTitle: Semantic aliases
+description: Define named, parameterized SQL queries with vectorized descriptions so recurring questions map to trusted, reusable queries.
+deepToC: true
+---
+
+A **semantic alias** is a named, parameterized SQL query paired with a natural-language description. The description is embedded, so an alias can be found by meaning — the same way schema metadata is. Aliases are the reusable, governed layer of text-to-SQL: instead of generating fresh SQL for every question, a recurring question resolves to a query you've already written and reviewed.
+
+Each alias is associated with the semantic KB that owns the schema its SQL reads. AIDB infers that KB from the query, embeds the alias's description with the KB's model, and — because a KB has a single embedding model — keeps the alias's description vector comparable to the KB's schema vectors. That's what lets [`aidb.semantic_kb_search()`](searching#aidbsemantic_kb_search) return schema entities and aliases in one ranked list.
+
+!!!note
+Semantic aliases are managed and run with the `aidb` SQL functions below. Unlike the KB *search* functions, alias functions are **not** exposed as [agent tools](../agents-and-tools/tools#semantic-knowledge-bases) — by product decision, an agent discovers and reads schema, but doesn't create or execute aliases itself.
+!!!
+
+## Creating an alias
+
+`aidb.create_semantic_alias()` takes a unique name, a description to embed, the SQL query text, and its parameter definitions. Placeholders in the query use `${name}` syntax. The query must be a single read-only `SELECT`.
+
+```sql
+SELECT aidb.create_semantic_alias(
+    name        => 'monthly_revenue',
+    description => 'Total revenue for a given month and year',
+    query_text  => $$
+        SELECT SUM(amount) AS total
+        FROM sales.orders
+        WHERE EXTRACT(MONTH FROM order_date) = ${month}
+          AND EXTRACT(YEAR  FROM order_date) = ${year}
+    $$,
+    params => '[
+        {"name": "month", "param_type": "integer", "description": "Month number (1-12)"},
+        {"name": "year",  "param_type": "integer", "description": "Four-digit year"}
+    ]'
+);
+```
+
+| Parameter     | Type    | Default | Description                                                                                     |
+|---------------|---------|---------|-------------------------------------------------------------------------------------------------|
+| `name`        | `text`  | —       | Unique alias name.                                                                               |
+| `description` | `text`  | —       | Human-readable description — this is what gets embedded for search.                              |
+| `query_text`  | `text`  | —       | A single read-only `SELECT`, with `${name}` placeholders for parameters.                         |
+| `params`      | `jsonb` | `NULL`  | Array of parameter definitions (see below).                                                      |
+| `model`       | `text`  | `NULL`  | Optional; validated against the owning KB's model rather than chosen freely.                     |
+| `kb_name`     | `text`  | `NULL`  | Optional; the KB to attach the alias to. Omit to let AIDB infer it from the query's schema(s).  |
+
+Each entry in the `params` JSONB array has:
+
+| Field         | Required | Description                                                        |
+|---------------|----------|--------------------------------------------------------------------|
+| `name`        | Yes      | Matches a `${name}` placeholder in `query_text`.                   |
+| `param_type`  | Yes      | PostgreSQL type: `text`, `integer`, `numeric`, `date`, and so on.  |
+| `description` | No       | Human-readable description of the parameter.                       |
+| `enum_values` | No       | Allowed values, when the parameter is constrained to a set.        |
+
+If the query's schema maps to more than one KB and you don't pass `kb_name`, creation fails with an ambiguity error — pass `kb_name` so the alias embeds with the right model.
+
+## Finding an alias
+
+`aidb.search_semantic_aliases()` searches aliases by natural-language query, scoped to one KB (it uses that KB's embedding model).
+
+```sql
+SELECT name, query_text, similarity
+FROM aidb.search_semantic_aliases(
+    query_text => 'how much money did we make last month',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+| Parameter        | Type               | Default | Description                                                              |
+|------------------|--------------------|---------|--------------------------------------------------------------------------|
+| `query_text`     | `text`             | —       | Natural-language query.                                                   |
+| `min_similarity` | `double precision` | `NULL`  | Optional similarity floor.                                               |
+| `top_k`          | `int`              | `10`    | Maximum results.                                                          |
+| `offset`         | `int`              | `0`     | Paging offset.                                                            |
+| `kb_name`        | `text`             | `NULL`  | The KB to scope the search to. Omit to target the single KB when one exists. |
+| `model`          | `text`             | `NULL`  | Optional override, validated against the KB's model.                     |
+
+It returns `name`, `query_text`, and `similarity`. Aliases also appear in [`aidb.semantic_kb_search()`](searching#aidbsemantic_kb_search) results with `source_type = 'alias'`, so a single composite search finds both schema and aliases at once.
+
+## Running an alias
+
+`aidb.execute_semantic_alias()` runs an alias by name, substituting its parameters. It returns a set of `result` rows, each a JSONB object:
+
+```sql
+SELECT result
+FROM aidb.execute_semantic_alias(
+    alias_name => 'monthly_revenue',
+    args       => '{"month": 3, "year": 2025}'
+);
+```
+
+| Parameter      | Type    | Default | Description                                                                        |
+|----------------|---------|---------|------------------------------------------------------------------------------------|
+| `alias_name`   | `text`  | —       | Alias to run.                                                                       |
+| `args`         | `jsonb` | `NULL`  | Object of parameter values keyed by name.                                          |
+| `execute_role` | `text`  | `NULL`  | PostgreSQL role to run the query as — requires the appropriate `SET ROLE` grants.  |
+
+Use `execute_role` to run an alias under a least-privilege reporting role rather than the connecting user. Because every alias is validated as a single read-only `SELECT` at creation and re-validated at execution, an alias can't be used to run writes.
+
+## Managing aliases
+
+| Function | Purpose |
+|----------|---------|
+| `aidb.get_semantic_aliases()` | List all aliases with `name`, `description`, `query_text`, and `param_count`. |
+| `aidb.get_semantic_alias(alias_name)` | Get one alias's `name`, `description`, `query_text`, and `params`. |
+| `aidb.update_semantic_alias(name, description, query_text, params, kb_name)` | Update an alias; changing `query_text` re-infers its owning KB and re-embeds it. |
+| `aidb.delete_semantic_alias(name)` | Delete an alias by name. |
+
+Deleting a KB detaches (rather than deletes) its aliases; a later KB covering the same schema re-claims and re-embeds them.
+
+## Next steps
+
+- See how an agent combines schema search and aliases into an end-to-end [text-to-SQL](text-to-sql) workflow.
+- Walk through aliases and search together in the [example](example).

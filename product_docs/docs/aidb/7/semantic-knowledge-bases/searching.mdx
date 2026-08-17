@@ -1,0 +1,124 @@
+---
+title: Searching a semantic knowledge base
+navTitle: Searching
+description: Run natural-language schema search against a semantic knowledge base with semantic_kb_search and the schema-metadata functions.
+deepToC: true
+---
+
+Once a semantic KB has crawled your schemas, you search it with a natural-language query. The KB embeds your query with the same model it used to index the schema, then returns the tables, views, and columns whose metadata is closest to the query. Every search function takes the KB name as `kb_name`, which you can omit when only one KB exists.
+
+## `aidb.semantic_kb_search()`
+
+`semantic_kb_search()` is the composite entry point: it runs the per-source ranked searches — schema metadata and curated [semantic aliases](semantic-aliases) — and fuses them into one ranked list with Reciprocal Rank Fusion (RRF). Use it when you want a single ranked answer to "what in my schema relates to this?"
+
+```sql
+SELECT source_type, entity_type, schema_name, relation_name, column_name, rank
+FROM aidb.semantic_kb_search(
+    query_text => 'which customers spent the most',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+| Parameter        | Type               | Default | Description                                                                                          |
+|------------------|--------------------|---------|------------------------------------------------------------------------------------------------------|
+| `query_text`     | `text`             | —       | The natural-language query.                                                                           |
+| `kb_name`        | `text`             | `NULL`  | The KB to search. Omit to target the single KB when only one exists.                                  |
+| `top_k`          | `int`              | `10`    | Number of ranked rows to return.                                                                      |
+| `sources`        | `text[]`           | `NULL`  | Sources to search. Active: `schema`, `alias`. Omit for all. (`history`, `relationship` are reserved.) |
+| `entity_types`   | `text[]`           | `NULL`  | Entity types to include. Active: `Table`, `View`, `Column`, `Alias`. Omit for all.                    |
+| `rrf_k`          | `int`              | `60`    | Rank-fusion damping constant.                                                                         |
+| `min_similarity` | `double precision` | `NULL`  | Optional similarity floor; rows scoring below it are dropped. Omit for no floor.                      |
+
+It returns one row per match:
+
+| Column          | Description                                                            |
+|-----------------|-----------------------------------------------------------------------|
+| `source_type`   | Which source produced the row — `schema` or `alias`.                   |
+| `entity_type`   | `Table`, `View`, `Column`, or `Alias`.                                 |
+| `schema_name`   | The schema the entity belongs to.                                     |
+| `relation_name` | The table or view name.                                               |
+| `column_name`   | The column name (empty for table- and view-level matches).           |
+| `object_ref`    | A qualified reference to the matched object.                          |
+| `definition`    | The structural definition that was embedded.                         |
+| `comment`       | The `COMMENT ON` text for the entity, if any.                        |
+| `score`         | The fused RRF score.                                                  |
+| `rank`          | The 1-based rank within the fused result set.                        |
+| `components`    | JSONB detail of the per-source scores that fed the fusion.           |
+
+Because `semantic_kb_search()` returns both schema entities and matching aliases in one ranked list, it's the natural first call in a [text-to-SQL](text-to-sql) workflow.
+
+## Schema-metadata functions
+
+For narrower needs, four functions search only schema metadata. They share the same optional `kb_name` and a `similarity` score (cosine similarity, higher is closer), with `min_similarity` as an optional floor and `top_k` / `offset` for paging.
+
+### `aidb.get_metadata()`
+
+The broadest schema search — returns columns, tables, and views together with full metadata.
+
+```sql
+SELECT schema_name, relation_name, column_name, entity_type, similarity
+FROM aidb.get_metadata(
+    kb_name    => 'analytics_kb',
+    query_text => 'customer email address',
+    top_k      => 10
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k` (default `10`), `offset` (default `0`). Returns `schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `definition_vector`, and `similarity`.
+
+### `aidb.get_entity_definitions()`
+
+Matches **tables and views** only.
+
+```sql
+SELECT schema_name, relation_name, entity_type, similarity
+FROM aidb.get_entity_definitions(
+    kb_name      => 'analytics_kb',
+    query_text   => 'orders and line items',
+    entity_types => ARRAY['Table', 'View']
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `entity_types` (default `ARRAY['Table','View']`), `top_k`, `offset`. Returns `schema_name`, `relation_name`, `entity_type`, `definition`, `comment`, `similarity`.
+
+### `aidb.get_column_definitions()`
+
+Returns just the matching column and table **definitions** — the leanest result, useful as compact grounding for SQL generation.
+
+```sql
+SELECT definition
+FROM aidb.get_column_definitions(
+    kb_name    => 'analytics_kb',
+    query_text => 'order total amount'
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Returns a single `definition` column.
+
+### `aidb.search_by_comment()`
+
+Matches only the natural-language `COMMENT ON` text attached to schemas, tables, and columns.
+
+```sql
+SELECT relation_name, column_name, comment, similarity
+FROM aidb.search_by_comment(
+    kb_name    => 'analytics_kb',
+    query_text => 'order status values'
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Returns `schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `similarity`.
+
+This is the most direct way to leverage documentation you've already written into your schema — a column commented *"order lifecycle state: pending, confirmed, shipped, delivered, cancelled"* surfaces for a query like *"order status values"* even if the column itself is named `st`. Because comment search depends on well-documented objects, keeping `COMMENT ON` statements current is the highest-leverage way to improve a semantic KB's results.
+
+## Tuning results
+
+- **`min_similarity`** trades recall for precision. Lower it (for example `0.3`) when a query returns nothing; raise it when results are too broad.
+- **`top_k` / `offset`** page through results.
+- **`entity_types`** narrows to the kinds you care about — for example `ARRAY['Column']` when you're hunting for a specific field.
+
+## Next steps
+
+- Save frequently asked questions as reusable, parameterized queries with [semantic aliases](semantic-aliases).
+- Let an agent drive these searches end to end in the [text-to-SQL](text-to-sql) workflow.
