@@ -2,6 +2,8 @@
 title: Managing agents
 navTitle: Managing agents
 description: Register, update, and delete AIDB agents — their model, tools, permissions, and structured output.
+redirects:
+  - /aidb/7/agents-and-tools/creating-agents
 ---
 
 An agent is a row in `aidb.agents`, created with `aidb.create_agent()`. Nothing runs until you call [`aidb.agent_converse()`](conversing-with-agents) — creating an agent just stores its configuration.
@@ -59,7 +61,17 @@ See [Tool calling and structured output](../reference/models#tool-calling-and-st
 
 ## Tools and delegates
 
-`tools` is an array of names from the [tool catalog](tools) (`aidb.tools`) the agent is allowed to call; `delegates` is an array of names of other agents it may [hand off to](delegation). Both are validated against `aidb.tools`/`aidb.agents` at `create_agent`/`update_agent` time — an unknown name is rejected immediately rather than surfacing later inside `agent_converse`. Omit either for an agent with no tools or no delegates.
+`tools` is an array of names from the [tool catalog](../tools) (`aidb.tools`) the agent is allowed to call; `delegates` is an array of names of other agents it may [hand off to](delegation). Both are validated against `aidb.tools`/`aidb.agents` at `create_agent`/`update_agent` time — an unknown name is rejected immediately rather than surfacing later inside `agent_converse`. Omit either for an agent with no tools or no delegates.
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'help_desk',
+    instructions => 'Help users with general questions, delegating data questions to a specialist.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query'],
+    delegates    => ARRAY['sql_specialist']
+);
+```
 
 ## Permissions
 
@@ -97,6 +109,19 @@ SELECT aidb.create_agent(
 
 `input_token_budget`, `output_token_budget`, `max_iterations`, and `timeout` (seconds) cap how much a single `agent_converse` call can cost and how long it can run; `budget_strategy` controls what happens when a budget is exceeded. All are optional — see [Budgets and limits](conversing-with-agents#budgets-and-limits) for the full behavior, since it's a property of how a conversation runs, not of the agent's static configuration.
 
+```sql
+SELECT aidb.create_agent(
+    name                 => 'cost_capped_helper',
+    instructions         => 'Answer questions about the orders table.',
+    model                => 'my_gpt',
+    input_token_budget   => 20000,   -- INTEGER; input tokens allowed per agent_converse call
+    output_token_budget  => 2000,    -- INTEGER; output tokens allowed per agent_converse call
+    max_iterations       => 10,      -- INTEGER; reasoning rounds allowed per call (a hard ceiling of 25 always applies)
+    timeout              => 60,      -- INTEGER; wall-clock seconds allowed per call
+    budget_strategy      => 'error'  -- TEXT; one of 'ignore', 'error', 'summarize', 'attempt_complete'
+);
+```
+
 ## Updating and deleting agents
 
 `aidb.update_agent()` takes the same fields as `create_agent`, all optional — only the fields you pass change; everything else keeps its current value:
@@ -113,7 +138,7 @@ There's no dedicated "list agents" function — `aidb.agents` is a normal table,
 SELECT aidb.delete_agent('db_helper');
 ```
 
-If the agent has any conversation history, this fails by default (its internal task records are referenced by foreign key) — pass `force => true` to delete that internal history alongside the agent. The conversation *transcript* itself is untouched either way and remains readable with [`aidb.get_conversation()`](conversing-with-agents#retrieving-conversations) even after the agent that produced it is gone.
+If the agent has any conversation history, this fails by default (its internal task records are referenced by foreign key) — pass `force => true` to delete that internal history alongside the agent. The conversation *transcript* itself is untouched either way and remains readable with [`aidb.get_conversation()`](conversing-with-agents#retrieving-conversations) even after the agent that produced it has been deleted.
 
 ```sql
 SELECT aidb.delete_agent('db_helper', force => true);

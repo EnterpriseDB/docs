@@ -2,6 +2,8 @@
 title: Invoking agents
 navTitle: Invoking agents
 description: Run an AIDB agent with aidb.agent_converse(), manage multi-turn conversations, and control read-only mode, debug output, and budgets.
+redirects:
+  - /aidb/7/agents-and-tools/conversing-with-agents
 ---
 
 `aidb.agent_converse()` sends a prompt to an agent and runs its reasoning loop — think, optionally call tools, observe, repeat — until it produces an answer or hits a limit:
@@ -23,7 +25,9 @@ __OUTPUT__
 (1 row)
 ```
 
-Like `create_agent`, this never raises for an agent-logic failure (an unknown agent, a mid-loop reasoning failure, a budget that was exceeded) — `error` is populated on the returned row instead, so the call's transaction (and everything already logged for that attempt) still commits.
+Like [`create_agent`](creating-agents), this never raises for an agent-logic failure (an unknown agent, a mid-loop reasoning failure, a budget that was exceeded) — `error` is populated on the returned row instead, so the call's transaction (and everything already logged for that attempt) still commits.
+
+Pass `output_type` to override the agent's configured output schema for just this call — see [Structured output](creating-agents#structured-output) for how to build one.
 
 ## Conversations
 
@@ -83,17 +87,24 @@ Each `NOTICE` includes that action's request/response payload — prompts, tool 
 
 ## Budgets and limits
 
-An agent's `input_token_budget`, `output_token_budget`, `max_iterations`, and `timeout` (all set on [`create_agent`/`update_agent`](creating-agents#budgets-iterations-and-timeouts)) cap one `agent_converse` call. `timeout` defaults to 300 seconds if unset. What happens when a budget is exceeded depends on `budget_strategy`:
+Each `agent_converse` call is capped by four budgets, all optional and set on [`create_agent`/`update_agent`](creating-agents#budgets-iterations-and-timeouts):
 
-| Strategy | Behavior |
-|----------|----------|
+| Parameter             | What it caps                                                                                                                                                                                                 |
+|-----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `input_token_budget`  | Input tokens for the call.                                                                                                                                                                                   |
+| `output_token_budget` | Output tokens for the call.                                                                                                                                                                                  |
+| `max_iterations`      | Reasoning rounds — one model call plus any tools it calls in that round, not individual tool calls. A hard ceiling of 25 always applies, regardless of configuration, as a backstop against a runaway agent. |
+| `timeout`             | Wall-clock seconds for the call. Defaults to 300 seconds if unset.                                                                                                                                           |
+
+What happens when a budget is exceeded depends on `budget_strategy`:
+
+| Strategy                     | Behavior                                                                                                                                                                             |
+|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `attempt_complete` (default) | Grants 3 extra reasoning rounds once a budget is first exceeded, telling the model its time is running out so it can wrap up — then halts with an error if it still hasn't finished. |
-| `error` | Halts immediately with an error. |
-| `summarize` | Stops immediately and asks the model for a brief status report of what it had done so far, returning that as the answer instead of an error. |
-| `ignore` | Logs a one-time warning (as a Postgres `WARNING`) and keeps going with no limit. |
+| `error`                      | Halts immediately with an error.                                                                                                                                                     |
+| `summarize`                  | Stops immediately and asks the model for a brief status report of what it had done so far, returning that as the answer instead of an error.                                         |
+| `ignore`                     | Logs a one-time warning (as a Postgres `WARNING`) and keeps going with no limit.                                                                                                     |
 
-`max_iterations` counts reasoning rounds (one model call plus any tools it calls in that round), not individual tool calls. A hard ceiling of 25 reasoning iterations always applies regardless of configuration, as a backstop against a runaway agent.
-
-## How long context is handled
+## Context length
 
 Long conversations are bounded automatically: once a task's assembled prompt would exceed an internally tracked size estimate, AIDB asks the model to summarize the older part of the history and continues with that summary in place of the original turns. This is basic, automatic bounding to keep long-running conversations from blowing past a model's context window — there's nothing to configure. A `compaction` entry appears in the activity log when this happens (see [debug mode](#debug-mode), or query `aidb_internal.action_log` directly for the full activity history behind a conversation — every model request/response and tool call/response, not just the user-facing messages `aidb.get_conversation()` returns).
