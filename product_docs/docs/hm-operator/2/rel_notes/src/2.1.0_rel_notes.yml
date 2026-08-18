@@ -10,27 +10,21 @@ date: 30 July 2026
 intro: |
   Version 2.1.0 changes how multi-data center (MultiDC) Hybrid Manager (HM) clusters federate, adds beacon agent and HM Registry configuration to the `HybridControlPlane` and `HMRegistry` resources, and fixes a deletion path that could leave a `HybridControlPlane` stuck in `Terminating`.
 highlights: |
-  - **MultiDC clusters federate through a pairing exchange instead of a shared object storage bucket.** You mint a pairing token on the primary with `kubectl hcp federation create-token` and redeem it on the secondary with `kubectl hcp federation join`. Federations that were bootstrapped through a shared bucket are adopted automatically, so an upgrade needs no action.
-
-  - **`spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are deprecated.** Peer portal domains are now derived from `HMFederationPairing` resources. Values you set are still honoured, but they will be removed in a future API version.
+  - **`spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are deprecated.** The operator now resolves peer portal domains for a multi-data center deployment itself. Values you set are still honored, but they will be removed in a future API version.
 
   - **Deleting a `HybridControlPlane` no longer hangs indefinitely.** A control plane whose status tracked components that the current HM version no longer ships could stay in `Terminating` forever with no way to recover.
 
   - **Upgrading the operator Helm chart raises an existing HM Registry volume to 200Gi.** The default registry `PersistentVolumeClaim` size changed from 100Gi to 200Gi, and the change is applied to registries that already exist. Check your storage class before you upgrade.
+# REVIEW: entries on the multi-DC federation pairing tokens were removed before
+# merge - that workflow is not public until 2026.9 (docs-editorial#1527, and the
+# edbctl/kubectl hcp federation subcommands are still hidden). The deprecation
+# below is kept because the validating webhook emits a deprecation warning that
+# customers see in 2.1, but it is worded without naming the pairing resources.
 relnotes:
-- relnote: |
-    Federation pairing for MultiDC deployments
-  details: |
-    MultiDC clusters now federate through a direct pairing exchange between operators rather than through a shared object storage bucket. Run `kubectl hcp federation create-token` on the primary to mint a short-lived token, then `kubectl hcp federation join --token <token> --wait` on the secondary; the operator completes the trust-domain exchange and records it in the new cluster-scoped `HMFederationToken` and `HMFederationPairing` resources, resolving the resulting topology into `status.effectiveClusterGroups` on the `HybridControlPlane`. Federations that were bootstrapped through a shared bucket are adopted into `HMFederationPairing` resources automatically, so existing MultiDC installations need no action.
-  jira: UPM-111307
-  addresses:
-  type: Feature
-  impact: Highest
-
 - relnote: |
     `spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are deprecated
   details: |
-    Peer portal domains are derived from `HMFederationPairing` resources, so you no longer declare them on the `HybridControlPlane`. Values set in `spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are still honoured — `primary` takes precedence over the pairing-derived value, and `secondaries` is unioned with the pairing-derived list — but both will be removed in a future API version. Keep setting `spec.clusterGroups.role`.
+    The operator resolves the peer portal domains of a multi-data center deployment itself, so you no longer declare them on the `HybridControlPlane`. Values set in `spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are still honored — `primary` takes precedence over the resolved value, and `secondaries` is combined with it — but both will be removed in a future API version. Applying either field now produces a deprecation warning. Keep setting `spec.clusterGroups.role`.
   jira: UPM-111054
   addresses:
   type: Deprecation
@@ -43,15 +37,6 @@ relnotes:
   jira: UPM-125667
   addresses:
   type: Change
-  impact: High
-
-- relnote: |
-    Federation token and pairing management from `kubectl hcp`
-  details: |
-    `kubectl hcp federation` provides `list-tokens`, `get-token`, `revoke-token`, `list-pairings`, `get-pairing`, and `revoke-pairing` for inspecting and tearing down federation state. Revoking a token deletes it and its backing secret so it can no longer be used to join; revoking a pairing also tears down the local trust for that peer. Both revoke subcommands prompt for confirmation unless you pass `--yes`.
-  jira: UPM-111309
-  addresses:
-  type: Feature
   impact: High
 
 - relnote: |
@@ -84,7 +69,7 @@ relnotes:
 - relnote: |
     CA trust for beacon agent image discovery
   details: |
-    Set `spec.beaconAgent.provisioning.imagesetDiscoveryCACerts` to a PEM-encoded CA bundle so the image discovery scanner trusts a registry served with a private or internal CA over HTTPS. The operator materialises the bundle into a secret that the beacon agent mounts, and updating the value rotates the trusted CA. This applies when `imagesetDiscoveryAllowInsecureRegistry` is `false`.
+    Set `spec.beaconAgent.provisioning.imagesetDiscoveryCACerts` to a PEM-encoded CA bundle so the image discovery scanner trusts a registry served with a private or internal CA over HTTPS. The operator materializes the bundle into a secret that the beacon agent mounts, and updating the value rotates the trusted CA. This applies when `imagesetDiscoveryAllowInsecureRegistry` is `false`.
   jira: UPM-112167
   addresses:
   type: Feature
@@ -102,7 +87,7 @@ relnotes:
 - relnote: |
     Pinned NodePort for the HM Registry
   details: |
-    Set `spec.nodePort` on the `HMRegistry` resource to a value between 30000 and 32767 to pin the port the in-cluster registry is exposed on, rather than letting Kubernetes assign one from the NodePort range. Leave it unset to keep the current behaviour. The operator Helm chart does not expose this setting, so set it on the `HMRegistry` resource directly.
+    Set `spec.nodePort` on the `HMRegistry` resource to a value between 30000 and 32767 to pin the port the in-cluster registry is exposed on, rather than letting Kubernetes assign one from the NodePort range. Leave it unset to keep the current behavior. The operator Helm chart does not expose this setting, so set it on the `HMRegistry` resource directly.
   jira: UPM-119132
   addresses:
   type: Feature
@@ -156,7 +141,7 @@ relnotes:
 - relnote: |
     Postflight checks ignored `spec.interval` when the cluster was unhealthy
   details: |
-    Once a postflight check failed, the whole check set re-ran continuously instead of waiting for the interval configured in `spec.interval` on the `Postflight` resource, adding API load to an already unhealthy cluster. The interval is now honoured whatever the phase.
+    Once a postflight check failed, the whole check set re-ran continuously instead of waiting for the interval configured in `spec.interval` on the `Postflight` resource, adding API load to an already unhealthy cluster. The interval is now honored whatever the phase.
   jira: UPM-96623
   addresses:
   type: Bug Fix
