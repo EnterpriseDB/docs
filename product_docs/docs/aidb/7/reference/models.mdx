@@ -77,8 +77,30 @@ Registers a new model in the AIDB model registry.
 | `provider`            | TEXT    | Required | Provider name (see `aidb.model_providers`).                                           |
 | `config`              | JSONB   | `'{}'`   | Provider-specific configuration. Build with a [config helper](#model-config-helpers). |
 | `credentials`         | JSONB   | `'{}'`   | Provider credentials (for example, `{"api_key": "..."}`).                             |
+| `credentials_env`     | TEXT    | NULL     | Name of an environment variable to read credentials from instead of storing them. See [Credentials from environment variables](#credentials-from-environment-variables). Mutually exclusive with `credentials`. |
 | `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
 | `validate`            | BOOLEAN | `true`   | If `true`, probe the model at creation time to confirm it's functional. See [Validation](#validation). |
+
+#### Credentials from environment variables
+
+!!!note
+Don't want a provider's API key or password sitting in a database table at all, even one with restricted grants? Pass `credentials_env` instead of `credentials`, naming a Postgres environment variable to read the credential from. Only the variable's *name* is stored — the value itself is read fresh from the Postgres backend process's environment every time the model is used, and is never persisted in the database.
+!!!
+
+Pass a variable name instead of a `credentials` object:
+
+```sql
+SELECT aidb.create_model(
+    name            => 'my_openai',
+    provider        => 'openai_embeddings',
+    config          => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials_env => 'AIDB_OPENAI_API_KEY'
+);
+```
+
+The referenced variable can hold either a bare secret (used as `api_key`) or a JSON object (for example, `{"basic_auth": "..."}`) — the same shapes `credentials` itself accepts. `credentials` and `credentials_env` are mutually exclusive; passing both raises an error.
+
+For security, the environment variable's name must start with the prefix configured by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default) — this stops a model or MCP server configuration from naming an arbitrary, unrelated environment variable on the Postgres host and exfiltrating its value. The same mechanism and the same GUC apply to MCP server authentication; see [`headers_env`](../tools/mcp-tools#authentication).
 
 #### TLS configuration
 
