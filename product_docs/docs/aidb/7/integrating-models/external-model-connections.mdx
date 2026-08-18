@@ -7,7 +7,7 @@ description: How to connect AIDB to external AI model providers, including OpenA
 External models are API-based models hosted outside your Postgres instance. AIDB connects to them by registering a model with `aidb.create_model()`, supplying the provider name, a configuration object, and credentials such as an API key, if required.
 
 !!!note
-The examples on this page pass credentials inline as `credentials => '{"api_key": "..."}'::JSONB` (or as a config-helper argument) for brevity. To avoid storing the secret in the database at all, pass `credentials_env` instead, naming an environment variable to read it from at connection time. See [Credentials from environment variables](../reference/models#credentials-from-environment-variables).
+The examples on this page pass credentials inline as `credentials => '{"api_key": "..."}'::JSONB` for brevity. `config` itself can never contain an `api_key` or `basic_auth` key at any nesting depth — `aidb.create_model()` rejects it — so always pass credentials through the separate `credentials` argument. To avoid storing the secret in the database at all, pass `credentials_env` instead, naming an environment variable to read it from at connection time. See [Credentials from environment variables](../reference/models#credentials-from-environment-variables).
 !!!
 
 Once registered, an external model is used exactly like a default local model — by name in any AIDB SQL function or pipeline step.
@@ -21,7 +21,8 @@ By default, `aidb.create_model()` validates an external model as part of registr
 SELECT aidb.create_model(
     'my_openai_embedder',
     'openai_embeddings',
-    config => aidb.embeddings_config(model => 'text-embedding-3-small', api_key => 'sk-...')
+    config      => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -31,8 +32,9 @@ Pass `validate => false` to skip the probe — for example, when the endpoint or
 SELECT aidb.create_model(
     'my_openai_embedder',
     'openai_embeddings',
-    config   => aidb.embeddings_config(model => 'text-embedding-3-small', api_key => 'sk-...'),
-    validate => false
+    config      => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials => '{"api_key": "sk-..."}'::JSONB,
+    validate    => false
 );
 ```
 
@@ -55,11 +57,11 @@ Use the `openai_embeddings` provider with `aidb.embeddings_config()`. Override t
 SELECT aidb.create_model(
     'my_openai_embedder',
     'openai_embeddings',
-    config => aidb.embeddings_config(
-        model   => 'text-embedding-3-small',
-        api_key => 'sk-...',
-        url     => 'https://api.openai.com/v1'
-    )
+    config      => aidb.embeddings_config(
+        model => 'text-embedding-3-small',
+        url   => 'https://api.openai.com/v1'
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 
 -- Local Ollama server
@@ -93,11 +95,11 @@ Use the `openai_completions` provider with `aidb.completions_config()`. The `url
 SELECT aidb.create_model(
     'my_openai_llm',
     'openai_completions',
-    config => aidb.completions_config(
+    config      => aidb.completions_config(
         model       => 'gpt-4o',
-        api_key     => 'sk-...',
         temperature => 0.2
-    )
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -167,7 +169,7 @@ The `anthropic_messages` provider connects to Anthropic's native Messages API (`
 SELECT aidb.create_model(
     'my_claude',
     'anthropic_messages',
-    config      => aidb.anthropic_messages_config(model => 'claude-opus-4-8'),
+    config      => aidb.anthropic_messages_config(model => 'claude-opus-4-6'),
     credentials => '{"api_key": "sk-ant-..."}'::JSONB
 );
 ```
@@ -185,7 +187,7 @@ SELECT aidb.create_model(
     'my_claude_azure',
     'anthropic_messages_azure',
     config      => aidb.anthropic_messages_config(
-        model => 'claude-opus-4-8',
+        model => 'claude-opus-4-6',
         url   => 'https://<resource>.services.ai.azure.com/anthropic/v1/messages'
     ),
     credentials => '{"api_key": "..."}'::JSONB
@@ -196,7 +198,7 @@ SELECT aidb.create_model(
     'my_claude_bedrock',
     'anthropic_messages_bedrock',
     config      => aidb.anthropic_messages_config(
-        model => 'anthropic.claude-opus-4-8-v1:0',
+        model => 'anthropic.claude-opus-4-6-v1:0',
         url   => 'https://bedrock-runtime.us-east-1.amazonaws.com'
     ),
     credentials => '{"api_key": "..."}'::JSONB
@@ -223,10 +225,10 @@ Use the `nim_completions` provider with `aidb.completions_config()` — the same
 SELECT aidb.create_model(
     'my_nim_llm',
     'nim_completions',
-    config => aidb.completions_config(
-        model   => 'meta/llama-3.3-70b-instruct',
-        api_key => 'nvapi-...'
-    )
+    config      => aidb.completions_config(
+        model => 'meta/llama-3.3-70b-instruct'
+    ),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -252,10 +254,10 @@ Use the `nim_clip` provider with `aidb.nim_clip_config()` for joint text and ima
 SELECT aidb.create_model(
     'my_nim_clip',
     'nim_clip',
-    config => aidb.nim_clip_config(
-        api_key => 'nvapi-...',
-        model   => 'nvidia/nvclip'
-    )
+    config      => aidb.nim_clip_config(
+        model => 'nvidia/nvclip'
+    ),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -271,13 +273,14 @@ SELECT aidb.create_model(
 
 ### OCR (NIM OCR)
 
-Use the `nim_ocr` provider with `aidb.nim_ocr_config()` to extract text from images:
+Use the `nim_paddle_ocr` provider with `aidb.nim_ocr_config()` to extract text from images:
 
 ```sql
 SELECT aidb.create_model(
     'my_nim_ocr',
     'nim_paddle_ocr',
-    config => aidb.nim_ocr_config(api_key => 'nvapi-...')
+    config      => aidb.nim_ocr_config(),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -299,10 +302,10 @@ Use the `nim_reranking` provider with `aidb.nim_reranking_config()` to re-score 
 SELECT aidb.create_model(
     'my_reranker',
     'nim_reranking',
-    config => aidb.nim_reranking_config(
-        api_key => 'nvapi-...',
-        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
-    )
+    config      => aidb.nim_reranking_config(
+        model => 'nvidia/nv-rerankqa-mistral-4b-v3'
+    ),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -320,16 +323,17 @@ To get a NIM API key, create an account at [build.nvidia.com](https://build.nvid
 
 ## Google Gemini
 
-Use the `gemini` provider with `aidb.gemini_config()`. Pass your Google API key as the first argument:
+Use the `gemini` provider with `aidb.gemini_config()`. `api_key` is `aidb.gemini_config()`'s first parameter and has no default, but pass it as `NULL` and supply the real key through `create_model()`'s `credentials` argument instead — `config` can never contain an `api_key` field:
 
 ```sql
 SELECT aidb.create_model(
     'my_gemini',
     'gemini',
-    config => aidb.gemini_config(
-        'AIza...',
-        model => 'gemini-2.0-flash'
-    )
+    config      => aidb.gemini_config(
+        api_key => NULL,
+        model   => 'gemini-2.0-flash'
+    ),
+    credentials => '{"api_key": "AIza..."}'::JSONB
 );
 ```
 
@@ -337,7 +341,7 @@ SELECT aidb.create_model(
 
 | Parameter                 | Type    | Default  | Description                                              |
 |---------------------------|---------|----------|----------------------------------------------------------|
-| `api_key`                 | TEXT    | Required | Google API key.                                          |
+| `api_key`                 | TEXT    | Required | Has no default, but pass `NULL` and supply the real key via `create_model()`'s `credentials` argument instead — `config` can never contain `api_key`. |
 | `model`                   | TEXT    | NULL     | Gemini model identifier (for example, `gemini-2.0-flash`). |
 | `url`                     | TEXT    | NULL     | API endpoint URL override.                               |
 | `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests to the API.                  |
@@ -353,10 +357,8 @@ SELECT aidb.create_model(
 SELECT aidb.create_model(
     'my_or_chat',
     'openrouter_chat',
-    config => aidb.openrouter_chat_config(
-        'anthropic/claude-3-5-haiku',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_chat_config('anthropic/claude-3-5-haiku'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
@@ -376,10 +378,8 @@ SELECT aidb.create_model(
 SELECT aidb.create_model(
     'my_or_embedder',
     'openrouter_embeddings',
-    config => aidb.openrouter_embeddings_config(
-        'mistral/mistral-embed',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_embeddings_config('mistral/mistral-embed'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 

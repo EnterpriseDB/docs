@@ -29,6 +29,7 @@ The following models are available in every AIDB installation without any config
 | `qwen3-embedding-4b-Q8_0`    | `llamacpp_embeddings` (llama.cpp) | Text embeddings                         |
 | `qwen3.5-0.8b-Q8_0`          | `llamacpp_generate` (llama.cpp)   | Text-to-text generation                 |
 | `llama-3.2-1b-instruct-Q8_0` | `llamacpp_generate` (llama.cpp)   | Text-to-text generation                 |
+| `lightonocr-2-1b-Q8_0`       | `llamacpp_ocr` (llama.cpp)        | OCR (text extraction from images)       |
 | `dummy`                      | `dummy`                           | Testing and development (returns zeros) |
 
 Use them directly by name in any AIDB SQL function or pipeline step configuration:
@@ -68,6 +69,8 @@ AIDB's local providers, the runtime behind each, and what they're for:
 | `llama_instruct_local` | Candle | Instruction variants of Meta's family of large language models. |
 | `llamacpp_generate` | llama.cpp | Local LLM inference via llama.cpp (GGUF format). |
 | `llamacpp_embeddings` | llama.cpp | Local text embeddings via llama.cpp (GGUF format). |
+| `llamacpp_reranking` | llama.cpp | Local reranking via llama.cpp (GGUF format). |
+| `llamacpp_ocr` | llama.cpp | Local OCR (text extraction from images) via llama.cpp (GGUF format). |
 | `dummy` | — | Provides fake data, ideal for testing. |
 
 `aidb.model_providers` also lists external API providers (OpenAI, NVIDIA NIM, Gemini, OpenRouter, and so on) — see [External model connections](external-model-connections) for those. See [`aidb.model_providers`](../reference/models#aidbmodel_providers) for the full column reference.
@@ -129,6 +132,7 @@ SELECT aidb.create_model(
 | `model`      | TEXT    | Required | Model name or path (HuggingFace identifier). |
 | `revision`   | TEXT    | NULL     | Model revision or branch.                    |
 | `cache_dir`  | TEXT    | NULL     | Local directory for caching model files.     |
+| `image_size` | INTEGER | NULL     | Input image size in pixels.                  |
 
 ### T5
 
@@ -142,11 +146,18 @@ SELECT aidb.create_model(
 );
 ```
 
-| Parameter    | Type | Default  | Description                                  |
-|--------------|------|----------|-----------------------------------------------|
-| `model`      | TEXT | Required | Model name or path.                          |
-| `model_path` | TEXT | NULL     | Explicit local path to model weights (overrides `model`). |
-| `cache_dir`  | TEXT | NULL     | Local directory for caching model files.     |
+| Parameter        | Type             | Default  | Description                                                |
+|------------------|------------------|----------|--------------------------------------------------------------|
+| `model`          | TEXT             | Required | Model name or path.                                        |
+| `revision`       | TEXT             | NULL     | Model revision or branch.                                  |
+| `temperature`    | DOUBLE PRECISION | NULL     | Sampling temperature.                                      |
+| `seed`           | BIGINT           | NULL     | Random seed for reproducible outputs.                      |
+| `max_tokens`     | INTEGER          | NULL     | Maximum tokens to generate.                                |
+| `repeat_penalty` | REAL             | NULL     | Penalty applied to repeated tokens.                        |
+| `repeat_last_n`  | INTEGER          | NULL     | Number of trailing tokens considered for the repeat penalty. |
+| `model_path`     | TEXT             | NULL     | Explicit local path to model weights (overrides `model`).  |
+| `cache_dir`      | TEXT             | NULL     | Local directory for caching model files.                  |
+| `top_p`          | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                                |
 
 ### Llama
 
@@ -163,14 +174,21 @@ SELECT aidb.create_model(
 );
 ```
 
-| Parameter      | Type             | Default  | Description                                              |
-|----------------|------------------|----------|------------------------------------------------------------|
-| `model`        | TEXT             | Required | Model name or path.                                      |
-| `cache_dir`    | TEXT             | NULL     | Local directory for caching model files.                 |
-| `model_path`   | TEXT             | NULL     | Explicit local path to model weights (overrides `model`). |
-| `temperature`  | DOUBLE PRECISION | NULL     | Sampling temperature.                                    |
-| `top_p`        | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                              |
-| `seed`         | BIGINT           | NULL     | Random seed for reproducible outputs.                    |
+| Parameter              | Type             | Default  | Description                                                |
+|------------------------|------------------|----------|--------------------------------------------------------------|
+| `model`                | TEXT             | Required | Model name or path.                                        |
+| `revision`             | TEXT             | NULL     | Model revision or branch.                                  |
+| `cache_dir`            | TEXT             | NULL     | Local directory for caching model files.                   |
+| `system_prompt`        | TEXT             | NULL     | Default system prompt.                                     |
+| `use_flash_attention`  | BOOLEAN          | NULL     | Enable flash attention.                                    |
+| `model_path`           | TEXT             | NULL     | Explicit local path to model weights (overrides `model`).  |
+| `seed`                 | BIGINT           | NULL     | Random seed for reproducible outputs.                      |
+| `temperature`          | DOUBLE PRECISION | NULL     | Sampling temperature.                                      |
+| `top_p`                | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                                |
+| `sample_len`           | INTEGER          | NULL     | Maximum tokens to generate.                                |
+| `use_kv_cache`         | BOOLEAN          | NULL     | Enable KV cache.                                            |
+| `repeat_penalty`       | REAL             | NULL     | Penalty applied to repeated tokens.                         |
+| `repeat_last_n`        | INTEGER          | NULL     | Number of trailing tokens considered for the repeat penalty. |
 
 !!!note
 Local model files are downloaded from HuggingFace and cached on first use. The Postgres process must have network access and write access to the cache directory. For air-gapped environments, pre-download the model files and use `model_path` or `cache_dir` to point to the local copy.
@@ -178,7 +196,7 @@ Local model files are downloaded from HuggingFace and cached on first use. The P
 
 ### llama.cpp
 
-llama.cpp runs GGUF-format model files — a common distribution format for quantized, open-weight models — through three providers: `llamacpp_generate` for text generation, `llamacpp_embeddings` for text embeddings, and `llamacpp_reranking` for reranking. Point any of them at a GGUF file, downloaded from HuggingFace or already on disk. See [Default models](#default-models) above for AIDB's pre-registered GGUF models; use the recipes below to register a different one.
+llama.cpp runs GGUF-format model files — a common distribution format for quantized, open-weight models — through four providers: `llamacpp_generate` for text generation, `llamacpp_embeddings` for text embeddings, `llamacpp_reranking` for reranking, and `llamacpp_ocr` for OCR (text extraction from images). Point any of them at a GGUF file, downloaded from HuggingFace or already on disk. See [Default models](#default-models) above for AIDB's pre-registered GGUF models; use the recipes below to register a different one.
 
 #### `llamacpp_generate`
 
@@ -292,6 +310,37 @@ Unlike `nim_reranking` and other remote reranking providers, `llamacpp_reranking
 !!!note
 llama.cpp doesn't have a config helper function yet — build `config` with `jsonb_build_object()` as shown above. It's also CPU-only today; there's no GPU offload option. See [`aidb.max_threads`](../install/configure#aidbmax_threads) to control how many threads it (and the Candle runtime) can use.
 !!!
+
+#### `llamacpp_ocr`
+
+Extracts text from images using a local vision-language GGUF model plus its multimodal projector (mmproj) file:
+
+```sql
+SELECT aidb.create_model(
+    name => 'my_llamacpp_ocr',
+    provider => 'llamacpp_ocr',
+    config => jsonb_build_object(
+        'model', 'ggml-org/LightOnOCR-2-1B-GGUF',
+        'model_file', 'LightOnOCR-2-1B-Q8_0.gguf',
+        'mmproj_file', 'mmproj-LightOnOCR-2-1B-Q8_0.gguf',
+        'revision', '7d4daf70c2856a155b1413def00f4ae59843a9cf',
+        'n_ctx', 8192
+    )
+);
+```
+
+| Parameter           | Type    | Default                              | Description                                                                                                                          |
+|----------------------|---------|-----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| `model`              | TEXT    | Required unless `local_path` is set    | HuggingFace repo id, for example, `ggml-org/LightOnOCR-2-1B-GGUF`.                                                                     |
+| `model_file`         | TEXT    | Required unless `local_path` is set    | Filename of the base model `.gguf` inside the repo.                                                                                    |
+| `mmproj_file`        | TEXT    | Required unless `mmproj_local_path` is set | Filename of the multimodal projector (mmproj) `.gguf`, in the same HuggingFace repo/revision as the base model.                    |
+| `mmproj_local_path`  | TEXT    | NULL                                     | Absolute path to a local mmproj `.gguf` file. Overrides the HuggingFace-based `mmproj_file` download.                                |
+| `revision`           | TEXT    | `main`                                   | HuggingFace revision.                                                                                                                   |
+| `local_path`         | TEXT    | NULL                                     | Absolute path to a local base model `.gguf` file. Overrides `model`/`model_file`/`revision`.                                          |
+| `cache_dir`          | TEXT    | NULL                                     | Local directory for caching downloaded model files.                                                                                     |
+| `n_ctx`              | INTEGER | 8192                                     | Context window, in tokens.                                                                                                              |
+| `prompt`             | TEXT    | Built-in transcription instruction      | OCR instruction sent with each image. Prompt influence is model-dependent.                                                             |
+| `temperature`        | DOUBLE PRECISION | 0.0                             | Sampling temperature. Defaults to `0.0` for faithful transcription rather than creative sampling.                                       |
 
 ## Validating a model at creation
 
