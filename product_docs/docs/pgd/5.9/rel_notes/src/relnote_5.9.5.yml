@@ -291,3 +291,43 @@ relnotes:
   addresses: "63068"
   type: Bug Fix
   impact: Medium
+- relnote: Fixed Autopartition rules not being preserved on node rebuild.
+  details: |
+    During `bdr_init_physical` and logical node joins, Autopartition rules copied from the source node were missing three columns (`ap_drop_after_retention_period`, `ap_partition_min_upperbound`, and `ap_analytics_offload_period`). The `ap_drop_after` flag reverted to false, so partitions were detached but never dropped, causing unbounded storage growth on the rebuilt node. PGD now selects these columns from the source and applies the correct defaults.
+  jira: BDR-8239
+  component: BDR
+  addresses: "62064"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a memory leak in the legacy `bdr.raft_election_timeout` configuration parameter alias.
+  details: |
+    The legacy `bdr.raft_election_timeout` alias had a memory leak in its assign hook that orphaned the preferred parameter name string when the real variable was registered, leaking memory on every configuration reload (SIGHUP) while the legacy alias was in use. PGD now reorders parameter registration to prevent the leak and removes an unnecessary `SetConfigOption` call from the hook.
+  jira: BDR-8133
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a memory leak when reloading the `bdr.temp_directory` configuration parameter.
+  details: |
+    The `bdr.temp_directory` assign hook didn't free the previous value when reassigning the parameter, leaking memory on every SIGHUP-driven reload while the parameter was changed. PGD now frees the prior allocation before storing the new value.
+  jira: BDR-8132
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed an uninitialized data read in Autopartition work item error handling.
+  details: |
+    `bdr_taskmgr_workitem_fromtuple()` left the runtime-only `ap_is_local` field uninitialized at several call sites, since the field isn't part of the catalog tuple. A customer Valgrind run caught a read of this uninitialized value when the task manager's error-context callback formatted an error. PGD now populates `ap_is_local` at every call site that builds a work item.
+  jira: BDR-8134
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Improved Autopartition task manager responsiveness after creating work items.
+  details: |
+    The task manager's exponential backoff, up to 290 seconds, wasn't reset after creating or processing work items, so a newly created partition work item could sit waiting through a long sleep before Autopartition acted on it. This could cause `bdr.autopartition_wait_for_partitions_on_all_nodes()` to time out waiting on partitions that hadn't been created yet. PGD now resets the backoff to its minimum interval whenever work is processed, so new work items are picked up promptly.
+  jira: ""
+  component: BDR
+  addresses: ""
+  type: Enhancement
+  impact: Medium
