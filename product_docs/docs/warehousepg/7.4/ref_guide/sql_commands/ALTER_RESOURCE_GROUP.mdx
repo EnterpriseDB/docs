@@ -14,7 +14,7 @@ editTarget: originalFilePath
 
 ---
 
-Changes the limits of a resource group, or renames it.
+Changes the limits of a resource group.
 
 <a id="synopsis"></a>
 
@@ -35,7 +35,6 @@ CPU_MAX_PERCENT=<integer> | CPUSET=<coordinator_cores>;<segment_cores>
 [ MEMORY_QUOTA=<integer> ]
 [ MIN_COST=<integer> ]
 [ IO_LIMIT=' <tablespace_io_limit_spec> [; ...] ' ]
-[ NAME <new_name> ]
 ```
 
 Where `<tablespace_io_limit_spec>` is:
@@ -79,90 +78,81 @@ You can alter one limit type in a single `ALTER RESOURCE GROUP` call.
 
 ## Parameters
 
--   `name`
+name
+The name of the resource group to alter.
 
-    The name of the resource group to alter.
+CONCURRENCY integer
+The maximum number of concurrent transactions, including active and idle transactions, that are permitted for this resource group. The `CONCURRENCY` value must be an integer in the range \[0 .. `max_connections`]. The default `CONCURRENCY` value for resource groups defined for roles is 20.
 
--   `CONCURRENCY` *integer*
+You must set `CONCURRENCY` to `0` for resource groups that you create for external components.
 
-    The maximum number of concurrent transactions, including active and idle transactions, that are permitted for this resource group. The `CONCURRENCY` value must be an integer in the range \[0 .. `max_connections`]. The default `CONCURRENCY` value for resource groups defined for roles is 20.
+> **Note** You cannot set the `CONCURRENCY` value for the `admin_group` to `0`.
 
-    You must set `CONCURRENCY` to `0` for resource groups that you create for external components.
+CPU_MAX_PERCENT integer
+The percentage of the maximum available CPU resources that the resource group can use. The value range is `1-100`. 
 
-    > **Note** You cannot set the `CONCURRENCY` value for the `admin_group` to `0`.
+CPU_WEIGHT integer
+The scheduling priority of the current group. The value range is `1-500`, the default is \`100. 
 
--   `CPU_MAX_PERCENT` *integer*
+CPUSET &lt;coordinator_cores>;&lt;segment_cores>
 
-    The percentage of the maximum available CPU resources that the resource group can use. The value range is `1-100`.
+`CPUSET` identifies the CPU cores to reserve for this resource group on the coordinator host and on segment hosts. The CPU cores that you specify must be available in the system and cannot overlap with any CPU cores that you specify for other resource groups.
 
--   `CPU_WEIGHT` *integer*
+> **Note** You must specify either `CPU_MAX_PERCENT` or `CPUSET` when you create a resource group, but not both.
 
-    The scheduling priority of the current group. The value range is `1-500`, the default is `100`.
+Specify cores as a comma-separated list of single core numbers or core number intervals. Define the coordinator host cores first, followed by segment host cores, and separate the two with a semicolon. You must enclose the full core configuration in single quotes. For example, '1;1,3-4' configures core 1 for the coordinator host, and cores 1, 3, and 4 for the segment hosts.
 
--   `CPUSET` *\\&lt;coordinator_cores>;\\&lt;segment_cores>*
+> **Note** You can configure `CPUSET` for a resource group only after you have enabled resource group-based resource management for your WarehousePG cluster.
 
-    Identifies the CPU cores to reserve for this resource group on the coordinator host and on segment hosts. The CPU cores that you specify must be available in the system and cannot overlap with any CPU cores that you specify for other resource groups.
+IO_LIMIT='&lt;tablespace_io_limit_spec> [; ...]'
+Optional. The maximum read/write sequential disk I/O throughput, and the maximum read/write I/O operations per second for the queries assigned to a specific resource group. 
 
-    > **Note** You must specify either `CPU_MAX_PERCENT` or `CPUSET` when you create a resource group, but not both.
+Where `<tablespace_io_limit_spec>` is:
 
-    Specify cores as a comma-separated list of single core numbers or core number intervals. Define the coordinator host cores first, followed by segment host cores, and separate the two with a semicolon. You must enclose the full core configuration in single quotes. For example, `'1;1,3-4'` configures core 1 for the coordinator host, and cores 1, 3, and 4 for the segment hosts.
+```
+<tablespace_name> | <oid> : <io_limit_option_spec> [, ...]
+```
 
-    > **Note** You can configure `CPUSET` for a resource group only after you have enabled resource group-based resource management for your WarehousePG cluster.
+Where `<io_limit_option_spec>` is:
 
--   `IO_LIMIT` *'\\&lt;tablespace_io_limit_spec> [; ...]'*
+```
+wbps=<io_limit_option_value>
+| rbps=<io_limit_option_value>
+| wiops=<io_limit_option_value>
+| riops=<io_limit_option_value>
+```
 
-    Optional. The maximum read/write sequential disk I/O throughput, and the maximum read/write I/O operations per second for the queries assigned to a specific resource group.
+Where `<io_limit_option_vlaue>` is:
 
-    Where `<tablespace_io_limit_spec>` is:
+```
+<integer> | max 
+```
 
-    ```
-    <tablespace_name> | <oid> : <io_limit_option_spec> [, ...]
-    ```
+When you use this parameter, you may speficy:
 
-    Where `<io_limit_option_spec>` is:
+-   The tablespace name or the tablespace object ID (OID) you set the limits for. Use `*` to set limits for all tablespaces.
+-   The values for `rbps` and `wbps` to limit the maximum read and write sequential disk I/O throughput in the resource group, in MB/S. The default value is `max`, which means there is no limit.
+-   The values for `riops` and `wiops` to limit the maximum read and write I/O operations per second in the resource group. The default value is `max`, which means there is no limit.
 
-    ```
-    wbps=<io_limit_option_value>
-    | rbps=<io_limit_option_value>
-    | wiops=<io_limit_option_value>
-    | riops=<io_limit_option_value>
-    ```
+If the parameter `IO_LIMIT` is not set, the default value for `rbps`, `wpbs`, `riops`, and `wiops`s is set to `max`, which means that there are no disk I/O limits. In this scenario, the `gp_toolkit.gp_resgroup_config` system view displays its value as `-1`.
 
-    Where `<io_limit_option_value>` is:
+> **Note** The parameter `IO_LIMIT` is only available when you use Linux Control Groups v2. See [Configuring and Using Resource Groups](../../admin_guide/performance/wlmgmt/workload_mgmt_resgroups.mdx#topic71717999) for more information.
 
-    ```
-    <integer> | max 
-    ```
+MEMORY_QUOTA integer
+The maximum available memory, in MB, to reserve for this resource group. This value determines the total amount of memory that all worker processes within a resource group can consume on a segment host during query execution. 
 
-    When you use this parameter, specify:
+The minimum memory quantity you can specify for a resource group is `0`. The default value is `-1`. 
 
-    -   The tablespace name or the tablespace object ID (OID) you set the limits for. Use `*` to set limits for all tablespaces.
-    -   The values for `rbps` and `wbps` to limit the maximum read and write sequential disk I/O throughput in the resource group, in MB/S. The default value is `max`, which means there is no limit.
-    -   The values for `riops` and `wiops` to limit the maximum read and write I/O operations per second in the resource group. The default value is `max`, which means there is no limit.
+When you specify a `MEMORY_QUOTA` of `-1`, `MEMORY QUOTA` takes the value of the `statement_mem` server configuration parameter. 
 
-    If `IO_LIMIT` is not set, the default value for `rbps`, `wbps`, `riops`, and `wiops` is `max`, which means there are no disk I/O limits. In this scenario, the `gp_toolkit.gp_resgroup_config` system view displays its value as `-1`.
+> **Note** If the server configuration parameter `gp_resgroup_memory_query_fixed_mem` is set, its value overrides at the session level the value of `MEMORY_QUOTA`.
 
-    > **Note** The parameter `IO_LIMIT` is only available when you use Linux Control Groups v2. See [Configuring and Using Resource Groups](../../admin_guide/performance/wlmgmt/workload_mgmt_resgroups.mdx#topic71717999) for more information.
+MIN_COST integer
+The limit on the cost of the query plan generated by a query in this resource group. When the query plan cost of the query is less than this value, the query will be unassigned from the resource group to which it belongs. 
 
--   `MEMORY_QUOTA` *integer*
+This means that low-cost queries will execute more quickly, as they are not subject to resource constraints. 
 
-    The maximum available memory, in MB, to reserve for this resource group. This value determines the total amount of memory that all worker processes within a resource group can consume on a segment host during query execution.
-
-    The minimum memory quantity you can specify for a resource group is `0`. The default value is `-1`.
-
-    When you specify a `MEMORY_QUOTA` of `-1`, `MEMORY_QUOTA` takes the value of the `statement_mem` server configuration parameter.
-
-    > **Note** If the server configuration parameter `gp_resgroup_memory_query_fixed_mem` is set, its value overrides at the session level the value of `MEMORY_QUOTA`.
-
--   `MIN_COST` *integer*
-
-    The limit on the cost of the query plan generated by a query in this resource group. When the query plan cost of the query is less than this value, the query is unassigned from the resource group to which it belongs, allowing low-cost queries to execute without resource constraints.
-
-    The value range is `0-500`. The default value is `0`, which means that the cost is not used to bypass the query.
-
--   `NAME` *new_name*
-
-    The new name for the resource group. The name must be unique among all resource groups. You can't rename the default resource groups `admin_group`, `default_group`, and `system_group`, and you can't use `none` as a new name.
+The value range is `0-500`. The default value is `0`, which means that the cost is not used to bypass the query. 
 
 <a id="notes"></a>
 
@@ -204,12 +194,6 @@ Set disk I/O limits for tablespaces `tablespace1` and a tablespace with oid 1663
 
 ```
 ALTER RESOURCE GROUP admin_group SET IO_LIMIT 'tablespace1:wbps=2000,wiops=2000;1663:rbps=2024,riops=2024';
-```
-
-Rename a resource group:
-
-```
-ALTER RESOURCE GROUP rgroup1 SET NAME rgroup1_renamed;
 ```
 
 <a id="compatibility"></a>
