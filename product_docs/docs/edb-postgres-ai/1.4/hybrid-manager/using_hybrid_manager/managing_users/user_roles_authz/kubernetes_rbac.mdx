@@ -4,47 +4,55 @@ navTitle: Kubernetes RBAC
 description: Learn about the Kubernetes-native ClusterRoles that Hybrid Manager deploys, separate from portal-level RBAC.
 ---
 
-The portal-level RBAC described in [User role descriptions](roles.mdx) and [User role permissions by use case](authz.mdx) governs access to the Hybrid Manager (HM) console and API. Separately, HM deploys Kubernetes-native RBAC resources (ClusterRoles and ClusterRoleBindings) that govern how HM operators and components interact with the Kubernetes API.
+The portal-level RBAC described in [User role descriptions](roles.mdx) and [User role permissions by use case](authz.mdx) governs access to the Hybrid Manager (HM) console and API. Separately, HM deploys Kubernetes-native RBAC resources — ClusterRoles, ClusterRoleBindings, and namespace-scoped Roles — that govern how HM operators and components interact with the Kubernetes API.
 
-A standard HM 2026.4 deployment includes 21 ClusterRoles across five functional groups: the HM operator (11), Beacon (3), database operators (3), platform components (2), and migration (2).
+A standard HM deployment includes ClusterRoles across five functional groups: the HM operator, Beacon, database operators, platform components, and migration.
 
 ## HM operator ClusterRoles
 
 The HM operator deploys a tiered set of ClusterRoles for managing `HybridControlPlane`, `Preflight`, and `Postflight` custom resources:
 
-| ClusterRole | Resources | Access level |
-| --- | --- | --- |
-| `edb-hcp-operator-manager-role` | All (`*/*`), `hybridcontrolplanes`, `preflights`, `postflights`, `events` | Full cluster access (operator service account) |
-| `edb-hcp-operator-hybridcontrolplane-editor-role` | `hybridcontrolplanes`, `hybridcontrolplanes/status` | Create, delete, get, list, patch, update, watch |
-| `edb-hcp-operator-hybridcontrolplane-viewer-role` | `hybridcontrolplanes`, `hybridcontrolplanes/status` | Get, list, watch (read-only) |
-| `edb-hcp-operator-preflight-admin-role` | `preflights`, `preflights/status` | Full access (`*`) |
-| `edb-hcp-operator-preflight-editor-role` | `preflights`, `preflights/status` | CRUD operations |
-| `edb-hcp-operator-preflight-viewer-role` | `preflights`, `preflights/status` | Read-only |
-| `edb-hcp-operator-postflight-admin-role` | `postflights`, `postflights/status` | Full access (`*`) |
-| `edb-hcp-operator-postflight-editor-role` | `postflights`, `postflights/status` | CRUD operations |
-| `edb-hcp-operator-postflight-viewer-role` | `postflights`, `postflights/status` | Read-only |
-| `edb-hcp-operator-metrics-auth-role` | `tokenreviews`, `subjectaccessreviews` | Authentication for metrics access |
-| `edb-hcp-operator-metrics-reader` | (non-resource URLs) | Read metrics |
+| ClusterRole | Purpose |
+| --- | --- |
+| `edb-hcp-operator-manager-role` | Full cluster access for the operator service account. Manages all resources (`*/*`), plus `hybridcontrolplanes`, `preflights`, `postflights`, and `events`. |
+| `edb-hcp-operator-hybridcontrolplane-editor-role` | Create, delete, get, list, patch, update, and watch `hybridcontrolplanes` and `hybridcontrolplanes/status`. |
+| `edb-hcp-operator-hybridcontrolplane-viewer-role` | Read-only access (get, list, watch) to `hybridcontrolplanes` and `hybridcontrolplanes/status`. |
+| `edb-hcp-operator-preflight-admin-role` | Full access (`*`) to `preflights` and `preflights/status`. |
+| `edb-hcp-operator-preflight-editor-role` | CRUD operations on `preflights` and `preflights/status`. |
+| `edb-hcp-operator-preflight-viewer-role` | Read-only access to `preflights` and `preflights/status`. |
+| `edb-hcp-operator-postflight-admin-role` | Full access (`*`) to `postflights` and `postflights/status`. |
+| `edb-hcp-operator-postflight-editor-role` | CRUD operations on `postflights` and `postflights/status`. |
+| `edb-hcp-operator-postflight-viewer-role` | Read-only access to `postflights` and `postflights/status`. |
+| `edb-hcp-operator-metrics-auth-role` | Authenticates metrics access using `tokenreviews` and `subjectaccessreviews`. |
+| `edb-hcp-operator-metrics-reader` | Reads metrics from non-resource URLs (for example, `/metrics`) — distinct from the resource-scoped read-only access described above. |
+
+!!! warning
+The `edb-hcp-operator-manager-role` has wildcard access (`*/*` with all verbs). The wildcard is required for the operator to reconcile the full set of resources defined in a `HybridControlPlane` CR. The HM portal doesn't expose Kubernetes ClusterRoleBindings, so this role can only be granted with direct cluster access (for example, using `kubectl` as a Kubernetes cluster administrator). Don't grant this ClusterRole to human users or non-operator service accounts.
+!!!
 
 ## Beacon ClusterRoles
 
 The Beacon agent and server use these ClusterRoles for cluster state collection, resource management, and app installation:
 
-| ClusterRole | Purpose |
-| --- | --- |
-| `upm-beacon-agent-k8s` | Agent-side cluster state collection. Reads core resources (pods, secrets, services, configmaps, nodes, namespaces), EDB CRDs (`clusters`, `pgdgroups`, `clusterresources`, `clusterwrappers`, `remotepgs`), certificates, SPIFFE identities, storage classes, volume snapshots, network policies, Beacon apps/routes, and packages. |
-| `upm-beacon-server` | Server-side resource management. Manages `storagelocations`, `workloads`, `backupwrappers`, `clusterresources`, `clusterwrappers`, `locations`, `scheduledbackupwrappers`, `resourcepropagations`, `beaconapps`, `beaconpackages`, `hybridcontrolplanes`, `maintenancewindows`, `tasks`, `taskapprovals`, `automations`, `actionplugins`, and `triggerplugins`. |
-| `beacon-app-installer-template` | Template role cloned for Beacon app installation workloads. Grants access to core resources (pods, secrets, services, configmaps), deployments, statefulsets, jobs, ingresses, network policies, roles/rolebindings, and certificates. |
+| ClusterRole | Purpose | Manages |
+| --- | --- | --- |
+| `upm-beacon-agent-k8s` | Agent-side cluster state collection. | Core resources (`pods`, `secrets`, `services`, `configmaps`, `nodes`, `namespaces`), EDB CRDs (`clusters`, `pgdgroups`, `clusterresources`, `clusterwrappers`, `remotepgs`), certificates, SPIFFE identities, storage classes, volume snapshots, network policies, Beacon apps/routes, and packages. |
+| `upm-beacon-server` | Server-side resource management. | `storagelocations`, `workloads`, `backupwrappers`, `clusterresources`, `clusterwrappers`, `locations`, `scheduledbackupwrappers`, `resourcepropagations`, `beaconapps`, `beaconpackages`, `hybridcontrolplanes`, `maintenancewindows`, `tasks`, `taskapprovals`, `automations`, `actionplugins`, and `triggerplugins`. |
+| `beacon-app-installer-template` | Template role cloned for Beacon app installation workloads. | Core resources (`pods`, `secrets`, `services`, `configmaps`), `deployments`, `statefulsets`, `jobs`, `ingresses`, network policies, roles/rolebindings, and certificates. |
+
+!!! warning
+The `upm-beacon-agent-k8s` role has broad read access across the cluster, including secrets, configmaps, and network policies. Broad read access is required for the Beacon agent to collect cluster state. Ensure the Beacon agent service account is properly secured.
+!!!
 
 ## Database operator ClusterRoles
 
 Each database operator deploys a manager-level ClusterRole for reconciling its custom resources:
 
-| ClusterRole | Purpose |
-| --- | --- |
-| `postgresql-operator-manager` | CloudNativePG operator. Manages `clusters`, `backups`, `scheduledbackups`, `databases`, `poolers`, `publications`, `subscriptions`, `failoverquorums`, `clusterimagecatalogs`, `imagecatalogs`, plus core resources, webhooks, volume snapshots, roles, and rolebindings. |
-| `pgd-operator-manager-role` | PGD operator. Manages `pgdgroups`, `pgdgroupcleanups`, EDB `clusters`, `scheduledbackups`, `objectstores`, `pluginconfigurations`, plus core resources, webhooks, volume snapshots, roles, and rolebindings. |
-| `transporter-data-operator-manager-role` | Transporter operator. Manages `transporterreaders`, `transporterwriters`, `transportermetricscollectors`, EDB `clusters`, and `pgdgroups`, plus core resources (configmaps, secrets, service accounts, services, pods, deployments). |
+| ClusterRole | Purpose | Manages |
+| --- | --- | --- |
+| `postgresql-operator-manager` | CloudNativePG operator. | `clusters`, `backups`, `scheduledbackups`, `databases`, `poolers`, `publications`, `subscriptions`, `failoverquorums`, `clusterimagecatalogs`, `imagecatalogs`, plus core resources, webhooks, volume snapshots, roles, and rolebindings. |
+| `pgd-operator-manager-role` | PGD operator. In the HM console, PGD clusters are called distributed high availability (DHA) clusters. | `pgdgroups`, `pgdgroupcleanups`, EDB `clusters`, `scheduledbackups`, `objectstores`, `pluginconfigurations`, plus core resources, webhooks, volume snapshots, roles, and rolebindings. |
+| `transporter-data-operator-manager-role` | Transporter operator. | `transporterreaders`, `transporterwriters`, `transportermetricscollectors`, EDB `clusters`, and `pgdgroups`, plus core resources (configmaps, secrets, service accounts, services, pods, deployments). |
 
 ## Platform component ClusterRoles
 
@@ -67,11 +75,3 @@ The migration roles provide service account access for the copilot and portal op
 ## Namespace-scoped Roles
 
 HM also deploys namespace-scoped Roles for leader election (`edb-hcp-operator-leader-election-role`) and database-specific access in the Migration Portal namespace (for example, `mp-epas-16`, `mp-epas-17`, `mp-epas-18` with corresponding Barman cloud roles).
-
-!!! warning
-The `edb-hcp-operator-manager-role` has wildcard access (`*/*` with all verbs). The wildcard is required for the operator to reconcile the full set of resources defined in a `HybridControlPlane` CR. The HM portal doesn't expose Kubernetes ClusterRoleBindings, so this role can only be granted with direct cluster access (for example, using `kubectl` as a Kubernetes cluster administrator). Don't grant this ClusterRole to human users or non-operator service accounts.
-!!!
-
-!!! warning
-The `upm-beacon-agent-k8s` role has broad read access across the cluster, including secrets, configmaps, and network policies. Broad read access is required for the Beacon agent to collect cluster state. Ensure the Beacon agent service account is properly secured.
-!!!
