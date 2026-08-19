@@ -89,7 +89,13 @@ What you can recover depends on the topology of each cluster — whether it had 
 
 ### 3. Bring up a replacement location
 
-Deploy the replacement location with the same installation procedure you used originally. Once it connects to the control plane, rebuild the topology you lost — restore clusters from backup, and re-add replicas or data groups.
+Deploy the replacement location with the same installation procedure you used originally. Once it connects to the control plane, rebuild the topology you lost. What that involves depends on what the failed location held:
+
+-   A **replica** that lived there must be removed from its primary cluster before a replacement replica can be added in the new location.
+-   A **PGD data group or witness group** that lived there must be removed from its cluster before an equivalent group can be added in the new location.
+-   A cluster that existed **only** in the failed location has to be restored from its backup into the new location.
+
+In each case the resource that no longer exists is removed from the control plane first, then recreated in the replacement location.
 
 !!! Important
 If the replacement location reuses the **same location ID** as the failed one, you must first delete **every** control-plane resource associated with the original location. Only then re-enable the resource stream, otherwise the new installation will not work:
@@ -111,6 +117,12 @@ kubectl delete location <location-name> -n default
 
 The control plane holds the beacon server and the management resources for every location, so recovering it means restoring the control plane itself. Postgres clusters in the surviving locations **keep running throughout** and are re-adopted by the recovered control plane without a restart or a restore.
 
+!!! Important
+This procedure assumes the control plane's own location does **not** host Postgres clusters — that every cluster lives in a data-only location.
+
+If the control-plane location also hosted Postgres clusters, for example a replica placed there, those clusters are lost along with it and have to be recovered from backup as well. That changes the steps below — in particular, the Velero plugin step is skipped here only because no Postgres cluster in the location being restored needs its data recovered. That case is not yet covered on this page.
+!!!
+
 Follow [Hybrid Manager disaster recovery](hadr_recovery) with the differences below, then reconnect the locations.
 
 ### Recover the control plane at the same portal domain
@@ -127,7 +139,9 @@ Plan for this before you need it — the replacement cluster must be reachable a
 
 **The object storage bucket must not change.** All locations in a multi-DC deployment share one bucket, and only the control plane is being replaced — so the new instance must use the same bucket as the old one. Set `spec.globalParameters.internal_backup_folder` on the new instance to a value **different** from the previous installation.
 
-**Skip [Configure the Velero plugin](hadr_recovery/#configure-the-velero-plugin) entirely.** That step assumes every Postgres cluster lives in the location being restored, which is not the case here.
+**Know what the restore will and won't bring back before you run it.** Control-plane resources are backed up on a schedule, so recent management changes may not be in the backup you restore from. Read [Recovery point for management state](#recovery-point-for-management-state) before you begin, so you know what to check afterwards.
+
+**Skip [Configure the Velero plugin](hadr_recovery/#configure-the-velero-plugin) entirely.** That step prepares Postgres clusters in the location being restored for data recovery, and in this procedure there are none — see the assumption noted above.
 
 !!! Warning
 Before restoring, confirm that the `velero` ConfigMap does not exist in the `velero` namespace, or that `drMode` is set to `false` in it. Otherwise the restore can bring down a running database in a surviving location.
@@ -192,7 +206,7 @@ kubectl get restore <restore-name> -n velero -o jsonpath='{.status.phase}{"\n"}'
 ```
 
 !!! Note
-Each restore is expected to finish in the `PartiallyFailed` phase. This is not a real failure: Velero lacks the permission to patch the Secrets it recreated, which does not affect the recovery. Confirm the resources exist with:
+The **first** restore is expected to finish in the `PartiallyFailed` phase. This is not a real failure: Velero lacks the permission to patch the Secrets it recreated, which does not affect the recovery. The second restore includes no Secrets, so it should complete successfully. Confirm the resources exist with:
 
 ```shell
 kubectl get clusterwrappers,remotepgs,backupwrappers -n default
