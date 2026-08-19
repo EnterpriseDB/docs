@@ -1,0 +1,175 @@
+---
+title: Upgrading from 2026.7 to 2026.8 (Innovation Release)
+navTitle: 2026.7 to 2026.8
+description: Follow the step-by-step procedures for upgrading from HM 2026.7 to HM 2026.8.
+deepToC: true
+---
+
+Upgrade from 2026.7 to 2026.8.
+
+> **Role:** Infrastructure engineer
+
+## Prerequisites
+
+- Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+- Required tools:
+    - `helm` (latest version recommended)
+    - `kubectl`
+    - `edbctl` `1.8.1` or later — see the [edbctl compatibility matrix](/edbctl/latest/compatibility_matrix/).
+
+## Upgrade 2026.7 → 2026.8
+
+HM and the operator follow independent version schemes, and the 1.4.x → 2026.7 upgrade needed no operator change. 2026.8 does: the release requires operator version `2.1` or later. The new `marketplace` scenario depends on it too — earlier operator versions don't recognize `marketplace` and reject a manifest that lists it.
+
+Complete the steps in the order given:
+
+1. Upgrade the operator to `2.1` or later.
+1. Review and update your installation scenarios.
+1. Update `spec.version` and trigger the upgrade.
+
+!!!important
+The order matters. Operator versions earlier than `2.1` don't recognize `marketplace` and reject the change. Add scenarios only after the operator is on `2.1` or later, and before you bump `spec.version`.
+!!!
+
+### Create new secrets
+
+Before upgrading, create the new secrets required for this release:
+
+```shell
+edbctl hm create-install-secrets --version v2026.8.0
+```
+
+For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
+
+### Upgrade the operator
+
+!!!Note Red Hat OpenShift
+On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
+!!!
+
+The commands below use `edb-hcp-operator-system` — use the namespace where your operator is actually installed. If you migrated from the bootstrap method, the conversion transfers Helm ownership onto `edbpgai-bootstrap`, so use that namespace instead.
+
+Upgrade the `edb-hcp-operator` Helm chart using `edbctl`:
+
+```shell
+edbctl hm upgrade-operator \
+  --release-name edb-hcp-operator \
+  --namespace edb-hcp-operator-system \
+  --registry-uri docker.enterprisedb.com/pgai-platform \
+  --registry-username pgai-platform \
+  --registry-password <password>
+```
+
+Or upgrade directly with Helm:
+
+!!!note
+`<OPERATOR_VERSION>` refers to the operator chart version, which follows its own `2.x` versioning scheme and is separate from the HM version (`2026.8`). The `marketplace` scenario requires operator version `2.1` or later.
+!!!
+
+1. Create the values file:
+
+    ```shell
+    cat <<EOF > edb-hcp-operator.values.yaml
+    controllerManager:
+      manager:
+        image:
+          repository: docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager
+          tag: <OPERATOR_VERSION>
+    imagePullSecrets:
+      - name: edb-cred
+    EOF
+    ```
+
+1. Run the upgrade:
+
+    ```shell
+    helm upgrade --install \
+      --version <OPERATOR_VERSION> \
+      --values edb-hcp-operator.values.yaml \
+      -n edb-hcp-operator-system \
+      edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
+    ```
+
+### Review your installation scenarios
+
+Two [installation scenarios](/edb-postgres-ai/current/hybrid-manager/install/install_guide/planning_arch/#available-scenarios) change in 2026.8. Check your `HybridControlPlane` manifest against both before you continue.
+
+#### The marketplace scenario
+
+`marketplace` — the kapp package manager and the OSS Library apps it deploys, such as Superset, Airflow, and pgAdmin — now has its own scenario instead of belonging to `core`.
+
+- If your `spec.scenarios` list already includes `ai`, the upgrade adds `marketplace` for you. You don't need to change anything.
+- If your list includes only `core` and you use the OSS Library or marketplace apps, add `marketplace` to `spec.scenarios` now.
+
+!!!important
+If you don't add `marketplace` to your scenario list, HM removes kapp-controller and any OSS Library apps you deployed, because they're no longer part of your selected scenarios — **along with the data those apps hold**.
+!!!
+
+#### The dbaas scenario
+
+`dbaas` isn't new, but its contents are. In 2026.7, `upm-api-gucs` and `pg4k-additional-controllers` belonged to `core`. In 2026.8 they move to `dbaas`.
+
+This matters on upgrade because a 2026.7 installation that pins `spec.scenarios` to `core` is running both components today. After the move they fall outside every scenario that installation selects, and the upgrade removes them.
+
+- If you list scenarios explicitly, add `dbaas` before you upgrade.
+- If you omit `spec.scenarios` entirely, HM installs the default set — `core`, `dbaas`, `ai`, `analytics`, `migration`, and `marketplace` — so `dbaas` is already covered and the upgrade removes nothing.
+
+!!!important
+Nothing pulls `dbaas` in for you. It depends only on `core`, so there's no equivalent of the `ai` → `marketplace` dependency that covers the marketplace case. Every installation that lists scenarios without `dbaas` has to add it by hand.
+!!!
+
+### Upgrade Hybrid Manager
+
+1. Update `spec.version` to `v2026.8.0` in your `HybridControlPlane` manifest and apply it:
+
+    ```shell
+    kubectl apply -f hybridmanager.yaml
+    ```
+
+1. Trigger the upgrade:
+
+    ```shell
+    kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+    ```
+
+1. Monitor progress:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -w
+    ```
+
+## Upgrading multi-DC deployments
+
+In a [multi-DC deployment](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/), all locations must run the same HM version. Upgrade the primary location first, then upgrade each data-only secondary location to the same version immediately after. For the full procedure, see [Upgrading a multi-DC deployment](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/multi-dc/#upgrading-a-multi-dc-deployment).
+
+## Troubleshooting upgrade job failures
+
+The upgrade operator creates and manages upgrade jobs automatically. If an upgrade job fails and doesn't reach a `Complete` or `Succeeded` state, the operator pauses and retries. It doesn't proceed to apply updated manifests until the job succeeds.
+
+!!!note
+The operator owns and manages the upgrade job exclusively. Don't create upgrade jobs manually, as doing so can conflict with the operator's reconciliation loop.
+!!!
+
+To investigate a failed upgrade job:
+
+1. Check the status of upgrade jobs:
+
+    ```shell
+    kubectl get jobs -n edbpgai-bootstrap -l edbpgai.edb.com/hm-upgrader=true
+    ```
+
+1. Check the logs for the failed job:
+
+    ```shell
+    kubectl logs job/<job-name> -n edbpgai-bootstrap
+    ```
+
+    Replace `<job-name>` with the name of the failed job from the previous command.
+
+1. Check the `HybridControlPlane` status for upgrade-related events:
+
+    ```shell
+    kubectl describe hybridcontrolplane edbpgai
+    ```
+
+If the issue persists after the operator retries, contact EDB support with the job logs.
