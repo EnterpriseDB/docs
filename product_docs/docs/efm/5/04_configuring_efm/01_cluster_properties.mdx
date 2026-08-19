@@ -63,6 +63,9 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [db.password.encrypted](#db_password_encrypted)               | Y     | Y     |       |                                       | Password encrypted using 'efm encrypt'.                                                                                                                         |
 | [db.port](#db_port)                                           | Y     | Y     | Y     |                                       |                                                                                                                                                                 |
 | [db.database](#db_database)                                   | Y     | Y     |       |                                       | Database name.                                                                                                                                                  |
+| [script.db.password](#script_db_password)                     |       |       |       |                                       |                                                                                                                                                                |
+| [script.db.password.retry](#script_db_password_retry)         |       |       |       | 10                                    |                                                                                                                                                                |
+| [script.db.password.encrypted](#script_db_password_encrypted) |       |       |       | false                                 |                                                                                                                                                                |
 | [db.service.owner](#db_service_owner)                         | Y     |       |       |                                       | Owner of $PGDATA dir for db.database.                                                                                                                         |
 | [db.service.name](#db_service_name)                           |       |       |       |                                       | Required if running the database as a service.                                                                                                                  |
 | [db.bin](#db_bin)                                             | Y     |       |       |                                       | Directory containing the pg_controldata/pg_ctl commands such as '/usr/edb/as*nn*/bin'.                                                                            |
@@ -77,6 +80,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [bind.address](#bind_address)                                 | Y     | Y     |       |                                       | Example: &lt;ip_address>:&lt;port>                                                                                                                             |
 | [external.address](#external_address)                         |       |       |       |                                       | Example: &lt;ip_address/hostname>                                                                                                                              |
 | [admin.port](#admin_port)                                     | Y     | Y     |       | 7809                                  | Modify if the default port is already in use.                                                                                                                   |
+| [primary.health.check.port](#primary_health_check_port)       |       |       |       |                                       |                                                                                                                                                                 |
 | [is.witness](#is_witness)                                     | Y     | Y     |       |                                       | See description.                                                                                                                                                |
 | [local.period](#local_period)                                 | Y     |       |       | 10                                    |                                                                                                                                                                |
 | [local.timeout](#local_timeout)                               | Y     |       |       | 60                                    |                                                                                                                                                                |
@@ -145,8 +149,8 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [custom.monitor.safe.mode](#script_custom_monitor)            |       |       |       |                                       | Required if a custom monitoring script is specified.                                                                                                            |
 | [sudo.command](#sudo_command)                                 | Y     | Y     |       | sudo                                  |                                                                                                                                                                |
 | [sudo.user.command](#sudo_command)                            | Y     | Y     |       | sudo -u %u                            |                                                                                                                                                                |
-| [lock.dir](#lock_dir)                                         |       |       |       |                                       | If not specified, defaults to '/var/lock/efm-&lt;version>'                                                                                                     |
-| [pid.dir](#pid_dir)                                           |       |       |       |                                       | If not specified, defaults to '/var/run/efm-&lt;version>'                                                                                                      |
+| [lock.dir](#lock_dir)                                         |       |       |       |                                       | If not specified, defaults to '/run/lock/efm-&lt;version>'                                                                                                     |
+| [pid.dir](#pid_dir)                                           |       |       |       |                                       | If not specified, defaults to '/run/efm-&lt;version>'                                                                                                      |
 | [log.dir](#log_dir)                                           |       |       |       |                                       | If not specified, defaults to '/var/log/efm-&lt;version>'                                                                                                      |
 | [syslog.host](#syslog_logging)                                |       |       |       | localhost                             |                                                                                                                                                                |
 | [syslog.port](#syslog_logging)                                |       |       |       | 514                                   |                                                                                                                                                                |
@@ -174,10 +178,12 @@ Use the following properties to specify connection details for the Failover Mana
 ```ini
 # The value for the password property should be the output from
 # 'efm encrypt' -- do not include a cleartext password here. To
-# prevent accidental sharing of passwords among clusters, the
-# cluster name is incorporated into the encrypted password. If
-# you change the cluster name (the name of this file), you must
-# encrypt the password again with the new name.
+# prevent accidental sharing of passwords among clusters, the cluster
+# name is incorporated into the encrypted password. If you change
+# the cluster name (the name of this file), you must encrypt the
+# password again with the new name.
+# If using the script.db.password property (below), the
+# db.password.encrypted value will be ignored.
 # The db.port property must be the same for all nodes.
 db.user=
 db.password.encrypted=
@@ -188,6 +194,36 @@ db.database=
 The `db.user` specified must have enough privileges to invoke selected PostgreSQL commands on behalf of Failover Manager. For more information, see [Prerequisites](../installing/prerequisites/#prerequisites).
 
 For information about encrypting the password for the database user, see [Encrypting your database password](02_encrypting_database_password/#encrypting_database_password).
+
+<div id="script_db_password" class="registered_link"></div>
+
+<div id="script_db_password_retry" class="registered_link"></div>
+
+<div id="script_db_password_encrypted" class="registered_link"></div>
+
+The following properties can be used to TODOBOBBY EFM-1941
+
+```ini
+# Absolute path to script to retrieve database password.
+#
+# When specified, the agent will ignore any value of the db.password.encrypted
+# property and use this script to retrieve the database password. The script
+# will be called at startup, and again if the agent cannot connect to the
+# database in case the password has changed. The script should output the
+# password only. A non-zero exit code from the script tells the agent that
+# there has been a problem and the agent should wait and try again. The
+# agent will become IDLE if it cannot retrieve the password.
+#
+# The script.db.password.retry value tells the agent how long to wait (in
+# seconds) before trying to retrieve the password after a failure.
+#
+# The script.db.password.encrypted property tells the agent whether to
+# expect the returned password to be encrypted (i.e. with the 'efm encrypt'
+# command) or not.
+script.db.password=
+script.db.password.retry=10
+script.db.password.encrypted=false
+```
 
 <div id="db_service_owner" class="registered_link"></div>
 
@@ -410,6 +446,20 @@ Use the `admin.port` property to specify a port on which Failover Manager listen
 # default is 7809; you can modify this value if the port is
 # already in use.
 admin.port=7809
+```
+
+<div id="primary_health_check_port" class="registered_link"></div>
+
+Use the `primary.health.check.port` TODOBOBBY.
+
+```ini
+# This property sets the port for an HTTP health-check endpoint that
+# load balancers can poll to determine which node is the primary. When
+# set, the agent listens on this port and returns a 200 response if the
+# local node is the primary and a 404 response otherwise. The default is
+# blank, in which case the agent does not listen on any port and the
+# endpoint is disabled.
+primary.health.check.port=
 ```
 
 <div id="is_witness" class="registered_link"></div>
@@ -896,7 +946,7 @@ check.num.sync.period=30
 
 <div id="minimum_standbys" class="registered_link"></div>
 
-Use the `minimum.standbys` property to specify the minimum number of standby nodes to retain on a cluster. If the standby count drops to the specified minimum, a replica node isn't promoted if a failure of the primary node occurs.
+Use the `minimum.standbys` property to specify the minimum number of standby nodes to retain on a cluster. If the standby count drops to the specified minimum, a replica node isn't promoted if a failure of the primary node occurs. Manual switchovers are still allowed, however.
 
 ```ini
 # Instead of setting specific standbys as being unavailable for
@@ -1103,14 +1153,14 @@ Provide a script named after the `script.load.balancer.attach` property to ident
 
 ```ini
 # Absolute path to load balancer scripts
-# The attach script is called when a node should be attached to
-# the load balancer, for example after a promotion. The detach
-# script is called when a node should be removed, for example
-# when a database has failed or is about to be stopped. Use %h to
-# represent the IP/hostname of the node that is being
-# attached/detached. Use %t to represent the type of node being
-# attached or detached: the letter m will be passed in for primary nodes
-#and the letter s for standby nodes.
+#
+# The attach script is called when a node should be attached to the load
+# balancer, for example after a promotion. The detach script is called
+# when a node should be removed, for example when a database has failed
+# or is about to be stopped. Use %h to represent the IP/hostname
+# of the node that is being attached/detached. Use %t to represent the
+# type of node being attached or detached: the letter p will be passed
+# in for primary nodes and the letter s for standby nodes.
 #
 # Example:
 # script.load.balancer.attach=/somepath/attachscript %h %t
@@ -1123,14 +1173,12 @@ script.load.balancer.detach=
 In 5.0 and later versions, this value is set to `false` by default, meaning that Failover Manager doesn't detach nodes from the load balancer in the unlikely event that the primary agent fails, but the database is still reachable. In earlier versions, the default was set to `true`. Set to `true` only if you need the value to be backwards compatible with an early Failover Manager behavior.
 
 ```ini
-# If set to true, Failover Manager will detach the node from load
-# balancer if the primary agent fails but the database is still
-# reachable. In most scenarios this is NOT the desired situation. In
-# scenarios where the detach script should run with a failed primary
-# agent, even when the primary database is still healthy this parameter
-# should be set to true. If no value specified it defaults to true (for
-# backwards compatibility).
-# This is not applicable for standbys.
+# If set to true, Failover Manager will detach the node from load balancer if the primary
+# agent fails but the database is still reachable. In most scenarios this is NOT the desired situation.
+# In scenarios where the detach script should run with a failed primary agent, even when the primary
+# database is still healthy this parameter should be set to true.
+#
+# If no value specified it defaults to false.
 detach.on.agent.failure=
 ```
 
@@ -1139,23 +1187,23 @@ detach.on.agent.failure=
 The `script.fence` property specifies the path to an optional user-supplied script to invoke during the promotion of a standby node to primary node.
 
 ```ini
-# absolute path to fencing script run during promotion
+# Absolute path to fencing script run during promotion
 #
-# This is an optional user-supplied script that will be run
-# during failover on the standby database node. If left blank,
-# no action will be taken. If specified, EFM will execute this
-# script before promoting the standby.
+# This is an optional user-supplied script that will be run before
+# promotion of the standby database node. If left blank, no action will
+# be taken.
 #
-# Parameters can be passed into this script for the failed primary
-# and new primary node addresses. Use %p for new primary and %f
-# for failed primary. On a node that has just been promoted, %p
-# should be the same as the node's efm binding address.
+# Parameters can be passed into this script for the failed primary and
+# new primary node addresses. Use %p for new primary and %f for failed
+# primary. On a node that has just been promoted, %p should be the same
+# as the node's efm binding address. If there is no failed primary (for
+# example, a manual promotion when there is no primary in the cluster),
+# %f will be replaced with an empty string.
 #
 # Example:
 # script.fence=/somepath/myscript %p %f
 #
-# NOTE: FAILOVER WILL NOT OCCUR IF THIS SCRIPT RETURNS A NON-ZERO EXIT
-# CODE.
+# NOTE: PROMOTION WILL NOT OCCUR IF THIS SCRIPT RETURNS A NON-ZERO EXIT CODE.
 script.fence=
 ```
 
@@ -1164,21 +1212,22 @@ script.fence=
 Use the `script.post.promotion` property to specify the path to an optional user-supplied script to invoke after a standby node is promoted to primary.
 
 ```ini
-# Absolute path to fencing script run after promotion
+# Absolute path to script run after promotion
 #
 # This is an optional user-supplied script that will be run after
-# failover on the standby node after it has been promoted and
-# is no longer in recovery. The exit code from this script has
-# no effect on failover manager, but will be included in a
-# notification sent after the script executes.
+# the standby node has been promoted and is no longer in recovery. The
+# exit code from this script has no effect on Failover Manager, but will
+# be included in a notification sent after the script executes.
 #
-# Parameters can be passed into this script for the failed primary
-# and new primary node addresses. Use %p for new primary and %f
-# for failed primary. On a node that has just been promoted, %p
-# should be the same as the node's efm binding address.
+# Parameters can be passed into this script for the failed primary and
+# new primary node addresses. Use %p for new primary and %f for failed
+# primary. On a node that has just been promoted, %p should be the same
+# as the node's efm binding address. If there is no failed primary (for
+# example, a manual promotion when there is no primary in the cluster),
+# %f will be replaced with an empty string.
 #
 # Example:
-# script.post.promotion=/somepath/myscript %f %p
+# script.post.promotion=/somepath/myscript %p %f
 script.post.promotion=
 ```
 
@@ -1338,7 +1387,7 @@ Use the `lock.dir` property to specify an alternative location for the Failover 
 # Manager creates a file named <cluster>.lock at this location to
 # avoid starting multiple agents for same cluster. If the path
 # does not exist, Failover Manager will attempt to create it. If
-# not specified defaults to '/var/lock/efm-<version>'
+# not specified defaults to '/run/lock/efm-<version>'
 lock.dir=
 ```
 
@@ -1349,7 +1398,7 @@ Use the `pid.dir` property to specify an alternative location for the Failover M
 ```ini
 # Specify the directory to create the pid file on the node. If this is changed
 # from the default location, the unit file (if used) should be changed for
-# the service to match. If not specified defaults to '/var/run/efm-<version>'
+# the service to match. If not specified defaults to '/run/efm-<version>'
 pid.dir=
 ```
 
