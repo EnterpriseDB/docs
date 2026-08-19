@@ -57,7 +57,7 @@ relnotes:
   details: |
     The function [`bdr.get_min_required_replication_slots()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrget_min_required_replication_slots) previously ignored the temporary catch-up subscription active during a node join, so joining a cluster sized to the reported minimum exhausted `max_replication_slots` and failed. The estimate now accounts for the catch-up subscription, and a new [`bdr.get_min_required_active_replication_origins()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrget_min_required_active_replication_origins) function returns the matching estimate for Postgres 18's separate `max_active_replication_origins` limit.
   jira: BDR-8135
-  addresses: ""
+  addresses: "56136"
   type: Bug Fix
   impact: High
 - relnote: Fixed a crash caused by a race between a joining and a parting node.
@@ -312,13 +312,6 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
-- relnote: Fixed a write-leader failover bug that could promote a node that isn't the most caught-up node.
-  details: |
-    On a write-leader outage, the Raft leader could elect a node that wasn't the most caught-up node relative to the previous write leader, for example when the write leader crashed with no suitable candidate available, or when the Raft leader and write leader were the same node and crashed together, leaving the new Raft leader without leader-progress details and relying on stale replication-progress information relative to the configured `bdr.leader_progress_tracking_period`. Failover now selects the most caught-up node correctly in these cases.
-  jira: BDR-8512
-  addresses: ""
-  type: Bug Fix
-  impact: High
 - relnote: Fixed replication becoming permanently stalled due to a miscalculated apply delay in Quorum Commit and zero clock-skew configurations.
   details: |
     When a node rejoined the cluster or recovered from a restart, the first transaction relayed through the catch-up path sometimes had no commit timestamp yet. The clock-skew check misread this absence as a multi-day clock discrepancy and paused replication for an effectively indefinite duration instead of a few milliseconds, wedging the affected subscription until it was manually restarted. The stall could occur with a Quorum Commit commit scope, or with `bdr.maximum_clock_skew` set and its action configured to wait. The clock-skew check now recognizes when a timestamp isn't yet available and skips the check for that transaction, so replication proceeds normally through the rejoin or recovery window.
@@ -396,3 +389,178 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
+- relnote: Fixed critical global lock handling that could cause indefinite blocking.
+  details: |
+    Heavy-weight session locks used for cluster-wide coordination could become misrouted to multiple writers or leak entirely, causing subsequent operations to block indefinitely and requiring a manual Postgres restart to resolve. PGD now routes all global lock messages for a transaction to the same writer, prevents unrelated transactions from being streamed to the global-lock writer, and maintains binding invariants to prevent lock leaks.
+  jira: BDR-8530
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed cross-subscription deadlock detection and recovery.
+  details: |
+    The deadlock detector previously only reasoned about writers within the same subscription's writer group, so a deadlock spanning multiple subscriptions could pick a victim that wasn't actually holding the contended lock. The abort then freed nothing, the deadlock cycle reformed, and replication slowed severely or wedged permanently under concurrent apply. PGD now detects when deadlock participants span multiple subscriptions and restarts the affected subscription instead of retrying in place.
+  jira: BDR-8056
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Exposed an `is_raft` attribute in commit decision tracking functions.
+  details: |
+    Added an `is_raft` column to [`bdr.bdr_get_commit_decisions()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrbdr_get_commit_decisions) and the [`bdr.commit_decisions`](/pgd/current/reference/tables-views-functions/catalogs-visible/#bdrcommit_decisions) view, indicating whether a commit decision was made using Raft consensus. This lets applications and operators distinguish between Raft-coordinated and non-Raft commit scopes.
+  jira: BDR-7327
+  addresses: ""
+  type: Feature
+  impact: Medium
+- relnote: Fixed empty transactions skipping commit scope validation unnecessarily.
+  details: |
+    Empty transactions, those that produce no WAL, were previously routed through the full commit scope machinery, adding unnecessary latency and recording spurious commit decisions. PGD now treats empty transactions as having the local commit scope, bypassing group, quorum, and CAMO coordination.
+  jira: BDR-8032
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Fixed a snapshot restore crash with proxy routing enabled.
+  details: |
+    Restoring a consensus snapshot that carried group routing entries crashed the backend with a null pointer dereference in the connection manager backoff reset logic. The crash occurred only with proxy routing enabled and affected `bdr.consensus_snapshot_import()`. PGD now guards against null worker contexts and handles group routing snapshots correctly.
+  jira: BDR-8283
+  addresses: "62189"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed consensus worker crashes when a dropped leader appears in change events.
+  details: |
+    The consensus worker crashed and looped when processing a committed `set_leader` entry that referenced a node already dropped from the cluster. PGD now tolerates dropped leader nodes, omitting the leader name when the node is missing, instead of crashing repeatedly.
+  jira: BDR-8285
+  addresses: "62189"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed target-table-missing conflict logging on assert-enabled builds.
+  details: |
+    When the apply process encountered a target-table-missing conflict, logging it to `bdr.conflict_history` could trigger an assertion failure on debug builds, because the logging code path didn't register a transaction snapshot before inserting into a TOAST table. PGD now registers an active snapshot around the conflict insert.
+  jira: BDR-8239
+  addresses: "62064"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed Autopartition rules not being preserved on node rebuild.
+  details: |
+    During `bdr_init_physical` and logical node joins, Autopartition rules copied from the source node were missing three columns (`ap_drop_after_retention_period`, `ap_partition_min_upperbound`, and `ap_analytics_offload_period`). The `ap_drop_after` flag reverted to false, so partitions were detached but never dropped, causing unbounded storage growth on the rebuilt node. PGD now selects these columns from the source and applies the correct defaults.
+  jira: BDR-8239
+  addresses: "62064"
+  type: Bug Fix
+  impact: High
+- relnote: Added a mixed-cluster Quorum Commit streaming compatibility warning.
+  details: |
+    In a cluster containing both PGD 6.4 and 6.5 nodes during a rolling upgrade, PGD 6.5 nodes now warn if `bdr.default_streaming_mode` isn't set to `file` or `off`. PGD 6.4 nodes don't emit the per-transaction streaming hint, so non-file streaming can still violate Quorum Commit invariants in a mixed cluster. The warning guides operators to keep safe streaming settings until the upgrade completes.
+  jira: BDR-8227
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: "Fixed `ALTER GROUP ... ADD/DROP USER` replicating as invalid SQL."
+  details: |
+    The grammar collapses `ALTER GROUP <name> ADD|DROP USER <list>` into an internal role-membership statement, which PGD re-synthesized as `ALTER ROLE <name> ROLE <list>` when replicating it, a clause that's valid only inside `CREATE ROLE`. Peers rejected the replicated DDL with a syntax error. PGD now detects this membership form and replicates it as `ALTER GROUP <name> ADD USER` or `ALTER GROUP <name> DROP USER`, matching valid Postgres syntax.
+  jira: BDR-7433
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed dropped columns causing `DELETE` and `UPDATE` to silently no-op on receivers.
+  details: |
+    When comparing an incoming row to a receiver's local row to find a matching tuple, PGD compared dropped columns inconsistently between the two, so the comparison failed on the first dropped column and the receiver never found a match for the publisher's old row. This caused `DELETE` and `UPDATE` statements to silently no-op on receivers, diverging the cluster's data. Dropped columns no longer participate in this comparison.
+  jira: BDR-7396
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed high CPU utilization by the task manager on an idle cluster.
+  details: |
+    A regression introduced in PGD 6.4 caused the task manager background worker to repeatedly execute a timestamp comparison query, using up to 30% CPU on an otherwise idle single-node cluster.
+  jira: BDR-8213
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a duplicate-key error crashing the consensus worker after a node's own generation number diverged.
+  details: |
+    A node whose own `bdr.node` row had a generation diverged from the cluster's view of that node ID crashed its consensus worker in a loop when restoring a Raft snapshot describing its own identity, with `duplicate key value violates unique constraint `node_pkey`. PGD now reconciles this case by updating the existing row instead of trying to insert a new one.
+  jira: BDR-8581
+  addresses: "63835"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `pg_dump` unintentionally emitting references to certain `bdr` extension objects when dumping database schemas.
+  details: |
+    A small number of objects in the `bdr` extension SQL file were created in a way that caused `pg_dump` to emit `GRANT`/`REVOKE` statements for those objects, even though SQL for the objects themselves was correctly not emitted. While this doesn't affect PGD operations, it could inconvenience users making a manual backup of the database schema.
+  jira: BDR-6840
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed CAMO partner commit decisions occasionally not being redelivered after a receiver restart.
+  details: |
+    A bug introduced in PGD 6.3 could, under certain timing conditions, cause some Commit At Most Once (CAMO) partner commit decisions to be missed when a receiver resends them to the origin after restarting. All relevant CAMO decisions are now reliably delivered on restart.
+  jira: BDR-8184
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a duplicate-key error that could prevent the consensus worker from starting in containerized environments.
+  details: |
+    The consensus worker seeded its own random number generator from the process PID and node ID, which could repeat across restarts in PID-namespaced or containerized environments, causing consensus journal request ID collisions and worker startup failures. The worker now relies on Postgres's own PRNG seeding, which has used a stronger entropy source since Postgres 12, resolving the collisions.
+  jira: BDR-8199
+  addresses: "61795"
+  type: Bug Fix
+  impact: High
+- relnote: "Fixed `COMMENT ON CAPTURE PRIVILEGES POLICY` wedging replication on EDB Postgres Advanced Server."
+  details: |
+    `CREATE`/`ALTER`/`DROP CAPTURE PRIVILEGES POLICY` aren't replicated, so the policy never exists on downstream nodes. However, `COMMENT ON` a capture privileges policy fell through the default allow path instead of being rejected. `DBMS_PRIVILEGE_CAPTURE.create_capture()` internally issues such a comment, which then got queued for replication. The apply worker failed with `capture privileges policy ... does not exist`, and the writer wedged, retrying the same transaction indefinitely.
+  jira: BDR-7395
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a crash and an out-of-memory crash naming dynamic default RANGE and LIST subpartitions.
+  details: |
+    `bdr_choose_part_name()`, the hook EDB Postgres Advanced Server calls to name unnamed dynamic (sub)partitions, had two related defects when naming a default RANGE subpartition synthesized from an emptied subpartition template. Naming the default subpartition crashed the backend in `get_range_partbound_string()`. Separately, when sibling subpartitions across different parents shared the same synthesized bound, the naming hook returned the same colliding name on every retry, looping indefinitely and leaking memory until the node was killed by the out-of-memory killer. Both defects are now fixed.
+  jira: BDR-8575, BDR-8579
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Added separate control of published and subscribed replication sets for a node.
+  details: |
+    `bdr.alter_node_replication_sets()` previously applied the same list of replication sets to both what a node publishes and what it subscribes to. New `pub_repsets` and `sub_repsets` arguments let a node publish and subscribe to different replication sets, which is needed to apply a row filter correctly on a Subscriber-Only node.
+  jira: BDR-8471
+  addresses: "62864"
+  type: Bug Fix
+  impact: Medium
+- relnote: "Fixed `bdr.replication_set_remove_table()` crashing when the node isn't part of a node group."
+  details: |
+    The function dereferenced the node's node group without checking for `NULL`, crashing the backend when called before the node had joined a node group, such as during Autopartition's early setup. It now reports a clear error instead of crashing.
+  jira: BDR-8709
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed lagging nodes repeatedly erroring out on a Quorum Commit UPDATE after a DELETE from a different node.
+  details: |
+    Under Quorum Commit, a node lagging behind a MAJORITY-participating pair could receive a DELETE and then an UPDATE for the same row out of their original commit order, since the two could arrive from different subscriptions. The UPDATE then errored out indefinitely with an UpdateMissing conflict. PGD now has the lagging node wait for a DELETE-capable transaction's upstream position before applying it, so DELETE and UPDATE apply in the correct order.
+  jira: BDR-8347
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a segmentation fault replicating a table with a UUID column in a composite primary key.
+  details: |
+    Replicating a table with multiple primary key columns, where a column other than the first is of type UUID, crashed the replicator background worker.
+  jira: BDR-8230
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the writer crashing on an assertion failure during apply error recovery.
+  details: |
+    The writer's abort and error path checked `IsTransactionState()` before tearing down an open transaction block, which returns false for some open states, such as a transaction left half-prepared after a failed `PREPARE`. In that case, the abort was skipped, and the writer later crashed with `Assert(!IsTransactionOrTransactionBlock())` in `pgstat_report_stat()`. The abort path now checks `IsTransactionOrTransactionBlock()` instead, so the transaction block is always torn down.
+  jira: BDR-8295
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the CAMO partner unnecessarily receiving a finish message for a transaction it already resolved.
+  details: |
+    A cleanup step ran too early and discarded the per-transaction CAMO configuration before the commit-prepared or rollback-prepared callback could check it, so PGD always fell back to sending an explicit two-phase finish message to the CAMO partner. The partner then applied it unnecessarily, since it had already resolved the transaction through the pre-commit path. The configuration now survives until the finish callback has used it, removing this needless overhead from the CAMO hot path.
+  jira: BDR-8587
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: "Reduced `bdr.run_on_nodes` latency by performing connection setup asynchronously."
+  details: |
+    `bdr.run_on_nodes()` set up connections to each node sequentially in a loop, so latency scaled linearly with node count. Connection setup is now nonblocking, reducing latency to roughly a constant factor of the worst-case round-trip time. This benefits every caller of `bdr.run_on_nodes()`, including `bdr.monitor_group_raft()`, especially on large clusters.
+  jira: BDR-4232
+  addresses: "35480, 51823, 61486"
+  type: Enhancement
+  impact: High

@@ -131,3 +131,147 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
+- relnote: Fixed a duplicate-key error crashing the consensus worker after a node's own generation number diverged.
+  details: |
+    A node whose own `bdr.node` row had a generation diverged from the cluster's view of that node ID crashed its consensus worker in a loop when restoring a Raft snapshot describing its own identity, with `duplicate key value violates unique constraint `node_pkey`. PGD now reconciles this case by updating the existing row instead of trying to insert a new one.
+  jira: BDR-8581
+  component: BDR
+  addresses: "63835"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `pg_dump` unintentionally emitting references to certain `bdr` extension objects when dumping database schemas.
+  details: |
+    A small number of objects in the `bdr` extension SQL file were created in a way that caused `pg_dump` to emit `GRANT`/`REVOKE` statements for those objects, even though SQL for the objects themselves was correctly not emitted. While this doesn't affect PGD operations, it could inconvenience users making a manual backup of the database schema.
+  jira: BDR-6840
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a duplicate-key error that could prevent the consensus worker from starting in containerized environments.
+  details: |
+    The consensus worker seeded its own random number generator from the process PID and node ID, which could repeat across restarts in PID-namespaced or containerized environments, causing consensus journal request ID collisions and worker startup failures. The worker now relies on Postgres's own PRNG seeding, which has used a stronger entropy source since Postgres 12, resolving the collisions.
+  jira: BDR-8199
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a crash and an out-of-memory crash naming dynamic default RANGE and LIST subpartitions.
+  details: |
+    `bdr_choose_part_name()`, the hook EDB Postgres Advanced Server calls to name unnamed dynamic (sub)partitions, had two related defects when naming a default RANGE subpartition synthesized from an emptied subpartition template. Naming the default subpartition crashed the backend in `get_range_partbound_string()`. Separately, when sibling subpartitions across different parents shared the same synthesized bound, the naming hook returned the same colliding name on every retry, looping indefinitely and leaking memory until the node was killed by the out-of-memory killer. Both defects are now fixed.
+  jira: BDR-8575, BDR-8579
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed critical global lock handling that could cause indefinite blocking.
+  details: |
+    Heavy-weight session locks used for cluster-wide coordination could become misrouted to multiple writers or leak entirely, causing subsequent operations to block indefinitely and requiring a manual Postgres restart to resolve. PGD now routes all global lock messages for a transaction to the same writer, prevents unrelated transactions from being streamed to the global-lock writer, and maintains binding invariants to prevent lock leaks.
+  jira: BDR-8530
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed cross-subscription deadlock detection and recovery.
+  details: |
+    The deadlock detector previously only reasoned about writers within the same subscription's writer group, so a deadlock spanning multiple subscriptions could pick a victim that wasn't actually holding the contended lock. The abort then freed nothing, the deadlock cycle reformed, and replication slowed severely or wedged permanently under concurrent apply. PGD now detects when deadlock participants span multiple subscriptions and restarts the affected subscription instead of retrying in place.
+  jira: BDR-8056
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: "Fixed `bdr.replication_set_remove_table()` crashing when the node isn't part of a node group."
+  details: |
+    The function dereferenced the node's node group without checking for `NULL`, crashing the backend when called before the node had joined a node group, such as during Autopartition's early setup. It now reports a clear error instead of crashing.
+  jira: BDR-8709
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a snapshot restore crash with proxy routing enabled.
+  details: |
+    Restoring a consensus snapshot that carried group routing entries crashed the backend with a null pointer dereference in the connection manager backoff reset logic. The crash occurred only with proxy routing enabled and affected `bdr.consensus_snapshot_import()`. PGD now guards against null worker contexts and handles group routing snapshots correctly.
+  jira: BDR-8283
+  component: BDR
+  addresses: "62189"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed consensus worker crashes when a dropped leader appears in change events.
+  details: |
+    The consensus worker crashed and looped when processing a committed `set_leader` entry that referenced a node already dropped from the cluster. PGD now tolerates dropped leader nodes, omitting the leader name when the node is missing, instead of crashing repeatedly.
+  jira: BDR-8285
+  component: BDR
+  addresses: "62189"
+  type: Bug Fix
+  impact: High
+- relnote: Added separate control of published and subscribed replication sets for a node.
+  details: |
+    `bdr.alter_node_replication_sets()` previously applied the same list of replication sets to both what a node publishes and what it subscribes to. New `pub_repsets` and `sub_repsets` arguments let a node publish and subscribe to different replication sets, which is needed to apply a row filter correctly on a Subscriber-Only node.
+  jira: BDR-8471
+  component: BDR
+  addresses: "62864"
+  type: Bug Fix
+  impact: Medium
+- relnote: "Fixed `bdr.alter_subscription_disable(immediate := true)` hanging indefinitely."
+  details: |
+    The pglogical writer being stopped could get stuck in an unbounded retry loop scanning for a row to update, unable to honor a cancel or shutdown signal, whenever a concurrent modification kept invalidating each attempt. Disabling the subscription, or even terminating the backend, couldn't interrupt it, leaving a full restart as the only recovery option. The retry loop now checks for interrupts, so it can be canceled normally.
+  jira: BDR-8254
+  component: BDR
+  addresses: "62159"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed target-table-missing conflict logging on assert-enabled builds.
+  details: |
+    When the apply process encountered a target-table-missing conflict, logging it to `bdr.conflict_history` could trigger an assertion failure on debug builds, because the logging code path didn't register a transaction snapshot before inserting into a TOAST table. PGD now registers an active snapshot around the conflict insert.
+  jira: BDR-8239
+  component: BDR
+  addresses: "62064"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed peer nodes deriving a different Autopartition initial lower bound than the originator.
+  details: |
+    `bdr.autopartition()` derives the initial partition lower bound from the local clock when the caller omits it, but replicated the original omitted value to peers instead of the derived one. Each peer then re-derived its own lower bound independently, so a peer with a skewed clock, or one applying the call after a date boundary crossed, could install a different lower bound and never create partitions for the affected period. The derived lower bound is now forwarded to peers so all nodes install the same value.
+  jira: BDR-8131
+  component: BDR
+  addresses: "61462"
+  type: Bug Fix
+  impact: Medium
+- relnote: "Fixed `bdr_maintain_group_slot` getting stuck when the group slot's target LSN exceeded `min_commit_decision_lsn`."
+  details: |
+    `bdr_maintain_group_slot` assumed the group slot always advanced to its computed target LSN, but `bdr_advance_group_slot` skips the advance when the target LSN is past `min_commit_decision_lsn`. `bdr_maintain_group_slot` then waited for a target LSN one WAL segment higher before trying again, indefinitely delaying group slot maintenance.
+  jira: BDR-8286
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: "Fixed a relcache reference leak in `bdr.autopartition_disable()` and `bdr.autopartition_enable()`."
+  details: |
+    Calling either function on a table that isn't an autopartitioned relation returned without closing the table, logging a `relcache reference leak` warning.
+  jira: BDR-8255
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: "Re-enabled writes to `bdr.camo_decision_journal`."
+  details: |
+    A faulty condition, introduced years earlier, silently skipped every write to `bdr.camo_decision_journal`, breaking this CAMO diagnostics feature. Writes are now re-enabled.
+  jira: BDR-8667
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed the CAMO partner unnecessarily receiving a finish message for a transaction it already resolved.
+  details: |
+    A cleanup step ran too early and discarded the per-transaction CAMO configuration before the commit-prepared or rollback-prepared callback could check it, so PGD always fell back to sending an explicit two-phase finish message to the CAMO partner. The partner then applied it unnecessarily, since it had already resolved the transaction through the pre-commit path. The configuration now survives until the finish callback has used it, removing this needless overhead from the CAMO hot path.
+  jira: BDR-8586
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: "Reduced `bdr.run_on_nodes` latency by performing connection setup asynchronously."
+  details: |
+    `bdr.run_on_nodes()` set up connections to each node sequentially in a loop, so latency scaled linearly with node count. Connection setup is now nonblocking, reducing latency to roughly a constant factor of the worst-case round-trip time. This benefits every caller of `bdr.run_on_nodes()`, including `bdr.monitor_group_raft()`, especially on large clusters.
+  jira: BDR-4232
+  component: BDR
+  addresses: "35480, 51823, 61486"
+  type: Enhancement
+  impact: High
