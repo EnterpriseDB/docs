@@ -22,6 +22,8 @@ WarehousePG uses Linux-based control groups for CPU resource management, and Run
 
 When using resource groups to control resources like CPU cores, review the Hyperthreading note in [Hardware and Network](../../../install_guide/platform-requirements.mdx#hardware-requirements).
 
+For guidance on configuring resource groups to manage memory effectively, see [Memory and Resource Management with Resource Groups](../../../best_practices/resgroups.mdx) in the WarehousePG best practices guide.
+
 **Parent topic:** [Managing Resources](./)
 
 <a id="topic8339intro"></a>
@@ -51,10 +53,13 @@ When you create a resource group, you provide a set of limits that determine the
 | CPU_WEIGHT      | The scheduling priority of the resource group.                                                                                                       | [1 -  500]                                                                              | 100                                                                      |
 | CPUSET          | The specific CPU logical core (or logical thread in hyperthreading) reserved for this resource group.                                                | It depends on system core configuration                                                 | -1                                                                       |
 | IO_LIMIT        | The limit for the maximum read/write disk I/O throughput, and maximum read/write I/O operations per second. Set the value on a per-tablespace basis. | [2 - 4294967295 or `max`]                                                               | -1                                                                       |
-| MEMORY_QUOTA    | The memory limit value specified for the resource group.                                                                                             | Integer (MB)                                                                            | -1 (not set, use `statement_mem` as the memory limit for a single query) |
+| MEMORY_QUOTA    | The memory value used, together with `CONCURRENCY`, to calculate a query's planned memory allocation for the resource group. `MEMORY_QUOTA` doesn't cap the memory that the resource group's queries can consume on a segment. | Integer (MB)                                                                            | -1 (not set, use `statement_mem` as the memory limit for a single query) |
 | MIN_COST        | The minimum cost of a query plan to be included in the resource group.                                                                               | Integer                                                                                 | 0                                                                        |
 
-> **Note** Resource limits are not enforced on `SET`, `RESET`, and `SHOW` commands.
+!!!info Note
+
+Resource limits are not enforced on `SET`, `RESET`, and `SHOW` commands.
+!!!
 
 <a id="topic8339717179"></a>
 
@@ -95,9 +100,15 @@ When you set one of the allocation modes for a resource group, WarehousePG deact
 
 WarehousePG uses the server configuration parameter [gp_resource_group_cpu_limit](../../../ref_guide/config_params/guc-list.mdx#gp_resource_group_cpu_limit) to identify the maximum percentage of system CPU resources to allocate to resource groups on each WarehousePG segment node. The remaining unreserved CPU resources are used for the operating system kernel and WarehousePG daemons. The amount of CPU available to WarehousePG queries per host is then divided equally among each segment on the WarehousePG node.
 
-> **Note** The default `gp_resource_group_cpu_limit` value may not leave sufficient CPU resources if you are running other workloads on your WarehousePG cluster nodes, so be sure to adjust this server configuration parameter accordingly. 
+!!!info Note
 
-> **Caution** Avoid setting `gp_resource_group_cpu_limit` to a value higher than .9. Doing so may result in high workload queries taking near all CPU resources, potentially starving WarehousePG auxiliary processes.
+The default `gp_resource_group_cpu_limit` value may not leave sufficient CPU resources if you are running other workloads on your WarehousePG cluster nodes, so be sure to adjust this server configuration parameter accordingly.
+!!!
+
+!!!warning Caution
+
+Avoid setting `gp_resource_group_cpu_limit` to a value higher than .9. Doing so may result in high workload queries taking near all CPU resources, potentially starving WarehousePG auxiliary processes.
+!!!
 
 <a id="cpuset"></a>
 
@@ -117,7 +128,10 @@ When you assign CPU cores to `CPUSET` groups, consider the following:
 
 Resource groups that you configure with `CPUSET` have a higher priority on CPU resources. The maximum CPU resource usage percentage for all resource groups configured with `CPUSET` on a segment host is the number of CPU cores reserved divided by the number of all CPU cores, multiplied by 100.
 
-> **Note** You must configure `CPUSET` for a resource group *after* you have enabled resource group-based resource management for your WarehousePG cluster with the [gp_resource_manager](../../../ref_guide/config_params/guc-list.mdx#gp_resource_manager) server configuration parameter.
+!!!info Note
+
+You must configure `CPUSET` for a resource group *after* you have enabled resource group-based resource management for your WarehousePG cluster with the [gp_resource_manager](../../../ref_guide/config_params/guc-list.mdx#gp_resource_manager) server configuration parameter.
+!!!
 
 <a id="cpu_max_percent"></a>
 
@@ -152,38 +166,25 @@ Roles in `test` have a CPU ratio of 10/(10+30+10+10)=16%. However, as the hard l
 
 ### Memory Limits
 
-When you enable resource groups, memory usage is managed at the WarehousePG segment and resource group levels. You can also manage memory at the transaction level. See [WarehousePG Memory Overview](../wlmgmt_intro.mdx) to estimate how much memory each WarehousePG segment has available to use. This will help you estimate how much memory to assign to the resource groups. 
+When you enable resource groups, `MEMORY_QUOTA` and `CONCURRENCY` shape a query's planned memory allocation, but WarehousePG doesn't enforce a per-resource-group memory limit at the segment level. Instead, all queries on a segment, regardless of resource group membership, draw from a single shared memory pool for that segment. See [WarehousePG Memory Overview](../wlmgmt_intro.mdx) to estimate how much memory each WarehousePG segment has available to use. This helps you estimate how much memory to assign to the resource groups. 
 
-The amount of memory allocated to a query is determined by the following parameters:
+The amount of memory a query plans to use is determined by the following parameters, in order of precedence:
 
-The parameter `MEMORY_QUOTA` of a resource group sets the maximum amount of memory reserved for this resource group on a segment. This determines the total amount of memory that all worker processes for a query can consume on the segment host during query execution. The amount of memory allotted to a query is the group memory limit divided by the group concurrency limit: `MEMORY_QUOTA` / `CONCURRENCY`. 
+-   [gp_resgroup_memory_query_fixed_mem](../../../ref_guide/config_params/guc-list.mdx#gp_resgroup_memory_query_fixed_mem): When you set this server configuration parameter at the session level, WarehousePG uses it directly as the query's planned memory allocation, bypassing the resource group's `MEMORY_QUOTA` and `CONCURRENCY` settings. Use it when a query requires more memory than its resource group would otherwise plan for.
+-   `MEMORY_QUOTA` / `CONCURRENCY`: When you don't set `gp_resgroup_memory_query_fixed_mem`, WarehousePG divides the resource group's `MEMORY_QUOTA` by its `CONCURRENCY` limit to determine the query's planned memory allocation at the planning phase. `MEMORY_QUOTA` doesn't reserve or cap memory for the resource group on a segment. It's an input to the query planner, not an enforced limit on the worker processes that execute the query.
+-   [statement_mem](../../../ref_guide/config_params/guc-list.mdx#statement_mem): When the resource group doesn't have a `MEMORY_QUOTA` set, the planned allocation defaults to `statement_mem`.
 
-If a query requires a large amount of memory, you may use the server configuration parameter [gp_resgroup_memory_query_fixed_mem](../../../ref_guide/config_params/guc-list.mdx#gp_resgroup_memory_query_fixed_mem) to set a fixed memory amount for the query at the session level. This parameter overrides and can surpass the allocated memory of the resource group.
-
-WarehousePG allocates memory for an incoming query using the `gp_resgroup_memory_query_fixed_mem` value, if set, to bypass the resource group settings. Otherwise, it uses `MEMORY_QUOTA` / `CONCURRENCY` as the memory allocated for the query. If `MEMORY_QUOTA` is not set, the value for the query memory allocation defaults to [statement_mem](../../../ref_guide/config_params/guc-list.mdx#statement_mem).
+Actual memory enforcement happens at the segment level, not through these planning parameters. The [gp_vmem_protect_limit](../../../ref_guide/config_params/guc-list.mdx#gp_vmem_protect_limit) parameter sets the size of the memory pool shared by all queries on a segment, and the [runaway_detector_activation_percent](../../../ref_guide/config_params/guc-list.mdx#runaway_detector_activation_percent) parameter sets the percentage of that pool WarehousePG allows before it cancels queries. This tracking is reactive: WarehousePG accounts for memory after a query has already allocated it, so a query can briefly exceed its planned allocation before the Runaway Detector cancels it. When segment memory usage exceeds `gp_vmem_protect_limit` \* `runaway_detector_activation_percent`, WarehousePG cancels queries starting with the one that consumes the most memory, until usage falls back below the threshold. This behavior is the same whether your cluster uses cgroup v1 or cgroup v2 for resource groups.
 
 For all queries, if there is not enough memory in the system, they spill to disk. When the limit [gp_workfile_limit_files_per_query](../../../ref_guide/config_params/guc-list.mdx#gp_workfile_limit_files_per_query) is reached, WarehousePG generates an out of memory (OOM) error.
 
-For example, consider a resource group named `adhoc` with `MEMORY_QUOTA`set to 1.5 GB and `CONCURRENCY` set to 3. By default, each statement submitted to the group is allocated 500 MB of memory. Now consider the following series of events:
-
-1.  User `ADHOC_1` submits query `Q1`, overriding `gp_resgroup_memory_query_fixed_mem` to 800MB. The `Q1` statement is admitted into the system.
-
-2.  User `ADHOC_2` submits query `Q2`, using the default 500MB.
-
-3.  With `Q1` and `Q2` still running, user `ADHOC3` submits query `Q3`, using the default 500MB.
-
-    Queries `Q1` and `Q2` have used 1300MB of the group's 1500MB. However, if there is enough system memory available for query `Q3` in the segment at that time, it can run normally.
-
-4.  User `ADHOC4` submits query `Q4`, using `gp_resgroup_memory_query_fixed_mem` set to 700 MB.
-
-    Query `Q4` runs immediately as it bypasses the resource group limits.
-
 There are some special usage considerations regarding memory limits:
 
--   If you set the configuration parameters `gp_resource_group_bypass` or `gp_resource_group_bypass_catalog_query` to bypass the resource group limits, the memory limit for the query takes the value of `statement_mem`.
--   When (`MEMORY_QUOTA` / `CONCURRENCY`) &lt; `statement_mem`, WarehousePG uses `statement_mem` as the fixed amount of memory allocated by query.
+-   Because memory is enforced at the segment level rather than per resource group, a resource group's queries can consume more memory than `MEMORY_QUOTA` suggests, as long as the shared per-segment pool has capacity.
+-   If you set the configuration parameters `gp_resource_group_bypass` or `gp_resource_group_bypass_catalog_query` to bypass the resource group limits, the planned memory allocation for the query takes the value of `statement_mem`.
+-   When (`MEMORY_QUOTA` / `CONCURRENCY`) &lt; `statement_mem`, WarehousePG uses `statement_mem` as the fixed amount of planned memory for the query.
 -   The maximum value of `statement_mem` is capped at [max_statement_mem](../../../ref_guide/config_params/guc-list.mdx#max_statement_mem).
--   Queries whose plan cost is less than the limit `MIN_COST` use a memory quota of `statement_mem`. 
+-   Queries whose plan cost is less than the limit `MIN_COST` use a planned memory quota of `statement_mem`. 
 
 <a id="diskio"></a>
 
@@ -191,7 +192,10 @@ There are some special usage considerations regarding memory limits:
 
 WarehousePG leverages Linux control groups to implement disk I/O limits. The parameter `IO_LIMIT` limits the maximum read/write disk I/O throughput, and the maximum read/write I/O operations per second for the queries assigned to a specific resource group. It allocates bandwidth, ensures the use of high-priority resource groups, and avoids excessive use of disk bandwidth. The value of the parameter is set on a per-tablespace basis. 
 
-> **Note** Disk I/O limits are only available when you use Linux Control Groups v2. See [Configuring and Using Resource Groups](#topic71717999) for more information.
+!!!info Note
+
+Disk I/O limits are only available when you use Linux Control Groups v2. See [Configuring and Using Resource Groups](#topic71717999) for more information.
+!!!
 
 When you limit disk I/O you specify:
 
@@ -440,7 +444,10 @@ ALTER RESOURCE GROUP rgroup1 SET CPUSET '1;2,4';
 ALTER RESOURCE GROUP sales SET IO_LIMIT 'tablespace1:wbps=2000,wiops=2000;tablespace2:rbps=2024,riops=2024'; 
 ```
 
-> **Note** You cannot set or alter the `CONCURRENCY` value for the `admin_group` to zero (0).
+!!!info Note
+
+You cannot set or alter the `CONCURRENCY` value for the `admin_group` to zero (0).
+!!!
 
 You can rename a resource group using the `name` option:
 
@@ -595,7 +602,10 @@ SELECT pg_cancel_backend(31905);
 
 You can provide an optional message in a second argument to `pg_cancel_backend()` to indicate to the user why the process was cancelled.
 
-> **Note** Do not use an operating system `KILL` command to cancel any WarehousePG process.
+!!!info Note
+
+Do not use an operating system `KILL` command to cancel any WarehousePG process.
+!!!
 
 <a id="moverg"></a>
 
@@ -603,7 +613,10 @@ You can provide an optional message in a second argument to `pg_cancel_backend()
 
 A user with WarehousePG superuser privileges can run the `gp_toolkit.pg_resgroup_move_query()` function to move a running query from one resource group to another, without stopping the query. Use this function to expedite a long-running query by moving it to a resource group with a higher resource allotment or availability.
 
-> **Note** You can move only an active or running query to a new resource group. You cannot move a queued or pending query that is in an idle state due to concurrency or memory limits.
+!!!info Note
+
+You can move only an active or running query to a new resource group. You cannot move a queued or pending query that is in an idle state due to concurrency or memory limits.
+!!!
 
 `pg_resgroup_move_query()` requires the process id (pid) of the running query, as well as the name of the resource group to which you want to move the query. The signature of the function follows:
 
