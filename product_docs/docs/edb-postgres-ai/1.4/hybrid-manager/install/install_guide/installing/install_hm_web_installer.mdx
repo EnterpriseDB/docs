@@ -1,25 +1,25 @@
 ---
-title: Installing Hybrid Manager via the Web Installer
-navTitle: Installing via Web Installer
-description: Install Hybrid Manager using the guided, browser-based Web Installer instead of hand-editing the HybridControlPlane manifest.
+title: Installing Hybrid Manager via the installer console
+navTitle: Installing via the installer console
+description: Install Hybrid Manager using the guided, browser-based installer console instead of hand-editing the HybridControlPlane manifest.
 deepToC: true
 ---
 
 ## Overview
 
-The Web Installer is a guided, browser-based alternative to authoring the `HybridControlPlane` custom resource by hand. It runs in the cluster, gates on the `edb-hcp-operator`, and does two jobs: it validates your cluster against HM's dependencies before you attempt an install, and it assembles a well-formed `HybridControlPlane` custom resource from your answers. The second job matters on its own — `globalParameters` and `componentsParameters` only accept string values, so a hand-authored manifest that uses a bare number or boolean is silently dropped by the API; the installer always emits strings.
+The installer console is a gated setup experience for Hybrid Manager — a guided, browser-based alternative to authoring the `HybridControlPlane` custom resource by hand, not a wizard that acts on your behalf. It runs in the cluster, gates on the `edb-hcp-operator`, and does two jobs: it validates your cluster against HM's dependencies before you attempt an install, and it assembles a well-formed `HybridControlPlane` custom resource from your answers, which you then review in **Preview** and apply yourself from its **Configure** screen. The second job matters on its own — `globalParameters` and `componentsParameters` only accept string values, so a hand-authored manifest that uses a bare number or boolean is silently dropped by the API; the installer always emits strings.
 
 It walks five gated screens — **Prerequisites**, **Configure**, **Preflight**, **Install**, and **Postflight** — validating at each step so an install is never attempted against unmet requirements.
 
 ### Prerequisites
 
 - A Kubernetes cluster, as described in [Deploying your Kubernetes cluster](../k8s_install).
-- The `edb-hcp-operator` installed — the Web Installer's Prerequisites screen gates on it; see [1.1 Operator](#11-operator) below.
+- The `edb-hcp-operator` installed — the installer console's Prerequisites screen gates on it; see [1.1 Operator](#11-operator) below.
 - An EDB subscription token, for the registry credential the installer needs to pull its own image and, later, HM's component images.
 
-### When to use the Web Installer
+### When to use the installer console
 
-Across every environment — public cloud, private cloud, or air-gapped — the pattern is the same: deploy the Kubernetes cluster, then deploy the Web Installer, and resolve what it reports before touching the operator manifest directly. It pulls from the customer-facing registry or a private mirror, needs only a pull credential to start, and re-reads cluster state on every page load rather than holding on to prior state.
+Across every environment — public cloud, private cloud, or air-gapped — the pattern is the same: deploy the Kubernetes cluster, then deploy the installer console, and resolve what it reports before touching the operator manifest directly. It pulls from the customer-facing registry or a private mirror, needs only a pull credential to start, and re-reads cluster state on every page load rather than holding on to prior state.
 
 Use it for a guided first installation — a proof of concept, a first production cluster, or an unfamiliar platform — where its validation and Preview reduce manifest errors. A team with a known-good `HybridControlPlane` already captured in git, and a mature release process around it, can reasonably skip it and use the [operator manifest method](install_hm) instead for automated, repeatable, or GitOps-managed deployments.
 
@@ -27,17 +27,17 @@ Use it for a guided first installation — a proof of concept, a first productio
 
 ### How it behaves: temporary, resumable, and deliberately unprivileged
 
-The installer holds no state of its own — every screen re-reads the cluster, so it can be deleted and reinstalled, or left mid-wizard and resumed later, without losing anything.
+The installer holds no state of its own — every screen re-reads the cluster, so it can be deleted and reinstalled, or left mid-installation and resumed later, without losing anything.
 
 It's meant to be temporary because it has no authentication of its own. Its only real protection is that reaching it requires an authenticated `kubectl port-forward` to the cluster's API — never expose it through an Ingress or a LoadBalancer Service.
 
 !!! Warning Reach the installer only through a port-forward
-The Web Installer has **no authentication**. Its access control is entirely the requirement that you already hold authenticated `kubectl` access to the cluster. Reach it exclusively through `kubectl port-forward`; never expose it through an Ingress, a LoadBalancer, or any other public endpoint.
+The installer console has **no authentication**. Its access control is entirely the requirement that you already hold authenticated `kubectl` access to the cluster. Reach it exclusively through `kubectl port-forward`; never expose it through an Ingress, a LoadBalancer, or any other public endpoint.
 !!!
 
-Because it's unsecured, it deliberately doesn't deploy artifacts itself — the operator and the component secrets are installed separately via `edbctl`, under your own credentials. The one exception is the image pull secret: the Prerequisites screen can create it inline, because that action is small, self-contained, and verified directly against the registry before anything is written.
+Because it's unsecured, it deliberately doesn't install the operator or create the component secrets itself — those come from your workstation via `edbctl`, under your own credentials. It does apply the `HybridControlPlane` resource itself, from the **Configure** screen, but only the version you've reviewed in **Preview** and confirmed — see [2. Configure](#2-configure). The one further exception is the image pull secret: the **Prerequisites** screen can create it inline, because that action is small, self-contained, and verified directly against the registry before anything is written.
 
-## Deploying and running the Web Installer
+## Deploying and running the installer console
 
 Two commands. First, the pull credential — this also satisfies the Prerequisites screen's Image pull secret check:
 
@@ -88,7 +88,7 @@ Green also doesn't always mean *verified*. Several rows go green once an API cal
 
 The EDB Postgres AI Operator (`edb-hcp-operator`) is what actually installs and runs Hybrid Manager for you: a Kubernetes operator that manages every HM component — portal, Beacon, PGD data planes, the observability stack — as one unit, so you set it up once rather than installing each service individually. It also owns HM's day-to-day lifecycle afterward, including upgrades.
 
-The installer confirms the operator and its CRDs are installed and running; its CRDs must exist before anything else, and this is the only Prerequisites row that blocks the wizard. See [Install the EDB Postgres AI Operator](install_hm#install-the-edb-postgres-ai-operator).
+The installer confirms the operator and its CRDs are installed and running; its CRDs must exist before anything else, and this is the only Prerequisites row that blocks **Begin**. See [Install the EDB Postgres AI Operator](install_hm#install-the-edb-postgres-ai-operator).
 
 ```shell
 edbctl hm upgrade-operator \
@@ -218,7 +218,7 @@ If the screen shows "Waiting for the operator to create the Preflight resource�
 
 ### 4. Install
 
-The operator deploys HM's components, one scenario at a time. The screen shows a per-component table refreshed every couple of seconds, a progress bar, and a phase that advances the wizard once it reaches `deployed`. If it stalls, check individual component states — `pending` usually means pods can't schedule, which is where under-labeled or under-provisioned nodes bite.
+The operator deploys HM's components, one scenario at a time. The screen shows a per-component table refreshed every couple of seconds, a progress bar, and a phase that advances the installation once it reaches `deployed`. If it stalls, check individual component states — `pending` usually means pods can't schedule, which is where under-labeled or under-provisioned nodes bite.
 
 ```shell
 kubectl get hcp edbpgai -o jsonpath='{.status.components[?(@.state=="failed")]}'
@@ -231,6 +231,8 @@ The table currently only surfaces an explanatory message for components in a `fa
 
 ![Install complete: phase "deployed", 57 of 57 components ready.](../../../images/web-installer-install-deployed.png)
 
+The total component count scales with your selected scenarios — 57 reflects an all-scenarios install; a `core`-only install reaches `deployed` with far fewer components.
+
 ### 5. Postflight
 
 Reports the operator's ongoing health checks — pods, internal databases, backups, nodes, and certificates — and surfaces the portal link once healthy. DNS is the one remaining manual task: this screen reminds you it's needed but doesn't test it. See [Troubleshooting postflight checks](../../troubleshooting/postflight_checks).
@@ -239,7 +241,7 @@ Postflight is a living report, not a one-time gate — the operator keeps re-run
 
 ![Postflight with all five health checks passed and the portal link live.](../../../images/web-installer-postflight-healthy.png)
 
-#### 5.1 Clean up the Web Installer
+#### 5.1 Clean up the installer console
 
 Removing the installer is the correct last step, not optional tidying — your HM installation doesn't depend on it staying deployed:
 
@@ -253,7 +255,7 @@ This removes the installer's Deployment, Service, ServiceAccount, and RBAC, and 
 Leave the `edbpgai-bootstrap` namespace and the `edb-cred` secret in place. The `HybridControlPlane` CR references `edb-cred` for its own image pulls — deleting it breaks the running installation, not just the installer.
 !!!
 
-If you need the installer again later, reinstall with the same two commands from [Deploying and running the Web Installer](#deploying-and-running-the-web-installer) — it's stateless, so nothing is lost by removing and redeploying it.
+If you need the installer again later, reinstall with the same two commands from [Deploying and running the installer console](#deploying-and-running-the-installer-console) — it's stateless, so nothing is lost by removing and redeploying it.
 
 ## Next phase
 
