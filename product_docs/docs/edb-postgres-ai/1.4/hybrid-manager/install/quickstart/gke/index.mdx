@@ -1,18 +1,18 @@
 ---
 title: Hybrid Manager on GKE with the installer console
 navTitle: GKE
-description: Deploy Hybrid Manager on Google Kubernetes Engine (GKE) using the installer console, from an empty project to a reachable portal.
+description: Deploy Hybrid Manager on Google Kubernetes Engine (GKE) using the installer console, from an empty project to a reachable HM console.
 deepToC: true
 ---
 
-This quickstart takes you from an empty Google Cloud project to a reachable Hybrid Manager (HM) portal on a dedicated GKE cluster, using the installer console.
+This quickstart takes you from an empty Google Cloud project to a reachable Hybrid Manager (HM) console on a dedicated GKE cluster, using the installer console.
 
 It mirrors the six phases of the [step-by-step installation guide](../../install_guide) — plan, gather requirements, deploy Kubernetes, prepare your environment, install HM, and explore post-installation — but collapses each phase to the shortest supported path. The two planning phases are deliberately brief: rather than have you design the deployment, the quickstart *prescribes* an opinionated architecture and set of requirements and records them for you, so the decisions here map one-to-one onto the full guide and onto later platform quickstarts. Each phase links to the guide page that explains it in depth.
 
 Commands set shell variables that later phases reuse, so run them in a single session.
 
 !!! Note Why commands, variables, and validation
-This quickstart is a set of explicit commands, not a script: infrastructure varies (org policy, quotas, region, CNI), so commands you can read and adapt travel better, and a script would imply a productized artifact that this is not. It uses environment variables to keep resource names consistent and cleanup easy (see `TICKET` below), and it follows most steps with a `describe`/`get` **validation** rather than an `echo`. The validation is the counterweight to the variables: it proves each value resolved to a real resource, so a typo or an empty variable fails fast at that step instead of surfacing cryptically several steps later.
+This quickstart gives you explicit commands rather than a script, since infrastructure varies (org policy, quotas, region, CNI) and commands are easier to read and adapt to your environment. It uses environment variables to keep resource names consistent and cleanup easy (see `TICKET` below), and follows most steps with a `describe`/`get` **validation** rather than an `echo`, so a typo or an empty variable fails fast at that step instead of surfacing cryptically several steps later.
 !!!
 
 !!! Note
@@ -39,7 +39,9 @@ The quickstart prescribes the architecture so you don't have to design one. Thes
 - **Topology** — One dedicated GKE cluster, 1:1 with HM, in a single region.
 - **Nodes** — A labeled control-plane node pool for HM's services and an optional Postgres pool for database workloads, placed with the `edbaiplatform.io/control-plane` and `edbaiplatform.io/postgres` node labels.
 - **Ingress** — A single public Google Cloud load balancer, provisioned automatically from HM's Istio ingress gateway. No load-balancer controller add-on is required on GKE.
-- **Scenarios** — All scenarios: `core` plus `dbaas`, `migration`, `ai`, `analytics`, and `klio`. `core` is required and always on; this quickstart enables the full set so every capability is available. For a minimal portal, `core` alone is sufficient.
+- **Scenarios** — All scenarios: `core` plus `dbaas`, `migration`, `ai`, `analytics`, and `klio`. `core` is required and always on; this quickstart enables the full set so every capability is available. For a minimal HM console, `core` alone is sufficient.
+
+[note here]: # (klio isn't in planning_arch.mdx's "Available scenarios" table - see the same flag in install_hm_web_installer.mdx. Confirm before merging.)
 
 * * *
 
@@ -55,7 +57,7 @@ These are the prescribed requirements for the architecture above — your system
 | Block storage | `standard-rwo` (default) plus a `VolumeSnapshotClass` |
 | Object storage | A dedicated, empty GCS bucket and a service account key |
 | Ingress and DNS | Public load balancer; A records to its IP in a Cloud DNS zone |
-| TLS | Self-signed for a test portal; a `cert-manager` issuer for production |
+| TLS | Self-signed for a test HM console; a `cert-manager` issuer for production |
 | Registry and token | Images from `docker.enterprisedb.com/pgai-platform`; an EDB subscription token |
 
 !!! Note
@@ -195,7 +197,7 @@ edbctl image-pull-secret create \
 edbctl image-pull-secret list        # validate
 ```
 
-Create the **install secrets**. This generates the platform's core secrets — the bootstrap Fernet key (which encrypts connector configuration) and the system-database credentials — and, crucially, prompts for the **portal admin email and password**, which is your console login. It also creates the namespaces the operator uses, so run it before installing the operator (Phase 5).
+Create the **install secrets**. This generates the platform's core secrets — the bootstrap Fernet key (which encrypts connector configuration) and the system-database credentials — and, crucially, prompts for the **HM console admin email and password**, which is your console login. It also creates the namespaces the operator uses, so run it before installing the operator (Phase 5).
 
 For a non-production install you can press Enter through the prompts: the keys are generated for you and the optional entries (a second admin, AI/HuggingFace tokens) are skippable — just set an admin email and password you'll remember. Production installs can manage each secret explicitly (per-scenario keys, an external admin identity provider, and so on); see [Customizing secrets](../../configuration/customizing_secrets).
 
@@ -246,10 +248,10 @@ The installer console has **no authentication** — it is for install-time use o
 !!!
 
 ```shell
-kubectl -n edbpgai-bootstrap port-forward svc/hm-installer 8080:8080     # then open http://localhost:8080
+kubectl -n edbpgai-bootstrap port-forward svc/hm-installer 8080:8080
 ```
 
-Work through the installer's five screens; each gates the next. For the operator method in detail, see [Install Hybrid Manager on Kubernetes](../../install_guide/installing/install_hm).
+Open `http://localhost:8080` in your browser, then work through the installer's five screens; each gates the next. For the operator method in detail, see [Install Hybrid Manager on Kubernetes](../../install_guide/installing/install_hm).
 
 #### 5.2.1 Prerequisites
 
@@ -270,6 +272,8 @@ echo -n "Storage Class (default)  : "; kubectl get sc -o jsonpath='{.items[?(@.m
 
 1. **Hybrid Manager Version** — the HM release to install (`$HM_VERSION`).
 2. **Scenarios** — feature bundles. Select all scenarios (`core`, `dbaas`, `migration`, `ai`, `analytics`, `klio`) to enable the full platform; `core` is required and always on. Selecting `dbaas` or `migration` reveals additional fields (Load Balancer Mode and the Migration Service Domain).
+
+[note here]: # (same klio flag as above - confirm before merging.)
 3. **Storage Class** — the class marked `(default)`: `standard-rwo`.
 4. **Portal Domain Name** — the hostname users browse to (`$PORTAL_DOMAIN`). Becomes `portal_domain_name` in the custom resource and the first DNS record you create below.
 5. **Migration Service Domain Name** — shown only when the `migration` scenario is enabled. Use a sibling of the portal hostname. Becomes `dms_domain_name`.
@@ -288,11 +292,19 @@ The operator rolls out the selected components, scenario by scenario. Expect abo
 
 #### 5.2.5 Postflight
 
-When the deployment reaches `deployed`, the operator runs its ongoing health checks — pods, databases, backups, nodes, and certificates — and reports `Healthy`, then shows the portal link. Create the DNS records in the next section so that link resolves.
+When the deployment reaches `deployed`, the operator runs its ongoing health checks — pods, databases, backups, nodes, and certificates — and reports `Healthy`, then shows the HM console link. Create the DNS records in the next section so that link resolves.
 
 ```shell
 kubectl get hybridcontrolplane -o wide    # status -> deployed
 kubectl get postflight                    # phase -> Healthy
+```
+
+#### 5.2.6 Clean up the installer console
+
+Removing the installer is the correct last step here, not optional tidying — it has no authentication of its own, and your HM installation doesn't depend on it staying deployed.
+
+```shell
+helm uninstall hm-installer -n edbpgai-bootstrap
 ```
 
 ### 5.3 Point DNS at the load balancer and sign in
@@ -310,10 +322,10 @@ done
 ```
 
 !!! Note
-The installer console currently derives the beacon host from the portal domain, so `sort -u` yields two unique records here — the portal and the migration (DMS) domain — because this quickstart enables the `migration` scenario. (A `core`-only install would yield one.) Production deployments should use three distinct hostnames for the portal, agent (Beacon), and migration (DMS) roles; see [DNS requirements](../../install_guide/sys_reqs#52-dns).
+The installer console derives the agent (Beacon) hostname from the portal domain by default, so `sort -u` above yields two records, not three: portal and migration (DMS) — because this quickstart enables the `migration` scenario. (A `core`-only install would yield just one.) For production, set distinct portal, agent (Beacon), and migration (DMS) hostnames, and create a DNS record for each; see [DNS requirements](../../install_guide/sys_reqs#52-dns).
 !!!
 
-Confirm each hostname resolves to the load-balancer IP, then sign in at `https://<portal_domain_name>` with the portal admin credentials you set in Phase 4. The portal uses a self-signed certificate by default, so accept the browser warning.
+Confirm each hostname resolves to the load-balancer IP, then sign in at `https://<portal_domain_name>` with the HM console admin credentials you set in Phase 4. The HM console uses a self-signed certificate by default, so accept the browser warning.
 
 * * *
 
@@ -321,10 +333,10 @@ Confirm each hostname resolves to the load-balancer IP, then sign in at `https:/
 
 Create a single-instance Postgres cluster from the **console** or the **CLI**, then connect.
 
-The CLI path talks to your running HM control plane, so first authenticate `edbctl` to it with an **access key** you generate in the HM portal — see [Access key](../../../using_hybrid_manager/interacting_programmatically/access_key):
+The CLI path talks to your running HM control plane, so first authenticate `edbctl` to it with an **access key** you generate in the HM console — see [Access key](../../../using_hybrid_manager/interacting_programmatically/access_key):
 
 ```shell
-# HM portal -> your profile -> Access Keys -> Create New Key, then:
+# HM console -> your profile -> Access Keys -> Create New Key, then:
 edbctl credential import-access-key --name hm --access-key <ACCESS_KEY> --address "https://$PORTAL_DOMAIN"
 edbctl project list                       # find your project id
 edbctl config set context_credential hm
@@ -363,7 +375,7 @@ HM accepts very small and very large instance sizes (fractional CPU, memory in M
 From here, mirror the guide's post-installation phase — see [Exploring your post-installation options](../../install_guide/post_install):
 
 - **Identity and access** — connect an identity provider and map users to roles so access is least-privilege from the start.
-- **Advanced node placement** — separate node groups and use affinity and tolerations to isolate control-plane, Postgres, and AI workloads.
+- **Advanced node placement** — use separate node groups, with affinity and tolerations, so control-plane, Postgres, and AI workloads land on dedicated, isolated hardware.
 - **Capabilities** — estate monitoring, migration, analytics, and AI Factory build on this base.
 
 ### Clean up (optional)
