@@ -54,7 +54,7 @@ Use this checklist to verify at a high level that you have all necessary infrast
 - 5. [ ] [Ingress](#5-ingress)
   - 5.1 [Load Balancer Controller](#51-load-balancer-controller)
   - 5.2 [Domain Name Service](#52-dns)
-  - 5.3 [Portal certificate management/TLS](#53-certificate-management)
+  - 5.3 [HM console certificate management/TLS](#53-certificate-management)
 - 6. [ ] [Block storage (Database & logs)](#6-block-storage-database--logs)
   - 6.1 [Volume snapshots](#61-volume-snapshots)
   - 6.2 [Excluding storage from Hybrid Manager discovery](#62-excluding-storage-from-hybrid-manager-discovery)
@@ -71,7 +71,7 @@ You require a designated machine to orchestrate the deployment.
 This can be a laptop (for public clusters) or a cloud-based Bastion host (for private clusters).
 
 !!! Note
-A **Bastion host** (or jump host/box) is strongly recommended for secure, private access to the Kubernetes API, Portal, and PostgreSQL endpoints. 
+A **Bastion host** (or jump host/box) is strongly recommended for secure, private access to the Kubernetes API, HM console, and PostgreSQL endpoints. 
 This host serves as your dedicated operational workstation for installation and validation activities.
 For EDB Remote DBA (RDBA) or Managed Services contracts, a dedicated Bastion is **mandatory**.
 !!!
@@ -258,14 +258,14 @@ kubectl get svc
 
 ## 5. Ingress
 
-You must choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own Portal and services, as well as individual load balancers and NodePorts for each Postgres database you create.
-Choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own portal and services. It can also deploy individual load balancers and NodePorts for each Postgres database you create.
+You must choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own HM console and services, as well as individual load balancers and NodePorts for each Postgres database you create.
+Choose an ingress strategy that matches your infrastructure capabilities. HM can deploy either a load balancer or NodePort service for its own HM console and services. It can also deploy individual load balancers and NodePorts for each Postgres database you create.
 The table below defines the supported combinations of DNS Management, Endpoint Types, and SSL Termination.
 
-| Scenario | DNS Management | Endpoint Type | Portal SSL/TLS Termination |
+| Scenario | DNS Management | Endpoint Type | HM Console SSL/TLS Termination |
 | :--- | :--- | :--- | :--- |
-| **CSP LB (ELB, ALB)** | Manual portal, dynamic postgres | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
-| **F5 + F5 K8s Controller** | Manual portal, dynamic postgres | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
+| **CSP LB (ELB, ALB)** | Manual console, dynamic postgres | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
+| **F5 + F5 K8s Controller** | Manual console, dynamic postgres | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
 | **MetalLB** | Manual | Dynamic via Load Balancer Controller | Istio Ingress Gateway |
 | **NodePort (Conventional LB)** | Manual (A record against LB) | Static (manual) | Istio Ingress Gateway |
 | **NodePort (No LB)** | Manual (Round Robin against Nodes) | Static (manual) | Istio Ingress Gateway |
@@ -314,7 +314,7 @@ resourceAnnotations:
 | **Annotations** | `spec.resourceAnnotations[]` | Provider-specific list (see below). |
 
 
-The `load_balancer_mode` parameter lets you instruct HM to create a load balancer service for both the Portal and the Postgres databases. If set to `disabled`, both the portal and the Postgres databases use NodePorts; otherwise, they use a load balancer. The `public`, `private`, and `custom-only` values only affect the Postgres databases and have no impact on the portal load balancer. Similarly, the `load_balancer_provider` parameter applies only to Postgres clusters. The `resourceAnnotations` parameter is relevant only for the HM Portal.
+The `load_balancer_mode` parameter lets you instruct HM to create a load balancer service for both the HM console and the Postgres databases. If set to `disabled`, both the HM console and the Postgres databases use NodePorts; otherwise, they use a load balancer. The `public`, `private`, and `custom-only` values only affect the Postgres databases and have no impact on the HM console load balancer. Similarly, the `load_balancer_provider` parameter applies only to Postgres clusters. The `resourceAnnotations` parameter is relevant only for the HM console.
 
 `load_balancer_mode` also determines which [connectivity types](../../using_hybrid_manager/cluster_management/create-clusters/cluster-settings/#networking) are available to select when creating or editing a Postgres cluster in the HM console:
 
@@ -343,8 +343,8 @@ The following ports must be open on your load balancer or firewall for Hybrid Ma
 
 | Port | Protocol | Service | Description |
 | :--- | :--- | :--- | :--- |
-| **80** | TCP | `http2` | HM Portal (HTTP — redirects to HTTPS) |
-| **443** | TCP | `https` | HM Portal (HTTPS ingress) |
+| **80** | TCP | `http2` | HM console (HTTP — redirects to HTTPS) |
+| **443** | TCP | `https` | HM console (HTTPS ingress) |
 | **9443** | TCP | `grpc-tls` | Beacon gRPC API |
 | **8444** | TCP | `spire-tls` | Spire TLS |
 | **9445** | TCP | `beacon-spire` | Beacon Spire TLS |
@@ -398,8 +398,8 @@ If using NodePort for ingress, the following specific ports must use **NodePort*
 
 | NodePort variable | Default port | LB port | Description |
 | :--- | :--- | :--- | :--- |
-| `spec.componentsParameters.upm-istio-gateway.ingress_http_node_port` | **32542** | 80 | HM Portal (HTTP) |
-| `spec.componentsParameters.upm-istio-gateway.ingress_https_node_port` | **30288** | 443 | HM Portal (HTTPS) |
+| `spec.componentsParameters.upm-istio-gateway.ingress_http_node_port` | **32542** | 80 | HM console (HTTP) |
+| `spec.componentsParameters.upm-istio-gateway.ingress_https_node_port` | **30288** | 443 | HM console (HTTPS) |
 | `spec.componentsParameters.upm-istio-gateway.ingress_grpc_tls_node_port` | **30290** | 9443 | Beacon gRPC TLS |
 | `spec.componentsParameters.upm-istio-gateway.ingress_spire_tls_node_port` | **30292** | 8444 | Spire TLS |
 | `spec.componentsParameters.upm-istio-gateway.ingress_beacon_spire_tls_node_port` | **30294** | 9445 | Beacon Spire TLS |
@@ -432,12 +432,16 @@ These are inputs into your HM configuration in the next phase:
 
 | Domain Purpose | Custom Resource key | Description |
 | :--- | :--- | :--- |
-| **Portal domain** | `spec.globalParameters.portal_domain_name` | The host name for the HM Portal UI. |
+| **Portal domain** | `spec.globalParameters.portal_domain_name` | The host name for the HM console. |
 | **Agent domain** | `spec.componentsParameters.upm-beacon.server_host` | The host name through which the Beacon Server API is reachable. |
 | **Migration domain** | `spec.globalParameters.dms_domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. |
 | **NodePort base** | `spec.globalParameters.node_port_domain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
 
 In case of NodePort approach, the above DNS entries should be round robin on the compute IP where the control-plane label is applied on the Kubernetes Nodes.
+
+!!! Note The installer console's beacon host
+The installer console derives the agent (Beacon) hostname from the portal domain by default, so the two share one DNS record unless you set them separately in the custom resource. A `core`-only installation needs just that record; enabling the `migration` scenario adds a second, for the migration (DMS) hostname. For production, set distinct portal, agent (Beacon), and migration (DMS) hostnames, and create a DNS record for each.
+!!!
 
 #### DNS configuration strategy
 
@@ -447,7 +451,7 @@ Your DNS configuration depends on your Ingress selection.
 
 * **Dependency:** Ensure `spec.globalParameters.load_balancer_mode:` is set to `"public"` or `"private"` in your HM configuration.
 
-* **Portal:** In the case of an optimal load balancer controller like AWS ELB or an F5 with DNS capability, manually configure DNS to point to the resulting Load Balancer IP for `istio-ingress`. Domain names must be resolvable to a **locally routable IP** so that the ingress service on Kubernetes can properly route traffic according to the hostname in the HTTPS request.
+* **HM console:** In the case of an optimal load balancer controller like AWS ELB or an F5 with DNS capability, manually configure DNS to point to the resulting Load Balancer IP for `istio-ingress`. Domain names must be resolvable to a **locally routable IP** so that the ingress service on Kubernetes can properly route traffic according to the hostname in the HTTPS request.
 
 * **Postgres:** You do *not* need to manually manage DNS for every database. 
 
@@ -457,7 +461,7 @@ Postgres DNS records are populated automatically as a function of the load balan
 
 * **Prerequisite:** You disabled load balancers and defined a `node_port_domain` in the Ingress section.
 
-* **Portal:** DNS entries should be a **Round Robin A Record** pointing to the compute IPs of the **Control Plane nodes** (nodes labeled `edbaiplatform.io/control-plane`).
+* **HM console:** DNS entries should be a **Round Robin A Record** pointing to the compute IPs of the **Control Plane nodes** (nodes labeled `edbaiplatform.io/control-plane`).
 
 * **Postgres:** The `node_port_domain` value is used as the base URL for all Postgres instances. It should be a **Round Robin DNS record** pointing to the IP addresses of the **Worker nodes** where the Postgres clusters are running.
 
@@ -465,7 +469,7 @@ Postgres DNS records are populated automatically as a function of the load balan
 
 > **Optionality:** Strictly required.
 
-Secure communication requires TLS certificates for the Portal and API endpoints. 
+Secure communication requires TLS certificates for the HM console and API endpoints. 
 You must decide on a certificate management strategy before installation.
 
 #### Decision matrix
