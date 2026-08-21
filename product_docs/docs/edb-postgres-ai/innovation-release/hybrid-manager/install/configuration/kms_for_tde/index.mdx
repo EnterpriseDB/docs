@@ -21,6 +21,32 @@ To [secure the data encryption key](https://www.enterprisedb.com/docs/tde/latest
 TDE is available for EDB Postgres Advanced Server and EDB Postgres Extended Server for version 15 and later.
 !!!
 
+## What TDE does and doesn't protect against
+
+TDE addresses threats to data at rest: stolen storage media, leaked backup archives, exported snapshots, and compromise of the underlying block-storage subsystem.
+
+TDE doesn't address SQL injection, stolen credentials, application-server compromise, privileged-user abuse, or memory scraping. Those are handled by `pg_hba.conf` rules, authentication, TLS, network segmentation, and monitoring.
+
+!!!important
+TDE is effectively a one-way door. There's no physical-layer way to remove it from a cluster — the only way out is a logical migration to a new, non-TDE cluster. All backups are ciphertext and require the KMS key (or passphrase) to restore. Losing the key is unrecoverable and irreversible.
+!!!
+
+## What Hybrid Manager (HM) encrypts by default
+
+HM clusters are encrypted in transit by default (TLS certificates issued by CloudNativePG (CNPG), with `hostssl` enforced in `pg_hba.conf`) and encrypted at the storage layer by default (backing block volumes and object-storage backups use cloud-provider-managed keys). TDE adds a further layer on top of that: Postgres data files are also encrypted, so backups and data-directory copies remain ciphertext even if the underlying storage is separately decrypted. This is the layer that most compliance frameworks — including PCI-DSS §3.5, HIPAA §164.312(a)(2)(iv), and FedRAMP SC-28 — specifically require.
+
+## Key-to-cluster model
+
+The HM project is a management-plane grouping. The unit that TDE actually operates on is the **cluster**: each cluster is created against a specific registered key, and that assignment happens at cluster-creation time.
+
+- You can register multiple keys in a single project.
+- Different clusters in the same project can use different keys.
+- The Console's per-project key list is a curated selection surfaced during cluster creation, not a cryptographic limit. The boundary that matters is the underlying KMS role or policy binding, not the HM project.
+
+**When to prefer one key per cluster:** custody separation for regulated workloads, per-cluster cryptographic decommissioning (destroying one cluster's key renders its data and backups permanently unreadable without affecting other clusters), and least-privilege KMS access scoped to a single cluster's service account.
+
+**When to prefer one key per project:** simpler day-to-day operations, fewer keys to rotate and track, and a single blast radius for accidental key deletion. This is a reasonable default for lower environments or workloads with a single compliance owner.
+
 First, ensure the Key Management System provider of your choice has been enabled in the `HybridControlPlane` CR: 
 
 -   [Adding KMS support](adding_kms_support.mdx)
