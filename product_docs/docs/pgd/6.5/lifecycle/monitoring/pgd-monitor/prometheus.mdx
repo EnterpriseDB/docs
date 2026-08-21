@@ -1,0 +1,53 @@
+---
+title: Using Prometheus
+navTitle: Prometheus
+description: Scraping PGD Monitor's Prometheus endpoint, configuring a scrape target, and the metric conventions and exclusions that apply.
+deepToC: true
+---
+
+Scrape `http(s)://<node>:<monitor_port>/metrics` on each PGD node for a standard Prometheus target, served by the same monitor HTTP server as the web UI and REST API. See [Monitoring metrics reference](/pgd/current/reference/tables-views-functions/monitoring-metrics) for every metric it exposes.
+
+Enable it with `bdr.monitor_enabled`, the same as the web UI, and configure the shared server the same way too, using the `monitor_http_port`, `monitor_use_https`, and `bdr.monitor_ssl_*` parameters.
+
+The endpoint uses HTTP Basic authentication for each scrape, sending a username and password with every request rather than a session cookie. It checks the credentials against a Postgres role that's a member of `pg_monitor`, the same check the web UI login uses, so Prometheus's `basic_auth` works unchanged.
+
+Unlike the web UI, the endpoint reports only the local node's view, since a scrape never queries other nodes, so you must configure one target per PGD node.
+
+!!! Note
+
+    Set [`bdr.monitor_prometheus_pg_metrics`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrmonitor_prometheus_pg_metrics) to `off` if Prometheus [`postgres_exporter`](https://github.com/prometheus-community/postgres_exporter) already runs on a node and you don't want duplicate series. Set it on each node where you want the behavior and reload the configuration. This setting controls whether [`/metrics`](/pgd/current/reference/tables-views-functions/monitoring-metrics) also includes Postgres statistics families equivalent to the most useful `postgres_exporter` collectors, on by default. PGD-native metrics keep exporting either way.
+
+### Configuring a scrape target
+
+Add a job to your Prometheus configuration file, listing every PGD node as a target and supplying the `pg_monitor` role's credentials for `basic_auth`:
+
+```yaml
+scrape_configs:
+  - job_name: pgd
+    basic_auth:
+      username: monitoring_role
+      password: ...
+    static_configs:
+      - targets:
+          - node1.example.com:6437
+          - node2.example.com:6437
+```
+
+### Metric format and conventions
+
+The endpoint responds with `Content-Type: text/plain; version=0.0.4`, the standard Prometheus text exposition format. The following conventions apply throughout its output.
+
+- Counters are exported raw with the `_total` suffix. Compute rates in PromQL with `rate()`.
+- Identity (`info`) metrics have the constant value `1` and carry their payload in labels, for example the Raft leader name.
+- Log sequence number (LSN) positions are exported as bytes since `0/0`, so PromQL can subtract them directly, for example sent minus replay equals apply lag in bytes.
+- Time-valued counters from Postgres statistics are converted to seconds.
+- Most metrics sample roughly every 10 seconds; a few, including disk space and the commit latency histogram, sample every 60 seconds. See [Monitoring metrics reference](/pgd/current/reference/tables-views-functions/monitoring-metrics) for the exact interval and description of each metric.
+
+The following are deliberately excluded from `/metrics`.
+
+- Per-table statistics (dead tuples, sizes, scan counts). Cardinality is unbounded across many tables, so these stay available on demand through the REST API and the web UI's [**Tables**](/pgd/current/lifecycle/monitoring/pgd-monitor/web-ui#tables) page instead.
+- Vacuum progress. These rows are ephemeral and unsuitable for a time series, so they stay on the web UI only.
+- `pg_settings`, physical replication views (`pg_stat_replication`, `pg_stat_wal_receiver`), and anything needing extra extensions, such as `pg_buffercache`.
+- A `pg_up`-style metric. The exporter runs inside the server itself, so Prometheus's own `up` metric for the scrape already covers reachability.
+
+If you need any of these as Prometheus metrics, run [`postgres_exporter`](https://github.com/prometheus-community/postgres_exporter) alongside PGD Monitor. Its `stat_user_tables`, `stat_progress_vacuum`, `settings`, and `replication` collectors, all enabled by default, cover per-table statistics, vacuum progress, `pg_settings`, and physical replication respectively.
