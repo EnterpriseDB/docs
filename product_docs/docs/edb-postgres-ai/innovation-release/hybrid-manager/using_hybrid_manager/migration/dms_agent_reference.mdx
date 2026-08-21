@@ -151,6 +151,74 @@ Oracle examples:
 - Disable network encryption negotiation: `oracle.net.encryption_client=REJECTED`
 - Set session program name: `v$session.program=DMSAgent`
 
+## Postgres Large object migration parameters
+
+### LO_SNAPSHOT_ENABLED
+
+Feature gate for the large object snapshot. When false (the default), no large object related
+operations run: the source is not scanned, no partitions are computed, and nothing is uploaded
+or published. Set to true to opt into the large object snapshot.
+
+### LO_SNAPSHOT_PARALLELISM
+
+Number of parallel workers used for the large object snapshot. 
+For example the LO_SNAPSHOT_PARALLELISM = 20
+If the agent mode is reader, there will be 20 workers COPY OUT the large object from source database and upload to object storage in parallel.
+If the agent mode is writer, there will be 20 workers download the large object and COPY IN to the target database.
+
+Recommandation:
+Our performance benchmark test environment setting:
+Deploy Source postgres database(8vCPU, 32G Mem) and Reader mode agent(16vCPU, 16G Mem) in one i4i.8xlarge EC2
+Deploy Target epas database(16vCPU, 32G Mem) and Writer mode agent(4vCPU, 16G Mem) in another one i4i.8xlarge EC2
+
+Tables setting:
+Large objects counts: 6400
+Large objects size: 32MB
+Large objects expected partion size: 1024MB
+Forign key paraent table size: 100000rows
+Forign key child table size: 10000000rows
+Integer Non-unique index size: 10000000rows
+
+Large object agent setting:
+Reader mode agent parallelism: 24
+Writer mode agent parallelism: 32
+
+Result:
+E2E duration | Speed(MB/s) | Reader Peak CPU | Reader Peak Mem | Writer Peak CPU | Writer Peak Mem | Source Peak CPU | Source Peak Mem | Target Peak CPU | Target Peak Mem
+8min30s	       401.5686275	 47.90%	           35.10%	           49%	             12.80%	           38%	             75.10%	           39.50%	           25%
+
+### LO_SNAPSHOT_PARTITION_TARGET_MB
+
+All the large object will be splited to different partition. This option is the your expected partion size in MB.
+
+### LO_SNAPSHOT_PARTITION_TARGET_LO_COUNT
+
+All the large object will be splited to different partition. This option is the your expected large object count for each partion.
+Agent will compute the partition number using both LO_SNAPSHOT_PARTITION_TARGET_MB and LO_SNAPSHOT_PARTITION_TARGET_LO_COUNT then 
+chose the larger one.
+
+### LO_SNAPSHOT_COMPRESSION_RATIO
+
+Compression ratio used to estimate logical (decompressed) volume. Intentionally unset by default:
+when empty, the logical volume is estimated by sampling large objects at startup. When pinned, the
+value is used directly with no sampling.
+
+### LO_SNAPSHOT_SAMPLE_LO_COUNT
+
+Number of large objects to decompress when estimating the compression ratio. A fixed count
+(not a percentage) bounds the sampling cost regardless of total LO volume (default: 200)
+Larger LO_SNAPSHOT_SAMPLE_LO_COUNT will increase the estimating time.
+
+### LO_SNAPSHOT_SAMPLE_TIMEOUT_SECONDS
+
+Statement timeout (seconds) for the sampling query for estimating the compression ratio (default: 30)
+Increase this when agnet timeout during estimating the compression ratio 
+
+### LO_SNAPSHOT_HIGH_VOLUME_WARN_LOGICAL_GB
+
+Estimated logical (decompressed) large object volume, in GiB, at or above which the snapshot logs a
+high-volume WARN at startup. Set to 0 to disable the warning (default: 5120)
+
 ## Optional parameters
 
 ### METRICS_TASK_ENABLED
