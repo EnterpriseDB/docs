@@ -9,6 +9,7 @@ navigation:
 redirects:
   - /aidb/7/agents-and-tools
 ---
+With AIDB, you can configure and run agents within your database. They have secure, local access to your data and depending on where your model run, data never has to leave Postgres.
 
 An **agent** is a named, reusable configuration — instructions, a model, and a set of tools it's allowed to call — that AIDB runs through a ReAct-style reasoning loop: the model thinks, optionally calls one or more tools, observes the results, and repeats until it has an answer.
 
@@ -16,20 +17,99 @@ An **agent** is a named, reusable configuration — instructions, a model, and a
 This is a distinct, in-database capability, different from [Agent Factory in Hybrid Manager (HM)](/edb-postgres-ai/latest/hybrid-manager/ai-factory/). AIDB's agents run entirely as SQL function calls inside your Postgres database.
 !!!
 
-Agents are ordinary Postgres objects, created and queried with SQL:
+Agents are ordinary Postgres objects, created and queried with SQL. The example below builds a small text-to-SQL agent end to end: it doesn't know the database schema in advance, discovers it with the [catalog discovery tools](../tools/native-tools#catalog-discovery), and answers questions by running real queries against your data.
+
+## Example: a text-to-SQL agent
+
+### Setup
+
+Create some sample data, register a model, and create the agent:
 
 ```sql
--- Register an agent that can query the database
-SELECT aidb.create_agent(
-    name         => 'db_helper',
-    instructions => 'You are a helpful assistant that answers questions about this database.',
-    model        => 'my_gpt',
-    tools        => ARRAY['run_sql_query']
+CREATE TABLE public.foods (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    calories INTEGER NOT NULL,
+    price_usd NUMERIC(6,2) NOT NULL,
+    is_vegetarian BOOLEAN NOT NULL DEFAULT false
 );
 
--- Have a conversation with it
-SELECT * FROM aidb.agent_converse('db_helper', 'How many rows are in the orders table?');
+INSERT INTO public.foods (name, category, calories, price_usd, is_vegetarian) VALUES
+    ('Apple',                 'Fruit',     95, 0.50, true),
+    ('Banana',                'Fruit',    105, 0.30, true),
+    ('Grilled Chicken Breast','Meat',     165, 3.50, false),
+    ('Salmon Fillet',         'Fish',     208, 6.00, false),
+    ('Broccoli',              'Vegetable', 55, 1.20, true),
+    ('Cheddar Cheese',        'Dairy',    402, 2.80, true),
+    ('Brown Rice',            'Grain',    216, 0.80, true),
+    ('Bacon',                 'Meat',     541, 4.20, false),
+    ('Almonds',               'Nuts',     579, 5.50, true),
+    ('Dark Chocolate',        'Snack',    546, 3.00, true);
+
+SELECT aidb.create_model(
+    'gpt_5_6_terra_azure',
+    'openai_responses',
+    config => aidb.openai_responses_config(
+        model => 'gpt-5.6-terra',
+        url   => 'https://my-ai-service.example.com/openai/v1/responses'
+    ),
+    credentials => jsonb_build_object(
+        'api_key', '<your-api-key>'
+    )
+);
+
+SELECT aidb.create_agent(
+    name         => 'text2sql_demo',
+    instructions => 'You are a helpful, read-only database assistant that answers questions by '
+                     || 'querying the database. You do not know this database''s schema in '
+                     || 'advance -- before answering, use the catalog_list_objects tool to '
+                     || 'discover which tables exist, then use catalog_get_object_details to '
+                     || 'inspect the columns of any table you intend to query. Never guess a '
+                     || 'table or column name -- always verify it via these catalog tools first. '
+                     || 'Once you know the relevant table and columns, use the run_sql_query '
+                     || 'tool to fetch the actual data needed to answer the question -- never '
+                     || 'state a specific result as fact unless it came from a successful '
+                     || 'run_sql_query call. You only have read-only access and cannot modify '
+                     || 'any data. Once a query has given you enough information to answer, '
+                     || 'respond immediately -- do not repeat a tool call you have already made '
+                     || 'with the exact same arguments.',
+    model        => 'gpt_5_6_terra_azure',
+    tools        => ARRAY['run_sql_query', 'catalog_list_objects', 'catalog_get_object_details']
+);
 ```
+
+### Conversation
+
+Ask the agent a question about the data. Behind the scenes it lists the available tables, inspects the `foods` columns, runs a query, and answers from the result:
+
+```sql
+SELECT * FROM aidb.agent_converse('text2sql_demo', 'Which vegetarian food item has the fewest calories?');
+__OUTPUT__
+                                    message                                     |           conversation_id            | error
+--------------------------------------------------------------------------------+--------------------------------------+-------
+ Broccoli has the fewest calories among vegetarian items, with **55 calories**. | 08571a03-0758-4cda-8595-607e2a69c8ce |
+(1 row)
+```
+
+To watch the reasoning loop's individual tool calls and results, re-run with `debug => true` — see [Invoking agents](conversing-with-agents#debug-mode).
+
+### Comparison
+
+The same question, asked to the same model directly — without the agent's reasoning loop and tools — can only be answered from the model's training data. It has no idea your `foods` table exists:
+
+```sql
+SELECT aidb.generate_text('gpt_5_6_terra_azure', 'Which vegetarian food item has the fewest calories?');
+__OUTPUT__
+                                                           generate_text
+-----------------------------------------------------------------------------------------------------------------------------------
+ Among common solid vegetarian foods, **raw watercress** is one of the lowest-calorie options, at about **11 calories per 100 g**.+
+                                                                                                                                  +
+[...]
+(1 row)
+```
+
+The agent grounded its answer in your actual data; the bare model call could only guess.
 
 An agent's `tools` array draws from AIDB's unified tool catalog — a built-in AIDB operation, a custom parameterized SQL query you register, or an operation imported from an external MCP server. See [Tools](../tools) for the full catalog.
 
