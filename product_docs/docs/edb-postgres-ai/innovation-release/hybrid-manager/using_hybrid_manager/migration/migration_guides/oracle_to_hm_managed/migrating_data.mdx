@@ -50,6 +50,11 @@ A migration establishes a sync between your Oracle source and a destination data
 1.  Select the migration type:
     - [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) — copies data once and completes. Use this for a one-time, offline migration.
     - [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) — copies an initial snapshot, then continuously streams changes from the source. Use this to minimize downtime.
+    - [**Streaming Only**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#streaming-only-migration) — skips the initial copy and streams only changes that occur after the migration starts, from the source database's current position. Use this when the destination already has the historical data loaded.
+
+    !!!note
+    **Streaming Only** works without any pre-loading if your tables are insert-only (for example, an append-only log or event table) — new rows are inserted normally. If your tables receive updates or deletes on rows that existed before the migration started, load that historical data on the destination first: `DELETE` operations on rows that were never loaded are safely ignored, but `UPDATE` operations on rows that were never loaded aren't guaranteed to create the row. Custom starting-point (LSN/SCN) support isn't available.
+    !!!
 
 1.  Under **Destination Type**, select **HM-managed Postgres** and select your destination database cluster and database. Then select **Next**.
 
@@ -57,7 +62,7 @@ A migration establishes a sync between your Oracle source and a destination data
 
 1.  Select **Create Migration**.
 
-The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming**, the EDB DMS agent streams data changes continuously while the migration shows a **Running** state.
+The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming** or **Streaming Only**, the EDB DMS agent streams data changes continuously while the migration shows a **Running** state.
 
 !!!note
 The EDB DMS agent streams data changes only — not DDL changes (schema modifications).
@@ -77,7 +82,7 @@ The **Migrations** page shows a summary of all migrations in the project. The **
 
 Select a migration from the list to open the details page, which has four tabs:
 
-- **Overview** — Shows the current migration state and general information about the source and destination databases. For **Snapshot + Streaming** migrations, the migration is caught up when the status is **Streaming**. For **Snapshot** migrations, it's finished when the status is **Completed**.
+- **Overview** — Shows the current migration state and general information about the source and destination databases. For **Snapshot + Streaming** and **Streaming Only** migrations, the migration is caught up when the status is **Streaming**. For **Snapshot** migrations, it's finished when the status is **Completed**.
 
 - **Tables** — Shows all tables selected for migration. For each table, you can see source and destination table and schema names, snapshot status, mapped columns, migrated rows, and migration rate. Select the **+** icon to expand a table and view column-level mappings.
 
@@ -87,7 +92,7 @@ Select a migration from the list to open the details page, which has four tabs:
 
 ### Migration metrics
 
-During any running migration (**Snapshot** or **Snapshot + Streaming**), the DMS agents continuously report performance metrics to HM, which are displayed in the HM console automatically. If you deployed the reader or writer agent yourself — any setup with a self-managed source or destination — set `METRICS_TASK_ENABLED=true` in the agent's `run-cdcagent.sh`. See [Configuring and running the EDB DMS agent](configuring_dms_agent) for agent configuration steps.
+During any running migration (**Snapshot**, **Snapshot + Streaming**, or **Streaming Only**), the DMS agents continuously report performance metrics to HM, which are displayed in the HM console automatically. If you deployed the reader or writer agent yourself — any setup with a self-managed source or destination — set `METRICS_TASK_ENABLED=true` in the agent's `run-cdcagent.sh`. See [Configuring and running the EDB DMS agent](configuring_dms_agent) for agent configuration steps.
 
 For details about the Grafana dashboard shown in the **Metrics** tab, see [Metrics tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#metrics-tab).
 
@@ -98,7 +103,7 @@ The HM console doesn't surface all DMS agent errors. If a migration is stuck or 
 ## Finalizing a streaming migration
 
 !!!note
-This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, DMS marks the migration as completed automatically.
+This section applies to migrations that stream continuously — **Snapshot + Streaming** and **Streaming Only**. For **Snapshot** migrations, DMS marks the migration as completed automatically. **Streaming Only** migrations skip the snapshot sub-stage, but otherwise follow the same monitoring, cutover, and schema finalization steps.
 !!!
 
 ### Monitoring catch-up before cutover
