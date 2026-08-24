@@ -5,11 +5,11 @@ description: For administrators configuring EDB Agent Governance — managing id
 deepToC: true
 ---
 
-Configure EDB Agent Governance. For the authentication model and credential handling behind these settings, see [Securing access and handling credentials](./security_and_data).
+Configure EDB Agent Governance. For deploying the stack, see [Installing](./installing). For the authentication model and credential handling behind these settings, see [Securing access and handling credentials](./security_and_data).
 
 ## Managing identity providers
 
-After signing in at `BFF_PUBLIC_BASE_URL`, go to **Settings → Identity Providers** to manage the identity providers your users sign in through:
+After signing in at `publicBaseURL`, go to **Settings → Identity Providers** to manage the identity providers your users sign in through:
 
 1. Add an OIDC, SAML, or LDAP connector for your organization's identity provider.
 
@@ -19,4 +19,10 @@ After signing in at `BFF_PUBLIC_BASE_URL`, go to **Settings → Identity Provide
 
 ## Securing and monitoring your deployment
 
-For credential storage, network protection, and TLS verification requirements, see [Securing access and handling credentials](./security_and_data). Once running, monitor overall liveness through the container status and nginx upstream errors — Dex exposes a health endpoint that gates startup of the backend and nginx.
+For credential storage, network protection, and TLS verification requirements, see [Securing access and handling credentials](./security_and_data). Three points are worth calling out:
+
+- **Keep the database volume encrypted at rest, and back it up.** It holds instance access keys, cached sessions, and the identity provider connector secrets. If the volume is lost, the databases come back empty — every instance and connector has to be registered again, or restored from a backup you took yourself.
+- **Registered instances can't reach private network ranges by default.** The backend blocks egress to RFC 1918, carrier-grade NAT, and IPv6 unique-local addresses, so a registered instance can't be used to probe your internal network. Set `bff.blockPrivateEgress=false` only for on-premises deployments whose HM or Loki upstreams live on private addresses. Cloud metadata, loopback, and link-local addresses stay blocked regardless.
+- **Expect a short crash loop right after install.** Nothing in the chart holds the stack back until Dex is ready, so the backend may restart a few times until OIDC discovery against `<publicBaseURL>/sso` succeeds. Setting `bff.waitForDex=true` adds an init container that probes the issuer first, turning that crash loop into a clean wait.
+
+Once running, monitor pod status and nginx upstream errors.
