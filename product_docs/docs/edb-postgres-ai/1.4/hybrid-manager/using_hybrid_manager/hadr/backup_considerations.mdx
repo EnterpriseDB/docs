@@ -12,7 +12,7 @@ The ability to do any restore, and the associated RTO and RPO depend on the freq
 
 -   The **RTO** will be determined by the time it takes to deploy a new HM instance and restore the HM control plane and data plane (Postgres database clusters) from the available backups. The RTO will be affected by the size of the Postgres clusters, the number of Postgres clusters, and the size of the HM control plane data.
 
--   The **RPO** will be determined by the frequency of the backups and the backup lifecycle policies. Critical data, such as the definition of the Postgres clusters, is stored as Kubernetes objects and included in the Velero backup. By default, this backup runs daily at 23:00, as defined by the default `velero-backup-kube-state` schedule. If your RPO requires more frequent backups, complement the default schedule by creating an additional custom backup schedule.
+-   The **RPO** will be determined by the frequency of the backups and the backup lifecycle policies. Critical data, such as the definition of the Postgres clusters, is stored as Kubernetes objects and included in the Velero backup. By default, this backup runs daily at 23:00, as defined by the default `velero-backup-kube-state` schedule. If your RPO requires more frequent backups, either [change the default schedule](#changing-the-default-backup-schedule) or complement it with an [additional custom backup schedule](#adding-a-custom-backup-schedule).
 
 !!!note
 
@@ -42,11 +42,54 @@ HM employs a dual-layered backup strategy to protect both the control plane and 
 
 -   **HM configuration data** — Managed via Velero. This captures the "blueprints" of your environment, including the definitions of your Postgres clusters. By default, this occurs daily at 23:00 via the `velero-backup-kube-state` schedule.
 
-If your RPO requires more frequent snapshots of your cluster definitions (for example, if you create or delete clusters frequently), you can create a custom Velero schedule.
+If your RPO requires more frequent snapshots of your cluster definitions (for example, if you create or delete clusters frequently), you can either [change the default schedule](#changing-the-default-backup-schedule) or [add a supplemental one](#adding-a-custom-backup-schedule).
 
 !!! Danger
 
-    Don't modify the default schedule, as it may be overwritten by a HM software update.
+    Don't edit the `velero-backup-kube-state` schedule directly with `kubectl` or `velero`. HM owns that resource, so direct edits may be overwritten by an HM software update. Change it through the `HybridControlPlane` custom resource, as described in [Changing the default backup schedule](#changing-the-default-backup-schedule).
+
+### Changing the default backup schedule
+
+The `velero-backup-kube-state` schedule is rendered from a component's `schedule` parameter. The value is a standard cron expression and defaults to `0 23 * * *` (daily at 23:00).
+
+Which component owns that parameter depends on your HM version:
+
+| HM version      | Component           |
+| :-------------- | :------------------ |
+| 1.4.3 or later  | `upm-velero-config` |
+| Before 1.4.3    | `upm-velero`        |
+
+In HM 1.4.3, the Velero configuration (the backup storage location, the volume snapshot location, and this schedule) was separated from the Velero installation itself into the `upm-velero-config` component.
+
+To change the schedule, set `schedule` for the component that applies to your version in your `HybridControlPlane` custom resource. For example, to back up every six hours on HM 1.4.3 or later:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  componentsParameters:
+    upm-velero-config:
+      schedule: "0 */6 * * *"
+    # ... your other componentsParameters
+```
+
+Apply the updated custom resource:
+
+```shell
+kubectl apply -f hybridmanager.yaml
+```
+
+Confirm the new value has been applied:
+
+```shell
+velero get schedules velero-backup-kube-state -o yaml | yq .spec.schedule
+```
+
+!!!warning Upgrading to 1.4.3 with a customized schedule
+If you set `schedule` under `spec.componentsParameters.upm-velero` before 1.4.3, move that value to `upm-velero-config` as part of the upgrade. From 1.4.3, a value left under `upm-velero` is no longer read, and the schedule reverts to the `0 23 * * *` default.
+!!!
 
 ### Adding a custom backup schedule
 
