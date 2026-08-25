@@ -102,11 +102,29 @@ Some upgrades may trigger an automatic restart of your HM-managed Postgres datab
 From HM 1.4.2 onwards, `marketplace` (the kapp package manager and the OSS Library apps it deploys, such as Superset, Airflow, and pgAdmin) is controlled by its own [installation scenario](/edb-postgres-ai/current/hybrid-manager/install/install_guide/planning_arch/#available-scenarios), separated from `core`.
 
 - If your `HybridControlPlane` spec already includes the `ai` scenario, `marketplace` is added automatically during the upgrade. No action is required.
-- If your spec lists only `core` (without `ai`) and you use the OSS Library/marketplace apps, you must explicitly add `marketplace` to your `spec.scenarios` list. Do this **before** upgrading to HM 1.4.2 or later.
+- If your spec lists only `core` (without `ai`) and you use the OSS Library/marketplace apps, you must explicitly add `marketplace` to your `spec.scenarios` list. Perform this operation once the operator is on 2.1 or later, and before you bump `spec.version` — earlier operator versions don't recognize `marketplace` and reject the change.
 
 !!!important
-If you don't add `marketplace` to your scenario list, kapp-controller and the marketplace apps are removed as no longer part of your selected scenarios.
+If you don't add `marketplace` to your scenario list, kapp-controller and the marketplace apps are removed as no longer part of your selected scenarios. Removing an app also removes the data it holds, so add `marketplace` before you bump `spec.version` rather than after.
 !!!
+
+To keep the marketplace, upgrade the operator to 2.1 or later, then add `marketplace` to `spec.scenarios` in your `HybridControlPlane` CR before you bump `spec.version`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  scenarios:
+    - core
+    - dbaas
+    - marketplace # keeps kapp-controller and the OSS Library apps
+```
+
+Add `dbaas` at the same time if your `spec` lists only `core`. `dbaas` itself isn't new, but its contents changed between releases. In HM 1.4.1, `upm-api-gucs` and `pg4k-additional-controllers` belonged to `core`. From 1.4.2, they belong to `dbaas` instead. A 1.4.1 installation that pins `spec.scenarios` to `core` is already running both components, so after the move they fall outside every scenario your `spec` selects, and the upgrade removes them. `dbaas` depends only on `core`, and nothing adds it for you automatically, unlike `ai`, which pulls in `marketplace` as a dependency.
+
+If you omit `spec.scenarios` entirely, the operator applies its default set, which on operator 2.1 includes both `dbaas` and `marketplace`, so no action is required. That default depends on your operator version, so don't rely on it — list your scenarios explicitly.
 
 ## Upgrading multi-DC deployments
 
