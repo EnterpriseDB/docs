@@ -1,0 +1,159 @@
+---
+title: "Known differences between EDB Postgres Advanced Server and PostgreSQL"
+description: "Summarizes the behavioral and operational differences to be aware of when moving an application between EDB Postgres Advanced Server  and PostgreSQL "
+---
+
+EDB Postgres Advanced Server (EPAS) is built on PostgreSQL and adds Oracle-compatibility features, additional built-in packages, and enterprise tooling. Most of these additions are a superset of PostgreSQL behavior and don't affect existing applications. However, a small number of differences can change how an application behaves when it's moved between PostgreSQL and EDB Postgres Advanced Server.
+
+This topic lists the known differences that can affect application compatibility. It doesn't cover the full set of EDB Postgres Advanced Server enhancements &mdash; see [Working with Oracle data](../../../working_with_oracle_data/) and [Enhanced compatibility features](../../../working_with_oracle_data/02_enhanced_compatibility_features/) for the broader feature set.
+
+## Summary of differences
+
+| #  | Category           | Difference                                                                                                                | Impact                                                                                                                                                                |
+|----|--------------------|---------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1  | SQL syntax         | [Additional reserved and restricted keywords](#additional-reserved-and-restricted-keywords)                               | An identifier that's valid in PostgreSQL might need quoting, or might not be usable at all, in EDB Postgres Advanced Server.                                          |
+| 2  | SQL syntax         | [Hash character in identifiers and operators](#hash-character-in-identifiers-and-operators)                               | Identifiers or expressions containing `#` can be parsed differently than in PostgreSQL.                                                                               |
+| 3  | SQL syntax         | [Double asterisk operator precedence](#double-asterisk-operator-precedence)                                               | A query using `**` next to other operators can return a different result than in PostgreSQL.                                                                          |
+| 4  | SQL syntax         | [`SQL%FOUND`, `SQL%NOTFOUND`, and `SQL%ROWCOUNT` are restricted](#sqlfound-sqlnotfound-and-sqlrowcount-are-restricted)    | These tokens can be used only in EDB-SPL, not in ordinary SQL, even when quoted or spaced.                                                                            |
+| 5  | SQL syntax         | [`RETURN` is accepted alongside `RETURNS` in `CREATE FUNCTION`](#return-is-accepted-alongside-returns-in-create-function) | A `CREATE FUNCTION` statement that mixes an inline return value with an omitted return type can fail in EDB Postgres Advanced Server.                                 |
+| 6  | Query behavior     | [Query result ordering without `ORDER BY` can differ](#query-result-ordering-without-order-by-can-differ)                 | Applications that rely on incidental row order from a query without an explicit `ORDER BY` can see different results.                                                 |
+| 7  | Compatibility mode | [Oracle-compatibility behavior depends on configuration](#oracle-compatibility-behavior-depends-on-configuration)         | Some of the differences in this table apply only when the cluster is initialized or configured for Oracle compatibility.                                              |
+| 8  | Installation       | [Default network port is 5444, not 5432](#default-network-port-is-5444-not-5432)                                          | Tools and connection strings that assume port 5432 need updating, and third-party pooling or connector software might not support the extended wire protocol on 5444. |
+| 9  | Installation       | [Default OS user, home, and data directory differ](#default-os-user-home-and-data-directory-differ)                       | Scripts and automation that assume the `postgres` OS user or the PostgreSQL default paths need updating for EDB Postgres Advanced Server's paths.                     |
+| 10 | Installation       | [Default service name and socket directory differ](#default-service-name-and-socket-directory-differ)                     | Service-management scripts and client tools that assume PostgreSQL's defaults need updating.                                                                          |
+
+## Additional reserved and restricted keywords
+
+EDB Postgres Advanced Server's parser recognizes a number of keywords that core PostgreSQL doesn't, mainly to support Oracle-compatible syntax (for example, hierarchical queries, packages, and Oracle-style storage clauses). Most of these are unreserved and only affect identifiers in edge cases, but a smaller set is fully reserved or partially reserved.
+
+For example, this statement works in PostgreSQL but fails in EDB Postgres Advanced Server, because `FINAL` is an added keyword:
+
+```sql
+SELECT 1 final;
+```
+
+Add `AS`, or quote the identifier, to work around it:
+
+```sql
+SELECT 1 AS final;
+SELECT 1 "final";
+```
+
+You can query the live set of keywords and their category on any given server with:
+
+```sql
+SELECT * FROM pg_get_keywords() WHERE catcode <> 'U';
+```
+
+See [EDB Postgres Advanced Server keywords](../../../reference/application_programmer_reference/stored_procedural_language_reference/17_advanced_server_keywords/) for how to interpret the category codes, and [Identifiers and key words](../../../reference/sql_reference/01_sql_syntax/02_identifiers_and_key_words/) for the general rules PostgreSQL and EDB Postgres Advanced Server both follow.
+
+[Back to summary table](#summary-of-differences)
+
+## Hash character in identifiers and operators
+
+PostgreSQL treats `#` as a non-word character, so it's parsed as part of an operator. EDB Postgres Advanced Server treats `#` as a word character, so it can be parsed as part of an identifier instead. This mainly affects column names or operators that start or end with `#`.
+
+For example, given:
+
+```sql
+CREATE TABLE t (a int, b int);
+SELECT a#>b FROM t;
+```
+
+PostgreSQL parses `a#>b` as the operator `#>` applied to columns `a` and `b`. EDB Postgres Advanced Server parses it as the column `a#` followed by the operator `>b`, which fails unless a column literally named `a#` exists. Add whitespace around `#`-based operators to avoid the ambiguity.
+
+[Back to summary table](#summary-of-differences)
+
+## Double asterisk operator precedence
+
+PostgreSQL has no `**` operator. EDB Postgres Advanced Server adds `**` for exponentiation and gives it the same precedence as `^`. If an application relies on `**` being parsed as two separate `*` (multiplication) tokens, as it would in PostgreSQL, the result can differ in EDB Postgres Advanced Server.
+
+[Back to summary table](#summary-of-differences)
+
+## `SQL%FOUND`, `SQL%NOTFOUND`, and `SQL%ROWCOUNT` are restricted
+
+These tokens are meaningful only inside procedural code written in EDB-SPL, where their meaning matches Oracle's. They can't be used in ordinary SQL statements, even if whitespace is added before or after the `%` symbol.
+
+[Back to summary table](#summary-of-differences)
+
+## `RETURN` is accepted alongside `RETURNS` in `CREATE FUNCTION`
+
+For Oracle compatibility, EDB Postgres Advanced Server's parser accepts `RETURN` as well as the standard `RETURNS` clause in `CREATE FUNCTION`:
+
+```sql
+-- Standard PostgreSQL syntax
+CREATE FUNCTION add(a integer, b integer) RETURNS integer LANGUAGE SQL
+RETURN a + b;
+
+-- Oracle-compatible syntax also accepted by EDB Postgres Advanced Server
+CREATE FUNCTION add(a integer, b integer) RETURN integer LANGUAGE SQL
+RETURN a + b;
+```
+
+Because the parser can't always tell whether `RETURN` introduces a return type or a returned value, some statements that work in PostgreSQL fail in EDB Postgres Advanced Server:
+
+```sql
+-- Fails in EDB Postgres Advanced Server: RETURN is read as a return type
+CREATE FUNCTION increment(a inout integer) RETURN a + 1;
+```
+
+The workaround is to specify the return type explicitly:
+
+```sql
+CREATE FUNCTION increment(a inout integer) RETURNS integer LANGUAGE SQL
+RETURN a + 1;
+```
+
+[Back to summary table](#summary-of-differences)
+
+## Query result ordering without `ORDER BY` can differ
+
+Neither PostgreSQL nor EDB Postgres Advanced Server guarantees row order for a query without an `ORDER BY` clause, and this isn't guaranteed to be stable even between two PostgreSQL instances. EDB Postgres Advanced Server's additional query planner options can make it more likely that the row order differs from PostgreSQL's for the same query. Applications that depend on result order should always specify `ORDER BY`.
+
+[Back to summary table](#summary-of-differences)
+
+## Oracle-compatibility behavior depends on configuration
+
+Several of the differences in this table &mdash; particularly Oracle-style data type conversions, date formatting, and NULL-string concatenation behavior &mdash; are tied to how the cluster is configured, not fixed behavior:
+
+- The `initdb --redwood-like` / `--no-redwood-compat` initialization options control whether Oracle-compatible objects and behavior are included at all.
+- Configuration parameters such as `edb_redwood_date`, `edb_redwood_greatest_least`, `edb_redwood_strings`, and `db_dialect` provide finer-grained control once the cluster is initialized.
+
+See [Choosing the configuration mode](../../configuration_mode/) and [Configuration parameters compatible with Oracle databases](../../../reference/database_administrator_reference/02_summary_of_configuration_parameters/) for details.
+
+[Back to summary table](#summary-of-differences)
+
+## Default network port is 5444, not 5432
+
+EDB Postgres Advanced Server extends the PostgreSQL wire protocol to support some of its additional features, so it defaults to port 5444 instead of PostgreSQL's 5432. Tools, connection strings, and third-party poolers or connectors that assume the standard protocol or the 5432 default might not work unmodified against EDB Postgres Advanced Server.
+
+For conformity across a mixed deployment, EDB Postgres Advanced Server can be set to listen on 5432 with the `port` directive in `postgresql.conf`, and client tools can be pointed at either port with `PGPORT` or a connection string.
+
+[Back to summary table](#summary-of-differences)
+
+## Default OS user, home, and data directory differ
+
+To keep the two products separate on the same host, EDB Postgres Advanced Server packages use their own OS user and default paths instead of reusing PostgreSQL's:
+
+|                        | PostgreSQL                      | EDB Postgres Advanced Server    |
+|------------------------|---------------------------------|---------------------------------|
+| OS user                | `postgres`                      | `enterprisedb`                  |
+| Home directory         | `/var/lib/pgsql`                | `/var/lib/edb`                  |
+| Default data directory | `/var/lib/pgsql/<version>/data` | `/var/lib/edb/as<version>/data` |
+
+Scripts, automation, or documentation that hardcode the PostgreSQL user or paths need to be updated for EDB Postgres Advanced Server.
+
+[Back to summary table](#summary-of-differences)
+
+## Default service name and socket directory differ
+
+EDB Postgres Advanced Server installs its own systemd service, separate from PostgreSQL's, and defaults to a different Unix socket directory:
+
+|                          | PostgreSQL                     | EDB Postgres Advanced Server |
+|--------------------------|--------------------------------|------------------------------|
+| systemd service          | `postgresql-<version>.service` | `edb-as-<version>.service`   |
+| Default socket directory | `/var/run/postgresql`, `/tmp`  | `/tmp`                       |
+
+For conformity across a mixed deployment, tools can be configured to look for the socket in a specific location by setting `host=` in the connection string (or `PGHOST`) to the socket directory path, for example `psql -h /tmp/.s.PGSQL.5432`.
+
+[Back to summary table](#summary-of-differences)
