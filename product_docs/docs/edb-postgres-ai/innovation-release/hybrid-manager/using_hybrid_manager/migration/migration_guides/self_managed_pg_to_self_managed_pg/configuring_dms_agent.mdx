@@ -143,15 +143,19 @@ The reader agent connects to your source Postgres database and streams changes t
 
     echo "Starting in mode: $RUN_MODE"
 
+    # JDK-8241239: disable JSSE's TLS 1.3 AES-GCM KeyUpdate (auto-fired ~137GB) that deadlocks a
+    # blocking SSLSocket during a large snapshot read
+    KEYLIMITS_PROPS="$(mktemp)"
+    printf '%s\n' 'jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^60, ChaCha20-Poly1305 KeyUpdate 2^60' > "$KEYLIMITS_PROPS"
+
     case "$RUN_MODE" in
-      reader)
-        java -jar ./reader/quarkus-run.jar
-        ;;
-      writer)
-        java -jar ./writer/quarkus-run.jar
+      reader|writer)
+        # RUN_MODE env var auto-maps to the run.mode config property via MicroProfile
+        # Config's standard env-var-to-property naming rule (RUN_MODE -> run.mode).
+        exec java -Djava.security.properties="$KEYLIMITS_PROPS" -jar ./quarkus-run.jar
         ;;
       *)
-        echo "Unknown RUN_MODE: $RUN_MODE"
+        echo "Unknown RUN_MODE: $RUN_MODE (expected: reader|writer)"
         exit 1
         ;;
     esac
@@ -269,15 +273,19 @@ The writer agent connects to your destination Postgres database and applies stre
 
     echo "Starting in mode: $RUN_MODE"
 
+    # JDK-8241239: disable JSSE's TLS 1.3 AES-GCM KeyUpdate (auto-fired ~137GB) that deadlocks a
+    # blocking SSLSocket during a large snapshot read
+    KEYLIMITS_PROPS="$(mktemp)"
+    printf '%s\n' 'jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^60, ChaCha20-Poly1305 KeyUpdate 2^60' > "$KEYLIMITS_PROPS"
+
     case "$RUN_MODE" in
-      reader)
-        java -jar ./reader/quarkus-run.jar
-        ;;
-      writer)
-        java -jar ./writer/quarkus-run.jar
+      reader|writer)
+        # RUN_MODE env var auto-maps to the run.mode config property via MicroProfile
+        # Config's standard env-var-to-property naming rule (RUN_MODE -> run.mode).
+        exec java -Djava.security.properties="$KEYLIMITS_PROPS" -jar ./quarkus-run.jar
         ;;
       *)
-        echo "Unknown RUN_MODE: $RUN_MODE"
+        echo "Unknown RUN_MODE: $RUN_MODE (expected: reader|writer)"
         exit 1
         ;;
     esac
