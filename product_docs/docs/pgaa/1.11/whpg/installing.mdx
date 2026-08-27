@@ -80,6 +80,45 @@ In WarehousePG installations, Seafowl is managed as a systemd service rather tha
 
     Using `CASCADE` ensures that required dependencies, such as the Postgres File System (`PGFS`), are automatically installed. 
 
+## Upgrading the extension
+
+1. On the coordinator, download the new package version:
+
+    ```shell
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_SUBSCRIPTION_PLAN=analytics
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpg7-pgaa
+    ```
+
+1. Transfer and upgrade the package on all hosts, including the coordinator and every segment host:
+
+    ```shell
+    gpssh -f all_hosts -e "scp gpadmin@$(hostname):~/edb-whpg7-pgaa*.rpm /tmp/ && sudo dnf install -y /tmp/edb-whpg7-pgaa*.rpm"
+    ```
+
+1. Restart the Seafowl service on all hosts to load the new binary:
+
+    ```shell
+    gpssh -f all_hosts -e 'sudo systemctl restart seafowl'
+    ```
+
+1. Restart the WarehousePG cluster to load the new `pgaa` library:
+
+    ```shell
+    gpstop -ra
+    ```
+
+1. Connect to the coordinator and update the extension in each database where PGAA is installed:
+
+    ```sql
+    ALTER EXTENSION pgaa UPDATE;
+    ```
+
+!!!Note
+Upgrade the package on every host, coordinator and segments, and complete both restarts before running `ALTER EXTENSION`. Running it against a `pgaa` library that hasn't been upgraded yet fails with an error such as `could not find function "..._wrapper" in file ...`, because the SQL migration scripts expect functions that only exist in the newer library.
+!!!
+
 ## Verifying the installation
 
 1. Confirm that the extension is active using the `\dx` meta-command or by calling the version function:
