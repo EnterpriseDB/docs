@@ -1,24 +1,24 @@
 ---
-title: Reading from object storage on WarehousePG
-navTitle: Reading from object storage
-description: Configure PGAA on WarehousePG to read from object storage using storage locations, Iceberg catalogs, or Spark Connect.
+title: Reading from and writing to object storage on WarehousePG
+navTitle: Reading and writing
+description: Configure PGAA on WarehousePG to read from object storage using storage locations, Iceberg catalogs, or Spark Connect, and to write to object storage using CTAS.
 ---
 
-PGAA on WarehousePG supports three ways to access data in object storage. Each option is independent. Use the one that fits your setup.
+Read data from object storage using storage locations or Iceberg catalogs, optionally accelerated with Spark Connect, and write new data to object storage using CTAS.
 
 ## Querying object storage using storage locations
 
 Storage locations connect directly to object storage and support Parquet, Delta Lake, and Iceberg files. Create a storage location and a PGAA table on the coordinator, then query the data using standard SQL. WarehousePG selects the most efficient execution mode automatically, running the query on the coordinator or distributing it across segment hosts depending on the nature of the query.
 
 !!!Note
-PGAA tables on WarehousePG are read-only. The data must already exist in object storage. Writing data to object storage using `CREATE TABLE AS SELECT` (CTAS) isn't supported.
+Tables created with a storage location or Iceberg catalog are read-only, and the data must already exist in object storage. To write new data to object storage, see [Writing to object storage using CTAS](#writing-to-object-storage-using-ctas).
 !!!
 
 For full details on configuring a storage location, see [Reading tables in object storage](../read_no_catalog).
 
 ### Example
 
-The following example connects to a public S3 bucket containing TPC-H SF1 data, registers three tables, and runs an analytical query to demonstrate both DirectScan (pure PGAA) and CompatScan (PGAA joined with a native heap table).
+Connect to a public S3 bucket containing TPC-H SF1 data, register three tables, and run an analytical query to demonstrate both DirectScan (pure PGAA) and CompatScan (PGAA joined with a native heap table).
 
 1. Create a storage location on the coordinator:
 
@@ -134,7 +134,7 @@ Attach an external Iceberg REST catalog on the WarehousePG coordinator to make c
 You can use PGAA on WarehousePG to read data that EDB Postgres Distributed (PGD) has replicated to object storage. PGD writes Iceberg-format data and registers it in an Iceberg REST catalog, which WarehousePG can attach and query at MPP scale with no data movement. For the PGD side of this setup, see [Replicating with PGD](../pgd).
 
 !!!Note
-Automatic catalog sync using `pgaa.attach_catalog()` isn't supported on WarehousePG. You must manually run `pgaa.import_catalog()` whenever the catalog changes.
+`pgaa.attach_catalog()` runs the metastore sync worker on the WarehousePG coordinator only, the same way the maintenance worker does. Because PGAA catalog tables use a replicated table policy, synced metadata is available on every node.
 !!!
 
 For full setup instructions, including credential configuration and supported catalog types, see [Integrating with Iceberg catalogs](../catalog).
@@ -258,3 +258,49 @@ For full setup instructions, GPU acceleration options, and performance guidance,
     ```
 
 1. To inspect the full Spark execution plan, open the Spark UI in your browser at `http://<spark-host>:4040`. Navigate to the **SQL** tab to see a visual breakdown of the query plan, including stage boundaries, shuffle operations, and per-stage metrics.
+
+## Writing to object storage using CTAS
+
+Write query results to object storage using `CREATE TABLE AS SELECT` (CTAS), targeting either a standalone storage location or an Iceberg catalog, with the same syntax as on any other PGAA installation. A single writer, the coordinator on WarehousePG later than 7.5 or one designated segment on WarehousePG 7.5 or earlier, writes the data, rather than every segment writing in parallel. PGAA gives the resulting table a distribution policy that keeps it consistent across the cluster so it can be queried and joined like any other PGAA table.
+
+For full details on CTAS syntax, storage locations, and Iceberg catalogs, see [Writing to object storage using CTAS](../ctas).
+
+### Example
+
+Create a distributed WarehousePG table, export it to object storage with CTAS, and confirm the result can be joined against the original table.
+
+1. Create a storage location on the coordinator with write permissions to your bucket:
+
+    ```sql
+    SELECT pgfs.create_storage_location(
+      'my_lake_data',
+      's3://your-bucket-name/path',
+      '{"aws_region": "us-east-1", "aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+    );
+    ```
+
+1. Create a distributed source table, then export it with CTAS:
+
+    ```sql
+    CREATE TABLE orders_local (order_id int, amount numeric) DISTRIBUTED BY (order_id);
+    INSERT INTO orders_local SELECT i, i * 10 FROM generate_series(1, 100) AS i;
+
+    CREATE TABLE orders_export
+    USING PGAA
+    WITH (
+        pgaa.storage_location = 'my_lake_data',
+        pgaa.path = 'path/in/s3/orders_export',
+        pgaa.format = 'iceberg'
+    ) AS
+    SELECT * FROM orders_local;
+    ```
+
+1. Confirm the row count and join the new table against the original distributed table:
+
+    ```sql
+    SELECT count(*) FROM orders_export;
+
+    SELECT count(*)
+    FROM orders_export e
+    JOIN orders_local l ON e.order_id = l.order_id;
+    ```

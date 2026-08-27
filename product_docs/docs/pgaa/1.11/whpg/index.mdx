@@ -13,6 +13,7 @@ Postgres Analytics Accelerator (PGAA) extends WarehousePG 7 with lakehouse capab
 ## Capabilities
 
 - **Query object storage directly from WarehousePG:** Register an S3, Google Cloud Storage (GCS), or Azure path as a storage location, create a PGAA table pointing to it, and query Parquet, Delta Lake, or Iceberg files with standard SQL without the need for ETL or data import. See [Querying object storage using storage locations](reading#querying-object-storage-using-storage-locations).
+- **Write to object storage using CTAS:** Use `CREATE TABLE AS SELECT` (CTAS) to export query results into Iceberg or Delta Lake format in your data lake. See [Writing to object storage using CTAS](reading#writing-to-object-storage-using-ctas).
 - **Connect to an Iceberg catalog:** Attach PGAA to an external Iceberg REST catalog for table discovery, schema and partition metadata, and authentication to the underlying object storage. When EDB Postgres Distributed (PGD) replicates data to object storage, WarehousePG can attach to the shared catalog and read that data at MPP scale, enabling a combined OLTP and analytical workload across both platforms. See [Connecting to an Iceberg catalog](reading#connecting-to-an-iceberg-catalog).
 - **Accelerate with Spark:** For large workloads, or if you already operate a Spark cluster, route queries through Spark Connect instead of Seafowl. If your cluster includes GPU-enabled nodes, RAPIDS acceleration is available on top of Spark for even higher throughput on compute-intensive queries. See [Accelerating with Spark](reading#accelerating-with-spark).
 - **Back up and restore:** Use gpbackup to capture PGAA table definitions and storage bindings. After a restore, tables immediately reference the correct object storage paths with no manual reconfiguration required. See [Backing up and restoring](backup).
@@ -32,7 +33,7 @@ Choose PGAA when:
 Current limitations to consider:
 
 - PGAA only supports the standard PostgreSQL planner, not Orca.
-- PGAA tables are read-only.
+- Tables mapped to existing object storage data are read-only. Use CTAS to write new data into the data lake.
 
 ## Architecture overview
 
@@ -78,7 +79,9 @@ PGAA integrates with WarehousePG at two levels: the storage layer, where analyti
 
 PGAA provides a custom table access method, `pgaa`, that lets you define and query tables residing in object storage through standard SQL, with no data import into WarehousePG. PGAA catalog tables use a `DISTRIBUTED REPLICATED` policy, making metadata available on every node.
 
-PGAA tables are read-only and don't support write operations. The data must already exist in object storage, for example written by PGD or another pipeline.
+Tables mapped to a storage location or an Iceberg catalog are read-only. The data must already exist in object storage, for example written by PGD or another pipeline.
+
+You can also write new data with CTAS. A single writer, the coordinator on WarehousePG later than 7.5 or one designated segment on WarehousePG 7.5 or earlier, writes the data, and PGAA assigns the resulting table a distribution policy that keeps it consistent across the cluster so it can be queried and joined like any other PGAA table. See [Writing to object storage using CTAS](reading#writing-to-object-storage-using-ctas).
 
 ### Query execution
 

@@ -56,8 +56,16 @@ If your query falls back to the slower CompatScan path, follow these steps to tr
 
 ## Configuring compute pushdowns
 
-Even in hybrid mode, you can maintain high performance by offloading resource-intensive operations. The following settings are enabled by default and act as a performance safety net:
+Offload resource-intensive operations to maintain high performance, even in hybrid mode, using the following settings. These settings act as a performance safety net and are enabled by default:
 
-**pgaa.enable_join_pushdown** Authorizes the system to attempt to offload joins to the remote executor (Seafowl or Spark). By joining data where it resides, you avoid pulling massive raw datasets into Postgres memory, significantly reducing network traffic.
+- [`pgaa.enable_join_pushdown`](reference/configuration_parameters#pgaaenable_join_pushdown): Authorizes the system to attempt to offload joins, including semi and anti joins, to the remote executor (Seafowl or Spark). By joining data where it resides, you avoid pulling massive raw datasets into Postgres memory, significantly reducing network traffic.
+- [`pgaa.enable_groupby_pushdown`](reference/configuration_parameters#pgaaenable_groupby_pushdown): Authorizes the offloading of aggregations (`SUM`, `COUNT`, `AVG`) and `GROUP BY` clauses. Aggregating 1 billion rows into 10 groups at the source reduces data transfer by several orders of magnitude, saving both bandwidth and Postgres CPU.
+- [`pgaa.enable_orderby_pushdown`](reference/configuration_parameters#pgaaenable_orderby_pushdown): Authorizes the offloading of `ORDER BY` and any constant `LIMIT`/`OFFSET` as a bounded top-N operation, so sorting and truncation happen at the source instead of after streaming full results back to Postgres.
+- [`pgaa.enable_distinct_pushdown`](reference/configuration_parameters#pgaaenable_distinct_pushdown): Authorizes the offloading of plain `SELECT DISTINCT` to the remote executor.
+- [`pgaa.enable_window_pushdown`](reference/configuration_parameters#pgaaenable_window_pushdown): Authorizes the offloading of window functions to the remote executor.
 
-**pgaa.enable_groupby_pushdown** Authorizes the offloading of aggregations (`SUM`, `COUNT`, `AVG`) and `GROUP BY` clauses. Aggregating 1 billion rows into 10 groups at the source reduces data transfer by several orders of magnitude, saving both bandwidth and Postgres CPU.
+Whole-row references, such as `to_json(r.*)`, are pushed down to the remote executor automatically and don't have a dedicated toggle.
+
+!!!Note
+`pgaa.enable_distinct_pushdown` doesn't apply on WarehousePG, where the MPP planner deduplicates `DISTINCT` with a Motion and HashAggregate above the scan before PGAA's pushdown stage runs.
+!!!

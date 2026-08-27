@@ -70,17 +70,33 @@ In CompatScan, attempt to offload aggregation operations (like `SUM`, `COUNT`, `
 
 Default is `on`.
 
+### pgaa.enable_orderby_pushdown
+
+In CompatScan, attempt to offload `ORDER BY` and any constant `LIMIT`/`OFFSET` as a bounded top-N operation to the remote executor engine (Seafowl or Spark).
+
+Default is `on`.
+
+### pgaa.enable_distinct_pushdown
+
+In CompatScan, attempt to offload `SELECT DISTINCT` to the remote executor engine (Seafowl or Spark).
+
+Default is `on`.
+
+!!!Note
+`pgaa.enable_distinct_pushdown` doesn't apply on WarehousePG, where the MPP planner deduplicates `DISTINCT` with a Motion and HashAggregate above the scan before PGAA's pushdown stage runs.
+!!!
+
+### pgaa.enable_window_pushdown
+
+In CompatScan, attempt to offload window functions to the remote executor engine (Seafowl or Spark).
+
+Default is `on`.
+
 ### pgaa.ctas_intermediate_flush_size
 
 Controls the batching behavior during large `INSERT` or `CREATE TABLE AS (CTAS)` operations into PGAA-managed tables.
 
 Default is 8192.
-
-### pgaa.flush_task_interval_s
-
-Specifies the frequency, in seconds, at which the PGAA background process checks for and executes pending flushes of analytical data to persistent storage.
-
-Default is 5.
 
 ### pgaa.max_in_memory_mb
 
@@ -100,6 +116,12 @@ A multiplier used by the Postgres query planner to weight the cost of scanning a
 
 Default is 0.02.
 
+### pgaa.scan_sort_cost_factor
+
+A multiplier used by the Postgres query planner to weight the cost of a pushed-down sort made by the remote backend (Spark or Seafowl) relative to Postgres's own tuplesort estimate.
+
+Default is 0.5.
+
 ### pgaa.scan_startup_cost
 
 A multiplier used by the Postgres query planner to weight the fixed "startup" cost of initiating a scan on the remote backend (Spark or Seafowl) compared to local Postgres execution.
@@ -111,12 +133,6 @@ Default is 25.
 Determines whether the Postgres query planner should request real-time cost estimates directly from the Seafowl engine instead of relying on the statistics collected internally by Postgres.
 
 Default is `on`.
-
-### pgaa.write_lock_timeout_s
-
-Specifies the maximum duration, in seconds, that a process will wait to acquire a write lock before timing out and aborting the operation.
-
-Default is 3. 
 
 ## Seafowl
 
@@ -141,6 +157,12 @@ Default is 2147483647.
 Sets the DataFusion memory pool type used by the embedded Seafowl engine. Accepted values are `greedy` and `fair_spill`. `greedy` allocates memory as fast as possible for best query performance. `fair_spill` distributes memory fairly across concurrent consumers and spills intermediate data to disk when memory is exhausted, which reduces out-of-memory failures under high concurrency at some performance cost.
 
 Default is `greedy`.
+
+### pgaa.autostart_seafowl_track_memory_consumers
+
+Wraps the Seafowl memory pool with a tracking layer that includes the top memory consumers in out-of-memory error messages, making it easier to diagnose which query or operation exhausted memory.
+
+Default is `off`.
 
 ### pgaa.autostart_seafowl_enable_metrics
 
@@ -167,6 +189,30 @@ Supported values range from 1024 to 65535. Default is `9090`.
 Determines whether to enable the Seafowl object store cache for external storage locations on S3, Azure, or GCP.
 
 Default is `on`.
+
+### pgaa.autostart_seafowl_enable_metadata_cache
+
+Determines whether Seafowl caches Iceberg table metadata in its REST catalog client. Cached entries are revalidated with conditional (ETag) requests, reducing query planning latency.
+
+Default is `on`.
+
+### pgaa.autostart_seafowl_metadata_cache_capacity_mb
+
+Sets the maximum total size, in megabytes, of Iceberg table metadata retained in the Seafowl metadata cache.
+
+Default is 256.
+
+### pgaa.autostart_seafowl_metadata_cache_ttl_s
+
+Sets the time, in seconds, after which a cached Iceberg table metadata entry is refreshed. A value of 0 disables expiry and relies solely on ETag revalidation.
+
+Default is 0.
+
+### pgaa.autostart_seafowl_concurrent_manifest_ops
+
+Sets the maximum number of concurrent Iceberg manifest object-store operations in the Seafowl process, bounding both in-flight requests and peak manifest-decode memory during scan planning and maintenance.
+
+Default is 64.
 
 ### pgaa.autostart_seafowl_log_level
 
@@ -269,12 +315,6 @@ Default is 3600.
 ### pgaa.max_replication_lag_s
 
 Maximum allowed lag (seconds) before a flush is forced.
-
-Default is 5.
-
-### pgaa.flush_task_interval_s
-
-Frequency (seconds) at which the system checks for flush requirements.
 
 Default is 5.
 
