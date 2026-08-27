@@ -15,6 +15,11 @@ functions instead of putting `bdr` in the
 This function retrieves the textual representation of the BDR version
 currently in use.
 
+### bdr.bdr_edition
+
+This function retrieves the textual representation of the BDR edition
+currently in use.
+
 ### bdr.bdr_version_num
 
 This function retrieves the BDR version number that is
@@ -270,13 +275,16 @@ You might want to set `statement_timeout` to complete earlier in that case.
 #### Synopsis
 
 ```sql
-bdr.wait_slot_confirm_lsn(slot_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
+bdr.wait_slot_confirm_lsn(slotname name, target pg_lsn)
 ```
+
+Both parameters are required (neither has a default), but you can pass
+`NULL` explicitly for either one to get the behaviors described above.
 
 #### Parameters
 
--   `slot_name` &mdash; Name of replication slot or, if NULL, all BDR slots (only).
--   `target_lsn` &mdash; LSN to wait for or, if NULL, use the current write LSN on the
+-   `slotname` &mdash; Name of replication slot, or `NULL` for all BDR slots.
+-   `target` &mdash; LSN to wait for, or `NULL` to use the current write LSN on the
     local node.
 
 ### bdr.wait_for_apply_queue
@@ -307,12 +315,12 @@ buffered on the sender side aren't waited for.
 #### Synopsis
 
 ```sql
-bdr.wait_for_apply_queue(peer_node_name TEXT, target_lsn pg_lsn)
+bdr.wait_for_apply_queue(node_name TEXT, target_lsn pg_lsn)
 ```
 
 #### Parameters
 
--   `peer_node_name` &mdash; The name of the peer node from which incoming
+-   `node_name` &mdash; The name of the peer node from which incoming
     transactions are expected to be queued and to wait
     for. If NULL, waits for all peer node's apply queue to be consumed.
 -   `target_lsn` &mdash; The LSN in the replication stream from the peer node
@@ -613,6 +621,22 @@ bdrdb=# SELECT bdr.node_group_type('bdrgroup');
  normal
 ```
 
+### bdr.alter_node_kind
+
+Modifies the kind of an existing BDR node. The current kind of a node
+can be checked in the `node_kind` column of [`bdr.node`](catalogs#bdrnode).
+
+#### Synopsis
+
+```sql
+bdr.alter_node_kind(node_name text, node_kind text)
+```
+
+#### Parameters
+
+-   `node_name` &mdash; Name of the node to modify.
+-   `node_kind` &mdash; New kind to assign to the node.
+
 ## Global advisory locks
 
 BDR supports global advisory locks. These locks are similar to
@@ -833,6 +857,30 @@ bdr.lag_control()
 - `sample_interval` &mdash; Configured minimum time between lag samples and possible
   commit delay adjustments, in milliseconds.
 
+### bdr.lag_history
+
+If [lag control](lag-control#configuration) is enabled, this function
+returns a history of recent lag samples recorded for each peer node,
+complementing the current-state snapshot returned by `bdr.lag_control()`.
+
+#### Synopsis
+
+```sql
+bdr.lag_history()
+```
+
+#### Output columns
+
+- `peer_node_id` &mdash; OID of the peer node this sample was recorded for.
+
+- `ts` &mdash; Timestamp at which the sample was recorded.
+
+- `send_ptr`, `write_ptr`, `flush_ptr`, `apply_ptr` &mdash; LSNs reported by
+  the peer for the send, write, flush, and apply positions at the time of
+  the sample.
+
+- `apply_rate` &mdash; Apply rate calculated for the peer at the time of
+  the sample.
 
 ## Internal functions
 
@@ -1148,7 +1196,7 @@ The usual sequence of steps is:
 
 ```sql
   bdr.alter_subscription_skip_changes_upto(
-    subname text,
+    sub_name text,
     skip_upto_and_including pg_lsn
   );
 ```
