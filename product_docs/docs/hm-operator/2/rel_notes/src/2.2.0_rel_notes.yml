@@ -1,0 +1,134 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: Hybrid Manager operator
+version: 2.2.0
+# REVIEW: this date is a placeholder and must be replaced. It is meant to be the
+# date of the `v2.2.0` tag, but `git` is unavailable in the environment this
+# draft was written in, so the tag date could not be read and today's date was
+# used instead. The date we actually publish is the date the operator is
+# promoted to production in Lantern
+# (https://lantern.edb.dev/release/foundation/container-releases), which has not
+# happened yet. Set the promotion date here and delete this comment.
+date: 27 August 2026
+intro: |
+  Version 2.2.0 collects the container registry settings of a `HybridControlPlane` under a single `spec.registry` block, changes what the operator installs when `spec.scenarios` is omitted, and reports the resources that blocked a failed component deploy in the resource status.
+highlights: |
+  - **A `HybridControlPlane` that omits `spec.scenarios` now installs only the `core` scenario.** Earlier operator versions filled in a default set. List the scenarios you need explicitly before you upgrade.
+
+  - **Registry configuration moves to `spec.registry`, and the fields it replaces are deprecated.** `spec.imageRegistry`, `spec.imagePullSecrets`, and the registry settings under `spec.kappController` and `spec.beaconAgent.provisioning` are still honored, but they now produce a deprecation warning and will be removed in a future API version.
+
+  - **A control plane waiting for an `HMRegistry` no longer stays stale until the operator restarts.** Repairing a registry that was rejected for a reason that left its URIs unchanged did not wake the control plane, so an installation or upgrade stayed pending.
+relnotes:
+- relnote: |
+    Only the `core` scenario is added when `spec.scenarios` is omitted
+  details: |
+    **Action required.** A `HybridControlPlane` that leaves `spec.scenarios` unset now installs the `core` scenario alone. Earlier operator versions filled in a default set covering `core`, `dbaas`, `ai`, `analytics`, `migration`, and `marketplace`. List every scenario you want explicitly, and check an existing manifest that relies on the old default before you apply it against operator 2.2 or later: re-applying it removes the components belonging to the scenarios that are no longer listed, along with the data they hold. `core` is still added for you when your list leaves it out, and scenario dependencies are still resolved automatically.
+  jira: UPM-129604
+  addresses:
+  type: Change
+  impact: Highest
+
+- relnote: |
+    Unified registry configuration under `spec.registry`
+  details: |
+    `spec.registry` gathers the container registry settings that were previously spread across the `HybridControlPlane` spec: `spec.registry.url` and `spec.registry.imagePullSecrets` for pulling images, `spec.registry.tls.caCerts` and `spec.registry.tls.dangerousSkipTLSVerify` for the trust used to reach it, and `spec.registry.discovery.enabled`, `url`, `provider`, `authenticationType`, and `credentialsSecretName` for image set discovery. A value under `spec.registry` takes precedence over its older counterpart, and where `spec.registry` is unset the older field still applies, so existing manifests keep working unchanged. When you point at an in-cluster registry with `spec.hmRegistryRef`, the operator populates these fields for you.
+  jira: UPM-118802
+  addresses:
+  type: Feature
+  impact: High
+
+- relnote: |
+    The registry fields that `spec.registry` replaces are deprecated
+  details: |
+    Applying a `HybridControlPlane` that sets `spec.imageRegistry`, `spec.imagePullSecrets`, `spec.kappController.caCerts`, `spec.kappController.dangerousSkipTLSVerify`, the `spec.beaconAgent.provisioning` image discovery fields, or the `imageset_discovery_ca_certs` and `image_discovery_credentials_secret_name` parameters of the `upm-beacon` component returns an admission warning naming the `spec.registry` field to use instead. The values are still honored and nothing stops working, but move them to `spec.registry`, because they will be removed in a future API version. A warning is raised only where the deprecated field is the one taking effect, so a control plane whose registry settings come from an `HMRegistry` stays quiet.
+  jira: UPM-118802
+  addresses:
+  type: Deprecation
+  impact: High
+
+- relnote: |
+    Failed resources are reported in `HybridControlPlane` status
+  details: |
+    When a component fails to deploy, `status.components[].failedResources` names the resources that blocked it — kind, API version, name, namespace, and the error — each with the recent warning events that explain why, including events raised against the pods, replica sets, and volume claims those resources own. Read it with `kubectl describe hybridcontrolplane` to see why a deploy is stuck instead of hunting through component namespaces. The list holds at most 10 resources, with at most 5 events each, and is cleared once the component deploys.
+  jira: UPM-119569
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    Per-component operator logs and optional JSON log output
+  details: |
+    Every operator log record now carries the component being reconciled, and the operator renders its logs as human-readable text with that component as a per-line prefix, so the output of a single component — including the output of `kapp` itself — can be followed in `kubectl logs`. To send logs to a collector that parses them, set `controllerManager.manager.logFormat` to `json` in the operator Helm chart, which passes `--log-json` to the manager and emits one JSON record per line instead.
+  jira: UPM-127829
+  addresses:
+  type: Enhancement
+  impact: Medium
+
+- relnote: |
+    A control plane waiting for an `HMRegistry` could stay stale until the operator restarted
+  details: |
+    The operator re-reconciled a `HybridControlPlane` only when the URIs of the `HMRegistry` it references changed. Repairing a registry that had been rejected for some other reason — an invalid volume size, for example — left the URIs untouched, so the control plane was never woken and its installation or upgrade stayed pending until the operator was restarted. The control plane is now retried every 30 seconds while it waits, and `status.message` names the registry it is waiting for until the registry is ready.
+  jira: UPM-125668
+  addresses:
+  type: Bug Fix
+  impact: Medium
+
+- relnote: |
+    Postflight checks logged endless watch failures after a component was withdrawn
+  details: |
+    Postflight checks now read through the API server directly rather than through the operator's cache. Checking a component whose custom resource definition the running HM version no longer installs used to start a cache watch that retried for the lifetime of the operator, filling the log with list failures for a type that no longer exists.
+  jira: UPM-111855
+  addresses:
+  type: Bug Fix
+  impact: Low
+
+- relnote: |
+    Updated Helm libraries in the operator image
+  details: |
+    The operator is built against newer Helm libraries, which clears the vulnerabilities reported against the versions it shipped with in 2.1.0. No configuration change is needed.
+  jira: UPM-129460
+  addresses:
+  type: Security
+  impact: Low
+
+# REVIEW: the compatibility matrix
+# (product_docs/docs/hm-operator/2/compatibility_matrix.mdx) needs a row for
+# 2.2.0 giving the long-term support and innovation HM versions that pin this
+# operator. That pin lives in `upm-version-sets`, which is not available here, so
+# the row was deliberately left unwritten rather than guessed — a reviewer must
+# add it and delete this comment. Note for that row: 2.2.0 adds `pgd` to the
+# `spec.scenarios` enum, so an HM version whose collections use the `pgd`
+# scenario cannot run on an earlier operator. For those HM versions 2.2.0 is a
+# floor rather than a recommendation, and the row should say so.
+#
+# REVIEW: the following changes in this release were left out because the public
+# docs do not cover them. Each needs either a docs page or a decision to hold the
+# announcement until one exists.
+#   - The `pgd` installation scenario (UPM-127822). `spec.scenarios` accepts a new
+#     `pgd` value, but the "Available scenarios" table in the HM installation
+#     planning guide lists only `core`, `migration`, `analytics`, `ai`, `dbaas`,
+#     and `marketplace`. Worth an entry as soon as that table covers `pgd`.
+#   - Control-plane recovery: `spec.recoveryFrom` and `status.recovery`
+#     (UPM-126742, UPM-126743, UPM-126745, UPM-129971). Nothing in the public docs
+#     describes recovering a control plane this way, and the feature is not
+#     finished — the recovery controller still logs "Recovery stage not
+#     implemented yet" for the stages that acquire the source backup and restore
+#     the control-plane resources. It should stay unannounced until it completes.
+#
+# REVIEW: `fix(UPM-128839): remove annotations on EKS LB` produced no entry. The
+# current code adds no AWS-specific annotations to the `istio-ingressgateway`
+# service of its own accord — the webhook only ensures an empty
+# `spec.resourceAnnotations` entry for it exists, and substitution only ever adds
+# the annotations you configure. Whether users saw operator-set annotations on
+# EKS before 2.2.0, and so whether this is worth a Bug Fix entry, could not be
+# determined without the commit diff. Please check.
+#
+# REVIEW (no action expected): these commits changed only the reference sample
+# manifest or our own CI and test clusters, so they got no entry — recorded here
+# only so it is clear they were considered. `chore(UPM-130733)` (commented istiod
+# request settings), `fix(UPM-129456)` and `fix(UPM-129569)` (documenting the
+# `memory_limit` parameters of `cloud-native-postgres-dbaas` and `pg4k-pgd-dbaas`
+# and `beacon_agent_istio_proxy_memory_limit` of `upm-beacon`, which the
+# components themselves implement), `chore(UPM-129462)` (the `upm-velero-config`
+# component parameters), and `feat(UPM-127829)` (DO-NOT-EDIT headers on generated
+# manifests). If the component parameters in that list are new in the HM release
+# that pins this operator, they belong in HM's release notes rather than here.
