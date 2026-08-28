@@ -254,12 +254,39 @@ version of the exported snapshot, then an error is raised.
 
 ### `bdr.get_consensus_status`
 
-Returns status information about the current consensus (Raft) worker.
+Returns status information about the current consensus (Raft) worker, as a JSON document.
+
+#### Synopsis
+
+```sql
+bdr.get_consensus_status(node_group_name text DEFAULT NULL)
+```
+
+#### Parameters
+
+| Parameter         | Description                                                                        |
+|-------------------|--------------------------------------------------------------------------------------|
+| `node_group_name` | Name of the node group to report on. If NULL, reports on the top-level node group. |
 
 ### `bdr.get_raft_status`
 
-Returns status information about the current consensus (Raft) worker.
-Alias for `bdr.get_consensus_status`.
+Returns status information about the current consensus (Raft) worker, as a JSON document.
+Both this function and `bdr.get_consensus_status` are backed by the same
+underlying implementation, so calling `bdr.get_raft_status` without the
+second argument is equivalent to calling `bdr.get_consensus_status`.
+
+#### Synopsis
+
+```sql
+bdr.get_raft_status(node_group_name text DEFAULT NULL, include_node_info boolean DEFAULT false)
+```
+
+#### Parameters
+
+| Parameter           | Description                                                                        |
+|---------------------|--------------------------------------------------------------------------------------|
+| `node_group_name`   | Name of the node group to report on. If NULL, reports on the top-level node group. |
+| `include_node_info` | If `true`, also includes per-node information (such as heartbeat response time and clock drift) in the returned JSON. Defaults to `false`. |
 
 ### `bdr.raft_leadership_transfer`
 
@@ -1193,8 +1220,12 @@ To check the status of a transaction that was being committed when the node fail
 
 ```sql
 bdr.logical_transaction_status(node_id OID, xid OID,
-                               require_camo_partner boolean DEFAULT true)
+                               require_camo_partner boolean DEFAULT true,
+                               queried_by_origin boolean DEFAULT false)
 ```
+
+Note that the underlying function doesn't declare SQL parameter names, so
+these arguments must be passed positionally rather than by name.
 
 #### Parameters
 
@@ -1203,6 +1234,7 @@ bdr.logical_transaction_status(node_id OID, xid OID,
 | `node_id`              | The node id of the PGD node the transaction originates from, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `bdr.local_node_id`. |
 | `xid`                  | The transaction id on the origin node, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `transaction_id`.                          |
 | `require_camo_partner` | Defaults to true and enables configuration checks. Set to false to disable these checks and query the status of a transaction that wasn't a CAMO transaction.                                                                                |
+| `queried_by_origin`    | Advanced/internal use. Only the origin node should set this to `true`, and only when it's uncertain about a transaction that is still prepared but not yet finished. It forces the CAMO partner to resolve an otherwise-unknown or provisional-abort decision to `abort`, since the partner can't safely report `committed` before the transaction actually commits. Defaults to `false`. |
 
 #### Return value
 
