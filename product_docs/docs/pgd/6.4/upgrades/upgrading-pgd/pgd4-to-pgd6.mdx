@@ -5,9 +5,8 @@ deepToC: true
 ---
 
 Upgrade a PGD 4 cluster to PGD 6, moving from HARP Proxy to Connection Manager, with the Postgres version
-unchanged, using one of three approaches: [full downtime](#upgrading-with-full-downtime), a [rolling
-upgrade in place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
-nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes) one at a time. 
+unchanged, using one of two approaches: [full downtime](#upgrading-with-full-downtime) or a [rolling
+upgrade in place](#upgrading-with-a-rolling-upgrade-in-place).
 
 !!! Note
 If you're also upgrading Postgres to a new minor version at the same time, see [Upgrading Postgres and PGD
@@ -40,7 +39,7 @@ This procedure assumes HARP Proxy isn't co-located with a PGD node.
 
     ```shell
     dnf remove edb-bdr4-<postgresversion> edb-pgd-cli
-    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    dnf install edb-pgd6-expanded-pg<postgres_version> -y
     ```
 
 1.  Start Postgres on every node:
@@ -105,7 +104,7 @@ For each node, one at a time, starting with a node that isn't the current HARP P
 
     ```shell
     dnf remove edb-bdr4-<postgresversion> edb-pgd-cli
-    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    dnf install edb-pgd6-expanded-pg<postgres_version> -y
     ```
 
 1.  Start Postgres. This step performs an in-place upgrade of the local node to PGD 6, with Connection
@@ -137,46 +136,6 @@ For each node, one at a time, starting with a node that isn't the current HARP P
 
 1.  Continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
 
-## Upgrading with a rolling upgrade, by replacing nodes
-
-Instead of upgrading the nodes, join new nodes that already have PGD 6 installed, then part and drop the existing PGD 4 nodes.
-
-1.  [Provision a new node](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/) with the
-    PGD 6 packages for your current Postgres version already installed. Connection Manager is enabled on it by default.
-1.  Join the new node to the cluster using a logical join:
-
-    ```shell
-    pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
-    ```
-
-    Don't use `bdr_init_physical`, it requires the source and joining node to run the same PGD version, so
-    it can't be used across a version change. See the [`pgd node
-    setup`](/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of
-    options.
-1.  Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
-    healthy:
-
-    ```shell
-    pgd nodes list
-    ```
-
-    !!! Note
-    Confirm how a newly joined PGD 6 node interacts with HARP's leader election and routing while the rest of the
-    cluster is still on PGD 4 hasn't been confirmed for this procedure, including whether any extra step is
-    needed to bring the new node into HARP's view of the cluster.
-    !!!
-
-1.  Update your application's connection configuration to include the new node once it's ready to take
-    traffic.
-1.  Part one of the nodes still running PGD 4 and HARP Proxy, then decommission it:
-
-    ```shell
-    pgd node <node_name> part
-    ```
-1.  Repeat for each remaining PGD 4 node, one at a time, until the whole cluster is on PGD 6. 
-
-1. Continue to [Moving to Connection Manager](#moving-to-connection-manager).
-
 ## Moving to Connection Manager
 
 Once every node is running PGD 6, regardless of which upgrade path you took, finish moving the cluster off
@@ -186,6 +145,14 @@ HARP Proxy and onto Connection Manager.
 
     ```shell
     pgd nodes list --versions
+    ```
+
+1.  Confirm every node reports the same `protocol_version` in `bdr.group_raft_details`, confirming the
+    whole cluster has moved to the new Raft protocol version, not just that individual nodes report
+    success:
+
+    ```sql
+    SELECT node_name, protocol_version FROM bdr.group_raft_details;
     ```
 
 1.  Run the following query from any of the upgraded nodes to ensure

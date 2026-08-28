@@ -5,10 +5,9 @@ deepToC: true
 ---
 
 Upgrade a PGD 4 cluster to PGD 6 and Postgres to a new major version at the same time, moving from HARP
-Proxy to Connection Manager, using one of three approaches: [full
-downtime](#upgrading-with-full-downtime), a [rolling upgrade in
-place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
-nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes) one at a time. If you're not also upgrading
+Proxy to Connection Manager, using one of two approaches: [full
+downtime](#upgrading-with-full-downtime) or a [rolling upgrade in
+place](#upgrading-with-a-rolling-upgrade-in-place). If you're not also upgrading
 Postgres, see [Upgrading PGD 4 to PGD 6](/pgd/current/upgrades/upgrading-pgd/pgd4-to-pgd6/) instead.
 
 !!! Note
@@ -23,28 +22,33 @@ This procedure assumes HARP Proxy isn't co-located with a PGD node.
     sudo systemctl stop harp-proxy
     ```
 
-1.  Make sure Postgres is still running on every node. [`pgd node
-    upgrade`](/pgd/latest/reference/cli/command_ref/node/upgrade/) needs the old instance running through
-    its check and execute steps.
 1.  On each node, one at a time or all at once, install the combined PGD 6 and new Postgres major version
     package (for example, `edb-pgd6-expanded-pg17`), alongside the existing PGD 4 and Postgres packages:
 
     ```shell
-    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    dnf install edb-pgd6-expanded-pg<postgres_version> -y
     ```
 
     Package managers install each Postgres major version to its own path, so the running node and its
     current binaries are untouched.
 1.  Create a fresh, empty data directory for the new Postgres version on each node using its
     [`initdb`](https://www.postgresql.org/docs/current/app-initdb.html), matching the old cluster's checksum
-    and locale settings. Leave this new cluster shut down.
+    and locale settings. Leave this new cluster shut down:
+
+    ```shell
+    <new_bindir>/initdb -D <new_datadir> --data-checksums
+    ```
+
+    Add `--locale`, `--encoding`, or other `initdb` options as needed to match the old cluster's settings.
+    Use a different `<new_datadir>` path if you don't want to use the default data directory location.
 1.  Copy each node's old cluster's [`postgresql.conf` and
     `postgresql.auto.conf`](https://www.postgresql.org/docs/current/config-setting.html),
     [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
     (if present) into the new data directory, adjusting for any configuration parameters that changed
     between Postgres major versions.
-1.  On each node, run `pgd node upgrade` with the `--check` option first to validate the upgrade without
-    making changes:
+1.  On each node, run `pgd node upgrade` with the `--check` option first, to perform a dry run that
+    validates the upgrade without making changes. It starts the old Postgres instance automatically if
+    it's shut down, so it doesn't need to be running beforehand:
 
     ```shell
     pgd node <node_name> upgrade --check \
@@ -56,13 +60,13 @@ This procedure assumes HARP Proxy isn't co-located with a PGD node.
       --username <install_user>
     ```
 
-    `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
-    `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
-    directory you created earlier. `--database` is the PGD-enabled database name, and `--username` is the
-    cluster's install user. `--check` runs the PGD-specific validation and `pg_upgrade --check`, without
-    modifying either cluster. See [Steps
-    performed](/pgd/latest/reference/cli/command_ref/node/upgrade/#steps-performed) for exactly what
-    `--check` does and doesn't run.
+    - `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
+    - `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
+      directory you created earlier.
+    - `--database` is the PGD-enabled database name, and `--username` is the cluster's install user.
+    - `--check` runs the PGD-specific validation and `pg_upgrade --check`, without modifying either
+      cluster. See [Steps performed](/pgd/latest/reference/cli/command_ref/node/upgrade/#steps-performed)
+      for exactly what `--check` does and doesn't run.
 1.  Run `pgd node upgrade` again without `--check` to migrate the node's data into the new data directory,
     using the same options:
 
@@ -76,6 +80,10 @@ This procedure assumes HARP Proxy isn't co-located with a PGD node.
       --username <install_user>
     ```
 
+    Add the `--link` option to use hard links instead of copying files, if the old and new data
+    directories are on the same filesystem. See [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html)
+    in the PostgreSQL documentation for more information.
+
     PGD itself upgrades to PGD 6 once you start the new data directory in the next step, with Connection
     Manager enabled by default, no extra step needed.
 1.  Stop HARP manager on every node:
@@ -84,9 +92,23 @@ This procedure assumes HARP Proxy isn't co-located with a PGD node.
     sudo systemctl stop harp-manager
     ```
 
-1.  Point Postgres at the new binaries and data directory on each node (for example, update the
-    `postgres.service` file), then start it. Each node comes up on the new Postgres version and PGD 6, with
-    Connection Manager already enabled. You don't need to start HARP manager again.
+1.  Point Postgres at the new binaries and data directory on each node. For example, update the
+    `Environment=PGDATA` and `ExecStart` lines in the `postgres.service` file:
+
+    ```
+    Environment=PGDATA=<new_datadir>
+    ExecStart=<new_bindir>/postgres -D ${PGDATA}
+    ```
+
+    Then reload the service definition and start it:
+
+    ```shell
+    sudo systemctl daemon-reload
+    sudo systemctl start postgres
+    ```
+
+    Each node comes up on the new Postgres version and PGD 6, with Connection Manager already enabled. You
+    don't need to start HARP manager again.
 1.  Confirm every node has rejoined the cluster and is healthy:
 
     ```shell
@@ -129,26 +151,33 @@ For each node, one at a time, starting with a node that isn't the current HARP P
     harpctl get node <node_name>
     ```
 
-1.  Make sure Postgres is still running on the node. `pgd node upgrade` needs the old instance running
-    through its check and execute steps.
 1.  Install the combined PGD 6 and new Postgres major version package (for example,
     `edb-pgd6-expanded-pg17`), alongside the existing PGD 4 and Postgres packages:
 
     ```shell
-    dnf install edb-pgd6-cli edb-pgd6-expanded-pg<postgres_version> -y
+    dnf install edb-pgd6-expanded-pg<postgres_version> -y
     ```
 
     Package managers install each Postgres major version to its own path, so the running node and its
     current binaries are untouched.
 1.  Create a fresh, empty data directory for the new Postgres version using its
     [`initdb`](https://www.postgresql.org/docs/current/app-initdb.html), matching the old cluster's checksum
-    and locale settings. Leave this new cluster shut down.
+    and locale settings. Leave this new cluster shut down:
+
+    ```shell
+    <new_bindir>/initdb -D <new_datadir> --data-checksums
+    ```
+
+    Add `--locale`, `--encoding`, or other `initdb` options as needed to match the old cluster's settings.
+    Use a different `<new_datadir>` path if you don't want to use the default data directory location.
 1.  Copy the old cluster's [`postgresql.conf` and
     `postgresql.auto.conf`](https://www.postgresql.org/docs/current/config-setting.html),
     [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
     (if present) into the new data directory, adjusting for any configuration parameters that changed
     between Postgres major versions.
-1.  Run `pgd node upgrade` with the `--check` option first to validate the upgrade without making changes:
+1.  Run `pgd node upgrade` with the `--check` option first, to perform a dry run that validates the
+    upgrade without making changes. It starts the old Postgres instance automatically if it's shut down,
+    so it doesn't need to be running beforehand:
 
     ```shell
     pgd node <node_name> upgrade --check \
@@ -160,13 +189,13 @@ For each node, one at a time, starting with a node that isn't the current HARP P
       --username <install_user>
     ```
 
-    `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
-    `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
-    directory you created earlier. `--database` is the PGD-enabled database name, and `--username` is the
-    cluster's install user. `--check` runs the PGD-specific validation and `pg_upgrade --check`, without
-    modifying either cluster. See [Steps
-    performed](/pgd/latest/reference/cli/command_ref/node/upgrade/#steps-performed) for exactly what
-    `--check` does and doesn't run.
+    - `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
+    - `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
+      directory you created earlier.
+    - `--database` is the PGD-enabled database name, and `--username` is the cluster's install user.
+    - `--check` runs the PGD-specific validation and `pg_upgrade --check`, without modifying either
+      cluster. See [Steps performed](/pgd/latest/reference/cli/command_ref/node/upgrade/#steps-performed)
+      for exactly what `--check` does and doesn't run.
 1.  Run `pgd node upgrade` again without `--check` to migrate the node's data into the new data directory,
     using the same options:
 
@@ -180,6 +209,10 @@ For each node, one at a time, starting with a node that isn't the current HARP P
       --username <install_user>
     ```
 
+    Add the `--link` option to use hard links instead of copying files, if the old and new data
+    directories are on the same filesystem. See [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html)
+    in the PostgreSQL documentation for more information.
+
     PGD itself upgrades to PGD 6 once you start the new data directory in the next step, with Connection
     Manager enabled by default, no extra step needed.
 1.  Stop HARP manager on the node:
@@ -188,9 +221,23 @@ For each node, one at a time, starting with a node that isn't the current HARP P
     sudo systemctl stop harp-manager
     ```
 
-1.  Point Postgres at the new binaries and data directory (for example, update the `postgres.service` file),
-    then start it. The node comes up on the new Postgres version and PGD 6, with Connection Manager enabled.
-    You don't need to start HARP manager again.
+1.  Point Postgres at the new binaries and data directory. For example, update the `Environment=PGDATA` and
+    `ExecStart` lines in the `postgres.service` file:
+
+    ```
+    Environment=PGDATA=<new_datadir>
+    ExecStart=<new_bindir>/postgres -D ${PGDATA}
+    ```
+
+    Then reload the service definition and start it:
+
+    ```shell
+    sudo systemctl daemon-reload
+    sudo systemctl start postgres
+    ```
+
+    The node comes up on the new Postgres version and PGD 6, with Connection Manager enabled. You don't
+    need to start HARP manager again.
 1.  Unfence the node from HARP:
 
     ```shell
@@ -209,51 +256,6 @@ For each node, one at a time, starting with a node that isn't the current HARP P
 For the full set of options and flags, see the [`pgd node
 upgrade`](/pgd/latest/reference/cli/command_ref/node/upgrade/) command reference.
 
-## Upgrading with a rolling upgrade, by replacing nodes
-
-Instead of upgrading a node in place, join a new node that already has the combined PGD 6 and new Postgres
-major version packages installed, then part and drop one of the existing PGD 4 nodes.
-
-1.  [Provision a new node](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/) with the
-    combined PGD 6 and new Postgres major version packages already installed, for example
-    `edb-pgd6-expanded-pg17`. Connection Manager is enabled on it by default.
-1.  Join the new node to the cluster using a logical join:
-
-    ```shell
-    pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
-    ```
-
-    Don't use `bdr_init_physical`, it requires the source and joining node to run the same PGD version and
-    the same Postgres major version, so it can't be used across a version change. See the [`pgd node
-    setup`](/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of
-    options.
-1.  Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
-    healthy and running the new Postgres version:
-
-    ```shell
-    pgd nodes list --versions
-    ```
-
-    !!! Note
-    How a newly joined PGD 6 node interacts with HARP's leader election and routing while the rest of the
-    cluster is still on PGD 4 hasn't been confirmed for this procedure, including whether any extra step is
-    needed to bring the new node into HARP's view of the cluster. Verify with EDB Support or engineering
-    before relying on this path.
-    !!!
-
-1.  Update your application's connection configuration to include the new node once it's ready to take
-    traffic.
-1.  Part one of the nodes still running PGD 4 and HARP Proxy, then decommission it:
-
-    ```shell
-    pgd node <node_name> part
-    ```
-1.  Repeat for each remaining PGD 4 node, one at a time, until the whole cluster is on PGD 6 and the new
-    Postgres version. Then continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
-
-While nodes are on mixed Postgres major versions, avoid using any feature or DDL syntax that's only
-available in the newer version, until every node has been replaced.
-
 ## Moving to Connection Manager
 
 Once every node is running PGD 6 and the new Postgres version, regardless of which upgrade path you took,
@@ -263,6 +265,14 @@ finish moving the cluster off HARP Proxy and onto Connection Manager.
 
     ```shell
     pgd nodes list --versions
+    ```
+
+1.  Confirm every node reports the same `protocol_version` in `bdr.group_raft_details`, confirming the
+    whole cluster has moved to the new Raft protocol version, not just that individual nodes report
+    success:
+
+    ```sql
+    SELECT node_name, protocol_version FROM bdr.group_raft_details;
     ```
 
 1.  Run the following query from any of the upgraded nodes to ensure
