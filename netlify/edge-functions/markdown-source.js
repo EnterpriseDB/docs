@@ -143,6 +143,8 @@ export default async function handler(request, context) {
     url.pathname.endsWith(".md") ||
     url.pathname.endsWith(".mdx");
 
+  console.log(`Request for markdown version of ${url.pathname}`);
+
   // Pass through requests that don't want Markdown
   if (!wantsMarkdown) {
     return; // passthrough
@@ -198,6 +200,8 @@ export default async function handler(request, context) {
       link: '</docs/llms.txt>; rel="llms-txt"',
       "x-llms-txt": "/docs/llms.txt",
     };
+
+    if ( !acceptHeader.includes("text/markdown") ) headers["Content-Type"] = "text/plain; charset=utf-8";
 
     return new Response(body, {
       status: 200,
