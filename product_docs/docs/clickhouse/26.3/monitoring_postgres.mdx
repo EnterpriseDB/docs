@@ -1,0 +1,362 @@
+---
+title: Monitoring Postgres with pg_stat_ch
+navTitle: Monitoring Postgres with pg_stat_ch
+description: Capture per-query execution telemetry from Postgres and analyze it in ClickHouse using the pg_stat_ch extension.
+deepToC: true
+---
+
+Capture per-query execution telemetry from Postgres and stream it to ClickHouse in real time using pg_stat_ch, EDB's build of the [open-source Postgres extension](https://github.com/ClickHouse/pg_stat_ch) of the same name. pg_stat_ch instruments Postgres query execution and error reporting through a background worker, capturing every statement, including `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and utility statements such as `COPY` and `VACUUM`, with no changes to application code, buffering events in shared memory and flushing them to ClickHouse over the native protocol, either on a fixed interval or on demand.
+
+Keeping enough per-query telemetry, at enough detail, for long enough to debug a problem gets expensive fast inside Postgres itself. Instead of aggregating statistics inside Postgres, pg_stat_ch exports raw events and lets ClickHouse handle the analytical workload through materialized views, opening up investigations that are impractical with aggregated statistics alone:
+
+- **Root-causing slow queries fast**, down to the exact SQL, application, and parameters responsible, without needing to reproduce the issue.
+- **Diagnosing buffer cache and disk-spill pressure**, spotting queries whose working set no longer fits in memory or that spill sorts and hashes to disk.
+- **Tracking WAL footprint before it becomes replication lag**, at the individual query level rather than after the fact.
+- **Telling whether JIT compilation is helping or hurting** a given query, rather than assuming.
+- **Attributing load by application, user, and database**, useful for chargeback and spotting a noisy neighbor.
+- **Catching errors outside normal query paths**, including failed `DDL`, `COPY`, and `VACUUM` statements, not just DML.
+- **Spotting parallel query starvation**, when queries plan for parallelism but don't get the workers.
+
+## Installing pg_stat_ch
+
+Configure ClickHouse first, then install and configure pg_stat_ch on your Postgres installation.
+
+### Configuring ClickHouse
+
+Set up ClickHouse before configuring Postgres.
+
+!!! Note
+This procedure targets a single ClickHouse node. Data isn't replicated or sharded automatically, so the node you provision here is also the one pg_stat_ch must point at later, and the one you query back. For a multi-node cluster, see the note on `pg_stat_ch.clickhouse_host` under [Installing and configuring pg_stat_ch](#installing-and-configuring-pg_stat_ch).
+!!!
+
+1. Provision the `pg_stat_ch` schema before configuring Postgres. Apply the migration from the [upstream pg_stat_ch repository](https://github.com/ClickHouse/pg_stat_ch), which creates the `pg_stat_ch` database along with the `events_raw` table and its materialized views. The file is a [goose](https://github.com/pressly/goose) migration with an `Up` and a `Down` section, so extract only the `Up` section:
+
+   ```bash
+   curl -O https://raw.githubusercontent.com/ClickHouse/pg_stat_ch/main/schema/migrations/20260519000001_create_initial_schema.sql
+   awk '/-- \+goose Down/{exit} {print}' 20260519000001_create_initial_schema.sql > up_only.sql
+   ```
+
+1. Apply it to ClickHouse:
+
+   ```bash
+   clickhouse-client --host <your-clickhouse-host> --multiquery < up_only.sql
+   ```
+
+   Replace `<your-clickhouse-host>` with your server's hostname or IP, adding `--port`, `--user`, and `--password` as needed. Check [`schema/migrations`](https://github.com/ClickHouse/pg_stat_ch/tree/main/schema/migrations) for later files and apply those the same way, in order.
+
+1. Verify the schema was created:
+
+    ```sql
+    -- in ClickHouse
+    SHOW TABLES FROM pg_stat_ch;
+    ```
+
+1. Create a dedicated user for pg_stat_ch and grant it access to `events_raw`:
+
+   ```sql
+   -- in ClickHouse
+   CREATE USER pg_stat_ch IDENTIFIED WITH sha256_password BY 'your-password';
+   GRANT INSERT ON pg_stat_ch.events_raw TO pg_stat_ch;
+   GRANT SELECT ON pg_stat_ch.events_raw TO pg_stat_ch;
+   ```
+
+   The `SELECT` grant is required too, ClickHouse runs the materialized views as the inserting user on every insert.
+
+### Installing and configuring pg_stat_ch
+
+Run the following steps on your Postgres instance. EDB distributes pg_stat_ch as RPM packages for Rocky Linux 9 on x86-64 and arm64, covering community PostgreSQL, EDB Postgres Extended Server, and EDB Postgres Advanced Server (EPAS), for Postgres versions 16 through 18.
+
+1. Set up the EDB repository for ClickHouse and install the package for your Postgres distribution and version:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+   sudo dnf install -y edb-<postgres-distribution>-pg-stat-ch
+   ```
+
+    Where:
+    - `<your-token>` is the token you received when you registered for the EDB subscription.
+    - `<postgres-distribution>` is the package name prefix for your distribution and version, for example `postgresql-16` (community Postgres), `edb-as16` (EDB Postgres Advanced Server), or `edb-postgresextended-16` (EDB Postgres Extended).
+
+1. Edit `postgresql.conf` and append pg_stat_ch to the list of shared libraries using a comma separator:
+
+    ```ini
+    # postgresql.conf
+    shared_preload_libraries = '<other_libraries>,pg_stat_ch'
+    ```
+
+1. Still from `postgresql.conf`, point pg_stat_ch at your ClickHouse server:
+
+   ```ini
+   # postgresql.conf
+   pg_stat_ch.clickhouse_host = '<clickhouse-host>'
+   pg_stat_ch.clickhouse_port = 9000
+   pg_stat_ch.clickhouse_database = 'pg_stat_ch'
+   pg_stat_ch.clickhouse_user = '<clickhouse-user>'
+   pg_stat_ch.clickhouse_password = '<clickhouse-password>'
+   pg_stat_ch.enabled = on
+   ```
+
+   Where:
+   - `clickhouse_host` is the hostname or IP address of the ClickHouse server to send telemetry to, the same node you provisioned in [Configuring ClickHouse](#configuring-clickhouse). Connect to this same host when querying the data back.
+   - `clickhouse_port` is ClickHouse's native protocol port. Defaults to `9000`.
+   - `clickhouse_database` is a database on the ClickHouse server. It's where `events_raw` and its materialized views live. Defaults to `pg_stat_ch`, the database created in [Configuring ClickHouse](#configuring-clickhouse). If you provisioned the schema under a different database name, update this setting to match.
+   - `clickhouse_user` and `clickhouse_password` are credentials for the ClickHouse user created in [Configuring ClickHouse](#configuring-clickhouse), with `INSERT` and `SELECT` on `events_raw`.
+   - `enabled` turns telemetry collection on or off without unloading the extension. Unlike the connection settings, this setting takes effect on a reload (`pg_ctl reload` or `SELECT pg_reload_conf();`), no restart needed.
+
+   See the [configuration reference](https://pg-stat-ch.clickhouse.com/reference/configuration) from the pg_stat_ch documentation for the complete list of configuration parameters, including queue sizing, batching, and TLS options.
+
+   !!! Note
+   `pg_stat_ch.clickhouse_host` takes a single host, there's no cluster-aware setting. If your ClickHouse deployment is a multi-node cluster, point it at a single entry point, a specific node, a `Distributed` table target, or a load balancer in front of the cluster, rather than listing multiple hosts.
+
+   The migration in [Configuring ClickHouse](#configuring-clickhouse) creates plain `MergeTree` and `AggregatingMergeTree` tables, so data only lives on whichever node received it, it isn't replicated or sharded automatically. To make it visible from any node in a cluster, you'd need to modify that schema yourself: replace those engines with `ReplicatedMergeTree` and `ReplicatedAggregatingMergeTree` for replication, or add `Distributed` tables on top for sharding, backed by a configured ClickHouse cluster and Keeper. See [Architecture](../overview/architecture) for these concepts.
+   !!!
+
+1. Restart Postgres for both changes to take effect, then create the extension and verify the EDB build:
+
+   ```sql
+   -- in Postgres
+   CREATE EXTENSION pg_stat_ch;
+   SELECT pg_stat_ch_version();
+   ```
+
+1. Verify telemetry is flowing:
+
+   ```sql
+   -- in Postgres
+   SELECT * FROM pg_stat_ch_stats();
+   ```
+
+   `pg_stat_ch_stats()` returns counters for events queued, exported, and failed. pg_stat_ch captures activity across every database on this Postgres instance, not only the one where you ran `CREATE EXTENSION`, the `db_name` column on each event records which database it came from. See the [SQL functions reference](https://pg-stat-ch.clickhouse.com/reference/functions) from the pg_stat_ch documentation for the complete list. Trigger an immediate flush instead of waiting for the next scheduled batch, or reset the counters:
+
+   ```sql
+   -- in Postgres
+   SELECT pg_stat_ch_flush();
+   SELECT pg_stat_ch_reset();
+   ```
+
+1. Check the background worker is running:
+
+   ```sql
+   -- in Postgres
+   SELECT pid, backend_type, state, wait_event
+   FROM pg_stat_activity
+   WHERE backend_type = 'pg_stat_ch exporter';
+   ```
+
+   If it doesn't appear, check the Postgres log for errors, under the data directory's `log` subdirectory by default, or via `journalctl -u <service-name>` if Postgres runs under systemd.
+
+## Understanding the ClickHouse schema
+
+pg_stat_ch exports telemetry to ClickHouse in two layers: raw events in `events_raw`, and materialized views that pre-aggregate those events for faster dashboard queries.
+
+### Understanding events_raw
+
+Every statement captured on the Postgres side lands as one row in `pg_stat_ch.events_raw` in ClickHouse. Each row carries:
+
+- Identity fields: database, user, application name, client address
+- Timing: start timestamp and duration
+- Row counts
+- Buffer cache activity: shared, local, and temp block hits, reads, and writes
+- WAL volume
+- CPU and JIT compilation time
+- Error details, when the statement failed
+
+Other columns such as `instance_ubid`, `server_role`, and `region` are unpopulated and stay empty for self-hosted deployments. See the [events schema reference](https://pg-stat-ch.clickhouse.com/reference/events-schema) from the pg_stat_ch documentation for every column, though it documents an older revision of the schema and uses different column names than the ones on this page.
+
+You can query the raw events directly for ad hoc investigation:
+
+```sql
+-- in ClickHouse
+SELECT ts, db_operation, duration_us, rows, query_text
+FROM pg_stat_ch.events_raw
+ORDER BY ts DESC
+LIMIT 20;
+```
+
+This example pulls the 20 most recent statements, with when each ran, its command type, how long it took, how many rows it touched, and its query text.
+
+
+!!! Note
+pg_stat_ch doesn't identify which tables a query references, so it can't answer which queries accessed a given table, the way plan-based tools can. I/O timing fields, such as `shared_blk_read_time_us`, require `track_io_timing` enabled on the Postgres instance. Without it, these fields report zero.
+!!!
+
+Query text is truncated at a configurable limit (2 KB by default) to bound event size. For longer queries, join on `query_id` against `pg_stat_statements` for the full text.
+
+### Querying pre-aggregated views
+
+Query the materialized views layered on top of `events_raw` for dashboards, rather than recomputing percentiles and rollups from raw events on every query, an approach that grows costly at volume:
+
+- A per-query, time-bucketed view (`query_stats_5m`), giving call counts, average duration, and latency percentiles by query and command type
+- A per-application and per-user view (`db_app_user_1m`), for identifying which application or user is generating the most load or errors
+- A recent-errors view (`errors_recent`), filtered to failed statements for incident investigation
+
+See the [materialized views reference](https://pg-stat-ch.clickhouse.com/reference/materialized-views) from the pg_stat_ch documentation for additional views and analytics patterns.
+
+For example, this query ranks your ten worst-performing query and command type combinations by p99 latency, using the matching `-Merge` function to read the aggregate columns in `query_stats_5m`:
+
+```sql
+-- in ClickHouse
+SELECT
+    query_id,
+    db_operation,
+    countMerge(calls_state) AS calls,
+    round(sumMerge(duration_sum_state) / countMerge(calls_state) / 1000, 2) AS avg_ms,
+    round(quantilesTDigestMerge(0.95, 0.99)(duration_q_state)[1] / 1000, 2) AS p95_ms,
+    round(quantilesTDigestMerge(0.95, 0.99)(duration_q_state)[2] / 1000, 2) AS p99_ms
+FROM pg_stat_ch.query_stats_5m
+GROUP BY query_id, db_operation
+ORDER BY p99_ms DESC
+LIMIT 10;
+```
+
+## Monitoring common scenarios
+
+Most performance questions follow the same shape: aggregate from a materialized view to spot the outlier, then drill into `events_raw` for specifics. The [monitoring queries guide](https://pg-stat-ch.clickhouse.com/guides/monitoring-queries) from the pg_stat_ch documentation has further recipes along the same lines.
+
+### Finding slow queries
+
+Combine an aggregated view with a drill-down into `events_raw` to go from a slow `query_id` to the exact SQL and application responsible. Take the slowest `query_id` from [the p99 ranking query](#querying-pre-aggregated-views), then pull the matching raw events:
+
+```sql
+-- in ClickHouse
+SELECT app, query_text, duration_us
+FROM pg_stat_ch.events_raw
+WHERE query_id = <id from previous query>
+ORDER BY ts DESC
+LIMIT 5;
+```
+
+!!! Tip
+This approach, which combines aggregating to find an outlier, then drilling into `events_raw` for detail, extends to other cases as well: buffer cache efficiency, using `shared_blks_hit` and `shared_blks_read`, WAL generation, using `wal_bytes`, and error tracking, using `err_sqlstate` and `err_message`.
+!!!
+
+### Diagnosing cache and disk-spill pressure
+
+Find individual executions with the most disk reads:
+
+```sql
+-- in ClickHouse
+SELECT
+    ts,
+    query_id,
+    shared_blks_read,
+    shared_blks_hit,
+    round(100 * shared_blks_read / (shared_blks_hit + shared_blks_read), 2) AS miss_pct,
+    temp_blks_written,
+    duration_us / 1000 AS ms,
+    substring(query_text, 1, 100) AS query_preview
+FROM pg_stat_ch.events_raw
+WHERE shared_blks_read > 100
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY shared_blks_read DESC
+LIMIT 20;
+```
+
+A high `miss_pct` on a row points to a cache miss, the working set no longer fits in memory. A non-zero `temp_blks_written` on that same row points to disk spill instead, a sort or hash operation exceeded `work_mem` and wrote temp file blocks to disk.
+
+### Tracking WAL footprint
+
+Track WAL generation per minute to catch a write-heavy query before it becomes replication lag:
+
+```sql
+-- in ClickHouse
+SELECT
+    toStartOfMinute(ts) AS bucket,
+    sum(wal_bytes) AS total_wal_bytes,
+    round(sum(wal_bytes) / 1048576, 2) AS wal_mb,
+    sum(wal_fpi) AS full_page_images
+FROM pg_stat_ch.events_raw
+WHERE db_operation IN ('INSERT', 'UPDATE', 'DELETE')
+  AND ts > now() - INTERVAL 24 HOUR
+GROUP BY bucket
+ORDER BY bucket;
+```
+
+### Analyzing JIT overhead
+
+Compare JIT compilation time against total execution time to determine whether it improves performance:
+
+```sql
+-- in ClickHouse
+SELECT
+    query_id,
+    count() AS executions,
+    round(avg(duration_us) / 1000, 2) AS avg_total_ms,
+    round(avg(jit_generation_time_us + jit_inlining_time_us +
+              jit_optimization_time_us + jit_emission_time_us) / 1000, 2) AS avg_jit_ms,
+    round(100 * avg(jit_generation_time_us + jit_inlining_time_us +
+                    jit_optimization_time_us + jit_emission_time_us) /
+          greatest(avg(duration_us), 1), 1) AS jit_pct_of_total
+FROM pg_stat_ch.events_raw
+WHERE jit_functions > 0
+  AND ts > now() - INTERVAL 24 HOUR
+GROUP BY query_id
+HAVING avg_jit_ms > 10
+ORDER BY jit_pct_of_total DESC
+LIMIT 10;
+```
+
+If `jit_pct_of_total` runs high for a frequently run query, consider raising `jit_above_cost` to skip JIT for it.
+
+### Attributing load by application
+
+Rank applications by total query time to find the heaviest consumer:
+
+```sql
+-- in ClickHouse
+SELECT
+    app,
+    countMerge(calls_state) AS total_queries,
+    round(sumMerge(duration_sum_state) / 1000000, 2) AS total_seconds,
+    round(quantilesTDigestMerge(0.95, 0.99)(duration_q_state)[2] / 1000, 2) AS p99_ms,
+    sumMerge(errors_sum_state) AS errors
+FROM pg_stat_ch.db_app_user_1m
+WHERE bucket >= now() - INTERVAL 24 HOUR
+GROUP BY app
+ORDER BY total_seconds DESC;
+```
+
+### Tracking errors
+
+Break failed statements down by `SQLSTATE` to spot the most common failure:
+
+```sql
+-- in ClickHouse
+SELECT
+    err_sqlstate,
+    count() AS errors,
+    uniq(query_id) AS unique_queries,
+    any(err_message) AS sample_message
+FROM pg_stat_ch.events_raw
+WHERE err_elevel >= 21
+  AND ts > now() - INTERVAL 24 HOUR
+GROUP BY err_sqlstate
+ORDER BY errors DESC;
+```
+
+`err_elevel` encodes Postgres severity as a number, documented in the [events schema reference](https://pg-stat-ch.clickhouse.com/reference/events-schema#error-level-values) from the pg_stat_ch documentation: `19` is `WARNING`, `21` is `ERROR`, `22` is `FATAL`, and `23` is `PANIC`. Filtering on `err_elevel >= 21` excludes warnings and keeps only actual errors.
+
+### Spotting parallel query starvation
+
+Find queries that planned for parallelism but didn't get the workers, available on Postgres 18 and later:
+
+```sql
+-- in ClickHouse
+SELECT
+    query_id,
+    db_operation,
+    count() AS executions,
+    round(avg(parallel_workers_planned), 1) AS avg_planned,
+    round(avg(parallel_workers_launched), 1) AS avg_launched,
+    round(avg(parallel_workers_planned - parallel_workers_launched), 1) AS avg_missed
+FROM pg_stat_ch.events_raw
+WHERE parallel_workers_planned > parallel_workers_launched
+  AND ts > now() - INTERVAL 24 HOUR
+GROUP BY query_id, db_operation
+ORDER BY avg_missed DESC
+LIMIT 10;
+```
+
+If `avg_missed` stays high, consider raising `max_parallel_workers` or `max_worker_processes`.
