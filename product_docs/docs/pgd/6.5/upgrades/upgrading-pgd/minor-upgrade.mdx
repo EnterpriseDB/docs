@@ -1,18 +1,20 @@
 ---
-title: Performing a combined minor upgrade
+title: Performing a minor PGD upgrade
 navTitle: Performing a minor upgrade
 ---
 
-Move both Postgres and PGD to a new minor version at the same time, using one of three approaches:
-[full downtime](#upgrading-with-full-downtime), a [rolling upgrade in
+Move to a newer minor version of PGD (for example, 6.3 to 6.4), without changing your Postgres version,
+using one of three approaches: [full downtime](#upgrading-with-full-downtime), a [rolling upgrade in
 place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
-nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes). Moving both Postgres and PGD to a new minor version at
-the same time means upgrading each node [in
-place](/pgd/current/upgrades/planning_upgrade/#upgrading-nodes-in-place) rather than replacing it:
-installing the new PGD packages built for your Postgres version also picks up the latest available Postgres
-minor version for it, so a single package install and restart covers both. No new data directory,
-`pg_upgrade`, or node join is needed, since neither a PGD nor a Postgres minor version upgrade changes the
-on-disk format.
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes). A minor version upgrade doesn't need the
+routing-tool migration a major version upgrade does, since minor versions within the same major release stay
+compatible at the consensus protocol level. All it takes is installing the new PGD packages and restarting
+Postgres.
+
+!!! Note
+If you're also upgrading Postgres to a new minor version at the same time, see [Upgrading Postgres and PGD
+together](/pgd/current/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) instead.
+!!!
 
 ## Upgrading with full downtime
 
@@ -24,8 +26,7 @@ on-disk format.
 
     You can run this step one node at a time, but you must wait for each node to shut down cleanly before
     moving to the next.
-1.  Install the new combined PGD and Postgres packages for your Postgres version on every node, for
-    example:
+1.  Install the new PGD packages for your Postgres version on every node, for example:
 
     ```shell
     sudo apt install edb-pgd6-expanded-pg<postgres_version>
@@ -37,15 +38,16 @@ on-disk format.
     systemctl start postgres
     ```
 
-    Both PGD and Postgres upgrade to the new version on start.
-1.  Confirm the new versions took effect on every node:
+    PGD upgrades to the new version on start.
+1.  Confirm the new version took effect on every node:
 
     ```sql
     SELECT bdr.bdr_version();
-    SHOW server_version;
     ```
 
-1. Check `pgd nodes list` for overall cluster health.
+    Then check `pgd nodes list` for overall cluster health.
+
+Fencing isn't needed, since nothing is serving traffic during a full-downtime upgrade.
 
 ## Upgrading with a rolling upgrade, in place
 
@@ -69,13 +71,13 @@ For each node, one at a time:
     sudo systemctl stop postgres
     ```
 
-1.  Install the new combined PGD and Postgres packages for your Postgres version, for example:
+1.  Install the new PGD packages for your Postgres version, for example:
 
     ```shell
     sudo apt install edb-pgd6-expanded-pg<postgres_version>
     ```
 
-1.  Start Postgres. Both PGD and Postgres upgrade to the new version on start:
+1.  Start Postgres. PGD upgrades to the new version on start:
 
     ```shell
     systemctl start postgres
@@ -87,20 +89,8 @@ For each node, one at a time:
     pgd node <node_name> set-option route_fence false
     ```
 
-1.  Confirm the new versions took effect on the node:
-
-    ```sql
-    SELECT bdr.bdr_version();
-    SHOW server_version;
-    ```
-
-Check your [monitoring](/pgd/current/monitoring/) as usual after upgrading a node.
-
-!!! Note
-Sometimes more steps, like reindexing, are recommended for specific minor version upgrades. Refer to the
-[release notes](https://www.postgresql.org/docs/current/release.html) of the version of Postgres you're
-upgrading to.
-!!!
+Confirm the new version took effect with `SELECT bdr.bdr_version();`, and check your
+[monitoring](/pgd/current/lifecycle/monitoring/) as usual after upgrading a node.
 
 ## Upgrading with a rolling upgrade, by replacing nodes
 
@@ -110,12 +100,12 @@ cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluste
 procedure.
 !!!
 
-Instead of upgrading a node in place, join a new node that already has the new combined PGD and Postgres
-minor versions installed, then part and drop one of the existing nodes. Use this approach if you're also
-replacing hardware or a base image at the same time as the minor version bump.
+Instead of upgrading a node in place, join a new node that already has the new PGD version installed, then
+part and drop one of the existing nodes. Use this approach if you're also replacing hardware or a base image
+at the same time as the minor version bump.
 
 1.  [Provision a new node](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/) with the
-    new combined PGD and Postgres minor version packages already installed.
+    new PGD minor version packages already installed.
 1.  Join the new node to the cluster using a logical join:
 
     ```shell
@@ -142,3 +132,4 @@ replacing hardware or a base image at the same time as the minor version bump.
     ```
 
 1.  Repeat for each remaining node, one at a time, until the whole cluster is on the new version.
+
