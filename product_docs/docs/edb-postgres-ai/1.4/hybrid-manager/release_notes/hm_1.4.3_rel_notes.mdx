@@ -6,3 +6,57 @@ deepToC: true
 ---
 
 **Release date:** September 3, 2026
+
+Hybrid Manager (HM) 1.4.3 is a maintenance release that includes bug fixes and improvements.
+
+!!!note Postgres refers to all distributions supported by EDB
+
+-   PostgreSQL
+-   EDB Enterprise Postgres - formerly, EDB Postgres Extended Server (PGE)
+-   EDB Enterprise Postgres (Oracle Compatible) - formerly, EDB Postgres Advanced Server (EPAS)
+!!!
+
+## Component versions
+
+| Component name | Package name | Compatible version |
+| --- | --- | --- |
+| HM Operator | `edb-hcp-operator` | 2.1.0 |
+| HM operand images | `operandSet` | 1.1.12 (timestamp 2608261131) |
+| [EDB Postgres AI agent](/tools/agent/) | `beacon-agent` | 1.392.69 |
+| EDB Postgres AI agent - Helm chart | `beacon-agent` (Helm chart) | 1.367.0 |
+| [DMS agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/cdcagent_compatibility/) | `cdcagent` | 1.13.37 |
+| [HM CLI](/edbctl/1/) | `edbctl` | 1.8.1 |
+| [AIDB](/aidb/7/) | AIDB | 7.4.0 |
+| [Postgres Analytics Accelerator](/pgaa/1.9/) | PGAA | 1.9.1 |
+| Postgres File System | PGFS | 3.2.0 |
+| [Distributed High Availability](/pgd/6/) | PGD | 6.5.0 |
+| [EDB Postgres AI for CloudNativePG Cluster](/postgres_for_kubernetes/latest/) (formerly EDB Postgres for Kubernetes) | PG4K | 1.30.0 |
+
+## HM platform
+
+- Fixed an issue whereby updating a cluster to add LDAP authentication with bind search authentication didn't create the required LDAP secret. Previously, the secret was created only when LDAP was configured at cluster creation time, not when added via an update. <!-- UPM-118819 -->
+- Fixed an issue whereby the scheduled backup cron expression accepted a 5-field cron format that CloudNativePG (CNPG) couldn't correctly interpret, which could cause backups to run more frequently than expected, such as hourly instead of daily. Scheduled backup cron expressions must now use the standard 6-field format. <!-- UPM-126023 -->
+- Fixed an issue whereby a cluster could enter a broken state after promoting a replica to primary and deleting the former primary. Previously, this scenario left the cluster referencing an external object store that no longer existed, causing the Barman Cloud Plugin to block all further updates to the cluster even though it reported as healthy. <!-- UPM-129444 -->
+- Fixed an issue whereby a resource group in the process of parting could block resource updates from being applied to other groups, causing scaling operations, such as memory or CPU changes, to silently fail without retrying. <!-- UPM-129734 -->
+- Fixed an issue whereby the immediate checkpoint setting wasn't propagated correctly to PGD during cluster provisioning, causing the field to be a no-op when set. <!-- UPM-129742 -->
+- Added the `pg_anonymizer` extension to HM operand images, enabling personally identifiable information (PII) masking and anonymization capabilities for your databases. <!-- UPM-126282 -->
+- Added the ability to configure memory limits for the CNPG and PGD operator deployments in HM. Previously, these values weren't configurable and required manual patches that were reverted whenever the operator reconciled, which limited the operator's ability to scale to handle large numbers of clusters. <!-- UPM-129456 -->
+- Separated the Velero installation from the Velero backup configuration so that backup storage locations and backups can now be configured even on platforms, such as Nutanix, where Velero is already installed independently of HM. <!-- UPM-129462 -->
+
+## HM console
+
+- Fixed an issue whereby the Tabs component in the console had accessibility issues, including inconsistent Accessible Rich Internet Applications (ARIA) state handling and improper support for tab links. <!-- UPM-128293 -->
+- Improved accessibility across the HM console, including clearer contrast for select options, more accessible description lists, and clearer context for action controls, in line with the Web Content Accessibility Guidelines (WCAG). <!-- UPM-108848 -->
+- Updated the project deletion dialog to check for additional resource types before allowing deletion, including cluster templates, migration resources (migrations, credentials, and applications), self-managed and cloud-hosted clusters, Transparent Data Encryption (TDE) keys, and maintenance windows. This helps you understand what resources are still associated with a project before you delete it. <!-- UPM-128048 -->
+
+## Migrations
+
+- Fixed an issue whereby a null pointer exception occurred during schema assessment when processing `PACKAGE BODY` objects, causing error messages to be logged and warnings to be omitted from the assessment results. <!-- MIG-11755 -->
+- Fixed an issue whereby `spl_check` line numbers reported for `PACKAGE BODY` objects during schema assessment could be offset by several lines from the actual line containing the issue. <!-- MIG-12161 -->
+- Fixed several issues in the EPAS `pg_dump` parser that caused schema objects to be silently dropped or mislabelled during assessment and offline export. Foreign tables created with `CREATE FOREIGN TABLE` are now correctly reported as their own object type instead of being merged into ordinary tables, and previously dropped `ALTER FOREIGN TABLE OWNER TO` and column `OPTIONS` statements are now captured and merged into their owning foreign table. Fixed an issue whereby a table with both `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` statements could lose one of the two during export. Fixed an issue whereby `CREATE RULE` statements weren't qualified by their owning table, causing rules to be incorrectly grouped under global objects instead of their schema. Fixed an issue whereby routine (function, procedure, and aggregate) ownership statements, default privilege statements, and identity column definitions could be dropped from the exported schema. <!-- MIG-12209 MIG-12344 -->
+- Fixed an issue whereby listing schemas for a PostgreSQL migration database could intermittently return an HTTP 500 error when a schema appeared in the database's metadata before its corresponding tracking record had been created. The database and schema records are now written atomically, preventing this inconsistent state. <!-- MIG-10995 -->
+- Fixed an issue whereby schema-less default privileges, including those set with `ALTER DEFAULT PRIVILEGES ... GRANT ... ON SCHEMAS`, weren't collected during full PostgreSQL schema extraction. Previously, these default privilege rules were missing from both the per-schema and global object streams, so migration assessments and migrated target databases didn't receive the intended default grants. Extraction now also collects casts and event triggers that were similarly missed because they belong to no schema. <!-- MIG-12466 -->
+- Fixed an issue whereby Data Definition Language (DDL) extracted from secondary or dependency schemas omitted `PRIMARY KEY`, `UNIQUE`, `CHECK`, and `NOT NULL` constraints, along with their backing indexes, causing migrated schemas to be missing data-integrity constraints. <!-- MIG-12113 -->
+- Fixed an issue whereby the Postgres assessment report and assessment endpoints returned an HTTP 200 response with an all-zero report while the assessment data was still being ingested, instead of indicating that the assessment wasn't yet ready. These endpoints now return a 404 response until the assessment data is fully populated, consistent with the behavior for Oracle assessments. <!-- MIG-9577 -->
+- Fixed an issue whereby generating an assessment report for a project with a large number of dependencies could fail with a 504 Gateway Timeout error or cause an out-of-memory error. Dependency subtrees are now expanded once per node, with repeated relationships shown as references instead of being fully re-expanded. <!-- MIG-9903 -->
+- Added support for EDB Postgres Advanced Server (EPAS) as a recognized migration source over the gRPC API. Previously, EPAS sources could be silently mislabeled as Oracle or as community PostgreSQL, which could result in incorrect assessment records. EPAS sources and targets are now correctly identified and validated, including enforcement of supported source-to-target migration paths. <!-- MIG-12209 MIG-12219 -->
