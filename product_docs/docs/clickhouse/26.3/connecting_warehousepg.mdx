@@ -298,10 +298,10 @@ Read ClickHouse data from WarehousePG using the [WarehousePG Platform Extension 
    ```sql
    -- in ClickHouse
    CREATE USER whpg_reader IDENTIFIED WITH plaintext_password BY '<password>';
-   GRANT SELECT ON <database>.* TO whpg_reader;
+   GRANT SELECT, INSERT ON <database>.* TO whpg_reader;
    ```
 
-   Replace `<database>` with the ClickHouse database you want WarehousePG to read from.
+   Replace `<database>` with the ClickHouse database you want WarehousePG to read from and write to. Drop `INSERT` from the grant if you only need to read.
 
 1. Make sure every WarehousePG host can resolve the ClickHouse hostname.
 
@@ -311,7 +311,7 @@ Use the WarehousePG Platform Extension Framework (PXF) with the `Jdbc` profile t
 
 Install and start PXF first if you haven't already. See [Installing PXF for WarehousePG](/pxf/6/installing/) and [Configuring and starting PXF for WarehousePG](/pxf/6/configuring/), including creating the `pxf` extension in the database you want to query from.
 
-Run the following steps on the WHPG coordinator:
+Run the following steps on the WHPG coordinator, as the `gpadmin` user. `pxf cluster sync` preserves file ownership when it copies the jar and server directory to every segment, so files owned by another user (for example, if you downloaded the jar as `root`) stay wrong on every segment too.
 
 1. Download the ClickHouse JDBC driver's shaded jar and add it to PXF's library directory:
 
@@ -391,12 +391,23 @@ SELECT * FROM ch_events;
 Leave out `UNIQUE` and `PRIMARY KEY` constraints. WarehousePG doesn't support them on external tables and rejects the `CREATE EXTERNAL TABLE` statement if they're present.
 !!!
 
-!!!info Note
+Write data back to ClickHouse with a separate writable external table at the same `LOCATION`, using `FORMATTER='pxfwritable_export'`:
 
-The `Jdbc` profile also supports writable external tables with `FORMATTER='pxfwritable_export'`, for pushing data back into a JDBC-compliant database. This isn't currently supported against ClickHouse, since the `clickhouse-jdbc` 0.9.0 driver rejects the connection PXF opens for writes.
-!!!
+```sql
+-- in WarehousePG
+CREATE WRITABLE EXTERNAL TABLE ch_events_write (
+    id         text,
+    event_type text,
+    event_time timestamp,
+    value      float8
+)
+LOCATION ('pxf://<database>.<table>?PROFILE=Jdbc&SERVER=clickhouse')
+FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
 
-For general PXF and JDBC server configuration, including connection pooling and other JDBC settings, see [Connecting to a SQL database over JDBC](/pxf/6/connecting/jdbc/).
+INSERT INTO ch_events_write VALUES ('evt-1', 'purchase', now(), 99.99);
+```
+
+For general PXF and JDBC server configuration, including connection pooling and other JDBC settings, see [Connecting to a SQL database over JDBC](/pxf/6/connecting/jdbc/). For settings specific to the ClickHouse driver itself, see [ClickHouse's JDBC driver documentation](https://clickhouse.com/docs/integrations/language-clients/java/jdbc).
 
 #### Querying ClickHouse with pxf_fdw
 
@@ -424,6 +435,13 @@ OPTIONS (resource '<database>.<table>');
 SELECT * FROM ch_events_fdw;
 ```
 
+A `pxf_fdw` foreign table supports both reading and writing, unlike a `pxf://` external table, which needs a separate `READABLE`/`WRITABLE` definition for each direction. Insert directly into the same foreign table:
+
+```sql
+-- in WarehousePG
+INSERT INTO ch_events_fdw VALUES ('evt-1', 'purchase', now(), 99.99);
+```
+
 See [Querying data with the PXF foreign data wrapper](/pxf/6/foreign-data-wrapper/) for the full syntax, including per-user credentials in the user mapping and standard FDW grants.
 
 ### Confirming parallel execution
@@ -446,4 +464,6 @@ A `Foreign Scan` under a `Gather Motion` with `segments: <N>` matching your WHPG
 
 - **Connection refused from a segment host:** confirm `listen_host` in ClickHouse's configuration covers the interface that segment reaches it on, and that the segment can resolve and reach the ClickHouse host over the network.
 - **Authentication errors even with correct credentials:** check `jdbc.url` for a `?user=` or `?password=` parameter. Either one overrides `jdbc.user`/`jdbc.password` from `jdbc-site.xml` and is a common source of confusing auth failures.
+- **Write fails with a ClickHouse access-denied error:** the ClickHouse user needs `INSERT` granted, not just `SELECT`. See [Preparing ClickHouse for incoming connections](#preparing-clickhouse-for-incoming-connections).
+- **`pxf_fdw` writes fail with a `NullPointerException`:** upgrade the driver jar to 0.10.0 or later.
 - **PXF stops responding after a large read:** the PXF JVM can run out of heap and terminate itself rather than throttling. Run `pxf restart` on the affected host, or tune the JVM heap as described in [Managing the PXF cluster](/pxf/6/administering/) if your ClickHouse tables are large.
