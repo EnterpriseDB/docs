@@ -33,8 +33,7 @@ full data transfer to the new node.
 
 ## Preparing for a rolling upgrade
 
-Prepare for your cluster running mixed versions while the upgrade is in progress, and, if you use CAMO, for
-the extra steps a CAMO-enabled cluster needs.
+Prepare for your cluster running mixed versions while the upgrade is in progress.
 
 ### Handling mixed-version behavior
 
@@ -50,73 +49,6 @@ example a PGD major upgrade followed by a Postgres major upgrade, let the first 
 every node upgraded, before starting the next. You can use a rolling upgrade for a major version upgrade of
 the software, but not to change the Postgres variant, since mixing PostgreSQL, EDB Postgres Extended, and EDB
 Postgres Advanced Server within one cluster isn't supported.
-
-### Upgrading a CAMO-enabled cluster
-
-Upgrading a CAMO-enabled cluster requires upgrading CAMO groups one by one, disabling CAMO protection for the
-group being upgraded and reconfiguring it using [commit
-scope](/pgd/current/commit-scopes/commit-scopes/)-based settings.
-
-Upgrade two nodes that constitute a CAMO pair to PGD 6 as follows:
-
-1.  Ensure `bdr.enable_camo` remains `off` for transactions on either of the two nodes, or redirect clients
-    away from the two nodes. Removing the CAMO pairing while attempting to use CAMO leads to errors and
-    prevents further transactions.
-
-    ```sql
-    SHOW bdr.enable_camo;
-    ```
-
-1.  Deconfigure CAMO for BDR 4.x by using `bdr.remove_camo_pair` to uncouple the pair:
-
-    ```sql
-    SELECT bdr.remove_camo_pair('<node_group>', '<node1>', '<node2>');
-    ```
-
-1.  Upgrade the two nodes, using whichever procedure applies to what you're upgrading. See [Next
-    steps](#next-steps) below.
-
-1.  Create a dedicated node group for the two nodes and move them into that node group:
-
-    ```sql
-    SELECT bdr.create_node_group('<node_group>', parent_group_name := '<parent_group>');
-    ```
-
-    Then, on each of the two nodes:
-
-    ```sql
-    SELECT bdr.switch_node_group('<node_group>');
-    ```
-
-1.  Create a [commit scope](/pgd/current/commit-scopes/commit-scopes/) for this node group, and thus the
-    pair of nodes, to use CAMO:
-
-    ```sql
-    SELECT bdr.create_commit_scope(
-      commit_scope_name := '<scope_name>',
-      origin_node_group := '<node_group>',
-      rule := 'CAMO'
-    );
-    ```
-
-1.  Reactivate CAMO protection, either by setting a `default_commit_scope` for the group:
-
-    ```sql
-    SELECT bdr.alter_node_group_option(
-      node_group_name := '<node_group>',
-      config_key := 'default_commit_scope',
-      config_value := '<scope_name>'
-    );
-    ```
-
-    or by changing the clients to explicitly set `bdr.commit_scope` instead of `bdr.enable_camo` for their
-    sessions or transactions:
-
-    ```sql
-    SET bdr.commit_scope = '<scope_name>';
-    ```
-
-1.  Allow clients to connect to the CAMO-protected nodes again, if necessary.
 
 ## Reducing risk during a rolling upgrade
 

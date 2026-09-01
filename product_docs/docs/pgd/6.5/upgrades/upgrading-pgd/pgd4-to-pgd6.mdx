@@ -78,12 +78,6 @@ the trade-offs against the rolling upgrade described below.
 
 ## Upgrading with a rolling upgrade, in place
 
-!!! Note
-If your cluster uses CAMO, see [Upgrading a CAMO-enabled
-cluster](/pgd/current/upgrades/planning_upgrade/#upgrading-a-camo-enabled-cluster) before performing this
-procedure.
-!!!
-
 Perform an in place upgrade so HARP Proxy continues routing on all nodes until the entire cluster is upgraded to PGD 6. It keeps
 using its own leader-election mechanism throughout, since a 4.x cluster doesn't have a write leader. Start
 the upgrade on a node that isn't the current HARP Proxy leader, where `<location>` is the HARP location
@@ -92,6 +86,72 @@ name (a data center or site defined in the HARP configuration, not a node name):
 ```shell
 harpctl get leader <location>
 ```
+
+### Upgrading CAMO pairs
+
+If your cluster uses CAMO, upgrade each CAMO pair as a unit. BDR 4.x configures CAMO through the
+`bdr.camo_pairs` catalog, which doesn't carry over to PGD 6. You must deconfigure each pair before upgrading
+either of its two nodes, then recreate CAMO protection on the new commit-scope-based configuration once
+both nodes are upgraded. See [Commit At Most Once](/pgd/current/commit-scopes/camo/) for background on how
+CAMO pairs protect transactions.
+
+1.  Ensure `bdr.enable_camo` remains `off` for transactions on either of the two nodes, or redirect clients
+    away from the two nodes. Removing the CAMO pairing while attempting to use CAMO leads to errors and
+    prevents further transactions.
+
+    ```sql
+    SHOW bdr.enable_camo;
+    ```
+
+1.  Deconfigure CAMO by using `bdr.remove_camo_pair` to uncouple the pair:
+
+    ```sql
+    SELECT bdr.remove_camo_pair('<node_group>', '<node1>', '<node2>');
+    ```
+
+1.  Upgrade both nodes in the pair using the steps below, then return here to reconfigure CAMO.
+
+1.  Create a dedicated node group for the two nodes and move them into that node group:
+
+    ```sql
+    SELECT bdr.create_node_group('<node_group>', parent_group_name := '<parent_group>');
+    ```
+
+    Then, on each of the two nodes:
+
+    ```sql
+    SELECT bdr.switch_node_group('<node_group>');
+    ```
+
+1.  Create a [commit scope](/pgd/current/commit-scopes/commit-scopes/) for this node group, and thus the
+    pair of nodes, to use CAMO:
+
+    ```sql
+    SELECT bdr.create_commit_scope(
+      commit_scope_name := '<scope_name>',
+      origin_node_group := '<node_group>',
+      rule := 'CAMO'
+    );
+    ```
+
+1.  Reactivate CAMO protection, either by setting a `default_commit_scope` for the group:
+
+    ```sql
+    SELECT bdr.alter_node_group_option(
+      node_group_name := '<node_group>',
+      config_key := 'default_commit_scope',
+      config_value := '<scope_name>'
+    );
+    ```
+
+    or by changing the clients to explicitly set `bdr.commit_scope` instead of `bdr.enable_camo` for their
+    sessions or transactions:
+
+    ```sql
+    SET bdr.commit_scope = '<scope_name>';
+    ```
+
+1.  Allow clients to connect to the CAMO-protected nodes again, if necessary.
 
 For each node, one at a time, starting with a node that isn't the current HARP Proxy leader:
 
