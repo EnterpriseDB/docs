@@ -9,13 +9,13 @@ date: 31 August 2026
 intro: |
   Version 2.2.0 adds the `pgd` installation scenario, collects the container registry settings of a `HybridControlPlane` under a single `spec.registry` block, changes what the operator installs when `spec.scenarios` is omitted, and reports the resources that blocked a failed component deploy in the resource status.
 highlights: |
-  - **`spec.scenarios` accepts a new `pgd` value, and operator 2.2.0 is the earliest version that does.** An HM version that moves Postgres Distributed components into a `pgd` scenario can't run on an earlier operator. Nothing adds `pgd` for you.
+  - **`spec.scenarios` accepts a new `pgd` value, and operator 2.2.0 is the earliest version that does.** An HM installation whose version keeps Postgres Distributed (DHA) components in a `pgd` scenario can't run on an earlier operator. The operator only accepts the value — `pgd` installs those components on HM 2026.9 or later, and it is never added for you.
 
   - **A `HybridControlPlane` that omits `spec.scenarios` now installs only the `core` scenario.** Earlier operator versions filled in a default set. List the scenarios you need explicitly before you upgrade.
 
   - **Registry configuration moves to `spec.registry`, and the fields it replaces are deprecated.** `spec.imageRegistry`, `spec.imagePullSecrets`, and the registry settings under `spec.kappController` and `spec.beaconAgent.provisioning` are still honored, but they now produce a deprecation warning and will be removed in a future API version.
 
-  - **A control plane waiting for an `HMRegistry` no longer stays stale until the operator restarts.** Repairing a registry that was rejected for a reason that left its URIs unchanged did not wake the control plane, so an installation or upgrade stayed pending.
+  - **A control plane waiting for an `HMRegistry` no longer stays stale until the operator restarts.** Fixed an issue where repairing a registry that was rejected for a reason that left its URIs unchanged didn't wake the control plane, so an installation or upgrade stayed pending.
 relnotes:
 - relnote: |
     Only the `core` scenario is added when `spec.scenarios` is omitted
@@ -29,7 +29,7 @@ relnotes:
 - relnote: |
     `pgd` installation scenario
   details: |
-    **Action required.** `spec.scenarios` accepts a new `pgd` value, covering the operator that manages Postgres Distributed clusters. Nothing adds `pgd` for you, and no other scenario pulls it in. An installation that uses those clusters and upgrades to an HM version whose collections have moved them out of `core` must add `pgd` — once the operator is on 2.2.0 or later, and before bumping `spec.version` — or the components are removed along with the data the clusters hold. Operator versions before 2.2.0 don't recognize the value, so add it only after upgrading the operator and read the resource back to confirm it persisted.
+    **Action required.** `spec.scenarios` accepts a new `pgd` value, covering the operator that manages Postgres Distributed (DHA) clusters. `pgd` is not added by default, and no other scenario pulls it in. Operator 2.2.0 only accepts the value: it installs those components on an HM version that ships a `pgd` collection, which is 2026.9 or later, so setting it on an earlier HM version has no effect. An installation that uses DHA clusters and upgrades to an HM version whose collections have moved them out of `core` must add `pgd` — once the operator is on 2.2.0 or later, and before bumping `spec.version` — or the components are removed along with the data the clusters hold. Operator versions before 2.2.0 don't recognize the value, so add it only after upgrading the operator and read the resource back to confirm it persisted.
   jira: UPM-127822
   addresses:
   type: Feature
@@ -74,7 +74,7 @@ relnotes:
 - relnote: |
     A control plane waiting for an `HMRegistry` could stay stale until the operator restarted
   details: |
-    The operator re-reconciled a `HybridControlPlane` only when the URIs of the `HMRegistry` it references changed. Repairing a registry that had been rejected for some other reason — an invalid volume size, for example — left the URIs untouched, so the control plane was never woken and its installation or upgrade stayed pending until the operator was restarted. The control plane is now retried every 30 seconds while it waits, and `status.message` names the registry it is waiting for until the registry is ready.
+    Fixed an issue where the operator re-reconciled a `HybridControlPlane` only when the URIs of the `HMRegistry` it references changed. Repairing a registry that had been rejected for some other reason — an invalid volume size, for example — left the URIs untouched, so the control plane was never woken and its installation or upgrade stayed pending until the operator was restarted. The control plane is now retried every 30 seconds while it waits, and `status.message` names the registry it is waiting for until the registry is ready.
   jira: UPM-125668
   addresses:
   type: Bug Fix
@@ -83,7 +83,7 @@ relnotes:
 - relnote: |
     Postflight checks logged endless watch failures after a component was withdrawn
   details: |
-    Postflight checks now read through the API server directly rather than through the operator's cache. Checking a component whose custom resource definition the running HM version no longer installs used to start a cache watch that retried for the lifetime of the operator, filling the log with list failures for a type that no longer exists.
+    Fixed a bug where checking a component whose custom resource definition (CRD) is no longer installed in the current HM version triggered a cache watch that retried indefinitely, flooding the operator's logs with failures for a type that no longer exists. Postflight checks now query the API server directly rather than going through the operator's cache.
   jira: UPM-111855
   addresses:
   type: Bug Fix
@@ -92,7 +92,7 @@ relnotes:
 - relnote: |
     AWS load balancer annotations are no longer forced on EKS installations that disable load balancers
   details: |
-    On EKS the operator defaults five AWS load balancer annotations on the `istio-ingressgateway` service: `aws-load-balancer-type`, `aws-load-balancer-scheme`, `aws-load-balancer-nlb-target-type`, `aws-load-balancer-target-group-attributes`, and `load-balancer-source-ranges`. It no longer adds them when `spec.globalParameters.load_balancer_mode` is `disabled` — the mode a NodePort-based installation uses — where earlier versions added them to every EKS installation and left one that provisions no load balancer carrying annotations that do not apply to it. Under every other mode the defaults still apply, and a value you set yourself in `spec.resourceAnnotations` is kept as it was.
+    Fixed a bug where NodePort-based EKS installations (`spec.globalParameters.load_balancer_mode: disabled`) still received AWS load balancer annotations on the `istio-ingressgateway` service — `aws-load-balancer-type`, `aws-load-balancer-scheme`, `aws-load-balancer-nlb-target-type`, `aws-load-balancer-target-group-attributes`, and `load-balancer-source-ranges` — even though these installations provision no load balancer. The operator no longer adds these defaults when load balancing is disabled. All other modes still get the defaults, and any value you set yourself in `spec.resourceAnnotations` is unaffected.
   jira: UPM-128839
   addresses:
   type: Bug Fix
