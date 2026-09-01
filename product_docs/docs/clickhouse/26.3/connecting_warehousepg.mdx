@@ -374,7 +374,7 @@ Create an external table over the ClickHouse table, then query it like any other
 
 ```sql
 -- in WarehousePG
-CREATE EXTERNAL TABLE ch_events (
+CREATE EXTERNAL TABLE ch_events_ext (
     id         text,
     event_type text,
     event_time timestamp,
@@ -383,7 +383,7 @@ CREATE EXTERNAL TABLE ch_events (
 LOCATION ('pxf://<database>.<table>?PROFILE=Jdbc&SERVER=clickhouse')
 FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import');
 
-SELECT * FROM ch_events;
+SELECT * FROM ch_events_ext;
 ```
 
 !!!info Note
@@ -395,7 +395,7 @@ Write data back to ClickHouse with a separate writable external table at the sam
 
 ```sql
 -- in WarehousePG
-CREATE WRITABLE EXTERNAL TABLE ch_events_write (
+CREATE WRITABLE EXTERNAL TABLE ch_events_write_ext (
     id         text,
     event_type text,
     event_time timestamp,
@@ -404,7 +404,7 @@ CREATE WRITABLE EXTERNAL TABLE ch_events_write (
 LOCATION ('pxf://<database>.<table>?PROFILE=Jdbc&SERVER=clickhouse')
 FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
 
-INSERT INTO ch_events_write VALUES ('evt-1', 'purchase', now(), 99.99);
+INSERT INTO ch_events_write_ext VALUES ('evt-1', 'purchase', now(), 99.99);
 ```
 
 For general PXF and JDBC server configuration, including connection pooling and other JDBC settings, see [Connecting to a SQL database over JDBC](/pxf/6/connecting/jdbc/). For settings specific to the ClickHouse driver itself, see [ClickHouse's JDBC driver documentation](https://clickhouse.com/docs/integrations/language-clients/java/jdbc).
@@ -417,29 +417,29 @@ Query the same server through standard `CREATE FOREIGN TABLE` syntax instead, us
 -- in WarehousePG
 CREATE EXTENSION pxf_fdw;
 
-CREATE SERVER clickhouse_fdw
+CREATE SERVER clickhouse_svr
     FOREIGN DATA WRAPPER jdbc_pxf_fdw
     OPTIONS (config 'clickhouse');
 
-CREATE USER MAPPING FOR CURRENT_USER SERVER clickhouse_fdw;
+CREATE USER MAPPING FOR CURRENT_USER SERVER clickhouse_svr;
 
-CREATE FOREIGN TABLE ch_events_fdw (
+CREATE FOREIGN TABLE ch_events_ft (
     id         text,
     event_type text,
     event_time timestamp,
     value      float8
 )
-SERVER clickhouse_fdw
+SERVER clickhouse_svr
 OPTIONS (resource '<database>.<table>');
 
-SELECT * FROM ch_events_fdw;
+SELECT * FROM ch_events_ft;
 ```
 
 A `pxf_fdw` foreign table supports both reading and writing, unlike a `pxf://` external table, which needs a separate `READABLE`/`WRITABLE` definition for each direction. Insert directly into the same foreign table:
 
 ```sql
 -- in WarehousePG
-INSERT INTO ch_events_fdw VALUES ('evt-1', 'purchase', now(), 99.99);
+INSERT INTO ch_events_ft VALUES ('evt-1', 'purchase', now(), 99.99);
 ```
 
 See [Querying data with the PXF foreign data wrapper](/pxf/6/foreign-data-wrapper/) for the full syntax, including per-user credentials in the user mapping and standard FDW grants.
@@ -449,12 +449,12 @@ See [Querying data with the PXF foreign data wrapper](/pxf/6/foreign-data-wrappe
 Confirm parallel execution with `EXPLAIN`. Both interfaces read through the same PXF service, with each segment's PXF instance querying ClickHouse independently:
 
 ```sql
-EXPLAIN SELECT * FROM ch_events;
+EXPLAIN SELECT * FROM ch_events_ext;
 __OUTPUT__
                         QUERY PLAN
 -----------------------------------------------------------
  Gather Motion 4:1  (slice1; segments: 4)
-   ->  Foreign Scan on ch_events
+   ->  Foreign Scan on ch_events_ext
  Optimizer: Postgres query optimizer
 ```
 
