@@ -190,11 +190,11 @@ See [Observability](observability) for more on monitoring pipeline health.
 
 A short walkthrough using a three-document source where one row has a corrupt PDF, one parses but produces an oversized chunk, and a third hits a model rate limit on the embedding step.
 
+Run the pipeline. None of the three failures abort the batch. Then inspect the resulting errors:
+
 ```sql
--- 1. Run the pipeline. None of the three failures abort the batch.
 SELECT aidb.run_pipeline('my_pipeline');
 
--- 2. Inspect the resulting errors.
 SELECT id, source_id, error_category
 FROM aidb.get_error_logs('my_pipeline');
 __OUTPUT__
@@ -204,8 +204,11 @@ __OUTPUT__
   2 | doc_42    | RecordPermanent
   1 | doc_7     | RecordPermanent
 (3 rows)
+```
 
--- 3. The pipeline now reports PartialErrors and surfaces the counts.
+The pipeline now reports `PartialErrors` and surfaces the counts:
+
+```sql
 SELECT pipeline, "Status", "count(record errors)", "count(blocking errors)"
 FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
 __OUTPUT__
@@ -213,29 +216,35 @@ __OUTPUT__
 --------------+---------------+----------------------+------------------------
  my_pipeline  | PartialErrors |                    3 |                      0
 (1 row)
+```
 
--- 4a. After fixing the upstream rate-limit issue, requeue the rate-limited row.
---     This marks the source dirty; it doesn't re-process on its own.
+After fixing the upstream rate-limit issue, requeue the rate-limited row. This marks the source dirty; it doesn't re-process on its own:
+
+```sql
 SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[3]);
 __OUTPUT__
  error_id |  action
 ----------+----------
         3 | requeued
 (1 row)
+```
 
--- 4b. Drain the requeued row. A Background pipeline picks this up automatically;
---     Disabled or Live pipelines need an explicit call.
+Drain the requeued row — a Background pipeline picks this up automatically; Disabled or Live pipelines need an explicit call — then dismiss the two permanent failures after triage:
+
+```sql
 SELECT aidb.run_pipeline('my_pipeline');
 
--- 5. Dismiss the two permanent failures after triage.
 SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 2]);
 __OUTPUT__
  clear_error_logs
 ------------------
                 2
 (1 row)
+```
 
--- 6. Status returns to UpToDate.
+The status returns to `UpToDate`:
+
+```sql
 SELECT pipeline, "Status" FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
 __OUTPUT__
    pipeline   |  Status

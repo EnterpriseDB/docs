@@ -1,0 +1,208 @@
+---
+title: Tools reference
+navTitle: Tools
+description: API reference for AIDB's tool catalog, SQL tool registration, and MCP server management.
+---
+
+Reference for tool-related functions, views, and types. For guide-style documentation, see [Tools](../tools). For the full native tool catalog, see [Native tools](../tools/native-tools).
+
+## Catalog views
+
+### `aidb.tools`
+
+The unified, read-only catalog of every tool AIDB knows about — the union of native tools, registered SQL tools, and cached MCP tools.
+
+| Column        | Type    | Description                                                                                          |
+|----------------|---------|----------------------------------------------------------------------------------------------------------|
+| `name`        | text    | The tool's name.                                                                                      |
+| `description` | text    | Shown to the model as part of the tool's definition.                                                  |
+| `tool_type`   | text    | `'native_tool'`, `'sql_tool'`, or `'mcp_tool'`.                                                        |
+| `params`      | jsonb   | For `native_tool`/`sql_tool`: an array of `{name, type, description}` objects. For `mcp_tool`: the server's raw JSON Schema `inputSchema`. |
+| `read_only`   | boolean | Whether the tool is known to never write. Always `false` for `mcp_tool` rows — see [read-only mode](../agents/conversing-with-agents#read-only-mode). |
+
+### `aidb.sql_tool_registry`
+
+Backs registered SQL tools. `aidb.tools` is the union view most queries should use instead; query this directly to see a SQL tool's stored query text.
+
+| Column             | Type              | Description                                          |
+|----------------------|-------------------|---------------------------------------------------------|
+| `name`               | text              | Unique tool name (primary key).                        |
+| `description`        | text              | Shown to the model.                                    |
+| `query_text`         | text              | The stored SQL statement, with `${name}` placeholders. |
+| `read_only`          | boolean           | Whether the tool is enforced as read-only.              |
+| `return_type_hint`   | `aidb.ToolParam[]`| Documented return shape. Not currently surfaced to the model. |
+| `params`             | `aidb.ToolParam[]`| The tool's declared parameters.                         |
+| `created_at`         | timestamp         | Creation time.                                          |
+| `updated_at`         | timestamp         | Last update time.                                       |
+
+### `aidb.mcp_registry`
+
+Registered external MCP servers.
+
+| Column          | Type       | Description                                                                  |
+|------------------|------------|---------------------------------------------------------------------------------|
+| `name`          | text       | Unique server name (primary key).                                            |
+| `url`           | text       | The server's MCP endpoint.                                                    |
+| `transport`     | text       | `'streamable_http'` or `'sse'`.                                               |
+| `headers`       | jsonb      | Stored request headers. Not readable by `aidb_users` (may hold secrets).      |
+| `headers_env`   | text       | Environment variable name to read headers from instead. Mutually exclusive with `headers`. |
+| `tool_filter`   | text[]     | Tool names imported from this server, if filtered.                           |
+| `created_at`    | timestamp  | Registration time.                                                            |
+| `updated_at`    | timestamp  | Last update time.                                                             |
+
+---
+
+## Tool management functions
+
+### `aidb.create_sql_tool`
+
+Registers a parameterized SQL query as a tool.
+
+#### Parameters
+
+| Parameter           | Type    | Default  | Description                                                                    |
+|----------------------|---------|----------|------------------------------------------------------------------------------------|
+| `name`               | TEXT    | Required | Unique name for the tool.                                                       |
+| `description`        | TEXT    | Required | Shown to the model as part of the tool's definition.                            |
+| `sql_statement`      | TEXT    | Required | The query to run, with `${name}` placeholders for each declared parameter.      |
+| `params`             | JSONB   | Required | The tool's parameters, built with `aidb.tool_params()`.                        |
+| `read_only`          | BOOLEAN | `true`   | If `true`, reject the statement at registration time unless it's provably read-only. |
+| `return_type_hint`   | JSONB   | NULL     | Documents the query's return shape. Not currently surfaced to the model.        |
+
+#### Returns
+
+`TEXT` — the tool's name, on success. Raises if the name is already taken (by any tool type) or the statement isn't a single, invocable, read-only-compliant (if `read_only => true`) statement.
+
+#### Example
+
+```sql
+SELECT aidb.create_sql_tool(
+    name             => 'orders_by_customer',
+    description      => 'Look up recent orders for a customer by id.',
+    sql_statement    => 'SELECT id, status, total FROM orders WHERE customer_id = ${customer_id} ORDER BY created_at DESC LIMIT ${limit}',
+    params           => aidb.tool_params(
+        aidb.tool_param('customer_id', 'INT', 'The customer''s id.'),
+        aidb.tool_param('limit', 'INT', 'Maximum number of orders to return.')
+    ),
+    read_only        => true,  -- optional; enforced, not just descriptive. Default: true
+    return_type_hint => NULL   -- optional; documents the returned row shape, same aidb.tool_params() shape as `params`. Default: NULL
+);
+```
+
+---
+
+### `aidb.delete_tool`
+
+Deletes a SQL tool or an MCP server registration by name (removing every tool the server advertised along with it). Built-in native tools can't be deleted.
+
+#### Parameters
+
+| Parameter | Type | Description             |
+|-----------|------|---------------------------|
+| `name`    | TEXT | The tool or server name. |
+
+#### Returns
+
+`TEXT` — the deleted name, on success. Raises if no such tool or server exists, or if `name` is a native tool.
+
+---
+
+### `aidb.import_mcp_tools`
+
+Registers an external MCP server and imports the tools it advertises.
+
+#### Parameters
+
+| Parameter      | Type    | Default              | Description                                                                          |
+|-----------------|---------|----------------------|------------------------------------------------------------------------------------------|
+| `name`         | TEXT    | Required             | Unique name for the server registration.                                              |
+| `url`          | TEXT    | Required             | The server's MCP endpoint URL.                                                        |
+| `transport`    | TEXT    | `'streamable_http'`  | `'streamable_http'` or `'sse'` — only `'streamable_http'` is fully supported today.    |
+| `headers`      | JSONB   | NULL                 | Request headers to send. Mutually exclusive with `headers_env`.                       |
+| `tool_filter`  | TEXT[]  | NULL                 | Import only these tool names. Omit to import everything the server advertises.        |
+| `headers_env`  | TEXT    | NULL                 | Environment variable holding the headers JSON, read fresh on each use instead of storing it. Mutually exclusive with `headers`. Name must start with the [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) prefix. |
+
+#### Returns
+
+`TEXT` — the server's name, on success. Raises if the name is taken, the URL is unreachable, or no advertised tool matches `tool_filter`.
+
+#### Example
+
+```sql
+SELECT aidb.import_mcp_tools(
+    name        => 'weather',
+    url         => 'https://weather.example.com/mcp',
+    transport   => 'streamable_http',  -- optional; 'streamable_http' or 'sse'. Default: 'streamable_http'
+    headers     => NULL,               -- optional; request headers to send, for example, an auth token. Mutually exclusive with headers_env. Default: NULL
+    tool_filter => NULL,               -- optional; import only these tool names. Default: NULL (import everything the server advertises)
+    headers_env => NULL                -- optional; env var holding the headers JSON instead of storing it. Mutually exclusive with headers. Default: NULL
+);
+```
+
+---
+
+### `aidb.refresh_mcp_tools`
+
+Re-fetches an already-registered MCP server's advertised tools and refreshes the cache.
+
+#### Parameters
+
+| Parameter | Type | Description                    |
+|-----------|------|----------------------------------|
+| `name`    | TEXT | The registered server's name.   |
+
+#### Returns
+
+`INTEGER` — the number of tools now cached (after `tool_filter` applies).
+
+---
+
+### `aidb.get_mcp_tools`
+
+Converts every currently registered tool (native, SQL, and MCP alike) into an MCP `tools/list`-shaped descriptor.
+
+#### Returns
+
+`TABLE(name TEXT, description TEXT, input_schema JSONB)` — one row per tool in `aidb.tools`.
+
+---
+
+## Parameter helpers
+
+### `aidb.tool_param`
+
+Builds one SQL tool parameter.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                          |
+|-----------------|------|----------|-----------------------------------------|
+| `name`          | TEXT | Required | The parameter's name.                  |
+| `type`          | TEXT | Required | The parameter's SQL type.              |
+| `description`   | TEXT | Required | Description shown to the model.        |
+
+#### Returns
+
+`JSONB` — pass one or more of these to `aidb.tool_params()`.
+
+---
+
+### `aidb.tool_params`
+
+Combines one or more `aidb.tool_param()` results, or (called with no arguments) declares an empty parameter list.
+
+#### Parameters
+
+| Parameter | Type              | Description                              |
+|-----------|-------------------|---------------------------------------------|
+| `params`  | VARIADIC JSONB[]  | Zero or more `aidb.tool_param()` results.   |
+
+#### Returns
+
+`JSONB` — pass to `aidb.create_sql_tool()`'s `params` or `return_type_hint`.
+
+---
+
+### `aidb.param` / `aidb.params`
+
+Generic parameter-spec constructors, used by native tools that accept an enum-constrained argument. `aidb.param()` additionally accepts `enum_values TEXT[]`. Not typically needed directly — `aidb.tool_param()`/`aidb.tool_params()` are the constructors for `create_sql_tool()`.

@@ -1,0 +1,98 @@
+---
+title: Semantic knowledge bases
+navTitle: Semantic knowledge bases
+description: Index your database's schema metadata into a semantic knowledge base for natural-language schema search, agent tools, and text-to-SQL.
+navigation:
+- searching
+- semantic-aliases
+- text-to-sql
+- example
+---
+
+A semantic knowledge base (semantic KB) indexes your database's *schema* (tables, views, columns, and their comments) into a searchable vector store, so you or an [agent](../agents) can find the right relations and columns by meaning rather than by exact name. It's the foundation for **text-to-SQL**: turning a natural-language question into a correct SQL query against your own schema.
+
+## Semantic KB vs. vector knowledge base
+
+A semantic KB and a [vector knowledge base](../knowledge-bases) both store embeddings and answer similarity searches, but they index different things and solve different problems.
+
+|                 | Vector knowledge base                                                                                  | Semantic knowledge base                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| What it embeds  | Your **data** (rows, documents, images)                                                                | Your **schema** (table, view, and column metadata)          |
+| What you search | Content, by meaning                                                                                    | Schema structure, by meaning                                |
+| Created by      | `aidb.create_pipeline()` with a [`KnowledgeBase` step](../data-pipelines/pipeline-steps#knowledgebase) | `aidb.create_semantic_kb()`                                 |
+| Typical use     | Retrieval-augmented generation, semantic search                                                        | Natural-language schema discovery, agent tools, text-to-SQL |
+
+If you want to search *what's in* your database, use a vector knowledge base. If you want to search *how your database is shaped*, to find the tables and columns a question maps to, use a semantic KB.
+
+## What a semantic KB indexes
+
+When a semantic KB crawls its schemas, it embeds one entry per structural element:
+
+- **Tables** contribute their table definition and any table comment.
+- **Views** contribute their view definition and any view comment.
+- **Columns** contribute each column's definition (name, type, nullability, default) and any column comment.
+
+Each entry has an `entity_type` of `Table`, `View`, or `Column`. Comments matter: a well-commented schema produces a far more useful semantic KB, because the natural-language intent in `COMMENT ON` statements is embedded alongside the structural definition and can be matched directly.
+
+## Create and manage a semantic KB
+
+Create a semantic KB over one or more schemas with `aidb.create_semantic_kb()`. It embeds the schema metadata with the model you pass, builds the KB's internal vector table, and crawls the schemas immediately:
+
+```sql
+SELECT aidb.create_semantic_kb(
+    name    => 'analytics_kb',
+    model   => 'my_embedding_model',
+    schemas => ARRAY['sales'],
+    auto_processing => 'Live'
+);
+```
+
+`model` is the embedding model and is always required. A semantic KB uses a **single embedding model** for all of its metadata (and for any [semantic aliases](semantic-aliases) that are members of it), so search always compares vectors in the same space.
+
+The management functions are:
+
+| Function                                                                                        | Purpose                                                                                                  |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `aidb.create_semantic_kb(name, model, schemas, auto_processing, bypass_triggers, vector_index)` | Create a KB over one or more schemas. Returns the KB name.                                               |
+| `aidb.list_semantic_kbs()`                                                                      | List every KB with its model, schemas, and processing mode.                                              |
+| `aidb.refresh_semantic_kb(name)`                                                                | Re-crawl the KB's schemas from scratch to pick up structural changes.                                    |
+| `aidb.update_semantic_kb_auto_processing(name, auto_processing)`                                | Change how the KB keeps itself current.                                                                  |
+| `aidb.semantic_kb_stats(kb_name)`                                                               | Return entity counts (`total`, `tables`, `views`, `columns`) and the number of `pending` schema changes. |
+| `aidb.delete_semantic_kb(name)`                                                                 | Delete a KB and its indexed metadata.                                                                    |
+
+### The single-KB shortcut
+
+When exactly one semantic KB exists, you can omit `name`/`kb_name` from every function, and the call resolves to that KB. An omitted name at creation registers the KB under the fixed name `default_semkb`. Once a second KB exists, calls that omit the name fail with an ambiguity error, so pass the name explicitly from then on.
+
+## Keeping a KB current
+
+The `auto_processing` mode controls how a KB reacts to schema changes:
+
+| Mode                 | Behavior                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `Disabled` (default) | No automatic updates. Call `aidb.refresh_semantic_kb()` when the schema changes.            |
+| `Live`               | DDL triggers re-crawl affected relations as soon as the schema changes.                     |
+| `Background`         | A background worker processes queued DDL events, so re-indexing happens off the write path. |
+
+Internally, `Background` mode is driven by AIDB's pipeline machinery, where a `SemanticKB` pipeline step consumes the queued schema-change events. You don't create or manage that pipeline yourself; `aidb.create_semantic_kb()` sets it up.
+
+## How you use a semantic KB
+
+- **Directly, in SQL.** Call the [search functions](searching) (`aidb.semantic_kb_search()` and friends) to find the schema entities a question maps to.
+- **From an agent.** The KB search functions are registered as native [agent tools](../tools/native-tools#semantic-knowledge-bases), so an AIDB agent can discover schema and answer questions with [text-to-SQL](text-to-sql).
+- **Through saved queries.** Capture recurring questions as [semantic aliases](semantic-aliases): parameterized SQL with a natural-language description that search can find by meaning.
+
+## In this section
+
+| Page                                 | What it covers                                                                                 |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| [Searching a semantic KB](searching) | The schema-search functions: `semantic_kb_search`, `get_metadata`, comment search, and filters |
+| [Semantic aliases](semantic-aliases) | Named, parameterized SQL queries with vectorized descriptions, enabling reusable, governed text-to-SQL |
+| [Text-to-SQL](text-to-sql)           | How an AIDB agent uses the KB's search tools to discover schema and generate correct SQL       |
+| [Example](example)                   | A worked end-to-end example over a sample schema                                               |
+
+## Related documentation
+
+- [Agents](../agents), which covers building the in-database agents that call semantic KB search functions as tools.
+- [Semantic knowledge base tools](../tools/native-tools#semantic-knowledge-bases), which lists the native tool catalog entries for the KB functions.
+- [Knowledge bases](../knowledge-bases), which covers vector knowledge bases for semantic and hybrid search over your data.
