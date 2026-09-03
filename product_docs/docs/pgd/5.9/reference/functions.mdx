@@ -254,12 +254,39 @@ version of the exported snapshot, then an error is raised.
 
 ### `bdr.get_consensus_status`
 
-Returns status information about the current consensus (Raft) worker.
+Returns status information about the current consensus (Raft) worker, as a JSON document.
+
+#### Synopsis
+
+```sql
+bdr.get_consensus_status(node_group_name text DEFAULT NULL)
+```
+
+#### Parameters
+
+| Parameter         | Description                                                                        |
+|-------------------|--------------------------------------------------------------------------------------|
+| `node_group_name` | Name of the node group to report on. If NULL, reports on the top-level node group. |
 
 ### `bdr.get_raft_status`
 
-Returns status information about the current consensus (Raft) worker.
-Alias for `bdr.get_consensus_status`.
+Returns status information about the current consensus (Raft) worker, as a JSON document.
+Both this function and `bdr.get_consensus_status` are backed by the same
+underlying implementation, so calling `bdr.get_raft_status` without the
+second argument is equivalent to calling `bdr.get_consensus_status`.
+
+#### Synopsis
+
+```sql
+bdr.get_raft_status(node_group_name text DEFAULT NULL, include_node_info boolean DEFAULT false)
+```
+
+#### Parameters
+
+| Parameter           | Description                                                                        |
+|---------------------|--------------------------------------------------------------------------------------|
+| `node_group_name`   | Name of the node group to report on. If NULL, reports on the top-level node group. |
+| `include_node_info` | If `true`, also includes per-node information (such as heartbeat response time and clock drift) in the returned JSON. Defaults to `false`. |
 
 ### `bdr.raft_leadership_transfer`
 
@@ -319,19 +346,21 @@ If you are using [Optimized Topology](../nodes/subscriber_only/optimizing-so), w
 #### Synopsis
 
 ```sql
-bdr.wait_slot_confirm_lsn(slot_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
+bdr.wait_slot_confirm_lsn(slotname name, target pg_lsn)
 ```
 
 #### Notes
 
 Requires `bdr_application` privileges to use.
 
+Both parameters are required. Pass `NULL` explicitly for either one to get the "wait for all slots" or "use the current write LSN" behavior described above — there's no default that lets you omit them.
+
 #### Parameters
 
-| Parameter    | Description                                                                 |
-|--------------|-----------------------------------------------------------------------------|
-| `slot_name`  | Name of the replication slot to wait for. If NULL, waits for all PGD slots. |
-| `target_lsn` | LSN to wait for. If NULL, uses the current write LSN on the local node.     |
+| Parameter  | Description                                                                 |
+|------------|-----------------------------------------------------------------------------|
+| `slotname` | Name of the replication slot to wait for. If NULL, waits for all PGD slots. |
+| `target`   | LSN to wait for. If NULL, uses the current write LSN on the local node.     |
 
 ### `bdr.wait_node_confirm_lsn`
 
@@ -353,19 +382,21 @@ If a node is currently down, isn't updating, or simply can't be connected to, th
 #### Synopsis
 
 ```sql
-bdr.wait_node_confirm_lsn(node_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
+bdr.wait_node_confirm_lsn(nodename name, target pg_lsn)
 ```
 
 #### Parameters
 
-| Parameter    | Description                                                                 |
-|--------------|-----------------------------------------------------------------------------|
-| `node_name`  | Name of the node to wait for. If NULL, waits for all nodes.                 |
-| `target_lsn` | LSN to wait for. If NULL, uses the current wal_flush_lsn on the local node. |
+| Parameter  | Description                                                                 |
+|------------|-----------------------------------------------------------------------------|
+| `nodename` | Name of the node to wait for. If NULL, waits for all nodes.                 |
+| `target`   | LSN to wait for. If NULL, uses the current wal_flush_lsn on the local node. |
 
 #### Notes
 
 Requires `bdr_application` privileges to use.
+
+Both parameters are required. Pass `NULL` explicitly for either one to get the "wait for all nodes" or "use the current wal_flush_lsn" behavior described above — there's no default that lets you omit them.
 
 
 ### `bdr.wait_for_apply_queue`
@@ -1189,8 +1220,12 @@ To check the status of a transaction that was being committed when the node fail
 
 ```sql
 bdr.logical_transaction_status(node_id OID, xid OID,
-                               require_camo_partner boolean DEFAULT true)
+                               require_camo_partner boolean DEFAULT true,
+                               queried_by_origin boolean DEFAULT false)
 ```
+
+Note that the underlying function doesn't declare SQL parameter names, so
+these arguments must be passed positionally rather than by name.
 
 #### Parameters
 
@@ -1199,6 +1234,7 @@ bdr.logical_transaction_status(node_id OID, xid OID,
 | `node_id`              | The node id of the PGD node the transaction originates from, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `bdr.local_node_id`. |
 | `xid`                  | The transaction id on the origin node, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `transaction_id`.                          |
 | `require_camo_partner` | Defaults to true and enables configuration checks. Set to false to disable these checks and query the status of a transaction that wasn't a CAMO transaction.                                                                                |
+| `queried_by_origin`    | Advanced/internal use. Only the origin node should set this to `true`, and only when it's uncertain about a transaction that is still prepared but not yet finished. It forces the CAMO partner to resolve an otherwise-unknown or provisional-abort decision to `abort`, since the partner can't safely report `committed` before the transaction actually commits. Defaults to `false`. |
 
 #### Return value
 

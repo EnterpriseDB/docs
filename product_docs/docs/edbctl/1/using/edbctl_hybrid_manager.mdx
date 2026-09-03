@@ -24,6 +24,7 @@ The `edbctl hybrid-manager` command manages Hybrid Manager (HM) instances, inclu
 -   [edbctl hybrid-manager open-grafana](#edbctl-hybrid-manager-open-grafana) — Open Grafana UI.
 -   [edbctl hybrid-manager open-prometheus](#edbctl-hybrid-manager-open-prometheus) — Open Prometheus UI.
 -   [edbctl hybrid-manager open-thanos](#edbctl-hybrid-manager-open-thanos) — Open Thanos Query UI.
+-   [edbctl hybrid-manager parse-operator-logs](#edbctl-hybrid-manager-parse-operator-logs) — Render the Hybrid Manager operator's reconciliation activity.
 -   [edbctl hybrid-manager prepare-bootstrap-operator-conversion](#edbctl-hybrid-manager-prepare-bootstrap-operator-conversion) — Prepare a Bootstrap-installed Hybrid Manager for conversion to the Operator method.
 -   [edbctl hybrid-manager resume-component](#edbctl-hybrid-manager-resume-component) — Resume a suspended hybrid manager component.
 -   [edbctl hybrid-manager retry-component](#edbctl-hybrid-manager-retry-component) — Retry a hybrid manager component that is in error state.
@@ -363,6 +364,47 @@ These examples show how to open the Thanos Query UI:
 ```
 edbctl hybrid-manager open-thanos
 edbctl hybrid-manager open-thanos --background
+```
+
+### edbctl hybrid-manager parse-operator-logs
+
+Reads the Hybrid Manager operator logs, strips routine noise, and renders the reconciliation story as either a live deployment dashboard (default) or a chronological timeline (`--timeline`), headed by the `HybridControlPlane` CR status.
+
+When the instance is in a failed phase (or with `--events`) the most recent `HybridControlPlane` CR events are shown, since these often name the underlying cause (image pull failure, admission rejection, quota) that the operator log alone doesn't make obvious.
+
+Logs can also be piped on standard input, in which case the command runs fully offline (no cluster contact) and the CR status and CR events are unavailable.
+
+This command is strictly read-only; it never mutates the cluster or the CR.
+
+```
+edbctl hybrid-manager parse-operator-logs [options]
+```
+
+Where `options` are:
+
+```
+    --tail int              Maximum number of log lines to read from the operator pod (default 2000).
+-f, --follow                Continuously consume new log output (live dashboard on a terminal).
+    --timeline               Render the chronological event timeline instead of the dashboard.
+-v, --verbose                Show extra detail (skipped components, individual postflight checks).
+-n, --namespace string       Operator namespace (auto-detected across the known operator namespaces when unset).
+    --events                 Force-include CR events regardless of phase (otherwise shown only when failed).
+    --wait-for-phase string  Wait until the CR leaves any of the given comma-separated phases before treating them as terminal (useful for orchestrators that have just patched the CR and want to watch the operator react).
+-o, --output string          [table json yaml xml json-raw] (default "table").
+-h, --help                   Help for parse-operator-logs.
+```
+
+These examples show how to render the operator's reconciliation activity:
+
+```
+# Live dashboard against the current cluster (auto-stops when deployed/failed)
+edbctl hybrid-manager parse-operator-logs --follow
+
+# Chronological timeline
+edbctl hybrid-manager parse-operator-logs --timeline
+
+# Parse a captured log offline
+kubectl logs <operator-pod> | edbctl hybrid-manager parse-operator-logs --timeline
 ```
 
 !!!note

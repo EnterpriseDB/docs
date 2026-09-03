@@ -1,0 +1,115 @@
+---
+title: Commit scope groups
+description: Reference for commit scope group syntax, covering how to specify which nodes must confirm a transaction and how to combine groups for multi-region topologies.
+deepToC: true
+redirects:
+  - /pgd/latest/commit-scopes/origin_groups/ #generated for DOCS-1247-PGD-6.0-Docs
+  - /pgd/latest/reference/commit-scopes/origin_groups/ #generated for DOCS-3034
+---
+
+Before a transaction commits in PGD, one or more nodes must confirm it. The commit scope group is the part of a commit scope rule that specifies which nodes those are.
+
+For example, for the following commit scope definition:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+In the rule `MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT`, `SYNCHRONOUS COMMIT` is the commit scope kind, which controls how confirmation works. `MAJORITY ORIGIN GROUP` is the commit scope group, meaning a majority of nodes in the same subgroup as the origin node must confirm. For a full explanation of commit scope rule syntax, see [Commit scope rules](commit-scope-rules).
+
+A commit scope group is made up of two parts: a quantifier (such as `MAJORITY`), which sets the threshold, and a group specifier (such as `ORIGIN GROUP`), which identifies which nodes to count.
+
+## Quantifiers
+
+A quantifier sets the confirmation threshold, determining how many nodes from the group specifier must confirm before the transaction can commit.
+
+- `ALL` requires every node in the group to confirm. Any single node failure prevents new commits until the node recovers or the timeout expires.
+
+- `MAJORITY` requires more than half of the nodes to confirm (2 out of 3, or 3 out of 5). This quantifier is the standard choice for high-availability configurations, as it tolerates the failure of fewer than half the nodes while maintaining quorum.
+
+- `ANY n` requires at least `n` nodes to confirm. `ANY 1` means at least one node; `ANY 2` means at least two. This gives fine-grained control and is useful when you need at least one confirmation from a remote region without requiring a full majority there.
+
+## Group specifiers
+
+A group specifier identifies which nodes are eligible to confirm the transaction. 
+
+### Explicit group name
+
+Use an explicit group name to target a specific, named PGD group that exists in the cluster. The behavior is fixed and predictable regardless of which node originates the transaction. For example, `MAJORITY (region_a)`, `ALL (region_a)`, or `ANY 2 (region_a)`.
+
+### CLUSTER
+
+`CLUSTER` selects from all data nodes in the cluster, across all subgroups. Use `CLUSTER` when you want the quorum to span the entire cluster rather than a single subgroup. For example, `MAJORITY CLUSTER` or `ALL CLUSTER`.
+
+### ORIGIN_GROUP
+
+`ORIGIN_GROUP` resolves dynamically to the subgroup that contains the node originating the transaction, adapting to wherever the transaction is being written rather than naming a fixed group. For example, `MAJORITY ORIGIN GROUP` or `ALL ORIGIN GROUP`.
+
+!!! Note
+`ORIGIN_GROUP` and `ORIGIN GROUP` are interchangeable.
+!!!
+
+`ORIGIN_GROUP` is the standard choice for deployments with local routing, where each subgroup has its own write leader and applications connect to their local region. Rather than writing a separate rule for each subgroup, a single rule using `ORIGIN_GROUP` applies correctly regardless of which subgroup is the origin.
+
+For example, when a transaction originates from a node in `region_a`, `ORIGIN_GROUP` resolves to `region_a`. When it originates from `region_b`, it resolves to `region_b`. The same commit scope works correctly in both cases.
+
+### NOT ORIGIN_GROUP
+
+`NOT ORIGIN_GROUP` resolves dynamically to all subgroups that do not contain the origin node. It's the complement of `ORIGIN_GROUP` and is designed to be used alongside it in multi-region rules. For example, `ANY 1 NOT ORIGIN_GROUP` or `ALL NOT ORIGIN_GROUP`.
+
+`NOT ORIGIN_GROUP` isn't typically used alone. Its purpose is to add a cross-region confirmation requirement to a rule that already covers the local region via `ORIGIN_GROUP`, as in `MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN GROUP SYNCHRONOUS COMMIT`.
+
+### FOR EACH GROUP
+
+`FOR EACH GROUP` with an explicit list requires the quantifier to be satisfied independently within each named group. For example, `MAJORITY FOR EACH GROUP (region_a, region_b)` means a majority of nodes in `region_a` and a majority of nodes in `region_b` must both confirm before the transaction commits.
+
+`FOR EACH GROUP` is stricter than `MAJORITY (region_a, region_b)`, which pools nodes from both groups and requires a majority of the combined total. `FOR EACH GROUP` requires the threshold to be met within every group individually.
+
+Use `FOR EACH GROUP` when each region must independently confirm the transaction, such as when regulatory requirements or availability guarantees require data to be durable in every region before a commit is acknowledged.
+
+### FOR EACH GROUP IN CLUSTER
+
+`FOR EACH GROUP IN CLUSTER` is the dynamic equivalent of `FOR EACH GROUP` with an explicit list. Rather than naming subgroups individually, it applies the quantifier to every subgroup in the cluster automatically. For example, `MAJORITY FOR EACH GROUP IN CLUSTER` or `ANY 1 FOR EACH GROUP IN CLUSTER`.
+
+As subgroups are added or removed, the rule adapts without requiring a change to the commit scope definition. Use `FOR EACH GROUP IN CLUSTER` in clusters with three or more regions where the set of subgroups may change over time, or where you want a single commit scope definition to remain valid as the cluster grows.
+
+## Combining groups
+
+Combine group expressions with `AND` to require confirmation from multiple groups. Each expression is evaluated independently, and all must be satisfied before the transaction commits.
+
+### Requiring a local majority plus a remote confirmation
+
+The most common multi-region pattern requires a majority of nodes in the local region plus at least one confirmation from any other region:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'ha_scope',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN GROUP SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+Regardless of which subgroup originates the transaction, `ORIGIN GROUP` resolves to that subgroup and `NOT ORIGIN GROUP` resolves to all others. The rule always requires a local majority plus at least one confirmation from outside the local subgroup, ensuring every committed transaction has been confirmed in at least two regions. A single-region outage can't cause data loss, because the remote confirmation guarantees the transaction is durable elsewhere.
+
+### Requiring all local nodes plus a remote confirmation
+
+When subgroups are fixed and you want to be explicit about which groups participate:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'explicit_scope',
+    origin_node_group := 'region_a',
+    rule := 'ALL (region_a) SYNCHRONOUS COMMIT AND ANY 1 (region_b) SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+All nodes in `region_a` plus any one node in `region_b` must confirm. When using `ALL` with explicit groups (rather than `ORIGIN_GROUP`), this is typically the right structure for two-data-center configurations where both centers must be represented in every commit.
+
+For the corresponding commit scope kinds that use these groups, see [Quorum Commit](quorum-commit), and [Synchronous Commit](synchronous_commit).
