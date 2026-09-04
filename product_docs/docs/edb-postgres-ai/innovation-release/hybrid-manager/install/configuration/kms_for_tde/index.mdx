@@ -15,24 +15,54 @@ redirects:
 
 When creating new clusters, you can enable **Transparent Data Encryption (TDE)** to [encrypt the data](https://www.enterprisedb.com/docs/tde/latest/about/what/) stored in your databases.
 
-To [secure the data encryption key](https://www.enterprisedb.com/docs/tde/latest/secure_key/), you can either enter a passphrase of your choice, or bring your own key from a key management provider such as HashiCorp Vault or AWS Key Management Service.
+To [secure the data encryption key](https://www.enterprisedb.com/docs/tde/latest/secure_key/), you can either enter a passphrase of your choice, or bring your own key from a key management provider such as HashiCorp Vault, AWS Key Management Service, Azure Key Vault, Google Cloud KMS, and more.
 
 !!!note
 TDE is available for EDB Postgres Advanced Server and EDB Postgres Extended Server for version 15 and later.
 !!!
 
-First, ensure the Key Management System provider of your choice has been enabled in the `HybridControlPlane` CR: 
+## What TDE does and doesn't protect against
 
--   [Adding KMS support](adding_kms_support.mdx)
+TDE addresses threats to data at rest: stolen storage media, leaked backup archives, exported snapshots, and compromise of the underlying block-storage subsystem.
 
-Then, configure your Key Management System provider: 
+TDE doesn't address SQL injection, stolen credentials, application-server compromise, privileged-user abuse, or memory scraping. Those threats are handled by `pg_hba.conf` rules, authentication, TLS, network segmentation, and monitoring.
 
--   [HashiCorp Vault](hashicorp.mdx)
+!!!warning
+You can't remove TDE from a cluster in place. The only way to go from an encrypted cluster to an unencrypted one is a logical migration to a new, non-TDE cluster. All backups are ciphertext and require the KMS key (or passphrase) to restore. Losing the key is unrecoverable and irreversible.
+!!!
 
--   [AWS KMS](aws_kms.mdx)
+## What Hybrid Manager (HM) encrypts by default
 
--   [Azure KMS](azure_kms.mdx)
+HM clusters are encrypted in transit by default, using TLS certificates issued by CloudNativePG (CNPG) with `hostssl` enforced in `pg_hba.conf`, and encrypted at the storage layer by default, with backing block volumes and object-storage backups using cloud-provider-managed keys. TDE adds a further layer on top of that: Postgres data files are also encrypted, so backups and data-directory copies remain ciphertext even if the underlying storage is separately decrypted. This is the layer that most compliance frameworks — including [PCI-DSS §3.5](https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0_1.pdf), [HIPAA §164.312(a)(2)(iv)](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312), and [FedRAMP SC-28](https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_1/home?element=SC-28) — specifically require.
 
--   [Google Cloud KMS](google_cloud_kms.mdx)
+## Deciding on a key-per-cluster or key-per-project strategy
+
+The HM project is a management-plane grouping, not a cryptographic boundary. The unit TDE actually operates on is the cluster: each cluster is created against one specific registered key, and that assignment happens at cluster-creation time. When you create a cluster, the console shows a curated list of the keys registered to that project. The real boundary is the underlying KMS role or policy binding, not the HM project.
+
+- You can register multiple keys in a single project.
+- Different clusters in the same project can use different keys.
+- You can use one key for several clusters within a project.
+
+Decide which strategy fits your workload:
+
+- **One key per cluster** — custody separation for regulated workloads, per-cluster cryptographic decommissioning (destroying one cluster's key renders its data and backups permanently unreadable without affecting other clusters), and least-privilege KMS access scoped to a single cluster's service account.
+
+- **One key per project** — simpler day-to-day operations, fewer keys to rotate and track, and a single blast radius for accidental key deletion. A reasonable default for lower environments or workloads with a single compliance owner.
+
+## Setting up a KMS provider
+
+1.  Enable the Key Management System provider of your choice in the `HybridControlPlane` CR:
+
+    -  [Enabling KMS in Hybrid Manager](adding_kms_support.mdx)
+
+1.  Configure your chosen provider:
+
+    -  [Adding a HashiCorp Vault key](hashicorp.mdx)
+
+    -  [Adding an AWS KMS key](aws_kms.mdx)
+
+    -  [Adding an Azure KMS key](azure_kms.mdx)
+
+    -  [Adding a Google Cloud KMS key](google_cloud_kms.mdx)
 
 If you plan to deploy clusters across multiple data centers or regions, see [TDE across data centers](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/tde/) for how TDE behaves for replica clusters and distributed high-availability clusters, and what to plan for when you use a customer-managed key per location.

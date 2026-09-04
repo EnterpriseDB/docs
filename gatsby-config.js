@@ -130,6 +130,10 @@ const sourceToPluginConfig = {
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   pwr: { name: "pwr", path: "product_docs/docs/pwr" },
   edbctl: { name: "edbctl", path: "product_docs/docs/edbctl" },
+  "hm-operator": {
+    name: "hm-operator",
+    path: "product_docs/docs/hm-operator",
+  },
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
