@@ -8,7 +8,7 @@ redirects:
 Before you can create TDE-enabled clusters with a HashiCorp Vault key, an administrator must install and configure Vault for the Hybrid Manager instance.
 
 !!!important
-This walkthrough installs Vault inside the same Kubernetes cluster as Hybrid Manager and uses a wildcard policy (`transit/*`) and a wildcard service-account binding (`p-*`). This is a **quickstart example** to get you to a working TDE-enabled cluster quickly — it isn't a production reference architecture. Before using Vault-backed TDE in production, see [Production hardening](#production-hardening).
+This walkthrough installs Vault inside the same Kubernetes cluster as Hybrid Manager and uses a wildcard policy (`transit/*`) and a wildcard service-account binding (`p-*`). This is a quickstart example to get you to a working TDE-enabled cluster quickly — it isn't a production reference architecture. Before using Vault-backed TDE in production, see [Production hardening](#production-hardening).
 !!!
 
 This example installs a customized version of Vault on the same Kubernetes environment as the Hybrid Manager, configures the Vault provider, and then uses the key to enable TDE for provisioning a new database cluster with encryption enabled.
@@ -188,7 +188,7 @@ Now that you have configured Vault and created a key, add it to a project in the
 Add the created key to a project in Hybrid Manager using the console:
 
 1.  On the Console, go to the project under which you'll create TDE-enabled clusters. 
-    Each cluster is assigned to a specific key at creation time. You can register multiple keys in a project — see [Key-to-cluster model](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/#key-to-cluster-model) for guidance on choosing one key per project versus one key per cluster.
+    Each cluster is assigned to a specific key at creation time. You can register multiple keys in a project — see [Deciding on a key-per-cluster or key-per-project strategy](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/#deciding-on-a-key-per-cluster-or-key-per-project-strategy) for guidance on choosing one key per project versus one key per cluster.
 
 2.  On the left-side navigation, select **Settings** ► **Security**, and then **+ Add a key**. 
 
@@ -212,11 +212,15 @@ You can now use this key if you want to enable encryption when you create cluste
 
 ## Production hardening
 
-The steps above get you to a working Vault-backed TDE setup quickly, but the resulting configuration isn't suitable for production. Before you rely on it for production clusters, address the following.
+For production deployments, harden your Vault installation and configuration before relying on it for TDE-enabled clusters:
 
-**Topology.** Run Vault outside the Hybrid Manager Kubernetes cluster — using an external Vault Enterprise deployment, HCP Vault, or a separately operated Vault cluster. Custody separation between the database administrator and the key custodian is the point of KMS-backed TDE; co-locating Vault with Hybrid Manager defeats it.
+### Topology
 
-**Least-privilege policy.** Replace the `transit/*` wildcard policy with per-key paths scoped to the `update` capability only:
+Run Vault outside the Hybrid Manager Kubernetes cluster, using an external Vault Enterprise deployment, HCP Vault, or a separately operated Vault cluster. Custody separation between the database administrator and the key custodian is the point of KMS-backed TDE; co-locating Vault with Hybrid Manager defeats it.
+
+### Least-privilege policy
+
+Replace the `transit/*` wildcard policy with per-key paths scoped to the `update` capability only:
 
 ```shell
 cat > /tmp/tde.txt << EOL
@@ -231,7 +235,9 @@ EOL
 
 Don't grant `create`, `delete`, or `list` on the transit engine to cluster service accounts — those capabilities let a compromised cluster identity create or destroy keys it shouldn't be able to touch.
 
-**Scoped role bindings.** Replace the wildcard `bound_service_account_namespaces="p-*"` used when creating the `tde` role with the specific namespace of the cluster that key is meant to serve:
+### Scoped role bindings
+
+Replace the wildcard `bound_service_account_namespaces="p-*"` used when creating the `tde` role with the specific namespace of the cluster that key is meant to serve:
 
 ```shell
 vault write auth/kubernetes/role/tde \
@@ -241,4 +247,4 @@ vault write auth/kubernetes/role/tde \
   ttl=72h
 ```
 
-A wildcard binding means every cluster in every namespace can reach every key, which defeats the per-cluster key isolation described in [Key-to-cluster model](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/#key-to-cluster-model).
+A wildcard binding means every cluster in every namespace can reach every key, which defeats the per-cluster key isolation described in [Deciding on a key-per-cluster or key-per-project strategy](/edb-postgres-ai/current/hybrid-manager/install/configuration/kms_for_tde/#deciding-on-a-key-per-cluster-or-key-per-project-strategy).
