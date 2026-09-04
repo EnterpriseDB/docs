@@ -11,7 +11,7 @@ EDB distributes ClickHouse as RPM packages for Rocky Linux 10 on x86-64. The fol
 |---------|-------------|------------|
 | `edb-clickhouse-server` | ClickHouse server engine, systemd services, and default configuration files. Includes `clickhouse-keeper.service`, so server nodes can run Keeper alongside the server without an additional package. | Server nodes |
 | `edb-clickhouse-client` | `clickhouse-client`, `clickhouse-local`, `clickhouse-benchmark`, and related tools. | Server nodes, remote client hosts |
-| `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. | All server and client nodes |
+| `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. `dnf` installs and updates it automatically as a dependency, so you don't need to list it explicitly. | All server and client nodes |
 | `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. | Dedicated Keeper nodes only |
 
 For an explanation of node roles and deployment topologies, see [Architecture](../overview/architecture).
@@ -36,6 +36,8 @@ ClickHouse runs as a standalone instance with no cluster coordination required. 
      edb-clickhouse-server \
      edb-clickhouse-client
    ```
+
+   `dnf` pulls in `edb-clickhouse-common-static` automatically as a dependency.
 
 1. Start the server:
 
@@ -71,10 +73,10 @@ ClickHouse runs as a standalone instance with no cluster coordination required. 
 1. Verify the EDB build by checking the version string:
 
    ```sql
-   SELECT value FROM system.build_options WHERE name = 'VERSION_OFFICIAL';
+   SELECT version();
    ```
 
-   The output includes `(EDB Build)` for EDB-packaged releases.
+   The output includes the EDB release, for example `26.3.22.7+1edb1`.
 
 ## Deploying a cluster
 
@@ -324,4 +326,50 @@ Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of i
    │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
    │        4 │     104 │ login      │ 2026-06-10 14:48:15    │
    └──────────┴─────────┴────────────┴────────────────────────┘
+   ```
+
+## Upgrading
+
+Check [Release notes](../release_notes) for the ClickHouse server version you're upgrading to before you start.
+
+On a cluster, repeat the following steps one node at a time, keeping at least one replica per shard on its current version until the upgrade completes. See the [upstream ClickHouse upgrade guidance](https://clickhouse.com/docs/operations/update) for version-skipping limits and other considerations for large clusters.
+
+1. Refresh the EDB repository metadata, so `dnf` sees the new version instead of what it last cached:
+
+   ```bash
+   sudo dnf makecache
+   ```
+
+2. Download and install the updated packages:
+
+   ```bash
+   sudo dnf update -y \
+     edb-clickhouse-server \
+     edb-clickhouse-client
+   ```
+
+   `dnf` pulls in a matching update to `edb-clickhouse-common-static` automatically, the same way it does at install time.
+
+   On a dedicated Keeper node, update the Keeper package instead:
+
+   ```bash
+   sudo dnf update -y edb-clickhouse-keeper
+   ```
+
+3. Restart the updated service:
+
+   ```bash
+   sudo systemctl restart clickhouse-server
+   ```
+
+   Or, on a dedicated Keeper node:
+
+   ```bash
+   sudo systemctl restart clickhouse-keeper
+   ```
+
+4. Verify the running version:
+
+   ```bash
+   clickhouse-client --query "SELECT version();"
    ```
