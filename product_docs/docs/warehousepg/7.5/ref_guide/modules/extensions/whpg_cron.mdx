@@ -1,0 +1,319 @@
+---
+title: whpg_cron
+description: Learn how to schedule periodic SQL jobs in WarehousePG using the whpg_cron extension.
+displayBanner: ''
+---
+
+`whpg_cron` is WarehousePG's packaged distribution of `pg_cron`, a cron-based job scheduler that runs inside the database. It lets you schedule SQL commands, including calls to stored procedures, directly from the database using standard cron syntax.
+
+The WarehousePG `whpg_cron` package installs the extension under its upstream name. You create it, and refer to it in SQL, as `pg_cron`. See [`pg_cron`](https://github.com/citusdata/pg_cron) for the upstream project.
+
+## Downloading, installing, and loading the extension
+
+Refer to [Downloading and installing an extension](./#downloading-and-installing-an-extension) for installation and setup instructions. The package name is `edb-whpg7-whpg-cron`.
+
+!!! Important
+
+    You can only install `pg_cron` in one database per WarehousePG cluster.
+
+1.  Set the database where `pg_cron` creates its metadata tables. By default, it uses the `postgres` database. Set `cron.database_name` before you create the extension:
+
+    ```bash
+    gpconfig -c cron.database_name -v '<db_name>' --skipvalidation
+    ```
+
+1.  Load the extension as a shared library. Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+1.  Use the output of the previous command to enable `pg_cron`, along with any other shared libraries, and restart WarehousePG:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, pg_cron'
+    gpstop -raf
+    ```
+
+1.  Create the extension in the database you configured:
+
+    ```sql
+    CREATE EXTENSION pg_cron;
+    ```
+
+1.  Optionally, grant usage to other users so they can schedule and manage their own jobs:
+
+    ```sql
+    GRANT USAGE ON SCHEMA cron TO <user_name>;
+    ```
+
+## Configuring whpg_cron
+
+After you create the extension, make sure `pg_cron` can connect to run your jobs, and, optionally, tune other settings.
+
+### Ensuring pg_cron can start jobs
+
+Choose a method to allow `pg_cron` to connect to the database to run each job:
+
+-   **Unix domain socket.** Limit access to local OS users, since this option doesn't expose the database over the network. Point `cron.host` at the socket directory and restart the database:
+
+    ```bash
+    gpconfig -c cron.host -v '/tmp'
+    # Or leave cron.host as an empty string ('') to use libpq's default socket directory.
+    gpstop -raf
+    ```
+
+    Then add a matching `local` entry to [`pg_hba.conf`](../../../admin_guide/manage_access/client_auth) on the coordinator to grant trust authentication on that socket:
+
+    ```
+    local   all   all   trust
+    ```
+
+-   **TCP connection.** Restrict the `pg_hba.conf` entry to the loopback address, since `pg_cron` always connects from the coordinator itself. Leave `cron.host` at its default (`localhost`), and add a `host` entry to [`pg_hba.conf`](../../../admin_guide/manage_access/client_auth) on the coordinator:
+
+    ```
+    host   all   all   127.0.0.1/32   trust
+    ```
+
+    Alternatively, add the job user's password to a [`.pgpass`](https://www.postgresql.org/docs/current/libpq-pgpass.html) file for `libpq` to use instead of trust authentication.
+
+-   **Background workers.** Avoid opening a connection at all by having `pg_cron` run jobs as background workers instead. Skip `cron.host` and `pg_hba.conf` entirely:
+
+    ```bash
+    gpconfig -c cron.use_background_workers -v 'on'
+    gpconfig -c max_worker_processes -v '20'
+    gpstop -raf
+    ```
+
+    `max_worker_processes` limits the number of concurrent jobs, so raise it from its default of 8 if you schedule many jobs.
+
+### Tuning pg_cron settings
+
+`pg_cron` supports the following configuration parameters, which you set with `gpconfig`:
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `cron.database_name` | `postgres` | Database where the `pg_cron` background worker runs. |
+| `cron.enable_superuser_jobs` | `on` | Allow jobs to be scheduled as superusers. |
+| `cron.host` | `localhost` | Hostname the background worker connects to. |
+| `cron.launch_active_jobs` | `on` | Turn off to disable every active job without a server restart. |
+| `cron.log_min_messages` | `WARNING` | `log_min_messages` for the launcher background worker. |
+| `cron.log_run` | `on` | Log every run in the `cron.job_run_details` table. |
+| `cron.log_statement` | `on` | Log every cron statement before it runs. |
+| `cron.max_running_jobs` | `32` | Maximum number of jobs that can run at the same time. |
+| `cron.timezone` | `GMT` | Timezone the `pg_cron` background worker runs in. |
+| `cron.use_background_workers` | `off` | Use background workers instead of client connections to run jobs. |
+
+View the current settings:
+
+```sql
+SELECT * FROM pg_settings WHERE name LIKE 'cron.%';
+```
+
+Change a setting with `gpconfig`, then restart:
+
+```bash
+gpconfig -c cron.<parameter> -v '<value>'
+gpstop -raf
+```
+
+!!! Note
+`cron.log_min_messages` and `cron.launch_active_jobs` take effect immediately, without a restart, once you run `SELECT pg_reload_conf();`. Every other setting needs a full restart.
+!!!
+
+## Scheduling jobs
+
+Write a cron schedule, then create, alter, remove, or view jobs using the `cron` schema's functions.
+
+`pg_cron` runs jobs in parallel, but runs only one instance of a given job at a time. If a job is still running when its next scheduled run comes due, `pg_cron` queues the new run until the current one finishes.
+
+`pg_cron` runs each job in the database where you created it, with the same permissions as the user who scheduled it. A row-level security ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)) policy limits you to viewing and modifying only the jobs you created, unless you're a superuser or have the `bypassrls` attribute, which lets a role bypass row-level security entirely.
+
+!!! Important
+
+    Manage jobs with the `cron` schema functions rather than direct `UPDATE`, `INSERT`, or `DELETE` statements against `cron.job`, since WarehousePG doesn't support the `TRIGGER` statement `pg_cron` normally relies on to detect such changes.
+
+### Understanding cron syntax
+
+Write schedules using the same cron syntax as [Vixie cron](https://github.com/vixie/cron), or build one at [crontab.guru](https://crontab.guru/).
+
+```
+ ┌───────────── min (0 - 59)
+ │ ┌────────────── hour (0 - 23)
+ │ │ ┌─────────────── day of month (1 - 31) or last day of the month ($)
+ │ │ │ ┌──────────────── month (1 - 12)
+ │ │ │ │ ┌───────────────── day of week (0 - 6) (0 to 6 are Sunday to
+ │ │ │ │ │                  Saturday, or use names; 7 is also Sunday)
+ │ │ │ │ │
+ │ │ │ │ │
+ * * * * *
+```
+
+`pg_cron` also supports:
+
+-   `$` to indicate the last day of the month.
+-   `[1-59] seconds` to schedule a job on an interval measured in seconds. You can't combine seconds with the other time units.
+
+Example schedules:
+
+```
+'10 seconds'  # every 10 seconds
+* * * * *     # every minute
+*/5 * * * *   # every 5 minutes
+0 * * * *     # every hour
+0 0 * * *     # daily at 12 AM
+0 0 * * 1-5   # 12 AM every weekday
+0 1 * * 0     # 1 AM every Sunday
+0 13 2 6 *    # 1 PM on June 2
+```
+
+### Creating a cron job
+
+Create a job, either anonymous or named, with `cron.schedule()`. The function accepts `(schedule, command)` for an anonymous job or `(job_name, schedule, command)` for a named one, and returns the new job's `jobid`.
+
+**Examples**
+
+-   Create an anonymous job that deletes old data every Saturday at 3:30 AM (GMT):
+
+    ```sql
+    SELECT cron.schedule(
+        '30 3 * * 6',
+        $$DELETE FROM events WHERE event_time < now() - interval '1 week'$$
+    );
+    ```
+
+-   Create a named job that runs `VACUUM` every day at 10:00 AM (GMT):
+
+    ```sql
+    SELECT cron.schedule(
+        'nightly-vacuum',
+        '0 10 * * *',
+        'VACUUM'
+    );
+    ```
+
+-   Run a query every 30 seconds:
+
+    ```sql
+    SELECT cron.schedule(
+        'run_every_30_seconds',
+        '30 seconds',
+        'SELECT 1'
+    );
+    ```
+
+-   Call a stored procedure every 5 seconds:
+
+    ```sql
+    SELECT cron.schedule(
+        'process-updates',
+        '5 seconds',
+        'CALL process_updates()'
+    );
+    ```
+
+-   Process payroll at noon on the last day of each month:
+
+    ```sql
+    SELECT cron.schedule(
+        'process-payroll',
+        '0 12 $ * *',
+        'CALL process_payroll()'
+    );
+    ```
+
+### Creating a cron job in a different database
+
+Run a job against a database other than the one where `pg_cron` is installed with `cron.schedule_in_database()`. The function accepts `job_name`, `schedule`, `command`, and `database`, plus the optional `username` and `active` parameters, and returns the new job's `jobid`.
+
+For example, delete old data every Saturday at 3:30 AM (GMT) in another database:
+
+```sql
+SELECT cron.schedule_in_database(
+    'delete_old_data',
+    '30 3 * * 6',
+    $$DELETE FROM events WHERE event_time < now() - interval '1 week'$$,
+    'some_other_database'
+);
+```
+
+### Listing jobs
+
+View your active jobs in `cron.job`:
+
+```sql
+SELECT * FROM cron.job;
+```
+
+### Removing a cron job
+
+Remove a job by name or by ID with `cron.unschedule()`. The function returns `true` if the job was removed.
+
+**Examples**
+
+-   Remove a named job:
+
+    ```sql
+    SELECT cron.unschedule('nightly-vacuum');
+    ```
+
+-   Remove a job by ID:
+
+    ```sql
+    SELECT cron.unschedule(42);
+    ```
+
+### Altering a cron job
+
+Change a job's schedule, command, database, username, or active status without recreating it, using `cron.alter_job()`. Pass the `job_id` plus only the parameters you want to change.
+
+**Examples**
+
+-   Change a job's schedule:
+
+    ```sql
+    SELECT cron.alter_job(42, '0 10 * * *');
+    ```
+
+-   Change a job's schedule, command, and username together:
+
+    ```sql
+    SELECT cron.alter_job(
+        42,
+        '0 10 * * *',
+        'VACUUM',
+        username := 'some_other_user'
+    );
+    ```
+
+-   Deactivate a job:
+
+    ```sql
+    SELECT cron.alter_job(42, active := false);
+    ```
+
+### Viewing job history
+
+View the 10 most recent job runs:
+
+```sql
+SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
+```
+
+`cron.job_run_details` isn't cleaned up automatically, but any user who can schedule jobs can also delete their own entries from it. Purge entries older than 14 days on a schedule of their own:
+
+```sql
+SELECT cron.schedule(
+    '0 0 * * *',
+    $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '14 days'$$
+);
+```
+
+Set `cron.log_run = off` if you don't want to use `cron.job_run_details` at all.
+
+## Limitations
+
+`whpg_cron` for WarehousePG has the following limitations:
+
+-   You can only install `pg_cron` in one database per WarehousePG cluster.
+-   `pg_cron` and [whpg-anonymizer](whpg-anonymizer.mdx) can't run in the same database. Creating the `pg_cron` extension in a database where `whpg-anonymizer` is enabled fails, because `whpg-anonymizer`'s event trigger doesn't allow another extension to replace the masked views it owns. Schedule jobs in a separate database from the one where you use `whpg-anonymizer`.
