@@ -150,7 +150,49 @@ kubectl exec -it -n clickhouse \
   -- clickhouse-client --password admin123 --query "SELECT version()"
 ```
 
-The version returned includes the `(EDB Build)` suffix, confirming you're running the EDB distribution.
+The version returned includes the EDB release, for example `26.3.22.7+1edb1`, confirming you're running the EDB distribution.
+
+## Upgrading
+
+Check [Release notes](../release_notes) for the combination of `edb-clickhouse-server` and operator versions validated together before you upgrade either.
+
+1. Update the Helm repository and upgrade the release to the target operator version:
+
+   ```bash
+   helm repo update edb
+   helm upgrade clickhouse-operator \
+     edb/edb-clickhouse-operator-chart \
+     --version <new-operator-version> \
+     --namespace clickhouse \
+     --set 'imagePullSecrets[0].name=cs-pull'
+   ```
+
+   Replace `<new-operator-version>` with the target version from [Release notes](../release_notes). `helm upgrade` updates the operator Deployment and its CRDs in place, without touching existing `ClickHouseInstallation` resources.
+
+2. Confirm the operator pod restarted on the new version:
+
+   ```bash
+   kubectl rollout status deployment/clickhouse-operator -n clickhouse
+   ```
+
+Upgrading the operator doesn't upgrade the ClickHouse server pods it manages. To upgrade the pods:
+
+1. Pull the new `edb-clickhouse-server` image to confirm it's available before rolling it out to the cluster:
+
+   ```bash
+   docker pull docker.enterprisedb.com/clickhouse/edb-clickhouse-server:<new-version>-1edb1
+   ```
+
+   Replace `<new-version>` with the target version from [Release notes](../release_notes).
+
+2. Edit the `image` field under `podTemplates` in your `ClickHouseInstallation` resource to the same tag, then reapply it:
+
+   ```bash
+   kubectl apply -f clickhouse-installation.yaml
+   kubectl get chi -n clickhouse -w
+   ```
+
+The operator rolls the new image out to pods one at a time, respecting shard and replica placement, until `STATUS` shows `Completed` again.
 
 ## Uninstalling
 
