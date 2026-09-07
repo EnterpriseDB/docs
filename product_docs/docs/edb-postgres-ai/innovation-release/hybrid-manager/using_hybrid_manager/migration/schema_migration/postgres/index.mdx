@@ -3,7 +3,8 @@ title: Migrating Postgres schemas
 navTitle: Migrating Postgres schemas
 description: Supporting material on Simplified (HM-managed) and Manual schema migration options for Postgres sources, for the step-by-step migration guides.
 deepToC: true
-
+navigation:
+  - migrating_roles_and_privileges
 ---
 
 Migrating a Postgres schema in Hybrid Manager (HM) is simpler than Oracle's — no compatibility conversion is needed. Choose how to import the schema to the destination database: automatically as part of the data migration (Simplified), or manually beforehand (Manual).
@@ -22,74 +23,10 @@ With the Simplified approach, the EDB Data Migration Service (DMS) applies schem
 - **During and after the data load** — primary key, unique, check, `NOT NULL`, and foreign key constraints, and indexes. Expensive constraint validation is deferred until migration finalization to keep the data load fast.
 - **At migration finalization** — views, materialized views, triggers, rules, synonyms, extended statistics, and comments.
 
-Roles, object ownership, and privileges aren't migrated unless you opt in — see [Migrating roles, ownership, and privileges](#migrating-roles-ownership-and-privileges).
+Roles, object ownership, and privileges aren't migrated unless you opt in — see [Migrating roles, ownership, and privileges](migrating_roles_and_privileges).
 
 ## Importing the schema
 
 import MigratingSchemasPostgres from '../../migration_guides/snippet_sources/4_migrating_schemas/preparing_postgres_schemas.mdx'
 
 <MigratingSchemasPostgres />
-
-## Migrating roles, ownership, and privileges
-
-By default, schema migration creates schema objects only:
-
-- Migrated objects are owned by the destination database user you configured for the EDB DMS agent in writer mode.
-- No roles are created on the destination, and no role memberships, privileges, default privileges, or row-level security (RLS) policies are carried over from the source.
-
-For migrations to self-managed destinations, you can also migrate the source cluster's authorization model. Set `DBCONFIG_DATABASES_<N>__ROLE_MIGRATION_ENABLED=true` when you [configure the EDB DMS agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#dbconfig_databases_0__role_migration_enabled) in writer mode. With role migration enabled:
-
-- At the start of schema migration, before any schema objects are created, DMS creates the source cluster's roles on the destination cluster, preserving role attributes such as `LOGIN`, `CREATEROLE`, and `VALID UNTIL`.
-- At migration finalization, DMS applies role memberships, object ownership (`ALTER ... OWNER TO`), privilege grants, default privileges, and RLS policies, and enables RLS on the tables that had it enabled on the source.
-
-The destination's authorization model is complete only after finalization — plan any post-migration privilege verification for after the migration reaches the **Completed** state.
-
-!!!warning Passwords are never migrated
-Role definitions are extracted from the source without password hashes, so DMS creates `LOGIN` roles on the destination without a password. Set new passwords on the destination before applications authenticate with the migrated roles.
-!!!
-
-### Requirements
-
-- The source and destination are Postgres databases. Role migration isn't available for Oracle sources.
-- The migration scope is **Schema and data** or **Schema only**.
-- The destination database user configured for the EDB DMS agent in writer mode is a superuser. Creating roles on the destination cluster requires superuser privileges.
-- You run the EDB DMS agent in writer mode yourself, which is the case for migrations to self-managed destinations. Migrations to HM-managed destinations use an HM-managed writer that doesn't currently expose this option.
-
-### Excluding roles
-
-Set `DBCONFIG_DATABASES_<N>__ROLE_MIGRATION_EXCLUDELIST` to a comma-separated list of regular expression patterns. A role is excluded from the migration when its name fully matches any pattern:
-
-```shell
-export DBCONFIG_DATABASES_0__ROLE_MIGRATION_EXCLUDELIST="postgres,enterprisedb,app_ro_.*"
-```
-
-Exclude a role when it already exists on the destination or when you want to manage it on the destination yourself. In practice this always includes the bootstrap superuser — `postgres` or `enterprisedb`, depending on the distribution — and any roles created by your provisioning tooling.
-
-When a role is excluded:
-
-- DMS doesn't create it on the destination.
-- At finalization, DMS skips ownership, grant, default privilege, and policy statements that reference the excluded role and logs a warning for each skipped statement. Affected objects keep the writer's database user as their owner, and the skipped privileges and policies aren't applied. Reassign ownership or re-grant privileges manually after the migration if needed.
-
-!!!note
-If an RLS policy references an excluded role, the policy is skipped but RLS is still enabled on its table. The table denies access to non-owners until you recreate the policy on the destination.
-!!!
-
-### Handling conflicts with existing roles
-
-DMS marks every role it creates by setting the role's comment to `dms:migrated:<migration ID>`. The marker makes role creation idempotent: if schema migration restarts, roles that carry the marker are skipped.
-
-If a role with the same name already exists on the destination without the marker, DMS can't tell whether it matches the source definition, and the schema migration fails with an error listing the conflicting roles:
-
-```text
-Roles already exist on the target without a migration marker: [role names].
-Add them to role-migration-excludelist or drop them on the target before retrying.
-```
-
-To resolve the conflict, either:
-
-- Add the role names to `DBCONFIG_DATABASES_<N>__ROLE_MIGRATION_EXCLUDELIST`. The destination roles stay as they are.
-- Drop the roles on the destination. DMS then recreates them from the source definitions.
-
-### Role migration limitations
-
-See [Role, ownership, and privilege migration limitations](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/limitations/#role-ownership-and-privilege-migration-limitations) for what role migration doesn't carry over — including passwords, role-level configuration parameters, and tablespaces — and for ownership behavior to plan for, such as source tables reassigned to a replication group during source preparation not getting their original owners back on the destination.
