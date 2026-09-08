@@ -1,12 +1,12 @@
 ---
-title: whpg_cron
-description: Learn how to schedule periodic SQL jobs in WarehousePG using the whpg_cron extension.
+title: whpg-cron
+description: Learn how to schedule periodic SQL jobs in WarehousePG using the whpg-cron extension.
 displayBanner: ''
 ---
 
-`whpg_cron` is WarehousePG's packaged distribution of `pg_cron`, a cron-based job scheduler that runs inside the database. It lets you schedule SQL commands, including calls to stored procedures, directly from the database using standard cron syntax.
+`whpg-cron` is WarehousePG's packaged distribution of `pg_cron`, a cron-based job scheduler that runs inside the database. It lets you schedule SQL commands, including calls to stored procedures, directly from the database using standard cron syntax.
 
-The WarehousePG `whpg_cron` package installs the extension under its upstream name. You create it, and refer to it in SQL, as `pg_cron`. See [`pg_cron`](https://github.com/citusdata/pg_cron) for the upstream project.
+The WarehousePG `whpg-cron` package installs the extension under its upstream name. You create it, and refer to it in SQL, as `pg_cron`. See [`pg_cron`](https://github.com/citusdata/pg_cron) for the upstream project.
 
 ## Downloading, installing, and loading the extension
 
@@ -47,7 +47,7 @@ Refer to [Downloading and installing an extension](./#downloading-and-installing
     GRANT USAGE ON SCHEMA cron TO <user_name>;
     ```
 
-## Configuring whpg_cron
+## Configuring whpg-cron
 
 After you create the extension, make sure `pg_cron` can connect to run your jobs, and, optionally, tune other settings.
 
@@ -127,11 +127,11 @@ Write a cron schedule, then create, alter, remove, or view jobs using the `cron`
 
 `pg_cron` runs jobs in parallel, but runs only one instance of a given job at a time. If a job is still running when its next scheduled run comes due, `pg_cron` queues the new run until the current one finishes.
 
-`pg_cron` runs each job in the database where you created it, with the same permissions as the user who scheduled it. A row-level security ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)) policy limits you to viewing and modifying only the jobs you created, unless you're a superuser or have the `bypassrls` attribute, which lets a role bypass row-level security entirely.
+`pg_cron` stores every scheduled job as a row in `cron.job`, with columns for its `jobid`, `schedule`, `command`, and `username`, among others. `pg_cron` runs each job in the database where you created it, with the same permissions as the user who scheduled it. A row-level security ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)) policy limits you to viewing and modifying only the jobs you created, unless you're a superuser or have the `bypassrls` attribute, which lets a role bypass row-level security entirely.
 
 !!! Important
 
-    Manage jobs with the `cron` schema functions rather than direct `UPDATE`, `INSERT`, or `DELETE` statements against `cron.job`, since WarehousePG doesn't support the `TRIGGER` statement `pg_cron` normally relies on to detect such changes.
+    We recommend managing jobs with the `cron` schema functions rather than direct `UPDATE`, `INSERT`, or `DELETE` statements against `cron.job`, since WarehousePG doesn't support the `TRIGGER` statement `pg_cron` normally relies on to detect such changes. If the functions can't do what you need, see [Editing cron.job directly](#editing-cronjob-directly).
 
 ### Understanding cron syntax
 
@@ -311,8 +311,21 @@ SELECT cron.schedule(
 
 Set `cron.log_run = off` if you don't want to use `cron.job_run_details` at all.
 
+<a id="editing-cronjob-directly"></a>
+
+### Editing cron.job directly
+
+Edit `cron.job` directly only when the `cron` schema functions can't do what you need, for example a bulk update across many jobs at once. Since WarehousePG doesn't support the `TRIGGER` statement `pg_cron` normally relies on to detect such changes automatically, use the `cron.reload_job()` function to update the pg_cron cache. Any role granted `USAGE` on the `cron` schema can call this function.
+
+For example, deactivate a job by updating `cron.job` directly, then refresh the cache:
+
+```sql
+UPDATE cron.job SET active = false WHERE jobid = 1;
+SELECT cron.reload_job();
+```
+
 ## Limitations
 
-`whpg_cron` for WarehousePG has the following limitations:
+`whpg-cron` for WarehousePG has the following limitations:
 
 -   You can only install `pg_cron` in one database per WarehousePG cluster.
