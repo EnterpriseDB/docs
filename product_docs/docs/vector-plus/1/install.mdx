@@ -1,0 +1,117 @@
+---
+title: Installing and upgrading
+navTitle: Install and upgrade
+deepToC: true
+description: How to install EDB Vector Plus from an EDB repository or from source, which platforms and PostgreSQL versions are supported, and how to upgrade an existing installation.
+---
+
+Vector Plus installs from an EDB package repository or from source. Upgrading to a new package version currently means reinstalling and rebuilding any `ivfplus` indexes, since there's no in-place `ALTER EXTENSION` update path yet.
+
+## Installing from an EDB repository
+
+### 1. Configure the repository
+
+Replace `$TOKEN` with your EDB repository token (EDB Account → repository token) and `$REPO` per the table below.
+
+```shell
+# RPM platforms (EL, SLES)
+curl -1sLf "https://downloads.enterprisedb.com/$TOKEN/$REPO/setup.rpm.sh" | sudo -E bash
+
+# DEB platforms (Debian, Ubuntu)
+curl -1sLf "https://downloads.enterprisedb.com/$TOKEN/$REPO/setup.deb.sh" | sudo -E bash
+```
+
+| `<REPO>`       | Who                                       | Contains                                                                       |
+|----------------|-------------------------------------------|--------------------------------------------------------------------------------|
+| `enterprise`   | Customers with an EDB Postgres Advanced Server (EPAS) / EDB Postgres Extended Server (PGE) subscription | released packages, all three variants                                          |
+| `standard`     | Customers on a Standard subscription      | released packages                                                              |
+| `community360` | Community 360 subscribers                 | released packages (community PostgreSQL)                                       |
+| `dev`          | Internal EDB only                         | pre-release / snapshot builds, not for customers                               |
+| `edb`          | IBM-bound platforms                       | the s390x channel                                                              |
+| `hotfix`       | —                                         | targeted, per-incident hotfix-maturity rebuilds of an already-released version |
+
+On s390x, use `edb` in place of `enterprise`. Customer and field installs use `enterprise` (or `standard`/`community360` to match the subscription), which carry release-maturity packages only. Internal pre-release testing uses `dev`, where snapshot builds land — never point a customer at it.
+
+`hotfix` is opt-in, not a standing repository. A hotfix version sorts above the release it patches, so leaving it enabled makes every later `dnf update`/`apt upgrade` prefer hotfix builds — enable it just for the one install command, then disable it again. A hotfix leaves `default_version` alone, so `pg_extension.extversion` doesn't move and `ALTER EXTENSION … UPDATE` is a no-op — no `DROP`/`CREATE EXTENSION` is needed. Since the extension isn't preloaded, new sessions pick up the replaced `.so`, but restart anyway rather than run mixed old/new backends against the same indexes.
+
+### 2. Install the package
+
+pgvector comes from the same repository and is pulled in automatically as `edb-<variant><V>-pgvector0`.
+
+```shell
+sudo dnf install -y edb-pg17-vectorplus # EL
+sudo zypper install -y edb-pg17-vectorplus # SLES
+sudo apt-get install -y edb-pg17-vectorplus # Debian / Ubuntu
+```
+
+Substitute `edb-as17-…` for EPAS or `edb-postgresextended17-…` for PGE.
+
+### 3. Enable the extension
+
+`CASCADE` creates pgvector's `vector` type first, which `edb_vectorplus` requires:
+
+```sql
+CREATE EXTENSION edb_vectorplus CASCADE;
+```
+
+No `shared_preload_libraries` entry and no restart are needed.
+
+## Package names
+
+`<V>` is the PostgreSQL major version. The name carries no extension-major suffix, so it's identical on RPM and DEB.
+
+| PostgreSQL variant              | Package name                         | Installs under                               |
+|---------------------------------|--------------------------------------|----------------------------------------------|
+| postgres (community PostgreSQL) | `edb-pg<V>-vectorplus`               | `/usr/pgsql-<V>` · `/usr/lib/postgresql/<V>` |
+| extended (PGE)                  | `edb-postgresextended<V>-vectorplus` | `/usr/edb/pge<V>` · `/usr/lib/edb-pge/<V>`   |
+| advanced (EPAS)                 | `edb-as<V>-vectorplus`               | `/usr/edb/as<V>` · `/usr/lib/edb-as/<V>`     |
+
+Each package depends on the packaged pgvector at ≥ 0.7.0, which does carry an extension major in its name — RPM concatenates it while DEB hyphenates it: `edb-<variant><V>-pgvector0` on RPM, `edb-<variant><V>-pgvector-0` on DEB. On community PostgreSQL, the DEB also declares `Provides: postgresql-<V>-vectorplus` and the RPM `Provides: vectorplus_<V>`.
+
+## Supported versions and platforms
+
+Packaged: PostgreSQL 14, 15, 16, 17, 18 on all three variants:
+
+| Variant  | Server package the extension depends on |
+|----------|-----------------------------------------|
+| postgres | `postgresql-<V>`                        |
+| extended | `edb-postgresextended<V>-server`        |
+| advanced | `edb-as<V>-server`                      |
+
+| Distro               | Version       | Architectures                | Package type |
+|----------------------|---------------|------------------------------|--------------|
+| EL (RHEL/Rocky/Alma) | 8             | amd64, ppc64le, s390x        | rpm          |
+| EL (RHEL/Rocky/Alma) | 9             | amd64, arm64, ppc64le, s390x | rpm          |
+| SLES                 | 15SP7         | amd64, ppc64le, s390x        | rpm          |
+| Debian               | 11 (bullseye) | amd64                        | deb          |
+| Debian               | 12 (bookworm) | amd64, arm64                 | deb          |
+| Ubuntu               | 22.04 (jammy) | amd64                        | deb          |
+| Ubuntu               | 24.04 (noble) | amd64                        | deb          |
+
+PostgreSQL 12 (with pgvector < 0.8.0), 13, and 19beta also work and are checked in CI, but EDB doesn't distribute packages for those versions.
+
+## Installing from source
+
+Prerequisite: PostgreSQL dev headers (12 or newer) and a pgvector ≥ 0.7.0 binary already installed on the server.
+
+```shell
+cd edb_vectorplus && make && sudo make install
+```
+
+Then:
+
+```sql
+CREATE EXTENSION edb_vectorplus CASCADE;
+```
+
+## Upgrading
+
+Check the version installed in the current database with:
+
+```sql
+SELECT extversion FROM pg_extension WHERE extname = 'edb_vectorplus';
+```
+
+There are no `ALTER EXTENSION edb_vectorplus UPDATE` paths yet — the extension ships a single `edb_vectorplus--<version>.sql` and no `--<from>--<to>.sql` scripts, so that command fails with `extension "edb_vectorplus" has no update path`. To move to a newer package, install it and then `DROP EXTENSION` / `CREATE EXTENSION`, which drops and requires rebuilding any `ivfplus` indexes.
+
+A hotfix rebuild doesn't change `default_version` and needs neither step.

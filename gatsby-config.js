@@ -63,6 +63,10 @@ const sourceToPluginConfig = {
     name: "agent-governance",
     path: "product_docs/docs/agent-governance",
   },
+  "vector-plus": {
+    name: "vector-plus",
+    path: "product_docs/docs/vector-plus",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },

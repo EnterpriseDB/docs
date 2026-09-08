@@ -1,0 +1,30 @@
+---
+title: Measuring recall
+navTitle: Measuring recall
+deepToC: true
+description: How to measure recall for an ivfplus index against an exact scan, so you can validate index quality before relying on it in production.
+---
+
+`ivfplus` is an approximate index. Before relying on it in production, measure its recall against an exact scan:
+
+```sql
+\set q '[0.1,0.2,...]'
+
+BEGIN; -- exact top-10: force a scan and sort
+SET LOCAL enable_indexscan = off;
+CREATE TEMP TABLE truth AS
+SELECT id FROM items ORDER BY embedding <-> :'q' LIMIT 10;
+COMMIT;
+
+SET ivfplus.probes = 32; -- index top-10 at the setting under test
+CREATE TEMP TABLE got AS
+SELECT id FROM items ORDER BY embedding <-> :'q' LIMIT 10;
+
+SELECT count(*)::float / 10 AS recall FROM truth JOIN got USING (id);
+```
+
+Average the result over at least 50 sampled query vectors, and re-measure after any `lists` change.
+
+Alternatively, use a benchmarking tool such as `vsbt` to measure recall on its built-in datasets or your own.
+
+For guidance on choosing `probes` to hit a recall target, see [Tuning and sizing](tuning#choosing-probes).

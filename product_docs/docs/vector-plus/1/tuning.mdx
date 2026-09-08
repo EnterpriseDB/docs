@@ -1,0 +1,52 @@
+---
+title: Tuning and sizing indexes
+navTitle: Tuning and sizing
+deepToC: true
+description: How to choose the lists and probes parameters for an ivfplus index, and what to expect for index size and build cost as those parameters grow.
+---
+
+Two parameters control `ivfplus` at build and query time: `lists`, set once when the index is created, and `probes`, tunable per session. Both affect recall, latency, index size, and build cost as they grow.
+
+## Choosing `lists`
+
+The default is 100, with a range of 1–32768, and it's independent of row count. A 50-million-row table indexed without a `WITH` clause gets 500,000 rows per list and unusable latency — silently, with no warning. Set it explicitly:
+
+| Rows     | `lists`                                       |
+|----------|-----------------------------------------------|
+| < 10k    | 100 (the default is fine)                     |
+| 10k – 1M | rows / 1000                                   |
+| > 1M     | `sqrt(rows)` — approximately 3200 at 10M rows |
+
+As `lists` grows:
+
+- Build memory rises quadratically — k-means samples `max(50 × lists, 10000)` rows, and Elkan's bound matrix is `O(lists²)` floats.
+- `lists >= 1800` switches the index to the two-level hierarchy (see [Architecture](architecture)).
+- The two-level build is single-threaded, so crossing that line silently forfeits parallelism. Nothing reports it — budget for a longer build.
+
+If sampled rows come out fewer than `lists`, the build emits `NOTICE: ivfplus index created with little data`. This means the clustering had almost nothing to work with, and learned centroids might be useless, resulting in low recall after future inserts.
+
+## Choosing `probes`
+
+`probes` isn't used at index build — it's a session parameter that determines how many leaf lists a query scans. Recall and latency both rise with it; values above the index's actual `lists` are clamped to `min(probes, lists)`.
+
+```sql
+SET ivfplus.probes = 32; -- session
+SET LOCAL ivfplus.probes = 64; -- one transaction
+```
+
+Start at `sqrt(lists)` and raise until recall is good enough (see [Measuring recall](measuring-recall)).
+
+A vector-opclass scan returns at most 200 rows per probed query. The rerank pool is a fixed-size structure with no runtime knob, so `LIMIT 500` silently returns fewer rows regardless of `probes`.
+
+## Index size and build cost
+
+| Region              | Bytes per row                                            | Present when                          |
+|---------------------|----------------------------------------------------------|---------------------------------------|
+| Frozen packed block | `1028/32 + dim/8` ≈ `32 + dim/8`                         | quantized opclass, packing window met |
+| f16 rerank copy     | `6 + 2×dim`, plus a 4-byte line pointer                  | stock builds, or `store_vectors = on` |
+| Append tuple        | `40 + 8×ceil(dim/64)`, plus a 4-byte line pointer        | rows inserted after the build         |
+| Centroids           | `lists × dim × 4` (× 2 for `halfvec`) total, not per row | always                                |
+
+For example, 1M rows at 768 dimensions with `lists = 1000`: packed blocks are about 128 B/row (~122 MiB total), the f16 copy is about 1546 B/row (~1.44 GiB total), and centroids are about 2.9 MiB. The f16 copy is roughly 92% of the index size — a rerank-policy build (see [Index-rerank-policy builds](reference#index-rerank-policy-builds)) drops it by default, taking that same index from ~1.6 GiB to ~125 MiB.
+
+k-means runs over `max(50 × lists, 10000)` sampled rows. `maintenance_work_mem` must hold the samples, the centers, and an `O(lists²)` Elkan half-distance matrix, or the build fails with `ERROR: memory required is 412 MB, maintenance_work_mem is 64 MB`. Parallel build uses up to `max_parallel_maintenance_workers`, but only for `lists < 1800`.

@@ -1,0 +1,144 @@
+---
+title: Interface reference
+navTitle: Reference
+deepToC: true
+description: Full interface reference for the ivfplus access method — operator classes, index options, session parameters, functions, and fixed limits.
+---
+
+Everything on this page is the supported surface. Anything else the extension installs is internal and may change or disappear without a version bump.
+
+## Access method and operator classes
+
+`ivfplus` is the only access method.
+
+| Opclass              | Type      | Operator | Metric        | Default | Scan path                 |
+|----------------------|-----------|----------|---------------|---------|---------------------------|
+| `vector_l2_ops`      | `vector`  | `<->`    | L2            | yes     | RaBitQ quantized + rerank |
+| `vector_ip_ops`      | `vector`  | `<#>`    | inner product | no      | RaBitQ quantized + rerank |
+| `vector_cosine_ops`  | `vector`  | `<=>`    | cosine        | no      | RaBitQ quantized + rerank |
+| `halfvec_l2_ops`     | `halfvec` | `<->`    | L2            | no      | RaBitQ quantized + rerank |
+| `halfvec_ip_ops`     | `halfvec` | `<#>`    | inner product | no      | RaBitQ quantized + rerank |
+| `halfvec_cosine_ops` | `halfvec` | `<=>`    | cosine        | no      | RaBitQ quantized + rerank |
+
+`halfvec` is indexed exactly like `vector` — same codes, same rerank copy, so the two differ only in the width of the heap value, and every dimensionality the type allows is quantized. Its centroids are stored as `f16`, which is why a `halfvec` index reaches 4000 dimensions where `vector` stops at 2000; see [Limits and fixed constants](#limits-and-fixed-constants).
+
+Only `vector_l2_ops` is a default, so a bare `USING ivfplus (col)` works for `vector` and fails for `halfvec`.
+
+Not indexed: `<+>` (L1), `<%>` (Jaccard), and `sparsevec` in any form — these fall back to an exact sequential scan, same as pgvector's `ivfflat`.
+
+`bit` is the one place `ivfplus` indexes less than pgvector's `ivfflat`. There's no residual to quantize on a bit vector, so an `ivfplus` bit index would have been the same exact scan `ivfflat` already gives you, and the opclass was removed rather than kept as a synonym. Index bit vectors with `USING ivfflat (col bit_hamming_ops)` instead — the type, `<~>`, and `hamming_distance()` are pgvector's and are unaffected.
+
+## Index options
+
+Set at build time with `CREATE INDEX ... WITH (...)`:
+
+| Option          | Type | Default | Range   | Applies to    | Available                                                      |
+|-----------------|------|---------|---------|---------------|----------------------------------------------------------------|
+| `lists`         | int  | 100     | 1–32768 | all opclasses | always                                                         |
+| `rotation`      | bool | on      | —       | all opclasses | always                                                         |
+| `store_vectors` | bool | off     | —       | all opclasses | [Index-rerank-policy builds](#index-rerank-policy-builds) only |
+
+All three are read only at build time. `ALTER INDEX ... SET (...)` takes an `AccessExclusiveLock` and changes nothing until the next `REINDEX`.
+
+```sql
+CREATE INDEX ON items USING ivfplus (embedding vector_l2_ops)
+WITH (lists = 1000, rotation = on);
+```
+
+`rotation` applies the RaBitQ randomized Hadamard transform before encoding. Leave it on — it's what makes a 1-bit code work on nonisotropic embeddings.
+
+One edge case: `store_vectors` doesn't exist on stock PostgreSQL — `WITH (store_vectors = ...)` fails with `unrecognized parameter`, and the index behaves as though it were on.
+
+## Session parameters
+
+All `PGC_USERSET` — settable per session, transaction, role, or database by any user. The `ivfplus.` prefix is reserved, so typos are rejected.
+
+| Parameter                | Type | Default | Range                  |
+|--------------------------|------|---------|------------------------|
+| `ivfplus.probes`         | int  | 1       | 1–32768                |
+| `ivfplus.iterative_scan` | enum | off     | `off`, `relaxed_order` |
+| `ivfplus.max_probes`     | int  | 32768   | 1–32768                |
+
+`ivfplus.iterative_scan` never refills, and that's a trap. Elsewhere the name means "scan `probes` lists, and if the query still wants rows, fetch more, up to `max_probes`." Here it only widens the initial probe set to `max_probes`, which at its default of 32768 clamps to every list in the index. You get a full upfront collection, and the 200-row pool still caps output. Never enable it without lowering `max_probes` in the same breath:
+
+```sql
+SET ivfplus.iterative_scan = relaxed_order;
+SET ivfplus.max_probes = 128; -- otherwise this is a full-index scan
+```
+
+On a two-level index (`lists >= 1800`), both modes share a further ceiling: the descent only ranks leaves under the coarse groups retained by `probes` (`outer_probes` is derived from `probes`, not `max_probes`), so raising `max_probes` past that fan-out's leaf count adds nothing — raise `probes` to widen the descent instead.
+
+## Functions
+
+| Function                                                   | Returns         | Purpose                                                                                                           |
+|------------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------------------------------|
+| `check_ivfplus_index_health(idx regclass)`                 | record (6 cols) | How far the index has drifted from freshly built                                                                  |
+| `edb_vectorplus_rerank_policy_available()`                 | boolean         | Whether this build has the executor rerank-policy API ([Index-rerank-policy builds](#index-rerank-policy-builds)) |
+| `edb_vectorplus_rerank_stats(reset boolean DEFAULT false)` | record (3 cols) | Per-process rerank counters — [Index-rerank-policy builds](#index-rerank-policy-builds) only                      |
+
+`check_ivfplus_index_health` columns:
+
+| Column           | Type   | Meaning                                                      |
+|------------------|--------|--------------------------------------------------------------|
+| `index_health`   | real   | `(1 - pct_pending) × (1 - pct_dead_lanes)`; NOTICE below 0.8 |
+| `pct_pending`    | real   | Fraction of live rows still in the unpacked append region    |
+| `pct_dead_lanes` | real   | Fraction of frozen lanes tombstoned by VACUUM                |
+| `n_frozen_live`  | bigint | Live rows in the packed region                               |
+| `n_dead_lanes`   | bigint | Tombstoned lanes awaiting REINDEX                            |
+| `n_pending`      | bigint | Rows in the append region                                    |
+
+The extension is relocatable, so schema-qualify these calls if the extension is installed in a schema not on your `search_path`. Any other function you find in `\dx+ edb_vectorplus` is internal.
+
+## Writes, VACUUM, and REINDEX
+
+k-means clustering only happens at `CREATE INDEX`/`REINDEX` time. After that, chosen centroids are fixed for the lifetime of the index, so for best performance it's best to periodically `REINDEX` high-churn tables.
+
+`check_ivfplus_index_health()` reports the drift: `index_health = (1 - pct_pending) × (1 - pct_dead_lanes)`. It's 1.0 on a fresh build, with a NOTICE recommending `REINDEX INDEX CONCURRENTLY` below 0.8.
+
+| Operation            | Effect on the index                                                              |
+|----------------------|----------------------------------------------------------------------------------|
+| `INSERT` after build | Inserts unpacked in the append region and are read by a slower bit-sliced scan   |
+| `UPDATE`             | Delete plus insert, so the row moves to the append region                        |
+| `DELETE` / `VACUUM`  | Tombstones the row's lane; the space is not reclaimed and the lane is not reused |
+| `REINDEX`            | The only operation that repacks the append region rows and reclaims dead lanes   |
+
+## Limits and fixed constants
+
+Compiled in; none is a runtime knob.
+
+| Constant                 | Value                                                        |
+|--------------------------|--------------------------------------------------------------|
+| Max dimensions           | 2000 `vector` · 4000 `halfvec`                               |
+| Max quantized dimensions | same as above (every supported type is quantized throughout) |
+| `lists` / `probes` range | 1–32768                                                      |
+| Rerank pool              | 200 rows per query                                           |
+| Rotation stages          | 6 (on/off only, via `rotation`)                              |
+| Two-level hierarchy      | `lists >= 1800`                                              |
+| Hierarchy fan-out        | `K_lists` 1.0, `K_probes` 2.0                                |
+| RaBitQ error-bound width | ε₀ 1.9                                                       |
+| Fast-scan block width    | 32                                                           |
+| On-disk format version   | 1 (`ivfplus_metapage_info(...).version`)                     |
+
+The packing window is the one entry with an action attached. A vector index gets the packed fast-scan layout only when `dim % 4 == 0` and the packed block fits one page — at the default 8 kB `BLCKSZ`, `dim <= 1780`. Outside it, the index silently runs the slower unpacked path and health reports 1.0 forever, so nothing surfaces it: `vector(1536)` is packed, `vector(1537)` and `vector(1792)` are not. Pad or truncate to a multiple of 4 at or below 1780.
+
+## Index-rerank-policy builds
+
+`postgres-im-rerank` is a PostgreSQL fork exposing an executor index rerank policy: the access method hands the executor candidates in approximate order, and the executor recomputes exact distances from the full-precision heap tuple and uses an access-method-provided policy function to decide what to return. `edb_vectorplus` uses this to drop the in-index `f16` copy and use heap vectors for reranking.
+
+Detection is automatic in the Makefile. At runtime, `SELECT edb_vectorplus_rerank_policy_available();` shows whether the server supports the index rerank policy.
+
+|                                            | Stock PostgreSQL      | `postgres-im-rerank`              |
+|--------------------------------------------|-----------------------|-----------------------------------|
+| `store_vectors` option                     | does not exist        | present, defaults to off          |
+| In-index f16 copy                          | yes, by default       | no                                |
+| Index bytes/row at dim = 768               | ~1674                 | ~128                              |
+| Where rerank happens                       | in-index, against f16 | in the executor, against the heap |
+| Exact at full probe                        | to f16 precision      | exactly, at f32                   |
+| `edb_vectorplus_rerank_policy_available()` | false                 | true                              |
+| `edb_vectorplus_rerank_stats()`            | not installed         | installed                         |
+
+`store_vectors = on` on a fork build restores the behavior `edb_vectorplus` has on a server that doesn't support the index rerank policy.
+
+`edb_vectorplus_rerank_stats(reset)` returns `(decisions, fetch_more, return_top)` — how often the policy callback fired and how it decided; passing `true` resets them after reading. A `store_vectors = on` index never invokes the policy, so its counters stay at zero.
+
+The counters live in backend-process memory only. Treat them as a diagnostic tool: they start at zero when the backend starts, accumulate across every query and every `ivfplus` index that one process touches, and are gone when the connection ends — a new connection always begins at zero. They're also not per-index.
