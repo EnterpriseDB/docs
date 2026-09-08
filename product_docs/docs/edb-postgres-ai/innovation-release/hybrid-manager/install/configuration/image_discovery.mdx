@@ -25,9 +25,11 @@ Image discovery ensures that when you sync new database versions to your registr
 
 ## Configure image discovery
 
-To enable this feature, you must configure the Beacon agent with your registry details.
+To enable this feature, you must tell HM where your registry is and how to reach it.
 
-Edit your `HybridControlPlane` CR to add the image discovery settings under `spec.beaconAgent`:
+All of the container registry settings of a `HybridControlPlane` live under a single `spec.registry` block: `spec.registry.url` and `spec.registry.imagePullSecrets` for pulling the HM images, `spec.registry.tls` for the trust used to reach the registry, and `spec.registry.discovery` for image discovery itself.
+
+Edit your `HybridControlPlane` CR to add the image discovery settings under `spec.registry`:
 
 ```yaml
 apiVersion: edbpgai.edb.com/v1alpha1
@@ -35,31 +37,69 @@ kind: HybridControlPlane
 metadata:
   name: edbpgai
 spec:
-  beaconAgent:
-    provisioning:
-      imageDiscovery: true
-      imagesetDiscoveryContainerRegistryURL: "<your-private-registry-uri>"
-      # Keep false; to trust a private/internal CA, set imageset_discovery_ca_certs below
-      imagesetDiscoveryAllowInsecureRegistry: false
-    # ... your other beaconAgent settings
-  componentsParameters:
-    upm-beacon:
+  registry:
+    # The registry the HM images are pulled from. Image discovery scans this
+    # same registry unless you set spec.registry.discovery.url.
+    url: "<your-private-registry-uri>"
+    imagePullSecrets:
+      - name: edb-cred
+        namespace: edbpgai-bootstrap
+    discovery:
+      enabled: true
+      provider: "oci"
+      authenticationType: "token"
+      credentialsSecretName: "edb-cred"
+    tls:
       # Optional: PEM-encoded CA certificate to verify a private-CA registry over HTTPS
-      imageset_discovery_ca_certs: |
+      caCerts: |
         -----BEGIN CERTIFICATE-----
         <your-private-CA-certificate>
         -----END CERTIFICATE-----
-    # ... your other componentsParameters
+      # Keep false; to trust a private or internal CA, set caCerts above
+      dangerousSkipTLSVerify: false
 ```
 
-### imageDiscovery
+Apply the updated CR:
 
-This boolean option enables or disables the image discovery feature. 
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+!!! Note Operator version
+`spec.registry` requires HM operator 2.2.0 or later, which is the minimum operator version for this HM release. See the [operator compatibility matrix](/hm-operator/latest/compatibility_matrix/).
+!!!
+
+### Deprecated registry fields
+
+The registry fields that `spec.registry` replaces are deprecated. They're still honored where the corresponding `spec.registry` value is unset, so an existing manifest keeps working unchanged, but applying one returns an admission warning naming the field to use instead, and the deprecated fields will be removed in a future API version. A value under `spec.registry` takes precedence over its older counterpart.
+
+| Deprecated field                                                                | Use instead                                   |
+|:--------------------------------------------------------------------------------|:----------------------------------------------|
+| `spec.imageRegistry`                                                            | `spec.registry.url`                           |
+| `spec.imagePullSecrets`                                                         | `spec.registry.imagePullSecrets`              |
+| `spec.beaconAgent.provisioning.imageDiscovery`                                  | `spec.registry.discovery.enabled`             |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL`           | `spec.registry.discovery.url`                 |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryProvider`      | `spec.registry.discovery.provider`            |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType`             | `spec.registry.discovery.authenticationType`  |
+| `spec.componentsParameters.upm-beacon.image_discovery_credentials_secret_name`   | `spec.registry.discovery.credentialsSecretName` |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryCACerts`                        | `spec.registry.tls.caCerts`                   |
+| `spec.componentsParameters.upm-beacon.imageset_discovery_ca_certs`              | `spec.registry.tls.caCerts`                   |
+| `spec.kappController.caCerts`                                                   | `spec.registry.tls.caCerts`                   |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry`          | `spec.registry.tls.dangerousSkipTLSVerify`    |
+| `spec.kappController.dangerousSkipTLSVerify`                                    | `spec.registry.tls.dangerousSkipTLSVerify`    |
+
+When you point at an [in-cluster registry](./in_cluster_registry) with `spec.hmRegistryRef`, the operator populates `spec.registry.url`, `spec.registry.tls.dangerousSkipTLSVerify`, and the `spec.registry.discovery` URL, provider, and authentication type for you.
+
+### discovery.enabled
+
+This boolean option enables or disables the image discovery feature.
 It defaults to `false`.
 
-### imagesetDiscoveryContainerRegistryURL
+### discovery.url
 
 This option specifies the URL of the container registry from which to discover PostgreSQL container images.
+
+It's optional. When it's unset, discovery scans the registry the HM images are pulled from (`spec.registry.url`), so in the common case where both are the same registry you declare the URL only once. Set it only when discovery targets a different repository or host. Like `spec.registry.url`, it can include a repository path.
 
 | Registry provider                                                                               | Registry URL                                             | Example                                        |
 |:------------------------------------------------------------------------------------------------|:---------------------------------------------------------|:-----------------------------------------------|
@@ -70,9 +110,9 @@ This option specifies the URL of the container registry from which to discover P
 | [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/)          | `registry.gitlab.com`                                    | `registry.gitlab.com`                          |
 | [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in)             | `localhost:32000`                                        | `localhost:32000`                              |
 
-## imagesetDiscoveryContainerRegistryProvider
+### discovery.provider
 
-This option defines the provider for the registry located at `imagesetDiscoveryContainerRegistryURL`. It defaults to `oci`.
+This option defines the provider for the registry that discovery scans. It defaults to `oci`.
 
 | Provider | Description                                                                                                                                                                          |
 |:---------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -91,58 +131,9 @@ The recommended provider value per registry provider is as follows:
 | [Harbor Registry](https://goharbor.io/) | `oci` |
 | [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in) | `oci` |
 
-### imagesetDiscoveryAllowInsecureRegistry
+### discovery.authenticationType
 
-If this option is enabled, it allows establishing a TLS connection without certificate validation.
-It defaults to `false`.
-
-### imageset_discovery_ca_certs
-
-Use this option to have image discovery trust a container registry that is served with a certificate signed by a private or internal certificate authority (CA), without disabling certificate validation.
-
-Set it under `spec.componentsParameters.upm-beacon` (not under `spec.beaconAgent.provisioning`). Provide the CA as an inline, PEM-encoded certificate. When this option is set and `imagesetDiscoveryAllowInsecureRegistry` is `false`, the beacon agent verifies the registry's TLS certificate against this CA in addition to the system trust store, and connects using TLS 1.2 or later.
-
-This is the recommended way to reach a private-CA registry over HTTPS in regulated or air-gapped environments that must use HTTPS and cannot enable insecure mode.
-
-```yaml
-spec:
-  beaconAgent:
-    provisioning:
-      imagesetDiscoveryAllowInsecureRegistry: false
-  componentsParameters:
-    upm-beacon:
-      imageset_discovery_ca_certs: |
-        -----BEGIN CERTIFICATE-----
-        <your-private-CA-certificate>
-        -----END CERTIFICATE-----
-```
-
-!!! note
-`imageset_discovery_ca_certs` and `imagesetDiscoveryAllowInsecureRegistry` solve the same problem in different ways. Prefer `imageset_discovery_ca_certs`, which keeps certificate validation enabled. Enable `imagesetDiscoveryAllowInsecureRegistry` only when you cannot supply a CA, because it disables validation entirely. If `imagesetDiscoveryAllowInsecureRegistry` is `true`, certificate validation is skipped and `imageset_discovery_ca_certs` has no effect.
-!!!
-
-#### Rotating the CA
-
-To rotate or replace the CA, replace the `imageset_discovery_ca_certs` value under `spec.componentsParameters.upm-beacon` on the `HybridControlPlane` CR with the new CA certificate and apply it. You do not need to keep the old certificate alongside the new one. The change is applied automatically and **no beacon agent pod restart is required**:
-
-1. The `edb-hcp-operator` reconciles the updated CR and refreshes the ConfigMap that holds the CA certificate.
-2. Kubernetes syncs the updated certificate into the beacon agent pod's mounted volume (typically within about a minute).
-3. The beacon agent re-reads the certificate file on its next discovery cycle and uses the new CA from then on.
-
-The new CA typically takes effect within a couple of minutes. Removing the field reverts image discovery to the system trust store only, so a private-CA registry stops being trusted.
-
-!!! note
-This option affects **image discovery** only — that is, the beacon agent scanning the registry for available tags. It does **not** configure the trust that the Kubernetes nodes use when they pull the discovered images to provision a cluster.
-
-If the registry is served with a private CA, node image pulls fail independently — even when discovery succeeds — with an error such as `x509: certificate signed by unknown authority`. Trusting the private CA at the node level is the responsibility of your **Kubernetes cluster administrator**; it is outside the scope of Hybrid Manager configuration. The administrator must add the CA to each node's container runtime or operating system trust store, for example:
-
-- **containerd:** add the CA under the registry's `certs.d` directory (for example, `/etc/containerd/certs.d/<registry-host>/`).
-- **Operating system:** install the CA into the node's system trust store (for example, `/etc/pki/ca-trust` or `/usr/local/share/ca-certificates`) and refresh it.
-
-Apply this configuration to every node that pulls images, and reapply it as nodes are added or replaced.
-!!!
-
-## imagesetDiscoveryAuthenticationType
+This option indicates the type of authentication to use when connecting to the registry during image discovery.
 
 The supported authentication types by registry provider are as follows:
 
@@ -155,10 +146,63 @@ The supported authentication types by registry provider are as follows:
 | [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/) | `token` | `token` |
 | [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in) | `none` | `none` |
 
-### image_discovery_credentials_secret_name
+### discovery.credentialsSecretName
 
-This value is the name of the Kubernetes secret containing the credentials of registry for image discovery. 
-Defaults to "edb-cred".
+This value is the name of the Kubernetes secret containing the credentials of the registry used for image discovery.
+Defaults to `edb-cred`.
+
+### tls.caCerts
+
+Use this option to have HM trust a container registry that's served with a certificate signed by a private or internal certificate authority (CA), without disabling certificate validation.
+
+Provide the CA as an inline, PEM-encoded certificate bundle. When this option is set and `dangerousSkipTLSVerify` is `false`, the CA is verified in addition to the system trust store, and the connection uses TLS 1.2 or later.
+
+This is the recommended way to reach a private-CA registry over HTTPS in regulated or air-gapped environments that must use HTTPS and can't enable insecure mode.
+
+The CA is supplied once and is used by both consumers that contact the registry from inside HM: the beacon agent scanning for image tags, and kapp-controller pulling the HM component packages. Earlier releases required the same PEM bundle in two independent fields, which could drift.
+
+```yaml
+spec:
+  registry:
+    tls:
+      caCerts: |
+        -----BEGIN CERTIFICATE-----
+        <your-private-CA-certificate>
+        -----END CERTIFICATE-----
+      dangerousSkipTLSVerify: false
+```
+
+!!! note
+`caCerts` and `dangerousSkipTLSVerify` solve the same problem in different ways. Prefer `caCerts`, which keeps certificate validation enabled. Enable `dangerousSkipTLSVerify` only when you can't supply a CA, because it disables validation entirely. If `dangerousSkipTLSVerify` is `true`, certificate validation is skipped and `caCerts` has no effect.
+!!!
+
+#### Rotating the CA
+
+To rotate or replace the CA, replace the `spec.registry.tls.caCerts` value on the `HybridControlPlane` CR with the new CA certificate and apply it. You don't need to keep the old certificate alongside the new one. For image discovery, the change is applied automatically and **no beacon agent pod restart is required**:
+
+1. The `edb-hcp-operator` reconciles the updated CR and refreshes the ConfigMap that holds the CA certificate.
+2. Kubernetes syncs the updated certificate into the beacon agent pod's mounted volume (typically within about a minute).
+3. The beacon agent re-reads the certificate file on its next discovery cycle and uses the new CA from then on.
+
+The new CA typically takes effect within a couple of minutes. Removing the field reverts to the system trust store only, so a private-CA registry stops being trusted.
+
+!!! note
+This option covers the connections HM makes to the registry — the beacon agent scanning it for available tags, and kapp-controller pulling component packages from it. It does **not** configure the trust that the Kubernetes nodes use when they pull the discovered images to provision a cluster.
+
+If the registry is served with a private CA, node image pulls fail independently — even when discovery succeeds — with an error such as `x509: certificate signed by unknown authority`. Trusting the private CA at the node level is the responsibility of your **Kubernetes cluster administrator**; it's outside the scope of Hybrid Manager configuration. The administrator must add the CA to each node's container runtime or operating system trust store, for example:
+
+- **containerd:** add the CA under the registry's `certs.d` directory (for example, `/etc/containerd/certs.d/<registry-host>/`).
+- **Operating system:** install the CA into the node's system trust store (for example, `/etc/pki/ca-trust` or `/usr/local/share/ca-certificates`) and refresh it.
+
+Apply this configuration to every node that pulls images, and reapply it as nodes are added or replaced.
+!!!
+
+### tls.dangerousSkipTLSVerify
+
+If this option is enabled, the registry is treated as fully insecure: certificate validation is disabled and a plaintext HTTP fallback is permitted.
+It defaults to `false`.
+
+Because the same `spec.registry.tls` block is read by both image discovery and the kapp-controller image pulls, enabling this option makes both connections insecure.
 
 * * *
 
@@ -304,7 +348,7 @@ Only `legacy` tokens are supported.
 
 The final step is ensuring HM knows which Kubernetes Secret contains the registry credentials (if not using Cloud Identity).
 
-Confirm or update the credentials secret name in your `HybridControlPlane` CR under `spec.componentsParameters.upm-beacon`:
+Confirm or update the credentials secret name in your `HybridControlPlane` CR under `spec.registry.discovery`:
 
 ```yaml
 apiVersion: edbpgai.edb.com/v1alpha1
@@ -312,10 +356,10 @@ kind: HybridControlPlane
 metadata:
   name: edbpgai
 spec:
-  componentsParameters:
-    upm-beacon:
-      image_discovery_credentials_secret_name: "edb-cred"
-    # ... your other componentsParameters
+  registry:
+    discovery:
+      credentialsSecretName: "edb-cred"
+    # ... your other registry settings
 ```
 
 Apply the updated CR:

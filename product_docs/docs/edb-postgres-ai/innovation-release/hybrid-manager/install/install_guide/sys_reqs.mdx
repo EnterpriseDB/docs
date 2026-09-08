@@ -704,12 +704,17 @@ Collect these values for your HM configuration in the next phase (Phase 3).
 
 | Parameter | Custom Resource key | Value / Format |
 | :--- | :--- | :--- |
-| **Registry URL** | `spec.imageRegistry` | `<Registry Domain>/pgai-platform` |
+| **Registry URL** | `spec.registry.url` | `<Registry Domain>/pgai-platform` |
 | **Image version** | `spec.version` | HM version tag (e.g., `"v2026.5.1"`). |
-| **Pull Secret** | `spec.imagePullSecrets[]` | Kubernetes image pull secret references (for example, `[{name: edb-cred, namespace: edbpgai-bootstrap}]`). |
-| **Discovery Registry** | `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | `<Registry Domain>/pgai-platform` |
-| **Discovery Auth** | `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | `<Auth Type>` (e.g., `token`, `basic`, `eks_managed_identity`) |
-| **TLS Validation** | `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Set to `true` only if intentionally allowing insecure (no/invalid TLS) registry discovery. |
+| **Pull Secret** | `spec.registry.imagePullSecrets[]` | Kubernetes image pull secret references (for example, `[{name: edb-cred, namespace: edbpgai-bootstrap}]`). |
+| **Discovery Registry** | `spec.registry.discovery.url` | `<Registry Domain>/pgai-platform`. Optional — defaults to `spec.registry.url`. |
+| **Discovery Auth** | `spec.registry.discovery.authenticationType` | `<Auth Type>` (e.g., `token`, `basic`, `eks_managed_identity`) |
+| **Registry CA** | `spec.registry.tls.caCerts` | PEM-encoded CA bundle. Required only if your registry is served with a private or internal CA. |
+| **TLS Validation** | `spec.registry.tls.dangerousSkipTLSVerify` | Set to `true` only if intentionally allowing insecure (no/invalid TLS) registry access. |
+
+!!! Note
+These settings live under `spec.registry`, which requires HM operator 2.2.0 or later. Their older counterparts — `spec.imageRegistry`, `spec.imagePullSecrets`, and the `spec.beaconAgent.provisioning` image discovery fields — are deprecated but still honored where the corresponding `spec.registry` value is unset. See [Configuring image discovery](../configuration/image_discovery#deprecated-registry-fields).
+!!!
 
 ## 9. Identity provider (IdP)
 
@@ -786,11 +791,13 @@ The `HybridControlPlane` CR key is specified for each requirement.
 | Source | Requirement | Custom Resource key | Condition |
 | :--- | :--- | :--- | :--- |
 | **Phase 2** | **Storage Class** | `spec.globalParameters.storage_class` | **Required** |
-| **Phase 2** | **Registry URL** | `spec.imageRegistry` | **Required** |
+| **Phase 2** | **Registry URL** | `spec.registry.url` | **Required** |
 | **Phase 2** | **Image Version** | `spec.version` | **Required** |
-| **Phase 2** | **Discovery Reg.** | `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | **Required** |
-| **Phase 2** | **Registry Auth** | `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | **Required** |
-| **Phase 2** | **Insecure TLS** | `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Optional (if using self-signed registry) |
+| **Phase 2** | **Pull Secret** | `spec.registry.imagePullSecrets[]` | **Required** (unless using cloud identity) |
+| **Phase 2** | **Discovery Reg.** | `spec.registry.discovery.url` | Optional (defaults to `spec.registry.url`) |
+| **Phase 2** | **Registry Auth** | `spec.registry.discovery.authenticationType` | **Required** |
+| **Phase 2** | **Registry CA** | `spec.registry.tls.caCerts` | Optional (if your registry uses a private or internal CA) |
+| **Phase 2** | **Insecure TLS** | `spec.registry.tls.dangerousSkipTLSVerify` | Optional (if using self-signed registry) |
 
 ### Security & identity
 
@@ -827,12 +834,16 @@ metadata:
   name: edbpgai
 spec:
   flavour: <Kubernetes> # e.g., eks, gke, rhos, rke2
-  imageRegistry: <Container Registry Domain>/pgai-platform
   version: <Version>
 
-  imagePullSecrets:
-    - name: edb-cred
-      namespace: edbpgai-bootstrap
+  registry:
+    url: <Container Registry Domain>/pgai-platform
+    imagePullSecrets:
+      - name: edb-cred
+        namespace: edbpgai-bootstrap
+    discovery:
+      enabled: true
+      authenticationType: <Authentication Type for the Container Registry>
 
   globalParameters:
     CONTAINER_REGISTRY_URL: <Container Registry Domain>/pgai-platform
@@ -852,9 +863,6 @@ spec:
       rw_service_url: https://<Migration Domain>/transporter
 
   beaconAgent:
-    provisioning:
-      imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
-      imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
     transparentDataEncryptionMethods:
       - <available_encryption_method>
 
