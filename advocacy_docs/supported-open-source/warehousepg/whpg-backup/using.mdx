@@ -87,6 +87,8 @@ Each time `gpbackup` runs, it records details of the operation, such as the time
 
 `gpbackup` uses `gpbackup_history.db` to build the backup and restore plan for an incremental backup set when you run `gpbackup` with `--incremental` and don't specify `--from-timestamp` to indicate the base backup. See [Creating incremental backups](incremental.mdx) for details.
 
+As of version 1.34.0, `gpbackup` also records `single_backup_dir`, `command_line`, and `object_count` for each backup. Opening an existing history database automatically adds these columns to it. See [Managing backup history](#managing-backup-history) for the commands that inspect and clean up the history database.
+
 ## Restoring a full backup
 
 To restore from a backup set with `gprestore`, specify the exact timestamp `YYYYMMDDHHMMSS` of the backup with the `--timestamp` option. Add the `--create-db` option if the database doesn't already exist in the cluster. If you used a custom `--backup-dir` when creating the backup, include the same option when restoring it:
@@ -102,6 +104,81 @@ By default, `gprestore` uses one connection to restore table data and metadata. 
 When restoring to an existing database, `gprestore` assumes the public schema exists. When restoring to a new database with `--create-db`, `gprestore` creates the public schema automatically using the `CREATE DATABASE` command, based on the `template0` database that contains the public schema.
 
 `gprestore` reports its own progress in the same style as `gpbackup`, ending with `Restore completed successfully`.
+
+## Managing backup history
+
+Inspect and clean up the backups recorded in the [backup history database](#understanding-the-backup-history-database). See the [gpbackup reference](reference/gpbackup.mdx#subcommands) for the full subcommand syntax.
+
+### Listing backups
+
+List every backup recorded in the history database, including its status, database name, and backup type:
+
+```bash
+gpbackup list-backups
+__OUTPUT__
+timestamp       date                      status   database     type         object filtering  plugin  duration  date deleted  backup dir                       compressed  compression type
+20250510090000  Sat May 10 2025 09:00:00  Success  ww_sales     full                                   00:12:34                                                 true        gzip
+20250515182209  Thu May 15 2025 18:22:09  Success  ww_sales     full                                   00:00:52                /tmp/single_file                 false       gzip
+20250518060000  Sun May 18 2025 06:00:00  Success  ww_sales     incremental                            00:02:41                /nfsmount/whpg_backups/ww_sales  true        gzip
+20250520101500  Tue May 20 2025 10:15:00  Success  ww_customer  full         include-table             00:00:16                                                 true        gzip
+```
+
+The `backup dir` column shows the `--backup-dir` value recorded for each backup, and `object filtering` shows which include or exclude filtering option was used, if any.
+
+Add `--show-all` to include backups that have already been deleted, or `--format json` for machine-readable output you can parse in a script:
+
+```bash
+gpbackup list-backups --format json
+```
+
+### Finding backups that contain a table
+
+Check which backups include data for a specific table without having to perform a restore:
+
+```bash
+gpbackup find-table apac_customer.customer_fact
+__OUTPUT__
+timestamp       date                      status   database     type  object filtering  plugin  duration  date deleted  backup dir  compressed  compression type
+20250520101500  Tue May 20 2025 10:15:00  Success  ww_customer  full  include-table             00:00:16                            true        gzip
+```
+
+Specify the table argument as `schema.table`.
+
+### Viewing a backup report
+
+Display the report for a specific backup timestamp without locating the report file yourself:
+
+```bash
+gpbackup display-report 20250515182209
+```
+
+If the local report file is gone but the backup used a storage plugin, add `--plugin-config` to retrieve it from the remote location:
+
+```bash
+gpbackup display-report 20250515182209 --plugin-config /home/gpadmin/s3-config.yaml
+```
+
+### Deleting backups
+
+Delete a single backup set and record the deletion in the history database:
+
+```bash
+gpbackup delete-backup 20250515182209
+```
+
+If another incremental backup depends on it, you must add `--cascade` to delete both the backup and its dependents:
+
+```bash
+gpbackup delete-backup 20250515182209 --cascade
+```
+
+To clean up routinely, delete every full backup older than a given timestamp. `delete-backups-before` never deletes incremental backups, and skips, with a warning, any full backup that still has a live incremental dependent:
+
+```bash
+gpbackup delete-backups-before 20250101000000
+```
+
+Add `--no-prompt` to skip the confirmation prompt, for a scheduled cleanup job or another non-interactive script.
 
 ## Filtering backups and restores
 
