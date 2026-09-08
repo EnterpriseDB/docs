@@ -1,0 +1,134 @@
+---
+title: Monitoring metrics reference
+navTitle: Monitoring metrics
+description: Reference for every metric PGD Monitor collects, including the metric registry queried by bdr.ts_metrics() and the additional metrics available through the Prometheus /metrics endpoint.
+deepToC: true
+---
+
+PGD Monitor collects these metrics and exposes them consistently across SQL, using [`bdr.ts_metrics()`](/pgd/current/reference/tables-views-functions/functions/#bdrts_metrics) and related functions, as well as its REST API, its web UI, and its Prometheus `/metrics` endpoint. See [PGD Monitor](/pgd/current/lifecycle/monitoring/pgd-monitor) for how to enable and access each of those interfaces.
+
+## PGD timeseries metrics
+
+These metrics come from the registry that `bdr.ts_metrics()` returns. The monitor worker samples them roughly every 10 seconds, except where noted.
+
+| Metric | Unit | Sample interval | Description |
+| --- | --- | --- | --- |
+| `pgd_sys_cpu_pct` | Percent | 10s | CPU utilization as a percentage of total capacity. |
+| `pgd_sys_mem_pct` | Percent | 10s | Memory utilization as a percentage of total available. |
+| `pgd_sys_disk_pgdata_free_bytes` | Bytes | 60s | Free disk space on the PGDATA volume. |
+| `pgd_sys_disk_pgdata_total_bytes` | Bytes | 60s | Total disk space on the PGDATA volume. |
+| `pgd_sys_disk_pgwal_free_bytes` | Bytes | 60s | Free disk space on the write-ahead log (WAL) volume. |
+| `pgd_sys_disk_pgwal_total_bytes` | Bytes | 60s | Total disk space on the WAL volume. |
+| `pgd_pg_connections` | Count | 10s | Total number of active Postgres backend connections. |
+| `pgd_pg_active_queries` | Count | 10s | Number of currently active (non-idle) queries. |
+| `pgd_connmgr_conns_rw` | Count | 10s | Client connections through the Connection Manager's read-write proxy port. |
+| `pgd_connmgr_conns_ro` | Count | 10s | Client connections through the Connection Manager's read-only proxy port. |
+| `pgd_pg_tps` | Per second | 10s | Committed and aborted transactions per second. |
+| `pgd_pg_cache_hit_pct` | Percent | 10s | Buffer cache hit ratio of the PGD database. |
+| `pgd_pg_deadlocks_rate` | Per second | 10s | Deadlocks per second in the PGD database. |
+| `pgd_pg_wraparound_age_max` | Count | 60s | Age in transactions of the oldest frozen-xid horizon across all databases. |
+| `pgd_pg_longest_tx_seconds` | Seconds | 10s | Age in seconds of the longest open transaction. |
+| `pgd_max_replay_lag_bytes` | Bytes | 10s | Maximum replication replay lag in bytes across all peers. |
+| `pgd_oldest_kept_lag_bytes` | Bytes | 10s | Size of retained WAL needed by the cluster, kept using the group slot. |
+| `pgd_analytics_lag_bytes` | Bytes | 10s | Replication lag in bytes for analytics nodes. |
+| `pgd_clock_drift_max_milliseconds` | Milliseconds | 10s | Approximate maximum clock drift across nodes. |
+| `pgd_conflicts_rate` | Per second | 10s | Replication conflicts per second across all apply workers. |
+| `pgd_apply_errors_rate` | Per second | 10s | Apply errors per second across all apply workers. |
+
+### Commit latency histogram
+
+`pgd_commit_latency_milliseconds` is a histogram-kind metric giving the mean commit latency, in milliseconds, across all active commit scopes. The monitor worker samples it every 60 seconds. Read it with `bdr.ts_histogram()`, `bdr.ts_histogram_distribution()`, or `bdr.ts_histogram_cumulative()`, or as the `_bucket`, `_sum`, and `_count` series on the Prometheus endpoint.
+
+## Cluster state metrics
+
+These identity and Raft metrics come from cached cluster catalog data rather than the timeseries registry, so they're available on the Prometheus endpoint and the REST API, but not through `bdr.ts_metrics()`. Unless noted, each is an identity metric with the constant value `1`, carrying its payload in labels.
+
+| Metric | Labels | Description |
+| --- | --- | --- |
+| `pgd_node_info` | `node_name` | Identity of the node serving the request. |
+| `pgd_raft_state` | `node_group`, `state` | Raft state of this node in the group. |
+| `pgd_raft_leader` | `node_group`, `node_name` | Current Raft leader of the group. |
+| `pgd_raft_term` | `node_group` | Current Raft term (gauge). |
+| `pgd_raft_commit_index` | `node_group` | Raft commit index (gauge). |
+| `pgd_write_leader` | `node_group`, `node_name` | Current write leader of the group. |
+| `pgd_read_node` | `node_group`, `node_name` | A current read node of the group. Repeats once per read node. |
+| `pgd_replication_sent_lsn_bytes` | `target_name` | WAL position sent to the target node, as bytes since `0/0`. |
+| `pgd_replication_replay_lsn_bytes` | `target_name` | WAL position applied by the target node, as bytes since `0/0`. |
+| `pgd_replication_received_lsn_bytes` | `origin_name` | WAL position received from the origin node, as bytes since `0/0`. |
+
+Log sequence number (LSN) positions are exported as bytes since `0/0`, so you can subtract them directly in PromQL. For example, sent minus replay equals apply lag in bytes.
+
+## Commit scope counters
+
+Per-commit-scope transaction counters, labeled by `commit_scope`. Only scopes that have been used are reported.
+
+| Metric | Description |
+| --- | --- |
+| `pgd_commit_scope_calls_total` | Transactions that used the commit scope. |
+| `pgd_commit_scope_commits_total` | Commits under the commit scope. |
+| `pgd_commit_scope_aborts_total` | Aborts under the commit scope. |
+| `pgd_commit_scope_degrades_total` | Transactions that hit degraded mode under the commit scope. |
+| `pgd_commit_scope_config_degrades_total` | Transactions started while the commit scope was already in degraded mode. |
+
+## Postgres statistics metrics
+
+These metrics mirror Prometheus [`postgres_exporter`](https://github.com/prometheus-community/postgres_exporter) collectors, read from the local node's statistics views. They're available only on the Prometheus endpoint, and only when [`bdr.monitor_prometheus_pg_metrics`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrmonitor_prometheus_pg_metrics) is `on` (the default). Set it to `off` on a node if `postgres_exporter` already runs there and you don't want duplicate series, then reload the configuration. PGD-native metrics keep exporting either way.
+
+### Per database
+
+Labeled by `datname`. Includes template databases, since their frozen-xid horizon matters for wraparound.
+
+| Metric | Type | Description |
+| --- | --- | --- |
+| `pgd_pg_stat_database_numbackends` | Gauge | Backends currently connected to the database. |
+| `pgd_pg_stat_database_xact_commit_total` | Counter | Committed transactions. |
+| `pgd_pg_stat_database_xact_rollback_total` | Counter | Rolled-back transactions. |
+| `pgd_pg_stat_database_blks_read_total` | Counter | Disk blocks read. |
+| `pgd_pg_stat_database_blks_hit_total` | Counter | Disk blocks found in shared buffers. |
+| `pgd_pg_stat_database_deadlocks_total` | Counter | Deadlocks detected. |
+| `pgd_pg_stat_database_temp_files_total` | Counter | Temporary files written by queries. |
+| `pgd_pg_stat_database_temp_bytes_total` | Counter | Bytes written to temporary files by queries. |
+| `pgd_pg_database_wraparound_age_datfrozenxid` | Gauge | Age in transactions of the database's frozen-xid horizon. |
+| `pgd_pg_database_wraparound_age_datminmxid` | Gauge | Age in multixacts of the database's minimum-multixact horizon. |
+| `pgd_pg_database_size_bytes` | Gauge | Database size in bytes. |
+
+### Non-PGD replication slots
+
+Labeled by `slot_name`, `slot_type`, and `database`. PGD's own slots already have dedicated `pgd_replication_*` families above, so this group catches external or orphaned slots instead, such as change data capture (CDC) consumers, removed subscribers, or physical standbys that silently retain WAL.
+
+| Metric | Description |
+| --- | --- |
+| `pgd_pg_replication_slot_active` | Whether the slot has an active connection. |
+| `pgd_pg_replication_slot_retained_wal_bytes` | WAL retained by the slot. |
+| `pgd_pg_replication_slot_safe_wal_size_bytes` | WAL the slot can still write before reaching `max_slot_wal_keep_size`. |
+| `pgd_pg_replication_slot_wal_status` | WAL availability of the slot (identity metric, labeled `wal_status` with values `reserved`, `extended`, `unreserved`, or `lost`). |
+
+### Instance-wide metrics
+
+| Metric | Type | Description |
+| --- | --- | --- |
+| `pgd_pg_wal_segments` | Gauge | WAL segment files in `pg_wal`. |
+| `pgd_pg_wal_size_bytes` | Gauge | Total size of WAL segment files in `pg_wal`. |
+| `pgd_pg_stat_archiver_archived_total` | Counter | WAL files archived successfully. |
+| `pgd_pg_stat_archiver_failed_total` | Counter | Failed WAL archiving attempts. |
+| `pgd_pg_stat_archiver_last_archive_age_seconds` | Gauge | Seconds since the last successful WAL archive. Absent until one succeeds. |
+| `pgd_pg_stat_checkpointer_timed_total` | Counter | Scheduled checkpoints performed. |
+| `pgd_pg_stat_checkpointer_requested_total` | Counter | Requested checkpoints performed, driven by WAL volume rather than the schedule. |
+| `pgd_pg_stat_checkpointer_write_time_seconds_total` | Counter | Seconds spent writing checkpoint files to disk. |
+| `pgd_pg_stat_checkpointer_sync_time_seconds_total` | Counter | Seconds spent syncing checkpoint files to disk. |
+| `pgd_pg_stat_checkpointer_buffers_written_total` | Counter | Buffers written during checkpoints and restartpoints. |
+| `pgd_pg_stat_bgwriter_buffers_clean_total` | Counter | Buffers written by the background writer. |
+| `pgd_pg_stat_bgwriter_maxwritten_clean_total` | Counter | Background writer cleaning scans stopped at the write limit. |
+| `pgd_pg_stat_bgwriter_buffers_alloc_total` | Counter | Buffers allocated. |
+| `pgd_pg_postmaster_start_time_seconds` | Gauge | Unix timestamp of postmaster start, giving instance uptime. |
+
+On Postgres versions before 17, the `checkpointer` counters come from `pg_stat_bgwriter` instead. Metric names stay identical across versions.
+
+### Activity and locks
+
+| Metric | Labels | Description |
+| --- | --- | --- |
+| `pgd_pg_stat_activity_backends` | `state` | Client backends by state. |
+| `pgd_pg_stat_activity_max_tx_duration_seconds` | `state` | Age of the oldest open transaction among client backends, by state. |
+| `pgd_pg_stat_activity_waiting_backends` | `wait_event_type` | Backends currently waiting, by wait event type. Idle background workers always report `Activity` waits. Contention shows up as `Lock`, `LWLock`, and `BufferPin`. |
+| `pgd_pg_locks` | `mode`, `granted` | Locks held or awaited, by lock mode. Rows with `granted="false"` are backends waiting on a lock. |

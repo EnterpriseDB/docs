@@ -93,7 +93,7 @@ You do not need to install these tools in this phase.
 However, you must ensure your workstation environment allows for the installation and execution of the following binaries in the next phase (Phase 3):
 
 **Core installation tools**
-* `edbctl` (EDB Hybrid Manager CLI)
+* [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/) — the Hybrid Manager CLI, used to manage resources and cluster operations from a terminal
 * `kubectl` (Kubernetes CLI) + `cnpg` plugin
 * `helm` (Kubernetes package manager)
 * `yq` (Command-line YAML processor)
@@ -434,10 +434,14 @@ These are inputs into your HM configuration in the next phase:
 | :--- | :--- | :--- |
 | **Portal domain** | `spec.globalParameters.portal_domain_name` | The host name for the HM Portal UI. |
 | **Agent domain** | `spec.componentsParameters.upm-beacon.server_host` | The host name through which the Beacon Server API is reachable. |
-| **Migration domain** | `spec.globalParameters.dms_domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. |
+| **Migration domain** | `spec.globalParameters.dms_domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. If you're using the NodePort ingress strategy, this value must also include a port. |
 | **NodePort base** | `spec.globalParameters.node_port_domain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
 
 In case of NodePort approach, the above DNS entries should be round robin on the compute IP where the control-plane label is applied on the Kubernetes Nodes.
+
+!!! Note NodePort and the migration domain
+`dms_domain_name` isn't only a host name. If you're using the [NodePort alternative](#512-nodeport-alternative) ingress strategy, include the NodePort assigned to `ingress_https_node_port` (`30288` by default) in this value, for example, `mig.example.com:30288`. Without a load balancer, HM can't resolve this domain over the default HTTPS port (443).
+!!!
 
 #### DNS configuration strategy
 
@@ -700,12 +704,17 @@ Collect these values for your HM configuration in the next phase (Phase 3).
 
 | Parameter | Custom Resource key | Value / Format |
 | :--- | :--- | :--- |
-| **Registry URL** | `spec.imageRegistry` | `<Registry Domain>/pgai-platform` |
+| **Registry URL** | `spec.registry.url` | `<Registry Domain>/pgai-platform` |
 | **Image version** | `spec.version` | HM version tag (e.g., `"v2026.5.1"`). |
-| **Pull Secret** | `spec.imagePullSecrets[]` | Kubernetes image pull secret references (for example, `[{name: edb-cred, namespace: edbpgai-bootstrap}]`). |
-| **Discovery Registry** | `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | `<Registry Domain>/pgai-platform` |
-| **Discovery Auth** | `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | `<Auth Type>` (e.g., `token`, `basic`, `eks_managed_identity`) |
-| **TLS Validation** | `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Set to `true` only if intentionally allowing insecure (no/invalid TLS) registry discovery. |
+| **Pull Secret** | `spec.registry.imagePullSecrets[]` | Kubernetes image pull secret references (for example, `[{name: edb-cred, namespace: edbpgai-bootstrap}]`). |
+| **Discovery Registry** | `spec.registry.discovery.url` | `<Registry Domain>/pgai-platform`. Optional — defaults to `spec.registry.url`. |
+| **Discovery Auth** | `spec.registry.discovery.authenticationType` | `<Auth Type>` (e.g., `token`, `basic`, `eks_managed_identity`) |
+| **Registry CA** | `spec.registry.tls.caCerts` | PEM-encoded CA bundle. Required only if your registry is served with a private or internal CA. |
+| **TLS Validation** | `spec.registry.tls.dangerousSkipTLSVerify` | Set to `true` only if intentionally allowing insecure (no/invalid TLS) registry access. |
+
+!!! Note
+These settings live under `spec.registry`, which requires HM operator 2.2.0 or later. Their older counterparts, `spec.imageRegistry`, `spec.imagePullSecrets`, and the `spec.beaconAgent.provisioning` image discovery fields, are deprecated. They still apply where the corresponding `spec.registry` value is unset. See [Configuring image discovery](../configuration/image_discovery#deprecated-registry-fields).
+!!!
 
 ## 9. Identity provider (IdP)
 
@@ -763,7 +772,7 @@ The `HybridControlPlane` CR key is specified for each requirement.
 | **Phase 1** | **Provider** | `spec.beaconAgent.provisioning.provider` | **Required** (e.g., `AWS`, `GCP`) |
 | **Phase 1** | **OpenShift** | `spec.beaconAgent.provisioning.openshift` | **Required** if using RHOS (`true`) |
 | **Phase 1** | **Location** | `spec.componentsParameters.upm-beacon.beacon_location_id` | **Required** (String ID) |
-| **Phase 1** | **Installation scenarios** | `spec.scenarios[]` | **Optional**. All scenarios enabled by default. Customize with `core` plus any of `migration`, `ai`, `dbaas` or `analytics`. |
+| **Phase 1** | **Installation scenarios** | `spec.scenarios[]` | **Optional**. Omitting this applies the operator's default set, which depends on your operator version — operator 2.1 installs the full set, operator 2.2 or later installs only `core`. List scenarios explicitly instead. Use `core` plus any of `migration`, `ai`, `dbaas`, `analytics`, or `marketplace`. |
 
 ### Networking & ingress
 
@@ -782,11 +791,13 @@ The `HybridControlPlane` CR key is specified for each requirement.
 | Source | Requirement | Custom Resource key | Condition |
 | :--- | :--- | :--- | :--- |
 | **Phase 2** | **Storage Class** | `spec.globalParameters.storage_class` | **Required** |
-| **Phase 2** | **Registry URL** | `spec.imageRegistry` | **Required** |
+| **Phase 2** | **Registry URL** | `spec.registry.url` | **Required** |
 | **Phase 2** | **Image Version** | `spec.version` | **Required** |
-| **Phase 2** | **Discovery Reg.** | `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL` | **Required** |
-| **Phase 2** | **Registry Auth** | `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType` | **Required** |
-| **Phase 2** | **Insecure TLS** | `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry` | Optional (if using self-signed registry) |
+| **Phase 2** | **Pull Secret** | `spec.registry.imagePullSecrets[]` | **Required** (unless using cloud identity) |
+| **Phase 2** | **Discovery Reg.** | `spec.registry.discovery.url` | Optional (defaults to `spec.registry.url`) |
+| **Phase 2** | **Registry Auth** | `spec.registry.discovery.authenticationType` | **Required** |
+| **Phase 2** | **Registry CA** | `spec.registry.tls.caCerts` | Optional (if your registry uses a private or internal CA) |
+| **Phase 2** | **Insecure TLS** | `spec.registry.tls.dangerousSkipTLSVerify` | Optional (if using self-signed registry) |
 
 ### Security & identity
 
@@ -823,12 +834,16 @@ metadata:
   name: edbpgai
 spec:
   flavour: <Kubernetes> # e.g., eks, gke, rhos, rke2
-  imageRegistry: <Container Registry Domain>/pgai-platform
   version: <Version>
 
-  imagePullSecrets:
-    - name: edb-cred
-      namespace: edbpgai-bootstrap
+  registry:
+    url: <Container Registry Domain>/pgai-platform
+    imagePullSecrets:
+      - name: edb-cred
+        namespace: edbpgai-bootstrap
+    discovery:
+      enabled: true
+      authenticationType: <Authentication Type for the Container Registry>
 
   globalParameters:
     CONTAINER_REGISTRY_URL: <Container Registry Domain>/pgai-platform
@@ -848,9 +863,6 @@ spec:
       rw_service_url: https://<Migration Domain>/transporter
 
   beaconAgent:
-    provisioning:
-      imagesetDiscoveryAuthenticationType: <Authentication Type for the Container Registry>
-      imagesetDiscoveryContainerRegistryURL: "<Container Registry Domain>/pgai-platform"
     transparentDataEncryptionMethods:
       - <available_encryption_method>
 
@@ -860,6 +872,7 @@ spec:
     - <if required, ai>
     - <if required, analytics>
     - <if required, dbaas>
+    - <if required, marketplace>
 
   resourceAnnotations:
     - name: istio-ingressgateway

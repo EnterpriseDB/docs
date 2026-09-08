@@ -1,0 +1,44 @@
+---
+title: Migrating from Postgres Physical Streaming Replication (PSR) to PGD
+navTitle: Migrating from PSR
+description: Migrate from PSR to EDB Postgres Distributed.
+navigation:
+  - 1-preparation
+  - 2-data-transfer
+  - 3-convert-to-logical-replication
+  - 4-upgrade-seed-node  
+  - 5-initialize-pgd
+  - 6-join-nodes
+  - 7-application-cutover
+  - 8-cleanup
+---
+
+Moving from Postgres Physical Streaming Replication (PSR) to Postgres Distributed (PGD) represents a shift from a single-primary architecture to a multi-primary mesh network. This transition is typically driven by the need for higher availability and geographically distributed write capabilities.
+
+See [Choosing between PSR and PGD](/pgd/latest/planning/pgd_psr/) for more information.
+
+The core of this migration strategy is the **seed node**, a new node that initially joins your existing PSR cluster as a standard physical standby. Once synchronized, it is decoupled from the physical stream and converted into a logical subscriber.
+
+Logical replication allows for data to flow between different major versions of Postgres. Once the seed node is upgraded and running PGD, it serves as the "anchor" for the new cluster, allowing additional PGD nodes to join using a "physical join" from the seed node while still receiving fresh data from the original source primary.
+
+By using this method, the original primary node remains the "source of truth" throughout the process, ensuring that the application can continue to run without interruption until the final cutover phase.
+
+## Prerequisites
+
+- Nodes running PGE, EPAS, or Community Postgres version 14 or later currently utilizing physical replication (optionally managed by EFM).
+- Two additional nodes with sufficient storage (the seed node and an additional node).
+- Network connectivity between all existing and new nodes.
+
+## Migration overview
+
+The migration consists of the following phases:
+
+1. [Prepare the environment:](1-preparation) Identify the source primary node and select a seed node to anchor the PGD cluster.
+1. [Transfer data to the seed node:](2-data-transfer) Establish a manual physical standby on the new node.
+1. [Convert to logical replication:](3-convert-to-logical-replication) Transition the seed node from physical to logical streaming.
+1. [Upgrade the seed node:](4-upgrade-seed-node) Perform an in-place major version upgrade and install the PGD packages.
+1. [Initialize PGD:](5-initialize-pgd) Create the BDR extension and initialize the first PGD node group.
+1. [Join additional nodes:](6-join-nodes) Expand the cluster to ensure high availability.
+1. [Execute application cutover:](7-application-cutover) Switch traffic to the new PGD cluster.
+1. [Clean up the environment:](8-cleanup) Decouple the clusters and remove legacy versions.
+
