@@ -1,0 +1,124 @@
+---
+title: "Hybrid Manager 2026.8.0 release notes"
+navTitle: "Version 2026.8.0"
+description: "Release notes for version 2026.8.0 of Hybrid Manager."
+deepToC: true
+---
+
+This Innovation Release includes features and enhancements.
+
+**Release date:** August 13, 2026
+
+!!!info Release cadence
+
+HM now follows a dual release strategy: LTS and Innovation Releases. For details on this model, see [Hybrid Manager (HM) dual release strategy](/edb-postgres-ai/current/hybrid-manager/release_notes/#hybrid-manager-dual-release-strategy).
+!!!
+
+## Component versions
+
+| Component name | Package name | Compatible version |
+| --- | --- | --- |
+| Hybrid Manager (HM) Operator | `edb-hcp-operator` | 2.1.0 |
+| Hybrid Manager operand images | `operandSet` | 1.2.1 (timestamp 2608040800) |
+| [EDB Postgres AI agent](/tools/agent/) | `beacon-agent` | 1.401.5 |
+| EDB Postgres AI agent - Helm chart | `beacon-agent` (Helm chart) | 1.371.0 |
+| [DMS agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/cdcagent_compatibility/) | `cdcagent` | 2.1.1 |
+| [Hybrid Manager CLI](/edbctl/1/) | `edbctl` | 1.8.1 |
+| [AIDB](/aidb/7/) | AIDB | 7.5.0 |
+| [Postgres Analytics Accelerator](/pgaa/1.10/) | PGAA | 1.10.0 |
+| Postgres File System | PGFS | 3.2.0 |
+| [Distributed High Availability](/pgd/6/) | PGD | 6.4.0 |
+| [EDB Postgres AI for CloudNativePG Cluster](/postgres_for_kubernetes/latest/) (formerly EDB Postgres for Kubernetes) | PG4K | 1.30.0 |
+
+## Release highlights
+
+-   **More resilient multi-data-center failover:** Forced failover promotion of a primary no longer requires the down location to respond, so you can switch over to a healthy replica and clean up the disabled location's resources without waiting on it.
+
+-   **Data masking with `pg_anonymizer`:** Hybrid Manager operand images now include the `pg_anonymizer` extension, giving you built-in data masking capabilities for your Postgres databases.
+
+-   **Hard approval for sensitive AI agent actions:** Chat Agent now pauses and asks you to confirm before running sensitive tool calls, such as deleting resources or changing role assignments, instead of relying only on system instructions.
+
+-   **Cleaner cluster log filtering:** The **Logs** tab now shows Postgres logs by default, with a new **Service Name** menu to switch to Beacon Agent logs and pod names displayed and selectable for filtering.
+
+!!!note Postgres refers to all distributions supported by EDB
+
+-   PostgreSQL
+-   EDB Enterprise Postgres - formerly, EDB Postgres Extended Server (PGE)
+-   EDB Enterprise Postgres (Oracle Compatible) - formerly, EDB Postgres Advanced Server (EPAS)
+!!!
+
+## Release details
+
+### Hybrid Manager (HM) platform
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added support for GKE Workload Identity as an authentication type for image discovery. When the EDB Postgres AI agent (`beacon-agent`) is deployed on GKE, it can now authenticate to Google Artifact Registry using Workload Identity Federation instead of a static docker-config secret, letting credentials be minted on demand through Application Default Credentials. |
+| Enhancement | Added the `pg_anonymizer` extension to the Hybrid Manager operand images, enabling data masking capabilities for your Postgres databases. |
+| Enhancement | Forced failover promotion of a primary in multi-data-center DR scenarios no longer requires the down location to respond. You can now switch over to a healthy replica without the original primary's location being reachable, and, once that location is marked disabled, delete its cluster resources, backups, apps, and pipelines without waiting for a response. |
+| Enhancement | Added `marketplace` (OSS Library) as an independent, optional install scenario, covering both install-time configuration and the HM console. OSS Library apps — project, estate, and asset library apps, and related overview cards — are now gated behind this scenario instead of always shipping under `core`, consistent with other capability sets like `ai`, `analytics`, and `dbaas`. |
+| Enhancement | Added a **Duplicate** button for primary/standby replica (PSR) clusters, letting you duplicate a replica cluster directly from its primary cluster's form. |
+| Enhancement | Added the `--source-registry` and `--source-images-list-url` flags to `edbctl image sync-to-local-registry` and `edbctl image export-to-archive`. You can now redirect these commands to pull images and image lists from a mirror, pull-through cache, or staging registry instead of the default EDB registry. |
+| Bug fix | Fixed an issue whereby multi-data-center installations required a manually specified location list to configure monitoring and observability components, such as Thanos and Fluent Bit. These components are now auto-discovered, so the location list is no longer needed. |
+| Bug fix | Fixed an issue whereby the AI assistant's inventory skill incorrectly classified Hybrid Manager-provisioned clusters as self-managed clusters. Requests for self-managed clusters now correctly resolve through estate inventory instead of the managed cluster listing. |
+| Bug fix | Fixed an issue whereby the immediate checkpoint backup option had no effect on Distributed High Availability (DHA) clusters (built on EDB Postgres Distributed, PGD) — even with it enabled, backups still used the default slow, spread-out checkpoint instead of forcing an immediate one. It now works correctly on DHA clusters, matching the behavior already available on primary/standby replica (PSR) clusters. |
+| Bug fix | Fixed an issue whereby adding a data node to a DHA cluster's PGD group with Azure customer-managed key (CMK) encryption could fail on AKS nodes with multiple managed identities — physical-join lacked credentials to unwrap the key, so the node got stuck at "configuring encryption." The physical-join pod now inherits the labels needed to resolve the correct identity, and the node joins successfully. |
+| Bug fix | Fixed an issue whereby adding a region or data group to a TDE-encrypted cluster with a customer-managed key could persist the config before the key was validated — an unresolvable key left the new node without its encryption secret, crash-looping instead of failing cleanly. The key and secret are now validated and created before the config updates, so no region or node is left half-provisioned. |
+| Bug fix | Fixed TDE key decryption failing with a `KeyNotFound` error when a TDE-wrapped key file was copied to a different Azure Key Vault instance holding the same key material. Decryption now falls back to the locally configured key name and version whenever the key version embedded in the file's metadata doesn't exist in the local vault, so the file can still be decrypted using the destination's own key configuration. |
+| Bug fix | Fixed an issue whereby the `ListPackageVersions` API returned marketplace package versions in an unsorted order instead of by semantic version. Package versions are now returned sorted by semantic version in descending order, ensuring the correct version is identified as the latest. |
+| Bug fix | Fixed an issue whereby the `klio` scenario didn't depend on the `dbaas` scenario, which could leave the backup API unavailable when `klio` was enabled without `dbaas`. |
+| Bug fix | Fixed an issue whereby disabling the marketplace scenario could leave the `HybridControlPlane` custom resource stuck indefinitely in a deploying state. This happened because `kapp-controller`'s teardown process deleted a dependent CRD before its associated `APIService`, leaving a zombie `APIService` registered in cluster API discovery that caused subsequent cleanup operations to hang. |
+| Bug fix | Fixed an issue whereby seeded cluster templates weren't automatically populated on RKE clusters and other appliances with load balancer mode disabled. The template seeding process only recognized locations offering public, private, or custom load-balanced access, so any location offering only `NodePort` access was skipped and never got its prebaked templates created. `NodePort`-only locations are now recognized during seeding, so prebaked templates appear as expected on these deployments. |
+| Bug fix | Fixed an issue whereby restoring a TDE-encrypted cluster to a different location than its source kept the encryption key selection locked to the source cluster's key, which doesn't exist at the target location, causing the restore to fail. When restoring to a different location, key selection is now required and must be set explicitly to a key available at that location; restoring to the same location continues to auto-select the source cluster's key as before. |
+| Bug fix | Fixed an issue whereby the cluster backup schedule field accepted both 5-element and 6-element cron formats, which could cause confusion about when backups would run. Now, only the 6-element cron format expected by CloudNativePG is accepted. |
+| Bug fix | Fixed an issue whereby the project deletion pre-check didn't detect all active resource types in a project — previously only clusters and marketplace apps blocked deletion, letting a project be removed while it still held storage locations, maintenance windows, TDE keys, cluster templates, migration credentials, migration applications, or local inference services. The pre-check now catches these too, and the **Delete project** dialog was simplified into a single step that clearly lists everything that will be deleted and, if deletion fails, explains why. |
+| Bug fix | Fixed an issue whereby the console didn't display detailed error information when a replica promotion failed. It now surfaces the error message returned by the backend API when a promotion fails. |
+| Bug fix | Fixed an issue whereby marketplace app deployments that created persistent volume claims without an explicit storage class inherited the cluster's default storage class. On some platforms, the default storage class only had capacity on control-plane nodes, leaving the PVC and pod stuck in a `Pending` state indefinitely. You can now select a storage class when deploying a marketplace app. |
+| Bug fix | Fixed an issue whereby deploying the pgBadger app with the default disk size failed on GKE ARM clusters using the `hyperdisk-balanced` storage class, which requires a minimum of 4Gi. The default disk size for the pgBadger package was increased from 1Gi to 4Gi. |
+| Bug fix | Fixed an issue whereby the HammerDB app package attempted to run on nodes without amd64 (x86-64) support, since an upstream ARM64 build isn't available. HM now includes a preflight check that raises a clear error if no amd64 node exists in the cluster. |
+
+### HM console
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Redesigned the **Project Overview** page. It now opens on **Health** cards (**Alerts** and **Resource Usage**), a **Cluster Status** breakdown of the project's clusters by management type (Hybrid Manager, External CNP, Self-Managed, Cloud Hosted) and status (Healthy, Provisioning, Caution, Error), and **Across this project** cards summarizing each resource type in the project (**Migration pipeline**, **Clusters**, **Catalogs**, **Inference Services**, **Apps**, and **Flows**). |
+| Bug fix | Fixed an issue whereby logging out from the role management page could time out and fail to navigate to the logout page. |
+
+### Observability and monitoring
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | You can now filter cluster logs by service, switching between Postgres and Beacon Agent logs with the new **Service Name** menu. The **Logs** tab displays Postgres logs by default. Pod names are also displayed and can be selected to filter the list. |
+| Enhancement | Added configurable poll and force-update intervals for table schema collection — previously fixed at one minute — via the control-plane API, `beacon-agent` config, or Helm values. Also optimized the underlying queries, removing unnecessary sorting and redundant per-row work for roughly a 70% execution-time improvement on large schemas. |
+| Bug fix | Fixed an issue whereby **Activity Log** entries for image repository rule events displayed the resource type as "unknown" instead of the correct type. |
+
+### AI Factory
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added hard-approval enforcement for sensitive AI agent tool calls, such as deleting resources or updating user role assignments. When a tool marked for hard approval is invoked, the agent now pauses execution and prompts you to confirm before proceeding, rather than relying solely on system instructions to request confirmation. |
+| Enhancement | Added support for the `gpt-5.6` family of models. |
+
+### Analytics
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Updated the PGAA version shipped with HM to [1.10](https://www.enterprisedb.com/docs/pgaa/latest/release_notes/). |
+
+### Migrations
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Extended schema migration to capture more of a source database's authorization model for exclude-pattern enforcement. Migrated DDL objects now include a `referenced_role_names` field listing roles created or altered, object owners, `GRANT`/`REVOKE` grantees and grantors, roles referenced in `ALTER DEFAULT PRIVILEGES`, and roles listed in row-level security policies. |
+| Enhancement | Added support for migrating EDB Postgres Advanced Server `SYNONYM` statements during schema migration. |
+| Enhancement | Added support for creating, viewing, and deleting Postgres Migration Portal projects directly from the database details view in HM, matching existing Oracle MP project support. This lets you recover from project errors or refresh a project after the source schema changes without engineering involvement. |
+| Enhancement | Added support for several Oracle Database 21c syntax elements during Postgres Migration Portal schema assessment: multivalue indexes are now correctly detected, and `ANY_VALUE` and `WINDOW` clause syntax is now parsed. Blockchain and immutable tables are now excluded from schema extraction, and `SQL_MACRO` is now flagged as an incompatible construct. |
+| Enhancement | Updated EDB Migration Copilot with maintenance improvements, including a newer underlying AI model (replacing GPT-4o and the previous locally hosted model), an updated agent framework version, and cleanup of stale internal references in the assistant's context. |
+| Enhancement | Added repair-handler details to the downloaded transformed query file. Queries with transformations applied now include markers indicating which repair actions were applied, making it easy to identify which changes were made to each query. |
+| Enhancement | Migration Portal now reports `spl_check` findings on Oracle PL/SQL objects (functions, procedures, package bodies, type bodies, and triggers) as warnings instead of errors, so affected objects can still pass assessment. We still recommend that you review and fix them, since they can cause runtime errors in the migrated database. |
+| Bug fix | Fixed an issue whereby the SQL file record under **Migration Application** didn't display the Migration Portal project associated with a SQL file assessment, even though the association was already stored on the backend. The SQL file record now correctly displays the project. |
+| Bug fix | Fixed an issue whereby `spl_check` warnings were incorrectly displayed in the migration report's common failures section. |
+| Bug fix | Fixed an issue whereby Migration Portal could show a blank page the first time it loaded from the Hybrid Manager Launchpad. |
+| Bug fix | Fixed an issue in SQL Assessment whereby the target database version wasn't checked correctly when applying repair actions, causing transformations meant only for older EDB Postgres Advanced Server versions — such as converting `LISTAGG` to `STRING_AGG` — to be incorrectly applied to newer target versions. |
+| Bug fix | Fixed an issue whereby generating an assessment report for a schema with a large number of dependencies could time out or run out of memory, causing the report download to fail with an error in the Migration Portal UI. |
+| Bug fix | Fixed an issue whereby a Migration Portal project could get stuck in the "DDL file is being uploaded" state when an in-memory project failed to be created in the database, leaving the project in limbo with no way to delete it. Projects stuck in this state can now be deleted. |
