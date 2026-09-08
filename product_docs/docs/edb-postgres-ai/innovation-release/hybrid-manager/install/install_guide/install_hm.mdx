@@ -64,7 +64,6 @@ metadata:
 spec:
   # Basic configuration
   flavour: eks  # or aks, gke, rhos, rke
-  imageRegistry: docker.enterprisedb.com/pgai-platform
   version: "v2026.5.1"
 
   # Source configuration
@@ -73,10 +72,17 @@ spec:
     # OR
     # useLocalKustomizations: true  # Use operator embedded manifests
 
-  # Image pull secrets
-  imagePullSecrets:
-    - name: edb-cred
-      namespace: edbpgai-bootstrap
+  # Container registry configuration
+  registry:
+    url: docker.enterprisedb.com/pgai-platform
+    imagePullSecrets:
+      - name: edb-cred
+        namespace: edbpgai-bootstrap
+    discovery:
+      enabled: true
+      authenticationType: "basic"
+      # url defaults to registry.url above; set it only if discovery
+      # targets a different registry
 
   # Global parameters
   globalParameters:
@@ -120,9 +126,6 @@ spec:
     providers:
       - appliance
     provisioning:
-      imageDiscovery: true
-      imagesetDiscoveryAuthenticationType: "basic"
-      imagesetDiscoveryContainerRegistryURL: "docker.enterprisedb.com/pgai-platform"
       openshift: false
       operandSetVersions:
         - "1\\.1\\.[0-9]+"
@@ -153,6 +156,7 @@ spec:
     - ai
     - analytics
     - dbaas
+    - marketplace
 
   # Optional: Disable specific components
   # disabledComponents:
@@ -170,6 +174,17 @@ spec:
         service.beta.kubernetes.io/aws-load-balancer-scheme: internal
         service.beta.kubernetes.io/load-balancer-source-ranges: "10.0.0.0/8"
 ```
+
+!!! Note Registry configuration
+`spec.registry` gathers every container registry setting in one place and requires HM operator 2.2.0 or later:
+
+-   Where images are pulled from
+-   The secrets used to pull them
+-   The TLS trust used to reach the registry
+-   Image discovery
+
+The fields it replaces, including `spec.imageRegistry`, `spec.imagePullSecrets`, and the `spec.beaconAgent.provisioning` image discovery fields, are deprecated. They still apply where the corresponding `spec.registry` value is unset, but a future API version removes them. See [Configuring image discovery](../configuration/image_discovery#deprecated-registry-fields).
+!!!
 
 ### Install the EDB Postgres AI Operator
 
@@ -196,7 +211,7 @@ namespace/edbpgai-bootstrap created
 
 #### Install the operator helm chart
 
-Install the operator with `edbctl hm upgrade-operator`. The command lists the operator image tags available in the target registry, selects the latest one, and installs (or upgrades) the chart. No operator version needs to be picked by hand — starting with HM 1.4, the operator is decoupled from the HM release cadence and a single operator version supports multiple HM lines.
+Install the operator with [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI, using `hm upgrade-operator`. The command lists the operator image tags available in the target registry, selects the latest one, and installs (or upgrades) the chart. No operator version needs to be picked by hand — starting with HM 1.4, the operator is decoupled from the HM release cadence and a single operator version supports multiple HM lines.
 
 !!! Note Minimum edbctl version
 `edbctl hm upgrade-operator` ships in edbctl `1.7.0` and later. Earlier versions require the manual Helm flow shown in the [Manual Helm fallback](#manual-helm-fallback) section below.
@@ -286,7 +301,7 @@ Create a file named `hybridmanager.yaml` with your configuration. Use the [examp
 **Critical fields to verify:**
 
 1. **`spec.flavour`**: Your Kubernetes distribution
-2. **`spec.imageRegistry`**: Your container registry URL
+2. **`spec.registry.url`**: Your container registry URL
 3. **`spec.version`**: The HM version you want to install
 4. **`spec.globalParameters.portal_domain_name`**: Your portal FQDN
 5. **`spec.beaconAgent.provisioning`**: Your provisioning configuration
@@ -441,7 +456,7 @@ kubectl logs -n edb-hcp-operator-system deployment/edb-hcp-operator-controller-m
 
 #### Upgrading HM version
 
-Run `edbctl hm upgrade-operator` (it picks up the latest operator version available in your registry — no version needs to be set by hand), then update the `spec.version` field in your `HybridControlPlane` manifest to the target HM version and `kubectl apply` it. The operator is decoupled from the HM release cadence, so the same `2.x` operator covers a range of HM versions — see the [release notes](../../release_notes/) for the operator version supported on the HM release you are upgrading to.
+Run `edbctl hm upgrade-operator` (it picks up the latest operator version available in your registry — no version needs to be set by hand), then update the `spec.version` field in your `HybridControlPlane` manifest to the target HM version and `kubectl apply` it. The operator is decoupled from the HM release cadence, so the same `2.x` operator covers a range of HM versions — see the [operator compatibility matrix](/hm-operator/latest/compatibility_matrix/) for the operator version supported on the HM release you're upgrading to, and the [operator release notes](/hm-operator/latest/rel_notes/) for what changed in each operator release.
 
 ## Verify portal access
 

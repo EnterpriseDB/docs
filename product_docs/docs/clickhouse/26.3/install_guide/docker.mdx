@@ -80,10 +80,10 @@ For development and testing purposes, run a single ClickHouse Server node.
 4. Verify the EDB build:
 
    ```sql
-   SELECT value FROM system.build_options WHERE name = 'VERSION_OFFICIAL';
+   SELECT version();
    ```
 
-   The output includes `(EDB Build)` for EDB-packaged releases.
+   The output includes the EDB release, for example `26.3.22.7+1edb1`.
 
 ## Running a multi-node cluster
 
@@ -480,4 +480,61 @@ Create a local `ReplicatedMergeTree` table and a `Distributed` table on top of i
    │        3 │     103 │ logout     │ 2026-06-10 14:48:15    │
    │        4 │     104 │ login      │ 2026-06-10 14:48:15    │
    └──────────┴─────────┴────────────┴────────────────────────┘
+   ```
+
+## Upgrading
+
+Check [Release notes](../release_notes) for the ClickHouse server version you're upgrading to before you start.
+
+On a Compose-based cluster, upgrade one service at a time, keeping at least one replica per shard on its current version until the upgrade completes. See the [upstream ClickHouse upgrade guidance](https://clickhouse.com/docs/operations/update) for version-skipping limits and other considerations for large clusters.
+
+1. Pull the new image tag:
+
+   ```bash
+   docker pull docker.enterprisedb.com/clickhouse/edb-clickhouse-server:<new-version>-1edb1
+   ```
+
+   Replace `<new-version>` with the target version from [Release notes](../release_notes).
+
+2. For a single-node deployment, recreate the container with the new image, keeping the same volume mounts and ports as the original `docker run` command:
+
+   ```bash
+   docker stop clickhouse-server
+   docker rm clickhouse-server
+   docker run -d \
+     --name clickhouse-server \
+     --ulimit nofile=262144:262144 \
+     -p 8123:8123 \
+     -p 9000:9000 \
+     -v /local/path/clickhouse-data:/var/lib/clickhouse \
+     docker.enterprisedb.com/clickhouse/edb-clickhouse-server:<new-version>-1edb1
+   ```
+
+   With a persistent volume mounted at `/var/lib/clickhouse`, data survives the container recreation.
+
+3. For a Compose-based cluster, in the `docker-compose.yml` you created under [Creating the Compose file](#creating-the-compose-file), edit one service's `image` line to the new tag. For example, for `server-01`:
+
+   ```yaml
+   server-01:
+     image: docker.enterprisedb.com/clickhouse/edb-clickhouse-server:<new-version>-1edb1
+   ```
+
+   Then recreate just that container:
+
+   ```bash
+   docker compose up -d --no-deps server-01
+   ```
+
+   `--no-deps` recreates only `server-01`, leaving the other, still-healthy containers running. Confirm it rejoins and reports the new version, then repeat for each remaining service in turn.
+
+4. Verify the running version. For a single-node deployment:
+
+   ```bash
+   docker exec -it clickhouse-server clickhouse-client --password admin123 --query "SELECT version();"
+   ```
+
+   Or, for a Compose-based cluster, against the container you just upgraded:
+
+   ```bash
+   docker exec -it server-01 clickhouse-client --password admin123 --query "SELECT version();"
    ```
