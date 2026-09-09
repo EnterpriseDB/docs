@@ -3,8 +3,6 @@ title: 'Troubleshooting'
 originalFilePath: 'src/trouble_shooting.md'
 ---
 
-
-
 In this page, you can find some basic information on how to troubleshoot
 EDB Postgres® AI for CloudNativePG™ Global Cluster in your Kubernetes cluster deployment.
 
@@ -372,10 +370,70 @@ To restart the Connection Manager, execute the following SQL command on the affe
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE backend_type = 'pgd connection_manager';
 ```
 
+### Restart held, raft has no spare member
+
+The operator does not restart a data node while the Raft consensus has no spare
+member, because restarting one would lose consensus. When every node that needs a
+pod change is held, the PGDGroup reports the
+"PGD - Restart held, raft has no spare member" phase and no node is patched.
+
+To confirm, check the reported phase and the Raft conditions of the PGDGroup:
+
+```shell
+kubectl get pgdgroup <NAME> -n <NAMESPACE>
+kubectl get pgdgroup <NAME> -n <NAMESPACE> \
+  -o jsonpath='{range .status.conditions[?(@.type=="GlobalRaftHealthy")]}{.type}{"="}{.status}{" "}{.message}{"\n"}{end}'
+```
+
+The `GlobalRaftHealthy` and `LocalRaftHealthy` conditions report which Raft is
+short of a member.
+
+Prefer the following options, in order:
+
+1.  Bring the unreachable nodes back. Any one of them rejoining restores the spare,
+    and the held change rolls out by itself. This is the only option that changes nothing about the group.
+
+2.  Add a node. Raising `spec.instances` or `spec.witnessInstances` gives the Raft
+    the spare it is missing, and a witness is the cheapest node to add:
+
+    ```shell
+    kubectl patch pgdgroup <NAME> -n <NAMESPACE> --type merge \
+      -p '{"spec":{"witnessInstances":1}}'
+    ```
+
+3.  Remove the nodes that are never coming back. Lower the spec to the number of
+    nodes to keep first, then delete the `Cluster` of each node to drop:
+
+    ```shell
+    kubectl patch pgdgroup <NAME> -n <NAMESPACE> --type merge \
+      -p '{"spec":{"instances":2}}'
+    kubectl delete cluster <CLUSTER_NAME> -n <NAMESPACE>
+    ```
+
+     The operator parts a node only once its `Cluster` object is actually gone, which
+     finalizers may hold for a while: until then the group keeps reporting the hold.
+     Lowering the spec alone parts nothing, since the operator never picks which node
+     to remove.
+
+     !!! Warning
+         Deleting a `Cluster` deletes its PVCs and the data on them, and a parted
+         node cannot rejoin the group. Lower the spec before deleting the `Cluster`,
+         otherwise the operator recreates it. Delete only nodes that are unreachable
+         and whose data you do not need, and make sure you have a current backup.
+
+4.  Only then set the `k8s.pgd.enterprisedb.io/unsafeIgnoreRaftCheck` annotation, and only
+    when the restart is itself the fix, such as rolling back a bad image or
+    restarting a stuck pod. It permits a restart with no quorum margin: if the
+    restarted node doesn't come back, the group loses Raft consensus and stops
+    accepting writes. Remove the annotation as soon as the group is healthy.
+
 ### Physical join
 
 Physical join needs the global Raft consensus. The PGD4K operator waits for the global Raft consensus and then
-starts the physical join, but there is probably still a chance that a physical join fails. If a physical join job fails:
+starts the physical join, but there is probably still a chance that a physical join fails.
+
+The physical join job retries transient failures automatically (its `BackoffLimit` is `3`), so a job that's still
+retrying doesn't require any action. The job is reported as `Failed` only once those retries are exhausted:
 
 ```shell
 kubectl get job -n <NAMESPACE>
@@ -383,13 +441,31 @@ NAME                                     STATUS   COMPLETIONS   DURATION   AGE
 pgdgroup-backup-barman-2-physical-join   Failed   0/1           10m        10m
 ```
 
-you can try to delete the job to trigger the physical join again:
+If the `BackoffLimit` is reached and the physical join job is failed before non-retriable step, you can delete the
+job to trigger the physical join again:
 
 ```shell
 kubectl delete job pgdgroup-backup-barman-2-physical-join -n <NAMESPACE>
 ```
 
-A key pre-condition for a physical join is the establishment of a global Raft consensus.
+If the `BackoffLimit` is reached and the physical join job is failed in non-retriable step, the node data may be
+left in an inconsistent state, we need to delete the node to recreate the node again:
+
+```shell
+kubectl delete cluster pgdgroup-backup-barman-2 -n <NAMESPACE>
+```
+
+Physical join failed before the non-retriable step
+
+!!! Note
+
+    We can check the logs of the physical join job to determine whether the failure happened before or in the
+    non-retriable step. If the failure happened in the non-retriable step, the physical join may already started
+    the data copying, simply recreating the job alone is not enough, because the retry is intentionally blocked to
+    avoid re-running the non-idempotent join step on partially initialized data. In that case recreate the data node
+    so it starts from a fresh volume.
+
+One key pre-condition for a physical join is the establishment of a global Raft consensus.
 If a physical join job is pending, you can use the PGD function `bdr.monitor_group_raft` to verify whether this
 pre-condition has been satisfied.
 
