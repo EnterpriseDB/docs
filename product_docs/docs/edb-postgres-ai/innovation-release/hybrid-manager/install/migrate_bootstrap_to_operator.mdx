@@ -98,7 +98,8 @@ Override any of them if your installation uses non-default names. Use `--dry-run
 !!! Important
 Review the generated `hybridmanager.yaml` before applying it. In particular:
 - **`spec.version`**: derived from the live CR. The operator uses its own versioning scheme — `spec.version` is the HM bootstrap version (e.g., `v1.4.0`), not the operator's own version (`2.0.0` or later from the `2.x` lineage).
-- **`spec.imagePullSecrets`**: each entry needs both `name` and `namespace`; verify they reference the right namespace if you store secrets outside `edbpgai-bootstrap`.
+- **`spec.registry.imagePullSecrets`**: each entry needs both `name` and `namespace`; verify they reference the right namespace if you store secrets outside `edbpgai-bootstrap`.
+- **Registry settings**: the exported CR may still carry the deprecated `spec.imageRegistry`, `spec.imagePullSecrets`, and `spec.beaconAgent.provisioning` image discovery fields. They still apply, but move them under `spec.registry`. See [Configuring image discovery](./configuration/image_discovery#deprecated-registry-fields).
 !!!
 
 ### Next steps after running the command
@@ -120,9 +121,9 @@ The following table shows how `values.yaml` fields map to `HybridControlPlane` C
 | values.yaml field          | HybridControlPlane field                | Description                                                                                                                                                             |
 |----------------------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `system`                   | `spec.flavour`                          | Kubernetes distribution (eks, aks, gke, rhos, etc.)                                                                                                                     |
-| `containerRegistryURL`     | `spec.imageRegistry`                    | Container registry URL                                                                                                                                                  |
+| `containerRegistryURL`     | `spec.registry.url`                     | Container registry URL                                                                                                                                                  |
 | `bootstrapImageTag`        | `spec.version`                          | HM version to install                                                                                                                                                   |
-| `imagePullSecrets`         | `spec.imagePullSecrets[]`               | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields.                  |
+| `imagePullSecrets`         | `spec.registry.imagePullSecrets[]`      | Image pull secret references. In `values.yaml` this is a list of secret names (strings). In the CR, each entry requires `name` and `namespace` fields.                  |
 | `disabledComponents`       | `spec.disabledComponents[]`             | Components to disable                                                                                                                                                   |
 | `parameters.global.*`      | `spec.globalParameters`                 | Global configuration parameters                                                                                                                                         |
 | `parameters.<component>.*` | `spec.componentsParameters.<component>` | Component-specific parameters                                                                                                                                           |
@@ -175,7 +176,7 @@ SYSTEM=$(yq '.system // ""' "$VALUES_FILE")
 [ -n "$SYSTEM" ] && HCP=$(echo "$HCP" | yq ".spec.flavour = \"$SYSTEM\"")
 
 REGISTRY=$(yq '.containerRegistryURL // ""' "$VALUES_FILE")
-[ -n "$REGISTRY" ] && HCP=$(echo "$HCP" | yq ".spec.imageRegistry = \"$REGISTRY\"")
+[ -n "$REGISTRY" ] && HCP=$(echo "$HCP" | yq ".spec.registry.url = \"$REGISTRY\"")
 
 VERSION=$(yq '.bootstrapImageTag // ""' "$VALUES_FILE")
 [ -n "$VERSION" ] && HCP=$(echo "$HCP" | yq ".spec.version = \"$VERSION\"")
@@ -192,7 +193,7 @@ fi
 PULL_SECRETS_COUNT=$(yq '.imagePullSecrets | length // 0' "$VALUES_FILE" 2>/dev/null || echo "0")
 if [ "$PULL_SECRETS_COUNT" -gt 0 ]; then
   SECRETS_JSON=$(yq -o=json '.imagePullSecrets | [.[] | select(. != null and . != "") | {"name": ., "namespace": "edbpgai-bootstrap"}]' "$VALUES_FILE")
-  HCP=$(echo "$HCP" | yq ".spec.imagePullSecrets = $SECRETS_JSON")
+  HCP=$(echo "$HCP" | yq ".spec.registry.imagePullSecrets = $SECRETS_JSON")
 fi
 
 # Global parameters (parameters.global.* -> spec.globalParameters)
@@ -271,7 +272,7 @@ chmod +x convert-values-to-hcp.sh
 !!! Important
 Review the generated manifest carefully before applying it:
 - **`spec.version`**: The bootstrap `bootstrapImageTag` may use a different versioning scheme than the operator `spec.version`.
-- **`spec.imagePullSecrets`**: The script assumes all secrets are in the `edbpgai-bootstrap` namespace. Adjust if your secrets are in a different namespace.
+- **`spec.registry.imagePullSecrets`**: The script assumes all secrets are in the `edbpgai-bootstrap` namespace. Adjust if your secrets are in a different namespace.
 !!!
 
 Once you have a validated `hybridmanager.yaml`, proceed with the Helm ownership transfer below. You will apply the CR after the transfer is complete.
