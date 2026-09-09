@@ -1,0 +1,112 @@
+---
+title: Agent memory
+navTitle: Agent memory
+description: A durable, Postgres-native memory layer for AI agents — add, search, list, and delete memories through a typed Python client or MCP server, without writing SQL.
+navigation:
+- install
+- connections
+- async-client
+- namespaces
+- memory-operations
+- transactions
+- permissions-and-errors
+- testing
+- mcp-server
+- reference
+---
+
+!!!note
+Agent memory is available as a preview capability. Behavior may change before general availability.
+!!!
+
+Agent memory is a durable, Postgres-native memory layer for AI agents, built into the AIDB extension. The `edb-agentmemory` Python package exposes one synchronous client and one asynchronous client. Both clients expose the same memory operations and use Psycopg to connect to PostgreSQL:
+
+```python
+from edb_agentmemory import AgentMemoryClient
+
+with AgentMemoryClient(
+    "postgresql://app_user@localhost/aidb",
+    namespace="my_app",
+) as client:
+    client.memory_add("user_42", "I prefer dark mode")
+    hits = client.memory_search("user_42", "interface preferences")
+```
+
+Use `AgentMemoryClient` in regular Python programs and `AsyncAgentMemoryClient` in asyncio applications. An [MCP server](mcp-server) is also available, exposing memory search and save as tools.
+
+## What the client manages
+
+Given a data source name (DSN), the client creates a Psycopg connection pool, opens it when the context manager starts, and closes it on exit. It sends parameterized calls to the AIDB extension and converts the results into typed Python models.
+
+The client doesn't install or configure AIDB, choose a memory runtime, or grant database permissions — those are deployment responsibilities. Applications select a namespace that an operator has already configured. See [Namespaces](namespaces).
+
+## Quickstart
+
+This example assumes the `my_app` namespace is already configured in AIDB:
+
+```python
+from edb_agentmemory import AgentMemoryClient
+
+dsn = "postgresql://app_user@localhost/aidb"
+
+with AgentMemoryClient(dsn, namespace="my_app") as client:
+    event_id = client.memory_add(
+        "user_42",
+        "I prefer dark mode",
+        session_id="settings-chat",
+        idempotency_key="settings-chat-message-1",
+    )
+    print(f"accepted event: {event_id}")
+
+    hits = client.memory_search(
+        "user_42",
+        "What interface theme does the user prefer?",
+        session_id="settings-chat",
+    )
+
+    for hit in hits:
+        print(f"{hit.content} (score: {hit.score:.2f})")
+```
+
+`memory_add()` records the conversation event and queues memory processing. Memory distillation happens in the background, so a newly added fact might not appear in search immediately.
+
+### Add structured turns
+
+`memory_add()` accepts a string, a `Turn`, a dictionary, or a sequence containing any of those forms:
+
+```python
+from edb_agentmemory import Turn
+
+client.memory_add("user_42", "I prefer dark mode")
+
+client.memory_add(
+    "user_42",
+    {"role": "user", "content": "Book me a window seat"},
+)
+
+client.memory_add(
+    "user_42",
+    [
+        Turn(role="user", content="Book me a window seat"),
+        Turn(role="assistant", content="Booked 14A"),
+    ],
+    session_id="trip-planning",
+)
+```
+
+For production configuration choices, continue with [Connections](connections).
+
+## In this section
+
+| Page | What it covers |
+| --- | --- |
+| [Install](install) | Installing the `edb-agentmemory` Python package |
+| [Connections](connections) | Passing a DSN vs. borrowing a Psycopg connection, environment configuration, and PgBouncer |
+| [Async client](async-client) | Using `AsyncAgentMemoryClient` in asyncio applications |
+| [Namespaces](namespaces) | Scoping memory configuration and data, and initializing a namespace |
+| [Memory operations](memory-operations) | Add, search, list, and delete |
+| [Transactions](transactions) | Commit, rollback, and connection ownership |
+| [Permissions and errors](permissions-and-errors) | Required PostgreSQL grants and the client's exception hierarchy |
+| [Testing](testing) | Running the client's unit, integration, and end-to-end test suites |
+| [MCP server](mcp-server) | Exposing memory search and save as MCP tools |
+| [Reference](reference) | Full API reference for both clients, models, and exceptions |

@@ -1,0 +1,92 @@
+---
+title: Agent memory operations
+navTitle: Memory operations
+description: Add, search, list, and delete memories with the agent memory client.
+deepToC: true
+---
+
+The synchronous and asynchronous clients expose the same operations. Async examples use the same arguments with `await`.
+
+## Add
+
+```python
+event_id = client.memory_add(
+    actor_id="user_42",
+    turns="I prefer a window seat",
+    session_id="trip-planning",
+    agent_id="travel-agent",
+    idempotency_key="trip-planning-message-17",
+)
+```
+
+The return value identifies the accepted event. An idempotency key lets the database recognize a retried event. Processing occurs in the background.
+
+## Search
+
+```python
+hits = client.memory_search(
+    actor_id="user_42",
+    query="Where does the user prefer to sit?",
+    limit=5,
+    session_id="trip-planning",
+    agent_id="travel-agent",
+)
+
+for hit in hits:
+    print(hit.id, hit.content, hit.score)
+```
+
+Results are returned best match first, as `SearchHit` objects. Session and agent filters are optional.
+
+## List
+
+```python
+memories = client.memory_list(
+    "user_42",
+    session_id="trip-planning",
+    limit=100,
+)
+
+for memory in memories:
+    print(memory.id, memory.content)
+```
+
+Listing is an operator operation and requires permission to call `aidb_memory.list_memories`. It also provides the memory IDs used for precise deletion.
+
+## Delete
+
+Deletion requires a non-empty audit reason and exactly one target.
+
+Delete specific memory IDs:
+
+```python
+deleted = client.memory_delete(
+    "user_42",
+    memory_ids=[memories[0].id, memories[1].id],
+    reason="Remove incorrectly stored facts",
+)
+```
+
+Or select a session, an agent, or all memory for the actor:
+
+```python
+client.memory_delete(
+    "user_42",
+    session_id="trip-planning",
+    reason="Remove completed trip session",
+)
+
+client.memory_delete(
+    "user_42",
+    agent_id="retired-agent",
+    reason="Retire agent data",
+)
+
+client.memory_delete(
+    "user_42",
+    all_for_actor=True,
+    reason="Erasure request #182",
+)
+```
+
+The return value is the number of memories removed. Deletion is an operator operation and must be protected with appropriate PostgreSQL permissions — see [Permissions and errors](permissions-and-errors).

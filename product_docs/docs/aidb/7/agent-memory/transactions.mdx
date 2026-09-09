@@ -1,0 +1,36 @@
+---
+title: Agent memory client transactions
+navTitle: Transactions
+description: How connection ownership determines who commits, rolls back, and closes for the agent memory client.
+---
+
+Transaction behavior depends on who owns the connection:
+
+| Connection source | Pool owner | Commit and rollback owner | Close owner |
+| --- | --- | --- | --- |
+| DSN passed to the client | Client | Client, once per operation | Client |
+| `connection=` passed by the application | Application | Application | Application |
+
+## DSN-managed operations
+
+The client checks out a connection for an operation. A successful operation is committed when the connection returns to the pool; a failed operation is rolled back.
+
+## Application-managed transactions
+
+A borrowed connection lets memory changes share a transaction with application data:
+
+```python
+import psycopg
+from edb_agentmemory import AgentMemoryClient
+
+with psycopg.connect(dsn) as connection:
+    client = AgentMemoryClient(connection=connection, namespace="my_app")
+
+    with connection.transaction():
+        # Other application writes can happen here.
+        client.memory_add("user_42", "I prefer dark mode")
+```
+
+The client doesn't commit on your behalf, because that would also commit unrelated work on the connection. A long-lived non-autocommit connection that's never committed can retain locks and pin a database snapshot. Keep transactions short, commit or roll back explicitly, or use an autocommit connection when each statement should be durable immediately.
+
+One borrowed connection also serializes its traffic. Prefer the DSN-managed pool when the application needs concurrent operations and doesn't need a shared transaction.

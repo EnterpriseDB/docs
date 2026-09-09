@@ -1,0 +1,68 @@
+---
+title: Agent memory client connections
+navTitle: Connections
+description: Pass a DSN or borrow a Psycopg connection, configure the client from the environment, and use it behind PgBouncer.
+deepToC: true
+---
+
+The client accepts either a PostgreSQL DSN or a Psycopg connection — pass exactly one.
+
+## Let the client own a pool
+
+For most applications, pass a DSN and use the client as a context manager:
+
+```python
+from edb_agentmemory import AgentMemoryClient
+
+with AgentMemoryClient(
+    "postgresql://app_user:password@db.example.com/aidb",
+    namespace="my_app",
+) as client:
+    hits = client.memory_search("user_42", "travel preferences")
+```
+
+The client creates a Psycopg pool, commits each successful operation, rolls it back on an error, and closes the pool on context-manager exit. The DSN can contain standard PostgreSQL authentication and TLS parameters — Psycopg and `libpq` perform the connection and authentication.
+
+Don't hard-code credentials in source code. Use a secret manager or environment variable.
+
+## Configure from the environment
+
+```shell
+export AIDB_DSN="postgresql://app_user:password@db.example.com/aidb"
+export AIDB_DEFAULT_NAMESPACE="my_app"
+```
+
+```python
+from edb_agentmemory import AgentMemoryClient
+
+with AgentMemoryClient.from_env() as client:
+    hits = client.memory_search("user_42", "travel preferences")
+```
+
+Explicit `dsn=` and `namespace=` arguments take precedence over environment variables.
+
+## Borrow an existing Psycopg connection
+
+Use `connection=` when memory operations must participate in a transaction your application already manages:
+
+```python
+import psycopg
+from edb_agentmemory import AgentMemoryClient
+
+with psycopg.connect("postgresql://app_user@localhost/aidb") as connection:
+    client = AgentMemoryClient(connection=connection, namespace="my_app")
+    client.memory_add("user_42", "I prefer dark mode")
+    connection.commit()
+```
+
+For a borrowed connection, the client never commits, rolls back, or closes it — its owner is responsible for all three. `connect()` and `close()` become no-ops. See [Transactions](transactions) for the full ownership rules.
+
+A connection object isn't a security boundary. Although the client doesn't receive the DSN text, it can execute anything the connected PostgreSQL role is permitted to execute. Restrict access with PostgreSQL roles and grants — see [Permissions and errors](permissions-and-errors).
+
+## PgBouncer
+
+When creating a connection behind PgBouncer in transaction-pooling mode, set `prepare_threshold=None` unless your Psycopg, `libpq`, and PgBouncer versions are configured to support prepared statements together:
+
+```python
+connection = psycopg.connect(dsn, prepare_threshold=None)
+```
