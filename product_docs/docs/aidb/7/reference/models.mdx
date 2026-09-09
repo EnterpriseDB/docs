@@ -17,7 +17,7 @@ Only some inference functions accept a call-time override — the rest are fixed
 
 | Function | Call-time override? |
 |----------|----------------------|
-| `aidb.decode_text()`, `aidb.decode_text_batch()` | Yes — pass `aidb.inference_config()` (or raw JSON) as the `inference_config` argument. |
+| `aidb.generate_text()`, `aidb.generate_text_batch()` | Yes — pass `aidb.inference_config()` (or raw JSON) as the `inference_config` argument. |
 | `aidb.summarize_text()`, `aidb.summarize_text_aggregate()` | Yes — via the `inference_config` field of [`aidb.summarize_text_config()`](../sql-functions/summarize-text#custom-prompts-and-inference-settings). |
 | `aidb.encode_text()`, `aidb.encode_text_batch()`, `aidb.encode_image()` | No. Behavior is fixed by `config` at creation time. |
 | `aidb.rerank_text()` | No. Behavior is fixed by `config` at creation time. |
@@ -41,11 +41,12 @@ Lists all available model providers registered in the system.
 
 Lists all models in the registry, including default and user-created models.
 
-| Column     | Type  | Description                      |
-|------------|-------|----------------------------------|
-| `name`     | text  | User-defined name for the model  |
-| `provider` | text  | Model provider name              |
-| `options`  | jsonb | Configured options for the model |
+| Column      | Type   | Description                             |
+|-------------|--------|------------------------------------------|
+| `name`      | text   | User-defined name for the model          |
+| `provider`  | text   | Model provider name                      |
+| `options`   | text[] | Configured options for the model         |
+| `functions` | text[] | Internal capability identifiers the model's provider supports (for example, `aidb-openai-text-embeddings`, `aidb-openai-text-completion`) |
 
 #### Example
 
@@ -53,11 +54,11 @@ Lists all models in the registry, including default and user-created models.
 SELECT * FROM aidb.models;
 
 __OUTPUT__
-  name  |  provider  |    options
---------+------------+---------------
- bert   | bert_local | {"config={}"}
- clip   | clip_local | {"config={}"}
- t5     | t5_local   | {"config={}"}
+  name  |  provider  |    options    |                      functions
+--------+------------+---------------+-------------------------------------------------------
+ bert   | bert_local | {"config={}"} | {aidb-openai-text-embeddings}
+ clip   | clip_local | {"config={}"} | {aidb-openai-text-image-embeddings}
+ t5     | t5_local   | {"config={}"} | {aidb-openai-text-embeddings,aidb-openai-text-completion}
 (3 rows)
 ```
 
@@ -79,6 +80,28 @@ Registers a new model in the AIDB model registry.
 | `credentials`         | JSONB   | `'{}'`   | Provider credentials (for example, `{"api_key": "..."}`).                             |
 | `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
 | `validate`            | BOOLEAN | `true`   | If `true`, probe the model at creation time to confirm it's functional. See [Validation](#validation). |
+| `credentials_env`     | TEXT    | NULL     | Name of an environment variable to read credentials from instead of storing them. See [Credentials from environment variables](#credentials-from-environment-variables). Mutually exclusive with `credentials`. |
+
+#### Credentials from environment variables
+
+!!!note
+Don't want a provider's API key or password sitting in a database table at all, even one with restricted grants? Pass `credentials_env` instead of `credentials`, naming a Postgres environment variable to read the credential from. Only the variable's *name* is stored — the value itself is read fresh from the Postgres backend process's environment every time the model is used, and is never persisted in the database.
+!!!
+
+Pass a variable name instead of a `credentials` object:
+
+```sql
+SELECT aidb.create_model(
+    name            => 'my_openai',
+    provider        => 'openai_embeddings',
+    config          => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials_env => 'AIDB_OPENAI_API_KEY'
+);
+```
+
+The referenced variable can hold either a bare secret (used as `api_key`) or a JSON object (for example, `{"basic_auth": "..."}`) — the same shapes `credentials` itself accepts. `credentials` and `credentials_env` are mutually exclusive; passing both raises an error.
+
+For security, the environment variable's name must start with the prefix configured by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default) — this stops a model or MCP server configuration from naming an arbitrary, unrelated environment variable on the Postgres host and exfiltrating its value. The same mechanism and the same GUC apply to MCP server authentication; see [`headers_env`](../tools/mcp-tools#authentication).
 
 #### TLS configuration
 
@@ -140,9 +163,9 @@ Returns the configuration for a registered model.
 
 | Column     | Type  | Description        |
 |------------|-------|--------------------|
-| `name`     | text  | Model name         |
-| `provider` | text  | Provider name      |
-| `options`  | jsonb | Configured options |
+| `name`     | text   | Model name         |
+| `provider` | text   | Provider name      |
+| `options`  | text[] | Configured options |
 
 #### Example
 
@@ -170,7 +193,7 @@ Removes a model from the registry. Doesn't affect pipelines or knowledge bases t
 
 #### Returns
 
-The name, provider, and options of the deleted model as JSONB.
+The name, provider, and options of the deleted model.
 
 #### Example
 
@@ -188,7 +211,7 @@ __OUTPUT__
 
 ### `aidb.validate_model`
 
-Probes a registered model to confirm it's functional, running a minimal test inference. Called automatically by `aidb.create_model()` unless `validate => false`; you can also call it directly to re-check an existing model.
+Probes a registered model to confirm it's functional, running a minimal test inference. Called automatically by `aidb.create_model()` unless `validate => false`; you can also call it directly to recheck an existing model.
 
 #### Parameters
 
@@ -216,11 +239,11 @@ __OUTPUT__
 
 ## HCP model functions
 
-These functions manage models running on EDB Hybrid Manager (HCP).
+These functions manage models running on EDB Hybrid Manager (HM).
 
 ### `aidb.list_hcp_models`
 
-Lists models currently running on the Hybrid Manager.
+Lists models currently running on HM.
 
 #### Returns
 
@@ -272,6 +295,10 @@ Synchronizes the AIDB model registry with models currently running on HCP. Creat
 
 ## Inference functions
 
+!!!note
+`aidb.generate_text()` and `aidb.generate_text_batch()` were previously named `aidb.decode_text()` and `aidb.decode_text_batch()`. The old names still work but are deprecated and will be removed in a future version — use the new names in new code.
+!!!
+
 ### `aidb.encode_text`
 
 Encodes a single text string into a vector using the specified model.
@@ -310,6 +337,12 @@ Encodes an array of text strings into vectors in a single call.
 
 `SETOF real[]` — one row per input, in input order. The result column is named `encode_text_batch`.
 
+#### Example
+
+```sql
+SELECT * FROM aidb.encode_text_batch('bert_local', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
+```
+
 ---
 
 ### `aidb.encode_image`
@@ -335,7 +368,7 @@ SELECT aidb.encode_image('clip_local', pg_read_binary_file('/tmp/photo.jpg')::BY
 
 ---
 
-### `aidb.decode_text`
+### `aidb.generate_text`
 
 Generates a text response from a prompt using the specified model.
 
@@ -355,10 +388,10 @@ Generates a text response from a prompt using the specified model.
 
 ```sql
 -- Basic usage
-SELECT aidb.decode_text('t5_local', 'translate to French: Hello, world.');
+SELECT aidb.generate_text('t5_local', 'translate to French: Hello, world.');
 
 -- With inference configuration
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llama',
     'Explain quantum computing in one sentence.',
     aidb.inference_config(
@@ -371,7 +404,7 @@ SELECT aidb.decode_text(
 
 ---
 
-### `aidb.decode_text_batch`
+### `aidb.generate_text_batch`
 
 Generates text responses for an array of prompts in a single call.
 
@@ -385,12 +418,12 @@ Generates text responses for an array of prompts in a single call.
 
 #### Returns
 
-`SETOF TEXT` — one row per input prompt, in input order. The result column is named `decode_text_batch`.
+`SETOF TEXT` — one row per input prompt, in input order. The result column is named `generate_text_batch`.
 
 #### Example
 
 ```sql
-SELECT aidb.decode_text_batch('t5_local', ARRAY[
+SELECT aidb.generate_text_batch('t5_local', ARRAY[
     'translate to German: hello',
     'translate to German: goodbye'
 ]);
@@ -438,7 +471,7 @@ SELECT * FROM aidb.rerank_text(
 
 ### `aidb.inference_config`
 
-Builds a JSONB configuration object for runtime inference settings. Pass the result (cast to `json`) to `aidb.decode_text()`, `aidb.decode_text_batch()`, or use it with `aidb.summarize_text_config()`.
+Builds a JSONB configuration object for runtime inference settings. Pass the result (cast to `json`) to `aidb.generate_text()`, `aidb.generate_text_batch()`, or use it with `aidb.summarize_text_config()`.
 
 All parameters are optional — omit any you don't need.
 
@@ -464,14 +497,14 @@ All parameters are optional — omit any you don't need.
 
 ```sql
 -- With temperature and token limit
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llama',
     'What is machine learning?',
     aidb.inference_config(temperature => 0.5, max_tokens => 150)::json
 );
 
 -- Full configuration
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llama',
     'Explain relativity.',
     aidb.inference_config(
@@ -485,7 +518,7 @@ SELECT aidb.decode_text(
 );
 
 -- Hide reasoning tags from a thinking model
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_reasoning_model',
     'Solve: 2x + 5 = 15',
     aidb.inference_config(thinking => false)::json
@@ -494,17 +527,21 @@ SELECT aidb.decode_text(
 
 ### Tool calling and structured output
 
-Three more inference settings exist but aren't exposed as named parameters of `aidb.inference_config()` — build them as raw JSON instead, merged with the helper's output using `||` if you also need other settings. **Only the `llamacpp_generate` provider honors these**; every other provider rejects them.
+Three more inference settings exist but aren't exposed as named parameters of `aidb.inference_config()` — build them as raw JSON instead, merged with the helper's output using `||` if you also need other settings. **Only `llamacpp_generate`, `openai_responses` (+ `openai_responses_azure`), and `anthropic_messages` (+ `anthropic_messages_azure`/`anthropic_messages_bedrock`) honor these**; every other provider rejects them.
 
 | Field | Type | Description |
 |-------|------|--------------|
 | `tools` | JSONB array | OpenAI-compatible `tools` array — function definitions the model can call. |
 | `tool_choice` | JSONB | OpenAI-compatible `tool_choice`: the string `"auto"`, `"required"`, or `"none"`, or `{"type": "function", "function": {"name": "..."}}` to force a specific tool. |
-| `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. |
+| `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. Mutually exclusive with `tools`/`tool_choice` on `openai_responses` and `anthropic_messages` (and their variants). |
+
+!!!note
+`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) and [Anthropic Messages API](../integrating-models/external-model-connections#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.generate_text()`. Any of those providers (except `t5_local`) can still back an [AI agent](../agents); the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
+!!!
 
 ```sql
 -- Tool calling
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llamacpp_chat',
     'What is the weather in Paris?',
     (aidb.inference_config(temperature => 0.2) || jsonb_build_object(
@@ -527,7 +564,7 @@ SELECT aidb.decode_text(
 );
 
 -- Structured output
-SELECT aidb.decode_text(
+SELECT aidb.generate_text(
     'my_llamacpp_chat',
     'Extract the city from: I live in Paris.',
     jsonb_build_object(
@@ -617,6 +654,10 @@ SELECT aidb.create_model(
     )
 );
 ```
+
+!!!note
+For agentic use with reliable, native tool calling on OpenAI models, use [`openai_responses`](#aidbopenai_responses_config) instead — see [Tool calling and structured output](#tool-calling-and-structured-output) for how the two providers differ, and [Agents](../agents) for building an agent around either one.
+!!!
 
 ---
 
@@ -877,3 +918,102 @@ SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
     )
 );
 ```
+
+---
+
+### `aidb.openai_responses_config`
+
+For the `openai_responses` and `openai_responses_azure` providers.
+
+| Parameter                 | Type             | Default  | Description                                                                       |
+|---------------------------|------------------|----------|-------------------------------------------------------------------------------------|
+| `model`                   | TEXT             | Required | Model identifier (for example, `gpt-5.1`).                                        |
+| `api_key`                 | TEXT             | NULL     | API key for authentication.                                                        |
+| `basic_auth`              | TEXT             | NULL     | Basic auth credentials (`user:password`).                                         |
+| `url`                     | TEXT             | NULL     | API endpoint URL. Defaults to OpenAI's Responses endpoint for `openai_responses`; required for `openai_responses_azure` (no universal default — use your resource's endpoint). |
+| `max_concurrent_requests` | INTEGER          | `25`     | Maximum concurrent requests to the endpoint.                                       |
+| `system_prompt`           | TEXT             | NULL     | Default system prompt, sent via the Responses API's native `instructions` field.   |
+| `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                                                              |
+| `max_output_tokens`       | INTEGER          | NULL     | Maximum tokens to generate.                                                        |
+| `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                                                        |
+| `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments passed directly to the API.                |
+
+#### Examples
+
+```sql
+-- OpenAI
+SELECT aidb.create_model(
+    'my_gpt',
+    'openai_responses',
+    config      => aidb.openai_responses_config(model => 'gpt-5.1'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
+);
+
+-- Azure AI Foundry
+SELECT aidb.create_model(
+    'my_gpt_azure',
+    'openai_responses_azure',
+    config      => aidb.openai_responses_config(
+        model => 'gpt-5.1',
+        url   => 'https://<resource>.openai.azure.com/openai/v1/responses'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+```
+
+This provider natively supports the `tools`, `tool_choice`, and `response_format` fields described in [Tool calling and structured output](#tool-calling-and-structured-output).
+
+---
+
+### `aidb.anthropic_messages_config`
+
+For the `anthropic_messages`, `anthropic_messages_azure`, and `anthropic_messages_bedrock` providers.
+
+| Parameter                 | Type             | Default  | Description                                                                          |
+|---------------------------|------------------|----------|----------------------------------------------------------------------------------------|
+| `model`                   | TEXT             | Required | Model identifier (for example, `claude-opus-4-6`, or a Bedrock model ID for the Bedrock variant). |
+| `api_key`                 | TEXT             | NULL     | API key for authentication. For `anthropic_messages_bedrock`, this is a Bedrock API key (bearer token), not an AWS SigV4 credential. |
+| `basic_auth`              | TEXT             | NULL     | Basic auth credentials (`user:password`).                                            |
+| `url`                     | TEXT             | NULL     | API endpoint URL. Defaults to `api.anthropic.com` for `anthropic_messages`. Required for `anthropic_messages_azure` (your resource's Messages endpoint) and `anthropic_messages_bedrock` (the regional `bedrock-runtime` base endpoint — the model ID is appended automatically). |
+| `max_concurrent_requests` | INTEGER          | `25`     | Maximum concurrent requests to the endpoint.                                          |
+| `system_prompt`           | TEXT             | NULL     | Default system prompt, sent via the Messages API's native `system` field.            |
+| `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                                                                 |
+| `max_tokens`              | INTEGER          | `4096`   | Maximum tokens to generate. Anthropic's Messages API requires this field; AIDB defaults it when omitted. |
+| `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                                                          |
+| `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments passed directly to the API.                   |
+
+#### Examples
+
+```sql
+-- Anthropic direct
+SELECT aidb.create_model(
+    'my_claude',
+    'anthropic_messages',
+    config      => aidb.anthropic_messages_config(model => 'claude-opus-4-6'),
+    credentials => '{"api_key": "sk-ant-..."}'::JSONB
+);
+
+-- Azure AI Foundry
+SELECT aidb.create_model(
+    'my_claude_azure',
+    'anthropic_messages_azure',
+    config      => aidb.anthropic_messages_config(
+        model => 'claude-opus-4-6',
+        url   => 'https://<resource>.services.ai.azure.com/anthropic/v1/messages'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+
+-- AWS Bedrock
+SELECT aidb.create_model(
+    'my_claude_bedrock',
+    'anthropic_messages_bedrock',
+    config      => aidb.anthropic_messages_config(
+        model => 'anthropic.claude-opus-4-6-v1:0',
+        url   => 'https://bedrock-runtime.us-east-1.amazonaws.com'
+    ),
+    credentials => '{"api_key": "..."}'::JSONB
+);
+```
+
+This provider natively supports the `tools`, `tool_choice`, and `response_format` fields described in [Tool calling and structured output](#tool-calling-and-structured-output). Anthropic's Messages API has no native structured-output field, so `response_format` is implemented as a forced call to a synthetic tool — functionally equivalent, but it means `response_format` and `tools`/`tool_choice` can't be used in the same call.
