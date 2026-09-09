@@ -22,7 +22,8 @@ A shared Postgres service backs the stack, hosting the backend's database for in
 
 ## Prerequisites
 
-- A Kubernetes cluster running 1.25 or later, and Helm 3. The bundled Postgres claims a PersistentVolumeClaim, so the cluster needs a default StorageClass — or name one with `postgres.persistence.storageClass`, or skip it entirely by bringing your own database.
+- A Kubernetes cluster running 1.25 or later, and Helm 3.
+- A Postgres database for the backend and Dex: either let the chart run one for you (needs a default StorageClass, or set `postgres.persistence.storageClass`), or bring your own — see [Configuring the database](#configuring-the-database) to decide before you install.
 - Your EDB subscription token. The same token gives you the Helm chart and the container images. See [Get your token](/repos/getting_started/get_your_token/).
 - A TLS certificate and key for your domain, from any certificate authority your users trust. A self-signed certificate is acceptable for local testing.
 - At least one upstream data source to audit: an [HM instance with a machine user API key](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/governance/), or a standalone Loki instance receiving Postgres logs from AI agent workloads.
@@ -49,22 +50,30 @@ The instructions that follow assume your subscription token is in an environment
 
 ## Choosing a deployment mode
 
-Decide how nginx terminates TLS before you deploy — this determines which TLS secret you create in step 3 of [Deploying on Kubernetes](#deploying-on-kubernetes) and which values you pass to `helm install` in step 4.
+Decide who terminates TLS for the deployment: the nginx container the chart installs (**bundled nginx**), or an ingress controller you already run in the cluster (**external ingress**). This changes which secret you create in step 3 of [Deploying on Kubernetes](#deploying-on-kubernetes) and which values you pass to `helm install` in step 4.
 
-| Mode                          | How to set it                                                                        | TLS                                                                                                                                                                        |
-|-------------------------------|----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Bundled nginx (default)       | `ingress.enabled=false`                                                              | `tls.existingSecret` — The preferred option in production. Inline PEM through `tls.cert` and `tls.key` is for testing only, because it ends up in the Helm release state. |
-| External ingress controller   | `ingress.enabled=true`, plus `ingress.className` for your controller                 | `ingress.tlsSecret`, or `ingress.externalTLS=true` when TLS is terminated out of band.                                                                                     |
+| Mode                     | What it means                                                                    | How to set it                                                                                                          |
+|--------------------------|------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Bundled nginx (default)  | The chart's own nginx terminates TLS from the certificate you provide.           | `ingress.enabled=false`, `tls.existingSecret=<your-secret>` (or inline `tls.cert`/`tls.key`, testing only)             |
+| External ingress         | Your cluster's ingress controller terminates TLS in front of the chart instead.  | `ingress.enabled=true`, `ingress.className=<your-controller>`, plus `ingress.tlsSecret` or `ingress.externalTLS=true` |
 
-`ingress.host` defaults to the host in `publicBaseURL` and must match it — the chart refuses to install if you set it to anything else.
+In bundled mode, the backend reaches the OIDC issuer over the in-cluster nginx service, so you don't need split-horizon DNS or a hairpin route. In external ingress mode, `publicBaseURL` must also resolve and be reachable from inside the cluster, because the backend performs OIDC discovery and token exchange against it directly — if internal DNS doesn't resolve it, set `bff.oidcDialAddress` to the in-cluster `host:port` that terminates TLS for it, or map the host to that address through `extraHostAliases`.
 
-In bundled mode the backend reaches the OIDC issuer over the in-cluster nginx service while keeping the URL, `Host` header, and TLS SNI set to `publicBaseURL`, so you don't need split-horizon DNS or a hairpin route.
+## Configuring the database
 
-In ingress mode, `publicBaseURL` must resolve and be reachable from inside the cluster, because the backend performs OIDC discovery and token exchange against it. If internal DNS doesn't resolve it, set `bff.oidcDialAddress` to the in-cluster `host:port` that terminates TLS for it, or map the host to that address through `extraHostAliases`.
+Decide whether to use the bundled Postgres or bring your own before you install the chart — you can't switch afterward. Set `postgres.enabled` in step 4 of [Deploying on Kubernetes](#deploying-on-kubernetes) to make the choice. The backend and Dex both persist to PostgreSQL — the backend in database `bff`, Dex in a separate `dex` database on the same server.
+
+- **Bundled** (`postgres.enabled=true`, the default) — The chart runs a single `postgres:16-alpine` StatefulSet with a PersistentVolumeClaim and creates the `dex` database on first start. The password is generated once and kept in the `gov-governance-postgres` secret, which survives `helm uninstall` so the data and the credential stay in sync on reinstall. Size the volume with `postgres.persistence.size` (8Gi by default) and pick a class with `postgres.persistence.storageClass`.
+- **External** (`postgres.enabled=false`) — Point the stack at a database you manage with `postgres.host`, `postgres.username`, `postgres.password`, `postgres.port`, and `postgres.sslmode`. Before installing, create both databases yourself — the chart doesn't create either for you:
+
+    ```sql
+    CREATE DATABASE bff;
+    CREATE DATABASE dex;
+    ```
 
 ## Deploying on Kubernetes
 
-1.  **Add the Helm repository.** List the available chart versions:
+1.  **Add the governance Helm chart repository.** List the available chart versions:
 
     ```bash
     helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
@@ -87,16 +96,16 @@ In ingress mode, `publicBaseURL` must resolve and be reachable from inside the c
     The username must match the repository you're pulling from — here `pgai-platform`. Docker stores credentials keyed by registry with no distinction between repositories, so if you also pull other EDB products from `docker.enterprisedb.com` (for example with username `clickhouse` or `k8s`), each login overwrites the previous one.
     !!!
 
-1.  **Provide your TLS certificate.** Store it as a `kubernetes.io/tls` secret — in the default deployment mode nginx terminates TLS with it:
+1.  **Provide your TLS certificate.** If you're using bundled nginx (the default), store it as a `kubernetes.io/tls` secret:
 
     ```bash
     kubectl create secret tls -n governance governance-tls \
       --cert=fullchain.pem --key=privkey.pem
     ```
 
-    If an ingress controller terminates TLS instead, see [Choosing a deployment mode](#choosing-a-deployment-mode).
+    Using an external ingress controller instead? Skip this step — your controller handles TLS, and you'll set `ingress.tlsSecret` or `ingress.externalTLS=true` in the next step.
 
-1.  **Install the chart.** Set the pull secret and the values the chart requires (the chart already defaults to the customer registry):
+1.  **Install the chart.** For bundled nginx:
 
     ```bash
     helm install gov enterprisedb-edbpgai/governance \
@@ -107,6 +116,10 @@ In ingress mode, `publicBaseURL` must resolve and be reachable from inside the c
       --set adminEmail=admin@example.com \
       --set tls.existingSecret=governance-tls
     ```
+
+    For an external ingress controller, replace the last `--set` with `--set ingress.enabled=true --set ingress.className=<your-controller> --set ingress.tlsSecret=<your-secret>` (or `--set ingress.externalTLS=true` if TLS is terminated out of band).
+
+    See [Configuration values](#configuration-values) for the full list of values, including which are required.
 
 1.  **Point DNS at the deployment.** The nginx service is a `LoadBalancer` by default. Read its external address and make the host in `publicBaseURL` resolve to it:
 
@@ -127,15 +140,26 @@ In ingress mode, `publicBaseURL` must resolve and be reachable from inside the c
 The examples use the release name `gov`, which is why the generated objects are called `gov-governance-nginx` and `gov-governance-secrets`. If you choose a different release name, adjust those names accordingly.
 !!!
 
-### Required values
+### Configuration values
 
-| Value                             | Description                                                                                                                                                 |
-|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `publicBaseURL`                   | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer (`<publicBaseURL>/sso`) and the redirect URIs derive from it.          |
-| `adminEmail`                      | The email of the initial break-glass administrator. Also the admin allowlist, alongside anyone whose `groups` claim includes `governance-admin`.            |
-| `global.imagePullSecrets[0].name` | The pull secret that holds your subscription token.                                                                                                         |
+Set any of these as Helm `--set` flags in step 4, or later with `helm upgrade`.
 
-The chart refuses to install if `publicBaseURL` or `adminEmail` is missing or malformed, and if the deployment mode you chose has no TLS configured.
+| Value                             | Required | Default | Description                                                                                                                                                 |
+|-----------------------------------|----------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `publicBaseURL`                   | Yes      | —       | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer (`<publicBaseURL>/sso`) and the redirect URIs derive from it.          |
+| `adminEmail`                      | Yes      | —       | The email of the initial break-glass administrator. Also the admin allowlist, alongside anyone whose `groups` claim includes `governance-admin`.            |
+| `global.imagePullSecrets[0].name` | Yes      | —       | The pull secret that holds your subscription token.                                                                                                         |
+| `bff.idleTTL`                     | No       | 2h      | How long an idle session lasts before it expires.                                                                                                            |
+| `bff.absoluteTTL`                 | No       | 12h     | The maximum lifetime of a session regardless of activity.                                                                                                    |
+| `bff.samlIdleTTL`                 | No       | 30m     | Idle timeout for SAML sessions, which can't be refreshed silently.                                                                                           |
+| `bff.samlAbsoluteTTL`             | No       | 8h      | Maximum lifetime of a SAML session.                                                                                                                          |
+| `bff.extraTrustedCABundle`        | No       | —       | A PEM CA bundle to trust an OIDC issuer signed by a private CA. TLS verification stays on; this adds trust rather than bypassing it.                        |
+| `bff.waitForDex`                  | No       | `false` | Adds an init container that waits until the OIDC issuer answers before the backend starts, avoiding the brief restart loop on first install. The probe runs from the backend image and honors `bff.extraTrustedCABundle`. |
+| `bff.idpCrudEnabled`              | No       | `true`  | Whether identity providers are managed in the app. Set it to `false` to freeze the configuration, in which case `bff.idpPolicy` becomes required.           |
+| `bff.blockPrivateEgress`          | No       | `true`  | Whether the backend blocks registered instances from reaching private network ranges ([RFC 1918](https://www.rfc-editor.org/rfc/rfc1918), carrier-grade NAT, IPv6 unique-local). Set it to `false` only for on-premises deployments whose HM or Loki upstreams live on private addresses. Cloud metadata, loopback, and link-local addresses stay blocked regardless. |
+| `nginx.replicaCount`              | No       | 1       | The number of nginx replicas. The backend and Dex are pinned at one replica each and can't be scaled.                                                       |
+
+The chart refuses to install if a required value is missing or malformed, or if the deployment mode you chose has no TLS configured.
 
 ### Generated secrets
 
@@ -147,26 +171,3 @@ The bootstrap job generates the remaining secrets on first install and stores th
 - The break-glass admin's identifier and password.
 
 The `gov-governance-secrets` secret is deliberately not managed by Helm, so it survives `helm uninstall`. Delete it explicitly if you want a genuinely clean reinstall.
-
-### Configuring the database
-
-Decide whether to use the bundled Postgres or bring your own before installing the chart — you can't switch afterward. The backend and Dex both persist to PostgreSQL — the backend in database `bff`, Dex in a separate `dex` database on the same server.
-
-- **Bundled** (`postgres.enabled=true`, the default) — the chart runs a single `postgres:16-alpine` StatefulSet with a PersistentVolumeClaim and creates the `dex` database on first start. The password is generated once and kept in the `gov-governance-postgres` secret, which survives `helm uninstall` so the data and the credential stay in sync on reinstall. Size the volume with `postgres.persistence.size` (8Gi by default) and pick a class with `postgres.persistence.storageClass`.
-- **External** (`postgres.enabled=false`) — point the stack at a database you manage with `postgres.host`, `postgres.username`, `postgres.password`, `postgres.port`, and `postgres.sslmode`. Create the `dex` database yourself before installing; the chart doesn't create it for you.
-
-### Configuring recommended settings
-
-Set any of these as Helm values, either with `--set` during the install in [Deploying on Kubernetes](#deploying-on-kubernetes) or later with `helm upgrade`:
-
-| Value                       | Default                   | Description                                                                                                                                       |
-|-----------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `bff.idleTTL`               | 2h                        | How long an idle session lasts before it expires.                                                                                                 |
-| `bff.absoluteTTL`           | 12h                       | The maximum lifetime of a session regardless of activity.                                                                                         |
-| `bff.samlIdleTTL`           | 30m                       | Idle timeout for SAML sessions, which can't be refreshed silently.                                                                                |
-| `bff.samlAbsoluteTTL`       | 8h                        | Maximum lifetime of a SAML session.                                                                                                               |
-| `bff.extraTrustedCABundle`  | —                         | A PEM CA bundle to trust an OIDC issuer signed by a private CA. TLS verification stays on; this adds trust rather than bypassing it.              |
-| `bff.waitForDex`            | `false`                   | Adds an init container that waits until the OIDC issuer answers before the backend starts, avoiding the brief restart loop on first install. The probe runs from the backend image and honors `bff.extraTrustedCABundle`.   |
-| `bff.idpCrudEnabled`        | `true`                    | Whether identity providers are managed in the app. Set it to `false` to freeze the configuration, in which case `bff.idpPolicy` becomes required. |
-| `bff.blockPrivateEgress`    | `true`                    | Whether the backend blocks registered instances from reaching private network ranges ([RFC 1918](https://www.rfc-editor.org/rfc/rfc1918), carrier-grade NAT, IPv6 unique-local). Set it to `false` only for on-premises deployments whose HM or Loki upstreams live on private addresses. Cloud metadata, loopback, and link-local addresses stay blocked regardless. |
-| `nginx.replicaCount`        | 1                         | The number of nginx replicas. The backend and Dex are pinned at one replica each and can't be scaled.                                             |
