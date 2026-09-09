@@ -23,7 +23,7 @@ A shared Postgres service backs the stack, hosting the backend's database for in
 ## Prerequisites
 
 - A Kubernetes cluster running 1.25 or later, and Helm 3.
-- A Postgres database for the backend and Dex: either let the chart run one for you (needs a default StorageClass, or set `postgres.persistence.storageClass`), or bring your own — see [Configuring the database](#configuring-the-database) to decide before you install.
+- A Postgres database for the backend and Dex: either let the chart run one for you (needs a default StorageClass, or set `postgres.persistence.storageClass`), or bring your own PostgreSQL 16 or later — see [Configuring the Postgres database](#configuring-the-postgres-database) to decide before you install.
 - Your EDB subscription token. The same token gives you the Helm chart and the container images. See [Get your token](/repos/getting_started/get_your_token/).
 - A TLS certificate and key for your domain, from any certificate authority your users trust. A self-signed certificate is acceptable for local testing.
 - At least one upstream data source to audit: an [HM instance with a machine user API key](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/governance/), or a standalone Loki instance receiving Postgres logs from AI agent workloads.
@@ -44,7 +44,7 @@ The chart version matches the Agent Governance release, and the chart pins each 
 The images are published for `linux/amd64` only — schedule Agent Governance on amd64 nodes.
 !!!
 
-On a restricted or air-gapped network, either point `postgres.image` at your own mirror of the bundled Postgres image or use an external database (see [Configuring the database](#configuring-the-database)).
+On a restricted or air-gapped network, either point `postgres.image` at your own mirror of the bundled Postgres image or use an external database (see [Configuring the Postgres database](#configuring-the-postgres-database)).
 
 The instructions that follow assume your subscription token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
 
@@ -114,10 +114,26 @@ Decide whether to use the bundled Postgres or bring your own before you install 
       --set "global.imagePullSecrets[0].name=edb-pull-secret" \
       --set publicBaseURL=https://governance.example.com \
       --set adminEmail=admin@example.com \
+      --set postgres.enabled=true \
       --set tls.existingSecret=governance-tls
     ```
 
-    For an external ingress controller, replace the last `--set` with `--set ingress.enabled=true --set ingress.className=<your-controller> --set ingress.tlsSecret=<your-secret>` (or `--set ingress.externalTLS=true` if TLS is terminated out of band).
+    For an external ingress controller:
+
+    ```bash
+    helm install gov enterprisedb-edbpgai/governance \
+      --namespace governance \
+      --version <chart-version> \
+      --set "global.imagePullSecrets[0].name=edb-pull-secret" \
+      --set publicBaseURL=https://governance.example.com \
+      --set adminEmail=admin@example.com \
+      --set postgres.enabled=true \
+      --set ingress.enabled=true \
+      --set ingress.className=<your-controller> \
+      --set ingress.tlsSecret=<your-secret>
+    ```
+
+    Both examples assume the bundled Postgres (`postgres.enabled=true`, the default) — set it to `false` and add your external database's `postgres.*` values instead if you're bringing your own, and use `ingress.externalTLS=true` in place of `ingress.tlsSecret` if TLS is terminated out of band.
 
     See [Configuration values](#configuration-values) for the full list of values, including which are required.
 
@@ -149,6 +165,7 @@ Set any of these as Helm `--set` flags in step 4, or later with `helm upgrade`.
 | `publicBaseURL`                   | Yes      | —       | The public origin — Scheme and host, no path and no trailing slash. The OIDC issuer (`<publicBaseURL>/sso`) and the redirect URIs derive from it.          |
 | `adminEmail`                      | Yes      | —       | The email of the initial break-glass administrator. Also the admin allowlist, alongside anyone whose `groups` claim includes `governance-admin`.            |
 | `global.imagePullSecrets[0].name` | Yes      | —       | The pull secret that holds your subscription token.                                                                                                         |
+| `postgres.enabled`                | No       | `true`  | Whether the chart runs its own Postgres. Set to `false` to use an external database — see [Configuring the Postgres database](#configuring-the-postgres-database). |
 | `bff.idleTTL`                     | No       | 2h      | How long an idle session lasts before it expires.                                                                                                            |
 | `bff.absoluteTTL`                 | No       | 12h     | The maximum lifetime of a session regardless of activity.                                                                                                    |
 | `bff.samlIdleTTL`                 | No       | 30m     | Idle timeout for SAML sessions, which can't be refreshed silently.                                                                                           |
