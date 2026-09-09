@@ -1,0 +1,116 @@
+---
+title: "Using a custom encryption key for ASB passwords"
+navTitle: "Custom encryption keys"
+---
+
+By default, PEM encrypts EDB Postgres Advanced Server (ASB) passwords using a built-in encryption key and salt. If you share PEM data that contains an encrypted password (for example, the output of a query against `pem.agent_server_binding`), anyone with access to the same built-in key can decrypt it.
+
+To prevent this, you can configure PEM to use a custom encryption key that only you control. With a custom key configured, a password encrypted on your systems can be decrypted only where that same key is available.
+
+## Setting a custom encryption key
+
+Set the `PEM_ENC_FILE` environment variable to point to a file containing your custom encryption key. Alternatively, set `PEM_ENC_SCRIPT` to point to an executable that generates the key.
+
+You must set this environment variable everywhere PEM runs: for the PEM configuration step, for the PEM agent service, and for the PEM web application.
+
+### PEM configuration
+
+PEM calls `/usr/edb/pem/encryptor/bin/pemEncryptor` to generate the ASB password during PEM configuration. Set the environment variable before running the configuration script:
+
+```shell
+export PEM_ENC_FILE=/path/to/file
+/usr/edb/pem/bin/configure-pem-server.sh
+```
+
+### PEM agent service
+
+The PEM agent runs as a systemd service on Linux. Set the environment variable in its service file, for example `/usr/lib/systemd/system/pemagent.service`:
+
+```ini
+[Service]
+Type=forking
+WorkingDirectory=/usr/edb/pem/agent/bin
+Environment="PEM_ENC_FILE=/path/to/file"
+...
+```
+
+### PEM web application
+
+You can set the environment variable using any of the following methods, depending on whether you're using HTTPD with mod_wsgi or Nginx with uWSGI.
+
+-   Add it to `config_local.py`:
+
+    ```python
+    import os
+    os.environ['PEM_ENC_FILE'] = '/path/to/file'
+    ```
+
+    If you don't set the variable this way, an ASB password updated through the PEM server properties UI isn't recognized by the PEM agent.
+
+-   Add it to the relevant systemd service file: `/usr/lib/systemd/system/httpd.service` for HTTPD, or `/etc/systemd/system/edb-uwsgi.service` for uWSGI.
+
+-   For HTTPD, use the `SetEnv` directive in `httpd.conf` or `.htaccess`:
+
+    ```
+    SetEnv PEM_ENC_FILE /path/to/file
+    ```
+
+### Windows
+
+Set a system environment variable before installing PEM. Go to **System Properties > Environment Variables > System Variables**, and add a new variable named `PEM_ENC_FILE` or `PEM_ENC_SCRIPT`.
+
+If you change the custom key after installing PEM, you must restart the `PEMHTTPD-x64` and `pemAgent` services for the change to take effect.
+
+!!! Note
+    `PEM_ENC_FILE` and `PEM_ENC_SCRIPT` contain confidential information, so make sure file permissions are configured appropriately. `PEM_ENC_SCRIPT` must point to a root-owned, non-world-writable script.
+
+## Key file format
+
+The contents of `PEM_ENC_FILE` (or the output of `PEM_ENC_SCRIPT`) must contain at least two versions of the key, so PEM can still decrypt passwords that were encrypted with a previous key after you rotate to a new one. Each line uses the format:
+
+```
+<index>:<key>
+```
+
+For example:
+
+```
+1:<key1>
+2:<key2>
+3:<key3>
+```
+
+The index doesn't need to be numeric — it can be any string of up to 4 characters. A line is ignored if:
+
+-   The index is longer than 4 characters.
+-   The index duplicates one already used.
+-   The index or key is empty.
+-   The key is longer than 256 characters.
+
+### Priority of custom encryption keys
+
+The last line in the file is always the active encryption key, regardless of its index value. For example, given:
+
+```
+4:key4
+1:key1
+2:key2
+3:key3
+```
+
+PEM uses `key3`, not `key4`.
+
+## Rotating a custom encryption key
+
+Rotating a key affects every host that uses it. Follow these steps:
+
+1.  Update `PEM_ENC_FILE` or `PEM_ENC_SCRIPT` on every machine or VM where the PEM agent is installed.
+2.  Update the same file or script on the PEM server.
+3.  Rotate the encrypted password using the `pemEncryptor` utility on the PEM server:
+
+    ```shell
+    export PEM_SERVER_PASSWORD=<password>
+    /usr/edb/pem/encryptor/bin/pemEncryptor -U <PEM database user to connect>
+    ```
+
+The PEM agent and web application automatically reload the new key. You don't need to restart either service for the change to take effect.
