@@ -2,7 +2,7 @@
 title: Interface reference
 navTitle: Reference
 deepToC: true
-description: Full interface reference for the ivfplus access method — operator classes, index options, session parameters, functions, and fixed limits.
+description: Full interface reference for the ivfplus access method, operator classes, index options, session parameters, functions, and fixed limits.
 ---
 
 Everything on this page is the supported surface. Anything else the extension installs is internal and may change or disappear without a version bump.
@@ -20,7 +20,7 @@ Everything on this page is the supported surface. Anything else the extension in
 | `halfvec_ip_ops`     | `halfvec` | `<#>`    | inner product | no      | RaBitQ quantized + rerank |
 | `halfvec_cosine_ops` | `halfvec` | `<=>`    | cosine        | no      | RaBitQ quantized + rerank |
 
-`halfvec` is indexed exactly like `vector` — same codes, same rerank copy, so the two differ only in the width of the heap value, and every dimensionality the type allows is quantized. Its centroids are stored as `f16`, which is why a `halfvec` index reaches 4000 dimensions where `vector` stops at 2000; see [Limits and fixed constants](#limits-and-fixed-constants).
+`halfvec` is indexed exactly like `vector`, same codes, same rerank copy, so the two differ only in the width of the heap value, and every dimensionality the type allows is quantized. Its centroids are stored as `f16`, which is why a `halfvec` index reaches 4000 dimensions where `vector` stops at 2000; see [Limits and fixed constants](#limits-and-fixed-constants).
 
 Only `vector_l2_ops` is a default, so a bare `USING ivfplus (col)` works for `vector` and fails for `halfvec`.
 
@@ -35,23 +35,20 @@ Set at build time with `CREATE INDEX ... WITH (...)`:
 | Option          | Type | Default | Range   | Applies to    | Available                                                      |
 |-----------------|------|---------|---------|---------------|----------------------------------------------------------------|
 | `lists`         | int  | 100     | 1–32768 | all opclasses | always                                                         |
-| `rotation`      | bool | on      | —       | all opclasses | always                                                         |
 | `store_vectors` | bool | off     | —       | all opclasses | [Index-rerank-policy builds](#index-rerank-policy-builds) only |
 
-All three are read only at build time. `ALTER INDEX ... SET (...)` takes an `AccessExclusiveLock` and changes nothing until the next `REINDEX`.
+Both are read only at build time. `ALTER INDEX ... SET (...)` takes an `AccessExclusiveLock` and changes nothing until the next `REINDEX`.
 
 ```sql
 CREATE INDEX ON items USING ivfplus (embedding vector_l2_ops)
-WITH (lists = 1000, rotation = on);
+WITH (lists = 1000);
 ```
-
-`rotation` applies the RaBitQ randomized Hadamard transform before encoding. Leave it on — it's what makes a 1-bit code work on nonisotropic embeddings.
 
 One edge case: `store_vectors` doesn't exist on stock PostgreSQL — `WITH (store_vectors = ...)` fails with `unrecognized parameter`, and the index behaves as though it were on.
 
 ## Session parameters
 
-All `PGC_USERSET` — settable per session, transaction, role, or database by any user. The `ivfplus.` prefix is reserved, so typos are rejected.
+All `PGC_USERSET`, settable per session, transaction, role, or database by any user. The `ivfplus.` prefix is reserved, so typos are rejected.
 
 | Parameter                | Type | Default | Range                  |
 |--------------------------|------|---------|------------------------|
@@ -74,7 +71,8 @@ On a two-level index (`lists >= 1800`), both modes share a further ceiling: the 
 |------------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------------------------------|
 | `check_ivfplus_index_health(idx regclass)`                 | record (6 cols) | How far the index has drifted from freshly built                                                                  |
 | `edb_vectorplus_rerank_policy_available()`                 | boolean         | Whether this build has the executor rerank-policy API ([Index-rerank-policy builds](#index-rerank-policy-builds)) |
-| `edb_vectorplus_rerank_stats(reset boolean DEFAULT false)` | record (3 cols) | Per-process rerank counters — [Index-rerank-policy builds](#index-rerank-policy-builds) only                      |
+| `edb_vectorplus_rerank_stats(reset boolean DEFAULT false)` | record (3 cols) | Per-process rerank counters, [Index-rerank-policy builds](#index-rerank-policy-builds) only                      |
+| `ivfplus_metapage_info(idx regclass)`                      | record (15 cols) | The shape an index was actually built with                                                                        |
 
 `check_ivfplus_index_health` columns:
 
@@ -86,6 +84,23 @@ On a two-level index (`lists >= 1800`), both modes share a further ceiling: the 
 | `n_frozen_live`  | bigint | Live rows in the packed region                               |
 | `n_dead_lanes`   | bigint | Tombstoned lanes awaiting REINDEX                            |
 | `n_pending`      | bigint | Rows in the append region                                    |
+
+`ivfplus_metapage_info` answers what an index was built with, which is otherwise unrecoverable — build-time options aren't stored in a readable form, and `REINDEX` can change the answer. These columns are supported:
+
+| Column                     | Type    | Meaning                                                    |
+|----------------------------|---------|-------------------------------------------------------------|
+| `version`                  | int     | On-disk format version                                      |
+| `dimensions`                | int     | Indexed dimensionality                                      |
+| `leaf_lists`                | int     | The `lists` actually built                                  |
+| `inner_lists`               | int     | Coarse groups; `0` on a flat index                           |
+| `height`                    | int     | `1` flat, `2` two-level                                      |
+| `metric`                    | int     | `1` L2, `2` inner product, `3` cosine                        |
+| `flags`                     | int     | Bitmask: `1` residual codes, `2` f16 rerank copy present, `4` rotation applied, `8` f16 centroids |
+| `pack_width`                | int     | Fast-scan block width                                        |
+| `k_lists`, `k_probes`       | real    | Hierarchy fan-out constants stamped at build; `0` on a flat index |
+| `rotation_stages`           | int     | Rotation stages applied                                      |
+
+The remaining four columns — `inner_centroids_start`, `leaf_headers_start`, `insert_page`, `centroid_codes_start` — are page numbers with no meaning outside the implementation. Every column here is tied to `version` and may change when it does.
 
 The extension is relocatable, so schema-qualify these calls if the extension is installed in a schema not on your `search_path`. Any other function you find in `\dx+ edb_vectorplus` is internal.
 
@@ -109,17 +124,15 @@ Compiled in; none is a runtime knob.
 | Constant                 | Value                                                        |
 |--------------------------|--------------------------------------------------------------|
 | Max dimensions           | 2000 `vector` · 4000 `halfvec`                               |
-| Max quantized dimensions | same as above (every supported type is quantized throughout) |
 | `lists` / `probes` range | 1–32768                                                      |
 | Rerank pool              | 200 rows per query                                           |
-| Rotation stages          | 6 (on/off only, via `rotation`)                              |
 | Two-level hierarchy      | `lists >= 1800`                                              |
 | Hierarchy fan-out        | `K_lists` 1.0, `K_probes` 2.0                                |
 | RaBitQ error-bound width | ε₀ 1.9                                                       |
 | Fast-scan block width    | 32                                                           |
 | On-disk format version   | 1 (`ivfplus_metapage_info(...).version`)                     |
 
-The packing window is the one entry with an action attached. A vector index gets the packed fast-scan layout only when `dim % 4 == 0` and the packed block fits one page — at the default 8 kB `BLCKSZ`, `dim <= 1780`. Outside it, the index silently runs the slower unpacked path and health reports 1.0 forever, so nothing surfaces it: `vector(1536)` is packed, `vector(1537)` and `vector(1792)` are not. Pad or truncate to a multiple of 4 at or below 1780.
+The packing window is the one entry with an action attached. A vector index gets the packed fast-scan layout only when `dim % 4 == 0` and the packed block fits one page, at the default 8 kB `BLCKSZ`, `dim <= 1780`. Outside it, the index silently runs the slower unpacked path and health reports 1.0 forever, so nothing surfaces it: `vector(1536)` is packed, `vector(1537)` and `vector(1792)` are not. Pad or truncate to a multiple of 4 at or below 1780.
 
 ## Index-rerank-policy builds
 
@@ -139,6 +152,6 @@ Detection is automatic in the Makefile. At runtime, `SELECT edb_vectorplus_reran
 
 `store_vectors = on` on a fork build restores the behavior `edb_vectorplus` has on a server that doesn't support the index rerank policy.
 
-`edb_vectorplus_rerank_stats(reset)` returns `(decisions, fetch_more, return_top)` — how often the policy callback fired and how it decided; passing `true` resets them after reading. A `store_vectors = on` index never invokes the policy, so its counters stay at zero.
+`edb_vectorplus_rerank_stats(reset)` returns `(decisions, fetch_more, return_top)`, how often the policy callback fired and how it decided; passing `true` resets them after reading. A `store_vectors = on` index never invokes the policy, so its counters stay at zero.
 
 The counters live in backend-process memory only. Treat them as a diagnostic tool: they start at zero when the backend starts, accumulate across every query and every `ivfplus` index that one process touches, and are gone when the connection ends — a new connection always begins at zero. They're also not per-index.
