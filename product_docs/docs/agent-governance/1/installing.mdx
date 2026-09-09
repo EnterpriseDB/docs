@@ -12,11 +12,11 @@ Install EDB Agent Governance on Kubernetes. After the stack is running, continue
 EDB Agent Governance deploys as a Dex-fronted stack of four containers:
 
 | Service     | Description                                                                                                                                                   |
-|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `bootstrap` | A one-shot helper that generates secrets and the internal certificates the stack needs on first run.                                                          |
 | `dex`       | Identity federation — Brokers login to your upstream identity providers.                                                                                      |
 | `nginx`     | Terminates HTTPS, serves the viewer's static assets, and routes API and single-sign-on requests to the right service so the browser talks to a single origin. |
-| `bff`       | The backend — OIDC client of Dex, instance management, and the Hybrid Manager (HM) or Loki proxy that parses logs and caches sessions.                           |
+| `bff`       | The backend — OIDC client of Dex, instance management, and the Hybrid Manager (HM) or Loki proxy that parses logs and caches sessions.                        |
 
 A shared Postgres service backs the stack, hosting the backend's database for instance configuration and sessions, and the Dex database for identity provider connectors. The Helm chart runs that Postgres for you by default, or points the stack at a database you manage.
 
@@ -29,26 +29,42 @@ A shared Postgres service backs the stack, hosting the backend's database for in
 
 ## Getting the software
 
-EDB publishes Agent Governance to the `pgai-platform` repository in EDB Repos 2.0 — the same repository Hybrid Manager installs from. You don't build anything from source.
+Installing needs three things: the Helm chart and the container images, both published by EDB to the `pgai-platform` repository in EDB Repos 2.0 (the same repository Hybrid Manager installs from), and — only if you use the bundled Postgres — the public `postgres:16-alpine` image from Docker Hub, which EDB doesn't publish. You don't build anything from source.
 
-| Artifact         | Package                                                                                                                              |
-|------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| Helm chart       | `governance`                                                                                                                         |
-| Container images | `governance-bootstrap`, `governance-dex`, `governance-nginx`, and `governance-bff`, under `docker.enterprisedb.com/pgai-platform`     |
+| Artifact                         | Package                                                                                                                              | Source              |
+|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|---------------------|
+| Helm chart                        | `governance`                                                                                                                         | EDB Repos 2.0       |
+| Container images                  | `governance-bootstrap`, `governance-dex`, `governance-nginx`, and `governance-bff`, under `docker.enterprisedb.com/pgai-platform`    | EDB Repos 2.0       |
+| Bundled Postgres image (if used)  | `postgres:16-alpine`                                                                                                                 | Docker Hub (public) |
 
 The chart version matches the Agent Governance release, and the chart pins each image to that same version — you don't set image tags by hand.
 
 !!! Note Processor architecture
-The images are published for `linux/amd64` only. On arm64 nodes pods fail to start with `no matching manifest for linux/arm64/v8` — schedule Agent Governance on amd64 nodes.
+The images are published for `linux/amd64` only — schedule Agent Governance on amd64 nodes.
 !!!
 
-One image doesn't come from EDB: in the default configuration the chart runs its own Postgres from the public `postgres:16-alpine` image on Docker Hub. On a restricted or air-gapped network, either point `postgres.image` at your own mirror of it or use an external database (see [Configuring the database](#configuring-the-database)).
+On a restricted or air-gapped network, either point `postgres.image` at your own mirror of the bundled Postgres image or use an external database (see [Configuring the database](#configuring-the-database)).
 
 The instructions that follow assume your subscription token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
 
+## Choosing a deployment mode
+
+Decide how nginx terminates TLS before you deploy — this determines which TLS secret you create in step 3 of [Deploying on Kubernetes](#deploying-on-kubernetes) and which values you pass to `helm install` in step 4.
+
+| Mode                          | How to set it                                                                        | TLS                                                                                                                                                                        |
+|-------------------------------|----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Bundled nginx (default)       | `ingress.enabled=false`                                                              | `tls.existingSecret` — The preferred option in production. Inline PEM through `tls.cert` and `tls.key` is for testing only, because it ends up in the Helm release state. |
+| External ingress controller   | `ingress.enabled=true`, plus `ingress.className` for your controller                 | `ingress.tlsSecret`, or `ingress.externalTLS=true` when TLS is terminated out of band.                                                                                     |
+
+`ingress.host` defaults to the host in `publicBaseURL` and must match it — the chart refuses to install if you set it to anything else.
+
+In bundled mode the backend reaches the OIDC issuer over the in-cluster nginx service while keeping the URL, `Host` header, and TLS SNI set to `publicBaseURL`, so you don't need split-horizon DNS or a hairpin route.
+
+In ingress mode, `publicBaseURL` must resolve and be reachable from inside the cluster, because the backend performs OIDC discovery and token exchange against it. If internal DNS doesn't resolve it, set `bff.oidcDialAddress` to the in-cluster `host:port` that terminates TLS for it, or map the host to that address through `extraHostAliases`.
+
 ## Deploying on Kubernetes
 
-1.  **Add the Helm repository** and list the available chart versions:
+1.  **Add the Helm repository.** List the available chart versions:
 
     ```bash
     helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
@@ -56,7 +72,7 @@ The instructions that follow assume your subscription token is in an environment
     helm search repo enterprisedb-edbpgai/governance --versions
     ```
 
-1.  **Create the namespace and the image pull secret** so the cluster can pull from `docker.enterprisedb.com`:
+1.  **Create the namespace and image pull secret.** This lets the cluster pull from `docker.enterprisedb.com`:
 
     ```bash
     kubectl create namespace governance
@@ -71,7 +87,7 @@ The instructions that follow assume your subscription token is in an environment
     The username must match the repository you're pulling from — here `pgai-platform`. Docker stores credentials keyed by registry with no distinction between repositories, so if you also pull other EDB products from `docker.enterprisedb.com` (for example with username `clickhouse` or `k8s`), each login overwrites the previous one.
     !!!
 
-1.  **Provide your TLS certificate** as a `kubernetes.io/tls` secret. In the default deployment mode nginx terminates TLS with it:
+1.  **Provide your TLS certificate.** Store it as a `kubernetes.io/tls` secret — in the default deployment mode nginx terminates TLS with it:
 
     ```bash
     kubectl create secret tls -n governance governance-tls \
@@ -80,7 +96,7 @@ The instructions that follow assume your subscription token is in an environment
 
     If an ingress controller terminates TLS instead, see [Choosing a deployment mode](#choosing-a-deployment-mode).
 
-1.  **Install the chart**, setting the pull secret and the values the chart requires (the chart already defaults to the customer registry):
+1.  **Install the chart.** Set the pull secret and the values the chart requires (the chart already defaults to the customer registry):
 
     ```bash
     helm install gov enterprisedb-edbpgai/governance \
@@ -105,7 +121,7 @@ The instructions that follow assume your subscription token is in an environment
       -o jsonpath='{.data.admin-password}' | base64 -d ; echo
     ```
 
-    Open your `publicBaseURL` in a browser and sign in with `adminEmail` and that password. Then add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
+1.  **Add your identity provider.** Open your `publicBaseURL` in a browser and sign in with `adminEmail` and that password. Add your upstream identity provider under **Settings → Identity Providers** and switch day-to-day login to it.
 
 !!! Note
 The examples use the release name `gov`, which is why the generated objects are called `gov-governance-nginx` and `gov-governance-secrets`. If you choose a different release name, adjust those names accordingly.
@@ -121,6 +137,8 @@ The examples use the release name `gov`, which is why the generated objects are 
 
 The chart refuses to install if `publicBaseURL` or `adminEmail` is missing or malformed, and if the deployment mode you chose has no TLS configured.
 
+### Generated secrets
+
 The bootstrap job generates the remaining secrets on first install and stores them in the `gov-governance-secrets` secret — don't set them by hand:
 
 - `BFF_OIDC_CLIENT_SECRET` and `DEX_BFF_CLIENT_SECRET` — the shared OIDC client secret between the backend and Dex.
@@ -128,29 +146,18 @@ The bootstrap job generates the remaining secrets on first install and stores th
 - `BFF_REFRESH_TOKEN_ENC_KEY` and `BFF_INSTANCE_ENC_KEY` — the token and instance encryption keys.
 - The break-glass admin's identifier and password.
 
-That secret is deliberately not managed by Helm, so it survives `helm uninstall`. Delete it explicitly if you want a genuinely clean reinstall.
-
-### Choosing a deployment mode
-
-| Mode                          | How to set it                                                                        | TLS                                                                                                                      |
-|-------------------------------|--------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| Bundled nginx (default)       | `ingress.enabled=false`                                                              | `tls.existingSecret` — the preferred option in production. Inline PEM through `tls.cert` and `tls.key` is for testing only, because it ends up in the Helm release state. |
-| External ingress controller   | `ingress.enabled=true`, plus `ingress.className` for your controller                 | `ingress.tlsSecret`, or `ingress.externalTLS=true` when TLS is terminated out of band.                                    |
-
-`ingress.host` defaults to the host in `publicBaseURL` and must match it — the chart refuses to install if you set it to anything else.
-
-In bundled mode the backend reaches the OIDC issuer over the in-cluster nginx service while keeping the URL, `Host` header, and TLS SNI set to `publicBaseURL`, so you don't need split-horizon DNS or a hairpin route.
-
-In ingress mode, `publicBaseURL` must resolve and be reachable from inside the cluster, because the backend performs OIDC discovery and token exchange against it. If internal DNS doesn't resolve it, set `bff.oidcDialAddress` to the in-cluster `host:port` that terminates TLS for it, or map the host to that address through `extraHostAliases`.
+The `gov-governance-secrets` secret is deliberately not managed by Helm, so it survives `helm uninstall`. Delete it explicitly if you want a genuinely clean reinstall.
 
 ### Configuring the database
 
-The backend and Dex both persist to PostgreSQL — the backend in database `bff`, Dex in a separate `dex` database on the same server.
+Decide whether to use the bundled Postgres or bring your own before installing the chart — you can't switch afterward. The backend and Dex both persist to PostgreSQL — the backend in database `bff`, Dex in a separate `dex` database on the same server.
 
 - **Bundled** (`postgres.enabled=true`, the default) — the chart runs a single `postgres:16-alpine` StatefulSet with a PersistentVolumeClaim and creates the `dex` database on first start. The password is generated once and kept in the `gov-governance-postgres` secret, which survives `helm uninstall` so the data and the credential stay in sync on reinstall. Size the volume with `postgres.persistence.size` (8Gi by default) and pick a class with `postgres.persistence.storageClass`.
 - **External** (`postgres.enabled=false`) — point the stack at a database you manage with `postgres.host`, `postgres.username`, `postgres.password`, `postgres.port`, and `postgres.sslmode`. Create the `dex` database yourself before installing; the chart doesn't create it for you.
 
 ### Configuring recommended settings
+
+Set any of these as Helm values, either with `--set` during the install in [Deploying on Kubernetes](#deploying-on-kubernetes) or later with `helm upgrade`:
 
 | Value                       | Default                   | Description                                                                                                                                       |
 |-----------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
@@ -161,5 +168,5 @@ The backend and Dex both persist to PostgreSQL — the backend in database `bff`
 | `bff.extraTrustedCABundle`  | —                         | A PEM CA bundle to trust an OIDC issuer signed by a private CA. TLS verification stays on; this adds trust rather than bypassing it.              |
 | `bff.waitForDex`            | `false`                   | Adds an init container that waits until the OIDC issuer answers before the backend starts, avoiding the brief restart loop on first install. The probe runs from the backend image and honors `bff.extraTrustedCABundle`.   |
 | `bff.idpCrudEnabled`        | `true`                    | Whether identity providers are managed in the app. Set it to `false` to freeze the configuration, in which case `bff.idpPolicy` becomes required. |
-| `bff.blockPrivateEgress`   | `true`                    | Whether the backend blocks registered instances from reaching private network ranges (RFC 1918, carrier-grade NAT, IPv6 unique-local). Set it to `false` only for on-premises deployments whose HM or Loki upstreams live on private addresses. Cloud metadata, loopback, and link-local addresses stay blocked regardless. |
+| `bff.blockPrivateEgress`    | `true`                    | Whether the backend blocks registered instances from reaching private network ranges ([RFC 1918](https://www.rfc-editor.org/rfc/rfc1918), carrier-grade NAT, IPv6 unique-local). Set it to `false` only for on-premises deployments whose HM or Loki upstreams live on private addresses. Cloud metadata, loopback, and link-local addresses stay blocked regardless. |
 | `nginx.replicaCount`        | 1                         | The number of nginx replicas. The backend and Dex are pinned at one replica each and can't be scaled.                                             |
