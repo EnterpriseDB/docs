@@ -100,114 +100,16 @@ The statistics collected for a column vary for different data types, so the `pg_
 
 The `stakindN` columns each contain a numeric code to describe the type of statistics stored in their slot. The `stakind` code numbers from 1 to 99 are reserved for core PostgreSQL data types. WarehousePG uses code numbers 1, 2, 3, 4, 5, and 99. A value of 0 means the slot is unused. The following table describes the kinds of statistics stored for the three codes.
 
-<table class="table frame-all" id="topic_oq3_qxj_3s__table_upf_1yc_nt"><caption><span class="table--title-label">Table 1. </span><span class="title">Contents of pg_statistic "slots"</span></caption><colgroup><col style="width:14.285714285714285%" /><col style="width:85.71428571428571%" /></colgroup><thead class="thead">
-                <tr class="row">
-                  <th class="entry" id="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">stakind Code</th>
-                  <th class="entry" id="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2">Description</th>
-                </tr>
-              </thead><tbody class="tbody">
-                <tr class="row">
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">1</td>
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2"><em class="ph i">Most CommonValues (MCV) Slot</em>
-                    <ul class="ul" id="topic_oq3_qxj_3s__ul_ipg_gyc_nt">
-                      <li class="li"><code class="ph codeph">staop</code> contains the object ID of the "=" operator, used to
-                        decide whether values are the same or not.</li>
-                      <li class="li"><code class="ph codeph">stavalues</code> contains an array of the <var class="keyword varname">K</var>
-                        most common non-null values appearing in the column.</li>
-                      <li class="li"><code class="ph codeph">stanumbers</code> contains the frequencies (fractions of total
-                        row count) of the values in the <code class="ph codeph">stavalues</code> array. </li>
-                    </ul>The values are ordered in decreasing frequency. Since the arrays are
-                    variable-size, <var class="keyword varname">K</var> can be chosen by the statistics collector.
-                    Values must occur more than once to be added to the <code class="ph codeph">stavalues</code>
-                    array; a unique column has no MCV slot.</td>
-                </tr>
-                <tr class="row">
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">2</td>
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2"><em class="ph i">Histogram Slot</em> – describes the distribution of scalar data.<ul class="ul" id="topic_oq3_qxj_3s__ul_t2f_zyc_nt">
-                      <li class="li"><code class="ph codeph">staop</code> is the object ID of the "&#x3C;" operator, which
-                        describes the sort ordering. </li>
-                      <li class="li"><code class="ph codeph">stavalues</code> contains <var class="keyword varname">M</var> (where
-                            <code class="ph codeph"><var class="keyword varname">M</var>>=2</code>) non-null values that divide
-                        the non-null column data values into <code class="ph codeph"><var class="keyword varname">M</var>-1</code>
-                        bins of approximately equal population. The first <code class="ph codeph">stavalues</code>
-                        item is the minimum value and the last is the maximum value. </li>
-                      <li class="li"><code class="ph codeph">stanumbers</code> is not used and should be
-                          <code class="ph codeph">NULL</code>. </li>
-                    </ul><p class="p">If a Most Common Values slot is also provided, then the histogram
-                      describes the data distribution after removing the values listed in the MCV
-                      array. (It is a <em class="ph i">compressed histogram</em> in the technical parlance). This
-                      allows a more accurate representation of the distribution of a column with
-                      some very common values. In a column with only a few distinct values, it is
-                      possible that the MCV list describes the entire data population; in this case
-                      the histogram reduces to empty and should be omitted.</p></td>
-                </tr>
-                <tr class="row">
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">3</td>
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2"><em class="ph i">Correlation Slot</em> – describes the correlation between the physical
-                    order of table tuples and the ordering of data values of this column. <ul class="ul" id="topic_oq3_qxj_3s__ul_yvj_sfd_nt">
-                      <li class="li"><code class="ph codeph">staop</code> is the object ID of the "&#x3C;" operator. As with
-                        the histogram, more than one entry could theoretically appear.</li>
-                      <li class="li"><code class="ph codeph">stavalues</code> is not used and should be
-                        <code class="ph codeph">NULL</code>. </li>
-                      <li class="li"><code class="ph codeph">stanumbers</code> contains a single entry, the correlation
-                        coefficient between the sequence of data values and the sequence of their
-                        actual tuple positions. The coefficient ranges from +1 to -1.</li>
-                    </ul></td>
-                </tr>
-                <tr class="row">
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">4</td>
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2"><em class="ph i">Most Common Elements Slot</em> - is similar to a Most Common Values (MCV)
-                    Slot, except that it stores the most common non-null <em class="ph i">elements</em> of the
-                    column values. This is useful when the column datatype is an array or some other
-                    type with identifiable elements (for instance, <code class="ph codeph">tsvector</code>). <ul class="ul" id="topic_oq3_qxj_3s__ul_kj4_wnm_y2b">
-                      <li class="li"><code class="ph codeph">staop</code> contains the equality operator appropriate to the
-                        element type. </li>
-                      <li class="li"><code class="ph codeph">stavalues</code> contains the most common element values.</li>
-                      <li class="li"><code class="ph codeph">stanumbers</code> contains common element frequencies. </li>
-                    </ul><p class="p">Frequencies are measured as the fraction of non-null rows the element
-                      value appears in, not the frequency of all rows. Also, the values are sorted
-                      into the element type's default order (to support binary search for a
-                      particular value). Since this puts the minimum and maximum frequencies at
-                      unpredictable spots in <code class="ph codeph">stanumbers</code>, there are two extra
-                      members of <code class="ph codeph">stanumbers</code> that hold copies of the minimum and
-                      maximum frequencies. Optionally, there can be a third extra member that holds
-                      the frequency of null elements (the frequency is expressed in the same terms:
-                      the fraction of non-null rows that contain at least one null element). If this
-                      member is omitted, the column is presumed to contain no <code class="ph codeph">NULL</code>
-                      elements. </p>
-                    <div class="note note note_note"><span class="note__title">Note:</span> For <code class="ph codeph">tsvector</code> columns, the <code class="ph codeph">stavalues</code>
-                      elements are of type <code class="ph codeph">text</code>, even though their representation
-                      within <code class="ph codeph">tsvector</code> is not exactly
-                    <code class="ph codeph">text</code>.</div></td>
-                </tr>
-                <tr class="row">
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">5</td>
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2"><em class="ph i">Distinct Elements Count Histogram Slot</em> - describes the distribution
-                    of the number of distinct element values present in each row of an array-type
-                    column. Only non-null rows are considered, and only non-null elements.<ul class="ul" id="topic_oq3_qxj_3s__ul_gmr_jnm_y2b">
-                      <li class="li"><code class="ph codeph">staop</code> contains the equality operator appropriate to the
-                        element type. </li>
-                      <li class="li"><code class="ph codeph">stavalues</code> is not used and should be
-                        <code class="ph codeph">NULL</code>. </li>
-                      <li class="li"><code class="ph codeph">stanumbers</code> contains information about distinct elements.
-                        The last member of <code class="ph codeph">stanumbers</code> is the average count of
-                        distinct element values over all non-null rows. The preceding
-                          <var class="keyword varname">M</var> (where <code class="ph codeph"><var class="keyword varname">M</var> >=2</code>)
-                        members form a histogram that divides the population of distinct-elements
-                        counts into <code class="ph codeph"><var class="keyword varname">M</var>-1</code> bins of approximately
-                        equal population. The first of these is the minimum observed count, and the
-                        last the maximum.</li>
-                    </ul></td>
-                </tr>
-                <tr class="row">
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__1">99</td>
-                  <td class="entry" headers="topic_oq3_qxj_3s__table_upf_1yc_nt__entry__2"><em class="ph i">Hyperloglog Slot</em> - for child leaf partitions of a partitioned table,
-                    stores the <code class="ph codeph">hyperloglog_counter</code> created for the sampled data.
-                    The <code class="ph codeph">hyperloglog_counter</code> data structure is converted into a
-                      <code class="ph codeph">bytea</code> and stored in a <code class="ph codeph">stavalues5</code> slot of the
-                      <code class="ph codeph">pg_statistic</code> catalog table.</td>
-                </tr>
-              </tbody></table>
+**Contents of pg_statistic "slots"**
+
+| stakind Code | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1            | *Most CommonValues (MCV) Slot*<br/><br/>- `staop` contains the object ID of the "=" operator, used to decide whether values are the same or not.<br/>- `stavalues` contains an array of the *K* most common non-null values appearing in the column.<br/>- `stanumbers` contains the frequencies (fractions of total row count) of the values in the `stavalues` array.<br/><br/>The values are ordered in decreasing frequency. Since the arrays are variable-size, *K* can be chosen by the statistics collector. Values must occur more than once to be added to the `stavalues` array; a unique column has no MCV slot.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 2            | *Histogram Slot* – describes the distribution of scalar data.<br/><br/>- `staop` is the object ID of the "&lt;" operator, which describes the sort ordering.<br/>- `stavalues` contains *M* (where `M>=2`) non-null values that divide the non-null column data values into `M-1` bins of approximately equal population. The first `stavalues` item is the minimum value and the last is the maximum value.<br/>- `stanumbers` is not used and should be `NULL`.<br/><br/>If a Most Common Values slot is also provided, then the histogram describes the data distribution after removing the values listed in the MCV array. (It is a *compressed histogram* in the technical parlance). This allows a more accurate representation of the distribution of a column with some very common values. In a column with only a few distinct values, it is possible that the MCV list describes the entire data population; in this case the histogram reduces to empty and should be omitted.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 3            | *Correlation Slot* – describes the correlation between the physical order of table tuples and the ordering of data values of this column.<br/><br/>- `staop` is the object ID of the "&lt;" operator. As with the histogram, more than one entry could theoretically appear.<br/>- `stavalues` is not used and should be `NULL`.<br/>- `stanumbers` contains a single entry, the correlation coefficient between the sequence of data values and the sequence of their actual tuple positions. The coefficient ranges from +1 to -1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 4            | *Most Common Elements Slot* - is similar to a Most Common Values (MCV) Slot, except that it stores the most common non-null *elements* of the column values. This is useful when the column datatype is an array or some other type with identifiable elements (for instance, `tsvector`).<br/><br/>- `staop` contains the equality operator appropriate to the element type.<br/>- `stavalues` contains the most common element values.<br/>- `stanumbers` contains common element frequencies.<br/><br/>Frequencies are measured as the fraction of non-null rows the element value appears in, not the frequency of all rows. Also, the values are sorted into the element type's default order (to support binary search for a particular value). Since this puts the minimum and maximum frequencies at unpredictable spots in `stanumbers`, there are two extra members of `stanumbers` that hold copies of the minimum and maximum frequencies. Optionally, there can be a third extra member that holds the frequency of null elements (the frequency is expressed in the same terms: the fraction of non-null rows that contain at least one null element). If this member is omitted, the column is presumed to contain no `NULL` elements.<br/><br/>**Note:** For `tsvector` columns, the `stavalues` elements are of type `text`, even though their representation within `tsvector` is not exactly `text`. |
+| 5            | *Distinct Elements Count Histogram Slot* - describes the distribution of the number of distinct element values present in each row of an array-type column. Only non-null rows are considered, and only non-null elements.<br/><br/>- `staop` contains the equality operator appropriate to the element type.<br/>- `stavalues` is not used and should be `NULL`.<br/>- `stanumbers` contains information about distinct elements. The last member of `stanumbers` is the average count of distinct element values over all non-null rows. The preceding *M* (where `M >=2`) members form a histogram that divides the population of distinct-elements counts into `M-1` bins of approximately equal population. The first of these is the minimum observed count, and the last the maximum.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 99           | *Hyperloglog Slot* - for child leaf partitions of a partitioned table, stores the `hyperloglog_counter` created for the sampled data. The `hyperloglog_counter` data structure is converted into a `bytea` and stored in a `stavalues5` slot of the `pg_statistic` catalog table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The `pg_stats` view presents the contents of `pg_statistic` in a friendlier format. The `pg_stats` view has the following columns:
 
