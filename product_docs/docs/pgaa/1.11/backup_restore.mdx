@@ -1,0 +1,154 @@
+---
+title: Backing up and restoring
+navTitle: Backing up and restoring
+description: How to back up and restore Postgres Analytics Accelerator (PGAA) deployments, including Postgres Distributed (PGD) clusters that use tiered storage.
+deepToC: true
+---
+
+Use [Barman](https://www.enterprisedb.com/docs/supported-open-source/barman/) to back up your analytical tables. Barman performs a physical backup of the Postgres node where the PGAA extension is installed. What gets backed up depends on the type of tables in your deployment.
+
+## Understanding the scope of physical backups
+
+PGAA tables fall into different categories depending on your deployment:
+
+-   **Analytical tables**: tables using the PGAA access method that point entirely to data in object storage. Available in both standalone Postgres and Postgres Distributed (PGD) deployments.
+-   **Tiered tables** (PGD only): partition-based tables with hot partitions in the local Postgres heap (also replicated to object storage when `replicate_to_analytics` is enabled) and cold partitions offloaded to object storage.
+-   **HTAP tables** (PGD only): tables with a full copy in the Postgres heap and a full copy in object storage.
+-   **Internal metadata tables**: PGAA's own system tables (such as `pgaa.table_mapping` and `pgaa.catalog`) stored as regular heap tables in the data directory. Available in all deployments.
+
+A standard Postgres physical backup captures:
+
+-   Analytical table definitions as metadata pointers to object storage, not the underlying data itself.
+-   Heap data from tiered table hot partitions and HTAP tables stored in the local data directory, backed up in full.
+-   PGAA's internal metadata tables (such as `pgaa.table_mapping` and `pgaa.catalog`).
+
+A backup doesn't capture:
+
+-   Iceberg, Delta, or Parquet files in object storage.
+-   Iceberg REST catalog entries, such as those held by Lakekeeper.
+
+For example, for a PGD tiered table, Barman backs up the hot data entirely but backs up only pointers to the cold data, not the cold data itself.
+
+For full disaster-recovery coverage, snapshot your object store and catalog service alongside Postgres backups.
+
+## Backing up
+
+Configure Barman with `backup_method = postgres`, which runs `pg_basebackup` and adds catalog management, retention policies, WAL archiving, and the `barman recover` workflow that handles `max_worker_processes` adjustments automatically.
+
+See the [Barman documentation](https://www.enterprisedb.com/docs/supported-open-source/barman/) for the full server-side setup, including the `barman` and `streaming_barman` Postgres roles and replication slot.
+
+### Backing up a single node
+
+For a standalone Postgres node with PGAA, backups capture only metadata and pointers to object storage. All PGAA table data lives in object storage and is never replicated from Postgres, so there's no hot data to consider.
+
+1.  Add a server entry for your PGAA-enabled Postgres node in `/etc/barman.d/<node>.conf`:
+
+    ```ini
+    [pgaa1]
+    description = "PGAA-enabled Postgres node"
+    conninfo = host=pgaa1 user=barman dbname=mydb
+    streaming_conninfo = host=pgaa1 user=streaming_barman
+    backup_method = postgres
+    streaming_archiver = on
+    slot_name = barman
+    create_slot = auto
+    ```
+
+1.  Take a backup and confirm it's recorded in the catalog:
+
+    ```shell
+    barman backup pgaa1
+    barman list-backups pgaa1
+    ```
+
+### Backing up a PGD cluster
+
+In a PGD environment, add a separate server entry for each node in the cluster.
+
+1.  Add a server entry for each PGD node in `/etc/barman.d/<node>.conf`:
+
+    ```ini
+    [pgd1]
+    description = "PGD node pgd1 with PGAA"
+    conninfo = host=pgd1 user=barman dbname=pgdtest
+    streaming_conninfo = host=pgd1 user=streaming_barman
+    backup_method = postgres
+    streaming_archiver = on
+    slot_name = barman
+    create_slot = auto
+    ```
+
+1.  Take a backup and confirm it's recorded in the catalog:
+
+    ```shell
+    barman backup pgd1
+    barman list-backups pgd1
+    ```
+
+1.  Repeat for each node in the cluster.
+
+!!!Note
+
+PGAA's catalog tables aren't part of Bi-Directional Replication (BDR)'s logical replication stream. Each node holds its own copy. At runtime, consistency is maintained through BDR's global DDL lock and PGAA's `object_access_hook`, which fires on every node. Backups, however, capture each node's physical copy independently. A single-node backup captures only that node's view of the catalog. For a full PGD cluster restore, you need backups from all nodes.
+!!!
+
+## Restoring
+
+Use `barman recover` to restore your PGAA tables. The restore procedure depends on your deployment: a standalone Postgres node, a single PGD node restored in isolation, or a full PGD cluster.
+
+### Restoring a standalone Postgres node
+
+Restore the node using `barman recover`:
+
+```shell
+barman recover pgaa1 <backup-id> /var/lib/edb-pge/18/data
+```
+
+PGAA tables are immediately queryable after restore. All PGAA table data lives in object storage, so the restore captures only metadata and pointers.
+
+### Restoring a single PGD node in isolation
+
+Restore a single PGD node without reconnecting it to the cluster. This procedure is useful for inspecting catalog state, recovering a development environment, or creating an isolated environment from a production backup.
+
+```shell
+barman recover pgd1 <backup-id> /var/lib/edb-pge/18/data
+```
+
+The restore preserves PGAA catalog tables and per-partition access methods. Analytics queries remain accessible after restore, as the restore captures all the metadata needed to connect to object storage.
+
+The restored node logs BDR consensus errors on startup, as it still references the original cluster peers but can't connect to them. These errors don't affect query serving. Postgres continues to answer queries normally and PGAA reads its catalog from the local data directory.
+
+To list your analytical tables in this scenario, query the catalog tables directly, as `pgaa.list_analytics_tables()` relies on BDR and isn't available when restoring a PGD node in isolation.
+
+```sql
+SELECT * FROM pgaa.table_mapping;
+SELECT * FROM pgaa.tiered_table;
+SELECT * FROM pgaa.catalog;
+```
+
+### Restoring a PGD cluster
+
+Follow the [physical restore procedure](/pgd/latest/lifecycle/backup-restore/) for PGD clusters. This procedure assumes you have a coordinated backup from all nodes in the cluster. See [Backing up a PGD cluster](#backing-up-a-pgd-cluster) for details. When you restore all nodes together, PGAA catalog state is consistent across the restored nodes and post-restore writes replicate normally. Keep the following PGAA-specific points in mind:
+
+-   On manual restores, set `max_worker_processes` before starting Postgres. `barman recover` handles this adjustment automatically. See [Setting `max_worker_processes` on a manual restore](/pgd/latest/lifecycle/backup-restore/#setting-max_worker_processes-on-a-manual-restore) in the PGD documentation for details.
+-   Verify PGAA catalog state across nodes after restore by running this query on each node and confirming the results are identical:
+
+    ```sql
+    SELECT count(*), md5(string_agg(t::text, ',' ORDER BY t::text))
+    FROM pgaa.table_mapping t;
+    ```
+-   If `pgaa.autostart_seafowl` is on, Seafowl starts automatically after recovery completes with no action required.
+
+### Known limitation: PITR restore after enabling analytics replication
+
+When performing [point-in-time recovery (PITR)](/pgd/latest/lifecycle/backup-restore/) using Barman's `--target-time` option, a target time that falls during a `pgaa.enable_analytics_replication()` operation can leave the deployment in a partially recovered state. This limitation applies to all PGD restore procedures.
+
+Enabling analytics replication with `pgaa.enable_analytics_replication()` converts a heap table to an HTAP table and starts writing Iceberg data files and a REST catalog entry to object storage. During recovery, Postgres rolls back the `pgaa.table_mapping` insert but can't roll back the Iceberg data files and REST catalog entry already written to object storage. The heap table holds its original rows while the Iceberg data and catalog entry remain as orphans.
+
+To clean up the orphaned Iceberg data and catalog entry:
+
+1.  Identify the orphaned Iceberg path from a pre-recovery snapshot of `pgaa.table_mapping` or from object-store inventory.
+1.  Delete the Iceberg data files at that path.
+1.  Drop the orphaned table from the Iceberg REST catalog.
+
+For details on the `pgaa.enable_analytics_replication()` flow, see [Replicating to analytics](/pgd/latest/tiered-storage/replicate/).

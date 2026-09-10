@@ -473,6 +473,25 @@ purposes. See also [Monitoring](monitoring).
 | last_update_horizon_xid | oid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
 | last_update_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
 
+### `bdr.xid_peer_progress`
+
+Tracks per-transaction progress used by `bdr.wait_for_xid_progress()`. A node
+records the transaction status here as soon as it makes progress on it, and
+also reports it to all other nodes; the same table stores the reports received
+from peer nodes, with `peer_node_id`, `peer_apply_xid` and `peer_apply_lsn` then
+referring to the peer.
+
+#### `bdr.xid_peer_progress` Columns
+
+| Name                 | Type   | Description                                                        |
+| --------------------- | ------ | ------------------------------------------------------------------- |
+| origin_node_id         | oid    | OID of the node where the transaction originated                    |
+| origin_node_topxid     | xid    | Top-level XID of the transaction on the origin node                 |
+| origin_node_lsn        | pg_lsn | LSN on the origin node at the time progress was recorded            |
+| peer_node_id           | oid    | OID of the peer node this progress report is about                  |
+| peer_apply_xid         | xid    | XID applied on the peer node                                        |
+| peer_apply_lsn         | pg_lsn | LSN applied on the peer node                                        |
+
 ### `bdr.node_pre_commit`
 
 Used internally on a node configured as a Commit At Most Once (CAMO)
@@ -542,6 +561,7 @@ for guidance on the use and interpretation of this view's fields.
 | local_slot_name     | name        | Name of the replication slot according to BDR                                                                                           |
 | slot_name           | name        | Name of the slot according to Postgres (should be same as above)                                                                        |
 | is_group_slot       | boolean     | True if the slot is the node-group crash recovery slot for this node (see ["Group Replication Slot"]\(nodes.md#Group Replication Slot)) |
+| is_decoder_slot     | boolean     | True if the slot is the [decoding worker](nodes#decoding-worker)'s slot                                                                 |
 | plugin              | name        | Logical decoding plugin using this slot (should be pglogical_output)                                                                    |
 | slot_type           | text        | Type of the slot (should be logical)                                                                                                    |
 | datoid              | oid         | The OID of the current database                                                                                                         |
@@ -935,13 +955,12 @@ only one node and processed on different nodes.
 | Column             | Type   | Description                                                                                                              |
 | ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------ |
 | ap_wq_workid       | bigint | The Unique ID of the work item                                                                                           |
-| ap_wq_ruleid       | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                        |
 | ap_wq_relname      | name   | Name of the relation being autopartitioned                                                                               |
 | ap_wq_relnamespace | name   | Name of the tablespace specified in rule for this work item.                                                             |
 | ap_wq_partname     | name   | Name of the partition created by the workitem                                                                            |
 | ap_wq_work_kind    | char   | The work kind can be either 'c' (Create Partition), 'm' (Migrate Partition), 'd' (Drop Partition), 'a' (Alter Partition) |
 | ap_wq_work_sql     | text   | SQL query for the work item                                                                                              |
-| ap_wq_work_depends | Oid\[] | Oids of the nodes on which the work item depends                                                                         |
+| ap_wq_depends_on   | Oid\[] | Oids of the nodes on which the work item depends                                                                         |
 
 ### `bdr.autopartition_workitem_status`
 
@@ -969,13 +988,12 @@ items, independent of other nodes in the cluster.
 | Column             | Type   | Description                                                                                                              |
 | ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------ |
 | ap_wq_workid       | bigint | The Unique ID of the work item                                                                                           |
-| ap_wq_ruleid       | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                        |
 | ap_wq_relname      | name   | Name of the relation being autopartitioned                                                                               |
 | ap_wq_relnamespace | name   | Name of the tablespace specified in rule for this work item.                                                             |
 | ap_wq_partname     | name   | Name of the partition created by the workitem                                                                            |
 | ap_wq_work_kind    | char   | The work kind can be either 'c' (Create Partition), 'm' (Migrate Partition), 'd' (Drop Partition), 'a' (Alter Partition) |
 | ap_wq_work_sql     | text   | SQL query for the work item                                                                                              |
-| ap_wq_work_depends | Oid\[] | Always NULL                                                                                                              |
+| ap_wq_depends_on   | Oid\[] | Always NULL                                                                                                              |
 
 ### `bdr.autopartition_local_workitem_status`
 
@@ -990,6 +1008,49 @@ The status of the work items for locally managed tables.
 | ap_wi_status      | char        | The status can be either 'q' (Queued), 'c' (Complete), 'f' (Failed), 'u' (Unknown) |
 | ap_wi_started_at  | timestamptz | The start timestamptz of work item                                                 |
 | ap_wi_finished_at | timestamptz | The end timestamptz of work item                                                   |
+
+### `bdr.autopartition_rules`
+
+Stores the autopartitioning rule configured for each relation via `bdr.autopartition()`.
+One row per relation that has autopartitioning enabled.
+
+#### `bdr.autopartition_rules` Columns
+
+| Column                          | Type        | Description                                                              |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------ |
+| ap_partition_relid                | oid         | Oid of the relation being autopartitioned                                |
+| ap_partition_relname              | name        | Name of the relation being autopartitioned                               |
+| ap_partition_schemaname           | name        | Schema of the relation being autopartitioned                             |
+| ap_partition_increment_kind       | char        | Internal kind marker for the partition increment value                   |
+| ap_secondary_tablespace           | oid         | Tablespace Oid for new partitions, if configured                         |
+| ap_minimum_advance_partitions     | integer     | Minimum number of partitions to keep pre-created ahead of current data   |
+| ap_maximum_advance_partitions     | integer     | Maximum number of partitions to keep pre-created ahead of current data   |
+| ap_is_autoscaled                  | boolean     | Whether the partition increment is automatically scaled                  |
+| ap_latest_partitions              | integer     | Number of most recent partitions to keep                                 |
+| ap_enabled                        | boolean     | Whether autopartitioning is currently enabled for this relation          |
+| ap_migrate_after_period           | interval    | Age after which partitions are migrated, if configured                  |
+| ap_data_retention_period          | interval    | Age after which partitions are dropped, if configured                    |
+| ap_last_triggered                 | timestamptz | When the autopartition worker last processed this rule                   |
+| ap_partition_increment_value      | text        | The configured partition increment                                      |
+| ap_partition_autocreate_expr      | text        | Expression used to determine when to create the next partition          |
+| ap_partition_initial_lowerbound   | text        | Lower bound used for the first partition                                 |
+| ap_partition_last_upperbound      | text        | Upper bound of the most recently created partition                       |
+| ap_is_local                       | boolean     | Whether this rule is managed locally rather than cluster-wide            |
+
+### `bdr.autopartition_partitions`
+
+Tracks the lifecycle of each partition created by the autopartitioning worker for
+a given parent relation.
+
+#### `bdr.autopartition_partitions` Columns
+
+| Column               | Type        | Description                                             |
+| --------------------- | ----------- | -------------------------------------------------------- |
+| ap_parent_relid        | oid         | Oid of the autopartitioned parent relation                |
+| ap_part_relname        | name        | Name of the partition                                     |
+| ap_part_created_at     | timestamptz | When the partition was created                            |
+| ap_part_migrated_at    | timestamptz | When the partition was migrated, if applicable            |
+| ap_part_dropped_at     | timestamptz | When the partition was dropped, if applicable              |
 
 ### `bdr.group_camo_details`
 
@@ -1030,6 +1091,18 @@ Uses `bdr.run_on_all_nodes` to gather Raft Consensus status from all nodes.
 | nodes            | int  | Number of nodes accessible     |
 | voting_nodes     | int  | Number of nodes voting         |
 | protocol_version | int  | Protocol version for this node |
+
+### `bdr.raft_instances`
+
+Lists the local Raft consensus instance for each top-level node group. There is
+currently always exactly one Raft instance per top-level group.
+
+#### `bdr.raft_instances` Columns
+
+| Name          | Type | Description                              |
+| -------------- | ---- | ------------------------------------------ |
+| instance_id     | int  | Identifier of the Raft instance (always 1)  |
+| node_group_id   | oid  | OID of the top-level node group             |
 
 ### `bdr.group_replslots_details`
 

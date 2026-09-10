@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: Hybrid Manager operator
+version: 2.2.0
+date: 1 September 2026
+intro: |
+  Version 2.2.0 adds the `pgd` installation scenario, collects the container registry settings of a `HybridControlPlane` under a single `spec.registry` block, changes what the operator installs when `spec.scenarios` is omitted, and reports the resources that blocked a failed component deploy in the resource status.
+highlights: |
+  - **`spec.scenarios` accepts a new `pgd` value, and operator 2.2.0 is the earliest version that does.** An HM installation that groups Postgres Distributed (DHA) components under a `pgd` scenario can't run on an earlier operator. Operator 2.2.0 only recognizes the value — the `pgd` scenario itself arrives with HM 2026.9, which moves those components out of `core`, so setting `pgd` on an earlier HM version does nothing. You have to set it yourself; no HM version adds it for you.
+
+  - **A `HybridControlPlane` that omits `spec.scenarios` now installs only the `core` scenario.** Earlier operator versions filled in a default set. List the scenarios you need explicitly before you upgrade.
+
+  - **Registry configuration moves to `spec.registry`, and the fields it replaces are deprecated.** `spec.imageRegistry`, `spec.imagePullSecrets`, and the registry settings under `spec.kappController` and `spec.beaconAgent.provisioning` are still honored, but they now produce a deprecation warning and will be removed in a future API version.
+
+  - **A control plane waiting for an `HMRegistry` no longer stays stale until the operator restarts.** Fixed an issue where repairing a registry that was rejected for a reason that left its URIs unchanged didn't wake the control plane, so an installation or upgrade stayed pending.
+relnotes:
+- relnote: |
+    Only the `core` scenario is added when `spec.scenarios` is omitted
+  details: |
+    **Action required.** A `HybridControlPlane` that leaves `spec.scenarios` unset now installs the `core` scenario alone. Earlier operator versions filled in a default set covering `core`, `dbaas`, `ai`, `analytics`, `migration`, and `marketplace`. List every scenario you want explicitly, and check an existing manifest that relies on the old default before you apply it against operator 2.2 or later: re-applying it removes the components belonging to the scenarios that are no longer listed, along with the data they hold. `core` is still added for you when your list leaves it out, and scenario dependencies are still resolved automatically.
+  jira: UPM-129604
+  addresses:
+  type: Change
+  impact: Highest
+
+- relnote: |
+    `pgd` installation scenario
+  details: |
+    **Action required.** `spec.scenarios` accepts a new `pgd` value, covering the operator that manages Postgres Distributed (DHA) clusters. `pgd` is not added by default, and no other scenario pulls it in. Operator 2.2.0 only accepts the value: it installs those components on an HM version that ships a `pgd` collection, which is 2026.9 or later, so setting it on an earlier HM version has no effect. An installation that uses DHA clusters and upgrades to an HM version whose collections have moved them out of `core` must add `pgd` — once the operator is on 2.2.0 or later, and before bumping `spec.version` — or the components are removed along with the data the clusters hold. Operator versions before 2.2.0 don't recognize the value, so add it only after upgrading the operator and read the resource back to confirm it persisted.
+  jira: UPM-127822
+  addresses:
+  type: Feature
+  impact: High
+
+- relnote: |
+    Unified registry configuration under `spec.registry`
+  details: |
+    `spec.registry` gathers the container registry settings that were previously spread across the `HybridControlPlane` spec: `spec.registry.url` and `spec.registry.imagePullSecrets` for pulling images, `spec.registry.tls.caCerts` and `spec.registry.tls.dangerousSkipTLSVerify` for the trust used to reach it, and `spec.registry.discovery.enabled`, `url`, `provider`, `authenticationType`, and `credentialsSecretName` for image set discovery. A value under `spec.registry` takes precedence over its older counterpart, and where `spec.registry` is unset the older field still applies, so existing manifests keep working unchanged. When you point at an in-cluster registry with `spec.hmRegistryRef`, the operator populates these fields for you.
+  jira: UPM-118802
+  addresses:
+  type: Feature
+  impact: High
+
+- relnote: |
+    The registry fields that `spec.registry` replaces are deprecated
+  details: |
+    Applying a `HybridControlPlane` that sets `spec.imageRegistry`, `spec.imagePullSecrets`, `spec.kappController.caCerts`, `spec.kappController.dangerousSkipTLSVerify`, the `spec.beaconAgent.provisioning` image discovery fields, or the `imageset_discovery_ca_certs` and `image_discovery_credentials_secret_name` parameters of the `upm-beacon` component returns an admission warning naming the `spec.registry` field to use instead. The values are still honored and nothing stops working, but move them to `spec.registry`, because they will be removed in a future API version. A warning is raised only where the deprecated field is the one taking effect, so a control plane whose registry settings come from an `HMRegistry` stays quiet.
+  jira: UPM-118802
+  addresses:
+  type: Deprecation
+  impact: High
+
+- relnote: |
+    Failed resources are reported in `HybridControlPlane` status
+  details: |
+    When a component fails to deploy, `status.components[].failedResources` names the resources that blocked it — kind, API version, name, namespace, and the error — each with the recent warning events that explain why, including events raised against the pods, replica sets, and volume claims those resources own. Read it with `kubectl describe hybridcontrolplane` to see why a deploy is stuck instead of hunting through component namespaces. The list holds at most 10 resources, with at most 5 events each, and is cleared once the component deploys.
+  jira: UPM-119569
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    Per-component operator logs and optional JSON log output
+  details: |
+    Every operator log record now carries the component being reconciled, and the operator renders its logs as human-readable text with that component as a per-line prefix, so the output of a single component — including the output of `kapp` itself — can be followed in `kubectl logs`. To send logs to a collector that parses them, set `controllerManager.manager.logFormat` to `json` in the operator Helm chart, which passes `--log-json` to the manager and emits one JSON record per line instead.
+  jira: UPM-127829
+  addresses:
+  type: Enhancement
+  impact: Medium
+
+- relnote: |
+    A control plane waiting for an `HMRegistry` could stay stale until the operator restarted
+  details: |
+    Fixed an issue where the operator re-reconciled a `HybridControlPlane` only when the URIs of the `HMRegistry` it references changed. Repairing a registry that had been rejected for some other reason — an invalid volume size, for example — left the URIs untouched, so the control plane was never woken and its installation or upgrade stayed pending until the operator was restarted. The control plane is now retried every 30 seconds while it waits, and `status.message` names the registry it is waiting for until the registry is ready.
+  jira: UPM-125668
+  addresses:
+  type: Bug Fix
+  impact: Medium
+
+- relnote: |
+    Postflight checks logged endless watch failures after a component was withdrawn
+  details: |
+    Fixed a bug where checking a component whose custom resource definition (CRD) is no longer installed in the current HM version triggered a cache watch that retried indefinitely, flooding the operator's logs with failures for a type that no longer exists. Postflight checks now query the API server directly rather than going through the operator's cache.
+  jira: UPM-111855
+  addresses:
+  type: Bug Fix
+  impact: Low
+
+- relnote: |
+    AWS load balancer annotations are no longer forced on EKS installations that disable load balancers
+  details: |
+    Fixed a bug where NodePort-based EKS installations (`spec.globalParameters.load_balancer_mode: disabled`) still received AWS load balancer annotations on the `istio-ingressgateway` service — `aws-load-balancer-type`, `aws-load-balancer-scheme`, `aws-load-balancer-nlb-target-type`, `aws-load-balancer-target-group-attributes`, and `load-balancer-source-ranges` — even though these installations provision no load balancer. The operator no longer adds these defaults when load balancing is disabled. All other modes still get the defaults, and any value you set yourself in `spec.resourceAnnotations` is unaffected.
+  jira: UPM-128839
+  addresses:
+  type: Bug Fix
+  impact: Low
+
+- relnote: |
+    Updated Helm libraries in the operator image
+  details: |
+    The operator is built against newer Helm libraries, which clears the vulnerabilities reported against the versions it shipped with in 2.1.0. No configuration change is needed.
+  jira: UPM-129460
+  addresses:
+  type: Security
+  impact: Low
