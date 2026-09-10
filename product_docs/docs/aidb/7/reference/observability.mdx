@@ -36,7 +36,8 @@ Each row is exactly one span. These identifier and attribute columns are extract
 | `parent_span_id`            | text | 16-character lowercase hex parent span ID. `NULL` for a root span.                                               |
 | `pg_session_id`             | text | The `db.postgresql.session_id` attribute, when present. Partial index excluding `NULL` (`traces_pg_session_id_idx`). |
 | `gen_ai_conversation_id`    | text | The `gen_ai.conversation.id` attribute, when present. Partial index excluding `NULL` (`traces_gen_ai_conversation_id_idx`). |
-| `mcp_session_id`            | text | The `mcp.session.id` attribute, when present. Partial index excluding `NULL` (`traces_mcp_session_id_idx`).       |
+| `mcp_session_id`            | text | The `mcp.session.id` attribute, when present. Partial index excluding `NULL` (`traces_mcp_session_id_idx`). |
+| `decision_status`           | text | The `aidb.agent.decision.action_status` attribute (`allowed` or `denied`), when present — only the one `purpose_decision` span per enforcement decision carries it. Partial index excluding `NULL` (`traces_decision_status_idx`). Lets a per-agent allowed/denied rollup over a time window use an index range scan instead of scanning `payload_json`. See [Purpose-enforcement decisions](#purpose-enforcement-decisions). |
 
 `trace_id`/`span_id`/`parent_span_id` are lowercase hex, the same representation `payload_json`'s own `traceId`/`spanId`/`parentSpanId` fields use — the two do string-match, so you can look up a row by either. (This isn't the same as `payload_binary`'s raw OTLP protobuf `bytes` fields, which aren't hex or text at all.)
 
@@ -145,6 +146,19 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 | `aidb.mcp.transport`      | MCP transport type.                                                    |
 | `aidb.tool.call_count`    | Number of tool calls in a batch invocation.                            |
 | `mcp.session.id`          | MCP session ID, when a tool call happens within one. Promoted to the indexed `mcp_session_id` column on `aidb_otel.traces`. |
+
+### Purpose-enforcement decisions
+
+Every tool SQL execution run under a purpose-resolved role emits exactly one `purpose_decision` span carrying these attributes:
+
+| Attribute                             | Description                                                                                                          |
+|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `aidb.agent.decision.decision_id`       | Unique ID for this decision. Also embedded in the error message text when the action is denied, so an error can be linked back to its decision record. |
+| `aidb.agent.decision.action_status`     | `allowed` or `denied` — the only two values. Promoted to the indexed `decision_status` column on `aidb_otel.traces`. |
+| `aidb.agent.decision.interaction_point` | The kind of interaction being decided. Currently always `sql_exec` (SQL execution by a tool) — the only interaction point implemented so far. |
+| `aidb.agent.decision.principal`         | The principal the decision was evaluated for.                                                                       |
+| `aidb.agent.decision.agent_role`        | The purpose-resolved Postgres role the action ran (or would have run) as.                                            |
+| `aidb.agent.decision.denial_reason`     | Present only when denied: `role_not_found`, `not_role_member` (pre-flight checks), or `engine_privilege_denied` (a Postgres `42501` rejection, covering both failed `SET ROLE` escalation and standard object permission checks). Not promoted to its own column. |
 
 ### SQL query tracing
 
