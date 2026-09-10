@@ -104,7 +104,7 @@ Secret values, such as `CLICKHOUSE_PASSWORD`, and common `key=value` secret patt
 !!!
 
 !!!note Applying configuration changes
-Restart `edb-clickhouse-mcp` after changing any of these variables, or any of the diagnostic tool settings in [Tuning the diagnostic tools](#tuning-the-diagnostic-tools), since it only reads them at startup. For the RPM, run `sudo systemctl restart edb-clickhouse-mcp`. For the container, edit the environment variables in your AI client's own configuration file instead, since the client launches the container itself each time it connects, then restart the client to apply them.
+Restart `edb-clickhouse-mcp` after changing any of these variables, or any of the diagnostic tool settings in [Tuning the diagnostic tools](#tuning-the-diagnostic-tools), since it only reads them at startup. For the RPM, run `sudo systemctl restart edb-clickhouse-mcp`. For the container, the client launches a fresh container each time it connects, so edit the environment variables in your AI client's own configuration file and restart the client to apply them.
 !!!
 
 
@@ -161,9 +161,9 @@ Connect your AI client to `edb-clickhouse-mcp` so it can call the tools register
 
 If `edb-clickhouse-mcp` runs on a different machine than your AI client, configure it for network access first, then pick **Connect to a remote server** in [Editing the Claude Desktop configuration](#editing-the-claude-desktop-configuration). If it runs on the same machine as the client, skip this section.
 
-These steps cover the RPM, running as the packaged systemd service. Install the RPM instead if you're running the container image and need a remote server.
+Set the following, either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or passed directly to the container:
 
-1. Set `CLICKHOUSE_MCP_SERVER_TRANSPORT` to `http` or `sse`, and `CLICKHOUSE_MCP_BIND_HOST=0.0.0.0`, since it otherwise defaults to `127.0.0.1` and only accepts connections from the same host, to run `edb-clickhouse-mcp` over a network transport instead of `stdio`.
+1. Set `CLICKHOUSE_MCP_SERVER_TRANSPORT` to `http` or `sse`, and `CLICKHOUSE_MCP_BIND_HOST=0.0.0.0`. `CLICKHOUSE_MCP_BIND_HOST` otherwise defaults to `127.0.0.1` and only accepts connections from the same host.
 
 2. Set up authentication. Startup fails without it, for both transports. Pick one mode:
 
@@ -173,13 +173,27 @@ These steps cover the RPM, running as the packaged systemd service. Install the 
    | OAuth / OpenID Connect (OIDC) | `FASTMCP_SERVER_AUTH` plus provider-specific `FASTMCP_SERVER_AUTH_*` variables | Production deployments behind Azure Entra, Google, GitHub, WorkOS, or another [FastMCP-supported provider](https://gofastmcp.com/servers/auth). |
    | Disabled | `CLICKHOUSE_MCP_AUTH_DISABLED=true` | Local development only. Avoid disabling authentication on a server reachable over a network. |
 
-3. Start the packaged systemd service:
+3. Start `edb-clickhouse-mcp`. For the RPM, start the packaged systemd service:
 
    ```bash
    sudo systemctl enable --now edb-clickhouse-mcp
    ```
 
-4. On a cloud instance, also open the corresponding inbound rule (for example, an EC2 security group) for the bind port.
+   For the container, pass the settings from the previous two steps as `-e` flags, map the bind port, and run it detached:
+
+   ```bash
+   docker run -d \
+     -p 8000:8000 \
+     -e CLICKHOUSE_MCP_SERVER_TRANSPORT=http \
+     -e CLICKHOUSE_MCP_BIND_HOST=0.0.0.0 \
+     -e CLICKHOUSE_MCP_AUTH_TOKEN=<token> \
+     -e CLICKHOUSE_HOST=<clickhouse-host> \
+     -e CLICKHOUSE_USER=<clickhouse-user> \
+     -e CLICKHOUSE_PASSWORD=<clickhouse-password> \
+     docker.enterprisedb.com/clickhouse/edb-clickhouse-mcp:0.4.1-1edb1
+   ```
+
+4. Also open the corresponding inbound rule for the bind port, such as an EC2 security group or other cloud firewall rule, or your network firewall otherwise.
 
 5. Check the unauthenticated `/health` endpoint, which reports server and connectivity status for load balancers and orchestrator probes:
 
