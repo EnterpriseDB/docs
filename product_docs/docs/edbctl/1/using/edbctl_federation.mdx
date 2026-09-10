@@ -1,0 +1,229 @@
+---
+title: edbctl federation
+navTitle: edbctl federation
+description: Use the edbctl utility to mint and exchange Hybrid Manager federation pairing tokens, and to inspect or revoke the resulting pairings.
+deepToC: true
+---
+
+The `edbctl federation` command mints and exchanges pairing tokens between Hybrid Manager (HM) instances, and inspects or revokes the resulting `HMFederationToken` and `HMFederationPairing` resources.
+
+Pairing tokens federate two instances that don't share object storage. Run `create-token` against the primary instance, then run `join` against the secondary instance with the token it printed. Each command acts on whichever instance your current `kubectl` context points at, so switch contexts between the two instances. These commands interact directly with the Kubernetes cluster via `kubectl` context. API credentials are not required.
+
+!!! Note Hybrid Manager version
+These commands require Hybrid Manager 2026.9 or later. Earlier releases don't provide the federation pairing resources they act on. For the deployment context, see [Multi-datacenter deployments](/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/).
+!!!
+
+## Commands
+
+`edbctl federation` command has the following options:
+
+-   [edbctl federation create-token](#edbctl-federation-create-token) — Mint a federation pairing token on the primary Hybrid Manager instance.
+-   [edbctl federation join](#edbctl-federation-join) — Join a primary Hybrid Manager instance from the secondary using a pairing token.
+-   [edbctl federation list-tokens](#edbctl-federation-list-tokens) — List Hybrid Manager federation pairing tokens.
+-   [edbctl federation get-token](#edbctl-federation-get-token) — Show details of a Hybrid Manager federation pairing token.
+-   [edbctl federation revoke-token](#edbctl-federation-revoke-token) — Revoke a federation pairing token so it can no longer be used to join.
+-   [edbctl federation list-pairings](#edbctl-federation-list-pairings) — List Hybrid Manager federation pairings.
+-   [edbctl federation get-pairing](#edbctl-federation-get-pairing) — Show details of a Hybrid Manager federation pairing.
+-   [edbctl federation revoke-pairing](#edbctl-federation-revoke-pairing) — Revoke a federation pairing and tear down its local trust.
+
+### edbctl federation create-token
+
+Mints a pairing token on the primary Hybrid Manager instance. The command resolves the portal domain and HTTPS port from the cluster's `HybridControlPlane`, generates the token, pins the portal certificate (unless `--no-pin` is set), and creates the backing `HMFederationToken` and `Secret` that the primary instance authorizes joiners against.
+
+Share the printed (or, with `--output`, written) token with the secondary instance, and run `edbctl federation join` there to complete the pairing.
+
+```
+edbctl federation create-token [options]
+```
+
+Where `options` are:
+
+```
+      --ttl duration       Token lifetime (default 24h0m0s).
+      --no-pin             Do not pin the portal certificate fingerprint into the token; use only when the portal serves a certificate the secondary already trusts.
+  -o, --output string      Write the pairing token to a file instead of printing it to stdout.
+  -h, --help               Help for create-token.
+```
+
+These examples show how to mint a federation pairing token:
+
+```
+# Mint a token, resolving the portal domain/port from the HybridControlPlane
+edbctl federation create-token --ttl 24h
+
+# Mint a token without pinning the portal certificate
+edbctl federation create-token --no-pin
+
+# Mint a token and write it to a file instead of stdout
+edbctl federation create-token --output token.txt
+```
+
+### edbctl federation join
+
+Records an `HMFederationPairing` on the secondary Hybrid Manager instance from a pairing token minted by the primary instance's `edbctl federation create-token` command. The operator's pairing controller then dials the primary instance and completes the trust-domain exchange.
+
+```
+edbctl federation join --token <token> [options]
+```
+
+Where `options` are:
+
+```
+      --token string            The pairing token (edbfed_v1.<blob>).
+      --token-file string       Read the pairing token from a file ('-' for stdin).
+      --wait                    Wait for the pairing to reach the Synced state.
+      --wait-timeout duration   How long to wait when --wait is set (default 10m0s).
+  -h, --help                    Help for join.
+```
+
+These examples show how to join a federation pairing:
+
+```
+# Join using a token passed on the command line
+edbctl federation join --token edbfed_v1.<blob>
+
+# Join reading the token from stdin and wait until the pairing is Synced
+cat token.txt | edbctl federation join --token-file - --wait
+```
+
+### edbctl federation list-tokens
+
+Lists the `HMFederationToken` resources on this Hybrid Manager instance. Each one backs a pairing token minted by `edbctl federation create-token`.
+
+```
+edbctl federation list-tokens [options]
+```
+
+Where `options` are:
+
+```
+  -o, --output string   [table json yaml xml json-raw] (default "table").
+  -h, --help            Help for list-tokens.
+```
+
+These examples show how to list federation pairing tokens:
+
+```
+# List all federation pairing tokens
+edbctl federation list-tokens
+
+# List as JSON
+edbctl federation list-tokens -o json
+```
+
+### edbctl federation get-token
+
+Shows details of a Hybrid Manager federation pairing token.
+
+```
+edbctl federation get-token <name> [options]
+```
+
+Where `options` are:
+
+```
+  -o, --output string   [table json yaml xml json-raw] (default "table").
+  -h, --help            Help for get-token.
+```
+
+These examples show how to show details of a federation pairing token:
+
+```
+# Show details of a federation pairing token
+edbctl federation get-token fed-token-abc123
+
+# Show as JSON
+edbctl federation get-token fed-token-abc123 -o json
+```
+
+### edbctl federation revoke-token
+
+Deletes the `HMFederationToken` and its backing `Secret`. This immediately stops the primary instance from accepting the token: joins are authorized against live `HMFederationToken` resources, so any secondary instance that hasn't already joined with this token is rejected.
+
+```
+edbctl federation revoke-token <name> [options]
+```
+
+Where `options` are:
+
+```
+  -y, --yes    Auto-confirm all confirmations.
+  -h, --help   Help for revoke-token.
+```
+
+This example shows how to revoke a federation pairing token:
+
+```
+edbctl federation revoke-token fed-token-abc123
+```
+
+### edbctl federation list-pairings
+
+Lists the `HMFederationPairing` resources on this Hybrid Manager instance, covering both pairings this instance joined as a secondary and pairings recorded here when a secondary instance joined this instance as the primary.
+
+```
+edbctl federation list-pairings [options]
+```
+
+Where `options` are:
+
+```
+  -o, --output string   [table json yaml xml json-raw] (default "table").
+  -h, --help            Help for list-pairings.
+```
+
+These examples show how to list federation pairings:
+
+```
+# List all federation pairings
+edbctl federation list-pairings
+
+# List as JSON
+edbctl federation list-pairings -o json
+```
+
+### edbctl federation get-pairing
+
+Shows details of a Hybrid Manager federation pairing.
+
+```
+edbctl federation get-pairing <name> [options]
+```
+
+Where `options` are:
+
+```
+  -o, --output string   [table json yaml xml json-raw] (default "table").
+  -h, --help            Help for get-pairing.
+```
+
+These examples show how to show details of a federation pairing:
+
+```
+# Show details of a federation pairing
+edbctl federation get-pairing fed-portal-example-com
+
+# Show as JSON
+edbctl federation get-pairing fed-portal-example-com -o json
+```
+
+### edbctl federation revoke-pairing
+
+Deletes the `HMFederationPairing` and, for secondary-side pairings, the `Secret` holding the token used to dial the peer. This is local-only: the peer cluster keeps its own pairing record until it's revoked there separately.
+
+```
+edbctl federation revoke-pairing <name> [options]
+```
+
+Where `options` are:
+
+```
+  -y, --yes    Auto-confirm all confirmations.
+  -h, --help   Help for revoke-pairing.
+```
+
+This example shows how to revoke a federation pairing:
+
+```
+edbctl federation revoke-pairing fed-portal-example-com
+```
