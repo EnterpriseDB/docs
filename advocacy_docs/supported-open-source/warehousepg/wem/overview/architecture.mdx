@@ -14,13 +14,13 @@ The WarehousePG Enterprise Manager (WEM) architecture is built upon a streamline
 
 The OTel Collector (`edb-otelcol`) is an OpenTelemetry (OTel) Collector service that runs alongside the host agent on the WarehousePG (WHPG) coordinator, standby, and segments. Each node's collector gathers host metrics and tails the WHPG log files, then forwards this telemetry to a gateway collector, which writes it into ClickHouse.
 
-By default, WEM designates the standby coordinator as the primary gateway and the coordinator as its failover, and dispatches the collector's configuration to each host agent as it registers. If you operate your own OpenTelemetry pipeline, you can point every node's collector at your own gateway endpoint instead, and manage the ClickHouse write path yourself.
+By default, WEM designates the standby coordinator as the primary gateway and the coordinator as its failover, and dispatches the collector's configuration to each host agent as it registers. If ClickHouse and WEM run on a dedicated host instead, outside the cluster, that host is the gateway, set explicitly through `OTEL_GATEWAY_ENDPOINT`. See [Installing ClickHouse](../installing/observability-stack) for both topologies.
 
 ### Host agent
 
 The host agent (`acp-host-agent`) is a background service that runs on the WarehousePG coordinator host and executes privileged operations, such as editing `pg_hba.conf` and starting the OTel Collector, on behalf of WEM. WEM dispatches these operations through its internal job-execution engine, which ensures they're reliable and recoverable even when connectivity is interrupted.
 
-The host agent is installed separately on the WarehousePG coordinator host, alongside WEM. On first connection, an agent registers itself with WEM and waits in a pending state until an Admin approves it from the **Host Agents** tab. Every connection between an approved agent and WEM authenticates with mutual TLS: WEM's internal certificate authority issues each agent a short-lived certificate and renews it automatically, with a 24-hour grace window that lets an agent that was briefly offline recover its certificate without Admin intervention. WEM doesn't use host agent features unless both the host agent and WEM's internal job-execution engine are running and connected. See [Installing the host agent](../installing/host-agent).
+The host agent is installed on every WarehousePG node, coordinator, standby, and segments alike. On first connection, an agent registers itself with WEM and waits in a pending state until an Admin approves it from the **Host Agents** tab. Every connection between an approved agent and WEM authenticates with mutual TLS: WEM's internal certificate authority issues each agent a short-lived certificate and renews it automatically, with a 24-hour grace window that lets an agent that was briefly offline recover its certificate without Admin intervention. WEM doesn't use host agent features unless both the host agent and WEM's internal job-execution engine are running and connected. See [Installing the host agent](../installing/host-agent).
 
 ### WEM
 
@@ -34,7 +34,7 @@ WEM performs the following core functions:
 
 ### Storage: ClickHouse
 
-WEM queries ClickHouse for all historical metrics and log data. ClickHouse isn't bundled with WEM. Deploy a dedicated instance for WEM, or point WEM at an existing ClickHouse instance in your environment.
+WEM queries ClickHouse for all historical metrics and log data. ClickHouse isn't bundled with WEM, and configuring it is entirely up to you. Deploy it on the same host as WEM, either the standby coordinator or a dedicated monitoring host outside the cluster, or point WEM at an existing instance you already manage elsewhere. See [Installing ClickHouse](../installing/observability-stack).
 
 !!! Note
     While WEM can function as a standalone tool, its capabilities are limited to real-time cluster status and SQL execution data. Historical trends, host-level metrics, and log search require ClickHouse.

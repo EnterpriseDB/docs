@@ -1,104 +1,113 @@
 ---
-title: Installing the observability stack
-navTitle: Installing the observability stack
-description: Install and configure Prometheus and Loki as the external observability services required by WEM.
+title: Installing ClickHouse
+navTitle: Installing ClickHouse
+description: Install and configure ClickHouse, the storage backend required by WEM for historical metrics and log data.
 ---
 
-WEM requires Prometheus and Loki to enable monitoring and log aggregation features, and a PostgreSQL database for its own configuration and application state. Alertmanager is bundled with WEM and runs as a managed subprocess, so no separate installation is required. You can deploy dedicated Prometheus and Loki instances for WEM or integrate with an existing enterprise monitoring stack.
+WEM requires ClickHouse to store the historical metrics and log data forwarded by the OTel Collector running on every cluster node, and a PostgreSQL database for its own configuration and application state.
 
-You install Prometheus and Loki before WEM, since WEM's configuration depends on knowing their addresses. The steps below give you a working `prometheus.yml` to start from without needing anything from the WEM package.
+ClickHouse isn't bundled with WEM, and configuring it is entirely up to you. The steps on this page cover one convenient path to a working instance using EDB's ClickHouse packages, but you can also point WEM at an existing ClickHouse instance you already manage, on any host reachable from every cluster node's OTel Collector or gateway collector. See ClickHouse's own [documentation](https://clickhouse.com/docs) for sizing, replication, and other production configuration this page doesn't cover.
 
-!!! Note
-    Once WEM is installed, this same example `prometheus.yml` is also available at `/usr/local/greenplum-db/wem/config/prometheus/` on the WEM host, in case you need to refer to it again later.
+Install ClickHouse before WEM, since WEM's configuration depends on knowing its address. If you're installing it yourself using the steps below, deploy it in one of these ways:
 
-## Installing Prometheus
+- **On the standby coordinator:** WEM auto-provisions the gateway collector on the standby coordinator internally, and you don't need to set `OTEL_GATEWAY_ENDPOINT` in `wem.conf`. If your cluster has no standby coordinator, WEM auto-provisions the gateway on the coordinator instead.
+- **On a dedicated monitoring host:** Set `OTEL_GATEWAY_ENDPOINT=<dedicated-host>:4317` in `wem.conf`. Every observability component then runs on the dedicated host, outside the cluster.
 
-Prometheus collects and stores the metrics that WEM uses to display cluster performance data. The WHPG Collector pushes host-level metrics to Prometheus using its remote-write API, and Prometheus separately scrapes WEM's own metrics endpoint for SQL and cluster data.
+Bringing your own ClickHouse instance instead works the same way. WEM only needs `CLICKHOUSE_URL` set to a reachable address, and `OTEL_GATEWAY_ENDPOINT` set if that instance isn't reachable from the standby coordinator's auto-provisioned gateway.
 
-1. Download and install Prometheus from the [official releases page](https://prometheus.io/download/), or install it using your system package manager.
+## Installing ClickHouse
 
-1. Create a `prometheus.yml` that scrapes WEM. WEM's bundled Alertmanager only listens on `localhost` on the WEM host, so it isn't reachable from Prometheus and isn't configured here. If Prometheus runs on the same host as WEM, `localhost` works as shown for the scrape target. Otherwise, replace it with the hostname or IP address of your WEM host:
+ClickHouse stores the metrics and logs that the OTel Collector on every cluster node forwards through the gateway collector. Install it on the coordinator, the standby coordinator, or a dedicated monitoring host, depending on the deployment you chose above.
 
-    ```yaml
-    global:
-      scrape_interval: 30s
-      evaluation_interval: 30s
-
-    scrape_configs:
-      - job_name: 'wem'
-        static_configs:
-          - targets: ['localhost:8080']
-        metrics_path: /prom/metrics
-        scrape_interval: 15s
-    ```
-
-1. Start Prometheus with `--web.enable-remote-write-receiver` so the WHPG Collector can push host metrics to it:
+1. Configure the EDB repository, then install the ClickHouse packages:
 
     ```bash
-        prometheus --config.file=prometheus.yml --web.enable-remote-write-receiver > prometheus.log 2>&1 &
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo yum install -y edb-clickhouse-server edb-clickhouse-client
     ```
 
-1. Verify Prometheus is running:
+1. `/etc/clickhouse-server/config.xml` ships with every setting commented out for reference. Rather than editing that generated file, add your own settings as a drop-in file under `config.d/`, which ClickHouse merges in automatically, the same way `users.d/` works for the password in the next step. Fragments are only merged at startup, so this setting has no effect until you restart ClickHouse, in a later step.
+
+    This step covers four parameters:
+
+    - **Listen address** (`listen_host`): the network interface ClickHouse binds to. Required, since ClickHouse listens on `localhost` only by default and needs to accept connections from the gateway collector and from WEM.
+    - **HTTP port** (`http_port`): the port the gateway collector uses for OTLP ingest over HTTP. Already `8123` by default, ClickHouse's own default and the value WEM expects, so no change is needed unless you want a different port.
+    - **TCP port** (`tcp_port`): the port for ClickHouse's native protocol, used by `clickhouse-client` and by WEM. Already `9000` by default, so likewise no change is needed unless you want a different port.
+    - **Logger**: log level and destination. Optional, the defaults already write to the same log paths, just at a more verbose level than set here.
+
+    Set all four in a single drop-in file. Running the `tee` command below more than once, against this same path, is safe and expected if you come back to change any of these values later — it overwrites this one file only, not any other configuration:
 
     ```bash
-    curl http://<prometheus-host>:9090/-/healthy
+    sudo mkdir -p /etc/clickhouse-server/config.d
+    sudo tee /etc/clickhouse-server/config.d/observability.xml << 'EOF'
+    <clickhouse>
+        <!-- Listen on all interfaces, or restrict to the WEM host IP address -->
+        <listen_host>0.0.0.0</listen_host>
+
+        <!-- Already ClickHouse's own default and the value WEM expects.
+             Uncomment only to override it. -->
+        <!-- <http_port>8123</http_port> -->
+
+        <!-- Already ClickHouse's own default and the value WEM expects.
+             Uncomment only to override it. -->
+        <!-- <tcp_port>9000</tcp_port> -->
+
+        <logger>
+            <level>information</level>
+        </logger>
+    </clickhouse>
+    EOF
     ```
 
-## Installing Loki
+    !!! Note
+        `config.d/` and `users.d/` fragments are merged once, at startup, into `/var/lib/clickhouse/preprocessed_configs/config.xml`. Adding or editing a fragment has no effect until you start ClickHouse, in the next step. If you come back to change one of these settings later, on an already-running instance, run `clickhouse stop` before `clickhouse start`. Starting an already-running ClickHouse is a no-op and doesn't pick up the change.
 
-Loki receives and stores WarehousePG log data forwarded by the WEM Collector.
-
-1. Download and install Loki from the [official releases page](https://github.com/grafana/loki/releases), or install it using your system package manager.
-
-1. Start Loki with a minimal configuration:
+1. Set a password for the default ClickHouse user. This example uses ClickHouse's built-in `default` user, but any ClickHouse user works, as long as you use the same username consistently in the gateway collector and WEM configuration:
 
     ```bash
-    loki -config.file=/etc/loki/loki-local-config.yaml > loki.log 2>&1 &
+    sudo tee /etc/clickhouse-server/users.d/default-password.xml << 'EOF'
+    <clickhouse>
+        <users>
+            <default>
+                <password><your-password></password>
+            </default>
+        </users>
+    </clickhouse>
+    EOF
     ```
 
-1. Verify Loki is accepting log pushes:
+1. Start ClickHouse:
 
     ```bash
-    curl http://<loki-host>:3100/ready
+    sudo systemctl daemon-reload
+    sudo clickhouse start
+    sudo clickhouse status
     ```
 
-## Installing PostgreSQL (optional)
-
-WEM needs a PostgreSQL database to store its own configuration and application state, such as dashboard users, roles, and alert rules. You can use a database in your WHPG cluster, or a dedicated instance if you'd rather keep WEM's state separate. To use a dedicated instance:
-
-1. Download and install PostgreSQL from the [official downloads page](https://www.postgresql.org/download/), or install it using your system package manager.
-
-1. Initialize the database and enable and start the PostgreSQL service. See the [PostgreSQL documentation](https://www.postgresql.org/docs/current/server-start.html) for details.
-
-1. On PostgreSQL 13 and earlier, `password_encryption` defaults to `md5`, which is incompatible with the `scram-sha-256` authentication method configured below. Check the setting, and fix it if needed, before creating the user:
+1. Verify ClickHouse is accepting connections:
 
     ```bash
-    sudo -i -u postgres psql -c "SHOW password_encryption;"
-    sudo -i -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';"
-    sudo -i -u postgres psql -c "SELECT pg_reload_conf();"
+    clickhouse-client --password "<your-password>" --query "SELECT 1"
     ```
 
-1. Create a dedicated database and user for WEM. The user name, password, and database name must match the `WEM_USER`, `WEM_PASSWORD`, and `WEM_DATABASE` values you configure later in [Installing WEM](wem#application-state-optional):
-
-    ```sql
-    CREATE USER wem_admin WITH PASSWORD '<your-password>';
-    CREATE DATABASE wem OWNER wem_admin;
-    ```
-
-1. Configure `pg_hba.conf` to allow `wem_admin` to authenticate with a password, using `all` for the database field since `wem setup` connects to the `postgres` maintenance database before switching to `wem`:
-
-    ```
-    host    all    wem_admin    127.0.0.1/32    scram-sha-256
-    host    all    wem_admin    ::1/128         scram-sha-256
-    ```
-
-1. Verify PostgreSQL is accepting connections:
+    That confirms ClickHouse itself is up, but not that `listen_host` took effect. Confirm the setting actually merged into the effective config, and that ClickHouse is listening on all interfaces rather than only `localhost`:
 
     ```bash
-    pg_isready -h <postgres-host> -p 5432
+    grep -A1 listen_host /var/lib/clickhouse/preprocessed_configs/config.xml
+    ss -tlnp | grep -E ':8123|:9000'
+    ```
+
+    Then test the connection you actually need, from another cluster node rather than from ClickHouse's own host:
+
+    ```bash
+    curl "http://<clickhouse-host>:8123/?query=SELECT%201"
     ```
 
 ## Next steps
 
-Continue to [Installing WHPG Collector](collector).
+If you're running WEM and ClickHouse on a dedicated host, outside the cluster, continue to [Installing the gateway collector](collector).
+
+If you're running them on the standby coordinator, inside the cluster, skip the gateway collector (WEM auto-provisions it for you) and continue to [Installing WEM](wem).
 

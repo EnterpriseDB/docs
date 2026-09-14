@@ -14,16 +14,9 @@ Before you install WarehousePG Enterprise Manager (WEM), verify that your enviro
     sudo useradd -r -m -d /home/gpadmin -s /bin/bash gpadmin
     ```
 
-- **Loki** 3.5 or later. If you don't have Loki running, see [Installing the observability stack](observability-stack). If you're integrating with an existing instance, ensure it meets this version requirement.
-- **Prometheus** 3.5.0 or later with the remote write receiver enabled. If you don't have Prometheus running, see [Installing the observability stack](observability-stack). If you're integrating with an existing instance, ensure it meets this version requirement.
-
-!!! Note
-Prometheus doesn't enable the remote write receiver by default. If running Prometheus as a binary, start it with the `--web.enable-remote-write-receiver` flag. If running via Docker or docker-compose, add this flag to the command in your configuration. Without this flag, Prometheus silently drops metrics pushed by the Collector.
-!!!
-
-- A database user that holds the superuser role and is able to connect to your WHPG cluster from the WEM host.
+- A **ClickHouse** instance reachable from the WEM host and from every node's OTel Collector or gateway collector. Install one following [Installing ClickHouse](observability-stack), or point WEM at an existing instance you already manage. If you're integrating with an existing instance, verify it's reachable from all cluster nodes.
+- A database user that holds the superuser role and is able to connect to your WHPG cluster from the WEM host. Update `pg_hba.conf` on the WHPG cluster to permit this connection if the WEM host isn't already covered by an existing rule, network reachability alone isn't enough.
 - Optional: An active Anthropic account and a valid API key are required to enable the AI Assistant for query writing and optimization.
-- Optional: [Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) version 0.28.1 or later is required to enable centralized alert handling and notifications within WEM.
 
 !!! Warning 
     WEM is not supported for installation on Red Hat Enterprise Linux 7 (RHEL 7). This limitation applies only to where the WEM application itself is deployed. WEM is fully capable of monitoring WHPG clusters that are running on RHEL 7 nodes.
@@ -34,16 +27,14 @@ The following table lists the connection requirements among the different compon
 
 | Source | Destination | Use  
 | ------ | ----------- | ---
-| WHPG Coordinator | Prometheus:9090 | Push host level metrics
-| WHPG Coordinator | Loki:3100       | Push log files
-| WHPG Coordinator | WEM:9091        | Push metrics to remote write receiver (optional)
-| WHPG Coordinator | WEM:8081        | Host agent sends privileged operation requests to WEM's job-execution engine (also applies to the standby coordinator, if present)
-| WEM          | Prometheus:9090 | Retrieve host level metrics
-| WEM          | Loki:3100       | Retrieve log metrics
+| Every cluster node | WEM:8081 | Host agent sends privileged operation requests and self-registration to WEM's internal job-execution engine, authenticated with mTLS
+| Every cluster node's OTel Collector | Gateway collector:4317 | Forward host metrics, logs, and traces (OTLP over gRPC)
+| Gateway collector | ClickHouse:9000 | Write telemetry data (native protocol)
+| WEM          | ClickHouse:8123 | Query historical metrics and log data (HTTP)
 | WEM          | WEM:9093        | Push firing alerts to the bundled Alertmanager instance (loopback only, no external network access required)
 | End user         | WEM:8080    | Access to WEM console
 
 ## Next steps
 
-Continue to [Installing the observability stack](observability-stack).
+Continue to [Installing ClickHouse](observability-stack).
 

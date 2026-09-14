@@ -1,18 +1,32 @@
 ---
 title: Upgrading WarehousePG Enterprise Manager
 navTitle: Upgrading
-description: Learn how to upgrade WEM Collector and WEM to a new version.
+description: Learn how to upgrade WEM and its supporting components to a new version.
 ---
-
-Upgrade Collector before upgrading WarehousePG Enterprise Manager (WEM). No service shutdown is required before running the upgrade commands.
-
-## Before you upgrade
 
 Review the section for the version you're upgrading to before running any upgrade commands. Some of these changes need action on your part beforehand, not just awareness.
 
+## Before you upgrade
+
+### Upgrading to 1.4
+
+WEM 1.4 fully migrates the metrics and log pipeline from Prometheus and Loki to ClickHouse, and the WHPG Collector is replaced by an OTel Collector that runs as part of the host agent on every cluster node. Complete these steps before upgrading:
+
+1. Install ClickHouse. See [Installing ClickHouse](observability-stack). If you're consolidating telemetry from multiple clusters onto one ClickHouse instance, also install the [gateway collector](collector).
+
+1. In `/etc/wem/wem.conf`, plan to add `CLICKHOUSE_URL`, required in 1.4, and remove `PROMETHEUS_URL`, `LOKI_URL`, `LOKI_TENANT_ID`, `METRICS_BACKEND`, every `WEM_EXPORTER_*` parameter, and every `WEM_REMOTE_WRITE_RECEIVER_*` parameter, all of which no longer exist in 1.4. If you set `OTEL_GATEWAY_ENDPOINT` for a dedicated or shared ClickHouse deployment, add that too. See [Configuration reference](../reference/configuration).
+
+1. The host agent (`acp-host-agent`) now installs on every cluster node, coordinator, standby coordinator, and segment hosts alike, instead of only the coordinator and standby coordinator. Plan to install it on every segment host as part of this upgrade. See [Installing the host agent](host-agent).
+
+1. Every host agent connection now authenticates with mutual TLS (mTLS), and agents self-register with WEM instead of relying only on a manually configured task queue. After upgrading the host agent package, check the **Host Agents** tab in **Management** and approve any agent that appears pending.
+
+1. If you set `WHPG_PXF_BIN` in `wem.conf`, remove it. PXF binary discovery now always uses fixed, safe paths.
+
+1. Once you confirm metrics and logs are flowing through ClickHouse, decommission any Prometheus, Loki, or WHPG Collector instances you ran solely for WEM.
+
 ### Upgrading to 1.3
 
-WEM requires a PostgreSQL database for its own application state, either your WHPG cluster's own database or a dedicated instance. If you don't already have one running, see [Installing PostgreSQL](observability-stack#installing-postgresql-optional).
+WEM requires a PostgreSQL database for its own application state, either your WHPG cluster's own database or a dedicated instance.
 
 WEM 1.3 introduces the `acp-host-agent` service for privileged host operations. See [Installing the host agent](host-agent).
 
@@ -32,63 +46,11 @@ WEM 1.2 changes the service identity from `root` to `gpadmin`. The upgrade handl
 
 If you have a custom service configuration override that sets `User=root`, the service refuses to start after the upgrade. Either remove the override or set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf`.
 
-## Upgrading Collector
-
-Run these commands from the WarehousePG coordinator.
-
-1. On the coordinator, download the new Collector package from the EDB repository:
-
-    ```bash
-    export EDB_SUBSCRIPTION_TOKEN=<your-token>
-    export EDB_REPO=gpsupp
-    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
-    sudo dnf download edb-whpg-observability-collector
-    ```
-
-1. Create a file named `all_hosts` listing every host in the cluster:
-
-    ```ini
-    cdw
-    scdw
-    sdw1
-    sdw2
-    ```
-
-1. Copy the package to all hosts:
-
-    <TabContainer syncKey="whpg-version">
-    <Tab title="WHPG 7">
-
-    ```bash
-    gpsync -f all_hosts edb-whpg-observability-collector*.rpm =:/tmp/
-    ```
-
-    </Tab>
-    <Tab title="WHPG 6">
-
-    ```bash
-    gpscp -f all_hosts edb-whpg-observability-collector*.rpm =:/tmp/
-    ```
-
-    </Tab>
-    </TabContainer>
-
-1. Upgrade the package on all hosts:
-
-    ```bash
-    gpssh -f all_hosts -u gpadmin -e "sudo dnf upgrade -y /tmp/edb-whpg-observability-collector*.rpm"
-    ```
-
-1. Redeploy the updated Collector service across all hosts:
-
-    ```bash
-    cd /var/lib/whpg-observability-collector/
-    ./deploy-observability
-    ```
-
 ## Upgrading WEM
 
-Run these commands on the WEM host:
+Run these commands on the WEM host.
+
+1. Install ClickHouse if you haven't already, and update `/etc/wem/wem.conf` as described in [Before you upgrade](#before-you-upgrade) for the version you're upgrading to.
 
 1. Configure the EDB repository:
 
@@ -104,8 +66,6 @@ Run these commands on the WEM host:
     sudo dnf upgrade whpg-enterprise-manager
     ```
 
-    See [Before you upgrade](#before-you-upgrade) for version-specific changes that affect this step.
-
 1. Restart the WEM service to apply the update:
 
     ```bash
@@ -114,13 +74,33 @@ Run these commands on the WEM host:
 
 1. Clear your browser cache or open WEM in a new browser session. After an upgrade, stale session data can cause a CSRF token error on first login.
 
-WEM 1.2 introduces an optional **remote write receiver** that allows WEM to accept inbound metrics from Grafana Alloy or any Prometheus-compatible client via a `POST /api/v1/write` endpoint. This feature is disabled by default and requires explicit configuration to enable. See [Remote write receiver (optional)](wem#remote-write-receiver-optional) in the Configuring WEM section for details.
-
 Upgrading `whpg-enterprise-manager` also upgrades its bundled dependencies.
 
-## Installing the host agent
+## Upgrading and installing the host agent
 
-The `acp-host-agent` service is new in WEM 1.3. If you're upgrading from an earlier version, install it on the coordinator and standby coordinator hosts. See [Installing the host agent](host-agent) for the full procedure.
+Run these commands on every cluster node that already has the host agent installed (the coordinator and standby coordinator, if you're upgrading from 1.3), then install it fresh on every segment host that doesn't have it yet. See [Installing the host agent](host-agent) for the full procedure, including the hostfile-based `gpssh` commands that target every node at once.
+
+1. Configure the EDB repository on each node, if you haven't already:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    ```
+
+1. Upgrade or install the host agent package:
+
+    ```bash
+    sudo dnf upgrade -y edb-acp-host-agent || sudo dnf install -y edb-acp-host-agent
+    ```
+
+1. Restart the service so it reconnects using the self-registration and mTLS flow:
+
+    ```bash
+    sudo systemctl restart acp-host-agent
+    ```
+
+1. In WEM, go to **Management > Host Agents** and approve any agent that appears in a pending state.
 
 ## Next steps
 
