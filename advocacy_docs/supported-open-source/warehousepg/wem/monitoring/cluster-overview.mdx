@@ -1,11 +1,11 @@
 ---
-title: Verifying the cluster health
-navTitle: Verifying the cluster health
-description: Monitor real-time WarehousePG cluster health, verify node availability, and track critical connectivity metrics to ensure high availability.
+title: Verifying and managing cluster health
+navTitle: Verifying and managing cluster health
+description: Monitor real-time WarehousePG cluster health, verify node availability, and start, stop, restart, or recover the cluster directly from WEM.
 deepToC: true
 ---
 
-Ensure your WarehousePG (WHPG) environment remains available and efficient by monitoring real-time health metrics and resource utilization. To verify your cluster configuration and current status, select the **Cluster** panel from the left sidebar.
+Ensure your WarehousePG (WHPG) environment remains available and efficient by monitoring real-time health metrics and resource utilization, and respond directly from WEM when it isn't. To verify your cluster configuration and current status, or to control it, select the **Cluster** panel from the left sidebar.
 
 ### Confirming core cluster availability
 
@@ -24,7 +24,7 @@ Verify that your cluster is online and responding to requests. Use the **Cluster
 
 -   Confirm the Up count matches your total segment configuration. If segments are Down, search the **Segment Details** table for the specific primary or mirror nodes that are offline.
 -   Review the Hostname and Port columns in the **Segment Details** table. If multiple failed segments share a hostname, the physical host likely has a hardware or network issue. If any hosts are unreachable, reboot the host or resolve the network outage.
--   Once you identify the failed segments, run `gprecoverseg` from the command line to return them to service. See [Recovering from segment failures](/warehousepg/latest/admin_guide/managing/ha/recovering-from-segment-failures/) for details on segment recovery. 
+-   Once you identify the failed segments, run `gprecoverseg` from the command line to return them to service, or use the **Recovery** tab under **Management** to do the same without shell access. See [Recovering from segment failures](/warehousepg/latest/admin_guide/managing/ha/recovering-from-segment-failures/) for details on segment recovery, or [Recovering failed segments](#recovering-failed-segments) below for the WEM-driven approach.
 -   Confirm the primary coordinator is up and the standby is Synchronized. If the standby appears as Not Synced, restart the standby process to prevent data loss during a failover event. See [Enabling coordinator mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-coordinator-mirroring/) for details.
 -   If active connections are near the maximum limit, new application requests fail. Terminate idle sessions or increase the [max_connections](/warehousepg/latest/ref_guide/config_params/guc-list/#max_connections) parameter to prevent service rejection.
 
@@ -38,6 +38,40 @@ Track configuration parameter changes over time using the **Configuration Histor
 
 - The **Configuration History** table shows each change with its **Parameter**, **Old Value**, **New Value**, **Changed By**, and **Changed At** timestamp.
 - Use this tab to audit recent changes that may have contributed to a performance or availability issue, or to verify that a configuration update took effect as expected.
+
+### Starting, stopping, and restarting the cluster
+
+Start, stop, or restart the WarehousePG cluster directly from WEM, without shell access to the coordinator, using the **Operations** tab under **Management**. Commands dispatch through the host agent, so [the host agent](../installing/host-agent) must be installed and connected on the coordinator. The **Cluster Status** card on the **Overview** tab links directly to this tab whenever the cluster is down or unreachable.
+
+- Select **Start** to bring the cluster up when it's stopped or unreachable.
+- Select **Stop** to wait for active sessions to finish before stopping the cluster (`gpstop -a`), or **Fast Stop** to terminate every active session immediately and stop right away (`gpstop -M fast`), rolling back any uncommitted transactions.
+- Select **Restart** to stop the cluster, waiting for active sessions, then start it again.
+- Stop, Fast Stop, and Restart each prompt for confirmation before running, since these actions are destructive. A cluster whose environment is set to `prod` shows an extra production warning in that confirmation. See [Cluster identity](../reference/configuration#cluster-identity).
+- Only one cluster operation, including a segment recovery from the **Recovery** tab, runs at a time. Buttons stay disabled with an explanation while another operation is already in progress.
+
+Each button wraps the equivalent `gpstart` or `gpstop` command. See [Starting and Stopping WarehousePG](/warehousepg/latest/admin_guide/managing/startstop/) for what each underlying command does.
+
+A banner tracks the operation's progress and shows its result once it completes, and you can dismiss it at any time.
+
+!!! Note
+    The **Management** tab doesn't appear at all if WEM's own application state database is hosted on this same WarehousePG cluster, since starting or stopping the cluster could take WEM down with it. Host WEM's state database on a separate Postgres instance to use this feature. See [Application state](../installing/wem#application-state).
+
+!!! Note
+    Every action on this tab is restricted to Admins, regardless of the grants set in the [Permissions tab](../system-access/management#defining-role-based-access-control).
+
+### Recovering failed segments
+
+Identify and recover down segments without shell access to the coordinator using the **Recovery** tab under **Management**. The **Segments** card on the **Overview** tab links directly here whenever a segment is down.
+
+- Segments needing recovery appear in a table showing each one's **Content ID**, **Role**, **Status**, **Mode**, **Hostname**, and **Port**. A separate banner warns when a segment has both its primary and mirror down, since `gprecoverseg` has no automated path for that, and manual recovery is required first.
+- Select **Recover (Incremental)** to copy only the changes each down segment missed while offline (`gprecoverseg -a`). Incremental recovery requires a live mirror for each segment being recovered.
+- Select **Recover (Full)** to delete each down segment's entire data directory and re-copy it from scratch (`gprecoverseg -a -F`). Custom files, such as `gpfdist` certificates, aren't restored automatically, so only use full recovery after confirming the segment failure didn't cause data corruption.
+- Select **Rebalance** to move segments back to their preferred primary or mirror roles (`gprecoverseg -r -a`), once every segment is valid and resynchronized. Rebalancing cancels and rolls back in-flight queries, and stays disabled while any segment is still invalid.
+
+Each button wraps the equivalent `gprecoverseg` command, run in-place against the current host. See [Recovering from Segment Failures](/warehousepg/latest/admin_guide/managing/ha/recovering-from-segment-failures/) for the underlying incremental and full recovery scenarios.
+
+!!! Note
+    Recovery actions are also restricted to Admins, and disable automatically while the cluster is unreachable or another cluster operation is already running.
 
 ### Analyzing database utilization
 

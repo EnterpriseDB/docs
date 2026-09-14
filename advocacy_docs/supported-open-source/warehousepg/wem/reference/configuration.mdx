@@ -44,14 +44,14 @@ WEM queries ClickHouse for all historical metrics and log data. See [Installing 
 
 ### Application state
 
-WEM stores its internal state in its own dedicated `wem` database rather than reusing `WHPG_DATABASE`. This database can live on any PostgreSQL instance reachable from the WEM host, it doesn't have to be the WHPG cluster you're monitoring. Use these parameters to point WEM at the host and role that own this database.
+WEM stores its internal state in its own dedicated `wem` database rather than reusing `WHPG_DATABASE`. Host this database on a Postgres instance separate from the WHPG cluster you're monitoring, so a problem with that cluster doesn't take WEM down with it too. Use these parameters to point WEM at the host and role that own this database. See [Application state](../installing/wem#application-state) for the role to create and the trade-offs of reusing the WHPG cluster's own server instead.
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `WEM_HOST` | `localhost` | No | Hostname of the WEM application state database. Doesn't fall back to `WHPG_HOST`, even when `WHPG_HOST` is set explicitly. |
 | `WEM_PORT` | `WHPG_PORT` | No | Port for the WEM application state database. |
 | `WEM_DATABASE` | `wem` | No | Database name for WEM application state. WEM creates this database itself on first start if it doesn't already exist. |
-| `WEM_USER` | `WHPG_USER` | No | User for the WEM application state database. Must already exist and hold both the `CREATEDB` and superuser privileges. WEM doesn't create this role. |
+| `WEM_USER` | `WHPG_USER` | No | User for the WEM application state database. Must already exist. If this database is hosted on the WHPG cluster's own Postgres server, use the same value as `WHPG_USER`. Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. WEM doesn't create this role. |
 | `WEM_PASSWORD` | — | No | Password for `WEM_USER`. |
 
 ### Web server
@@ -82,6 +82,12 @@ WEM stores its internal state in its own dedicated `wem` database rather than re
 |---|---|---|---|
 | `WEM_ADMIN_PASSWORD` | Auto-generated | No | Initial admin password. Auto-generated at install if empty. Only used during first-time setup if the `dashboard_users` table doesn't yet exist. |
 | `WEM_ADMIN_PASSWORD_FILE` | — | No | Path to a file containing the admin password. Use instead of `WEM_ADMIN_PASSWORD` for automated deployments. |
+
+### Access control
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_ACTION_PERMISSIONS_ENABLED` | `true` | No | Enables per-action permission grants, defined in the **Permissions** tab. Set to `false` to fall back to admin-only access for every gated action, regardless of what's granted there, as an emergency rollback. Requires a restart of the WEM service to take effect. See [Defining role-based access control](../system-access/management#defining-role-based-access-control). |
 
 ### TLS for database connections
 
@@ -133,13 +139,18 @@ WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertma
 | `ANTHROPIC_API_KEY` | — | No | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when this parameter is unset. |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5` | No | Claude model used for AI-powered query plan explanations. |
 
-### PXF and service identity
+### PXF
+
+WEM never invokes `pxf` itself. The **PXF** tab in **Data Analysis** dispatches `pxf cluster` actions to the coordinator's host agent instead, so PXF no longer needs to share a host, or an OS user, with WEM. See [Analyzing data distribution](../performance/data-analysis#managing-pxf).
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `WHPG_OS_USER` | `gpadmin` | No | OS user that `pxf cluster` commands run as. PXF requires WHPG and PXF to share the same OS account. Don't edit this parameter manually. It's set automatically by `wem configure-user`. |
-| `WHPG_PXF_BASE` | — | No | `PXF_BASE` directory. WEM reads the value from `gpadmin`'s shell environment at install time. Set this parameter explicitly if `wem doctor` reports a `PXF_BASE` mismatch. |
-| `WHPG_PXF_OP_TIMEOUT_SECONDS` | `60` | No | Per-operation timeout in seconds for `pxf cluster start` and `pxf cluster stop`. Raise on large clusters, slow networks, or slow JVM start-up. Valid range: 30–600. |
+| `WHPG_PXF_OP_TIMEOUT_SECONDS` | `60` (`180` with `--high-load`) | No | How long WEM waits for the coordinator's host agent to finish a `pxf cluster` job. Applies to every action the same way, except restart, which gets double this budget since it's a stop followed by a start. Clamped to 30–600 seconds. |
+
+### Service identity
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
 | `WHPG_ALLOW_ROOT` | — | No | Set to `1` to allow the WEM service to run as `root`. By default, WEM refuses to start as `root`. WEM logs a warning on every restart when this is set. |
 
 ### Host agent

@@ -48,6 +48,48 @@ sudo tail -f /var/log/wem/wem.log
 !!! Note
     Every `systemctl restart wem` rotates `wem.log` to a timestamped copy and starts a fresh file, so a `tail -f` left running from before the restart stops receiving new lines without any error. Either restart the `tail -f` after each `systemctl restart wem`, or use `sudo journalctl -u wem -f` instead, which follows across restarts on its own.
 
+**Verify each observability component**
+
+Check each component directly, outside the WEM UI, to narrow down where a break in the pipeline sits:
+
+```bash
+# ClickHouse
+sudo clickhouse status
+
+# WEM
+sudo systemctl status wem
+
+# Host agent (coordinator and standby coordinator only)
+sudo systemctl status acp-host-agent
+
+# OTel Collector, on every WHPG node
+sudo systemctl status edb-otelcol
+
+# Gateway collector, on the standby coordinator or dedicated monitoring host, whichever your deployment provisions
+sudo systemctl status edb-otelcol
+```
+
+Check the OTel Collector across every cluster node at once:
+
+```bash
+gpssh -f hostfile_whpginitsystem -u gpadmin -e "sudo systemctl is-active edb-otelcol"
+```
+
+Confirm data is actually reaching ClickHouse:
+
+```bash
+clickhouse-client --password <your-clickhouse-password> \
+  --query "SELECT count() FROM acp_observability.otel_metrics_gauge WHERE TimeUnix > now() - 300"
+clickhouse-client --password <your-clickhouse-password> \
+  --query "SELECT count() FROM acp_observability.otel_logs WHERE Timestamp > now() - 300"
+```
+
+For collector-specific errors, check its own logs:
+
+```bash
+sudo journalctl -u edb-otelcol -n 20 --no-pager
+```
+
 ## Connectivity issues
 
 ### Error: "failed to connect to WHPG server" or "failed to connect to WEM server" during setup
@@ -170,6 +212,28 @@ sudo systemctl restart wem
 
 Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf` to acknowledge running as `root`.
 
+### Issue: The PXF tab shows PXF as unavailable
+
+The **PXF** tab in **Data Analysis** reports PXF as unavailable instead of showing its status.
+
+**Cause:** PXF actions dispatch through the host agent on the coordinator rather than running locally on the WEM host, so this usually means the host agent isn't reachable there, or PXF itself isn't installed on the coordinator.
+
+**Solution:**
+
+1. Check that the host agent is running on the coordinator:
+
+    ```bash
+    sudo systemctl status acp-host-agent
+    ```
+
+2. Confirm PXF is installed on the coordinator.
+
+3. Check the WEM log for a more specific remediation hint:
+
+    ```bash
+    sudo journalctl -u wem
+    ```
+
 ### Issue: Start PXF and Stop PXF buttons fail with `Operation not permitted`
 
 The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return `Operation not permitted`.
@@ -182,6 +246,14 @@ The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return
 sudo wem configure-pxf-sandbox
 sudo systemctl restart wem
 ```
+
+## Cluster management
+
+### Issue: The Cluster Management panel is missing
+
+**Cause:** WEM hides the Cluster Management panel (Start, Stop, Restart, and Recover Segments) whenever its own application-state database, `WEM_DATABASE`, lives on the same WHPG cluster it monitors. Stopping that cluster would take WEM's own database down with it mid-operation, so WEM disables the panel as a safety measure rather than risk it. This is expected behavior, not a bug.
+
+**Solution:** To use the Cluster Management panel, host `WEM_DATABASE` on an instance that isn't part of the monitored cluster. See [Application state](installing/wem#application-state) for guidance on choosing where to host it.
 
 ## Authentication and access issues
 
@@ -216,6 +288,16 @@ sudo systemctl restart wem
 - DDL commands (`CREATE`, `DROP`) are rejected.
 
 **Cause:** WEM enforces role-based SQL restrictions to prevent accidental data loss or unauthorized schema changes. Review the [Role permissions matrix](reference#role-permissions-matrix) to confirm if the action is permitted for your role.
+
+## Backup and restore issues
+
+### Error: `gpbackup not found under /usr/edb/*/bin`
+
+Taking or restoring a backup from the **Backups** panel fails with this error.
+
+**Cause:** `whpg-backup` isn't installed on the target cluster node, or is installed at a nonstandard location. WEM's host agent looks for the `gpbackup` and `gprestore` binaries under `/usr/edb/*/bin`, where the `whpg-backup` package installs them alongside your WHPG binaries.
+
+**Solution:** Install `whpg-backup` 1.34 or later on every cluster node. See [Installing WarehousePG Backup and Restore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/).
 
 ## Observability and metrics
 

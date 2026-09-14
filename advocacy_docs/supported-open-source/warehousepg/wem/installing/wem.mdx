@@ -69,11 +69,19 @@ If you're running WEM and ClickHouse on a dedicated host, outside the cluster, a
 OTEL_GATEWAY_ENDPOINT=wem-host:4317
 ```
 
+!!! Warning
+    Don't set `OTEL_GATEWAY_ENDPOINT` to `localhost`, even when the gateway collector runs on the same host as WEM. Unlike `CLICKHOUSE_URL` above, every WHPG cluster node uses this address directly to reach the gateway collector, WEM doesn't connect to it locally on the node's behalf. `localhost` there resolves on each WHPG node itself, not on the gateway host, so metrics and logs never leave the node. Always use the gateway host's actual hostname or IP address, as reachable from the WHPG cluster.
+
 Leave `OTEL_GATEWAY_ENDPOINT` unset if you're running WEM and ClickHouse on the standby coordinator instead. WEM manages the gateway internally there, with the coordinator as failover. See [Configuration reference](../reference/configuration#clickhouse) and [Configuration reference](../reference/configuration#otel-collector) for the complete list of ClickHouse and OTel Collector parameters.
 
 ### Application state
 
-WEM stores its internal state in a dedicated `wem` database rather than reusing `WHPG_DATABASE`. This database can live on any Postgres instance reachable from the WEM host, it doesn't have to be the WHPG cluster you're monitoring. Configure the following parameters to point WEM at the host and role that own this database. For example:
+WEM stores its internal state, dashboards, alert rules, and user accounts, in a dedicated `wem` database rather than reusing `WHPG_DATABASE`.
+
+!!! Note
+    Host this database on a Postgres instance separate from the WHPG cluster you're monitoring. Hosting it separately keeps WEM's own state available even if that cluster goes down. If you host `WEM_DATABASE` within the monitored WHPG cluster instead, WEM hides the [Cluster Management panel](../monitoring/cluster-overview) (Start, Stop, Restart, and Recover Segments), since stopping that cluster would take WEM's own database down with it mid-operation.
+
+Configure the following parameters to point WEM at the host and role that own this database:
 
 ```ini
 WEM_HOST=wem-db-hostname
@@ -83,15 +91,11 @@ WEM_USER=wem_admin
 WEM_PASSWORD=<your-password>
 ```
 
-`WEM_USER` must already exist and hold both the `CREATEDB` and superuser privileges. WEM creates the `WEM_DATABASE` database itself on first start if it doesn't already exist, but it doesn't create the role. For example, on the WHPG cluster:
-
-```sql
-CREATE ROLE wem_admin WITH LOGIN PASSWORD '<your-password>' CREATEDB SUPERUSER;
-```
-
 Leaving `WEM_HOST` unset doesn't fall back to `WHPG_HOST`. It defaults to `localhost`, so leave it unset only when a Postgres instance for this database is reachable at `localhost` from the WEM host itself.
 
-A common, practical choice is reusing your WHPG cluster's own Postgres server for this database too, setting `WEM_HOST`, `WEM_PORT`, and `WEM_USER` to the same values as `WHPG_HOST`, `WHPG_PORT`, and `WHPG_USER`, so `WEM_DATABASE` becomes just another database on that same server rather than a separate instance to run and maintain. Avoid pointing it at the monitored database itself, though. If that database goes down, WEM goes down with it, since it can no longer reach its own operational state. For higher resilience, host this database on a separate Postgres instance entirely.
+WEM creates the `WEM_DATABASE` database itself on first start if it doesn't already exist, but it doesn't create the role, `WEM_USER` must already exist. If `WEM_HOST` points at your WHPG cluster's own Postgres server, set `WEM_USER` and `WEM_PASSWORD` to the same values as `WHPG_USER` and `WHPG_PASSWORD`, already a superuser on that cluster (see [Target cluster](#target-cluster)). Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. See [Installing PostgreSQL](observability-stack#installing-postgresql-optional) for the role-creation step.
+
+Avoid pointing `WEM_DATABASE` at the monitored database itself, `WHPG_DATABASE`, even when reusing the WHPG cluster's server. That still leaves WEM dependent on the same cluster's availability, and hides the Cluster Management panel as noted above.
 
 ### AI Assistant
 

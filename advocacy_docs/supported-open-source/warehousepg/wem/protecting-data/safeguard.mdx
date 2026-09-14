@@ -1,0 +1,116 @@
+---
+title: Managing disaster recovery
+navTitle: Managing disaster recovery
+description: Monitor disaster recovery status, configure whpg-dr, and manage backups, restores, and promotion with Safeguard.
+deepToC: true
+---
+
+Use the **Safeguard** panel on the left sidebar to monitor and manage disaster recovery (DR) for your WarehousePG (WHPG) cluster through [WarehousePG Disaster Recovery](/supported-open-source/warehousepg/whpg-dr/) (`whpg-dr`). Safeguard covers the full DR lifecycle across five tabs, checking status, configuring the primary and DR clusters, taking backups, restoring and promoting the DR cluster, and reviewing background job activity.
+
+!!! Note
+    Safeguard requires the host agent installed and reachable on both the primary and DR coordinators, plus `edb-whpg-dr` installed on every host in both clusters, and a storage repository reachable by both clusters. See [Configuring Safeguard](../installing/safeguard) if you haven't set this up yet. If the host agent isn't reachable on the primary coordinator, the **Status** tab shows a **Safeguard Not Available** banner and the other tabs run in a reduced or CLI-only mode, described in the relevant sections below.
+
+## Monitoring DR status
+
+Use the **Status** tab to check whether your primary and DR clusters are healthy and ready for a failover.
+
+- The **Primary Cluster** and **DR Cluster** cards show each cluster's task queue name (`coordinator-tasks` and `dr-standby-tasks`), a **Connected** or **Unreachable** badge for the host agent behind it, and its current status. The primary card also shows the timestamp of its last backup. The DR card shows a placeholder telling you to configure a DR coordinator host until one exists.
+- Check **WAL Continuity** to confirm WAL archiving is flowing without gaps. Investigate immediately if it shows **Failed**, archiving has stopped and your DR standby is falling behind.
+- Check **Last Restore Point** to see how current your DR standby is, and **Backup Count** to confirm you're retaining enough backups for your recovery requirements. Both show **Not configured** until Safeguard is deployed on the primary cluster.
+- Find a specific point to restore to using the **Restore Point Timeline**, which lists base backups and named restore points together, newest first. Filter to the **Last 7 days**, **Last 30 days**, **Last 90 days**, or **All**, and page through results 10 at a time.
+
+## Configuring Safeguard
+
+Use the **Configuration** tab to set up or modify your DR configuration. Select **Edit** to change any field, admin permission is required. Selecting **Save** validates the fields for your chosen mode and stores them, and **Save Changes** replaces **Save** once you've actually changed something.
+
+Safeguard supports two configuration modes.
+
+- **Generate**: WEM builds a `whpg-dr` backup or restore configuration file from the fields you set here and deploys it through the host agent. This mode is the default and the one described in the rest of this section.
+- **Existing**: point WEM at `whpg-dr` configuration files you've already created and placed on the coordinators, and WEM deploys those instead of generating its own. This mode only needs a **Backup Config** path on the primary side and a **Coordinator Host** and **Restore Config Path** on the DR side.
+
+### Setting global options
+
+Expand **Global Settings** to change these fields, collapsed by default with a summary of the current cluster name, storage location, and retention policy. In **Generate** mode it's split into three groups.
+
+- **General**: a **Cluster Name**, embedded directly into the configuration WEM generates and used afterward for status checks, so set it explicitly and avoid changing it later. Also a **Checkpoint Interval**, how often, in minutes, WEM checks WAL continuity.
+- **Storage**: choose **Filesystem / NFS** and a path, or **S3** and a bucket, region, optional prefix, custom endpoint URL, and credentials. WEM doesn't mount the NFS share for you, mount it read-write at that path on every coordinator and segment host, in both clusters, before deploying.
+- **Barman & Retention**: compression, compression level, network compression, a WAL prefetch count, and a retention policy, keeping all backups (**Keep All**), a fixed count (**Keep Last N**), or a number of days (**Keep By Age**). See [Configuration files](/supported-open-source/warehousepg/whpg-dr/reference/configuration/) for full reference on what each Barman setting does.
+
+In **Existing** mode, this section only shows **Cluster Name**.
+
+### Configuring the primary cluster
+
+The **PRIMARY** panel shows a **Deployed** or **Not deployed** badge and the primary host agent's connectivity.
+
+In **Generate** mode, WEM silently auto-discovers the coordinator host, coordinator data directory, and segment hosts from the live primary cluster the first time you open this tab, queried directly rather than read from any existing `whpg-dr` configuration. Select the refresh icon next to **Topology** to rediscover it manually at any time. Overwrite any of the three discovered fields yourself while editing if needed.
+
+In **Existing** mode, this panel only asks for the **Backup Config** path on the primary coordinator.
+
+Select **Deploy** on the PRIMARY panel to generate the backup configuration and push it to the primary coordinator through its host agent, which runs `whpg-dr configure backup` there and restarts the primary cluster to pick up WAL archiving. The button stays disabled until you've saved a configuration, and until the primary host agent shows as connected. Check the **Tasks** tab to confirm the deploy job completed successfully.
+
+!!! Note
+    Take at least one base backup on the primary cluster from the **Backups** tab before deploying the DR standby. See [Managing backups](#managing-backups).
+
+### Configuring the DR standby
+
+The **DR STANDBY** panel mirrors the primary panel's layout, with its own **Deployed** and connectivity badges.
+
+In **Generate** mode, enter the **Coordinator Host**, then select **Copy from Primary** to fill **Coordinator Data Dir**, **Segment Hosts**, **Data Directory**, and **Directory Prefix** from the primary's discovered topology, adjusting the data directory to the parent path `whpg-dr` needs on the DR side. Replace any of these fields with the DR cluster's real values afterward, since the DR cluster's hosts and paths usually differ from the primary's.
+
+In **Existing** mode, this panel asks for the **Coordinator Host** and a **Restore Config Path** on the DR coordinator.
+
+Select **Deploy** on the DR STANDBY panel to generate the restore configuration and push it to the DR coordinator through its host agent, which runs `whpg-dr configure restore` there and restarts the DR cluster to apply the settings. This button stays disabled until the primary cluster has a completed deployment, since the DR standby needs an initial base backup to restore from, and until the DR host agent shows as connected. Check the **Tasks** tab to confirm the deploy job completed successfully.
+
+Deploying either cluster first checks that its host agent is reachable and blocks with an error notification if it isn't, rather than starting a job that only fails partway through.
+
+### Reviewing configuration history
+
+Once a configuration exists, a **Configuration History** section below the two cluster panels lists every saved and deployed version. Roll back to an earlier version from here, optionally redeploying it immediately, to undo an unwanted change without re-entering every field by hand.
+
+## Managing backups
+
+Use the **Backups** tab to take base backups, mark restore points, and review backup and WAL activity for the primary cluster. Every action here requires Safeguard already configured (deployed) on the primary cluster.
+
+- Select **Create Backup** to run a new base backup, naming it yourself or leaving the name blank to auto-generate a timestamp-based one. Deploying Safeguard on the primary doesn't take a backup by itself, so run one here before configuring the DR standby, `whpg-dr` needs at least one base backup to restore from.
+- Select **Create Restore Point** to mark the current moment as a named, recoverable point once a base backup exists, again with an optional name or an auto-generated one.
+- Both actions run in the background, showing a live progress card while they're running, with a percentage bar for backups. Check the **Tasks** tab to confirm the job completed successfully.
+- Select **Check Configuration** to validate the deployed `whpg-dr` configuration and see a pass or fail result with the raw command output.
+
+Four cards summarize backup health, **Last Base Backup**, **WAL Continuity**, **Total Backup Size** alongside the total WAL size, and **Retention Policy**, which shows how many backups are currently eligible for pruning under a **Keep Last N** policy, or how many fall outside the window under a **Keep By Age** policy.
+
+The **Backups** table lists every backup with its status, start time, size, WAL size, and method, and lets you delete a backup that isn't currently running. An **Hourly WAL Growth** chart below the table shows WAL size generated per hour over the last 24 hours.
+
+## Restoring and promoting the DR cluster
+
+Use the **Restore** tab to manage the DR standby, from applying a restore to promoting it into a live primary.
+
+!!! Note
+    When the DR connection mode is set to **None** in the Configuration tab, this tab shows copyable `whpg-dr` CLI commands for listing backups, restoring, checking status, and promoting, instead of interactive buttons. Run these commands directly on the DR coordinator as `gpadmin` when you'd rather not connect the DR cluster's host agent for restore and promote operations.
+
+### Restoring the DR cluster
+
+!!! Warning
+    A restore wipes the DR cluster's current data directories and replaces them with the restored backup. Confirm you're targeting the correct cluster before proceeding.
+
+Choose a restore **Target**, **Latest restore point** or a specific one from the list, and select **Start Restore**. The restore applies the associated base backup to every segment data directory, then replays WAL forward to it. Once replay finishes, the segments stop in recovery mode and the cluster stays offline, rejecting client connections until you promote it.
+
+- Enable **Delta Restore** to replay WAL on top of an already-restored cluster instead of starting from empty directories, required if the target directories already contain data from a previous restore. WEM detects this condition and suggests enabling Delta Restore if a full restore fails because the directories aren't empty, and suggests disabling it if a delta restore fails because no prior restore exists to build on.
+- Expand **Advanced Options** to set a **WAL Replay Timeout** in seconds, 3600 by default, and to toggle **Force**, which overrides an existing unresolved restore state and is recommended for most restores.
+- Select **Preview** to run the restore as a dry run and review the output without making changes, or **Resume Failed** to continue a previously failed restore rather than starting a new one.
+
+Check the **Tasks** tab to confirm the restore job completed successfully. The **DR Cluster Restore Status** card above these controls shows the active or most recent restore's point, backup name, restore time, and status, **In Recovery**, **Ready to Promote**, **Failed**, or **Promoted**, along with a per-segment table of replay progress once a restore has run.
+
+### Promoting the DR cluster
+
+!!! Warning
+    A promote turns the DR standby into a live, writable primary and ends its role as a DR target. Confirm you're targeting the correct cluster before proceeding.
+
+Once a restore shows **Ready to Promote**, select **Promote** to bring the DR cluster online as a writable primary that accepts client connections. Promotion stays blocked while the cluster has an unfinished or failed restore. Promoting doesn't start the cluster for you, start it afterward with `gpstart`. Select **Preview** first to run promotion as a dry run.
+
+Safeguard treats promote as a failover action, treat the DR cluster as your new production cluster afterward, and configure DR again in the other direction if you need to fail back later.
+
+## Reviewing Safeguard activity
+
+Use the **Tasks** tab to trace every background job Safeguard has dispatched, deploys, backups, restore points, restores, recoveries, deletions, and promotions, across both clusters in one place. A badge on the tab shows how many jobs are currently running.
+
+Each row shows the job's type, a description, its status (**Pending**, **Running**, **Completed**, **Failed**, or **Cancelled**), when it started, and its duration. Expand a row to see its full error message, in-progress detail, or result ID. Filter by type or status using the column headers, and select the refresh icon to check for updates immediately instead of waiting for the next automatic refresh.

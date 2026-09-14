@@ -105,6 +105,43 @@ ClickHouse stores the metrics and logs that the OTel Collector on every cluster 
     curl "http://<clickhouse-host>:8123/?query=SELECT%201"
     ```
 
+## Installing PostgreSQL (optional)
+
+WEM needs a Postgres database to store its own configuration and application state, dashboards, alert rules, and user accounts, separate from the WHPG cluster it monitors. You can host this on a dedicated instance, following the steps below, or reuse your WHPG cluster's own Postgres server instead. See [Application state](wem#application-state) for the trade-offs and the role to create either way.
+
+To set up a dedicated instance:
+
+1. Download and install PostgreSQL from the [official downloads page](https://www.postgresql.org/download/), or install it using your system package manager.
+
+1. Initialize the database, then enable and start the PostgreSQL service. See the [PostgreSQL documentation](https://www.postgresql.org/docs/current/server-start.html) for details.
+
+1. On PostgreSQL 13 and earlier, `password_encryption` defaults to `md5`, which is incompatible with the `scram-sha-256` authentication method configured below. Check the setting, and fix it if needed, before creating the role:
+
+    ```bash
+    sudo -i -u postgres psql -c "SHOW password_encryption;"
+    sudo -i -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';"
+    sudo -i -u postgres psql -c "SELECT pg_reload_conf();"
+    ```
+
+1. Create the role WEM connects with. See [Application state](wem#application-state) for the exact privileges required:
+
+    ```sql
+    CREATE ROLE wem_admin WITH LOGIN PASSWORD '<your-password>' CREATEDB;
+    ```
+
+1. Configure `pg_hba.conf` to allow `wem_admin` to authenticate with a password, using `all` for the database field since `wem setup` connects to the `postgres` maintenance database before switching to `wem`:
+
+    ```
+    host    all    wem_admin    127.0.0.1/32    scram-sha-256
+    host    all    wem_admin    ::1/128         scram-sha-256
+    ```
+
+1. Verify PostgreSQL is accepting connections:
+
+    ```bash
+    pg_isready -h <postgres-host> -p 5432
+    ```
+
 ## Next steps
 
 If you're running WEM and ClickHouse on a dedicated host, outside the cluster, continue to [Installing the gateway collector](collector).

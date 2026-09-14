@@ -1,0 +1,68 @@
+---
+title: WarehousePG Enterprise Manager 1.4 release notes
+navTitle: Version 1.4
+description: Release notes for WarehousePG Enterprise Manager version 1.4.0.
+---
+
+The WarehousePG Enterprise Manager (WEM) 1.4.x documentation describes the latest patch release. Release notes for all 1.4.x versions are included below.
+
+| Version | Release date |
+|---------|--------------|
+| [1.4.0](#wem-140) | 21 Sept 2026 |
+
+## WEM 1.4.0
+
+Released: 21 Sept 2026
+
+WEM 1.4.0 includes new features, enhancements, and bug fixes.
+
+### Highlights
+
+- **ClickHouse for metrics and logs:** WEM now stores and queries all metrics and logs in ClickHouse instead of Prometheus and Loki. The **Alerts** panel and the **Logs** panel both move to this unified pipeline. See [Managing alerts](../monitoring/alerts) and [Auditing system logs](../monitoring/logs).
+- **Mutual TLS for host agent connections:** Every connection between the host agent and WEM is now authenticated with mutual TLS (mTLS). WEM's internal certificate authority issues each agent a short-lived certificate and renews it automatically. See [Installing the host agent](../installing/host-agent).
+- **Host agent self-registration:** Host agents register themselves with WEM on first connection instead of requiring manual enrollment. A new admin tab lets Admins approve or reject pending registrations. See [Installing the host agent](../installing/host-agent).
+- **Cluster Management:** Start, stop, restart, and recover a segment (`gprecoverseg`) directly from the WEM UI, dispatched through the host agent. See [Verifying and managing cluster health](../monitoring/cluster-overview).
+- **Taking, restoring, and scheduling backups:** Take and restore backups directly from WEM, something not previously possible, and schedule recurring backup and restore jobs instead of relying on external cron jobs. See [Securing backups](../protecting-data/backups).
+- **Per-action access control:** WEM's role-based access control (RBAC) model now extends to individual actions. Admins can grant permissions for actions such as running or deleting a backup, in addition to the existing tab-level permissions. See [Performing administrative management](../system-access/management).
+- **PXF in its own tab:** PXF management moves out of **External Tables** and into a dedicated tab in **Data Analysis**, dispatched through the host agent instead of running locally on the WEM host. See [Analyzing data distribution](../performance/data-analysis).
+
+### New features
+
+- **Cluster Management actions:** A new **Cluster Management** panel lets Admins start, stop, and restart the WarehousePG cluster, and run `gprecoverseg` to recover a failed segment, without shell access to the coordinator. Commands are dispatched through the host agent. See [Verifying and managing cluster health](../monitoring/cluster-overview).
+- **Taking, restoring, and scheduling backups directly from WEM:** The **Backups** panel can now take and restore backups directly, something not previously possible, and supports recurring backup and restore schedules, alongside the existing find-table, display-report, and delete-backup operations. Backup timestamps now show in the host agent's own operating system time zone instead of the WEM server's, so scheduled times are unambiguous across regions. See [Securing backups](../protecting-data/backups).
+- **Mutual TLS host agent authentication:** Each host agent now presents a short-lived certificate issued by WEM's internal certificate authority, renewed automatically before it expires. A 24-hour grace window lets an agent that was briefly offline recover its certificate without Admin intervention. See [Installing the host agent](../installing/host-agent).
+- **Host agent self-registration and approval:** Host agents register themselves with WEM on startup and receive a Temporal task queue assignment automatically, removing the need to set `WEM_TASK_QUEUES` by hand in most deployments. A new **Host Agents** admin tab shows each agent's registration status, certificate expiry, and last heartbeat, with one-click approve or revoke actions. See [Installing the host agent](../installing/host-agent).
+- **ClickHouse-backed Logs panel:** The **Logs** panel now reads from ClickHouse instead of Loki, with the same structured search and filtering. See [Auditing system logs](../monitoring/logs).
+- **ClickHouse-backed Alerts panel:** The **Alerts** panel and the cluster status banner now evaluate metric thresholds against ClickHouse instead of Prometheus. See [Managing alerts](../monitoring/alerts).
+- **PXF as a dedicated Data Analysis tab:** PXF management (start, stop, sync, restart, and status) moves from **External Tables** into its own **PXF** tab under **Data Analysis**, dispatched through the host agent instead of running locally on the WEM host. PXF no longer needs to run on the same host as WEM. See [Analyzing data distribution](../performance/data-analysis).
+- **Per-action access control grants:** WEM's role-based access control (RBAC) now works at the action level as well as the tab level. Admins can grant or deny individual actions, such as running a backup, deleting a backup, or terminating a session, to a specific role. See [Performing administrative management](../system-access/management).
+- **Unified Query Editor output panel:** Query results, `EXPLAIN`, and `ANALYZE` output now appear together in a single tabbed panel in the Query Editor, replacing the previous side-by-side layout. The database selector also supports searching and filtering. See [Authoring and tuning SQL statements](../performance/query-monitor#using-the-query-editor).
+{/* TODO(mireia): verify with engineering whether the dedicated WHPG_WEM_USER role is actually least-privilege. As of v1.4.0-rc.1, internal/setup/setup.go creates it with SUPERUSER (role_create_superuser.sql), contradicting an earlier draft of this entry. Holding this note neutral until confirmed either way. */}
+- **Dedicated WEM database role:** WEM now connects to your WarehousePG cluster with a dedicated `wem` login role, created automatically during setup, instead of reusing the same superuser credentials for every connection. See [Configuring WEM](../installing/wem).
+
+### Security fixes
+
+- Addressed reported security issues in API routes and host agent privileged-command handling, including a helper command that accepted an arbitrary file path and one that followed a world-writable path during binary discovery, and updated internal dependencies to pick up upstream security fixes.
+
+### Changes
+
+- **Prometheus and Loki are no longer used:** WEM's metrics and log pipeline is fully migrated to ClickHouse. The Collector no longer pushes to Prometheus or Loki, and the SQL exporter and Prometheus remote-write receiver are removed. If you're upgrading, plan to decommission any Prometheus or Loki instances you ran solely for WEM. See [Upgrading WarehousePG Enterprise Manager](../installing/upgrading).
+- **`WHPG_PXF_BIN`, `WHPG_PXF_BASE`, and `WHPG_OS_USER` configuration parameters removed:** Now that PXF actions dispatch through the host agent instead of running locally on the WEM host, PXF binary and configuration discovery always uses fixed, safe paths, and WEM no longer needs to know or match PXF's OS user. If you set any of these parameters explicitly, remove them from `wem.conf` when you upgrade. See [Configuration reference](../reference/configuration).
+- **Refresh controls standardized:** Refresh buttons across the application are now icon-only, with an accessible label for screen readers, instead of a mix of icon and text buttons.
+
+### Bug fixes
+
+- Fixed a certificate validation gap in the mTLS grace-window check that let a host agent certificate with a future `NotBefore` date pass.
+- Fixed WEM retrying a timed-out configuration push to an agent with an expired certificate on every reconcile cycle instead of skipping it immediately.
+- Fixed ClickHouse reconnection to happen automatically after a transient connection failure, and made error messages for connection failures and missing databases more specific.
+- Fixed scheduler contention between the canary check scheduler, backup and resource schedule checks, and alert rule loading that crashed the scheduler under concurrent load.
+- Fixed configuration drift not being corrected after a host restart or network interruption. The host agent's automatic configuration push now runs on every re-registration instead of only the first one.
+- Fixed HBA management view gaps by adding a missing **Other Rules** tile, correcting the superuser role label, and fixing pagination in the partition management dialog that made entries past the first page inaccessible.
+- Fixed the CPU usage chart exceeding 100% on multi-segment hosts, and the blocked-query count counting a query waiting on multiple locks more than once.
+- Fixed the Query Editor crashing when running `EXPLAIN` or `ANALYZE` on a query that returns an error, and removed a misleading success notification shown after a failed query.
+- Fixed `WHPG_WEM_USER` to default gracefully when unset, and fixed errors reading or applying `pg_hba.conf` to return a structured error response instead of an unhandled failure.
+- Fixed PXF task handlers on the host agent not registering at startup, which caused WEM to report "Cannot reach the PXF host agent" until the agent was restarted after PXF was installed.
+- Fixed the **Backups** panel not reliably resolving a segment's data directory right after a host agent was approved. The agent now re-registers immediately after approval.
+- Fixed excessive warning-level logging while a host agent waited for a revoked certificate to be replaced. The agent also now forces a reconnect after repeated renewal failures, so a revoked certificate is rejected promptly instead of retried indefinitely.
+- Fixed log collection on WarehousePG builds where `pg_current_logfile()` isn't available, and consolidated log scanning into a single privileged call on the host agent instead of five separate ones.
+- Fixed the host agent's connection to WEM resolving to an unusable IPv6 address on hosts without IPv6 support.
