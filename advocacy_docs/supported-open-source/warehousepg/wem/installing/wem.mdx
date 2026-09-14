@@ -5,7 +5,7 @@ description: Learn how to install the WarehousePG Enterprise Manager service.
 deepToC: true
 ---
 
-Install the WarehousePG Enterprise Manager (WEM) package on your designated host.
+Install the WarehousePG Enterprise Manager (WEM) package on your designated host. See [Choosing a deployment topology](./#choosing-a-deployment-topology) for the different placement options.
 
 ## Downloading and installing WEM 
 
@@ -29,14 +29,14 @@ Install the WarehousePG Enterprise Manager (WEM) package on your designated host
     export PATH=/usr/local/greenplum-db/wem:$PATH
     ```
 
-    To make this change persistent, add the command above to your `~/.bashrc` or `~/.bash_profile` file.
+    To make this change persistent, add this `export` line to your `~/.bashrc` or `~/.bash_profile` file.
 
 !!! note
-    Starting from WarehousePG 7.4 and 6.27.4, the default WHPG installation directory is `/usr/edb/whpg7`. For backward compatibility, a symlink is provided at `/usr/local/greenplum-db`. The WEM binary path above resolves through this symlink, so no changes are required on WarehousePG 7.4 or later systems.
+    Starting from WarehousePG 7.4 and 6.27.4, the default WHPG installation directory is `/usr/edb/whpg7`. For backward compatibility, a symlink is provided at `/usr/local/greenplum-db`. The `/usr/local/greenplum-db/wem` path this `export` line uses resolves through that symlink, so no changes are required on WarehousePG 7.4 or later systems.
 
 ## Configuring WEM
 
-Configure the WEM service by editing `/etc/wem/wem.conf`. For a complete list of all supported parameters, defaults, and types, see the [Configuration reference](../reference/configuration).
+Configure the WEM service by editing `/etc/wem/wem.conf`. These sections cover the parameters required to get WEM running. Configure everything else, such as the AI Assistant or alert evaluation tuning, after installation through the WEM console. See [Configuring WEM](../configuring) and the [Configuration reference](../reference/configuration) for the complete list of supported parameters.
 
 ### Target cluster
 
@@ -63,7 +63,7 @@ Set the ClickHouse connection URL for the instance you're using, whether that's 
 CLICKHOUSE_URL=clickhouse://username:password@localhost:9000
 ```
 
-If you're running WEM and ClickHouse on a dedicated host, outside the cluster, also set `OTEL_GATEWAY_ENDPOINT` to that host's own hostname or IP address, as it's reachable from every WHPG cluster node, and install the [gateway collector](collector) on it. For example, if this host is reachable as `wem-host`:
+Only set `OTEL_GATEWAY_ENDPOINT` if your deployment needs a dedicated gateway collector, that is, when multiple systems or clusters send observability data to the same ClickHouse instance. Point it at that gateway host's own hostname or IP address, as it's reachable from every WHPG cluster node, and install the [gateway collector](collector) on it. For example, if this host is reachable as `wem-host`:
 
 ```ini
 OTEL_GATEWAY_ENDPOINT=wem-host:4317
@@ -72,7 +72,7 @@ OTEL_GATEWAY_ENDPOINT=wem-host:4317
 !!! Warning
     Don't set `OTEL_GATEWAY_ENDPOINT` to `localhost`, even when the gateway collector runs on the same host as WEM. Unlike `CLICKHOUSE_URL` above, every WHPG cluster node uses this address directly to reach the gateway collector, WEM doesn't connect to it locally on the node's behalf. `localhost` there resolves on each WHPG node itself, not on the gateway host, so metrics and logs never leave the node. Always use the gateway host's actual hostname or IP address, as reachable from the WHPG cluster.
 
-Leave `OTEL_GATEWAY_ENDPOINT` unset if you're running WEM and ClickHouse on the standby coordinator instead. WEM manages the gateway internally there, with the coordinator as failover. See [Configuration reference](../reference/configuration#clickhouse) and [Configuration reference](../reference/configuration#otel-collector) for the complete list of ClickHouse and OTel Collector parameters.
+For a single WHPG cluster sending data directly to ClickHouse, leave `OTEL_GATEWAY_ENDPOINT` unset, regardless of whether ClickHouse runs on the standby coordinator or on a dedicated host outside the cluster. See [Configuration reference](../reference/configuration#clickhouse) and [Configuration reference](../reference/configuration#otel-collector) for the complete list of ClickHouse and OTel Collector parameters.
 
 ### Application state
 
@@ -95,19 +95,7 @@ Leaving `WEM_HOST` unset doesn't fall back to `WHPG_HOST`. It defaults to `local
 
 WEM creates the `WEM_DATABASE` database itself on first start if it doesn't already exist, but it doesn't create the role, `WEM_USER` must already exist. If `WEM_HOST` points at your WHPG cluster's own Postgres server, set `WEM_USER` and `WEM_PASSWORD` to the same values as `WHPG_USER` and `WHPG_PASSWORD`, already a superuser on that cluster (see [Target cluster](#target-cluster)). Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. See [Installing PostgreSQL](observability-stack#installing-postgresql-optional) for the role-creation step.
 
-Avoid pointing `WEM_DATABASE` at the monitored database itself, `WHPG_DATABASE`, even when reusing the WHPG cluster's server. That still leaves WEM dependent on the same cluster's availability, and hides the Cluster Management panel as noted above.
-
-### AI Assistant
-
-To enable the AI Assistant for query writing and optimization, manually add the `ANTHROPIC_API_KEY` parameter (requires an active Anthropic account).
-
-```ini
-ANTHROPIC_API_KEY=YOUR_API_KEY_HERE
-```
-
-### Advanced tuning
-
-Optionally, adjust these parameters to fine-tune performance and data intervals: extend timeouts for large clusters (`HIGH_LOAD_MODE`), flag long-running queries in the interface (`LONG_RUNNING_THRESHOLD`, in minutes), adjust WHPG's own statement logging (`LOG_MIN_DURATION_STATEMENT`), tune how often WEM evaluates alert rules (`ALERT_EVALUATION_INTERVAL`) or scans the coordinator's log (`LOG_SCAN_INTERVAL`), or disable either feature entirely (`ALERT_EVALUATOR_ENABLED`, `LOG_SCAN_ENABLED`). See [Configuration reference](../reference/configuration) for the complete list, defaults, and valid formats.
+Avoid pointing `WEM_DATABASE` at the monitored database itself, `WHPG_DATABASE`, even when reusing the WHPG cluster's server. That still leaves WEM dependent on the same cluster's availability, and hides the [Cluster Management panel](../monitoring/cluster-overview) for the same reason.
 
 ### WEM portal access
 
