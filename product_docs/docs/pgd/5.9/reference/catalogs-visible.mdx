@@ -795,6 +795,18 @@ This table stores the historical record of replicated DDL statements.
 | message_type     | char        | Type of a message. Possible values:<br />A - Table sync<br />D - DDL<br />S - Sequence<br />T - Truncate<br />Q - SQL statement |
 | message          | json        | Payload of the message needed for replication of the statement |
 
+### `bdr.raft_instances`
+
+Lists the local Raft consensus instance for each top-level node group. There
+is currently always exactly one Raft instance per top-level group.
+
+#### `bdr.raft_instances` columns
+
+| Name          | Type | Description                                 |
+| ------------- | ---- | -------------------------------------------- |
+| instance_id   | oid  | OID of the Raft instance                     |
+| node_group_id | oid  | OID of the top-level node group              |
+
 ### `bdr.replication_set`
 
 A table that stores replication set configuration. For user queries, we recommend instead checking the
@@ -861,6 +873,28 @@ currently used by any node.
 | set_autoadd_tables | boolean | Indicates if new tables are automatically added to this replication set        |
 | set_autoadd_seqs   | boolean | Indicates if new sequences are automatically added to this replication set     |
 
+### `bdr.replication_status`
+
+A view showing the connection and replay status of each subscription on the
+local node, joined with the origin and target node names. Useful for
+checking whether replication from a given peer node is currently connected
+or blocked.
+
+#### `bdr.replication_status` columns
+
+| Name               | Type        | Description                                                             |
+| ------------------ | ----------- | ------------------------------------------------------------------------ |
+| node_id             | oid         | OID of the target (local) node                                           |
+| node_name           | name        | Name of the target (local) node                                          |
+| origin_node_id      | oid         | OID of the origin node the subscription replicates from                  |
+| origin_node_name    | name        | Name of the origin node the subscription replicates from                 |
+| sub_id              | oid         | OID of the subscription                                                  |
+| sub_name            | name        | Name of the subscription                                                 |
+| connected           | boolean     | Whether the subscription is currently connected to the origin node       |
+| replication_blocked | boolean     | Whether replication appears blocked (retries at the same LSN with no commits in progress) |
+| connect_time        | timestamptz | Time the current connection was established, if connected                |
+| disconnect_time     | timestamptz | Time of the last disconnect, if currently disconnected                   |
+| uptime              | interval    | How long the current connection has been up, if connected                |
 
 ### `bdr.schema_changes`
 
@@ -1475,4 +1509,23 @@ instance is shown. Join on the current database to filter it.
 | since_prev_exited                 | interval                 | Interval since the previous task exited                 |
 | task_first_registered             | timestamp with time zone | Timestamp when the first registration happened          |
 | since_first_registered            | interval                 | Interval since the first registration                   |
+
+### `bdr.xid_peer_progress`
+
+Tracks per-transaction progress used by `bdr.wait_for_xid_progress()`. A node
+records the transaction status here as soon as it makes progress on it, and
+also reports it to all other nodes; the same table stores the reports
+received from peer nodes, with `peer_node_id`, `peer_apply_xid`, and
+`peer_apply_lsn` then referring to the peer.
+
+#### `bdr.xid_peer_progress` columns
+
+| Name               | Type   | Description                                                |
+| ------------------ | ------ | ------------------------------------------------------------ |
+| origin_node_id     | oid    | OID of the node where the transaction originated             |
+| origin_node_topxid | xid    | Top-level XID of the transaction on the origin node           |
+| origin_node_lsn    | pg_lsn | LSN on the origin node at the time progress was recorded      |
+| peer_node_id       | oid    | OID of the peer node this progress report is about            |
+| peer_apply_xid     | xid    | XID applied on the peer node                                  |
+| peer_apply_lsn     | pg_lsn | LSN applied on the peer node                                  |
 

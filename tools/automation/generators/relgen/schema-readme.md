@@ -10,8 +10,8 @@ product: The product name in full - required.
 version: The version number of the product - required.
 date: The release date of the product - required.
 updated: The date the release notes were last updated - optional.
-meta: # Meta key values - required if the index uses them (see meta.yml)
-    metakey: metavalue # keyvalue pairs for meta.yml
+components: # Component versions for this release - required if the index uses them (see meta.yml)
+    componentname: version # keyvalue pairs, referenced as $componentname from the columns in meta.yml
 intro: |
   Multi-line string that provides a brief introduction to the release notes. Supports Markdown.
 highlights: |
@@ -43,17 +43,17 @@ columns: # defines the index page columns by 0 based column number
   key: version-link # version-link is the version number with link to the releasenote page
 - 2: # Third column
   label: "BDR extension" # Column heading
-  key: $bdrextension # Taken from the meta.bdrextension value in the release note yaml
+  key: $bdrextension # Taken from the components.bdrextension value in the release note yaml
 - 3: # Fourth column
   label: "PGD CLI" # Column heading
-  key: $pgdcli # Taken from the meta.pgdcli value in the release note yaml
+  key: $pgdcli # Taken from the components.pgdcli value in the release note yaml
 - 4: # Fifth column
   label: "PGD Proxy" # Column heading
-  key: $pgdproxy # Taken from the meta.pgdproxy value in the release note yaml
+  key: $pgdproxy # Taken from the components.pgdproxy value in the release note yaml
 components: [ "BDR", "PGD CLI", "PGD Proxy", "Utilities" ] # List of valid components for product
 intro: |
   Introduction to the release notes. Supports Markdown over multiple lines.
-precursor: # An optiona; list of preceding releases which already have release notes. Required if there are preceding releases to be included. Will be appended to the table and navigation. If meta fields are in use, they are required in the precursor list under meta. too.
+precursor: # An optiona; list of preceding releases which already have release notes. Required if there are preceding releases to be included. Will be appended to the table and navigation. If component fields are in use, they are required on each precursor entry too.
 - version: "23.34.1"
   date:  09 Sep 2024
 - version: "23.34"

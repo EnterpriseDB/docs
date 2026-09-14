@@ -1,0 +1,165 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: Hybrid Manager operator
+version: 2.1.0
+date: 31 July 2026
+intro: |
+  Version 2.1.0 changes how multi-data center (MultiDC) Hybrid Manager (HM) clusters federate, adds beacon agent and HM Registry configuration to the `HybridControlPlane` and `HMRegistry` resources, and fixes a deletion path that could leave a `HybridControlPlane` stuck in `Terminating`.
+highlights: |
+  - **`spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are deprecated.** The operator now resolves peer portal domains for a multi-data center deployment itself. Values you set are still honored, but they will be removed in a future API version.
+
+  - **Deleting a `HybridControlPlane` no longer hangs indefinitely.** A control plane whose status tracked components that the current HM version no longer ships could stay in `Terminating` forever with no way to recover.
+
+  - **Upgrading the operator Helm chart raises an existing HM Registry volume to 200Gi.** The default registry `PersistentVolumeClaim` size changed from 100Gi to 200Gi, and the change is applied to registries that already exist. Check your storage class before you upgrade.
+relnotes:
+- relnote: |
+    `spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are deprecated
+  details: |
+    The operator resolves the peer portal domains of a multi-data center deployment itself, so you no longer declare them on the `HybridControlPlane`. Values set in `spec.clusterGroups.primary` and `spec.clusterGroups.secondaries` are still honored — `primary` takes precedence over the resolved value, and `secondaries` is combined with it — but both will be removed in a future API version. Applying either field now produces a deprecation warning. Keep setting `spec.clusterGroups.role`.
+  jira: UPM-111054
+  addresses:
+  type: Deprecation
+  impact: Highest
+
+- relnote: |
+    The default HM Registry volume size is 200Gi
+  details: |
+    **Action required.** The default `PersistentVolumeClaim` for the in-cluster registry is 200Gi rather than 100Gi, which holds a full image set. The operator Helm chart applies this to an existing `hm-registry` on upgrade and the operator then patches the volume, so the registry's storage class must allow volume expansion. To keep the current size, set `hmRegistry.storage.pvc.size` explicitly before you upgrade the chart, or set `spec.storage.pvc.size` on the `HMRegistry` resource.
+  jira: UPM-125667
+  addresses:
+  type: Change
+  impact: High
+
+- relnote: |
+    Configurable SPIRE federation bundle endpoint host and port
+  details: |
+    The `spire_federation_domain_name` and `spire_federation_port` global parameters override the host and port advertised to federating peers for this cluster's SPIRE bundle endpoint, which otherwise defaults to `<portal_domain_name>:8444`. Set them only where an ingress or proxy in front of Istio remaps the advertised host and port back to 8444 — an OpenShift Route on 443, for example — because the bundle endpoint itself is always served on 8444. Advertising a port that nothing remaps breaks federation.
+  jira: UPM-126709
+  addresses:
+  type: Feature
+  impact: High
+
+- relnote: |
+    `HybridControlPlane` deletion could hang indefinitely
+  details: |
+    Deleting a `HybridControlPlane` left the resource in `Terminating` with no way to recover when its status still tracked components that the current HM version no longer ships: those components were never uninstalled, so the finalizer was never removed. The operator now sweeps them as part of deletion.
+  jira: UPM-96609
+  addresses:
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    Configurable beacon agent schema poll and force-update intervals
+  details: |
+    `spec.beaconAgent.schemaPollInterval` sets how often the agent polls and streams table and schema information for a database, and `spec.beaconAgent.forceUpdateInterval` sets how often it re-sends that information even when it detected no change. Both take a duration string such as `30s` or `2h` and fall back to the beacon agent defaults of `1m` and `1h` when unset.
+  jira: UPM-121865
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    CA trust for beacon agent image discovery
+  details: |
+    Set `spec.beaconAgent.provisioning.imagesetDiscoveryCACerts` to a PEM-encoded CA bundle so the image discovery scanner trusts a registry served with a private or internal CA over HTTPS. The operator materializes the bundle into a secret that the beacon agent mounts, and updating the value rotates the trusted CA. This applies when `imagesetDiscoveryAllowInsecureRegistry` is `false`.
+  jira: UPM-112167
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    `k8s` ingestion provider for the beacon agent
+  details: |
+    Add `k8s` to `spec.beaconAgent.providers` to ingest externally managed Postgres clusters running on Kubernetes, such as CloudNativePG or EDB Postgres for Kubernetes clusters, alongside the `appliance` provider that covers clusters Hybrid Manager created. The platform sample manifests set both.
+  jira: UPM-88581
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    Pinned NodePort for the HM Registry
+  details: |
+    Set `spec.nodePort` on the `HMRegistry` resource to a value between 30000 and 32767 to pin the port the in-cluster registry is exposed on, rather than letting Kubernetes assign one from the NodePort range. Leave it unset to keep the current behavior. The operator Helm chart does not expose this setting, so set it on the `HMRegistry` resource directly.
+  jira: UPM-119132
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    `marketplace` installation scenario
+  details: |
+    **Action required.** `spec.scenarios` accepts a new `marketplace` value, covering kapp-controller and the OSS Library apps it deploys. If your list already includes `ai`, `marketplace` is added for you as a dependency and there is nothing to do. An installation that lists only `core` and uses the OSS Library apps must add `marketplace` — once the operator is on 2.1 or later, and before bumping `spec.version` — or those apps are removed along with the data they hold.
+  jira: UPM-95967
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    Scenario dependencies are resolved automatically
+  details: |
+    When a scenario you list in `spec.scenarios` depends on another scenario at runtime, the operator adds the missing scenario and writes the expanded list back to the `HybridControlPlane`. Expect `spec.scenarios` to contain more entries than you applied, and read the resource back rather than assuming it matches your manifest.
+  jira: UPM-126266
+  addresses:
+  type: Change
+  impact: Medium
+
+- relnote: |
+    `status.phase` reflects a running upgrade job
+  details: |
+    While a pre-upgrade or post-upgrade job runs, the `HybridControlPlane` reports `deploying` instead of staying at `deployed`, and a failed upgrade job moves it to `failed` even when every deployed component is still healthy. Read `status.preUpgradeJobStatus` and `status.postUpgradeJobStatus` for the detail behind the phase.
+  jira: UPM-103807
+  addresses:
+  type: Change
+  impact: Medium
+
+- relnote: |
+    Preflight checks did not re-run after a scenario change
+  details: |
+    Changing `spec.scenarios` on the `HybridControlPlane` left the generated `Preflight` resource untouched, so secret requirements kept being validated against the previous scenario set. The scenario list is now mirrored onto `Preflight`, and the checks re-run when it changes.
+  jira: UPM-108688
+  addresses:
+  type: Bug Fix
+  impact: Medium
+
+- relnote: |
+    Postflight checks ignored `spec.interval` when the cluster was unhealthy
+  details: |
+    Once a postflight check failed, the whole check set re-ran continuously instead of waiting for the interval configured in `spec.interval` on the `Postflight` resource, adding API load to an already unhealthy cluster. The interval is now honored whatever the phase.
+  jira: UPM-96623
+  addresses:
+  type: Bug Fix
+  impact: Medium
+
+- relnote: |
+    DNS zone preflight check
+  details: |
+    Preflight now checks whether a DNS zone exists for the domain in the `portal_domain_name` global parameter. The check never fails: it records a warning when it finds no zone, which is expected on kind, MicroK8s, HM on VM, and bare metal installations.
+  jira: UPM-104332
+  addresses:
+  type: Enhancement
+  impact: Low
+
+- relnote: |
+    Azure KMS for transparent data encryption on AKS
+  details: |
+    You can list `azure_kms` in `spec.beaconAgent.transparentDataEncryptionMethods` so clusters provisioned on Azure Kubernetes Service use Azure key management for transparent data encryption. The AKS sample manifest now includes it alongside `passphrase` and `hashicorp_vault`.
+  jira: UPM-112131
+  addresses:
+  type: Enhancement
+  impact: Low
+
+- relnote: |
+    Faster preflight secret validation
+  details: |
+    The operator caches the compiled CEL programs behind preflight secret requirement rules instead of recompiling them on every reconcile, which reduces operator CPU use where a release defines many rules. No configuration change is needed.
+  jira: UPM-96636
+  addresses:
+  type: Enhancement
+  impact: Lowest
+
+- relnote: |
+    The operator file server index redirected to a path that did not exist
+  details: |
+    When the operator runs with `--start-file-server`, requesting `/hcp/` redirected to an absolute path with nothing behind it. It now redirects to `/hcp/files/`, which lists the served directory.
+  jira: UPM-96654
+  addresses:
+  type: Bug Fix
+  impact: Lowest

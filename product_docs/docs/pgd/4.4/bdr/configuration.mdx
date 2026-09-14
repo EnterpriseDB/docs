@@ -158,6 +158,10 @@ Unless noted otherwise, you can set the values at any time.
     TRUNCATE command's locking behavior. Determines whether (when true) TRUNCATE
     obeys the `bdr.ddl_locking` setting.
 
+-   `bdr.ddl_queue_retention_period` &mdash; Regularly deletes queued DDL rows in
+    [`bdr.queue`](catalogs#bdrqueue) beyond this age threshold, in minutes.
+    Default is `0` (disabled).
+
 ### Global locking
 
 -   `bdr.ddl_locking` &mdash; Described above.
@@ -178,6 +182,22 @@ Unless noted otherwise, you can set the values at any time.
     timeouts. In global lock terms, BDR checks that there are enough nodes
     connected and withing reasonable lag limit for getting quorum needed by the
     global lock.
+-   `bdr.lock_table_locking` &mdash; Sets locking behavior for the `LOCK TABLE`
+    statement (default is `off`). When enabled, `LOCK TABLE` also takes a
+    global DML lock on the cluster, blocking other locking statements.
+
+### BDR assessment checks
+
+These settings help identify statements that can behave unexpectedly under
+BDR's asynchronous multi-master replication. Each accepts `ignore` (the
+default, no assessment), `log`, `warning`, or `error`.
+
+-   `bdr.assess_lock_statement` &mdash; Assesses explicit `LOCK` statements,
+    and `SELECT ... FOR UPDATE`/`FOR SHARE` queries that perform writes,
+    issued on a BDR node.
+-   `bdr.assess_update_replica_identity` &mdash; Assesses updates that change
+    a row's replica identity (or primary key) columns, since this can affect
+    BDR's conflict detection and change identification.
 
 ### Node management
 
@@ -196,6 +216,11 @@ Unless noted otherwise, you can set the values at any time.
 
 -   `bdr.max_writers_per_subscription` &mdash; Maximum number of writers
     per subscription (sets upper limit for the setting above).
+
+-   `bdr.synchronous_commit` &mdash; Synchronous commit level used by a BDR
+    writer when applying transactions from remote nodes. Defaults to
+    `off`. See [Data persistence at receiver side](camo#data-persistence-at-receiver-side)
+    for details on when to use `local` with CAMO.
 
 -   `bdr.xact_replication` &mdash; Replicate current transaction (default is `on`).
 
@@ -382,6 +407,43 @@ and receivers don't have a writer ID.
     When set to `on`, the returned value represents the full representation of
     the CRDT value, which can, for example, include the state from multiple nodes.
 
+### AutoPartition
+
+-   `bdr.autopartition_nap_time` &mdash; Maximum sleep time, in milliseconds,
+    for the AutoPartition worker between checks. Default is 290 seconds.
+
+### Decoding worker
+
+-   `bdr.enable_wal_decoder` &mdash; Enables or disables the
+    [decoding worker](nodes#decoding-worker). Default is `off`.
+-   `bdr.receive_lcr` &mdash; When subscribing to another node, enables the
+    node to request the use of logical change records (LCRs) for the
+    subscription (default is `off`). When this setting is `on` for a
+    downstream node, the node requests that upstream nodes use LCRs when
+    sending to it. If you set `bdr.enable_wal_decoder` to `on` for a node,
+    also set this setting to `on`.
+-   `bdr.max_lcr_segment_file_size` &mdash; Maximum size of a logical change
+    record (LCR) segment file. Default is 1 GB.
+-   `bdr.lcr_cleanup_interval` &mdash; Minimum time interval between two LCR
+    cleanup attempts. Default is 3 minutes. A value of `0` turns off LCR
+    cleanup.
+
+### Failover slot synchronization
+
+These settings synchronize logical replication slots from a BDR node to a
+physical standby of that node, so the slots are already present and
+up to date if the standby is promoted.
+
+-   `bdr.synchronize_failover_slot_names` &mdash; Comma-separated list of
+    slots to synchronize from the primary to a physical standby. Defaults
+    to `plugin:bdr,plugin:pglogical_output`.
+-   `bdr.synchronize_failover_slots_drop` &mdash; Whether to drop extra slots
+    on a physical standby that don't match
+    `bdr.synchronize_failover_slot_names`. Default is `on`.
+-   `bdr.synchronize_failover_slots_dsn` &mdash; Connection string to the
+    primary server used for synchronizing logical slots on a standby. If
+    empty (the default), uses `primary_conninfo`.
+
 ### Max prepared transactions
 
 -   `max_prepared_transactions` &mdash; Needs to be set high enough to cope
@@ -452,7 +514,7 @@ and receivers don't have a writer ID.
 -   `bdr.lag_control_commit_delay_adjust` &mdash; Commit delay micro adjustment measured as a
     fraction of the maximum commit delay time. At a default value of 0.01%, it takes
     100 net increments to reach the maximum commit delay.
--   `bdr.lag_control_sample_interval` &mdash; Minimum time between lag samples and
+-   `bdr.lag_control_lag_sample_interval` &mdash; Minimum time between lag samples and
     commit delay micro adjustments, in milliseconds.
 -   `bdr.lag_control_commit_delay_start` &mdash; The lag threshold at which commit delay
     increments start to be applied, expressed as a fraction of acceptable lag measures.
@@ -473,7 +535,7 @@ and receivers don't have a writer ID.
 ### Monitoring and logging
 
 -   `bdr.debug_level` &mdash; Defines the log level that BDR uses to write
-    its debug messages. The default value is `debug2`. If you want to see
+    its debug messages. The default value is `debug3`. If you want to see
     detailed BDR debug output, set `bdr.debug_level = 'log'`.
 
 -   `bdr.trace_level` &mdash; Similar to the above, this defines the log level
@@ -507,6 +569,14 @@ and receivers don't have a writer ID.
 -   `bdr.raft_response_timeout` &mdash; To account for network failures, the
     Raft consensus protocol implemented times out requests after a
     certain amount of time. This timeout defaults to 30 seconds.
+-   `bdr.raft_election_timeout` &mdash; Election timeout for the Raft consensus
+    mechanism, referenced when using `bdr.raft_leadership_transfer()`.
+    Default value is 6 seconds.
+-   `bdr.raft_vacuum_interval` &mdash; Maximum delay between checks for
+    vacuum of Raft catalogs. Default value is 5 minutes.
+-   `bdr.raft_vacuum_full_interval` &mdash; Maximum delay between automatic
+    `VACUUM FULL` of Raft catalogs. Default value is 1 day. A value of
+    `-1` disables automatic vacuum full.
 -   `bdr.raft_log_min_apply_duration` &mdash; To move the state machine
     forward, Raft appends entries to its internal log. During normal
     operation, appending takes only a few milliseconds. This poses an
@@ -537,3 +607,8 @@ and receivers don't have a writer ID.
     average of the apply rates for the lag tracking. This parameter specifies
     how much contribution newer calculated values have in this moving average
     calculation. Default value is 0.1.
+-   `bdr.shuffle_scheduled_tasks` &mdash; Toggles between scheduling and running
+    scheduled background tasks in scan order or in random order. Default is
+    `on`. You can set this only at Postgres server start.
+-   `bdr.temp_directory` &mdash; Directory used to store dumps for local restore.
+    Defaults to the system temporary directory.

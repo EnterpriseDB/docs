@@ -1,0 +1,109 @@
+---
+title: Upgrading from 1.4.2 to 1.4.3
+navTitle: 1.4.2 to 1.4.3
+description: Follow the step-by-step procedures for upgrading from HM 1.4.2 to HM 1.4.3.
+deepToC: true
+---
+
+> **Role:** Infrastructure engineer
+
+## Prerequisites
+
+- Administrative access to the Kubernetes cluster.
+- Required tools:
+    - `helm` (latest version recommended)
+    - `kubectl`
+    - [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI — see the [edbctl compatibility matrix](/edbctl/latest/compatibility_matrix/) for the supported version.
+
+## Upgrade 1.4.2 → 1.4.3
+
+### Create new secrets
+
+Before upgrading, create the new secrets required for this release:
+
+```shell
+edbctl hm create-install-secrets --version v1.4.3
+```
+
+For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
+
+### Upgrade the operator
+
+!!!Note Red Hat OpenShift
+On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
+!!!
+
+The commands below use `edb-hcp-operator-system` — use the namespace where your operator is actually installed. If you migrated from the bootstrap method, the conversion transfers Helm ownership onto `edbpgai-bootstrap`, so use that namespace instead.
+
+Upgrade the `edb-hcp-operator` Helm chart using `edbctl`:
+
+```shell
+edbctl hm upgrade-operator \
+  --release-name edb-hcp-operator \
+  --namespace edb-hcp-operator-system \
+  --registry-uri docker.enterprisedb.com/pgai-platform \
+  --registry-username pgai-platform \
+  --registry-password <password>
+```
+
+Or upgrade directly with Helm:
+
+!!!note
+`<OPERATOR_VERSION>` refers to the operator chart version, which follows its own `2.x` versioning scheme and is separate from the HM version (`1.4.3`). HM 1.4.3 requires operator version `2.1`. See the [HM 1.4.3 release notes](/edb-postgres-ai/1.4/hybrid-manager/release_notes/) for details.
+!!!
+
+1. Create the values file:
+
+    ```shell
+    cat <<EOF > edb-hcp-operator.values.yaml
+    controllerManager:
+      manager:
+        image:
+          repository: docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager
+          tag: <OPERATOR_VERSION>
+    imagePullSecrets:
+      - name: edb-cred
+    EOF
+    ```
+
+1. Run the upgrade:
+
+    ```shell
+    helm upgrade --install \
+      --version <OPERATOR_VERSION> \
+      --values edb-hcp-operator.values.yaml \
+      -n edb-hcp-operator-system \
+      edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
+    ```
+
+### Migrate a customized Velero backup schedule
+
+Starting in HM 1.4.3, the Velero backup schedule configuration moves from the `upm-velero` component to `upm-velero-config`.
+
+If you set `schedule` under `spec.componentsParameters.upm-velero` in your `HybridControlPlane` manifest, move that value to `upm-velero-config` before you upgrade.
+
+!!!warning
+Velero no longer reads a value left under `upm-velero` on HM 1.4.3 and later. If you don't move a customized schedule to `upm-velero-config`, it reverts to the default `0 23 * * *`.
+!!!
+
+If you haven't customized the backup schedule, no action is needed. For details, see [Changing the default backup schedule](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/#changing-the-default-backup-schedule).
+
+### Upgrade Hybrid Manager
+
+1. Update `spec.version` to `v1.4.3` in your `HybridControlPlane` manifest and apply it:
+
+    ```shell
+    kubectl apply -f hybridmanager.yaml
+    ```
+
+1. Trigger the upgrade:
+
+    ```shell
+    kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+    ```
+
+1. Monitor progress:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -w
+    ```

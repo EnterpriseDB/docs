@@ -18,22 +18,17 @@ Data anonymization is the process of altering personal data so that individuals 
 
 Refer to [Downloading and installing an extension](./#downloading-and-installing-an-extension) for installation and setup instructions.
 
-Once installed, you must load the whpg-anonymizer extension as a shared library before you can use it within your databases.
+Once installed, you must preload the whpg-anonymizer extension before you can use it within a database. Setting `shared_preload_libraries` isn't required. Set `session_preload_libraries` for the target database instead:
 
-1.  Load the extension as a shared library before you can use it within your databases. Check for existing shared libraries:
+1.  Set `session_preload_libraries` for the database:
 
-    ```bash
-    gpconfig -s shared_preload_libraries
+    ```sql
+    ALTER DATABASE db_name SET session_preload_libraries = 'anon';
     ```
 
-2.  Use the output of the previous command to enable the new extension, along any other shared libraries, and restart WHPG:
+    Reconnect to the database for the change to take effect.
 
-    ```bash
-    gpconfig -c shared_preload_libraries -v '<other_libraries>, anon'
-    gpstop -ar
-    ```
-
-3.  Create the extension in your database and initialize it:
+1.  Create the extension in your database and initialize it:
 
     ```sql
     CREATE EXTENSION anon;
@@ -44,13 +39,7 @@ Once installed, you must load the whpg-anonymizer extension as a shared library 
 
 To implement data masking or anonymization in WarehousePG, follow these steps:
 
-1.  **Start the masking engine:** Dynamic masking isn't active by default to prevent performance overhead on administrative tasks. Explicitly enable the dynamic masking engine for the current session or database:
-
-    ```sql
-    SELECT anon.start_dynamic_masking();
-    ```
-
-2.  **Define the masking policies:** Use `SECURITY LABEL` statements to map specific columns to masking static values or functions.
+1.  **Define the masking policies:** Use `SECURITY LABEL` statements to map specific columns to masking static values or functions.
 
     -   **Static value masking:** This method replaces every row in a column with the exact same string.
         ```SQL
@@ -64,13 +53,19 @@ To implement data masking or anonymization in WarehousePG, follow these steps:
         IS 'MASKED WITH FUNCTION <function_name>(<column_name>)';
         ```
 
-3.  **Assign subject roles:** Identify the database roles that must see masked data and label them as `MASKED`.
+1.  **Assign subject roles:** Identify the database roles that must see masked data and label them as `MASKED`.
 
     ```sql
     SECURITY LABEL FOR anon ON ROLE <role_name> IS 'MASKED';
     ```
 
-4.  **Remove or update policies:** If you need to change a rule or stop masking a specific column, use the `NULL` label or drop the rule.
+1.  **Start the masking engine:** Dynamic masking isn't active by default to prevent performance overhead on administrative tasks. Explicitly enable the dynamic masking engine for the current session or database after defining the masking policies and assigning subject roles:
+
+    ```sql
+    SELECT anon.start_dynamic_masking();
+    ```
+
+1.  **Remove or update policies:** If you need to change a rule or stop masking a specific column, use the `NULL` label or drop the rule.
 
     ```sql
     -- Remove a masking rule from a column
@@ -84,13 +79,7 @@ To implement data masking or anonymization in WarehousePG, follow these steps:
 
 The following example demonstrates how to conceal employee phone numbers and names from a specific user.
 
-1.  Enable the dynamic masking engine:
-
-    ```sql
-    SELECT anon.start_dynamic_masking();
-    ```
-
-2.  Create a sample table and populate it with sensitive data:
+1.  Create a sample table and populate it with sensitive data:
 
     ```sql
     CREATE TABLE employees (
@@ -105,26 +94,32 @@ The following example demonstrates how to conceal employee phone numbers and nam
     ('Bob', '13987654321', 18000);
     ```
 
-3.  Apply a static string rule, which masks names with a static string:
+1.  Apply a static string rule, which masks names with a static string:
 
     ```sql
     SECURITY LABEL FOR anon ON COLUMN employees.name 
     IS 'MASKED WITH VALUE $$CONFIDENTIAL$$';
     ```
 
-4.  Apply a functional masking rule, which masks phone numbers using a partial MD5 hash:
+1.  Apply a functional masking rule, which masks phone numbers using a partial MD5 hash:
 
     ```sql
     SECURITY LABEL FOR anon ON COLUMN employees.phone 
     IS 'MASKED WITH FUNCTION pg_catalog.substring(pg_catalog.md5(phone),0,12)';
     ```
 
-5.  Assign the `MASKED` label to the `analyst` role:
+1.  Assign the `MASKED` label to the `analyst` role:
 
     ```sql
     CREATE ROLE analyst LOGIN;
     GRANT SELECT ON employees TO analyst;
     SECURITY LABEL FOR anon ON ROLE analyst IS 'MASKED';
+    ```
+
+1.  Enable the dynamic masking engine:
+
+    ```sql
+    SELECT anon.start_dynamic_masking();
     ```
 
 
