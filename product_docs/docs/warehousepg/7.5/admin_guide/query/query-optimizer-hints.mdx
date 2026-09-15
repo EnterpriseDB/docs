@@ -1,0 +1,215 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: Using Optimizer Hints
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/whpg/7x/admin_guide/query/query-optimizer-hints.md
+editTarget: originalFilePath
+
+---
+
+Override a specific choice the planner makes for a query, such as which scan method, join method, or join order to use, with an optimizer hint. WarehousePG reads hints through the [`pg_hint_plan`](../../ref_guide/modules/bundled/pg_hint_plan.mdx) extension, placed in a SQL comment before the query.
+
+Reach for a hint when the cost-based planner settles on a needlessly expensive plan, for example because table statistics are missing or stale. A hint corrects the plan for that one query, without changing a configuration parameter for the whole system.
+
+!!!info Note
+
+Scan method, join method, join order, and row-estimate hints all influence the plan whether ORCA or the Postgres-based planner runs the query. You don't need to disable ORCA for these hints to take effect.
+!!!
+
+See [About ORCA](query-piv-optimizer) for the two optimizers WarehousePG can use, and [Determining the Query Optimizer that is Used](query-piv-optimizer/query-piv-opt-fallback.mdx) if you need to confirm which one generated a plan. See [pg_hint_plan](../../ref_guide/modules/bundled/pg_hint_plan.mdx) for how to load the extension and the configuration parameters that control it.
+
+## Finding what to hint
+
+Run `EXPLAIN ANALYZE` on the slow query before writing a hint. Unlike plain `EXPLAIN`, it runs the query and reports two numbers at every plan node, what the planner estimated and what actually happened, so you can spot the node where the two diverge, for example a join the planner estimated at 10 rows that actually produced 500,000. Every choice the planner made downstream of that node, join method, join order, whether to broadcast or redistribute, was made using the wrong number.
+
+Fix the underlying cause first when you can. Run `ANALYZE` if statistics are stale, raise [`default_statistics_target`](../../ref_guide/config_params/guc-list.mdx#default_statistics_target) for a column more skewed than the default sampling catches, or rewrite the query to give the planner less to misjudge. A hint only patches the one query text you attach it to, not every future query against the same data, so it doesn't replace fixing the statistics or the query.
+
+Reach for a hint when you can't fix the cause right away. Start with `Rows` when the planner's estimate itself is off, since it corrects the input to the planner's own cost model instead of overriding its conclusion, letting the planner re-derive scan and join choices downstream with the corrected number. Forcing a specific scan or join method with a hint is an empirical call rather than a guess. Test it against the planner's own plan on the real data, and keep the hint only if it measurably runs faster.
+
+A hint fixed for today's data isn't guaranteed to stay right as the data grows or changes, so revisit it periodically rather than treating it as permanent.
+
+## Attaching a hint to a query
+
+Attach a hint to a query as a comment in the query text, or, when you can't edit the query text, as a row in a table `pg_hint_plan` reads at plan time.
+
+### Loading the extension
+
+Load `pg_hint_plan` before writing a hint. See [Loading the extension](../../ref_guide/modules/bundled/pg_hint_plan.mdx#loading-the-extension) for how to load it in a session, or configure it to load automatically for a database or user.
+
+### Writing a hint comment
+
+Write a hint as a SQL comment that starts with `/*+`, ends with `*/`, and sits immediately before the query it applies to. It's a directive you write for the planner, not a suggestion `pg_hint_plan` generates for you. Without a hint, the planner picks its own plan for the query:
+
+```
+LOAD 'pg_hint_plan';
+
+EXPLAIN SELECT *
+   FROM orders JOIN customers ON orders.customer_id = customers.customer_id;
+__OUTPUT__
+Nested Loop
+  ->  Index Scan using customers_pkey on customers
+  ->  Index Scan using orders_customer_id_idx on orders
+        Index Cond: (customer_id = customers.customer_id)
+Optimizer: GPORCA
+```
+
+Add a hint comment before the same query to override that choice. This example combines two hint phrases in one comment, forcing a hash join between `orders` and `customers` and a sequential scan of `orders`:
+
+```
+/*+
+    HashJoin(orders customers)
+    SeqScan(orders)
+*/
+EXPLAIN SELECT *
+   FROM orders JOIN customers ON orders.customer_id = customers.customer_id;
+__OUTPUT__
+Hash Join
+  Hash Cond: (orders.customer_id = customers.customer_id)
+  ->  Seq Scan on orders
+  ->  Hash
+        ->  ... scan of customers ...
+Optimizer: GPORCA
+```
+
+Both hints take effect under WarehousePG's default optimizer. `orders` is scanned sequentially instead of through an index, and the two tables are joined with a hash join instead of the nested loop the planner picks unhinted. `pg_hint_plan` identifies a table by its alias if the query uses one, and reads only the first comment block in a statement, so a hint placed anywhere else in the query text is ignored.
+
+### Storing hints in a table
+
+Insert a hint into the `hint_plan.hints` table when you can't add a comment to a query issued by an application, ORM, or BI tool you don't control. `pg_hint_plan` matches each incoming query against the table and applies a stored hint the same way it applies one written as a comment. Storing hints this way requires registering the extension and turning on `pg_hint_plan.enable_hint_table`:
+
+```sql
+CREATE EXTENSION pg_hint_plan;
+SET pg_hint_plan.enable_hint_table = on;
+```
+
+`CREATE EXTENSION` creates the `hint_plan.hints` table:
+
+| Column              | Description                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| `id`                | Unique identifier, filled automatically.                                                              |
+| `norm_query_string` | The query to match, with each constant replaced by `?`. Whitespace is significant.                    |
+| `application_name`  | Restricts the hint to sessions with this `application_name`. An empty string matches any application. |
+| `hints`             | The hint phrases to apply, without the surrounding comment markers.                                   |
+
+Manually insert a row for each query you want to hint this way. `pg_hint_plan` only reads the table, and never writes to it. For example, this row forces a sequential scan on `orders` every time the given query runs, no matter what `order_id` is:
+
+```sql
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+VALUES (
+    'EXPLAIN (COSTS false) SELECT * FROM orders WHERE order_id = ?;',
+    '',
+    'SeqScan(orders)'
+);
+```
+
+A hint stored in the table takes priority over a hint in a comment for the same query.
+
+## Choosing a hint type
+
+Pick the hint type that matches the plan choice you want to override, scan or join method, join order, row estimate, or a configuration parameter. `pg_hint_plan` doesn't include a hint for data motion (redistribute, broadcast, or gather) between segments, only for the local scan and join operations that make up a query's plan.
+
+### Controlling scan and join methods
+
+Force a specific access method for a table with a scan method hint. Scan method hints apply to ordinary tables, inheritance tables, unlogged tables, temporary tables, and system catalogs, but not to foreign tables, table functions, `VALUES` lists, or subqueries. Under the Postgres-based planner, a scan hint doesn't reach a table nested inside a CTE or view either, but under ORCA it does.
+
+| Hint                                                                                                          | Forces                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `SeqScan(table)`                                                                                              | A sequential scan.                                                                                            |
+| `TidScan(table)`                                                                                              | A TID scan.                                                                                                   |
+| `IndexScan(table [index...])`                                                                                 | An index scan, restricted to the listed indexes if given.                                                     |
+| `IndexOnlyScan(table [index...])`                                                                             | An index-only scan, falling back to an index scan if an index-only scan isn't possible.                       |
+| `BitmapScan(table [index...])`                                                                                | A bitmap index scan, restricted to the listed indexes if given.                                               |
+| `IndexScanRegexp` / `IndexOnlyScanRegexp` / `BitmapScanRegexp(table [regexp...])`                             | The same as the corresponding scan hint, restricted to indexes whose name matches a POSIX regular expression. |
+| `NoSeqScan(table)`, `NoTidScan(table)`, `NoIndexScan(table)`, `NoIndexOnlyScan(table)`, `NoBitmapScan(table)` | Excludes the named scan method as a candidate.                                                                |
+
+Stacking more than one `No*Scan` hint on the same table logs a `Conflict scan method hint` warning, but `pg_hint_plan` still merges and applies all the listed exclusions.
+
+!!!warning Important
+
+ORCA doesn't support `TidScan`, `NoTidScan`, `IndexScanRegexp`, `IndexOnlyScanRegexp`, or `BitmapScanRegexp`. A query hinted with one of these returns `Unsupported plan hint` and falls back to the Postgres-based planner. `IndexScan` doesn't apply to an append-optimized table under ORCA either.
+!!!
+
+Force the join operator used for a set of tables with a join method hint. Join method hints apply to ordinary tables, inheritance tables, unlogged tables, temporary tables, foreign tables, system catalogs, table functions, `VALUES` results, and CTEs, but joins against views or subqueries aren't affected.
+
+| Hint                                                         | Forces                                         |
+| ------------------------------------------------------------ | ---------------------------------------------- |
+| `NestLoop(table table [...])`                                | A nested loop join across the listed tables.   |
+| `HashJoin(table table [...])`                                | A hash join across the listed tables.          |
+| `MergeJoin(table table [...])`                               | A merge join across the listed tables.         |
+| `NoNestLoop`, `NoHashJoin`, `NoMergeJoin(table table [...])` | Excludes the named join method as a candidate. |
+
+```sql
+/*+ SeqScan(orders) IndexScan(customers customers_pkey) */
+EXPLAIN SELECT *
+   FROM orders JOIN customers ON orders.customer_id = customers.customer_id;
+
+/*+ HashJoin(orders customers) */
+EXPLAIN SELECT *
+   FROM orders JOIN customers ON orders.customer_id = customers.customer_id;
+```
+
+### Setting join order
+
+Fix the join order for a set of tables with the `Leading` hint. List the tables to fix only the order, letting the planner pick the direction at each step, or nest them in parentheses to fix the direction too:
+
+```sql
+/*+ Leading(orders customers line_items) */
+SELECT * FROM orders
+   JOIN customers ON orders.customer_id = customers.customer_id
+   JOIN line_items ON orders.order_id = line_items.order_id;
+
+/*+ Leading((orders customers) line_items) */
+SELECT * FROM orders
+   JOIN customers ON orders.customer_id = customers.customer_id
+   JOIN line_items ON orders.order_id = line_items.order_id;
+```
+
+### Correcting row estimates
+
+Correct the planner's row estimate for a join with the `Rows` hint. Reach for it when the planner misjudges the number of rows a join produces and, as a result, picks a broadcast instead of a cheaper redistribute, or a merge join instead of a cheaper hash join:
+
+```sql
+/*+ Rows(orders line_items #1000) */   -- sets the estimate to 1000 rows
+/*+ Rows(orders line_items +1000) */   -- adds 1000 rows to the estimate
+/*+ Rows(orders line_items -1000) */   -- subtracts 1000 rows from the estimate
+/*+ Rows(orders line_items *10) */     -- multiplies the estimate by 10
+```
+
+### Setting configuration parameters from a hint
+
+Change a configuration parameter for the duration of planning only with the `Set` hint, useful for parameters that influence the planner's choices. Under ORCA, use one of the `optimizer_enable_*` parameters, since a Postgres-based-planner-only parameter such as `random_page_cost` has no effect there:
+
+```sql
+/*+ Set(optimizer_enable_hashjoin off) */
+SELECT * FROM orders JOIN customers ON orders.customer_id = customers.customer_id;
+```
+
+A configuration parameter set elsewhere can override a conflicting hint. For example, `SET optimizer_enable_indexscan = off;` overrides an `IndexScan` hint. Keep configuration parameters and hints aligned to avoid this conflict.
+
+## Confirming hint use
+
+Set `pg_hint_plan.debug_print` and `client_min_messages` to log which hints `pg_hint_plan` applied to a query, and which it didn't. The planner falls back to its own plan when a hint's target isn't executable, and drops any hint text it can't parse, both without raising an error, so this log is the only way to tell a silently ignored hint from one that worked:
+
+```sql
+SET pg_hint_plan.debug_print = on;
+SET client_min_messages = 'log';
+
+/*+ SeqScan(orders) IndexScan(customers) */
+EXPLAIN (COSTS false) SELECT * FROM orders, customers WHERE orders.customer_id = customers.customer_id;
+```
+
+The log entry lists the used, unused, duplicated, and errored hints separately, which makes it easier to tell a hint that had no effect from one that was never parsed.
+
+## Limitations
+
+-   Scan hints don't apply to foreign tables, table functions, `VALUES` lists, or subqueries. See [Controlling scan and join methods](#controlling-scan-and-join-methods) for what join hints reach instead.
+-   A hint can't target a view directly, but it can affect the tables inside one if their aliases in the expanded query match the hint's parameters.
+-   Object names in a hint are matched case-sensitively, and multiple occurrences of the same table in a query need distinct aliases.
+-   Inside PL/pgSQL, hints apply only to certain statement forms, and `pg_stat_statements` can't distinguish a hinted query from an otherwise identical unhinted one.
