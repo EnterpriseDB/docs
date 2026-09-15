@@ -350,6 +350,28 @@ A catalog view that stores user-defined information on network costs between nod
 | node_location2  | text    | Node location name, from bdr.node_location |
 | network_cost    | numeric | Node location name, from bdr.node_location |
 
+### `bdr.network_monitoring`
+
+A view that joins `bdr.network_path_info` with `bdr.node_location` to
+resolve node region/location pairs to actual node names, adding the
+configured warning and alarm thresholds for network cost between two
+nodes. Set by `bdr.set_network_path_info()`.
+
+#### `bdr.network_monitoring` columns
+
+| Name               | Type    | Description                                            |
+| ------------------ | ------- | -------------------------------------------------------- |
+| node_group_name    | name    | Name of the BDR group                                     |
+| node1              | name    | Name of the first node                                    |
+| node1_location     | text    | Location of the first node                                 |
+| node1_region       | text    | Region of the first node                                   |
+| node2              | name    | Name of the second node                                    |
+| node2_location     | text    | Location of the second node                                |
+| node2_region       | text    | Region of the second node                                   |
+| network_cost       | numeric | Configured network cost between the two nodes               |
+| warning_threshold  | numeric | Network cost above which a warning is raised                |
+| alarm_threshold    | numeric | Network cost above which an alarm is raised                 |
+
 ### `bdr.node`
 
 This table lists all the BDR nodes in the cluster.
@@ -367,8 +389,10 @@ This table lists all the BDR nodes in the cluster.
 | target_state          | oid    | State that the node is trying to reach (during join or promotion)           |
 | seq_id                | int4   | Sequence identifier of the node used for generating unique sequence numbers |
 | dbname                | name   | Database name of the node                                                   |
-| node_dsn              | char   | Connection string for the node                                              |
+| node_dsn              | text   | Connection string for the node                                              |
 | proto_version_ranges  | int\[] | Supported protocol version ranges by the node                               |
+| generation            | int2   | Internal generation counter for the node's catalog state                    |
+| node_kind             | oid    | Kind of the node, as set by `bdr.create_node_group()` or `bdr.alter_node_kind()` |
 | node_uuid             | uuid   | Globally unique identifier for each BDR node                                |
 
 ### `bdr.node_catchup_info`
@@ -503,6 +527,28 @@ purposes. See also [Monitoring](/pgd/4.4/monitoring).
 | peer_replay_time        | timestamptz | Latest replay time of peer seen by the reporting node                                |
 | last_update_horizon_xid | oid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
 | last_update_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
+
+### `bdr.xid_peer_progress`
+
+Records, per transaction of interest (for example, one executing DDL),
+the progress that transaction has made on peer nodes. This backs
+`bdr.wait_for_xid_progress()`. When a node runs such a transaction, it
+stores information about it here, then reports the transaction's status
+to all other nodes over a `node_peer_progress` Raft message; when it
+receives a report from another node, it records that information here
+too, with `peer_node_id`, `peer_apply_xid`, and `peer_apply_lsn` set to
+the peer's values.
+
+#### `bdr.xid_peer_progress` columns
+
+| Name               | Type   | Description                                                  |
+| ------------------ | ------ | -------------------------------------------------------------- |
+| origin_node_id     | oid    | ID of the node where the transaction originated                |
+| origin_node_topxid | xid    | Top-level transaction ID on the originating node                |
+| origin_node_lsn    | pg_lsn | LSN of the transaction on the originating node                  |
+| peer_node_id       | oid    | ID of the peer node this progress report is about               |
+| peer_apply_xid     | xid    | Transaction ID as applied on the peer node                       |
+| peer_apply_lsn     | pg_lsn | LSN as applied on the peer node                                  |
 
 ### `bdr.node_pre_commit`
 
@@ -886,7 +932,7 @@ node and their modes.
 | num_writers       | int      | Number of writer processes this subscription uses                                |
 | streaming_mode    | char     | Streaming configuration for the subscription                                     |
 | replication_sets  | text\[]  | Replication sets replicated by this subscription (NULL = all)                    |
-| forward_origin    | text\[]  | Origins forwarded by this subscription (NULL = all)                              |
+| forward_origins   | text\[]  | Origins forwarded by this subscription (NULL = all)                              |
 
 ### `bdr.subscription_summary`
 
@@ -1179,6 +1225,135 @@ The status of the work items for locally managed tables.
 | ap_wi_started_at  | timestamptz | The start timestamptz of work item                                                 |
 | ap_wi_finished_at | timestamptz | The end timestamptz of work item                                                   |
 
+### `bdr.autopartition_rules`
+
+Stores the AutoPartition rule configured for each table, as set by
+`bdr.autopartition()`. We recommend using the [scaling](scaling) functions
+to inspect and manage AutoPartition configuration rather than querying
+this table directly.
+
+#### `bdr.autopartition_rules` columns
+
+| Column                          | Type      | Description                                                             |
+| -------------------------------- | --------- | ------------------------------------------------------------------------ |
+| ap_partition_relid                | oid       | OID of the table being partitioned                                       |
+| ap_partition_relname              | name      | Name of the table being partitioned                                      |
+| ap_partition_schemaname           | name      | Schema of the table being partitioned                                    |
+| ap_partition_increment_kind       | "char"    | Kind of the partition increment (time-based or numeric)                  |
+| ap_secondary_tablespace           | oid       | Secondary tablespace used for older partitions, if configured            |
+| ap_minimum_advance_partitions     | integer   | Configured minimum number of partitions to precreate                     |
+| ap_maximum_advance_partitions     | integer   | Configured maximum number of partitions to precreate                     |
+| ap_is_autoscaled                  | boolean   | Whether the partition increment is automatically scaled                  |
+| ap_latest_partitions              | integer   | Number of most-recent partitions currently precreated                    |
+| ap_enabled                        | boolean   | Whether AutoPartition is currently enabled for this table                |
+| ap_migrate_after_period           | interval  | Configured data migration period, if any                                 |
+| ap_data_retention_period          | interval  | Configured data retention period, if any                                 |
+| ap_last_triggered                 | timestamptz | Last time the AutoPartition worker acted on this rule                  |
+| ap_partition_increment_value       | text      | Configured partition increment                                           |
+| ap_partition_autocreate_expr      | text      | Expression used to compute the value to partition on                     |
+| ap_partition_initial_lowerbound   | text      | Configured initial lower bound for partitioning                          |
+| ap_partition_last_upperbound      | text      | Upper bound of the most recently created partition                       |
+| ap_is_local                       | boolean   | Whether the table is managed locally rather than cluster-wide            |
+| ap_partition_min_upperbound       | text      | Minimum upper bound to use when creating new partitions                  |
+
+### `bdr.autopartition_partitions`
+
+Records the partitions created by AutoPartition for each managed table.
+
+#### `bdr.autopartition_partitions` columns
+
+| Column              | Type        | Description                                    |
+| ------------------- | ----------- | ----------------------------------------------- |
+| ap_parent_relid      | oid         | OID of the parent (partitioned) table            |
+| ap_part_relname      | name        | Name of the created partition                    |
+| ap_part_created_at   | timestamptz | When the partition was created                   |
+| ap_part_migrated_at  | timestamptz | When the partition was migrated, if applicable   |
+| ap_part_dropped_at   | timestamptz | When the partition was dropped, if applicable    |
+
+### `bdr.autopartition_work_queue_global_status`
+
+A view showing the status, across the whole cluster, of every AutoPartition
+work item queued in `bdr.autopartition_work_queue`. See
+[Check AutoPartition workers](scaling#check-autopartition-workers).
+
+#### `bdr.autopartition_work_queue_global_status` columns
+
+| Column    | Type   | Description                                    |
+| --------- | ------ | ----------------------------------------------- |
+| workid    | bigint | ID of the work item                             |
+| relname   | text   | Schema-qualified name of the relation           |
+| partition | name   | Name of the partition the work item acts on     |
+| workkind  | "char" | Kind of work (create, migrate, drop, or alter)  |
+| sql       | text   | SQL statement for the work item                 |
+| status    | text   | Work item status, as returned by `bdr.autopartition_work_queue_check_status()` |
+
+### `bdr.autopartition_work_queue_local_status`
+
+Like `bdr.autopartition_work_queue_global_status`, but restricted to the
+work item's status on the local node. See
+[Check AutoPartition workers](scaling#check-autopartition-workers).
+
+#### `bdr.autopartition_work_queue_local_status` columns
+
+| Column    | Type   | Description                                    |
+| --------- | ------ | ----------------------------------------------- |
+| workid    | bigint | ID of the work item                             |
+| relname   | text   | Schema-qualified name of the relation           |
+| partition | name   | Name of the partition the work item acts on     |
+| workkind  | "char" | Kind of work (create, migrate, drop, or alter)  |
+| sql       | text   | SQL statement for the work item                 |
+| status    | "char" | Local work item status from `bdr.autopartition_workitem_status` |
+
+### `bdr.autopartition_work_queue_globally_finished`
+
+A view listing only the AutoPartition work items that have finished on all
+nodes in the cluster.
+
+#### `bdr.autopartition_work_queue_globally_finished` columns
+
+| Column    | Type   | Description                                    |
+| --------- | ------ | ----------------------------------------------- |
+| workid    | bigint | ID of the work item                             |
+| relname   | text   | Schema-qualified name of the relation           |
+| partition | name   | Name of the partition the work item acted on    |
+| workkind  | "char" | Kind of work (create, migrate, drop, or alter)  |
+| sql       | text   | SQL statement for the work item                 |
+| status    | text   | Always `finished`                               |
+
+### `bdr.autopartition_work_queue_locally_finished`
+
+A view listing only the AutoPartition work items that have finished on the
+local node.
+
+#### `bdr.autopartition_work_queue_locally_finished` columns
+
+| Column      | Type        | Description                                    |
+| ----------- | ----------- | ----------------------------------------------- |
+| workid      | bigint      | ID of the work item                             |
+| relname     | text        | Schema-qualified name of the relation           |
+| partition   | name        | Name of the partition the work item acted on    |
+| workkind    | "char"      | Kind of work (create, migrate, drop, or alter)  |
+| sql         | text        | SQL statement for the work item                 |
+| status      | "char"      | Local work item status (always complete, 'c')   |
+| started_at  | timestamptz | When the work item started on this node         |
+| finished_at | timestamptz | When the work item finished on this node        |
+
+### `bdr.autopartition_local_work_queue_status`
+
+Like `bdr.autopartition_work_queue_local_status`, but for locally managed
+tables tracked in `bdr.autopartition_local_work_queue`.
+
+#### `bdr.autopartition_local_work_queue_status` columns
+
+| Column    | Type   | Description                                    |
+| --------- | ------ | ----------------------------------------------- |
+| workid    | bigint | ID of the work item                             |
+| relname   | text   | Schema-qualified name of the relation           |
+| partition | name   | Name of the partition the work item acts on     |
+| workkind  | "char" | Kind of work (create, migrate, drop, or alter)  |
+| sql       | text   | SQL statement for the work item                 |
+| status    | "char" | Local work item status from `bdr.autopartition_local_workitem_status` |
+
 ### `bdr.group_camo_details`
 
 Uses `bdr.run_on_all_nodes` to gather CAMO-related information from all nodes.
@@ -1227,7 +1402,7 @@ Catalog storing all possible commit scopes that you can use for
 | commit_scope_id                | oid  | ID of the scope to be referenced         |
 | commit_scope_name              | name | Name of the scope to be referenced       |
 | commit_scope_origin_node_group | oid  | Node group for which the rule applies, referenced by ID |
-| sync_scope_rule                | text | Definition of the scope                  |
+| commit_scope_rule              | text | Definition of the scope                  |
 
 ### `bdr.group_raft_details`
 
@@ -1246,6 +1421,17 @@ Uses `bdr.run_on_all_nodes` to gather Raft Consensus status from all nodes.
 | nodes            | int  | Number of nodes accessible     |
 | voting_nodes     | int  | Number of nodes voting         |
 | protocol_version | int  | Protocol version for this node |
+
+### `bdr.raft_instances`
+
+Maps each top-level BDR node group to its Raft consensus instance.
+
+#### `bdr.raft_instances` columns
+
+| Name          | Type | Description                                          |
+| ------------- | ---- | ----------------------------------------------------- |
+| instance_id   | int  | Identifier of the Raft instance (currently always 1)  |
+| node_group_id | oid  | ID of the top-level node group using this instance    |
 
 ### `bdr.group_replslots_details`
 

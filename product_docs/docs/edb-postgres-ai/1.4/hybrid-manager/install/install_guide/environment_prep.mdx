@@ -33,7 +33,7 @@ redirects:
 **Professional Services** can be engaged via a Statement of Work (SoW), and **Support** can offer assistance through knowledge base articles.
 !!!
 
-**Next phase:** Phase 5: [Install Hybrid Manager](./install_hm)
+**Next phase:** Phase 5: [Install Hybrid Manager](./installing/install_hm)
 
 ### Phase 4 guide
 
@@ -49,7 +49,7 @@ This involves:
 
 ### Create image pull secret
 
-Use `edbctl` to create the `ImagePullSecret`. Doing this gives your Kubernetes cluster access to the EDB registry to pull images required for the installation.
+Use [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI, to create the `ImagePullSecret`. Doing this gives your Kubernetes cluster access to the EDB registry to pull images required for the installation.
 
 ```shell
 edbctl image-pull-secret create
@@ -59,11 +59,13 @@ For more CLI options, see [edbctl image-pull-secret](/edbctl/latest/using/edbctl
 
 ### Create component secrets
 
-Use `edbctl` to create secrets required by all HM components (`core`, `ai`, `migration`, `analytics`).
+Use `edbctl` to create secrets required by all HM components (`core`, `ai`, `migration`, `analytics`). Pass the version of HM you are installing — `--version` is required.
 
 ```shell
-edbctl hybrid-manager create-install-secrets
+edbctl hybrid-manager create-install-secrets --version <version>
 ```
+
+To review what a version requires before creating anything, run [`list-install-secrets`](/edbctl/latest/using/edbctl_hybrid_manager/#edbctl-hybrid-manager-list-install-secrets) with the same `--version`.
 
 For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
 
@@ -201,7 +203,7 @@ This configuration references your **system requirements** from Phase 2 and the 
 
 Configure your Hybrid Manager installation as a `HybridControlPlane` Custom Resource, used with the `edb-hcp-operator` chart. It provides version management and Kubernetes-native resource handling.
 
--   [**SOP: Install with the Operator**](./install_hm#example-hybridcontrolplane-manifest) guide for a complete HybridControlPlane manifest template and field mapping reference.
+-   [**SOP: Install with the Operator**](./installing/install_hm#example-hybridcontrolplane-manifest) guide for a complete HybridControlPlane manifest template and field mapping reference.
 
 ## Validating the configuration file, secrets, LoadBalancer, and cluster readiness
 
@@ -220,7 +222,7 @@ kubectl apply --dry-run=client -f hybridmanager.yaml
 If this command completes without error, your manifest syntax is valid.
 
 !!!Note
-This dry-run resolves the `HybridControlPlane` kind through the cluster's API discovery, so it requires the operator's Custom Resource Definitions (CRDs) to already be installed. The operator installs those CRDs in [Phase 5](./install_hm); until then the command fails with `error: unable to recognize ... no matches for kind "HybridControlPlane"`. Run this validation **after** installing the operator (Phase 5) and before applying the manifest for real. To check only YAML syntax at this phase, use a YAML linter such as `yq . hybridmanager.yaml`.
+This dry-run resolves the `HybridControlPlane` kind through the cluster's API discovery, so it requires the operator's Custom Resource Definitions (CRDs) to already be installed. The operator installs those CRDs in [Phase 5](./installing/install_hm); until then the command fails with `error: unable to recognize ... no matches for kind "HybridControlPlane"`. Run this validation **after** installing the operator (Phase 5) and before applying the manifest for real. To check only YAML syntax at this phase, use a YAML linter such as `yq . hybridmanager.yaml`.
 !!!
 
 **Bootstrap method:** Ensure your `values.yaml` can be processed by Helm.
@@ -250,11 +252,25 @@ Ensure the secrets referenced in your configuration exist in the cluster. To lis
 edbctl image-pull-secret list
 ```
 
-To list the component secrets:
+To list the component secrets that are present, query the labels `create-install-secrets` applies to everything it creates:
 
 ```shell
-edbctl hybrid-manager list-install-secrets
+kubectl get secret -A -l app.kubernetes.io/managed-by=edbctl
 ```
+
+Add `-l app.kubernetes.io/component=<scenario>` to narrow the results to one scenario. Secrets you created by hand rather than through `edbctl` do not carry these labels.
+
+To check that against what your target version needs, print the requirements and compare:
+
+```shell
+edbctl hybrid-manager list-install-secrets --version <version>
+```
+
+!!!Note
+`list-install-secrets` reads a catalog compiled into `edbctl`. It does not query the cluster, so its output is identical whether or not the secrets exist — it tells you what to prepare, not what is present.
+
+Its rows are also labels for individual values, not names of Kubernetes secrets, and the mapping is not one to one: a single row can be written into several secrets. Comparing its row count against `kubectl get secrets` is not a meaningful check. See [Understanding the output](/edbctl/latest/using/edbctl_hybrid_manager/#understanding-the-output) for how to read each column.
+!!!
 
 ### Validate LoadBalancer
 
@@ -278,4 +294,4 @@ For a comprehensive check of the cluster's readiness, use the diagnostic plugin.
 
 Now that your management workstation is ready, images are synced, secrets are created, advanced features are configured, your HM configuration is finalized, and your configuration file is validated, you are ready to install HM.
 
-**[Proceed to Phase 5: Installing Hybrid Manager →](./install_hm)**
+**[Proceed to Phase 5: Installing Hybrid Manager →](./installing/install_hm)**

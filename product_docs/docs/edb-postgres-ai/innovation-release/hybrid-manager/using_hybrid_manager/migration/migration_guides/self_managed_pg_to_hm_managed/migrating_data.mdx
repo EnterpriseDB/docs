@@ -35,7 +35,7 @@ A migration establishes a sync between your Postgres source and a destination da
     <TabContainer syncKey="pg_schema_path">
     <Tab title="Simplified (recommended)">
 
-    Select **Schema and data**. When you select this option, HM:
+    Select **Schema and Data**. When you select this option, HM:
 
     1. Sources the schema from the Migration Portal project that was created automatically when you registered your database with the EDB Postgres AI agent.
     1. Creates tables on the destination without constraints, so the initial snapshot copy isn't slowed by constraint validation.
@@ -44,26 +44,33 @@ A migration establishes a sync between your Postgres source and a destination da
     1. After you mark the migration as completed, validates deferred foreign keys, syncs sequences, and applies any remaining lightweight tasks in a final **Schema Finalization** stage.
 
     !!!note
-    Use **Schema only** if you want to migrate the database structure without migrating any table data.
+    Use **Schema Only** if you want to migrate the database structure without migrating any table data.
     !!!
 
     </Tab>
     <Tab title="Manual">
 
-    Select **Data only**. The schema was already imported manually in the previous step.
+    Select **Data Only**. The schema was already imported manually in the previous step.
 
     </Tab>
     </TabContainer>
 
-1.  Select the snapshot type: [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) or [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration).
+1.  Select the snapshot type:
+    - [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) — copies data once and completes. Use this for a one-time, offline migration.
+    - [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) — copies an initial snapshot, then continuously streams changes from the source. Use this to minimize downtime.
+    - [**Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#streaming-migration) — skips the initial copy and streams only changes that occur after the migration starts, from the source database's current position. Use this when the destination already has the historical data loaded.
+
+    !!!note
+    **Streaming** works without any pre-loading if your tables are insert-only (for example, an append-only log or event table) — new rows are inserted normally. If your tables receive updates or deletes on rows that existed before the migration started, load that historical data on the destination first: `DELETE` operations on rows that were never loaded are safely ignored, but `UPDATE` operations on rows that were never loaded aren't guaranteed to create the row. Custom starting-point (LSN) support isn't available.
+    !!!
 
 1.  Under **Destination Type**, select an HM-managed destination database cluster and database for the migration. Then, select **Next**.
 
-1.  On the **Review your Tables** tab, select the tables and columns to include in the migration. Expand a table to view its columns and optionally [map source columns to different destination column names](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration). Column mapping is only available for the **Data only** scope.
+1.  On the **Review your Tables** tab, select the tables and columns to include in the migration. Expand a table to view its columns and optionally [map source columns to different destination column names](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration). Column mapping is only available for the **Data Only** scope.
 
 1.  Select **Create Migration**.
 
-The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming**, the DMS agent streams data changes continuously while the migration shows a **Running** state.
+The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming** or **Streaming**, the DMS agent streams data changes continuously while the migration shows a **Running** state.
 
 !!!note
 The DMS agent streams data changes only — not DDL changes (schema modifications).
@@ -73,7 +80,7 @@ The DMS agent streams data changes only — not DDL changes (schema modification
 
 ### Migration list view
 
-The **Migrations** page shows a summary of all migrations in the project. The **Migration progress** column displays three metrics per migration:
+The **Migrations** page shows a summary of all migrations in the project. The **Migration Progress** column displays three metrics per migration:
 
 - **Total number of tables** — total tables included in this migration
 - **Snapshot tables completed** — tables that have finished the snapshot stage
@@ -83,7 +90,7 @@ The **Migrations** page shows a summary of all migrations in the project. The **
 
 Select a migration from the list to open the details page, which has four tabs:
 
-- **Overview** — Shows the current migration state and general information about the source and destination databases. For **Snapshot + Streaming** migrations, the migration is caught up when the status is **Streaming**. For **Snapshot** migrations, it's finished when the status is **Completed**.
+- **Overview** — Shows the current migration state and general information about the source and destination databases. A status of **Streaming** means the DMS agent is actively monitoring the source database for changes and applying them to the destination. For **Snapshot + Streaming** migrations, reaching this status also confirms the snapshot phase has completed. For **Snapshot** migrations, the migration is finished when the status is **Completed**.
 
 - **Tables** — Shows all tables selected for migration. For each table, you can see source and destination table and schema names, snapshot status, mapped columns, migrated rows, and migration rate. Select the **+** icon to expand a table and view column-level mappings.
 
@@ -93,7 +100,7 @@ Select a migration from the list to open the details page, which has four tabs:
 
 ### Migration metrics
 
-During any running migration (**Snapshot** or **Snapshot + Streaming**), the DMS agents continuously report performance metrics to HM, which are displayed in the HM console automatically. If you deployed the reader or writer agent yourself — any setup with a self-managed source or destination — set `METRICS_TASK_ENABLED=true` in the agent's `run-cdcagent.sh`. See [Configuring and running the EDB DMS agent](configuring_dms_agent) for agent configuration steps.
+During any running migration (**Snapshot**, **Snapshot + Streaming**, or **Streaming**), the DMS agents continuously report performance metrics to HM, which are displayed in the HM console automatically. If you deployed the reader or writer agent yourself — any setup with a self-managed source or destination — set `METRICS_TASK_ENABLED=true` in the agent's `run-cdcagent.sh`. See [Configuring and running the EDB DMS agent](configuring_dms_agent) for agent configuration steps.
 
 For details about the Grafana dashboard shown in the **Metrics** tab, see [Metrics tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#metrics-tab).
 
@@ -104,7 +111,7 @@ The HM console doesn't surface all DMS agent errors. If a migration is stuck or 
 ## Finalizing a streaming migration
 
 !!!note
-This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, DMS marks the migration as completed automatically.
+This section applies to migrations that stream continuously — **Snapshot + Streaming** and **Streaming**. For **Snapshot** migrations, DMS marks the migration as completed automatically. **Streaming** migrations skip the snapshot sub-stage, but otherwise follow the same monitoring, cutover, and schema finalization steps.
 !!!
 
 ### Monitoring catch-up before cutover
@@ -116,7 +123,7 @@ Before stopping writes on the source, give the destination time to catch up. Use
 <TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
-If you used the **Schema and data** scope, HM can apply most schema objects while the stream is still running: primary keys, unique constraints, indexes (built with `CREATE INDEX CONCURRENTLY`, so live writes aren't blocked), foreign keys (added as `NOT VALID`), check constraints, `NOT NULL` constraints, and similar. Foreign key validation, sequence synchronization, and other lightweight tasks run later in the post-cutover **Schema Finalization** stage.
+If you used the **Schema and Data** scope, HM can apply most schema objects while the stream is still running: primary keys, unique constraints, indexes (built with `CREATE INDEX CONCURRENTLY`, so live writes aren't blocked), foreign keys (added as `NOT VALID`), check constraints, `NOT NULL` constraints, and similar. Foreign key validation, sequence synchronization, and other lightweight tasks run later in the post-cutover **Schema Finalization** stage.
 
 Running this work concurrently shrinks the read-only cutover window. The larger your tables and the more indexes they have, the greater the time saved.
 
@@ -129,7 +136,7 @@ Once every table has completed its snapshot and the migration enters the streami
 When the sub-step completes, proceed to the cutover.
 
 !!!note
-**Finalize Schema Concurrently** is available only for migrations created with the **Schema and data** scope with streaming enabled.
+**Finalize Schema Concurrently** is available only for migrations created with the **Schema and Data** scope with streaming enabled.
 !!!
 
 If you skip this step, the same objects are applied serially after you mark the migration as completed. See [Schema finalization stage](#schema-finalization-stage). The cutover window is larger in that case because indexes are built non-concurrently and constraints are validated under exclusive locks.
@@ -159,17 +166,19 @@ This stops the streaming process.
 <TabContainer syncKey="pg_schema_path">
 <Tab title="Simplified (recommended)">
 
-For migrations created with the **Schema and data** scope, the migration enters a **Schema Finalization** stage automatically after **Mark as Completed**. What runs in this stage depends on whether you ran concurrent finalization first:
+For migrations created with the **Schema and Data** scope, the migration enters a **Schema Finalization** stage automatically after **Mark as Completed**. What runs in this stage depends on whether you ran concurrent finalization first:
 
 - **If you ran concurrent finalization**: HM runs the lightweight remaining work — foreign key validation, sequence sync, and any other deferred metadata tasks. This stage is short.
 - **If you skipped concurrent finalization**: HM applies the full deferred set now (primary keys, unique constraints, indexes, foreign keys, check constraints, `NOT NULL`, and similar) followed by the lightweight tasks above. This stage takes substantially longer and runs while the source is read-only.
+
+If you enabled the large object snapshot (`LO_SNAPSHOT_ENABLED=true`), HM also copies Postgres large object (`pg_largeobject`) content during this stage, alongside foreign key validation. See [Postgres large object migration parameters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#postgres-large-object-migration-parameters).
 
 The migration is fully complete only after the **Schema Finalization** stage finishes. Progress is shown on the **Migration details** page.
 
 </Tab>
 <Tab title="Manual">
 
-No automatic schema finalization runs for the **Data only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, unique, check, and exclusion constraints you deferred before migration.
+No automatic schema finalization runs for the **Data Only** scope. Continue to [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data) to reapply the foreign key, unique, check, and exclusion constraints you deferred before migration.
 
 </Tab>
 </TabContainer>
@@ -205,7 +214,7 @@ For tables where the unique key is the only row identifier (no primary key), the
 Apply this procedure per-table as soon as each table's snapshot finishes — check the **Tables** tab on the migration details page and look for **Snapshot completed**.
 
 !!!warning
-For **Snapshot + Streaming** migrations, the unique constraint must be in place before streaming begins for that table. Once the DMS writer starts processing CDC events for a UK-identity table, it issues keyed upserts (`INSERT ... ON CONFLICT (uk_cols) DO UPDATE`). If the unique constraint is missing at that point, the writer task fails with a fatal error and the migration stops.
+For **Snapshot + Streaming** migrations, the unique constraint must be in place before streaming begins for that table. For **Streaming** migrations, since there's no snapshot phase, the constraint must already exist before you create the migration. In both cases, once the DMS writer starts processing CDC events for a UK-identity table, it issues keyed upserts (`INSERT ... ON CONFLICT (uk_cols) DO UPDATE`). If the unique constraint is missing at that point, the writer task fails with a fatal error and the migration stops.
 !!!
 
 For each UK-identity table, run both steps against the destination database:

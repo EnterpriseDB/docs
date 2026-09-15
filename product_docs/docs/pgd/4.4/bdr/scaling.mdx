@@ -116,12 +116,13 @@ The `bdr.autopartition` function configures automatic partitioning of a table.
 bdr.autopartition(relation regclass,
 		partition_increment text,
 		partition_initial_lowerbound text DEFAULT NULL,
+		partition_min_upperbound text DEFAULT NULL,
 		partition_autocreate_expression text DEFAULT NULL,
 		minimum_advance_partitions integer DEFAULT 2,
 		maximum_advance_partitions integer DEFAULT 5,
 		data_retention_period interval DEFAULT NULL,
 		managed_locally boolean DEFAULT false,
-		enabled boolean DEFAULT on);
+		enabled boolean DEFAULT true);
 ```
 
 #### Parameters
@@ -131,6 +132,8 @@ bdr.autopartition(relation regclass,
 -   `partition_initial_lowerbound` &mdash; If the table has no partition, then the
     first partition with this lower bound and `partition_increment` apart upper
     bound is created.
+-   `partition_min_upperbound` &mdash; Minimum upper bound to use when creating new
+    partitions.
 -   `partition_autocreate_expression` &mdash; Used to detect if it's time to create new partitions.
 -   `minimum_advance_partitions` &mdash; The system attempts to always have at
     least `minimum_advance_partitions` partitions.
@@ -241,24 +244,24 @@ partition is created everywhere.
 #### Synopsis
 
 ```sql
-bdr.autopartition_wait_for_partitions(relation regclass, text bound);
+bdr.autopartition_wait_for_partitions(relation regclass, upperbound text);
 ```
 
 #### Parameters
 
 -   `relation` &mdash; Name or Oid of a table.
--   `bound` &mdash; Partition key column value.
+-   `upperbound` &mdash; Partition key column value.
 
 #### Synopsis
 
 ```sql
-bdr.autopartition_wait_for_partitions_on_all_nodes(relation regclass, text bound);
+bdr.autopartition_wait_for_partitions_on_all_nodes(relation regclass, upperbound text);
 ```
 
 #### Parameters
 
 -   `relation` &mdash; Name or Oid of a table.
--   `bound` &mdash; Partition key column value.
+-   `upperbound` &mdash; Partition key column value.
 
 ### Find partition
 
@@ -269,13 +272,13 @@ the function returns NULL. Otherwise Oid of the partition is returned.
 #### Synopsis
 
 ```sql
-bdr.autopartition_find_partition(relname regclass, searchkey text);
+bdr.autopartition_find_partition(relation regclass, value text);
 ```
 
 #### Parameters
 
--   `relname` &mdash; Name of the partitioned table.
--   `searchkey` &mdash; Partition key value to search.
+-   `relation` &mdash; Name of the partitioned table.
+-   `value` &mdash; Partition key value to search.
 
 ### Enable or disable AutoPartitioning
 
@@ -306,11 +309,16 @@ bdr.autopartition_disable(relname regclass);
 #### Synopsis
 
 ```sql
-bdr.autopartition_get_last_completed_workitem();
+bdr.autopartition_get_last_completed_workitem(local boolean DEFAULT false);
 ```
 
 Return the `id` of the last workitem successfully completed on all nodes in the
 cluster.
+
+#### Parameters
+
+-   `local` &mdash; When `true`, return the last workitem completed on the
+    local node instead of on all nodes.
 
 ### Check AutoPartition workers
 
@@ -325,7 +333,7 @@ The workers can be seen through these views:
 #### Synopsis
 
 ```sql
-bdr.autopartition_work_queue_check_status(workid bigint
+bdr.autopartition_work_queue_check_status(workid bigint,
                            local boolean DEFAULT false);
 ```
 
@@ -339,3 +347,29 @@ bdr.autopartition_work_queue_check_status(workid bigint
 AutoPartition workers are always running in the background, even before the
 `bdr.autopartition` function is called for the first time. If an invalid worker ID
 is used, the function returns `unknown`. `In-progress` is the typical status.
+
+### Task manager leader
+
+AutoPartition work is coordinated by a task manager leader, elected among
+the eligible nodes in the cluster. Use `bdr.taskmgr_set_leader()` to
+manually request that a specific node become the new task manager leader,
+analogous to `bdr.raft_leadership_transfer()` for the Raft leader.
+
+#### Synopsis
+
+```sql
+bdr.taskmgr_set_leader(node name, wait_for_completion boolean DEFAULT true)
+```
+
+#### Parameters
+
+-   `node` &mdash; Name of the node to promote to task manager leader. The
+    node must be an eligible candidate.
+-   `wait_for_completion` &mdash; If `true`, wait until the given node becomes
+    the new task manager leader before returning.
+
+#### Notes
+
+This function requires all nodes in the cluster to be running a consensus
+protocol version that supports task manager leader transfer; otherwise it
+raises an error suggesting you upgrade all nodes.

@@ -1,0 +1,155 @@
+---
+title: Transferring data to the seed node
+navTitle: Transferring data to the seed node
+description: Initialize the seed node through manual physical replication..
+---
+
+In this phase, you initialize the seed node by creating a standby copy of the database on the seed node that mirrors the source node via physical replication. This standby serves as the seed node for the eventual PGD cluster. To minimize interference with the existing cluster—particularly if it is managed by Failover Manager (EFM)—this replica is added manually. 
+
+## Preparing the source node for logical replication
+
+You must prepare the seed node to transition to logical replication. If not already enabled, set the `wal_level` to `logical` on the source node. Since this change requires a database restart, it is best to perform this step ahead of time.
+
+1. Run the following command on the source node:
+
+    ```SQL
+    ALTER SYSTEM SET wal_level = 'logical';
+    ```
+
+1. Restart the source node Postgres service for the configuration change to take effect:
+
+    ```bash
+    su -u enterprisedb --command "pg_ctl restart"
+    ```
+
+1. After the restart, verify that the `wal_level` is correct and that there are sufficient replication slots and worker processes available. For a setup with **M** existing standbys and **N** future PGD nodes, ensure these parameters are at least what is indicated below:
+
+    ```SQL
+    SHOW wal_level;                         -- Expected 'logical'
+
+    SHOW max_replication_slots;             -- Must be at least M + N
+    SHOW max_wal_senders;                   -- Must be at least M + N
+    SHOW max_logical_replication_workers;   -- Must be at least N
+    ```
+
+## Allowing outbound logical replication
+
+Configure the source environment to permit external logical connections and establish the necessary authentication credentials for the migration stream.
+
+1. The source node requires a role with replication privileges to facilitate data migration. You can use an existing role or create a separate role, for example:
+
+    ```SQL
+    CREATE ROLE repl LOGIN NOSUPERUSER REPLICATION PASSWORD 'your_password_here';
+    ```
+
+    EDB recommends using a `.pgpass` file to manage credentials securely without including passwords in connection strings (DSNs). 
+
+1. Verify connectivity from the PGD nodes using the following command to ensure they can connect without interactive password entry:
+
+    ```bash
+    su -u enterprisedb -c "psql --no-password '${SOURCE_DSN} replication=1' \ 
+    --command 'IDENTIFY SYSTEM'"
+    ```
+
+    Ensure you test connectivity between the seed node and all future PGD nodes; this may require updating `pg_hba.conf` on the source node.
+
+## Preparing the seed node
+
+Install the same distribution and version of Postgres on the seed node to accommodate a physical backup. See [Installing EPAS](/epas/latest/installing/), [Installing PGE](/pge/latest/installing/), or [Installing Postgres](/supported-open-source/postgresql/installing/) for details.
+
+!!! Note
+    Don't install EFM on the seed node, as it must be managed manually during the migration.
+
+## Creating a physical backup
+
+Once the source is configured, execute the following command from the seed node to pull a physical snapshot of the database from the source node. Ensure the destination `${PGDATA}` directory does not exist before starting the transfer.
+
+```bash
+su -u enterprisedb -c "pg_basebackup '${SOURCE_DSN}'    \
+  --pgdata=$(PGDATA)                                    \
+  --write-recovery-conf                                 \
+  --wal-method=stream                                   \
+  --create-slot                                         \
+  --slot=migration_phy_slot                             \
+  --progress                                            \
+  --verbose"
+```
+
+This command uses a spread checkpoint by default to minimize the I/O impact on the source node. For faster transfers at the cost of higher disk I/O, you can append `--checkpoint=fast`.
+
+The transfer duration depends on the total volume of data and the network bandwidth between the source and seed nodes. For environments with limited bandwidth, you can enable compression using the `--compress-level=[0-9]` flag to optimize the transfer speed; refer to the official [pg_basebackup documentation](https://www.postgresql.org/docs/14/app-pgbasebackup.html) for detailed configuration options.
+
+## Configuring and starting the seed node
+
+1. Once the transfer is complete, adjust the seed node's `postgresql.conf` and `pg_hba.conf` to reflect its local environment (hostnames, IP addresses, and paths). Validate that the replication settings on the seed node match the requirements for PGD:
+
+    ```SQL
+    SHOW wal_level;                         -- Expected: 'logical'
+    SHOW max_replication_slots;             -- Should be at least M + N
+    SHOW max_wal_senders;                   -- Should be at least M + N
+    SHOW max_logical_replication_workers;   -- Should be at least N
+    ```
+
+1. Start the database on the seed node to initiate streaming:
+
+    ```bash
+    su -u enterprisedb --command "pg_ctl start"
+    ```
+
+## Verifying physical replication
+
+Monitor the replication status from both the source and seed nodes to ensure they are synchronized.
+
+On the source node:
+
+1. Check the migration slot status. It must show the slot assigned to the seed node with a low or decreasing `lag_size`:
+
+    ```SQL
+    SELECT slot_name, active, restart_lsn, confirmed_flush_lsn, 
+            pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS lag_size
+    FROM pg_replication_slots
+    WHERE slot_name = 'migration_phy_slot';
+    ```
+
+1. Verify active connections. Confirm that the seed node's IP address appears in the replication statistics:
+
+    ```sql
+    SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,
+            pg_size_pretty(pg_wal_lsn_diff(sent_lsn, replay_lsn)) AS replay_lag
+    FROM pg_stat_replication;
+    ```
+
+On the seed node:
+
+1. Confirm the recovery mode. The node must be correctly acting as a standby:
+
+    ```sql
+    SELECT pg_is_in_recovery();             -- Must return true
+    ```
+
+1. Verify the WAL receiver status. Check the health of the connection to the primary (source node):
+
+    ```sql
+    SELECT slot_name, sender_host || ':' || sender_port AS sender, status,
+    now() - last_msg_send_time    AS last_msg_send_age,
+    now() - last_msg_receipt_time AS last_msg_receipt_age,
+    now() - latest_end_time       AS last_end_age,
+    pg_size_pretty(pg_wal_lsn_diff(latest_end_lsn, written_lsn)) AS write_lag_size,
+    pg_size_pretty(pg_wal_lsn_diff(latest_end_lsn, flushed_lsn)) AS flush_lag_size
+    FROM pg_stat_wal_receiver;
+    ```
+
+1. Compare receive vs. replay position. This identifies the replay lag &mdash; the amount of data received but not yet applied to the database:
+
+    ```sql
+    SELECT pg_size_pretty(pg_wal_lsn_diff(pg_last_wal_receive_lsn(),
+                                        pg_last_wal_replay_lsn())) AS lag_bytes;
+    ```
+
+1. Monitor lag by time. Measure the time difference between the current time and the last replayed transition:
+
+    ```sql
+    SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) AS lag_seconds;
+    ```
+
+Next step: [Convert to logical replication](3-convert-to-logical-replication).

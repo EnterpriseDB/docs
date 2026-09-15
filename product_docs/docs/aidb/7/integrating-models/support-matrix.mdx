@@ -1,11 +1,11 @@
 ---
 title: Support matrix
 navTitle: Support matrix
-description: Pre-vetted model variants confirmed to work with AIDB, including local models (Candle and llama.cpp) and remote NVIDIA NIM models available via HM Model Serving.
+description: Pre-vetted model variants confirmed to work with AIDB, including local models (Candle and llama.cpp), remote NVIDIA NIM models available via Hybrid Manager's Model Serving, and common OpenAI/Anthropic model families for AIDB's native agentic adapters.
 deepToC: true
 ---
 
-This page lists specific model variants that EDB has tested and confirmed to work with AIDB, split into [local models](#local-models) (run on your Postgres host) and [remote models](#remote-models-nvidia-nim) (NVIDIA NIM microservices, called over the network). Each table follows the same shape: a model identifier, whether it's a default, and a description of what the model is good for — use the description to pick the right variant for your use case.
+This page lists specific model variants that EDB has tested and confirmed to work with AIDB, split into [local models](#local-models) (run on your Postgres host) and [remote models](#remote-models) (called over the network — NVIDIA NIM microservices, plus OpenAI and Anthropic model families for AIDB's native agentic adapters). Each table follows the same shape: a model identifier, whether it's a default, and a description of what the model is good for — use the description to pick the right variant for your use case.
 
 ## Local models
 
@@ -26,6 +26,7 @@ AIDB registers these models automatically when the extension is created — no c
 | `qwen3-embedding-4b-Q8_0`    | `llamacpp_embeddings` (llama.cpp) | Largest pre-registered embedding model (20480-token context) — higher quality, more compute.                |
 | `qwen3.5-0.8b-Q8_0`          | `llamacpp_generate` (llama.cpp)   | Small, fast chat/completion model with a very large context window (262144 tokens).                         |
 | `llama-3.2-1b-instruct-Q8_0` | `llamacpp_generate` (llama.cpp)   | Compact Meta Llama 3.2 instruction model for lightweight local chat/completion.                             |
+| `lightonocr-2-1b-Q8_0`       | `llamacpp_ocr` (llama.cpp)        | Compact vision-language model for OCR — extracts text from images.                                          |
 | `dummy`                      | `dummy`                           | Returns fake data — for testing pipelines without running real inference.                                   |
 
 ### Other tested variants (Candle)
@@ -64,7 +65,7 @@ CLIP supports both text embedding (`aidb.encode_text()`) and image embedding (`a
 | `t5-base`  | — | Larger than the default — better quality, slower. |
 | `t5-large` | — | Largest T5 variant — highest quality, most resource use. |
 
-T5 variants support both text encoding (`aidb.encode_text()`) and text generation (`aidb.decode_text()`).
+T5 variants support both text encoding (`aidb.encode_text()`) and text generation (`aidb.generate_text()`).
 
 #### Llama (`llama_instruct_local`)
 
@@ -75,14 +76,62 @@ T5 variants support both text encoding (`aidb.encode_text()`) and text generatio
 | `HuggingFaceTB/SmolLM2-360M-Instruct` | —       | Small — a step up in quality from the 135M variant.                                        |
 | `HuggingFaceTB/SmolLM2-1.7B-Instruct` | —       | Largest of these variants — better quality than the default, at higher resource use.       |
 
-All Llama variants support text generation (`aidb.decode_text()`).
+All Llama variants support text generation (`aidb.generate_text()`).
 
 !!!note
 These are the pre-vetted variants confirmed to work with AIDB. You aren't limited to these — any compatible HuggingFace model can be used with the appropriate config helper, but only the variants listed here have been tested by EDB.
 !!!
 
-## Remote models (NVIDIA NIM)
+### Other tested variants (llama.cpp)
 
-AIDB supports NVIDIA NIM microservices via several providers — see [External model connections](external-model-connections#nvidia-nim) for how to register one. All other models can be self-hosted using KServe and registered with AIDB using `aidb.create_model()`.
+#### Reranking (`llamacpp_reranking`)
 
-For the full list of supported NIM models per provider (completions, embeddings, CLIP, OCR, and reranking), including which are pre-deployed by EDB Hybrid Manager's Model Serving, see [GPU Recommendations for Default NIM Models](/edb-postgres-ai/latest/hybrid-manager/ai-factory/gpu-recommended).
+| Model identifier                          | Default | Architecture | Description                                                                                   |
+|--------------------------------------------|---------|---------------|-------------------------------------------------------------------------------------------------|
+| `gpustack/bge-reranker-v2-m3-GGUF`         | —       | Cross-encoder | Multilingual cross-encoder reranker. Scores each query/document pair directly via a classification head. |
+| `ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF`   | —       | Decoder-only  | Qwen3-Reranker family. Scores each pair by reading the model's yes/no verdict-token logits — see [llamacpp_reranking](integrated-models#llamacpp_reranking). |
+
+Neither variant is pre-registered as a default model. Use either identifier with `jsonb_build_object()` when calling `aidb.create_model()` — see [llamacpp_reranking](integrated-models#llamacpp_reranking).
+
+## Remote models
+
+Remote models are called over the network rather than run on your Postgres host: NVIDIA NIM microservices and chat/agent models from OpenAI and Anthropic — reachable through several providers, including the native `openai_responses` and `anthropic_messages` adapters.
+
+### NVIDIA NIM
+
+AIDB supports NVIDIA NIM microservices via several providers — see [External model connections](external-model-connections#nvidia-nim) for how to register one. Models not pre-deployed by Hybrid Manager's Model Serving can be self-hosted using KServe and registered with AIDB using `aidb.create_model()`.
+
+For the full list of supported NIM models per provider (completions, embeddings, CLIP, OCR, and reranking), including which are pre-deployed by EDB Hybrid Manager's Model Serving, see [GPU recommendations for default NIM models](/edb-postgres-ai/latest/hybrid-manager/ai-factory/gpu-recommended).
+
+### OpenAI and Anthropic models
+
+Each model identifier below can be registered under more than one AIDB provider — which one to pick depends on how you're using the model, not which model it is:
+
+- **`openai_responses`** (+ `openai_responses_azure`) and **`anthropic_messages`** (+ `anthropic_messages_azure`/`anthropic_messages_bedrock`) — AIDB's native, agent-ready providers. Real `tools`/`tool_choice`/`response_format` support, both for direct calls and for agents created with [`aidb.create_agent()`](../agents/creating-agents).
+- **`openai_completions`** — OpenAI's older Chat Completions API. Works with the same OpenAI models, and is a perfectly good choice for plain text generation (`aidb.generate_text()`, summarization, pipeline steps), but rejects `tools`/`tool_choice`/`response_format` directly, and only *simulates* tool calling (via prompt injection) when backing an agent.
+- **`openrouter_chat`** — a single gateway to OpenAI, Anthropic, and other vendors' models (including everything below) via OpenRouter's own model slugs, for example `openai/gpt-4o` or `anthropic/claude-opus-4-6`. Same simulated, not native, tool calling as `openai_completions`.
+
+See [OpenAI Responses API](external-model-connections#openai-responses-api) and [Anthropic Messages API](external-model-connections#anthropic-messages-api) for the full comparison and registration examples. The tables below aren't an exhaustive catalog of every model each vendor offers; they call out commonly used families as a starting point, covering both current flagship/efficient tiers and a longer-established variant for reference — check the vendor's own model documentation for the full, current lineup and exact capabilities.
+
+#### OpenAI
+
+| Model identifier                     | Native provider(s)                                   | Also usable via                     | Cloud host support (native)       | Description                                                                                                   |
+|---------------------------------------|--------------------------------------------------------|---------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `gpt-5.6-sol` / `-terra` / `-luna`    | `openai_responses`, `openai_responses_azure`           | `openai_completions`, `openrouter_chat` | Direct, Azure AI Foundry           | The GPT-5.6 family, offered in three tiers trading off capability, latency, and cost. Check OpenAI's docs for how the tiers compare. |
+| `gpt-5.4-mini`                        | `openai_responses`, `openai_responses_azure`           | `openai_completions`, `openrouter_chat` | Direct, Azure AI Foundry           | Smaller, cost-efficient tier of the GPT-5.4 generation — solid tool-calling accuracy at a fraction of flagship cost. |
+| `gpt-4o`                              | `openai_responses`, `openai_responses_azure`           | `openai_completions`, `openrouter_chat` | Direct, Azure AI Foundry           | Long-established multimodal model. A stable, well-known anchor when you don't need the newest GPT-5.x tier.    |
+
+#### Anthropic
+
+| Model identifier    | Native provider(s)                                                              | Also usable via   | Cloud host support (native)         | Description                                                                                   |
+|----------------------|------------------------------------------------------------------------------------|----------------------|----------------------------------------|-------------------------------------------------------------------------------------------------|
+| `claude-opus-4-6`    | `anthropic_messages`, `anthropic_messages_azure`, `anthropic_messages_bedrock`     | `openrouter_chat`    | Direct, Azure AI Foundry, AWS Bedrock  | Flagship Claude model for the most demanding reasoning and agentic tool-calling tasks.          |
+| `claude-sonnet-5`    | `anthropic_messages`, `anthropic_messages_azure`, `anthropic_messages_bedrock`     | `openrouter_chat`    | Direct, Azure AI Foundry, AWS Bedrock  | Balanced mid-tier model — strong general-purpose choice for agents and everyday chat/completion. |
+| `claude-haiku-4-5`   | `anthropic_messages`, `anthropic_messages_azure`, `anthropic_messages_bedrock`     | `openrouter_chat`    | Direct, Azure AI Foundry, AWS Bedrock  | Fastest, most cost-efficient current Claude tier — good for high-volume or latency-sensitive tool calls. |
+| `claude-3-5-haiku`   | `anthropic_messages`, `anthropic_messages_azure`, `anthropic_messages_bedrock`     | `openrouter_chat`    | Direct, Azure AI Foundry, AWS Bedrock  | Long-established, widely used variant. A stable, well-known anchor when you don't need the newest Claude tier. |
+
+Anthropic has no older completions-style provider the way OpenAI has `openai_completions` — `anthropic_messages` is Claude's only direct AIDB provider, alongside the `openrouter_chat` gateway option.
+
+!!!note
+A model's availability on Azure AI Foundry or AWS Bedrock can lag behind its release on the vendor's own direct API, especially for very recently released tiers. If `openai_responses_azure` or `anthropic_messages_bedrock` rejects a model you expect to work, confirm current availability with the respective cloud provider.
+!!!

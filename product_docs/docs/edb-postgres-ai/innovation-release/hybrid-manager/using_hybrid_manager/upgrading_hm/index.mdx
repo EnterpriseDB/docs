@@ -3,8 +3,10 @@ title: Upgrading Hybrid Manager
 navTitle: Upgrading Hybrid Manager
 description: Learn how to upgrade your Hybrid Manager installation across supported versions.
 deepToC: true
-navigation: 
+navigation:
 - upgrade_operator_rhos
+- 2026.8_to_2026.9
+- 2026.7_to_2026.8
 - 1.4_to_2026.7
 - 1.3.x_to_1.4
 - 2026.5.1_to_1.4
@@ -15,7 +17,7 @@ navigation:
 - 2025.12_to_2026.1
 - 2025.11_to_2025.12
 - 1.3.x_to_2025.11
-redirects: 
+redirects:
 - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/in_place_upgrade/
 - /edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/upgrading_hm/in_place_upgrade/
 ---
@@ -95,6 +97,67 @@ Once you move from an LTS release to an Innovation Release, you can't return to 
 ## Service availability during upgrades
 
 Some upgrades may trigger an automatic restart of your HM-managed Postgres database clusters. To avoid unexpected interruptions, check the service availability notes in the specific upgrade guide you are following.
+
+## Scenario changes on upgrade
+
+Several [installation scenarios](/edb-postgres-ai/current/hybrid-manager/install/install_guide/planning_arch/#available-scenarios) change across Innovation Releases 2026.8 and 2026.9. Check your `HybridControlPlane` manifest against the ones that apply to your upgrade path.
+
+#### The marketplace scenario
+
+`marketplace` is a separate scenario from `core` and consists of the kapp package manager and the OSS Library apps it deploys, such as Superset, Airflow, and pgAdmin.
+
+- If your `HybridControlPlane` spec already includes the `ai` scenario, `marketplace` is added automatically during the upgrade. No action is required.
+- If your spec lists only `core` (without `ai`) and you use the OSS Library/marketplace apps, you must explicitly add `marketplace` to your `spec.scenarios` list. Do this **before** upgrading to Innovation Release 2026.8 or later:
+
+```yaml
+spec:
+  scenarios:
+    - core
+    - marketplace
+    - <other_scenarios>
+```
+
+!!!important
+If you don't add `marketplace` to your scenario list, kapp-controller and the marketplace apps are removed as no longer part of your selected scenarios, along with the data those apps hold.
+!!!
+
+#### The dbaas scenario
+
+`dbaas` isn't new, but its contents changed in Innovation Release 2026.8. In 2026.7, `upm-api-gucs` and `pg4k-additional-controllers` belonged to `core`. From 2026.8, they belong to `dbaas` instead.
+
+A 2026.7 installation that pins `spec.scenarios` to `core` is already running both components. After the move, they fall outside every scenario that installation selects, and the upgrade removes them.
+
+- If your spec lists scenarios explicitly, add `dbaas` before you upgrade:
+
+```yaml
+spec:
+  scenarios:
+    - core
+    - dbaas
+    - <other_scenarios>
+```
+
+- If you omit `spec.scenarios` entirely, the set that applies depends both on your operator version and on what is already stored on the resource. Operator 2.1 fills an empty list with `core`, `dbaas`, `ai`, `analytics`, `migration`, and `marketplace`; operator 2.2 or later fills it with `core` alone. Rather than reasoning about the default, read the stored list back:
+
+```shell
+kubectl get hybridcontrolplane <name> -o jsonpath='{.spec.scenarios}'
+```
+
+Add `dbaas` explicitly if it isn't there.
+
+!!!important
+Nothing adds `dbaas` for you automatically. It depends only on `core`, unlike `ai`, which pulls in `marketplace` as a dependency. Every installation that lists scenarios without `dbaas` has to add it by hand.
+!!!
+
+#### The pgd scenario
+
+From Innovation Release 2026.9 onwards, `pgd` — which provisions and manages Distributed High Availability (DHA) clusters — is controlled by its own [installation scenario](/edb-postgres-ai/current/hybrid-manager/install/install_guide/planning_arch/#available-scenarios), separated from `dbaas`.
+
+If you use DHA clusters, you must explicitly add `pgd` to your `spec.scenarios` list before upgrading to Innovation Release 2026.9 (even for secondary locations).
+
+!!!important
+Add `pgd` to every location that hosts, or will host, DHA clusters — including secondary locations. If you don't add `pgd` to a location's scenario list, its existing DHA clusters will be deleted (and new ones will not be allowed to be created).
+!!!
 
 ## Upgrading multi-DC deployments
 

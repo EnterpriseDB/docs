@@ -28,6 +28,15 @@ const PRODUCT_ORDER = [
   "EDB Postgres Advanced Server",
 ];
 
+// Per-platform product columns. Most platforms just use PRODUCT_ORDER, but
+// "Virtual/physical server" has an extra WarehousePG column that doesn't
+// apply to Kubernetes or CloudService.
+const PLATFORM_PRODUCTS = {
+  "Virtual/physical server": [...PRODUCT_ORDER, "WarehousePG"],
+  Kubernetes: PRODUCT_ORDER,
+  CloudService: PRODUCT_ORDER,
+};
+
 const CATEGORY_HEADINGS = {
   "Open Source": "Open source extensions",
   EDB: "EDB extensions",
@@ -204,7 +213,10 @@ const GROUP_HEADER_ROW = el(
     headingCell("Extension name", false, { rowspan: 2 }),
     headingCell("Requires superuser access", true, { rowspan: 2 }),
     ...PLATFORM_ORDER.map((platform) =>
-      th({ colspan: 3 }, escapeHtml(PLATFORM_LABELS[platform])),
+      th(
+        { colspan: PLATFORM_PRODUCTS[platform].length },
+        escapeHtml(PLATFORM_LABELS[platform]),
+      ),
     ),
   ].join(""),
 );
@@ -213,8 +225,10 @@ const COLUMN_HEADER_ROW = el(
   "tr",
   {},
   [
-    ...PLATFORM_ORDER.flatMap(() =>
-      PRODUCT_ORDER.map((product) => headingCell(product, true, {})),
+    ...PLATFORM_ORDER.flatMap((platform) =>
+      PLATFORM_PRODUCTS[platform].map((product) =>
+        headingCell(product, true, {}),
+      ),
     ),
   ].join(""),
 );
@@ -277,7 +291,7 @@ function composeExtensionRow(ext, lastRow, unmapped) {
   ];
 
   for (const platform of PLATFORM_ORDER) {
-    for (const product of PRODUCT_ORDER) {
+    for (const product of PLATFORM_PRODUCTS[platform]) {
       const value = ext.platforms[platform][product];
       let cellValue;
       if (value === true) {
@@ -307,7 +321,7 @@ function composeExtensionRow(ext, lastRow, unmapped) {
 const COLUMN_GROUP_SIZES = [
   1,
   1,
-  ...PLATFORM_ORDER.map(() => PRODUCT_ORDER.length),
+  ...PLATFORM_ORDER.map((platform) => PLATFORM_PRODUCTS[platform].length),
 ];
 const TOTAL_COLUMNS = COLUMN_GROUP_SIZES.reduce((sum, size) => sum + size, 0);
 
