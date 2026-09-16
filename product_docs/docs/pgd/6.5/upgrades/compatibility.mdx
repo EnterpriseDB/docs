@@ -6,30 +6,53 @@ redirects:
 - /pgd/latest/lifecycle/upgrades/compatibility/
 ---
 
-## Summary
-
-There are some changes in PGD {{version.full}} that are not compatible with 5.x and other previous versions.
-For users of 4.x, the [version 5.x compatibility](https://www.enterprisedb.com/docs/pgd/5.8/upgrades/compatibility/) changes still apply.
+Review the changes in PGD 6 that aren't compatible with 5.x and earlier versions. If you're upgrading from 4.x, also review the [version 5.x compatibility](https://www.enterprisedb.com/docs/pgd/5.8/upgrades/compatibility/) changes.
 
 ## Connection Manager
 
-PGD 6 introduces a new Connection Manager which replaces the PGD 5's proxy solution with a tightly integrated approach using a background worker to expose read-write, read-only and http-status network interfaces in PGD. 
-This means that all the old proxy functions were removed, as there are no longer separate PGD-Proxy instances to manage and the connection manager uses group configuration.
+PGD 6 introduces a new [Connection Manager](/pgd/current/connection-manager/), which replaces PGD 5's proxy solution with a tightly integrated approach using a background worker to expose read-write, read-only, and http-status network interfaces. Separate PGD-Proxy instances are no longer needed, so all the old proxy functions, the `bdr.proxy_config` table, and the `bdr.proxy_config_summary` view were removed. Use `bdr.node_group_config_summary` for the Connection Manager's configuration, including all other group settings such as routing. The Connection Manager always runs and isn't user-configurable to disable. As of PGD 6.3, the Connection Manager also starts by default on subscriber-only nodes.
 
-Moreover, `bdr.proxy_conifg` table and `bdr.proxy_config_summary` view were removed.
-You should now use `bdr.node_group_config_summary` for the connection manager's configuration.
-This also includes all the other group settings, including routing.
+## Commit scopes
 
-For more details see [Connection Manager](/pgd/current/connection-manager/).
+PGD 6 ships with predefined commit scopes covering common durability and performance
+trade-offs, so a new cluster doesn't need a custom commit scope defined before it can use synchronous
+or degraded-synchronous replication. Existing custom commit scopes from 5.x continue to work unchanged.
+For the full list of predefined scopes and how to choose between them, see [Predefined commit scopes](/pgd/current/commit-scopes/predefined-commit-scopes/).
+
+## DDL support changes
+
+PGD 6 replicates a few DDL operations that previous versions didn't:
+
+-   [`ALTER TABLE`](https://www.postgresql.org/docs/current/sql-altertable.html) commands that rewrite the
+    table, including type changes that aren't binary coercible and `ALTER TYPE ... USING`, are now supported
+    and replicated. Table rewrites can hold an access exclusive lock for extended periods on large tables.
+-   The restriction on non-immutable `ALTER TABLE ... ADD COLUMN` commands was removed.
+-   [`CREATE TABLESPACE`](https://www.postgresql.org/docs/current/sql-createtablespace.html),
+    [`ALTER TABLESPACE`](https://www.postgresql.org/docs/current/sql-altertablespace.html), and
+    [`DROP TABLESPACE`](https://www.postgresql.org/docs/current/sql-droptablespace.html) are now replicated
+    as DDL operations. If you run multiple nodes on the same machine, enable the Postgres developer option
+    [`allow_in_place_tablespaces`](https://www.postgresql.org/docs/current/runtime-config-developer.html#GUC-ALLOW-IN-PLACE-TABLESPACES)
+    on each node.
+-   [`CREATE INDEX CONCURRENTLY`](https://www.postgresql.org/docs/current/sql-createindex.html) and
+    [`REINDEX CONCURRENTLY`](https://www.postgresql.org/docs/current/sql-reindex.html) are streamed to
+    replicas as they execute, rather than replicated as a single change once complete.
+-   Role replication carries over the same SCRAM key, so passwords stay identical across nodes without
+    additional steps.
 
 ## DDL Locking changes
 
-There is a new global lock type, `ddl_locking = leader` that's used by PGD {{version.full}} by default instead of the global DML lock.
+There is a new global lock type, `ddl_locking = leader`, that's used by PGD 6 by default instead of the global DML lock.
 This lock ensures that a table is exclusively locked on all group leaders (as opposed to all nodes).
-`LOCK TABLE` and `TRUNCATE TABLE` now use this new lock type by default (before the default behavior was to not lock outside of the origin node).
+[`LOCK TABLE`](https://www.postgresql.org/docs/current/sql-lock.html) and
+[`TRUNCATE TABLE`](https://www.postgresql.org/docs/current/sql-truncate.html) now use this new lock type by
+default (before the default behavior was to not lock outside of the origin node).
+
+PGD 6.0 uses the leader lock only for DDL statements that need to block DML. Starting with PGD 6.1, the leader lock is used by default for DDL statements generally, not just the ones that block DML.
+
+Unlike the old global DML lock, which required every node to be up and within reasonable lag, the leader lock only requires write leaders to be present. This relaxed requirement has a tradeoff: if a write leader fails over to a replica that's behind on replication, there's a small window before the new leader acquires the lock where a conflicting DML statement could still get through. If that risk isn't acceptable, set `bdr.ddl_locking` to `all` to restore the stricter, all-nodes locking behavior from 5.x. Global DDL locks, as opposed to DML locks, still use majority locking regardless of this setting.
 
 `LOCK TABLE` now uses DDL lock for `ACCESS SHARE`, `ROW SHARE`, `ROW EXCLUSIVE`, `SHARE UPDATE EXCLUSIVE` and DML lock for `SHARE ROW EXCLUSIVE`, `EXCLUSIVE`, and `ACCESS EXCLUSIVE`.
-This means that `SHARE+` blocks DMLs, but lower levels don't (which is more closely aligned with how these levels work in Postgres).
+As a result, `SHARE+` blocks DMLs, but lower levels don't (which is more closely aligned with how these levels work in Postgres).
 `LOCK TABLE` used to always use DML lock.
 
 ## Join/part behavior
@@ -50,8 +73,32 @@ For `bdr.join_node_group`:
 
 -   the `pause_in_standby` option was removed
 -   now whether the node is in standby is determined by `node_kind` when running `bdr.create_node`
+-   the function can no longer run inside a transaction block, since a group join can't be rolled back
 
 A new node state `PART_CLEANUP` was added, which waits for the group slot to move past any records relevant to the parting node and cleans up origin records related to the node.
+
+### Node identity
+
+Every node now has a `node_uuid`, generated randomly when the node is created and constant for the node's
+lifetime. `node_id` is derived from `node_uuid` instead of from the node's name, and replication origin and
+slot names are built from node and group UUIDs rather than names. A node must be fully parted before another
+node can rejoin using the same name.
+
+### Synchronizing roles and tablespaces at join
+
+Roles and tablespaces are now synchronized to a joining node before its schema is restored from the join
+source. Roles or tablespaces that already exist on the joining node are updated to match the join source,
+including passwords and other settings. Roles created by `initdb` aren't synchronized. This synchronization behavior means you no
+longer need to pre-create roles and tablespaces on a node before joining it to a group.
+
+This synchronization also applies to witness nodes, which now receive roles, and role grants and revokes,
+at join instead of being excluded from role synchronization.
+
+### Subscriber-only nodes in data groups
+
+A subscriber-only node can now join a data node group directly, by setting `node_kind` to `subscriber_only`
+when calling `bdr.create_node`. Previously, subscriber-only nodes could join only a node group of type
+subscriber-only.
 
 ### Sequences conversion
 
@@ -59,37 +106,70 @@ When creating a PGD cluster, existing [sequences](/pgd/current/advanced-function
 
 ### Parting a node drops it
 
-When a node is parted, it is eventually dropped and the node will not be seen in the `PARTED` state at the end of the parting.
-Therefore, scripts that wait for the node to reach `PARTED` state may need change.
-Parting can also take longer than earlier versions since this operation waits till the group slot on all crosses of the last transaction from the parting node to ensure consistency.
+When a node is parted, its metadata is eventually removed automatically from every node in the cluster, so the
+node will not be seen in the `PARTED` state at the end of the parting. On the local (parting) node, this
+process removes all node metadata, including information about remote nodes. On a remote node, it removes only the
+metadata for that specific parted node. Therefore, scripts that wait for the node to reach `PARTED` state may
+need change.
+
+Parting can also take longer than earlier versions, since the other nodes need to wait until their group
+slots catch up to all the transactions that originated from the parted node before its metadata is removed.
+Track this catchup progress in [`bdr.parted_origin_catchup_info`](/pgd/current/reference/tables-views-functions/catalogs-visible/#bdrparted_origin_catchup_info).
 
 ## Administration function changes
 
 -   The `enable_proxy_routing` node group option is now `enable_routing`, although `bdr.alter_node_group_option` still supports the older syntax for backwards compatibility. The views only show the new name.
 -   The already deprecated `bdr.alter_node_group_config()` was removed. Use `bdr.alter_node_group_option()` instead.
 -   The `managed_locally` option in `bdr.autopartition()` was removed. Only locally managed partitions are now supported. At the same time `ap_is_local` was removed from `bdr.autopartition_rules` catalog as well.
+-   The legacy CLI commands from PGD 5 and earlier, kept until now for backward compatibility, were removed.
+    Use [`pgd node setup`](/pgd/current/reference/cli/command_ref/node/setup/) instead, which handles initial
+    cluster creation and node addition directly from the command line.
+-   `bdr_init_physical` is deprecated in favor of the CLI, which uses a physical join to add nodes.
+-   The `bdr.monitor_*` functions are deprecated. Use the corresponding `bdr.stat_*` views instead.
+-   `bdr.standby_slot_names` and `bdr.standby_slots_min_confirmed` were removed. Subscriber-only nodes now
+    receive data only after it replicates to a majority of data nodes, without needing this configuration.
+    If you relied on these settings for physical standby behavior, use the `pg_failover_slots` extension or
+    PostgreSQL 17's native support instead.
+-   `bdr.enable_camo`, `pg2q.enable_camo`, `bdr.camo_partner_of`, `bdr.camo_origin_for`, `bdr.standby_dsn`, and
+    `bdr.global_commit_timeout` were removed. Configure CAMO and other durability trade-offs through
+    [commit scopes](/pgd/current/commit-scopes/commit-scopes/) instead.
+-   `bdr.assess_update_replica_identity` and `bdr.assess_lock_statement` were removed, along with the
+    remaining deprecated `synchronize_failover_slots_*` and other pglogical-era configuration parameters kept
+    until now for backward compatibility.
 
 ## Other
 
 ### Replica identity
 
 -   Replica identity defaults to FULL now.
--   This removes some edge cases in conflict detection between inserts, updates, and deletes across node crashes and recovery.
+-   This default removes some edge cases in conflict detection between inserts, updates, and deletes across node crashes and recovery.
+-   For the row-identification requirements this default addresses, see [Designing your schema for replication](/pgd/current/developing-applications/planning/#designing-your-schema-for-replication).
+-   This release also fixes a bug where updates to tables with non-unique indexes could break replication. See the [6.0.1 release notes](/pgd/current/rel_notes/pgd_6.0.1_rel_notes/) for details.
+
+### Sequences
+
+-   Global sequences can no longer be created as or altered to `UNLOGGED`. Convert any existing unlogged
+    distributed sequences to logged, since an unlogged sequence can behave unexpectedly after a server crash.
 
 ### Run on (all) writes
 
 -   Run on (all) writes is now not replicated.
--   The `bdr.xact_replicate` is set to `off` by default, reducing possible accidental issues with replication of commands sent via the run on (all) nodes command.
+-   The `bdr.xact_replication` configuration parameter is set to `off` by default, reducing possible accidental issues with replication of commands sent via the run on (all) nodes command.
 -   Some log messages were reworded to be easier to understand.
 -   Some internal log messages' log levels were lowered from `LOG` to `DEBUG` so they may no longer appear in logs.
 
 ### General UI improvements
 
 -   Workers renamed to not contain 'pglogical' 
--   Previously deprecated configuration parameters (GUCs) now removed (this includes, for example, all the pglogical prefixed GUCs).
+-   Previously deprecated configuration parameters now removed. See [Administration function changes](#administration-function-changes) for the CAMO and failover-slot-sync parameters affected.
 -   Conflicts are logged neither to Postgres log or `conflict_history` table by default
 
 ## Changes to defaults
+
+### Routing on subgroups
+
+Routing, and by extension Raft, is now enabled by default on data-group subgroups. If you don't want a
+subgroup to accept routed connections, disable `enable_routing` on it explicitly.
 
 ### Global lock timeout
 

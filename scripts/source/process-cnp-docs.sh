@@ -38,13 +38,13 @@ function do_import {
   node "$DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs" \
     -f "src/**/*.md" \
     -p "cnp/convert-rel-notes" \
+    -p "cnp/cleanup-html" \
     -p "cnp/add-frontmatters" \
     -p "cnp/flatten-appendices" \
     -p "cnp/replace-github-urls" \
     -p "cnp/update-links" \
     -p "cnp/update-yaml-links" \
     -p "cnp/rewrite-mdextra-anchors" \
-    -p "cnp/cleanup-html" \
     -p "cnp/rename-to-mdx" \
     > /dev/null
 

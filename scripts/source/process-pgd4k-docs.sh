@@ -35,12 +35,12 @@ cd $SOURCE_CHECKOUT/docs-import/docs
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
   -p "pg4k-pgd/convert-rel-notes" \
+  -p "cnp/cleanup-html" \
   -p "cnp/replace-github-urls" \
   -p "pg4k-pgd/replace-beta-urls" \
   -p "pg4k-pgd/update-links" \
   -p "cnp/update-yaml-links" \
   -p "pg4k-pgd/add-frontmatters" \
-  -p "cnp/cleanup-html" \
   -p "cnp/rename-to-mdx"
 
 node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \

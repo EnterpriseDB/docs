@@ -3,8 +3,6 @@ title: 'Troubleshooting'
 originalFilePath: 'src/trouble_shooting.md'
 ---
 
-
-
 In this page, you can find some basic information on how to troubleshoot
 EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC) in your Kubernetes cluster deployment.
 
@@ -389,13 +387,31 @@ NAME                                     STATUS   COMPLETIONS   DURATION   AGE
 pgdgroup-backup-barman-2-physical-join   Failed   0/1           10m        10m
 ```
 
-you can try to delete the job to trigger the physical join again
+If the `BackoffLimit` is reached and the physical join job is failed before non-retriable step, you can delete the
+job to trigger the physical join again:
 
 ```shell
 kubectl delete job pgdgroup-backup-barman-2-physical-join -n <NAMESPACE>
 ```
 
-A key pre-condition for a physical join is the establishment of a global Raft consensus.
+If the `BackoffLimit` is reached and the physical join job is failed in non-retriable step, the node data may be
+left in an inconsistent state, we need to delete the node to recreate the node again:
+
+```shell
+kubectl delete cluster pgdgroup-backup-barman-2 -n <NAMESPACE>
+```
+
+Physical join failed before the non-retriable step
+
+!!! Note
+
+    We can check the logs of the physical join job to determine whether the failure happened before or in the
+    non-retriable step. If the failure happened in the non-retriable step, the physical join may already started
+    the data copying, simply recreating the job alone is not enough, because the retry is intentionally blocked to
+    avoid re-running the non-idempotent join step on partially initialized data. In that case recreate the data node
+    so it starts from a fresh volume.
+
+One key pre-condition for a physical join is the establishment of a global Raft consensus.
 If a physical join job is pending, you can use the PGD function `bdr.monitor_group_raft` to verify whether this
 pre-condition has been satisfied.
 
