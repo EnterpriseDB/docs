@@ -70,18 +70,16 @@ OTEL_GATEWAY_ENDPOINT=wem-host:4317
 ```
 
 !!! Warning
-    Don't set `OTEL_GATEWAY_ENDPOINT` to `localhost`, even when the gateway collector runs on the same host as WEM. Unlike `CLICKHOUSE_URL` above, every WHPG cluster node uses this address directly to reach the gateway collector, WEM doesn't connect to it locally on the node's behalf. `localhost` there resolves on each WHPG node itself, not on the gateway host, so metrics and logs never leave the node. Always use the gateway host's actual hostname or IP address, as reachable from the WHPG cluster.
+    Don't set `OTEL_GATEWAY_ENDPOINT` to `localhost`, even when the gateway collector runs on the same host as WEM. Every WHPG cluster node connects to this address directly, so `localhost` resolves on each node itself rather than the gateway host, and metrics and logs never leave the node. Use the gateway host's actual hostname or IP address, reachable from the WHPG cluster.
 
-For a single WHPG cluster sending data directly to ClickHouse, leave `OTEL_GATEWAY_ENDPOINT` unset, regardless of whether ClickHouse runs on the standby coordinator or on a dedicated host outside the cluster. See [Configuration reference](../reference/configuration#clickhouse) and [Configuration reference](../reference/configuration#otel-collector) for the complete list of ClickHouse and OTel Collector parameters.
+For a single WHPG cluster sending data directly to ClickHouse, leave `OTEL_GATEWAY_ENDPOINT` unset, regardless of whether ClickHouse runs on the standby coordinator or on a dedicated host outside the cluster. See the [Configuration reference](../reference/configuration) for the complete list of [ClickHouse](../reference/configuration#clickhouse) and [OTel Collector](../reference/configuration#otel-collector) parameters.
 
 ### Application state
 
-WEM stores its internal state, dashboards, alert rules, and user accounts, in a dedicated `wem` database rather than reusing `WHPG_DATABASE`.
+WEM stores its internal state, dashboards, alert rules, and user accounts, in the database you configure as `WEM_DATABASE`. Point WEM at this database and its owning role with `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, and `WEM_PASSWORD`. Choose one of two setups:
 
-!!! Note
-    Host this database on a Postgres instance separate from the WHPG cluster you're monitoring. Hosting it separately keeps WEM's own state available even if that cluster goes down. If you host `WEM_DATABASE` within the monitored WHPG cluster instead, WEM hides the [Cluster Management panel](../monitoring/cluster-overview) (Start, Stop, Restart, and Recover Segments), since stopping that cluster would take WEM's own database down with it mid-operation.
-
-Configure the following parameters to point WEM at the host and role that own this database:
+- **A dedicated Postgres instance**, separate from the WHPG cluster you're monitoring. This setup keeps WEM's own state available even if that cluster goes down. See [Installing PostgreSQL](observability-stack#installing-postgresql-optional) to set one up, including the role to create.
+- **Your WHPG cluster's own Postgres server.** Set `WEM_USER` and `WEM_PASSWORD` to the same values as `WHPG_USER` and `WHPG_PASSWORD`, already a superuser on that cluster (see [Target cluster](#target-cluster)). This choice hides the [Cluster Management panel](../monitoring/cluster-overview) (**Start**, **Stop**, **Restart**, and **Recover Segments**), since stopping that cluster would take WEM's own database down with it mid-operation.
 
 ```ini
 WEM_HOST=wem-db-hostname
@@ -91,11 +89,11 @@ WEM_USER=wem_admin
 WEM_PASSWORD=<your-password>
 ```
 
-Leaving `WEM_HOST` unset doesn't fall back to `WHPG_HOST`. It defaults to `localhost`, so leave it unset only when a Postgres instance for this database is reachable at `localhost` from the WEM host itself.
+Leaving `WEM_HOST` unset doesn't fall back to `WHPG_HOST`. It defaults to `localhost`, so leave it unset only when a Postgres instance for this database is reachable at `localhost` from the WEM host.
 
-WEM creates the `WEM_DATABASE` database itself on first start if it doesn't already exist, but it doesn't create the role, `WEM_USER` must already exist. If `WEM_HOST` points at your WHPG cluster's own Postgres server, set `WEM_USER` and `WEM_PASSWORD` to the same values as `WHPG_USER` and `WHPG_PASSWORD`, already a superuser on that cluster (see [Target cluster](#target-cluster)). Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. See [Installing PostgreSQL](observability-stack#installing-postgresql-optional) for the role-creation step.
+WEM creates the `WEM_DATABASE` database on first start if it doesn't already exist, but it doesn't create the role, `WEM_USER` must already exist.
 
-Avoid pointing `WEM_DATABASE` at the monitored database itself, `WHPG_DATABASE`, even when reusing the WHPG cluster's server. That still leaves WEM dependent on the same cluster's availability, and hides the [Cluster Management panel](../monitoring/cluster-overview) for the same reason.
+Avoid pointing `WEM_DATABASE` at the monitored database, `WHPG_DATABASE`, even when reusing the WHPG cluster's server. That choice still leaves WEM dependent on the same cluster's availability, and hides the **Cluster Management** panel for the same reason.
 
 ### WEM portal access
 
@@ -160,9 +158,6 @@ If setup fails, the service stays in `activating (auto-restart)`. The most commo
 sudo tail -f /var/log/wem/wem.log
 ```
 
-!!! Note
-    Every `systemctl restart wem` rotates this file to a timestamped copy and starts a fresh `wem.log`, so a `tail -f` you left running stops receiving new lines after a restart, without any error, it's just watching the old, now-static file. Exit and rerun `tail -f` after each restart, or use `sudo journalctl -u wem.service -n 500 -f` instead, which follows across restarts without needing to be restarted itself.
-
 For manual troubleshooting, run `wem setup` with your connection details passed as flags. The command doesn't read `wem.conf`. Run it as the `wem` service user, and add `--check --debug` to test the connection and print verbose SQL and connection output without making changes. For example:
 
 ```bash
@@ -199,6 +194,16 @@ Use the following diagnostic tools to ensure all components are communicating co
 
 !!! Note Post-installation changes: 
     To modify your environment after the initial setup, see [Configuring WEM](../configuring).
+
+## Logging in to WEM
+
+Open WEM in your browser at your server's address and port, for example `http://your-wem-host:8080`, and log in as `admin`, using the password from whichever method you chose in [Setting the administrator password](#setting-the-administrator-password):
+
+- **Interactive setup:** the password you entered when prompted by `wem setup`.
+- **Static configuration:** the value you set for `WEM_ADMIN_PASSWORD`. If you left it empty, WEM generates one and writes it back into `wem.conf`, open the file to retrieve it.
+- **File-based configuration:** the password stored in the file `WEM_ADMIN_PASSWORD_FILE` points to.
+
+See [Getting started with WEM](../get-started) for a tour of the interface.
 
 ## Next steps
 
