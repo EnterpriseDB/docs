@@ -49,10 +49,11 @@ WEM stores its internal state in its own dedicated `wem` database rather than re
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `WEM_HOST` | `localhost` | No | Hostname of the WEM application state database. Doesn't fall back to `WHPG_HOST`, even when `WHPG_HOST` is set explicitly. |
-| `WEM_PORT` | `WHPG_PORT` | No | Port for the WEM application state database. |
+| `WEM_PORT` | `5432` | No | Port for the WEM application state database. This is a fixed default, independent of `WHPG_PORT` — it isn't derived from it even when `WHPG_PORT` is set explicitly. |
 | `WEM_DATABASE` | `wem` | No | Database name for WEM application state. WEM creates this database itself on first start if it doesn't already exist. |
-| `WEM_USER` | `WHPG_USER` | No | User for the WEM application state database. Must already exist. If this database is hosted on the WHPG cluster's own Postgres server, use the same value as `WHPG_USER`. Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. WEM doesn't create this role. |
+| `WEM_USER` | `gpadmin` | No | User for the WEM application state database. Must already exist. This is a fixed default, independent of `WHPG_USER` — it isn't derived from it even when `WHPG_USER` is set explicitly. If this database is hosted on the WHPG cluster's own Postgres server, set this to the same value as `WHPG_USER`. Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. WEM doesn't create this role. |
 | `WEM_PASSWORD` | — | No | Password for `WEM_USER`. |
+| `WEM_SSLMODE` | `prefer` | No | SSL mode for the WEM application state database connection. Valid values are the same as `WHPG_SSLMODE`. |
 
 ### Web server
 
@@ -67,7 +68,32 @@ WEM stores its internal state in its own dedicated `wem` database rather than re
 | `HIGH_LOAD_MODE` | `false` | No | Extends WEM's internal timeouts for large clusters. Equivalent to passing the `--high-load` flag. |
 | `LONG_RUNNING_THRESHOLD` | `10` | No | Duration, in minutes, after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Accepts a plain integer, not a duration string. Can also be set from the WEM interface. |
 | `LOG_MIN_DURATION_STATEMENT` | — | No | Sets WHPG's `log_min_duration_statement` configuration parameter, in milliseconds. Use `-1` to disable statement logging or `0` to log every statement. Leave unset to leave WHPG's own setting unchanged. |
-| `GPBACKUP_HISTORY_DB` | `/data/coordinator/gpseg-1/gpbackup_history.db` | No | Path to the `gpbackup` history SQLite database, used by the **Backups** feature. |
+
+### Connection pooling
+
+WEM maintains separate connection pools for the WHPG cluster, its own application state database, and the Query Editor. These parameters share the same suffixes across all three prefixes (`WHPG_POOL_`, `WEM_POOL_`, and `QUERY_EDITOR_POOL_`).
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WHPG_POOL_MAX_CONNS` | `5` | No | Maximum number of pooled connections to the WHPG cluster. |
+| `WHPG_POOL_MIN_CONNS` | — | No | Minimum number of pooled connections to the WHPG cluster. |
+| `WHPG_POOL_MAX_LIFETIME` | `30m` | No | Maximum lifetime of a pooled WHPG connection before it's recycled. |
+| `WHPG_POOL_MAX_IDLE_TIME` | `5m` | No | Maximum time a pooled WHPG connection can sit idle before it's closed. |
+| `WHPG_POOL_HEALTH_CHECK` | `30s` | No | Interval at which idle WHPG pool connections are health-checked. |
+| `WEM_POOL_MAX_CONNS` | `4` | No | Maximum number of pooled connections to the WEM application state database. |
+| `WEM_POOL_MIN_CONNS` | `1` | No | Minimum number of pooled connections to the WEM application state database. |
+| `WEM_POOL_MAX_LIFETIME` | `30m` | No | Maximum lifetime of a pooled WEM application state connection before it's recycled. |
+| `WEM_POOL_MAX_IDLE_TIME` | `5m` | No | Maximum time a pooled WEM application state connection can sit idle before it's closed. |
+| `WEM_POOL_HEALTH_CHECK` | `30s` | No | Interval at which idle WEM application state pool connections are health-checked. |
+| `QUERY_EDITOR_POOL_MAX_CONNS` | `4` | No | Maximum number of pooled connections used by the Query Editor. |
+| `QUERY_EDITOR_POOL_MIN_CONNS` | `0` | No | Minimum number of pooled connections used by the Query Editor. |
+| `QUERY_EDITOR_POOL_MAX_LIFETIME` | `30m` | No | Maximum lifetime of a pooled Query Editor connection before it's recycled. |
+| `QUERY_EDITOR_POOL_MAX_IDLE_TIME` | `5m` | No | Maximum time a pooled Query Editor connection can sit idle before it's closed. |
+| `QUERY_EDITOR_POOL_HEALTH_CHECK` | `30s` | No | Interval at which idle Query Editor pool connections are health-checked. |
+| `LOG_POOL_STATS` | `false` | No | Logs periodic connection pool statistics for all three pools. |
+| `LOG_POOL_STATS_INTERVAL` | `60s` | No | Frequency at which pool statistics are logged, when `LOG_POOL_STATS` is enabled. |
+
+Pool utilization is also exposed as [Prometheus metrics](metrics#monitoring-connection-pools) at `/prom/metrics`.
 
 ### Session security
 
@@ -116,6 +142,15 @@ These parameters configure client-certificate TLS for WEM's two Postgres connect
 | `WEM_JOB_RETENTION_HOURS` | `168` | No | How long WEM keeps completed or failed Cluster Management and Safeguard job records before deleting them. A background cleanup task sweeps expired records every 24 hours. |
 | `WEM_BACKUP_JOB_RETENTION_HOURS` | `168` | No | How long WEM keeps completed backup and restore job records before deleting them. A background cleanup task sweeps expired records every 24 hours. |
 
+### Safeguard
+
+Safeguard backup and disaster-recovery settings (repositories, schedules, DR targets, and so on) are configured through the WEM interface and stored in the WEM application state database, not in `wem.conf`. These parameters only control the background sync of that configuration out to host agents.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `CONFIG_DRIFT_ENABLED` | `true` | No | Enables periodic sync of Safeguard configuration from host agents, to detect and reconcile drift. |
+| `CONFIG_DRIFT_INTERVAL` | `60s` | No | Frequency at which WEM syncs Safeguard configuration from host agents. |
+
 ### Alert evaluator
 
 WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertmanager. Rules are managed from the **Alert Rules** tab in the WEM interface rather than from static files.
@@ -160,6 +195,7 @@ WEM dispatches jobs to the host agent through its internal job-execution engine,
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `WEM_AGENT_PORT` | `PORT` + 1 | No | Port the host agent connects to for WEM's internal job-execution engine. Leave unset to derive it automatically from `PORT`. |
-| `WEM_AGENT_CALLBACK_BASE_URL` | — | No | Externally reachable base URL, without a trailing slash, that host agents dial to push and pull file bytes. If left unset, WEM derives this URL from the Host header of the browser request that triggered the file transfer, which breaks whenever that request arrived over `localhost`, an SSH tunnel, or a proxy hostname the agent can't dial back to. Set it explicitly to WEM's real hostname or IP address and listen port, for example `http://wem-host:8080`, in any deployment where the host agent runs on a different host than WEM, or where you access WEM through anything other than its own direct address. Don't use `localhost` or a bind address like `0.0.0.0`. Getting this wrong surfaces as `agent could not reach callback URL` when saving a file through the host agent, for example in the HBA editor. |
-| `WEM_AGENT_JOIN_SECRET` | — (disabled) | No | Shared secret that lets a self-registering host agent skip manual admin approval. When set, an agent that presents a matching token on registration moves straight to `approved` status instead of waiting in the **Host Agents** tab. Leave unset to require an Admin to approve every new agent explicitly. |
+| `WEM_AGENT_JOIN_SECRET` | — (disabled) | No | Shared secret that lets a self-registering host agent skip manual admin approval. When set, an agent that presents a matching token — pre-provisioned in `/etc/edb/acp-host-agent/join-token` on the agent host — moves straight to `approved` status instead of waiting in the **Host Agents** tab. Leave unset to require an Admin to approve every new agent explicitly, comparing the token shown in the **Host Agents** tab against the agent host's `join-token` file. |
+
+The host agent's callback address for file transfers is derived automatically from `WEM_AGENT_PORT` and is no longer configurable through `wem.conf`.
 
