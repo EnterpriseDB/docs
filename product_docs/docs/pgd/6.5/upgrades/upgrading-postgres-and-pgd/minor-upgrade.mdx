@@ -14,15 +14,16 @@ minor version for it, so a single package install and restart covers both. No ne
 `pg_upgrade`, or node join is needed, since neither a PGD nor a Postgres minor version upgrade changes the
 on-disk format.
 
-!!! Note
+!!! Warning
 If you're upgrading to a Postgres minor version that introduces the `output_plugin_libraries`
-parameter (available from community Postgres 18.6), add `bdr` to that parameter's value and reload the
-configuration once the upgrade finishes. Otherwise PGD's replication slots stop working, with an
-error like `library "bdr" may not be used as an output plugin`. This step isn't needed for the
-[replace-nodes approach](#upgrading-with-a-rolling-upgrade-by-replacing-nodes), since [`pgd node
+parameter (community Postgres 14.24, 15.19, 16.15, 17.11, or 18.6, depending on your major
+version), PGD's replication slots stop working unless `bdr` is added to it before you start
+Postgres on the new version. EDB Postgres Extended and EDB Postgres Advanced Server already allow
+`bdr` by default and aren't affected. The steps below cover this for the full-downtime and
+rolling-in-place approaches. It isn't needed for the [replace-nodes
+approach](#upgrading-with-a-rolling-upgrade-by-replacing-nodes), since [`pgd node
 setup`](/pgd/latest/reference/cli/command_ref/node/setup/) adds `bdr` automatically. See [Postgres
-configuration](/pgd/current/postgres-configuration/#postgres-settings) for the required setting and
-instructions.
+configuration](/pgd/current/postgres-configuration/#postgres-settings) for the required setting.
 !!!
 
 ## Upgrading with full downtime
@@ -40,6 +41,15 @@ the trade-offs against the two rolling approaches described below.
 
     You can run this step one node at a time, but you must wait for each node to shut down cleanly before
     moving to the next. Monitor progress with `sudo journalctl -u postgres -f`.
+1.  If you're upgrading to a Postgres minor version that introduces the `output_plugin_libraries`
+    parameter, add `bdr` to it in `postgresql.conf` on every node now, while Postgres is stopped:
+
+    ```
+    output_plugin_libraries = 'pgoutput, test_decoding, bdr'
+    ```
+
+    Don't start Postgres again until after the next step, since the old version fails to start with
+    an unrecognized parameter.
 1.  Install the new combined PGD and Postgres packages for your Postgres version on every node, for
     example:
 
@@ -80,6 +90,16 @@ For each node, one at a time:
     ```
 
     Monitor progress with `sudo journalctl -u postgres -f`.
+
+1.  If you're upgrading to a Postgres minor version that introduces the `output_plugin_libraries`
+    parameter, add `bdr` to it in `postgresql.conf` now, while Postgres is stopped:
+
+    ```
+    output_plugin_libraries = 'pgoutput, test_decoding, bdr'
+    ```
+
+    Don't start Postgres again until after the next step, since the old version fails to start with
+    an unrecognized parameter.
 
 1.  Install the new combined PGD and Postgres packages for your Postgres version, for example:
 
