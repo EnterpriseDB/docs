@@ -6,40 +6,49 @@ deepToC: true
 ---
 
 
-The WarehousePG Enterprise Manager (WEM) architecture is built upon a streamlined telemetry pipeline: an internal data collection layer, ClickHouse-backed storage, and the unified WEM application. Starting with WEM 1.3, a host agent component enables privileged operations on WarehousePG coordinator hosts through WEM's internal job-execution engine. Starting with WEM 1.4, every connection between a host agent and WEM authenticates with mutual TLS (mTLS), and host agents register themselves with WEM automatically instead of requiring manual enrollment.
+WarehousePG Enterprise Manager (WEM)'s architecture centers on a telemetry pipeline that collects, stores, and visualizes cluster data. Collectors running on every WarehousePG (WHPG) node gather host metrics and logs, host agents carry out privileged operations on WEM's behalf, ClickHouse stores historical metrics and logs, and the WEM application ties it all together into a single dashboard that combines real-time and historical views.
 
-For the full list of what WEM can monitor and manage, see [Key capabilities](../#key-capabilities). This page covers the components behind those capabilities and how they work together.
+For the full list of what WEM can monitor and manage, see [Key capabilities](../#key-capabilities). 
+
+![architecture](../images/architecture.svg)
 
 ## Components
 
-### OTel Collector
-
-The OTel Collector (`edb-otelcol`) is an OpenTelemetry (OTel) Collector service that runs alongside the host agent on the WarehousePG (WHPG) coordinator, standby, and segments. Each node's collector gathers host metrics and tails the WHPG log files, then forwards this telemetry to a gateway collector, which writes it into ClickHouse.
-
-When ClickHouse runs on the standby coordinator, or the coordinator if there's no standby, WEM designates that node as the gateway internally by default and dispatches the collector's configuration to each host agent as it registers. When ClickHouse runs elsewhere, such as a dedicated host outside the cluster, each node's OTel Collector exports directly to ClickHouse instead. A dedicated gateway collector, set explicitly through `OTEL_GATEWAY_ENDPOINT`, is only needed when multiple systems or clusters send observability data to the same ClickHouse instance. See [Installing ClickHouse](../installing/observability-stack) for these topologies.
-
 ### Host agent
 
-The host agent (`acp-host-agent`) is a background service that runs on the WarehousePG coordinator host and executes privileged operations, such as editing `pg_hba.conf` and starting the OTel Collector, on behalf of WEM. WEM dispatches these operations through its internal job-execution engine, which ensures they're reliable and recoverable even when connectivity is interrupted.
+The host agent (`acp-host-agent`) is a background service that runs on all WHPG hosts and executes privileged operations, such as editing `pg_hba.conf` and starting the OTel Collector, on behalf of WEM. WEM dispatches these operations through its internal job-execution engine, which ensures they're reliable and recoverable even when connectivity is interrupted.
 
-The host agent is installed on every WarehousePG node, coordinator, standby, and segments alike. On first connection, an agent registers itself with WEM and waits in a pending state until an Admin approves it from the **Host Agents** tab. Every connection between an approved agent and WEM authenticates with mutual TLS: WEM's internal certificate authority issues each agent a short-lived certificate and renews it automatically, with a 24-hour grace window that lets an agent that was briefly offline recover its certificate without Admin intervention. WEM doesn't use host agent features unless both the host agent and WEM's internal job-execution engine are running and connected. See [Installing the host agent](../installing/host-agent).
+The host agent is installed on every WHPG node, coordinator, standby, and segments alike. On first connection, an agent registers itself with WEM and waits in a pending state until an Admin approves it from the **Host Agents** tab. Every connection between an approved agent and WEM authenticates with mutual TLS. WEM doesn't use host agent features unless both the host agent and WEM's internal job-execution engine are running and connected.
+
+### OTel Collector
+
+The OTel Collector (`edb-otelcol`) is an OpenTelemetry Collector service that runs alongside the host agent on all WHPG hosts. Each node's collector gathers host metrics and tails the WHPG log files, then forwards them to a gateway collector, which writes it into ClickHouse.
+
+### Gateway collector (optional)
+
+The gateway collector is a centralized instance of the OTel Collector (`edb-otelcol`) that terminates OpenTelemetry Protocol (OTLP) telemetry from every per-node collector and writes it into ClickHouse. WEM auto-provisions and configures one by default for a WHPG cluster, dispatching its configuration to each host agent as it registers, whether WEM and ClickHouse run inside the WHPG cluster or on a separate host.
+
+Install a dedicated gateway collector only when multiple systems or clusters send observability data to the same ClickHouse instance, or when applications outside your WHPG cluster need to ship telemetry to ClickHouse.
 
 ### WEM
 
-WEM is the central management and visualization service.
+WEM is the central management and visualization service. It performs the following core functions:
 
-WEM performs the following core functions:
-
-- **Database extraction:** An integrated engine runs SQL queries against heap and catalog tables to capture real-time database metrics, independent of ClickHouse.
+- **Database extraction:** An integrated engine runs SQL queries against heap and catalog tables on the monitored WHPG cluster to capture real-time database metrics, independent of ClickHouse.
 - **Metrics and log queries:** WEM queries ClickHouse for host metrics, SQL and cluster metrics, and WHPG logs collected by the OTel Collector, and uses the same data to evaluate alert rules.
 - **Unified visualization:** Aggregates live data directly from the internal database extraction engine and historical data from ClickHouse into a single dashboard.
-
-### Storage: ClickHouse
-
-WEM queries ClickHouse for all historical metrics and log data. ClickHouse isn't bundled with WEM, and configuring it is entirely up to you. Deploy it on the same host as WEM, either the standby coordinator or a dedicated monitoring host outside the cluster, or point WEM at an existing instance you already manage elsewhere. See [Installing ClickHouse](../installing/observability-stack).
+- **Alerting:** WEM evaluates alert rules against ClickHouse-backed data itself, then pushes firing alerts to Alertmanager, bundled as an internal managed subprocess, which handles notification routing, deduplication, and silencing.
 
 !!! Note
     While WEM can function as a standalone tool, its capabilities are limited to real-time cluster status and SQL execution data. Historical trends, host-level metrics, and log search require ClickHouse.
+
+### Application state database
+
+WEM stores its own configuration, dashboards, alert rules, and user accounts in a dedicated Postgres database, separate from the WHPG cluster it monitors. Host this database on a standalone instance, or reuse an existing Postgres server you already manage. 
+
+### ClickHouse
+
+WEM queries ClickHouse for all historical metrics and log data. You can deploy ClickHouse on the same host as WEM, either the standby coordinator or a dedicated monitoring host outside the cluster, or point WEM at an existing instance you already manage elsewhere. 
 
 ## WEM operational workflow
 
@@ -52,7 +61,7 @@ The system processes telemetry across four distinct phases:
     - **Database metrics:** WEM's internal database extraction engine probes the WHPG engine directly to capture the real-time state of queries, transactions, and resource usage, independent of the ClickHouse pipeline.
     - **Privileged host operations:** When WEM triggers a host-level action, such as updating `pg_hba.conf` or starting the OTel Collector service, WEM dispatches the request to the host agent through its internal job-execution engine, which tracks the operation and retries automatically if the connection is interrupted.
 
-3. **Storage:** Metrics and logs are indexed and stored in ClickHouse. This ensures that even if the database cluster faces downtime, its historical metrics and logs remain available for root-cause analysis.
+3. **Storage:** Metrics and logs are indexed and stored in ClickHouse. This setup ensures that even if the database cluster faces downtime, its historical metrics and logs remain available for root-cause analysis.
 
 4. **Visualization:** WEM assembles the operational picture by pulling from two sources:
     - **ClickHouse:** For hardware performance, historical SQL trends, and searchable log files across the cluster.
