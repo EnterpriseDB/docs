@@ -73,6 +73,57 @@ These metrics reflect the physical resources of each cluster host, collected by 
 | `system.network.io` | Counter | Cumulative bytes received or transmitted over the network, broken out by the `direction` (`receive`, `transmit`) and `device` attributes. |
 | `system.filesystem.usage` | Gauge | Filesystem usage in bytes, broken out by the `state` (`used`, `free`, `reserved`), `mountpoint`, `type`, and `device` attributes. |
 
+## Querying the ClickHouse tables directly
+
+WEM's interface queries the metrics and logs above from ClickHouse through its own API, so you don't need direct ClickHouse access for day-to-day use. If you want to query them directly instead, for example from a BI tool or a custom Grafana panel, this section documents the underlying tables.
+
+These tables are created and populated by the OTel Collector's own ClickHouse exporter, using that exporter's default schema, not a schema WEM defines itself — column names follow OTel Collector conventions rather than WEM's own naming. They live in the database set by [`CLICKHOUSE_DB`](configuration#clickhouse) (default `acp_observability`).
+
+### Metrics tables
+
+| Table | Description |
+|---|---|
+| `otel_metrics_gauge` | Point-in-time metrics, for example connection counts, load averages, and segment status. |
+| `otel_metrics_sum` | Cumulative counter metrics, for example CPU time and disk and network I/O. |
+
+WEM's own queries read these columns from both tables:
+
+| Column | Description |
+|---|---|
+| `MetricName` | The metric name, matching the names listed under [WHPG cluster and host metrics](#whpg-cluster-and-host-metrics) above (for example `whpg.queries.active`, `system.cpu.time`). |
+| `Value` | The metric's numeric value. |
+| `TimeUnix` | Timestamp the sample was collected. |
+| `Attributes` | Map of string labels for the sample. WEM's own queries rely on the `whpg_host` key (the reporting node), plus metric-specific keys such as `state`, `direction`, `device`, `mountpoint`, and `type` — see the metric descriptions above for which attributes apply to which metric. |
+
+!!! Note
+    The OTel Collector's ClickHouse exporter also creates `otel_metrics_histogram`, `otel_metrics_exponential_histogram`, and `otel_metrics_summary` tables by default, and WEM doesn't currently query any of them. Confirm with engineering whether these tables are actually populated in a WEM deployment.
+
+### Logs table
+
+| Table | Description |
+|---|---|
+| `otel_logs` | WHPG log entries collected from each node. This replaced WEM's earlier Loki-based log pipeline. |
+
+WEM's own queries read these columns:
+
+| Column | Description |
+|---|---|
+| `Timestamp` | When the log line was collected. |
+| `ServiceName` | The OTel service name of the collecting node. |
+| `Body` | The raw log line. |
+| `TraceId` | Trace ID associated with the log entry, if any. |
+| `ResourceAttributes` | Map of resource-level attributes, such as the reporting host. |
+| `LogAttributes` | Map of per-log attributes parsed from the WHPG CSV log. WEM's **Logs** panel filters and summary counts rely on the `severity`, `log_user`, and `database` keys specifically. |
+
+!!! Note
+    By default, ClickHouse retains OTel-collected metrics and logs indefinitely. To change the retention policy, edit the internal tables in `CLICKHOUSE_DB`, `otel_logs` for logs, and each `otel_metrics_*` table (such as `otel_metrics_gauge`) for the metric types you collect:
+
+    ```sql
+    ALTER TABLE acp_observability.<table_name> MODIFY TTL <timestamp_column> + INTERVAL <retention_days> DAY;
+    ```
+
+    Substitute `<table_name>` and `<retention_days>` with your values, and `<timestamp_column>` with that table's own timestamp column, `Timestamp` for `otel_logs`, `TimeUnix` for `otel_metrics_*` tables.
+
 ## WEM internal metrics
 
 These metrics describe the health and behavior of WEM itself. Prometheus scrapes them directly from the `/prom/metrics` endpoint, which is unauthenticated. All WEM internal metrics use the prefix `wem_`.
