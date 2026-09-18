@@ -1,0 +1,225 @@
+---
+title: MCP endpoint
+navTitle: MCP endpoint
+description: Serve AIDB's tool catalog to external MCP clients over streamable HTTP.
+navigation:
+- agent-provisioning
+---
+
+The MCP endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). It's an HTTP server, `edb-endpoints`, shipped in the AIDB package and started and supervised by a Postgres background worker. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run.
+
+[Provisioning agents](agent-provisioning) walks through creating agent roles and tools with a worked example.
+
+!!!note
+This is the reverse direction from [MCP tools](../tools/mcp-tools). `aidb.import_mcp_tools()` brings tools from an external MCP server into AIDB for in-database agents to call. The MCP endpoint exposes AIDB's own catalog to external MCP clients.
+!!!
+
+## How it works
+
+When `edb.endpoints_mcp_enabled` is on, AIDB registers a background worker at postmaster start. The worker spawns the `edb-endpoints` binary with the configuration described below, restarts it if it exits, and shuts it down with Postgres. The binary stores no credentials and opens a database connection only for the duration of each call.
+
+An MCP client opens a session with the usual `initialize` handshake, which needs no credentials. Each subsequent request carries an HTTP Basic `Authorization` header holding a Postgres username and password. For each call, the endpoint:
+
+1. Opens a fresh connection to Postgres over the server's Unix socket (or TCP to `127.0.0.1` when `unix_socket_directories` is empty), authenticating as that user. Postgres decides whether the credentials are valid, according to `pg_hba.conf`.
+1. Runs the request under that role. `tools/list` reads the catalog with `aidb.get_mcp_tools()`. `tools/call` on a catalog tool runs `aidb.run_tool()`. The built-in `execute_sql` tool runs the statement directly.
+1. Closes the connection and returns the result.
+
+Each call authenticates and connects on its own, so `current_user` inside a tool is the agent's role, and that role appears in `pg_stat_activity` and in the Postgres logs.
+
+Postgres errors pass through to the client unchanged. `tools/call` returns them as MCP `isError` results and `tools/list` returns them as a JSON-RPC error. A wrong password surfaces as `password authentication failed`, a missing grant as `permission denied`, and an unknown tool as the `aidb.run_tool()` error `tool '<name>' not found in aidb.tools`.
+
+### The tool surface
+
+`tools/list` returns two kinds of tools:
+
+- `execute_sql`, a built-in that runs a single SQL statement as the caller. Each call is one statement in autocommit mode. Transactions can't span calls, so `BEGIN` and `COMMIT` in separate calls aren't supported. Results are capped at 10000 rows and 10 MiB serialized. A query that exceeds either cap returns an error and no rows. DML without `RETURNING` returns `{"rows_affected": N}`. Row-returning statements return a JSON array of objects keyed by column name. See [Result encoding](agent-provisioning#result-encoding-for-execute_sql) for how each Postgres type is rendered.
+- The tool catalog: every tool in `aidb.tools`, read from `aidb.get_mcp_tools()` on every listing. The listing shows what exists, not what the caller may run. There's no cache, so a tool registered with `aidb.create_sql_tool()` or `aidb.import_mcp_tools()` appears on the client's next `tools/list`. A catalog tool's serialized result has the same 10 MiB cap as `execute_sql`. A larger result returns an error.
+
+Listing the catalog requires `EXECUTE` on `aidb.get_mcp_tools()`, which membership in `aidb_users` provides. A role without it gets the Postgres permission error as a `tools/list` error.
+
+The name `execute_sql` is reserved for the built-in. The endpoint drops a catalog tool with the same name from the listing and logs the collision. Duplicate catalog names keep their first row.
+
+## Enable the endpoint
+
+The AIDB package installs the `edb-endpoints` binary into the Postgres `bindir`. To enable the endpoint:
+
+1. Make sure `aidb` is in `shared_preload_libraries`. AIDB's other background workers already need this. See [Configuring AIDB](../install/configure#configure-shared_preload_libraries).
+
+1. In `postgresql.conf`, turn the endpoint on:
+
+   ```ini
+   edb.endpoints_mcp_enabled = on
+   ```
+
+1. Restart Postgres. `edb.endpoints_mcp_enabled` is a postmaster parameter, so a reload isn't enough.
+
+1. Check that the endpoint is up. By default it listens on `127.0.0.1:8765`:
+
+   ```shell
+   curl -fsS http://127.0.0.1:8765/health
+   curl -fsS http://127.0.0.1:8765/ready
+   ```
+
+   Both return HTTP 200.
+
+Every other parameter has a working default. The endpoint serves the database named by `edb.endpoints_mcp_database` (`postgres` by default), which must have AIDB installed.
+
+### Connect a client
+
+The MCP endpoint speaks streamable HTTP at `/mcp`. Point any MCP client that supports that transport and HTTP Basic authentication at `http://127.0.0.1:8765/mcp` (or your TLS host and port), and give it a Postgres username and password.
+
+The handshake below shows the wire protocol with curl. Responses arrive as server-sent events, so the JSON payload is on a `data:` line.
+
+```shell
+# 1. Open a session. The handshake needs no credentials.
+curl -sS -D - http://127.0.0.1:8765/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "initialize",
+       "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                  "clientInfo": {"name": "example", "version": "0"}}}'
+# The response headers include mcp-session-id. Use it on every later request.
+
+# 2. Acknowledge the handshake.
+curl -sS http://127.0.0.1:8765/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
+
+# 3. List tools as a Postgres role.
+curl -sS http://127.0.0.1:8765/mcp \
+  -u agent_alice:alice_secret \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}'
+```
+
+Sending `notifications/cancelled` for an in-flight request cancels the Postgres statement behind it, including a statement running inside `aidb.run_tool()`. The session keeps serving afterwards.
+
+## TLS
+
+By default the endpoint listens on loopback over plain HTTP, which is fine when the MCP client runs on the database host. To serve clients on other hosts, set `edb.endpoints_mcp_host` to a routable address and give the endpoint a certificate and key:
+
+```ini
+edb.endpoints_mcp_host = '0.0.0.0'
+edb.endpoints_mcp_tls_cert = '/etc/edb/endpoints/server.crt'
+edb.endpoints_mcp_tls_key = '/etc/edb/endpoints/server.key'
+```
+
+Then reload with `SELECT pg_reload_conf();`. The supervisor enforces these constraints:
+
+- `edb.endpoints_mcp_tls_cert` and `edb.endpoints_mcp_tls_key` are set together or not at all. Both are PEM files.
+- Plain HTTP is only served on loopback (`127.0.0.1`, `::1`, or `localhost`). A listen host outside loopback without the TLS pair is refused.
+- The supervisor checks that both files exist before starting the endpoint. A wrong path idles the supervisor with a warning in the Postgres log.
+
+The connection from the endpoint to Postgres uses the local Unix socket with `sslmode=disable`, because it never leaves the host. Agent credentials are protected on the wire by TLS between the client and the endpoint, and Postgres authenticates them with whatever method `pg_hba.conf` names for the `local` connection type. If `unix_socket_directories` is empty, the endpoint connects over TCP to `127.0.0.1` instead and `host` lines apply.
+
+## Configuration parameters
+
+All configuration is through Postgres parameters registered by AIDB. Set them in `postgresql.conf` or with `ALTER SYSTEM`. `edb.endpoints_mcp_enabled` needs a restart. The rest take effect on `SELECT pg_reload_conf();`.
+
+| Parameter                               | Type    | Default       | Range      | Context    | Description                                                                                                                                                        |
+|-----------------------------------------|---------|---------------|------------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `edb.endpoints_mcp_enabled`             | boolean | `off`         |            | postmaster | Registers the supervisor background worker at postmaster start. Requires `aidb` in `shared_preload_libraries` and a restart.                                       |
+| `edb.endpoints_mcp_command_path`        | string  | empty         |            | sighup     | Path to the `edb-endpoints` binary. Empty means `<bindir>/edb-endpoints`. A relative path resolves against the Postgres `bindir`.                                  |
+| `edb.endpoints_mcp_host`                | string  | `127.0.0.1`   |            | sighup     | Address the endpoint listens on. Anything outside loopback requires the TLS pair.                                                                                  |
+| `edb.endpoints_mcp_port`                | integer | `8765`        | 1024-65535 | sighup     | Port the endpoint listens on.                                                                                                                                      |
+| `edb.endpoints_mcp_database`            | string  | `postgres`    |            | sighup     | Database the endpoint connects to for every call. Must have AIDB installed.                                                                          |
+| `edb.endpoints_mcp_tls_cert`            | string  | empty         |            | sighup     | PEM certificate the endpoint serves. Set together with the key.                                                                                                    |
+| `edb.endpoints_mcp_tls_key`             | string  | empty         |            | sighup     | PEM private key for the certificate. Set together with the certificate.                                                                                            |
+| `edb.endpoints_mcp_restart_max`         | integer | `5`           | 1-100      | sighup     | Maximum number of times the supervisor starts the endpoint (the first start included) within the restart window before it stops trying. See [Restart budget](#restart-budget). |
+| `edb.endpoints_mcp_restart_window_secs` | integer | `60`          | 1-3600     | sighup     | Length of the sliding window for the restart budget, in seconds.                                                                                                   |
+
+### Values with no parameter
+
+The supervisor derives a few settings from the Postgres server itself:
+
+- The endpoint connects to Postgres through the first entry in `unix_socket_directories`, falling back to `127.0.0.1`, on the server's own `port`, with `sslmode=disable`.
+- Each agent connection has a 10 second connection timeout, and a `statement_timeout` and `idle_in_transaction_session_timeout` of 30 seconds. Postgres cancels a tool that runs longer, and the timeout error passes through to the client.
+- The endpoint's environment is cleared except for `RUST_LOG`, which is passed through from the postmaster's environment. See [Logging](#logging).
+
+### Changing configuration
+
+After a reload, the supervisor compares the new values with the running endpoint:
+
+- A change to `edb.endpoints_mcp_command_path`, `edb.endpoints_mcp_host`, `edb.endpoints_mcp_port`, `edb.endpoints_mcp_database`, or either TLS parameter stops the running endpoint and starts a new one with the new values. In-flight calls on the old process get up to 10 seconds to finish.
+- A change to `edb.endpoints_mcp_restart_max` or `edb.endpoints_mcp_restart_window_secs` resets the restart budget without touching the running endpoint.
+- Any reload wakes an idle supervisor and lets it try again. See [Restart budget](#restart-budget).
+
+## Operating the endpoint
+
+### Health checks
+
+The endpoint answers two unauthenticated GET routes:
+
+| Route     | Meaning                                                                                                                                                                                        |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/health` | Liveness. Returns 200 with `ok` whenever the process is up. It never touches the database, so it stays green while Postgres is down.                                                          |
+| `/ready`  | Readiness. Returns 200 with `ready` whenever the process is serving. Because every call opens its own database connection, there's no standing connection to probe, so this matches `/health`. |
+
+To confirm the database path end to end, run a `tools/list` as a real agent role, as in [Connect a client](#connect-a-client).
+
+### Logging
+
+The supervisor logs to the Postgres server log with the prefix `aidb mcp endpoint supervisor:`. It logs each start with the child's PID and listen address at `LOG` level, and each exit with its status and each idle condition at `WARNING` level.
+
+The endpoint process inherits the supervisor's stderr, so its output lands in the Postgres log when `logging_collector` is on. Its log level is controlled by the `RUST_LOG` environment variable of the postmaster process, for example `RUST_LOG=debug`. Changing it requires a Postgres restart, since the postmaster environment is read at start.
+
+### Restart budget
+
+If the endpoint exits, the supervisor starts it again, up to `edb.endpoints_mcp_restart_max` starts within a sliding window of `edb.endpoints_mcp_restart_window_secs` seconds. When the budget is used up, the supervisor logs a warning and idles:
+
+```
+WARNING:  aidb mcp endpoint supervisor: restart budget exhausted (5 spawns in 60s); idling; SELECT pg_reload_conf() retries once the window has room
+```
+
+To recover, fix the cause and reload:
+
+```sql
+SELECT pg_reload_conf();
+```
+
+The reload wakes the supervisor. If the window has room again, the endpoint starts. A start that fails because the binary is missing or not executable doesn't consume budget and idles the supervisor straight away, since retrying can't fix it.
+
+### Configuration rejections
+
+The supervisor refuses to start the endpoint, and idles until the next reload, when:
+
+- The TLS certificate and key aren't set together.
+- Either TLS file doesn't exist.
+- `edb.endpoints_mcp_host` is outside loopback and TLS isn't configured.
+
+Each rejection is logged as a `WARNING` naming the reason, followed by `idling until SELECT pg_reload_conf()`. Correct the parameter and reload.
+
+### Lifecycle
+
+To restart the endpoint without restarting Postgres, terminate the endpoint process. The supervisor sees it exit and starts a new one within the restart budget:
+
+```sql
+SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type = 'aidb mcp endpoint supervisor';
+```
+
+The supervisor is the background worker shown there. The endpoint itself is a child operating system process of that worker, visible with `ps` as `edb-endpoints`. Sending it `SIGTERM` gives in-flight calls up to 10 seconds to finish before it exits.
+
+Reloading after changing one of the process parameters, as described in [Changing configuration](#changing-configuration), also restarts the endpoint.
+
+When Postgres shuts down, the supervisor sends the endpoint `SIGTERM`, waits up to 12 seconds for it to drain and exit, then sends `SIGKILL`. The endpoint also watches a pipe from the supervisor and exits when the supervisor disappears. If the supervisor worker itself dies, Postgres restarts it after 13 seconds.
+
+To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and restart Postgres.
+
+### Troubleshooting
+
+| Symptom                                                                             | Cause and fix                                                                                                                                                                                                                              |
+|-------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Nothing listens on the port after enabling and restarting                          | Check that `aidb` is in `shared_preload_libraries` and that the Postgres log shows the supervisor starting. Then look for a `WARNING` from the supervisor naming a configuration rejection or a missing binary.                            |
+| `cannot execute .../edb-endpoints: No such file or directory`                       | The binary isn't in the Postgres `bindir`. Confirm the AIDB package installed it, or set `edb.endpoints_mcp_command_path` to its location, then reload.                                                                                    |
+| `restart budget exhausted`                                                          | The endpoint keeps exiting. Read the endpoint's stderr in the Postgres log for the reason (a port already in use is common), fix it, and reload.                                                                                           |
+| `edb.endpoints_mcp_tls_cert and edb.endpoints_mcp_tls_key must be set together`     | Set both TLS parameters or neither, then reload.                                                                                                                                                                                           |
+| A non-loopback host is rejected                                                     | Configure TLS before listening outside loopback, then reload.                                                                                                                                                                              |
+| Every call returns `password authentication failed`                                 | Postgres rejected the credentials. Check the role's password and the `local` lines in `pg_hba.conf`. The endpoint connects over the Unix socket, so `host` lines apply only when `unix_socket_directories` is empty.                        |
+| `tools/list` returns a `permission denied` error                                    | The agent role lacks `EXECUTE` on `aidb.get_mcp_tools()`. Grant it membership in `aidb_users`. See [Provisioning agents](agent-provisioning).                                                                                          |
+| `tools/call` returns `canceling statement due to statement timeout`                 | The tool ran longer than the 30 second per-call limit. Make the tool faster or run the work outside MCP.                                                                                                                                   |
+| A newly registered tool doesn't show up                                            | The client cached its last `tools/list`. Ask it to list again. The endpoint reads the catalog fresh on every listing.                                                                                                                       |
+| The client sees `unknown argument 'execute_as_role'`                                | `aidb.run_tool()` rejects arguments the tool didn't declare. Catalog tools always run as the caller. To run as another role, provision that role's credentials for the agent instead.                                                      |
