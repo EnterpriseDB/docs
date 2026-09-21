@@ -44,7 +44,7 @@ CREATE INDEX ON items USING ivfplus (embedding vector_l2_ops)
 WITH (lists = 1000);
 ```
 
-One edge case: `store_vectors` doesn't exist on stock PostgreSQL — `WITH (store_vectors = ...)` fails with `unrecognized parameter`, and the index behaves as though it were on.
+One edge case: `store_vectors` doesn't exist on stock Postgres — `WITH (store_vectors = ...)` fails with `unrecognized parameter`, and the index behaves as though it were on.
 
 ## Session parameters
 
@@ -114,7 +114,7 @@ k-means clustering only happens at `CREATE INDEX`/`REINDEX` time. After that, ch
 |----------------------|----------------------------------------------------------------------------------|
 | `INSERT` after build | Inserts unpacked in the append region and are read by a slower bit-sliced scan   |
 | `UPDATE`             | Delete plus insert, so the row moves to the append region                        |
-| `DELETE` / `VACUUM`  | Tombstones the row's lane; the space is not reclaimed and the lane is not reused |
+| `DELETE` / `VACUUM`  | Tombstones the row's lane; the space isn't reclaimed and the lane isn't reused |
 | `REINDEX`            | The only operation that repacks the append region rows and reclaims dead lanes   |
 
 ## Limits and fixed constants
@@ -132,17 +132,17 @@ Compiled in; none is a runtime knob.
 | Fast-scan block width    | 32                                                           |
 | On-disk format version   | 1 (`ivfplus_metapage_info(...).version`)                     |
 
-The packing window is the one entry with an action attached. A vector index gets the packed fast-scan layout only when `dim % 4 == 0` and the packed block fits one page, at the default 8 kB `BLCKSZ`, `dim <= 1780`. Outside it, the index silently runs the slower unpacked path and health reports 1.0 forever, so nothing surfaces it: `vector(1536)` is packed, `vector(1537)` and `vector(1792)` are not. Pad or truncate to a multiple of 4 at or below 1780.
+The packing window is the one entry with an action attached. A vector index gets the packed fast-scan layout only when `dim % 4 == 0` and the packed block fits one page, at the default 8 kB `BLCKSZ`, `dim <= 1780`. Outside it, the index silently runs the slower unpacked path and health reports 1.0 forever, so nothing surfaces it: `vector(1536)` is packed, `vector(1537)` and `vector(1792)` aren't. Pad or truncate to a multiple of 4 at or below 1780.
 
 ## Index-rerank-policy builds
 
-`postgres-im-rerank` is a PostgreSQL fork exposing an executor index rerank policy: the access method hands the executor candidates in approximate order, and the executor recomputes exact distances from the full-precision heap tuple and uses an access-method-provided policy function to decide what to return. `edb_vectorplus` uses this to drop the in-index `f16` copy and use heap vectors for reranking.
+`postgres-im-rerank` is a Postgres fork exposing an executor index rerank policy: the access method hands the executor candidates in approximate order, and the executor recomputes exact distances from the full-precision heap tuple and uses an access-method-provided policy function to decide what to return. `edb_vectorplus` uses this to drop the in-index `f16` copy and use heap vectors for reranking.
 
 Detection is automatic in the Makefile. At runtime, `SELECT edb_vectorplus_rerank_policy_available();` shows whether the server supports the index rerank policy.
 
-|                                            | Stock PostgreSQL      | `postgres-im-rerank`              |
+|                                            | Stock Postgres        | `postgres-im-rerank`              |
 |--------------------------------------------|-----------------------|-----------------------------------|
-| `store_vectors` option                     | does not exist        | present, defaults to off          |
+| `store_vectors` option                     | doesn't exist        | present, defaults to off          |
 | In-index f16 copy                          | yes, by default       | no                                |
 | Index bytes/row at dim = 768               | ~1674                 | ~128                              |
 | Where rerank happens                       | in-index, against f16 | in the executor, against the heap |
