@@ -12,8 +12,8 @@ This page is for the database administrator of the source database and the admin
 
 ## Prerequisites
 
-<!-- TO CONFIRM (Nidhi / aidb team): 7.7.0 is the aidb_otel layout floor the viewer enforces (the health check says "aidb 7.7.0 or later is required"); keep it as the minimum even if the first shipped release is newer. The aidb release notes on develop stop at 7.6.0 — link the 7.7.0 notes once published. -->
-- EDB Postgres AI (`aidb` extension) 7.7.0 or later, installed and configured on the source database as described in [Installing AIDB](/aidb/latest/install/) and [Configuring AIDB](/aidb/latest/install/configure/): `aidb` in `shared_preload_libraries` and `CREATE EXTENSION aidb CASCADE` run in the database the agents use. Earlier versions use a different `aidb_otel` layout and have neither governance decisions nor the `aidb_governance` role; the viewer reports them as **Unsupported aidb_otel schema**.
+<!-- TO CONFIRM (Nidhi): 7.7.0 is the aidb_otel layout floor the viewer enforces (the health check says "aidb 7.7.0 or later is required"); keep it as the minimum even if the first shipped release is newer. The aidb 7.7.0 docs (release notes, Observability reference, OTel parameters, aidb_governance role) are in Felipe's PR #1672 into AIDB-7.7.0-branch — the /aidb/latest/... links below assume that PR is published first. -->
+- EDB Postgres AI (`aidb` extension) [7.7.0](/aidb/latest/release-notes/7/aidb_7.7.0_rel_notes/) or later, installed and configured on the source database as described in [Installing AIDB](/aidb/latest/install/) and [Configuring AIDB](/aidb/latest/install/configure/): `aidb` in `shared_preload_libraries` and `CREATE EXTENSION aidb CASCADE` run in the database the agents use. Earlier versions use a different `aidb_otel` layout and have neither governance decisions nor the `aidb_governance` role; the viewer reports them as **Unsupported aidb_otel schema**.
 - Network connectivity from the viewer's backend to the Postgres server. Source databases usually live on private addresses; the `bff.aidbBlockPrivate` chart value is `false` by default so that works out of the box.
 - TLS on the Postgres server, with a CA certificate the viewer can verify. The viewer accepts only `sslmode=verify-ca` or `sslmode=verify-full` in the connection string.
 - A superuser to run the one-time provisioning below. The viewer itself never needs those rights.
@@ -21,7 +21,7 @@ This page is for the database administrator of the source database and the admin
 ## Enabling telemetry on the source database
 
 <!-- TO CONFIRM (WS2.1 question A4, Felipe/Mike): who owns this step — customer DBA, aidb install docs, or HM provisioning. Written for the DBA until decided. Our lab sets the two parameters in postgresql.conf before first start; ALTER SYSTEM + reload is the equivalent on a running server and follows the pattern in aidb/install/configure. -->
-`aidb` writes spans only when the `aidb.otel_client` parameter is `database`. The default is `noop`, which writes nothing. The parameter is `SUSET`: a superuser, or a role granted `SET` on the parameter, can change it. Like the other `aidb.*` parameters, set it in `postgresql.conf` or with `ALTER SYSTEM` — no restart is required.
+`aidb` writes spans only when the `aidb.otel_client` parameter is `database`. The default is `noop`, which writes nothing. The parameter is `SUSET`: a superuser, or a role granted `SET` on the parameter, can change it. Like the other `aidb.*` parameters, set it in `postgresql.conf` or with `ALTER SYSTEM` — no restart is required. The full list of OpenTelemetry parameters is in [Configuring AIDB — OpenTelemetry tracing](/aidb/latest/install/configure/#opentelemetry-tracing).
 
 1.  **Turn on telemetry for the server:**
 
@@ -32,7 +32,7 @@ This page is for the database administrator of the source database and the admin
 
     To enable it for one database only, use `ALTER DATABASE <db> SET aidb.otel_client = 'database';` instead.
 
-1.  **Keep the storage format readable.** `aidb.otel_client_storage_format` must be `json` (the default) or `both`. The `binary` format leaves the column the viewer reads empty, and the viewer reports the database as unsupported. Check with:
+1.  **Keep the storage format readable.** `aidb.otel_client_storage_format` must be `json` (the default) or `both`. The `binary` format leaves the `payload_json` column the viewer reads empty, and the viewer reports the database as unsupported (see [Observability — Storage format](/aidb/latest/reference/observability/#storage-format)). Check with:
 
     ```sql
     SELECT current_setting('aidb.otel_client_storage_format');
@@ -40,16 +40,15 @@ This page is for the database administrator of the source database and the admin
 
 1.  **Recycle the agent backends.** Both parameters are captured once per Postgres backend at its first instrumented call. Reconnect the applications that run agents, or recycle their connection pool, so new sessions pick up the value. Backends that were already running keep the old value.
 
-<!-- TO CONFIRM (aidb team): names and defaults of the exporter/cleaner parameters as of the 7.7.0 GA build; taken from aidb main. -->
 !!! Note
-`aidb` also ships two optional background workers: an OTLP exporter that forwards stored spans to an external collector (`aidb.otel_exporter_enabled`) and a retention cleaner that deletes spans older than `aidb.otel_cleaner_retention_days` (default 365). Both are off by default and neither affects what the viewer reads. Turn on retention cleanup if you don't want telemetry to grow without bound.
+`aidb` also ships two optional background workers, both off by default: an [exporter](/aidb/latest/install/configure/#exporter-background-worker) that forwards stored rows to an external OTLP collector, and a [cleaner](/aidb/latest/install/configure/#cleaner-background-worker) that deletes rows older than a retention window. Neither changes what the viewer reads. Turn on the cleaner if you don't want telemetry to grow without bound; the viewer handles rows disappearing between page loads.
 !!!
 
 ## Creating the viewer role
 
 The viewer connects with a dedicated login role. Don't enter a superuser or the `aidb` owner in the instance form: the connection string and any client certificate are stored server-side by the viewer's backend, so scope the credential to what the viewer needs.
 
-Recommended: a login role that is a member of `aidb_governance`, which `aidb` 7.7.0 and later creates with read access to the `aidb_otel` schema (the same way `aidb_users` grants access to the SQL functions, see [Manage user access](/aidb/latest/install/configure/#manage-user-access-with-the-aidb_users-role)). Run this in the database the agents use:
+Recommended: a login role that is a member of `aidb_governance`, the role `aidb` 7.7.0 and later creates for auditors and monitoring tools with read access to the `aidb_otel` tables (see [Manage audit access with the aidb_governance role](/aidb/latest/install/configure/#manage-audit-access-with-the-aidb_governance-role)). Run this in the database the agents use:
 
 ```sql
 CREATE ROLE governance_viewer
@@ -60,9 +59,9 @@ GRANT aidb_governance TO governance_viewer;
 GRANT CONNECT ON DATABASE <db> TO governance_viewer;
 ```
 
-<!-- TO CONFIRM (aidb team): whether aidb_governance stays a role with cleanup/purpose rights in 7.7.0 GA, or becomes read-only. Rewrite this note if it changes. -->
+<!-- TO CONFIRM (Felipe): our internal notes also list purpose-registry management among aidb_governance rights; the aidb docs in #1672 mention only aidb_otel reads and the cleanup function. Left out here until confirmed. -->
 !!! Note
-`aidb_governance` is not read-only. On current `aidb` it can also run the telemetry retention cleanup (`aidb.run_otel_retention_cleanup()`) and manage purposes. The viewer only issues `SELECT` statements, but use a dedicated login so those rights stay with the viewer credential and nothing else.
+`aidb_governance` is not strictly read-only: it can also run the manual retention cleanup, `aidb.run_otel_retention_cleanup()`, which deletes telemetry. The viewer only issues `SELECT` statements, but use a dedicated login so that right stays with the viewer credential and nothing else.
 !!!
 
 If you prefer explicit grants instead of the `aidb_governance` role, the viewer needs:
