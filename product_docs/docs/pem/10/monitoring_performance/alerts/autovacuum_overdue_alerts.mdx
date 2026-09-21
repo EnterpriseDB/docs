@@ -1,0 +1,47 @@
+---
+title: "AutoVacuum overdue and AutoAnalyze overdue alerts"
+---
+
+The AutoVacuum overdue and AutoAnalyze overdue templates take table workload into account instead of only measuring elapsed time, as Last AutoVacuum and Last AutoAnalyze do. They compare a table's dead-tuple or modified-tuple count against its effective autovacuum or autoanalyze threshold — the same threshold Postgres itself uses, including any per-table override set with `ALTER TABLE ... SET (autovacuum_vacuum_threshold = ..., ...)`. This behavior reduces false positives on low-write tables and catches high-churn tables that crossed their threshold between polling cycles.
+
+Both alerts take a single parameter, `grace_minutes`. The alert doesn't fire until the table's threshold is crossed and at least `grace_minutes` have passed since autovacuum (or autoanalyze) last ran on that table. Like Last Vacuum and Last AutoVacuum, these are table-level alerts with no predefined default thresholds — you set thresholds and severities for each table when you create the alert in **Manage Alerts**.
+
+When triggered, the alert reports the percentage by which the table exceeds its threshold. For example, a value of 150 means the table has 150% more dead tuples than its effective vacuum threshold allows.
+
+## How PEM calculates the effective threshold
+
+PEM calculates the effective vacuum threshold the same way the Postgres autovacuum launcher does:
+
+```
+vacuum_threshold = autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor × number of rows in the table
+```
+
+using the table's own storage parameter overrides if set, or the server-wide `autovacuum_vacuum_threshold` and `autovacuum_vacuum_scale_factor` settings otherwise. AutoAnalyze overdue uses the equivalent calculation with `autovacuum_analyze_threshold` and `autovacuum_analyze_scale_factor`.
+
+## When the alert doesn't fire
+
+- Autovacuum (or autoanalyze) is disabled on the table (`autovacuum_enabled = false` in the table's storage parameters). PEM treats this as an intentional choice, not an alertable condition.
+- The table hasn't crossed its effective threshold yet.
+- Autovacuum (or autoanalyze) ran on the table more recently than `grace_minutes` ago.
+- The server is a physical standby. Autovacuum never runs on a standby, so PEM automatically suppresses both alerts there, the same way it suppresses Last Vacuum and Last AutoVacuum.
+
+## Recommended remediation
+
+- Run a manual `VACUUM` or `ANALYZE` on the flagged table to clear the immediate backlog.
+- If the table's write pattern doesn't match the server-wide defaults, tune the table individually instead of changing server-wide settings, for example:
+
+  ```sql
+  ALTER TABLE <table_name> SET (
+    autovacuum_vacuum_threshold = 5000,
+    autovacuum_vacuum_scale_factor = 0.05
+  );
+  ```
+
+- If autovacuum is intentionally disabled on the table, no action is needed. The alert stays suppressed.
+- Before treating the alert as neglect, check the long-running autovacuums alert for the same table. A high percentage can mean autovacuum is already running but throttled by `autovacuum_vacuum_cost_delay`, not that it hasn't started.
+
+## Known limitations
+
+- A table that's never been analyzed reports an estimated row count of `0` internally, which can make the reported percentage look extreme (in the thousands) even though the underlying condition is accurate. Running an initial `VACUUM` or `ANALYZE` on the table resolves this.
+- The alert checks only autovacuum's (or autoanalyze's) own last-run timestamp. A table that a DBA maintains exclusively with manual `VACUUM` or `ANALYZE` shows as perpetually overdue, even if it's healthy.
+- `autovacuum_vacuum_insert_threshold` and `autovacuum_vacuum_insert_scale_factor` for insert-only workloads (PostgreSQL 13 and later) aren't factored into the threshold calculation yet.
