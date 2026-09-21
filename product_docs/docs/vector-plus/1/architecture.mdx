@@ -5,13 +5,15 @@ deepToC: true
 description: How the ivfplus index type is built and scanned, hierarchical clustering, RaBitQ residual quantization, and the packing formats used for bulk-built and recently inserted data.
 ---
 
-`ivfplus` combines hierarchical Inverted File (IVF) clustering with RaBitQ residual quantization and a fast-scan packing layout.
+Vector Plus consists of a single new Postgres index access method, `ivfplus`. It's built for the same job as pgvector's `ivfflat`, approximate nearest-neighbor search over vector columns, but combines three techniques to stay fast and small at large row counts: hierarchical Inverted File (IVF) clustering to narrow a search down to a handful of candidate groups, RaBitQ residual quantization to shrink each vector to a compact code, and a fast-scan packing layout to scan those codes efficiently.
 
 ## Hierarchy
 
-The index is either flat or two-level; the height is auto-derived and there's no user-facing multilevel configuration. It's built top-down (cluster, then partition, then subdivide) rather than bottom-up. This keeps each k-means run's `O(n*k)` bound small (the index reuses pgvector's Elkan k-means implementation). Descent uses a derived `outer_probes = K * sqrt(probes)`.
+Searching every row against a query vector would be accurate but slow at scale, so `ivfplus` clusters rows into groups (called lists) when the index is built, then only scans the lists closest to the query at search time.
 
-A table crosses into the two-level hierarchy once `lists >= 1800`. See [Tuning and sizing](tuning) for what that means for build time and parallelism.
+The index is either flat (one level of lists) or two-level (lists are themselves grouped into a smaller set of top-level clusters, searched first to find which lists to scan). Which one you get is automatic: a table crosses into the two-level hierarchy once `lists` reaches 1,800. There's no user-facing setting for this. See [Tuning and sizing](tuning) for what the two shapes mean for build time and parallelism.
+
+Building the clustering works top-down: the index clusters the whole table first, then partitions and subdivides those clusters, rather than building up from individual rows. It reuses pgvector's Elkan k-means implementation for each clustering pass, which keeps the cost of clustering proportional to the number of rows and clusters rather than growing faster than that. When scanning a two-level index, how many top-level clusters get checked (before deciding which lists to scan) scales with how many probes you've set: the exact relationship is `outer_probes = K * sqrt(probes)`, where `K` is the number of top-level clusters.
 
 ## Residual quantization
 

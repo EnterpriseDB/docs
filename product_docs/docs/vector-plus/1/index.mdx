@@ -5,14 +5,14 @@ directoryDefaults:
   description: EDB Vector Plus (edb_vectorplus) is a Postgres extension that adds the ivfplus vector index type, using hierarchical IVF clustering and RaBitQ quantization for faster, lower-footprint vector search at scale.
 navigation:
   - release-notes
-  - install
   - architecture
+  - known-issues
+  - install
   - tuning
   - measuring-recall
   - filtering
   - reference
   - faq
-  - known-issues
 ---
 
 EDB Vector Plus (`edb_vectorplus`) is a Postgres extension that provides a new vector index type, `ivfplus`. It implements hierarchical Inverted File (IVF) clustering and RaBitQ quantization for vector search, the same general approach used by leading standalone vector databases (for example, Turbopuffer's ANN v3).
@@ -26,54 +26,21 @@ It's packaged and distributed through EDB's own repositories, the same distribut
 | Description                        | Name                                          |
 |------------------------------------|-----------------------------------------------|
 | SQL extension | `edb_vectorplus`                              |
+| Index access method                | `ivfplus`                                     |
 | Library / control file             | `edb_vectorplus.so`, `edb_vectorplus.control` |
 | Required extension                 | `vector` (pgvector) ≥ 0.7.0                   |
 
 ## Requirements
 
-`ivfplus` requires PostgreSQL 12–19 and pgvector (`vector`) ≥ 0.7.0. EDB packages are published for PostgreSQL 14–18. See [Supported versions and platforms](install#supported-versions-and-platforms).
-
-## Quickstart
-
-```sql
-CREATE EXTENSION IF NOT EXISTS edb_vectorplus CASCADE; -- pulls in pgvector
-
-CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(768));
-COPY items (embedding) FROM '/path/to/embeddings.csv'; -- load BEFORE indexing
-
-CREATE INDEX items_embedding_idx ON items
-USING ivfplus (embedding vector_l2_ops) WITH (lists = 1000);
-
-SET ivfplus.probes = 32;
-SELECT id FROM items ORDER BY embedding <-> '[...]' LIMIT 10;
-
-SELECT * FROM check_ivfplus_index_health('items_embedding_idx');
-```
-
-That's the whole interface for the common case:
-
-| Decision | Where                                            | Default         | Start at                                    |
-|----------|--------------------------------------------------|-----------------|---------------------------------------------|
-| `lists`  | `WITH (...)` at build                            | 100             | rows/1000 up to 1M rows, `sqrt(rows)` above |
-| `probes` | `SET ivfplus.probes`                             | 1               | `sqrt(lists)`, raise until recall suffices  |
-| Opclass  | `CREATE INDEX ... USING ivfplus (col <opclass>)` | `vector_l2_ops` | Match your distance metric                  |
-
-A few things worth knowing before you build an index:
-
-- **`lists` is not derived from table size.** Set to, say, 100, it stays 100 whether the table has a thousand rows or a billion. See [Tuning and sizing](tuning).
-- **Index at a dimensionality that's a multiple of 4, and at most 1780.** Only those get the packed fast-scan layout; anything else falls back to a slower scan for the life of the index, and `CREATE INDEX` emits a `NOTICE` when it happens. See [Limits and fixed constants](reference#limits-and-fixed-constants).
-- **Load data before `CREATE INDEX`.** The build clusters the rows that already exist at build time.
-- **This is an approximate index.** Work through [Measuring recall](measuring-recall) before relying on it in production.
-- **`CREATE INDEX` blocks writes on the table.** Use `CREATE INDEX CONCURRENTLY` in production.
-- **Centroids are fixed for the life of the index.** Clustering happens once, at build time. A table that keeps changing drifts away from its centroids over time — new rows land in a slower append region until the index is rebuilt. `check_ivfplus_index_health()` reports this drift and recommends a `REINDEX CONCURRENTLY` when needed. See [Writes, VACUUM, and REINDEX](reference#writes-vacuum-and-reindex).
+EDB Vector Plus requires PostgreSQL 12–19 and pgvector (`vector`) 0.7.0 or newer. EDB packages are published for PostgreSQL 14–18. See [Supported versions and platforms](install#supported-versions-and-platforms).
 
 ## Where to start
 
-1. **[Install](install)** — Set up the EDB repository and install the `edb_vectorplus` package.
-2. **[Architecture](architecture)** — How the index is built and scanned.
-3. **[Tuning and sizing](tuning)** — Choosing `lists` and `probes`.
-4. **[Measuring recall](measuring-recall)** — Validating index quality before you rely on it.
-5. **[Filtering and hybrid search](filtering)** — Combining `ivfplus` with `WHERE` clauses and full-text search.
-6. **[Reference](reference)** — The full interface reference: operator classes, index options, session parameters, functions, and fixed limits.
-7. **[FAQ](faq)** — Common questions and troubleshooting.
-8. **[Known issues](known-issues)** — Currently known limitations.
+1. **[Architecture](architecture)** — How the index is built and scanned.
+2. **[Known issues](known-issues)** — Currently known limitations.
+3. **[Install](install)** — Set up the EDB repository and install the `edb_vectorplus` package, plus a quickstart for building your first index.
+4. **[Tuning and sizing](tuning)** — Choosing `lists` and `probes`.
+5. **[Measuring recall](measuring-recall)** — Validating index quality before you rely on it.
+6. **[Filtering and hybrid search](filtering)** — Combining `ivfplus` with `WHERE` clauses and full-text search.
+7. **[Reference](reference)** — The full interface reference: operator classes, index options, session parameters, functions, and fixed limits.
+8. **[FAQ](faq)** — Common questions and troubleshooting.

@@ -1,72 +1,11 @@
 ---
-title: Installing and upgrading
-navTitle: Install and upgrade
+title: Installing
+navTitle: Install
 deepToC: true
-description: How to install EDB Vector Plus from an EDB repository or from source, which platforms and PostgreSQL versions are supported, and how to upgrade an existing installation.
+description: How to install EDB Vector Plus from an EDB repository, which platforms and PostgreSQL versions are supported, and how to build your first index.
 ---
 
-Vector Plus installs from an EDB package repository or from source. Upgrading to a new package version currently means reinstalling and rebuilding any `ivfplus` indexes, since there's no in-place `ALTER EXTENSION` update path yet.
-
-## Installing from an EDB repository
-
-### Configurig the repository
-
-Replace `$TOKEN` with your EDB repository token (EDB Account → repository token) and `$REPO` per the table below.
-
-```shell
-# RPM platforms (EL, SLES)
-curl -1sLf "https://downloads.enterprisedb.com/$TOKEN/$REPO/setup.rpm.sh" | sudo -E bash
-
-# DEB platforms (Debian, Ubuntu)
-curl -1sLf "https://downloads.enterprisedb.com/$TOKEN/$REPO/setup.deb.sh" | sudo -E bash
-```
-
-| `<REPO>`       | Who                                       | Contains                                                                       |
-|----------------|-------------------------------------------|--------------------------------------------------------------------------------|
-| `enterprise`   | Customers with an EDB Postgres Advanced Server (EPAS) / EDB Postgres Extended Server (PGE) subscription | released packages, all three variants                                          |
-| `standard`     | Customers on a Standard subscription      | released packages                                                              |
-| `community360` | Community 360 subscribers                 | released packages (community PostgreSQL)                                       |
-| `dev`          | Internal EDB only                         | ad hoc, one-off builds, not for customers                               |
-| `edb`          | IBM-bound platforms                       | the s390x channel                                                              |
-| `hotfix`       | —                                         | targeted, per-incident hotfix-maturity rebuilds of an already-released version |
-
-On s390x, use `edb` in place of `enterprise`. Customer and field installs use `enterprise` (or `standard`/`community360` to match the subscription), which carry release-maturity packages only. Internal, unreleased builds use `dev` — never point a customer at it.
-
-`hotfix` is opt-in, not a standing repository. A hotfix version sorts above the release it patches, so leaving it enabled makes every later `dnf update`/`apt upgrade` prefer hotfix builds — enable it just for the one install command, then disable it again. A hotfix leaves `default_version` alone, so `pg_extension.extversion` doesn't move and `ALTER EXTENSION … UPDATE` is a no-op — no `DROP`/`CREATE EXTENSION` is needed. Since the extension isn't preloaded, new sessions pick up the replaced `.so`, but restart anyway rather than run mixed old/new backends against the same indexes.
-
-### Installing the package
-
-pgvector comes from the same repository and is pulled in automatically as `edb-<variant><V>-pgvector0`.
-
-```shell
-sudo dnf install -y edb-pg17-vectorplus # EL
-sudo zypper install -y edb-pg17-vectorplus # SLES
-sudo apt-get install -y edb-pg17-vectorplus # Debian / Ubuntu
-```
-
-Replace `edb-as17-…` for EPAS or `edb-postgresextended17-…` for PGE.
-
-### Enabling the extension
-
-Enable the extension. `CASCADE` creates pgvector's `vector` type first, which `edb_vectorplus` requires:
-
-```sql
-CREATE EXTENSION edb_vectorplus CASCADE;
-```
-
-No `shared_preload_libraries` entry and no restart are needed.
-
-## Package names
-
-`<V>` is the Postgres major version. The name carries no extension-major suffix, so it's identical on RPM and DEB.
-
-| PostgreSQL variant              | Package name                         | Installs under                               |
-|---------------------------------|--------------------------------------|----------------------------------------------|
-| postgres (community PostgreSQL) | `edb-pg<V>-vectorplus`               | `/usr/pgsql-<V>` · `/usr/lib/postgresql/<V>` |
-| extended (PGE)                  | `edb-postgresextended<V>-vectorplus` | `/usr/edb/pge<V>` · `/usr/lib/edb-pge/<V>`   |
-| advanced (EPAS)                 | `edb-as<V>-vectorplus`               | `/usr/edb/as<V>` · `/usr/lib/edb-as/<V>`     |
-
-Each package depends on the packaged pgvector at ≥ 0.7.0, which does carry an extension major in its name — RPM concatenates it while DEB hyphenates it: `edb-<variant><V>-pgvector0` on RPM, `edb-<variant><V>-pgvector-0` on DEB. On community PostgreSQL, the DEB also declares `Provides: postgresql-<V>-vectorplus` and the RPM `Provides: vectorplus_<V>`.
+Vector Plus installs from an EDB package repository.
 
 ## Supported versions and platforms
 
@@ -88,30 +27,94 @@ Packaged: Postgres 14, 15, 16, 17, 18 on all three variants:
 | Ubuntu               | 22.04 (jammy) | amd64                        | deb          |
 | Ubuntu               | 24.04 (noble) | amd64                        | deb          |
 
-PostgreSQL 12 (with pgvector < 0.8.0), 13, and 19beta also work and are checked in CI, but EDB doesn't distribute packages for those versions.
+## Installing from an EDB repository
 
-## Installing from source
+### Configuring the repository
 
-Prerequisite: PostgreSQL dev headers (12 or newer) and a pgvector ≥ 0.7.0 binary already installed on the server.
+Replace `$TOKEN` with your EDB repository token (EDB Account → repository token) and `$REPO` per the table below.
 
 ```shell
-cd edb_vectorplus && make && sudo make install
+# RPM platforms (EL, SLES)
+curl -1sLf "https://downloads.enterprisedb.com/$TOKEN/$REPO/setup.rpm.sh" | sudo -E bash
+
+# DEB platforms (Debian, Ubuntu)
+curl -1sLf "https://downloads.enterprisedb.com/$TOKEN/$REPO/setup.deb.sh" | sudo -E bash
 ```
 
-Then:
+| `<REPO>`       | Who                                       | Contains                                                                       |
+|----------------|-------------------------------------------|--------------------------------------------------------------------------------|
+| `enterprise`   | Customers with an EDB Postgres Advanced Server (EPAS) / EDB Postgres Extended Server (PGE) subscription | Released packages, all three variants                                          |
+| `standard`     | Customers on a Standard subscription      | Released packages                                                              |
+| `community360` | Community 360 subscribers                 | Released packages (community PostgreSQL)                                       |
+| `edb`          | IBM-bound platforms                       | The s390x channel                                                              |
+| `hotfix`       | —                                         | Targeted, per-incident hotfix-maturity rebuilds of an already-released version |
+
+On s390x, use `edb` in place of `enterprise`. Customer and field installs use `enterprise` (or `standard`/`community360` to match the subscription), which carry release-maturity packages only.
+
+`hotfix` is opt-in, not a standing repository. A hotfix version sorts above the release it patches, so leaving it enabled makes every later `dnf update`/`apt upgrade` prefer hotfix builds — enable it just for the one install command, then disable it again. A hotfix leaves `default_version` alone, so `pg_extension.extversion` doesn't move and `ALTER EXTENSION … UPDATE` is a no-op — no `DROP`/`CREATE EXTENSION` is needed. Since the extension isn't preloaded, new sessions pick up the replaced `.so`, but restart anyway rather than run mixed old/new backends against the same indexes.
+
+### Installing the package
+
+Install Vector Plus, which also installs pgvector as a dependency:
+
+```shell
+sudo dnf install -y edb-<variant><V>-vectorplus # EL
+sudo zypper install -y edb-<variant><V>-vectorplus # SLES
+sudo apt-get install -y edb-<variant><V>-vectorplus # Debian / Ubuntu
+```
+
+Replace `<variant>` with `pg` (community PostgreSQL), `as` (EPAS), or `postgresextended` (PGE), and `<V>` with your Postgres major version — for example, `edb-pg17-vectorplus` for PostgreSQL 17 on community PostgreSQL.
+
+`<V>` is the Postgres major version. The package name carries no extension-major suffix, so it's identical on RPM and DEB:
+
+| PostgreSQL variant              | Package name                         | Installs under                               |
+|---------------------------------|--------------------------------------|----------------------------------------------|
+| postgres (community PostgreSQL) | `edb-pg<V>-vectorplus`               | `/usr/pgsql-<V>` · `/usr/lib/postgresql/<V>` |
+| extended (PGE)                  | `edb-postgresextended<V>-vectorplus` | `/usr/edb/pge<V>` · `/usr/lib/edb-pge/<V>`   |
+| advanced (EPAS)                 | `edb-as<V>-vectorplus`               | `/usr/edb/as<V>` · `/usr/lib/edb-as/<V>`     |
+
+pgvector comes from the same repository and is pulled in automatically as `edb-<variant><V>-pgvector0` — it carries its own extension-major suffix, which RPM concatenates and DEB hyphenates: `edb-<variant><V>-pgvector0` on RPM, `edb-<variant><V>-pgvector-0` on DEB. On community PostgreSQL, the DEB also declares `Provides: postgresql-<V>-vectorplus` and the RPM `Provides: vectorplus_<V>`.
+
+### Enabling the extension
+
+Enable the extension. `CASCADE` creates pgvector's `vector` type first, which `edb_vectorplus` requires:
 
 ```sql
 CREATE EXTENSION edb_vectorplus CASCADE;
 ```
 
-## Upgrading
+No `shared_preload_libraries` entry and no restart are needed.
 
-Check the version installed in the current database with:
+## Quickstart
 
 ```sql
-SELECT extversion FROM pg_extension WHERE extname = 'edb_vectorplus';
+CREATE EXTENSION IF NOT EXISTS edb_vectorplus CASCADE; -- pulls in pgvector
+
+CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(768));
+COPY items (embedding) FROM '/path/to/embeddings.csv'; -- load BEFORE indexing
+
+CREATE INDEX items_embedding_idx ON items
+USING ivfplus (embedding vector_l2_ops) WITH (lists = 1000);
+
+SET ivfplus.probes = 32;
+SELECT id FROM items ORDER BY embedding <-> '[...]' LIMIT 10;
+
+SELECT * FROM check_ivfplus_index_health('items_embedding_idx');
 ```
 
-There are no `ALTER EXTENSION edb_vectorplus UPDATE` paths yet — the extension ships a single `edb_vectorplus--<version>.sql` and no `--<from>--<to>.sql` scripts, so that command fails with `extension "edb_vectorplus" has no update path`. To move to a newer package, install it and then `DROP EXTENSION` / `CREATE EXTENSION`, which drops and requires rebuilding any `ivfplus` indexes.
+That's the whole interface for the common case:
 
-A hotfix rebuild doesn't change `default_version` and needs neither step.
+| Decision | Where                                            | Default         | Start at                                    |
+|----------|--------------------------------------------------|-----------------|---------------------------------------------|
+| `lists`  | `WITH (...)` at build                            | 100             | rows/1000 up to 1M rows, `sqrt(rows)` above |
+| `probes` | `SET ivfplus.probes`                             | 1               | `sqrt(lists)`, raise until recall suffices  |
+| Opclass  | `CREATE INDEX ... USING ivfplus (col <opclass>)` | `vector_l2_ops` | Match your distance metric                  |
+
+A few things worth knowing before you build an index:
+
+- **`lists` is not derived from table size.** Set to, say, 100, it stays 100 whether the table has a thousand rows or a billion. See [Tuning and sizing](tuning).
+- **Index at a dimensionality that's a multiple of 4, and at most 1780.** Only those get the packed fast-scan layout; anything else falls back to a slower scan for the life of the index, and `CREATE INDEX` emits a `NOTICE` when it happens. See [Limits and fixed constants](reference#limits-and-fixed-constants).
+- **Load data before `CREATE INDEX`.** The build clusters the rows that already exist at build time.
+- **This is an approximate index.** Work through [Measuring recall](measuring-recall) before relying on it in production.
+- **`CREATE INDEX` blocks writes on the table.** Use `CREATE INDEX CONCURRENTLY` in production.
+- **Centroids are fixed for the life of the index.** Clustering happens once, at build time. A table that keeps changing drifts away from its centroids over time — new rows land in a slower append region until the index is rebuilt. `check_ivfplus_index_health()` reports this drift and recommends a `REINDEX CONCURRENTLY` when needed. See [Writes, VACUUM, and REINDEX](reference#writes-vacuum-and-reindex).

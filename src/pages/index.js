@@ -212,6 +212,9 @@ const Page = () => {
               <BannerCardLink to="/agent-governance/latest">
                 Agent Governance
               </BannerCardLink>
+              <BannerCardLink to="/vector-plus/latest">
+                Vector Plus
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
