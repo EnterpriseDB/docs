@@ -5,7 +5,7 @@ description: For administrators installing EDB Agent Governance — prerequisite
 deepToC: true
 ---
 
-Install EDB Agent Governance on Kubernetes. After the stack is running, continue with [Configuring](./administration) and [Connecting data sources](./connecting_data_sources).
+Install EDB Agent Governance on Kubernetes. After the stack is running, continue with [Configuring](./administration), [Connecting an aidb database](./connecting_aidb), and [Connecting data sources](./connecting_data_sources).
 
 ## Understanding the container stack
 
@@ -16,7 +16,7 @@ EDB Agent Governance deploys as a Dex-fronted stack of four containers:
 | `bootstrap` | A one-shot helper that generates secrets and the internal certificates the stack needs on first run.                                                          |
 | `dex`       | Identity federation — Brokers login to your upstream identity providers.                                                                                      |
 | `nginx`     | Terminates HTTPS, serves the viewer's static assets, and routes API and single-sign-on requests to the right service so the browser talks to a single origin. |
-| `bff`       | The backend — OIDC client of Dex, instance management, and the Hybrid Manager (HM) or Loki proxy that parses logs and caches sessions.                        |
+| `bff`       | The backend — OIDC client of Dex, instance management, the Hybrid Manager (HM) or Loki proxy that parses logs and caches sessions, and the reader for Postgres databases that run the `aidb` extension. |
 
 A shared Postgres service backs the stack, hosting the backend's database for instance configuration and sessions, and the Dex database for identity provider connectors. The Helm chart runs that Postgres for you by default, or points the stack at a database you manage.
 
@@ -26,7 +26,7 @@ A shared Postgres service backs the stack, hosting the backend's database for in
 - A Postgres database for the backend and Dex: either let the chart run one for you (needs a default StorageClass, or set `postgres.persistence.storageClass`), or bring your own PostgreSQL 16 or later — see [Configuring the Postgres database](#configuring-the-postgres-database) to decide before you install.
 - Your EDB subscription token. The same token gives you the Helm chart and the container images. See [Get your token](/repos/getting_started/get_your_token/).
 - A TLS certificate and key for your domain, from any certificate authority your users trust. A self-signed certificate is acceptable for local testing.
-- At least one upstream data source to audit: an [HM instance with a machine user API key](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/governance/), or a standalone Loki instance receiving Postgres logs from AI agent workloads.
+- At least one upstream data source to audit: a Postgres database running the `aidb` extension 7.7.0 or later (see [Connecting an aidb database](./connecting_aidb)), an [HM instance with a machine user API key](/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/governance/), or a standalone Loki instance receiving Postgres logs from AI agent workloads.
 
 ## Getting the software
 
@@ -174,6 +174,11 @@ Set any of these as Helm `--set` flags in step 4, or later with `helm upgrade`.
 | `bff.waitForDex`                  | No       | `false` | Adds an init container that waits until the OIDC issuer answers before the backend starts, avoiding the brief restart loop on first install. The probe runs from the backend image and honors `bff.extraTrustedCABundle`. |
 | `bff.idpCrudEnabled`              | No       | `true`  | Whether identity providers are managed in the app. Set it to `false` to freeze the configuration, in which case `bff.idpPolicy` becomes required.           |
 | `bff.blockPrivateEgress`          | No       | `true`  | Whether the backend blocks registered instances from reaching private network ranges ([RFC 1918](https://www.rfc-editor.org/rfc/rfc1918), carrier-grade NAT, IPv6 unique-local). Set it to `false` only for on-premises deployments whose HM or Loki upstreams live on private addresses. Cloud metadata, loopback, and link-local addresses stay blocked regardless. |
+<!-- TO CONFIRM (Maciej): the four bff.aidb* values exist in chart 0.4.0 (tag v0.4.0, values.yaml). Verify defaults against the promoted chart in pgai-platform. -->
+| `bff.aidbOtelEnabled`             | No       | `true`  | Whether the backend accepts Postgres (aidb_otel) instances — databases running the `aidb` extension. See [Connecting an aidb database](./connecting_aidb). |
+| `bff.governanceDecisionsEnabled`  | No       | `true`  | Whether the viewer shows the governance decisions (allow/deny) that `aidb` records on agent calls. Requires `bff.aidbOtelEnabled`.                        |
+| `bff.aidbBlockPrivate`            | No       | `false` | Whether the backend refuses aidb connection strings that point at private network ranges. Source databases usually live on private addresses, so leave it off unless the viewer must only reach public endpoints. |
+| `bff.aidbAllowInsecureTLS`        | No       | `false` | Development only. Accepts aidb connection strings with `sslmode` below `verify-ca`. Never set it in production.                                              |
 | `nginx.replicaCount`              | No       | 1       | The number of nginx replicas. The backend and Dex are pinned at one replica each and can't be scaled.                                                       |
 
 The chart refuses to install if a required value is missing or malformed, or if the deployment mode you chose has no TLS configured.
