@@ -1,0 +1,97 @@
+---
+title: Decision records
+navTitle: Decision records
+description: What AIDB records every time a purpose-scoped tool call is allowed or denied, and how to find a record from a denial.
+---
+
+Every tool SQL execution made under a purpose-resolved role produces one decision record, whether it's allowed or denied. An agent with no purpose produces none.
+
+## Turning records on
+
+Decision records are emitted as OpenTelemetry spans, and by default no exporter is active. Set `aidb.otel_client` to `database` **before the first `aidb.*` call in the session**:
+
+```sql
+SET aidb.otel_client = 'database';
+```
+
+The exporter choice is read once, at first use, and stays fixed for the rest of that backend — setting it after your first `aidb.*` call has no effect for that session. To make it stick across sessions:
+
+```sql
+ALTER DATABASE your_database SET aidb.otel_client = 'database';
+```
+
+Only `database` writes records into `aidb_otel.traces`, where you can query them in SQL. The other exporter choices (`stdout`, `log`, and where built, `grpc`) send the same spans elsewhere.
+
+## Reading records
+
+Reading `aidb_otel.traces` requires the `aidb_governance` role:
+
+```sql
+GRANT aidb_governance TO your_admin;
+```
+
+`aidb_users` has `USAGE` on the `aidb_otel` schema (so it can write telemetry) but no `SELECT` on any table in it.
+
+## What's in a record
+
+Each record is a span named `purpose_decision`, carrying these attributes:
+
+| Attribute | Description |
+|---|---|
+| `aidb.agent.decision.decision_id` | A UUID minted for this decision. Appears in a denial's error message — see below. |
+| `aidb.agent.decision.action_status` | `allowed` or `denied`. |
+| `aidb.agent.decision.interaction_point` | Always `sql_exec` — the only interaction point AIDB records against today. |
+| `aidb.agent.decision.principal` | The Postgres identity that made the call — `current_user` at the moment of the check. |
+| `aidb.agent.decision.agent_role` | The role the purpose resolved to. |
+| `aidb.agent.decision.denial_reason` | Present only when `action_status = denied`. See below. |
+| `db.query.text` | The SQL text the agent's tool call submitted, present whenever that text is known — including on a denial recorded before the statement reached Postgres. See "Seeing the attempted SQL" below. |
+
+`denial_reason` is one of:
+
+| Value | Meaning |
+|---|---|
+| `role_not_found` | The purpose's role doesn't exist — for example, it was dropped after the purpose was registered against it. |
+| `not_role_member` | The caller isn't a member of the resolved role. |
+| `engine_privilege_denied` | Every other Postgres rejection carrying SQLSTATE `42501` (`ERRCODE_INSUFFICIENT_PRIVILEGE`) — an ordinary object-ACL denial (a table, column, or function the resolved role has no grant on). Distinguished from `escalation_blocked` by the raising C function's name (`errdata->funcname`), not by parsing message text, so the distinction holds across locales. |
+| `escalation_blocked` | A privilege-escalation attempt was blocked — either by the engine after the role was assumed (`RESET ROLE`, `SET ROLE`, `SET SESSION AUTHORIZATION`, or any other privilege-gated GUC without a `pg_parameter_acl` grant), or pre-execution, before the statement ever reached Postgres (a bare `RESET ROLE`, `RESET ALL`, or `DISCARD ALL` tool body). |
+| `pre_execution_rejected` | The SQL provided to the tool failed pre-execution validation. |
+
+## Finding the record from a denial
+
+A denied caller's error carries the decision id inline for cross-referencing against governance logs:
+
+```text
+Tool error: current user is not a member of role 'sales_tickets_rw'; refusing to switch [decision_id=3fa85f64-5717-4562-b3fc-2c963f66afa6]
+```
+
+## Seeing the attempted SQL
+
+A `purpose_decision` record carries the attempted SQL directly, in its own `db.query.text` attribute — including on a denial rejected before execution, such as an `escalation_blocked` or `pre_execution_rejected` case. That text is capped and tail-truncated at 5KB.
+
+By default, bound parameter values are not substituted into that text — placeholders (`$1`, `$2`, ...) stay as placeholders. Set `aidb.otel_capture_query_parameters = on` to have the actual bound values substituted in instead:
+
+```sql
+SET aidb.otel_capture_query_parameters = on;
+```
+
+A statement with no bound parameters (a bare `RESET ROLE`, for example) is unaffected by this setting either way — there's nothing to substitute.
+
+## Querying aidb_otel.traces
+
+`aidb_otel.traces` stores raw OTLP JSON, one row per exported span, in `(id, recorded_at, data)`. Drill into the span's name and attributes like this:
+
+```sql
+SELECT
+    data->'resourceSpans'->0->'scopeSpans'->0->'spans'->0->>'name' AS span_name,
+    (
+        SELECT attr->'value'->>'stringValue'
+        FROM jsonb_array_elements(data->'resourceSpans'->0->'scopeSpans'->0->'spans'->0->'attributes') attr
+        WHERE attr->>'key' = 'aidb.agent.decision.denial_reason'
+    ) AS denial_reason
+FROM aidb_otel.traces
+WHERE data->'resourceSpans'->0->'scopeSpans'->0->'spans'->0->>'name' = 'purpose_decision'
+ORDER BY id DESC
+LIMIT 10;
+```
+
+Wrapping the `jsonb_array_elements` lookup in a small SQL function, keyed on the attribute name, makes repeated queries against this shape easier to read.

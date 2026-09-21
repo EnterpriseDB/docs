@@ -1,0 +1,219 @@
+---
+title: Purposes reference
+navTitle: Purposes
+description: API reference for the purpose registry and the governance-related configuration parameters.
+deepToC: true
+---
+
+Reference for the purpose registry view and management functions. For step-by-step guides, see [Governance](../governance).
+
+## Catalog view
+
+### `aidb.purpose_registry`
+
+Lists every purpose, including retired ones.
+
+| Column | Type | Description |
+|---|---|---|
+| `name` | text | Unique name for the purpose. Primary key. |
+| `role` | text | Postgres role this purpose resolves to. |
+| `description` | text | Optional free-text description. |
+| `created_at` | timestamptz | When the purpose was first created. |
+| `updated_at` | timestamptz | When the purpose was last created, updated, deleted, or revived. |
+| `deleted_at` | timestamptz | When the purpose was retired. `NULL` if the purpose is still in service. |
+
+Retired purposes (`deleted_at IS NOT NULL`) remain visible in this view rather than disappearing, so an existing reference to the purpose stays resolvable for inspection even though the purpose itself can no longer be assigned to a new agent or updated.
+
+This view is read-only. `aidb_users` has `SELECT` on it; `INSERT`, `UPDATE`, and `DELETE` are refused for every role, including `aidb_governance` — the three functions below are the only write path.
+
+```sql
+INSERT INTO aidb.purpose_registry (name, role) VALUES ('x', 'y');
+
+__OUTPUT__
+ERROR:  permission denied for view purpose_registry
+```
+
+---
+
+## Purpose management functions
+
+Membership in `aidb_governance` is required to call all three. There's no finer-grained tier: creating, repointing, or retiring a purpose is a single coarse question of who may set policy, not a per-call membership check against the role being mapped.
+
+### `aidb.create_purpose`
+
+Creates a new purpose, or revives a previously retired one.
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | TEXT | Required | Unique name for the purpose. |
+| `role` | TEXT | Required | Postgres role this purpose resolves to. |
+| `description` | TEXT | `NULL` | Optional free-text description. |
+
+#### Returns
+
+`VOID`
+
+#### Behavior on a retired name
+
+If `name` belongs to a retired purpose, `create_purpose` revives it: `role` is overwritten with the new value and `deleted_at` is cleared. Omitting `description` keeps the existing description rather than clearing it. This is the only way to bring a retired purpose back into service.
+
+If `name` belongs to a purpose that's still active, the call fails:
+
+```sql
+SELECT aidb.create_purpose('sales_support', 'sales_tickets_ro');
+
+__OUTPUT__
+ERROR:  purpose 'sales_support' already exists
+```
+
+#### Example
+
+```sql
+SELECT aidb.create_purpose(
+    name        => 'sales_support',
+    role        => 'sales_tickets_ro',
+    description => 'Sales support agent'
+);
+```
+
+---
+
+### `aidb.update_purpose`
+
+Changes the role and/or description of an existing, active purpose.
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | TEXT | Required | Name of the purpose to update. |
+| `role` | TEXT | `NULL` | New role. `NULL` leaves the current role unchanged. |
+| `description` | TEXT | `NULL` | New description. `NULL` leaves the current description unchanged. |
+
+#### Returns
+
+`VOID`
+
+#### NULL means "leave alone," not "clear"
+
+Passing `NULL` for `role` or `description` leaves that column as it is — it doesn't clear it. There's no way to clear `description` back to `NULL` through this function once it's been set to a non-null value.
+
+#### Calling with nothing to change
+
+If both `role` and `description` are omitted (or explicitly `NULL`), the call succeeds without error, even if `name` doesn't exist:
+
+```sql
+SELECT aidb.update_purpose('a_name_that_was_never_created');
+-- Succeeds. No row is touched, no error is raised.
+```
+
+This differs from calling with an actual change against a name that doesn't exist, which fails:
+
+```sql
+SELECT aidb.update_purpose('a_name_that_was_never_created', role => 'some_role');
+
+__OUTPUT__
+ERROR:  purpose 'a_name_that_was_never_created' not found
+```
+
+Updating a retired purpose also fails with the same "not found" error — retired purposes can only be brought back with `aidb.create_purpose`, not updated in place.
+
+#### Example
+
+```sql
+SELECT aidb.update_purpose('sales_support', role => 'sales_tickets_ro_v2');
+```
+
+---
+
+### `aidb.delete_purpose`
+
+Retires a purpose. This is a soft delete: the row isn't removed, `deleted_at` is set, and the purpose stops being usable, but any existing reference to it (for example, from an agent already created against it) stays valid for inspection rather than pointing at nothing.
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | TEXT | Required | Name of the purpose to retire. |
+
+#### Returns
+
+`VOID`
+
+#### Example
+
+```sql
+SELECT aidb.delete_purpose('sales_support');
+```
+
+Deleting an already-retired purpose, or a name that never existed, fails with a distinct error for each case:
+
+```sql
+SELECT aidb.delete_purpose('sales_support');  -- called a second time
+
+__OUTPUT__
+ERROR:  purpose 'sales_support' already deleted
+```
+
+```sql
+SELECT aidb.delete_purpose('never_created');
+
+__OUTPUT__
+ERROR:  purpose 'never_created' not found
+```
+
+---
+
+## Errors
+
+| Error | Cause |
+|---|---|
+| `purpose '<name>' already exists` | `create_purpose` called with the name of a purpose that's still active. |
+| `purpose '<name>' not found` | `update_purpose` or `delete_purpose` called with a name that was never created, or that's retired (for `update_purpose`). |
+| `purpose '<name>' already deleted` | `delete_purpose` called on a name that's already retired. |
+| `purpose '<name>' has been retired` | An agent was invoked against a purpose that's been retired. Never falls back to running as the caller. |
+| `purpose '<name>' is not registered` | `create_agent`/`update_agent` named a purpose that doesn't exist, or an agent was invoked against a purpose that was never registered. |
+| `Invalid parameters: purpose name must not be empty` | `name` was empty or all whitespace. |
+| `Invalid parameters: purpose role must not be empty` | `role` was empty or all whitespace (`create_purpose` only; `update_purpose`'s `role` may be omitted). |
+| `Invalid parameters: agent purpose must not be empty` | `create_agent`/`update_agent` was called with an empty or all-whitespace `purpose`. |
+| `role '<role>' does not exist` | At invocation, the purpose's resolved role doesn't exist — for example, it was dropped after registration. |
+| `current user is not a member of role '<role>'; refusing to switch` | At invocation, the caller isn't a member of the resolved role. |
+| `permission denied for function create_purpose` | The caller isn't a member of `aidb_governance` (same for `update_purpose`/`delete_purpose`). |
+| `permission denied for view purpose_registry` | An `INSERT`, `UPDATE`, or `DELETE` was attempted directly against the view. |
+| `permission denied for table purpose_registry` | A read or write was attempted directly against the underlying `aidb_internal.purpose_registry` table. |
+
+---
+
+## Configuration
+
+Governance-related GUCs. See [Decision records](../governance/decision-records) for how these are used.
+
+### `aidb.otel_client`
+
+| Property | Value |
+|---|---|
+| Type | enum (`noop`, `stdout`, `log`, `database`, and where built, `grpc`) |
+| Default | `noop` |
+| Context | `SUSET` |
+
+Selects which exporter backs AIDB's OpenTelemetry instrumentation, including purpose-enforcement decision records. Read once, at the first use of AIDB's telemetry client in each backend — a change takes effect for new backends, not ones already past their first instrumented call. Only `database` writes into the `aidb_otel` tables where you can query it in SQL.
+
+```sql
+SET aidb.otel_client = 'database';
+```
+
+### `aidb.otel_capture_query_parameters`
+
+| Property | Value |
+|---|---|
+| Type | boolean |
+| Default | `false` |
+| Context | `SUSET` |
+
+Controls whether bound parameter values are substituted for placeholders (`$1`, `$2`, ...) in the `db.query.text` trace attribute. `db.query.text` is present regardless of this setting, including on a statement rejected before execution — this GUC only governs whether the placeholder form or the fully-substituted form is shown. See [Seeing the attempted SQL](../governance/decision-records#seeing-the-attempted-sql).
+
+```sql
+SET aidb.otel_capture_query_parameters = on;
+```

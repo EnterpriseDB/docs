@@ -1,0 +1,57 @@
+---
+title: Governance
+navTitle: Governance
+description: Confine what an in-database agent's tools can do, and record every allow/deny decision, using purposes and Postgres roles.
+navigation:
+- purposes
+- enforcement
+- decision-records
+- tracing
+---
+
+By default, an [agent's](../agents) tool calls run as whichever Postgres role called `agent_converse`. Governance gives you a way to confine that instead: register a **purpose** — a named policy scope that resolves to exactly one Postgres role — and assign that purpose to an agent. Every tool the agent calls then executes under that role, enforced by Postgres's own privilege system, not by anything the model decides.
+
+## Three roles
+
+Governance splits authority across three roles, each answering a different question.
+
+| Role | Question it answers | Granted |
+|------|----------------------|---------|
+| `aidb_users` | Can this user create and invoke agents, and read the purpose registry? | To any user who should use AIDB. See [Manage user access with the aidb_users role](../install/configure#manage-user-access-with-the-aidb_users-role). |
+| `aidb_governance` | Can this user register, repoint, or retire a purpose, and read the audit trail? | To administrators who author policy. |
+| The purpose's resolved role | What can a tool call under this purpose actually touch in the database? | Whatever ordinary `GRANT`s you give that role. |
+
+`aidb_users` and `aidb_governance` are independent — neither is granted to the other. A governor doesn't need `aidb_users` to administer purposes, and an ordinary `aidb_users` member can't touch the registry no matter what else they hold.
+
+Authoring policy is a coarser question than a per-call membership check, so `create_purpose` doesn't require the governor to hold the role they're mapping a purpose to. A purpose naming a role nobody can invoke is harmless — the check that matters happens later, when an agent using that purpose is actually invoked. See [Enforcement](enforcement) for what happens at that point.
+
+## Example
+
+A governor registers a read-only purpose and a read-write purpose over two roles, then a user creates two agents against them:
+
+```sql
+CREATE ROLE sales_tickets_ro;
+CREATE ROLE sales_tickets_rw;
+GRANT SELECT ON sales_tickets TO sales_tickets_ro;
+GRANT SELECT, INSERT, UPDATE ON sales_tickets TO sales_tickets_rw;
+-- Every purpose-resolved role still needs grants of its own -- see "Grants the resolved role needs" in Purposes.
+GRANT aidb_users TO sales_tickets_ro, sales_tickets_rw;
+
+SET ROLE sales_governor;  -- a member of aidb_governance
+SELECT aidb.create_purpose('sales_support', 'sales_tickets_ro', 'Sales support agent');
+SELECT aidb.create_purpose('sales_admin', 'sales_tickets_rw', 'Sales administrator');
+RESET ROLE;
+
+SET ROLE sales_user_1;  -- a member of aidb_users only
+SELECT aidb.create_agent('ticket_reader', 'Answer questions about sales tickets.', 'my_gpt',
+    tools => ARRAY['read_tickets'], purpose => 'sales_support');
+SELECT aidb.create_agent('ticket_handler', 'Answer questions and update tickets.', 'my_gpt',
+    tools => ARRAY['read_tickets', 'update_tickets'], purpose => 'sales_admin');
+RESET ROLE;
+```
+
+`ticket_reader`'s calls to `read_tickets` run as `sales_tickets_ro` regardless of who invokes it. `ticket_handler`'s calls run as `sales_tickets_rw`. Neither agent's tool calls run as `sales_user_1`, the role that created them.
+
+!!!note Governing internal agents vs. external agents
+This page covers governance for agents built with AIDB's own [Agent Hub and Tools Hub](../agents) — in-database agents, enforced entirely by the extension. If you're auditing agents that connect through an external MCP server instead, see [EDB Agent Governance](/agent-governance/latest/), which governs that separate path.
+!!!

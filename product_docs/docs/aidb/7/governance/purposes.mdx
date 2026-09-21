@@ -1,0 +1,149 @@
+---
+title: Purposes
+navTitle: Purposes
+description: Register, repoint, and retire purposes — the named policy scopes that agents run under.
+---
+
+A purpose maps a name to a Postgres role. Registering, changing, and retiring purposes requires the `aidb_governance` role:
+
+```sql
+GRANT aidb_governance TO your_admin;
+```
+
+## Registering a purpose
+
+```sql
+SELECT aidb.create_purpose(
+    name        => 'sales_support',
+    role        => 'sales_tickets_ro',
+    description => 'Sales support agent'
+);
+```
+
+`create_purpose` doesn't check that `sales_tickets_ro` exists or that you hold it. That check happens later, when the role is actually assumed — see [Enforcement](enforcement).
+
+## Grants the resolved role needs
+
+A purpose's resolved role starts out as a plain Postgres role, with none of AIDB's own access by default. What it needs beyond that depends on which [tool type](../tools) the agent calls under that purpose — the two types are not symmetric.
+
+### Native tools
+
+Calling a [native tool](../tools/native-tools) runs a Postgres function call into `aidb.<tool_name>` under the resolved role, so that role needs `EXECUTE` on every native tool the agent is configured to call, plus `USAGE` on the schema to reference it at all:
+
+```sql
+GRANT USAGE ON SCHEMA aidb TO sales_tickets_ro;
+GRANT EXECUTE ON FUNCTION aidb.run_sql_query(TEXT) TO sales_tickets_ro;
+```
+
+This is genuinely per-tool: granting `EXECUTE` on `run_sql_query` doesn't cover `catalog_list_objects` — an agent configured with several native tools needs a grant for each one its purpose role should be allowed to run.
+
+If telemetry is on (`aidb.otel_client = 'database'`), recording that call's trace also happens under the resolved role, so it needs the same two things for the `aidb_otel` schema:
+
+```sql
+GRANT USAGE ON SCHEMA aidb_otel TO sales_tickets_ro;
+GRANT EXECUTE ON ALL ROUTINES IN SCHEMA aidb_otel TO sales_tickets_ro;
+```
+
+Without it, the tool call itself still succeeds or fails on its own merits, but the trace flush that follows it raises, and that failure surfaces as if the tool call itself had been denied.
+
+Grant the aidb_otel and per-tool grants to every role you register a purpose against, before invoking any agent that uses it. Missing it surfaces as:
+
+```text
+permission denied for schema aidb
+```
+
+### Custom SQL tools
+
+A [custom SQL tool](../tools/custom-sql-tools) needs none of this. `aidb.create_sql_tool()` tools run their stored query directly against the tables it references — there's no intermediate call into a function in schema `aidb`, so the resolved role needs no `aidb_users` membership and no function-level grant at all. It only needs ordinary privileges on whatever tables or views the tool's own SQL touches.
+
+## Repointing a purpose takes effect immediately
+
+```sql
+SELECT aidb.update_purpose('sales_support', role => 'sales_tickets_ro_v2');
+```
+
+The role a purpose maps to is resolved at invocation, not cached when the agent was created. Repointing it takes effect on the next call of every agent holding that purpose — with no edit to any agent.
+
+`NULL` means leave unchanged, not clear. Passing `NULL` for `role` or `description` leaves the current value as it is:
+
+```sql
+SELECT aidb.update_purpose('sales_support', description => 'Updated description');
+-- role is untouched
+```
+
+Calling `update_purpose` with nothing to change succeeds without error, even against a name that doesn't exist:
+
+```sql
+SELECT aidb.update_purpose('never_created');
+-- Succeeds. No row is touched, no error is raised.
+```
+
+An actual change against a name that doesn't exist does fail:
+
+```sql
+SELECT aidb.update_purpose('never_created', role => 'some_role');
+
+__OUTPUT__
+ERROR:  purpose 'never_created' not found
+```
+
+`update_purpose` can't revive a retired purpose — see below.
+
+## Retiring a purpose
+
+```sql
+SELECT aidb.delete_purpose('sales_support');
+```
+
+This is a soft delete. The row stays, with `deleted_at` set, and remains visible in `aidb.purpose_registry` for inspection. Every agent still holding this purpose starts failing at invocation:
+
+```text
+purpose 'sales_support' has been retired
+```
+
+Retiring never falls back to running the agent as the caller. An agent with no purpose at all runs as the caller by design — but a purpose that *used to* confine an agent must not silently stop confining it just because it was retired. That would promote every agent holding it from confined to caller-privileged, the opposite of what retiring a purpose is for.
+
+Deleting an already-retired purpose, or a name that never existed, fails with a distinct error for each case:
+
+```sql
+SELECT aidb.delete_purpose('sales_support');  -- called a second time
+
+__OUTPUT__
+ERROR:  purpose 'sales_support' already deleted
+```
+
+```sql
+SELECT aidb.delete_purpose('never_created');
+
+__OUTPUT__
+ERROR:  purpose 'never_created' not found
+```
+
+## Reviving a retired purpose
+
+`create_purpose` is the only way to bring a retired purpose back into service — call it again with the same name:
+
+```sql
+SELECT aidb.create_purpose('sales_support', 'sales_tickets_ro');
+```
+
+This overwrites `role` with the new value and clears `deleted_at`. Omitting `description` keeps whatever description the purpose had before it was retired, rather than clearing it.
+
+Calling `create_purpose` against a name that's still live (not retired) fails instead:
+
+```sql
+SELECT aidb.create_purpose('sales_support', 'sales_tickets_ro');
+
+__OUTPUT__
+ERROR:  purpose 'sales_support' already exists
+```
+
+## A purpose pointing at a role that doesn't exist
+
+Neither `create_purpose` nor `update_purpose` checks that the role exists. A purpose can be registered against a role you haven't created yet, or one that's later dropped. Invoking an agent under that purpose then fails at invocation, not at registration:
+
+```text
+role 'sales_tickets_ro' does not exist
+```
+
+See [Purposes reference](../reference/purposes) for the full function signatures and error list.

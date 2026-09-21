@@ -1,0 +1,70 @@
+---
+title: Enforcement
+navTitle: Enforcement
+description: What happens when a purpose-scoped agent runs, what's covered, and how it differs from an ordinary Postgres session.
+---
+
+When an AI agent runs a tool (like running a SQL query or fetching data), the system needs to decide what permissions that agent has.
+Instead of giving an agent static permissions when you create it, the system dynamically checks the agent's assigned purpose every single time it runs to figure out which database role to use.
+
+## Resolution has three outcomes
+
+An agent's `purpose` is resolved to a role each time it's invoked:
+
+- **No purpose set** — every tool call runs as whoever called `agent_converse`, with error containment only. This is today's behavior for an agent with no purpose configured.
+- **A live purpose** — every tool call runs as the role it resolves to.
+- **A retired or unregistered purpose** — the invocation is refused. It never falls back to running as the caller. See [Purposes](purposes#retiring-a-purpose) for why.
+
+Neither `create_agent` nor `update_agent` resolves the purpose or checks role membership — that check happens only when the role is actually assumed. Creating an agent against a purpose you can't invoke succeeds; calling it fails.
+
+The two checks, in order:
+
+1. **Does the role exist?** Checked directly, not by catching a Postgres error.
+2. **Is the caller a member of it?** `pg_has_role(current_user, role, 'MEMBER')` — inherited membership counts, `SET ROLE` isn't required.
+
+## What's enforced
+
+| Call path | Enforced? |
+|---|---|
+| Native tools (built-in operations like catalog discovery) | Yes |
+| Custom SQL tools (`aidb.create_sql_tool`) | Yes |
+| MCP tools | No — an MCP call is outbound HTTP, with no local Postgres identity to switch |
+| `aidb.run_tool` (direct tool invocation, bypassing an agent) | No — runs as the caller's own session role |
+
+## Delegation
+
+When one agent [delegates](../agents/delegation) to another, the delegating agent's resolved role always wins, and the delegate's own `purpose` is never even read. A restricted agent can't use delegation to reach a role less restrictive than its own — the same rule that already applied to read-only mode.
+
+## A refusal doesn't end the conversation
+
+`agent_converse` still returns normally. The refusal lands in the tool's own response, not in the converse call's `error` column:
+
+```sql
+SELECT response_payload->>'error'
+FROM aidb_internal.action_log
+WHERE task_id = (
+    SELECT id FROM aidb_internal.agent_task_queue
+    WHERE conversation_id = 'your-conversation-id' ORDER BY created_at DESC LIMIT 1
+)
+AND action_type = 'tool_response'
+ORDER BY created_at LIMIT 1;
+```
+
+## The SET ROLE caveat
+
+Enforcement works by switching the backend's effective user id for the duration of the tool call, tagged with Postgres's `SECURITY_LOCAL_USERID_CHANGE` flag — the same flag a real `SECURITY DEFINER` function sets. While that flag is set, Postgres refuses to change the `role` or `session_authorization` GUCs from *any* path — a plain `SET`/`RESET`, a `DO` block, a `CALL`ed procedure, dynamic `EXECUTE`, or `SELECT set_config('role', ...)` — with:
+
+```text
+ERROR:  cannot set parameter "role" within security-definer function
+```
+
+This message is confusing here, because no function is actually declared `SECURITY DEFINER` — Postgres can't tell "inside a real security-definer function" apart from "someone set the same flag directly," so it uses its one fixed wording either way.
+
+**This differs from a regular Postgres session**, and it's worth understanding before you design purpose roles:
+
+- Ordinary role **inheritance still works**. If the purpose's role is a member of a sibling role, tool calls pick up whatever that sibling grants — no explicit `SET ROLE` needed.
+- An explicit `SET ROLE` to a sibling **does not work**, even for a sibling the purpose's role legitimately belongs to. The role switch is refused the same way an escalation attempt would be.
+
+So a role created with `NOINHERIT` that expects a tool to `SET ROLE` into a sibling for its real permissions won't work under a purpose. Recommendation: design purpose roles to inherit the privileges they need directly, and avoid `NOINHERIT` on them.
+
+The same mechanism additionally blocks `PREPARE`, `DEALLOCATE`, `LISTEN`, `UNLISTEN`, `DISCARD`, and closing a named cursor for the duration of the tool call — a broader hardening measure, not something that changes the error message above.
