@@ -5,7 +5,7 @@ navTitle: Configuring
 
 To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, manage user access, and verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
 
-## Configure shared_preload_libraries
+## Configuring shared_preload_libraries
 
 1. In the `postgresql.conf` file, add `aidb` to the `shared_preload_libraries` parameter:
 
@@ -19,7 +19,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
 
 1. Restart Postgres.
 
-## Create the extensions
+## Creating the extensions
 
 1. Create the AIDB extension in your database:
 
@@ -29,7 +29,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
 
    The `CASCADE` option automatically installs the required `vector` extension if it isn't already present.
 
-   !!!Note PGD users
+   !!!note Registering AIDB with PGD
    If you're running EDB Postgres Distributed (PGD), run the following after creating the extension to register AIDB catalog tables in the replication set:
 
    ```sql
@@ -45,7 +45,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
    
    For more information, see [PGFS documentation](/pg_extensions/pgfs/).
 
-## Manage user access with the aidb_users role
+## Managing user access with the aidb_users role
 
 When you create the AIDB extension, Postgres automatically creates a role named `aidb_users`. Grant a user membership in this role to give it access to AIDB's SQL functions. This role isn't removed if you later drop the extension.
 
@@ -97,12 +97,13 @@ GRANT CREATE ON SCHEMA public TO alice;
 If you access AIDB through Hybrid Manager's Pipeline Designer, pipeline operations run under a separate role, `visual_pipeline_user`, which must also be granted membership in `aidb_users`. See [VPU and permissions](/edb-postgres-ai/latest/hybrid-manager/ai-factory/pipeline-designer/vpu-and-permissions#configuring-vpu-permissions) for that setup.
 !!!
 
-## Manage audit access with the aidb_governance role
+## Managing audit access with the aidb_governance role
 
-When you create the AIDB extension, Postgres also creates a role named `aidb_governance`, separate from `aidb_users`. It exists to give an auditor or monitoring tool read access to the trace, log, and metric data AIDB records under [observability](../reference/observability), without also granting it the ability to use AIDB's functions.
+When you create the AIDB extension, Postgres also creates a role named `aidb_governance`, separate from `aidb_users`. The role exists to give an auditor or monitoring tool read access to the trace, log, and metric data AIDB records for [observability](../reference/observability), without also granting that auditor or tool the ability to use AIDB's functions.
 
-- **Purpose:** `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function. It's the only non-superuser role with `SELECT` access to those tables.
-- **Separation from aidb_users:** `aidb_users` can write into `aidb_otel.*` indirectly (every AIDB function call that's traced ends up there), but has no `SELECT` on the tables themselves. A role only needs `aidb_governance` if it also needs to query or export that data.
+- **Purpose:** `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function.
+- **Security:** `aidb_governance` is the only non-superuser role with `SELECT` access to the `aidb_otel.*` tables.
+- **Separation from aidb_users:** `aidb_users` can write into `aidb_otel.*` indirectly (every AIDB function call that's traced ends up in those tables), but has no `SELECT` on the tables themselves. A role only needs `aidb_governance` in addition to `aidb_users` if it also needs to query or export that data.
 
 To let a user or service account read AIDB's observability data, grant it the `aidb_governance` role:
 
@@ -110,7 +111,7 @@ To let a user or service account read AIDB's observability data, grant it the `a
 GRANT aidb_governance TO your_auditor_role;
 ```
 
-## Proxy settings
+## Configuring proxy settings
 
 If your environment routes outbound HTTP traffic through a proxy, set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables in the Postgres environment file. On Ubuntu with community Postgres, this file is at `/etc/postgresql/<version>/main/environment`:
 
@@ -131,9 +132,9 @@ Replace `<your-proxy-settings>` with your proxy address, and `16` with your Post
 AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and llama.cpp) run fully offline once their model files are available locally, but any pipeline step or agent tool that calls out to a remote model provider still needs outbound network access to that provider.
 !!!
 
-## Configuration parameters
+## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually.
+AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually. The sections below cover threading limits, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -144,13 +145,15 @@ AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` n
 
 Both apply live: a session-local `SET` takes effect immediately in that backend only. Setting either with `ALTER SYSTEM` or in `postgresql.conf` takes effect after `pg_reload_conf()` (or `SIGHUP`), and propagates to all backends and background workers — no restart required.
 
-#### `aidb.max_threads`
+<a id="aidbmax_threads"></a>
+**`aidb.max_threads`**
 
 ```sql
 SET aidb.max_threads = 4;
 ```
 
-#### `aidb.max_io_threads`
+<a id="aidbmax_io_threads"></a>
+**`aidb.max_io_threads`**
 
 ```sql
 SET aidb.max_io_threads = 4;
@@ -167,7 +170,8 @@ The following parameters control how AIDB downloads local model files from Huggi
 | `aidb.download_log_level`    | string  | `notice` | —     | Controls the output channel for routine download progress messages (for example, download start/complete, byte-progress heartbeats, and adapter load lines). Valid values: `notice`, `log`, `off`. See below.                   |
 | `aidb.download_max_attempts` | integer | `30`     | 1–500 | Maximum total download attempts per file (initial request plus retries) before AIDB aborts. See [Local model downloads](../integrating-models/integrated-models#local-model-downloads) for the retry behavior. |
 
-#### `aidb.download_log_level`
+<a id="aidbdownload_log_level"></a>
+**`aidb.download_log_level`**
 
 Controls where routine download-progress messages are sent. Warnings and errors are unaffected.
 
@@ -183,7 +187,8 @@ Example:
 SET aidb.download_log_level = 'log';
 ```
 
-#### `aidb.download_max_attempts`
+<a id="aidbdownload_max_attempts"></a>
+**`aidb.download_max_attempts`**
 
 Caps the total number of download attempts per file. The downloader aborts early when consecutive attempts make zero progress, so this parameter is primarily a safety ceiling against excessive retry loops.
 
@@ -201,7 +206,8 @@ SET aidb.download_max_attempts = 5;
 |------------------------------|---------|---------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `aidb.enable_llamacpp_logs` | boolean | `false` | —     | Controls whether llama.cpp's own diagnostic output (GGUF metadata, tensor shapes, and backend/model initialization) is written to the server log. `SUSET`. Read once at extension initialization — see below. |
 
-#### `aidb.enable_llamacpp_logs`
+<a id="aidbenable_llamacpp_logs"></a>
+**`aidb.enable_llamacpp_logs`**
 
 Off by default: llama.cpp's native logging is verbose — hundreds of lines per model load — so it's suppressed unless you need it. This is separate from `aidb.download_log_level` above, which controls AIDB's own download-progress messages; the two are independent.
 
@@ -328,7 +334,7 @@ Deletes rows older than a retention window from `aidb_otel.{traces,logs,metrics}
 
 All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#functions).
 
-## Validate the installation
+## Validating the installation
 
 Confirm that the extensions are installed by running `\dx` in psql and looking for `aidb`, `vector`, `pgfs` (if installed), in the output:
 
