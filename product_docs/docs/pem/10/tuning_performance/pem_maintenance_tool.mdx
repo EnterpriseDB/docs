@@ -1,0 +1,116 @@
+---
+title: "PEM Maintenance Tool"
+deepToC: true
+---
+
+The PEM Maintenance Tool is a standalone, read-only command-line tool that analyzes the PEM backend database and produces prioritized PostgreSQL tuning recommendations. It never modifies the database itself. Instead, it generates a report plus a SQL script that you review before applying.
+
+The tool connects only to the PEM backend database (the database that stores PEM's own catalog, probe history, and alert data). It doesn't analyze the servers and agents that PEM monitors.
+
+## When to run the tool
+
+Run the PEM Maintenance Tool:
+
+- After a fresh PEM installation, to establish a tuning baseline before the backend database accumulates real workload.
+- After significant growth in your monitored fleet (more servers, agents, or probes), since backend database load scales with fleet size.
+- Periodically, as part of routine maintenance, to catch configuration or bloat issues that develop over time.
+
+## Prerequisites
+
+- Read access to the PEM backend database. Superuser access isn't required for most checks, but the `pg_stat_bgwriter` and `pg_stat_replication` checks require at least the `pg_monitor` role on PostgreSQL 10 and later.
+- Python 3.9 or later. On Linux and Windows installations, the packaged wrapper script uses the same Python interpreter as the rest of PEM, so no separate setup is required.
+
+## Running the tool
+
+The tool installs alongside the rest of PEM server, under `maintenance_tool/bin` in your PEM installation directory:
+
+| Platform | Path |
+|----------|------|
+| Linux    | `<PEM base>/maintenance_tool/bin/pem_maintenance.sh` |
+| Windows  | `<PEM base>\maintenance_tool\bin\pem_maintenance.bat` |
+
+For example, on a default Linux installation:
+
+```shell
+/usr/edb/pem/maintenance_tool/bin/pem_maintenance.sh [options]
+```
+
+The wrapper script invokes the co-located `pem_maintenance.py` script using the correct Python interpreter for your platform.
+
+### Connection options
+
+| Option | Description |
+|--------|-------------|
+| `--host HOST` | PEM database host. Defaults to `PGHOST`, or the local Unix socket. |
+| `--port PORT` | Port. Defaults to `PGPORT`, or `5432`. |
+| `--dbname DBNAME` | Database name. Defaults to `PGDATABASE`, or `pem`. |
+| `--user USER` | User. Defaults to `PGUSER`, or `enterprisedb`. |
+| `--password` | Not recommended, since the password is visible in `ps aux` output. Use the `PGPASSWORD` environment variable instead. |
+
+### Analysis options
+
+| Option | Description |
+|--------|-------------|
+| `--mode {split,combined}` | `split` (default) assumes the PEM database runs on a dedicated host. `combined` assumes the PEM database shares its host with monitored servers. |
+| `--storage-type {ssd,hdd}` | Affects autovacuum throttling and planner cost settings in the recommendations. |
+| `--active-users N` | Number of concurrent web UI users, used for connection sizing. |
+| `--agent-id ID` | The PEM agent ID that monitors the backend host. Auto-detected if not specified. |
+| `--pgbouncer-pool-size N` | Enables PgBouncer-aware sizing; downstream memory recommendations divide by `N` instead of raw connection counts. Can also be set with the `PEM_ADVISOR_PGBOUNCER_POOL` environment variable. |
+| `--show {strong,recommended,all}` | Filters findings by severity tier. `all` (default) shows every tier; `recommended` shows Strong and Recommended findings; `strong` shows only Strong Recommendations. |
+| `--verbose` | Adds an extended block per finding, including the default value, the formula used, the rationale, and the observed signal that triggered the recommendation. |
+
+### Output options
+
+| Option | Description |
+|--------|-------------|
+| (default) | ANSI-colored terminal report to stdout. |
+| `--output FILE` | Writes a Markdown report to `FILE`. |
+| `--sql-output FILE` | Writes SQL scripts based on `FILE`. See [SQL output files](#sql-output-files). If omitted, defaults to `pem_maintenance_YYYYMMDD.sql`. |
+| `--json` | Outputs findings and extended metadata as JSON, instead of the terminal report. |
+
+## SQL output files
+
+`--sql-output <base>.sql` writes two files:
+
+| File | Contents | Lock impact |
+|------|----------|-------------|
+| `<base>.sql` | Configuration changes only: `ALTER SYSTEM SET ...` followed by `SELECT pg_reload_conf();`. Parameters that require a restart to take effect are annotated with `-- [restart]`. | Metadata-only. Doesn't take table locks. |
+| `<base>_tables.sql` | Per-table maintenance: `ALTER TABLE ... SET (autovacuum_*)` for high-churn tables, `VACUUM ANALYZE` for bloated tables, and `VACUUM FULL ANALYZE` for severely bloated tables (more than 50% dead tuples and larger than 1 GB). | `VACUUM FULL` takes an `ACCESS EXCLUSIVE` lock and blocks all readers and writers on that table for its duration. |
+
+This split is deliberate. Applying `<base>.sql` alone (for example, with `psql -d pem -f <base>.sql`) never touches per-table statements, so it can't block probe writes. `<base>_tables.sql` carries a warning banner in its header and is meant for review before you apply it, ideally during a maintenance window.
+
+## Reviewing and applying recommendations
+
+The tool never applies changes automatically. It opens a read-only connection to the PEM database (`default_transaction_read_only=on`) and only ever writes the SQL scripts described above.
+
+Before applying the generated SQL:
+
+1. Review `<base>.sql` for any parameter marked `-- [restart]`. Applying these doesn't take effect until the PEM backend database restarts.
+2. Review `<base>_tables.sql` separately. Any `VACUUM FULL ANALYZE` statement blocks all access to that table while it runs — schedule these during a maintenance window rather than running them against a live workload.
+3. Apply the reviewed scripts with `psql`, or through whatever change-management process your organization uses for the PEM backend database.
+
+All identifiers in the generated SQL are quoted (for example, `"schema"."table"`), so reserved words and mixed-case names are handled safely.
+
+## What the tool analyzes
+
+| Category | Parameters checked |
+|----------|---------------------|
+| Memory | `shared_buffers`, `work_mem`, `maintenance_work_mem`, `effective_cache_size`, `huge_pages` |
+| Connections | `max_connections` (formula-based, with utilization signals and PgBouncer awareness) |
+| WAL | `max_wal_size`, `min_wal_size`, `wal_buffers`, `checkpoint_*`, `wal_compression`, `synchronous_commit` |
+| Autovacuum (global) | `max_workers`, scale factors, `autovacuum_work_mem`, cost throttling (SSD vs. HDD) |
+| Autovacuum (per-table) | Immediate `VACUUM`/`VACUUM ANALYZE` for bloated tables, and persistent `ALTER TABLE` overrides for high-churn tables |
+| Planner | `random_page_cost`, `effective_io_concurrency`, `default_statistics_target` |
+| Logging | `log_min_duration_statement`, `log_checkpoints`, `log_autovacuum_min_duration` |
+| Parallel query | `max_worker_processes`, `max_parallel_workers`, and per-gather/maintenance settings |
+| JIT | Recommends `jit=off` for typical PEM backend workloads |
+| Background writer | `bgwriter_delay`, `bgwriter_lru_maxpages`, `bgwriter_lru_multiplier` |
+| Session safety | `idle_in_transaction_session_timeout`, `track_io_timing`, `log_temp_files` |
+| Probe frequencies | Flags aggressive probe overrides that generate more than 500,000 rows a day |
+| Replication | `wal_level`, `max_wal_senders`, inactive replication slots |
+
+Transaction ID wraparound isn't checked by this tool. It's a health check, not a tuning concern, and PEM already ships a dedicated wraparound alert.
+
+## Compatibility
+
+The tool is compatible with PostgreSQL 17 and later (it accounts for the `pg_stat_bgwriter` / `pg_stat_checkpointer` split) and with EDB Postgres Advanced Server (it issues `SET datestyle MDY` as needed).
