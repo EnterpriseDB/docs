@@ -1,11 +1,11 @@
 ---
 title: Configuration parameters
 navTitle: Configuration parameters
-description: Complete reference for all WEM and Collector configuration parameters.
+description: Complete reference for all WEM and host agent configuration parameters.
 deepToC: true
 ---
 
-WEM and the Collector are each configured through a dedicated configuration file on their respective hosts. The parameters below cover all supported options, their defaults, and their descriptions.
+WEM and the host agent are each configured through a dedicated configuration file on their respective hosts. These parameters cover all supported options, their defaults, and their descriptions.
 
 ## WEM parameters
 
@@ -18,30 +18,42 @@ Configure these parameters in `/etc/wem/wem.conf` on the WEM host.
 | `WHPG_HOST` | `localhost` | Yes | Hostname of the WarehousePG coordinator. |
 | `WHPG_PORT` | `5432` | Yes | Port for the WarehousePG coordinator. |
 | `WHPG_DATABASE` | `wem` | Yes | Database on the WHPG cluster to connect to. Any database is valid, but `WHPG_USER` must be a superuser. |
-| `WHPG_USER` | `gpadmin` | Yes | WarehousePG superuser for monitoring. |
+| `WHPG_USER` | `gpadmin` | Yes | WarehousePG superuser. Used for setup tasks and as the runtime connection when `WHPG_WEM_USER` isn't configured. |
 | `WHPG_PASSWORD` | — | Yes | Password for `WHPG_USER`. |
 | `WHPG_SSLMODE` | `prefer` | No | SSL mode for the WHPG connection. Valid values are `disable`, `allow`, `prefer`, `require`, `verify-ca`, and `verify-full`. |
+| `WHPG_WEM_USER` | — | No | Dedicated WarehousePG role that WEM creates automatically during `wem setup` and uses for its runtime connection instead of reusing `WHPG_USER` for every query. WEM falls back to `WHPG_USER`/`WHPG_PASSWORD` if this parameter or `WHPG_WEM_USER_PASSWORD` is unset. |
+| `WHPG_WEM_USER_PASSWORD` | — | No | Password for `WHPG_WEM_USER`. |
+| `WHPG_MONITORING_DB` | `WHPG_DATABASE` | No | Database WEM uses for monitoring queries, if different from `WHPG_DATABASE`. |
 
-### Observability endpoints
+### ClickHouse
+
+WEM queries ClickHouse for all historical metrics and log data. See [Installing ClickHouse](../installing/observability-stack).
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `PROMETHEUS_URL` | — | No | URL of the Prometheus server for metrics. For example, `http://prometheus.hostname:9090`. |
-| `LOKI_URL` | — | No | URL of the Loki server for log aggregation. For example, `http://loki.hostname:3100`. |
-| `LOKI_TENANT_ID` | — | No | Tenant ID to send with requests to a multi-tenant Loki setup. |
-| `METRICS_BACKEND` | `prometheus` | No | Backend WEM uses for alert rule evaluation. Valid values are `prometheus` and `clickhouse`. |
+| `CLICKHOUSE_URL` | — | Yes | ClickHouse connection URL. For example, `clickhouse://username:password@localhost:9000`. |
+| `CLICKHOUSE_DB` | `acp_observability` | No | ClickHouse database that stores the OTel-collected metrics and logs. |
+
+### OTel Collector
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `OTEL_GATEWAY_ENDPOINT` | — | No | External gateway collector endpoint. When set, every node's OTel Collector exports to this gateway. When empty, WEM manages the gateway internally on the standby coordinator, with the coordinator as failover. See [Installing the gateway collector](../installing/collector). |
+| `OTEL_COLLECTION_INTERVAL` | `30s` | No | Frequency at which each node's OTel Collector gathers host metrics. |
+| `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` | `127.0.0.1:8889` | No | Host and port where the OTel Collector exposes WHPG cluster and host metrics in Prometheus scrape format, for an external Prometheus instance. WEM's own pipeline for these metrics is ClickHouse-only, so set this  parameter only if you also need Prometheus access alongside it. See [Metrics reference](../reference/metrics#whpg-cluster-and-host-metrics). |
 
 ### Application state
 
-By default, WEM stores its internal state in the database defined by `WHPG_DATABASE`. Use these parameters to point WEM at a dedicated database instead.
+WEM stores its internal state in its own dedicated `wem` database rather than reusing `WHPG_DATABASE`. Host this database on a Postgres instance separate from the WHPG cluster you're monitoring, so a problem with that cluster doesn't take WEM down with it too. Use these parameters to point WEM at the host and role that own this database. See [Application state](../installing/wem#application-state) for the role to create and the trade-offs of reusing the WHPG cluster's own server instead.
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `WEM_HOST` | `WHPG_HOST` | No | Hostname of the WEM application state database. |
-| `WEM_PORT` | `WHPG_PORT` | No | Port for the WEM application state database. |
-| `WEM_DATABASE` | `wem` | No | Database name for WEM application state. |
-| `WEM_USER` | `WHPG_USER` | No | User for the WEM application state database. |
+| `WEM_HOST` | `localhost` | No | Hostname of the WEM application state database. Doesn't fall back to `WHPG_HOST`, even when `WHPG_HOST` is set explicitly. |
+| `WEM_PORT` | `5432` | No | Port for the WEM application state database. This is a fixed default, independent of `WHPG_PORT` — it isn't derived from it even when `WHPG_PORT` is set explicitly. |
+| `WEM_DATABASE` | `wem` | No | Database name for WEM application state. WEM creates this database itself on first start if it doesn't already exist. |
+| `WEM_USER` | `gpadmin` | No | User for the WEM application state database. Must already exist. This is a fixed default, independent of `WHPG_USER` — it isn't derived from it even when `WHPG_USER` is set explicitly. If this database is hosted on the WHPG cluster's own Postgres server, set this to the same value as `WHPG_USER`. Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. WEM doesn't create this role. |
 | `WEM_PASSWORD` | — | No | Password for `WEM_USER`. |
+| `WEM_SSLMODE` | `prefer` | No | SSL mode for the WEM application state database connection. Valid values are the same as `WHPG_SSLMODE`. |
 
 ### Web server
 
@@ -54,10 +66,34 @@ By default, WEM stores its internal state in the database defined by `WHPG_DATAB
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `HIGH_LOAD_MODE` | `false` | No | Extends WEM's internal timeouts for large clusters. Equivalent to passing the `--high-load` flag. |
-| `WHPG_MONITORING_DB` | `WHPG_DATABASE` | No | Database WEM uses for monitoring queries, if different from `WHPG_DATABASE`. |
 | `LONG_RUNNING_THRESHOLD` | `10` | No | Duration, in minutes, after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Accepts a plain integer, not a duration string. Can also be set from the WEM interface. |
 | `LOG_MIN_DURATION_STATEMENT` | — | No | Sets WHPG's `log_min_duration_statement` configuration parameter, in milliseconds. Use `-1` to disable statement logging or `0` to log every statement. Leave unset to leave WHPG's own setting unchanged. |
-| `GPBACKUP_HISTORY_DB` | `/data/coordinator/gpseg-1/gpbackup_history.db` | No | Path to the `gpbackup` history SQLite database, used by the **Backups** feature. |
+
+### Connection pooling
+
+WEM maintains separate connection pools for the WHPG cluster, its own application state database, and the Query Editor. These parameters share the same suffixes across all three prefixes (`WHPG_POOL_`, `WEM_POOL_`, and `QUERY_EDITOR_POOL_`).
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WHPG_POOL_MAX_CONNS` | `5` | No | Maximum number of pooled connections to the WHPG cluster. |
+| `WHPG_POOL_MIN_CONNS` | — | No | Minimum number of pooled connections to the WHPG cluster. |
+| `WHPG_POOL_MAX_LIFETIME` | `30m` | No | Maximum lifetime of a pooled WHPG connection before it's recycled. |
+| `WHPG_POOL_MAX_IDLE_TIME` | `5m` | No | Maximum time a pooled WHPG connection can sit idle before it's closed. |
+| `WHPG_POOL_HEALTH_CHECK` | `30s` | No | Interval at which idle WHPG pool connections are health-checked. |
+| `WEM_POOL_MAX_CONNS` | `4` | No | Maximum number of pooled connections to the WEM application state database. |
+| `WEM_POOL_MIN_CONNS` | `1` | No | Minimum number of pooled connections to the WEM application state database. |
+| `WEM_POOL_MAX_LIFETIME` | `30m` | No | Maximum lifetime of a pooled WEM application state connection before it's recycled. |
+| `WEM_POOL_MAX_IDLE_TIME` | `5m` | No | Maximum time a pooled WEM application state connection can sit idle before it's closed. |
+| `WEM_POOL_HEALTH_CHECK` | `30s` | No | Interval at which idle WEM application state pool connections are health-checked. |
+| `QUERY_EDITOR_POOL_MAX_CONNS` | `4` | No | Maximum number of pooled connections used by the Query Editor. |
+| `QUERY_EDITOR_POOL_MIN_CONNS` | `0` | No | Minimum number of pooled connections used by the Query Editor. |
+| `QUERY_EDITOR_POOL_MAX_LIFETIME` | `30m` | No | Maximum lifetime of a pooled Query Editor connection before it's recycled. |
+| `QUERY_EDITOR_POOL_MAX_IDLE_TIME` | `5m` | No | Maximum time a pooled Query Editor connection can sit idle before it's closed. |
+| `QUERY_EDITOR_POOL_HEALTH_CHECK` | `30s` | No | Interval at which idle Query Editor pool connections are health-checked. |
+| `LOG_POOL_STATS` | `false` | No | Logs periodic connection pool statistics for all three pools. |
+| `LOG_POOL_STATS_INTERVAL` | `60s` | No | Frequency at which pool statistics are logged, when `LOG_POOL_STATS` is enabled. |
+
+Pool utilization is also exposed as [Prometheus metrics](metrics#monitoring-connection-pools) at `/prom/metrics`.
 
 ### Session security
 
@@ -70,8 +106,50 @@ By default, WEM stores its internal state in the database defined by `WHPG_DATAB
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `WEM_ADMIN_PASSWORD` | Auto-generated | No | Initial admin password. Auto-generated at install if empty. Only used during first-time setup if the `dashboard_users` table doesn't yet exist. |
+| `WEM_ADMIN_PASSWORD` | Auto-generated at install | No | Initial admin password. Only used during first-time setup, if the `dashboard_users` table doesn't yet exist. The `wem` service runs `wem setup --non-interactive` on every start as a consistency check, and if that check finds first-time setup still incomplete, for example after restoring or repointing the app-state database, it fails with `admin password pre-flight failed` unless this or `WEM_ADMIN_PASSWORD_FILE` is already set, rather than auto-generating one at that point. |
 | `WEM_ADMIN_PASSWORD_FILE` | — | No | Path to a file containing the admin password. Use instead of `WEM_ADMIN_PASSWORD` for automated deployments. |
+
+### Access control
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_ACTION_PERMISSIONS_ENABLED` | `true` | No | Enables per-action permission grants, defined in the **Permissions** tab. Set to `false` to fall back to admin-only access for every gated action, regardless of what's granted there, as an emergency rollback. Requires a restart of the WEM service to take effect. See [Defining role-based access control](../system-access/management#defining-role-based-access-control). |
+
+### TLS for database connections
+
+These parameters configure client-certificate TLS for WEM's two Postgres connections. They're unrelated to the mutual TLS (mTLS) system WEM uses to authenticate host agents, which is managed automatically through WEM's internal certificate authority. See [Host agent](#host-agent).
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `PGSSLCERT` | — | No | Client certificate for the WHPG connection. |
+| `PGSSLKEY` | — | No | Client private key for the WHPG connection. |
+| `PGSSLROOTCERT` | — | No | Root certificate authority (CA) bundle used to verify the WHPG server, for `verify-ca` or `verify-full` values of `WHPG_SSLMODE`. |
+| `WEM_SSLCERT` | — | No | Client certificate for the WEM application state database connection, configured independently from the WHPG connection. |
+| `WEM_SSLKEY` | — | No | Client private key for the WEM application state database connection. |
+| `WEM_SSLROOTCERT` | — | No | Root CA bundle used to verify the WEM application state database server. |
+
+### Cluster identity
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_CLUSTER_NAME` | — | No | Display name for this cluster, shown in the WEM interface. Also included as a resource tag on the metrics and logs WEM exports through the OTel pipeline, so it's useful for telling clusters apart when several send data to the same ClickHouse instance. |
+| `WEM_CLUSTER_ENVIRONMENT` | — | No | Environment label shown in the WEM interface and used to gate confirmation prompts for cluster management actions. Valid values are `dev`, `uat`, and `prod`. |
+
+### Job retention
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `WEM_JOB_RETENTION_HOURS` | `168` | No | How long WEM keeps completed or failed Cluster Management and Safeguard job records before deleting them. A background cleanup task sweeps expired records every 24 hours. |
+| `WEM_BACKUP_JOB_RETENTION_HOURS` | `168` | No | How long WEM keeps completed backup and restore job records before deleting them. A background cleanup task sweeps expired records every 24 hours. |
+
+### Safeguard
+
+Safeguard backup and disaster-recovery settings (repositories, schedules, DR targets, and so on) are configured through the WEM interface and stored in the WEM application state database, not in `wem.conf`. These parameters only control the background sync of that configuration out to host agents.
+
+| Parameter | Default | Required | Description |
+|---|---|---|---|
+| `CONFIG_DRIFT_ENABLED` | `true` | No | Enables periodic sync of Safeguard configuration from host agents, to detect and reconcile drift. |
+| `CONFIG_DRIFT_INTERVAL` | `60s` | No | Frequency at which WEM syncs Safeguard configuration from host agents. |
 
 ### Alert evaluator
 
@@ -96,55 +174,28 @@ WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertma
 | `ANTHROPIC_API_KEY` | — | No | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when this parameter is unset. |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5` | No | Claude model used for AI-powered query plan explanations. |
 
-### Exporter
+### PXF
+
+WEM never invokes `pxf` itself. The **PXF** tab in **Data Analysis** dispatches `pxf cluster` actions to the coordinator's host agent instead, so PXF no longer needs to share a host, or an OS user, with WEM. See [Analyzing data distribution](../performance/data-analysis#managing-pxf).
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `WEM_EXPORTER_LOG_LEVEL` | `warn` | No | Verbosity of Exporter logs. Accepts `debug`, `info`, `warn`, or `error`. |
-| `WEM_EXPORTER_REMOTE_WRITE_ENABLED` | `true` | No | Controls whether WEM actively pushes SQL exporter metrics to Prometheus via remote write. Set to `false` to use pull-only mode or when `PROMETHEUS_URL` is not set. The `/prom/metrics` endpoint remains available regardless. |
-| `WEM_EXPORTER_REMOTE_WRITE_INTERVAL` | `15s` | No | Frequency for pushing metrics to Prometheus. For example, `15s`, `1m`, `5m`. |
-| `WEM_EXPORTER_REMOTE_WRITE_TIMEOUT` | `30s` | No | Maximum time allowed for a remote write push. For example, `30s`, `1m`, `2m`. |
+| `WHPG_PXF_OP_TIMEOUT_SECONDS` | `60` (`180` with `--high-load`) | No | How long WEM waits for the coordinator's host agent to finish a `pxf cluster` job. Applies to every action the same way, except restart, which gets double this budget since it's a stop followed by a start. Clamped to 30–600 seconds. |
 
-### PXF and service identity
+### Service identity
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `WHPG_OS_USER` | `gpadmin` | No | OS user that `pxf cluster` commands run as. PXF requires WHPG and PXF to share the same OS account. Don't edit this parameter manually. It's set automatically by `wem configure-user`. |
-| `WHPG_PXF_BASE` | — | No | `PXF_BASE` directory. WEM reads the value from `gpadmin`'s shell environment at install time. Set this parameter explicitly if `wem doctor` reports a `PXF_BASE` mismatch. |
-| `WHPG_PXF_BIN` | — | No | Path to the `pxf` binary. WEM searches common install paths at install time. Set this parameter explicitly if WEM didn't detect your PXF installation. |
-| `WHPG_PXF_OP_TIMEOUT_SECONDS` | `60` | No | Per-operation timeout in seconds for `pxf cluster start` and `pxf cluster stop`. Raise on large clusters, slow networks, or slow JVM start-up. Valid range: 30–600. |
 | `WHPG_ALLOW_ROOT` | — | No | Set to `1` to allow the WEM service to run as `root`. By default, WEM refuses to start as `root`. WEM logs a warning on every restart when this is set. |
 
 ### Host agent
 
-WEM dispatches jobs to the host agent through its internal job-execution engine. WEM connects to that engine lazily, so if it's unreachable, agent tasks fail directly but the rest of WEM is unaffected.
+WEM dispatches jobs to the host agent through its internal job-execution engine, and authenticates every host agent connection with mutual TLS through WEM's internal certificate authority. See [Installing the host agent](../installing/host-agent).
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `WEM_AGENT_PORT` | `PORT` + 1 | No | Port the host agent connects to for WEM's internal job-execution engine. Leave unset to derive it automatically from `PORT`. |
-| `WEM_AGENT_CALLBACK_BASE_URL` | — | No | Externally reachable base URL, without a trailing slash, that host agents dial to push and pull file bytes. If left unset, WEM derives this URL from the Host header of the browser request that triggered the file transfer, which breaks whenever that request arrived over `localhost`, an SSH tunnel, or a proxy hostname the agent can't dial back to. Set it explicitly to WEM's real hostname or IP address and listen port, for example `http://wem-host:8080`, in any deployment where the host agent runs on a different host than WEM, or where you access WEM through anything other than its own direct address. Don't use `localhost` or a bind address like `0.0.0.0`. Getting this wrong surfaces as `agent could not reach callback URL` when saving a file through the host agent, for example in the HBA editor. |
+| `WEM_AGENT_JOIN_SECRET` | — (disabled) | No | Shared secret that lets a self-registering host agent skip manual admin approval. When set, an agent that presents a matching token — pre-provisioned in `/etc/edb/acp-host-agent/join-token` on the agent host — moves straight to `approved` status instead of waiting in the **Host Agents** tab. Leave unset to require an Admin to approve every new agent explicitly, comparing the token shown in the **Host Agents** tab against the agent host's `join-token` file. |
 
-### Remote write receiver
+The host agent's callback address for file transfers is derived automatically from `WEM_AGENT_PORT` and is no longer configurable through `wem.conf`.
 
-When enabled, WEM accepts inbound time-series data from Grafana Alloy or any Prometheus-compatible remote write client via `POST /api/v1/write`, and exposes received metrics at `/prom/metrics` alongside its own cluster metrics.
-
-| Parameter | Default | Required | Description |
-|---|---|---|---|
-| `WEM_REMOTE_WRITE_RECEIVER_ENABLED` | `false` | Yes (to enable) | Master switch for the receiver. When `false`, no `/api/v1/write` endpoint is registered and no additional port is opened. |
-| `WEM_REMOTE_WRITE_RECEIVER_PORT` | `9091` | No | Port on which WEM listens for `POST /api/v1/write` requests. When different from `PORT`, WEM opens a dedicated HTTP listener — only `/api/v1/write` and `/-/healthy` are available there. When set to the same value as `PORT`, the `/api/v1/write` route is registered on the main web server instead. |
-| `WEM_REMOTE_WRITE_RECEIVER_TTL` | `5m` | No | How long WEM retains a received time series in memory after its last sample. Set to at least twice your Alloy `remote_write` interval. With Alloy's default 60-second interval, `2m` is the minimum safe value. Accepts `s`, `m`, and `h` suffixes. |
-| `WEM_REMOTE_WRITE_RECEIVER_TOKEN` | — | Recommended | *Sensitive.* Bearer token that `POST /api/v1/write` requests must present in the `Authorization: Bearer <token>` header. When empty, any client that can reach the port can push metrics and WEM logs a warning. When set, requests without a valid token are rejected with HTTP 401. Generate with `openssl rand -base64 32`. Can also be passed as the `--remote-write-token` CLI flag. |
-
----
-
-## Collector parameters
-
-Configure these parameters in `/var/lib/whpg-observability-collector/collector.conf` on the WarehousePG coordinator.
-
-| Parameter | Default | Required | Description |
-|---|---|---|---|
-| `WHPG_OBS_DSN` | — | Yes | WarehousePG cluster connection string. For example, `host=coordinator-host port=5432 dbname=postgres user=gpadmin sslmode=disable`. The user must be a superuser. |
-| `PROMETHEUS_ENDPOINT` | — | Yes | Prometheus remote write URL for host metrics. For example, `http://prometheus.hostname:9090/api/v1/write`. |
-| `LOKI_ENDPOINT` | — | Yes | Loki push API URL for log aggregation. For example, `http://loki.hostname:3100/loki/api/v1/push`. |
-| `PROMETHEUS_BEARER_TOKEN` | — | No | Bearer token for authenticating remote write requests to Prometheus. Required if your Prometheus instance enforces authentication. |
-| `LOKI_BEARER_TOKEN` | — | No | Bearer token for authenticating log push requests to Loki. Required if your Loki instance enforces authentication. |
