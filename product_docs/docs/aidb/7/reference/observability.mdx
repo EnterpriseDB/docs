@@ -56,7 +56,7 @@ Each row is exactly one span. These identifier and attribute columns are extract
 
 ## Storage format
 
-The `aidb.otel_client_storage_format` GUC controls which payload column the `database` client writes to — `payload_json`, `payload_binary`, or both. See [Configuring AIDB parameters](../install/configure#opentelemetry-tracing) to set it. Values:
+The `aidb.otel_client_storage_format` GUC controls which payload column the `database` client (one of the `aidb.otel_client` destinations — see [Configuring AIDB parameters](../install/configure#opentelemetry-tracing)) writes to: `payload_json`, `payload_binary`, or both — the two columns described under [Common columns](#common-columns) above. Values:
 
 | Value    | `payload_json` | `payload_binary` | Notes                                                                                     |
 |----------|:--------------:|:-----------------:|--------------------------------------------------------------------------------------------|
@@ -64,7 +64,7 @@ The `aidb.otel_client_storage_format` GUC controls which payload column the `dat
 | `binary` | —              | ✅                  | Raw OTLP protobuf. Cheaper to produce (no intermediate JSON tree), but not directly queryable. |
 | `both`   | ✅             | ✅                  | Both populated from the same underlying data. Roughly doubles storage and write cost.       |
 
-`aidb.otel_client_storage_format` only affects the `database` client (`aidb.otel_client = 'database'`). The `log` client always writes `payload_json` regardless of this setting, since a server log line is a human-readable debugging aid, not storage a collector later forwards.
+`aidb.otel_client_storage_format` only affects the `database` client (`aidb.otel_client = 'database'`). It has no effect on `noop` (nothing is written), `stdout` or `grpc` (both always emit the full OTLP payload directly, not through these columns), or `log`, which always writes `payload_json` regardless of this setting, since a server log line is a human-readable debugging aid, not storage a collector later forwards.
 
 When exporting a row that has both payloads populated (`storage_format = both`), the [exporter worker](#exporter-background-worker) sends only `payload_binary`, since it's cheaper to have produced.
 
@@ -75,6 +75,8 @@ When exporting a row that has both payloads populated (`storage_format = both`),
 Manually triggers a full retention cleanup pass, deleting rows older than `aidb.otel_cleaner_retention_days` from all three `aidb_otel` tables, in the same bounded batches the [cleaner background worker](#cleaner-background-worker) uses. Runs immediately, regardless of `aidb.otel_cleaner_enabled` — useful for an ops task or a test that shouldn't wait for the worker's own wake-up interval.
 
 Requires the `aidb_governance` role (see [Managing audit access](../install/configure#managing-audit-access-with-the-aidb_governance-role)) — `aidb_users` has no `EXECUTE` on this function.
+
+Takes no arguments and returns `void`. Safe to call while the cleaner background worker is running — the two don't compete over the same rows.
 
 ```sql
 SELECT aidb.run_otel_retention_cleanup();
