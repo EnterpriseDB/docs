@@ -44,10 +44,10 @@ The wrapper script invokes the co-located `pem_maintenance.py` script using the 
 | `--host HOST` | PEM database host. Defaults to `PGHOST`, or the local Unix socket. |
 | `--port PORT` | Port. Defaults to `PGPORT`, or `5432`. |
 | `--dbname DBNAME` | Database name. Defaults to `PGDATABASE`, or `pem`. |
-| `--user USER` | User. Defaults to `PGUSER`, or `enterprisedb`. |
+| `--user USER` | User. Defaults to `PGUSER`, or `enterprisedb`. If the PEM backend runs on community PostgreSQL (which has no `enterprisedb` superuser), authentication fails with a hint to retry with `--user postgres` or `PGUSER=postgres`. |
 | `--password` | Not recommended, since the password is visible in `ps aux` output. Use the `PGPASSWORD` environment variable instead. |
 
-### Analysis options
+### Deployment options
 
 | Option | Description |
 |--------|-------------|
@@ -56,8 +56,8 @@ The wrapper script invokes the co-located `pem_maintenance.py` script using the 
 | `--active-users N` | Number of concurrent web UI users, used for connection sizing. |
 | `--agent-id ID` | The PEM agent ID that monitors the backend host. Auto-detected if not specified. |
 | `--pgbouncer-pool-size N` | Enables PgBouncer-aware sizing; downstream memory recommendations divide by `N` instead of raw connection counts. Can also be set with the `PEM_ADVISOR_PGBOUNCER_POOL` environment variable. |
-| `--show {strong,recommended,all}` | Filters findings by severity tier. `all` (default) shows every tier; `recommended` shows Strong and Recommended findings; `strong` shows only Strong Recommendations. |
-| `--verbose` | Adds an extended block per finding, including the default value, the formula used, the rationale, and the observed signal that triggered the recommendation. |
+| `--ram N` | Overrides detected RAM (in MB). Use when the PEM database runs in a cgroup-limited container, since `/proc/meminfo` reports the host's RAM rather than the container's limit, which would otherwise size recommendations against the wrong number. |
+| `--cpu N` | Overrides the detected CPU count. Use in cgroup-limited containers, or when sizing for a target host that differs from the current one. |
 
 ### Output options
 
@@ -65,8 +65,12 @@ The wrapper script invokes the co-located `pem_maintenance.py` script using the 
 |--------|-------------|
 | (default) | ANSI-colored terminal report to stdout. |
 | `--output FILE` | Writes a Markdown report to `FILE`. |
-| `--sql-output FILE` | Writes SQL scripts based on `FILE`. See [SQL output files](#sql-output-files). If omitted, defaults to `pem_maintenance_YYYYMMDD.sql`. |
+| `--sql-output FILE` | Writes SQL scripts based on `FILE`. See [SQL output files](#sql-output-files). If omitted, defaults to `pem_maintenance_YYYYMMDD_HHMMSS.sql` (the timestamp keeps same-day reruns from silently overwriting a plan you may still be reviewing). |
 | `--json` | Outputs findings and extended metadata as JSON, instead of the terminal report. |
+| `--show {strong,recommended,all}` | Filters findings by severity tier. `all` (default) shows every tier; `recommended` shows Strong and Recommended findings; `strong` shows only Strong Recommendations. |
+| `--verbose` | Adds an extended block per finding, including the default value, the formula used, the rationale, and the observed signal that triggered the recommendation. |
+| `--no-color` | Suppresses ANSI colors in the terminal report. Color is also disabled automatically when stdout isn't a TTY, when the `NO_COLOR` environment variable is set, and when a Windows console can't enable Virtual Terminal Processing. |
+| `--width N` | Overrides the terminal width (columns) used for report layout. Use when auto-detection returns the wrong value — most often on Windows, when the `.bat` wrapper runs under `cmd.exe` and the reported buffer width is smaller than the visible window, truncating the Reason column. Try `--width 150` for more complete reasons. |
 
 ## SQL output files
 
@@ -113,4 +117,6 @@ Transaction ID wraparound isn't checked by this tool. It's a health check, not a
 
 ## Compatibility
 
-The tool is compatible with PostgreSQL 17 and later (it accounts for the `pg_stat_bgwriter` / `pg_stat_checkpointer` split) and with EDB Postgres Advanced Server (it issues `SET datestyle MDY` as needed).
+The tool works against any PostgreSQL version that PEM itself supports. On PostgreSQL 17 and later, it queries `pg_stat_checkpointer` and `pg_stat_io` instead of `pg_stat_bgwriter` to account for the PostgreSQL 17 monitoring split.
+
+The tool always issues `SET datestyle TO 'ISO, MDY'` when it connects. This is a no-op against community PostgreSQL, which already defaults to `ISO, MDY`. Against EDB Postgres Advanced Server, it neutralizes the default Redwood `SHOW_TIME` datestyle so that `timestamptz` columns (for example, `pg_stat_user_tables.last_autovacuum`) round-trip correctly.
