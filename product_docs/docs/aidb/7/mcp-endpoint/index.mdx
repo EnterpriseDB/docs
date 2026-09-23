@@ -6,7 +6,7 @@ navigation:
 - agent-provisioning
 ---
 
-The MCP endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). It's an HTTP server, `edb-endpoints`, shipped in the AIDB package and started and supervised by a Postgres background worker. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run.
+The MCP endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). It's an HTTP server, `edb-endpoints`, shipped in the AIDB package; a Postgres background worker starts and supervises it. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run.
 
 [Provisioning agents](agent-provisioning) walks through creating agent roles and tools with a worked example.
 
@@ -39,7 +39,7 @@ Listing the catalog requires `EXECUTE` on `aidb.get_mcp_tools()`, which membersh
 
 The name `execute_sql` is reserved for the built-in. The endpoint drops a catalog tool with the same name from the listing and logs the collision. Duplicate catalog names keep their first row.
 
-## Enable the endpoint
+## Enabling the endpoint
 
 The AIDB package installs the `edb-endpoints` binary into the Postgres `bindir`. To enable the endpoint:
 
@@ -64,7 +64,7 @@ The AIDB package installs the `edb-endpoints` binary into the Postgres `bindir`.
 
 Every other parameter has a working default. The endpoint serves the database named by `edb.endpoints_mcp_database` (`postgres` by default), which must have AIDB installed.
 
-### Connect a client
+### Connecting a client
 
 The MCP endpoint speaks streamable HTTP at `/mcp`. Point any MCP client that supports that transport and HTTP Basic authentication at `http://127.0.0.1:8765/mcp` (or your TLS host and port), and give it a Postgres username and password.
 
@@ -111,12 +111,12 @@ edb.endpoints_mcp_tls_key = '/etc/edb/endpoints/server.key'
 Then reload with `SELECT pg_reload_conf();`. The supervisor enforces these constraints:
 
 - `edb.endpoints_mcp_tls_cert` and `edb.endpoints_mcp_tls_key` are set together or not at all. Both are PEM files.
-- Plain HTTP is only served on loopback (`127.0.0.1`, `::1`, or `localhost`). A listen host outside loopback without the TLS pair is refused.
+- Plain HTTP is only served on loopback (`127.0.0.1`, `::1`, or `localhost`). The supervisor refuses to listen on a non-loopback host without the TLS pair.
 - The supervisor checks that both files exist before starting the endpoint. A wrong path idles the supervisor with a warning in the Postgres log.
 
-The connection from the endpoint to Postgres uses the local Unix socket with `sslmode=disable`, because it never leaves the host. Agent credentials are protected on the wire by TLS between the client and the endpoint, and Postgres authenticates them with whatever method `pg_hba.conf` names for the `local` connection type. If `unix_socket_directories` is empty, the endpoint connects over TCP to `127.0.0.1` instead and `host` lines apply.
+The connection from the endpoint to Postgres uses the local Unix socket with `sslmode=disable`, because it never leaves the host (see [How it works](#how-it-works) for the TCP fallback). Agent credentials are protected on the wire by TLS between the client and the endpoint, and Postgres authenticates them with whatever method `pg_hba.conf` names for that connection.
 
-## Configuration parameters
+## Configuring the endpoint
 
 All configuration is through Postgres parameters registered by AIDB. Set them in `postgresql.conf` or with `ALTER SYSTEM`. `edb.endpoints_mcp_enabled` needs a restart. The rest take effect on `SELECT pg_reload_conf();`.
 
@@ -159,7 +159,7 @@ The endpoint answers two unauthenticated GET routes:
 | `/health` | Liveness. Returns 200 with `ok` whenever the process is up. It never touches the database, so it stays green while Postgres is down.                                                          |
 | `/ready`  | Readiness. Returns 200 with `ready` whenever the process is serving. Because every call opens its own database connection, there's no standing connection to probe, so this matches `/health`. |
 
-To confirm the database path end to end, run a `tools/list` as a real agent role, as in [Connect a client](#connect-a-client).
+To confirm the database path end to end, run a `tools/list` as a real agent role, as in [Connecting a client](#connecting-a-client).
 
 ### Logging
 

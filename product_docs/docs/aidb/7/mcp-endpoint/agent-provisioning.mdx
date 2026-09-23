@@ -13,7 +13,7 @@ The example below provisions two agents with different permissions on the same d
 | Requirement                                | Why                                                                                                                                                 |
 |--------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
 | `LOGIN` and a password                     | The agent presents the username and password in the HTTP Basic header on every call, and the endpoint opens a Postgres connection with them.       |
-| A matching `local` line in `pg_hba.conf`   | The endpoint connects over the server's Unix socket, so `local` lines apply. If `unix_socket_directories` is empty, it connects over TCP to `127.0.0.1` and `host` lines apply instead. Use a password method such as `scram-sha-256`, never `trust`. |
+| A matching `local` line in `pg_hba.conf`   | The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`, never `trust`. |
 | `EXECUTE` on `aidb.get_mcp_tools()` and `aidb.run_tool()` | Membership in `aidb_users` provides both. Without them, `tools/list` fails with a permission error.                                            |
 | Grants on the objects the tools touch      | A tool runs as the agent, so the agent needs `USAGE` on the schema and the table privileges its tools use. |
 
@@ -21,7 +21,7 @@ Keep the agent role itself free of direct privileges and grant it profile roles 
 
 ## Example: alice reads, bob writes
 
-### Allow the agent roles in pg_hba.conf
+### Allowing the agent roles in pg_hba.conf
 
 Add `local` lines for the agent roles above any catch-all `local` line, so they match first. Then reload Postgres.
 
@@ -35,7 +35,7 @@ local   all   agent_bob     scram-sha-256
 SELECT pg_reload_conf();
 ```
 
-### Create the data and the profile roles
+### Creating the data and the profile roles
 
 Connect to the database named by `edb.endpoints_mcp_database` as a superuser or as the owner of the objects.
 
@@ -52,7 +52,7 @@ GRANT SELECT, INSERT ON demo.orders TO app_writer;
 GRANT USAGE, SELECT ON SEQUENCE demo.orders_id_seq TO app_writer;
 ```
 
-### Create the agent roles
+### Creating the agent roles
 
 ```sql
 CREATE ROLE agent_alice LOGIN INHERIT PASSWORD 'alice_secret';   -- replace with real passwords
@@ -63,7 +63,7 @@ GRANT aidb_users, app_writer   TO agent_bob;
 
 `INHERIT` (the default) lets the agent use the profile role's privileges without a `SET ROLE`.
 
-### Register the tools
+### Registering the tools
 
 An administrator registers tools once. Every role that can list the catalog sees them. See [Custom SQL tools](../tools/custom-sql-tools) for the full `aidb.create_sql_tool()` reference.
 
@@ -96,7 +96,7 @@ SELECT aidb.create_sql_tool(
 
 ### What each agent sees
 
-After the [MCP handshake](../mcp-endpoint#connect-a-client), calls made with `-u agent_alice:alice_secret` and `-u agent_bob:bob_secret` behave as follows.
+After the [MCP handshake](../mcp-endpoint#connecting-a-client), calls made with `-u agent_alice:alice_secret` and `-u agent_bob:bob_secret` behave as follows.
 
 | Call                                                    | `agent_alice`                                         | `agent_bob`                                  |
 |---------------------------------------------------------|-------------------------------------------------------|----------------------------------------------|
@@ -110,7 +110,7 @@ Catalog tools return a JSON array of row objects, the same shape `aidb.run_tool(
 
 Arguments are bound as query parameters, so an `item` such as `'); DROP TABLE demo.orders; --` is stored as that string. Arguments the tool didn't declare are rejected. For example, passing `execute_as_role` to `list_orders` returns `unknown argument 'execute_as_role'`, so an agent can't ask a tool to run as someone else.
 
-### Revoke an agent
+### Revoking an agent
 
 Revoke with ordinary role changes:
 
