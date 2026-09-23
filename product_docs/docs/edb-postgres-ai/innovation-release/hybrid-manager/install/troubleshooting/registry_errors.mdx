@@ -1,0 +1,25 @@
+---
+title: Registry and artifact errors
+navTitle: Registry and artifact errors
+description: Decode error messages you may encounter while mirroring or pulling Hybrid Manager container images and artifacts, and what actually causes each one.
+deepToC: true
+---
+
+{/* DRAFT NOTE (DOCS-3911): the exact message OpenShift's cluster image policy emits when it
+refuses a registry isn't documented by Red Hat, so the row below describes the symptom rather
+than quoting a specific string. Confirm before publishing whether a more precise message should
+be quoted instead. */}
+
+When mirroring or pulling Hybrid Manager artifacts, several unrelated problems can surface as similar-looking errors. This page maps what you see to what's actually happening. For background on the artifact types and registry layout referenced here, see [Container registry and artifact reference](../registry_artifact_reference).
+
+| Symptom | What it actually means | What to do |
+| :--- | :--- | :--- |
+| `missing signature key` | Docker Content Trust (DCT) was applied to an [OCI artifact](../registry_artifact_reference#oci-artifacts) (for example, a marketplace Helm chart under `kapp-marketplace/`). DCT only understands container image signatures — it isn't a security or entitlement failure. | Disable or scope DCT away from the `kapp-marketplace/` path, and use an OCI-native client (`skopeo`, `crane`, `oras`, or `helm pull oci://`) instead of `docker pull`. |
+| `manifest unknown` | The tag you requested no longer exists — your image list is stale relative to the version you're installing. | Re-fetch `images.txt` for your target version (see [Getting the canonical image list](../registry_artifact_reference#getting-the-canonical-image-list)). If your registry sits behind a proxy or caching layer, also clear its negative cache — some default to caching a "not found" result for up to 24 hours. |
+| `digest invalid: provided digest did not match uploaded content` | The artifact's manifest was altered in transit — most often by a `docker pull`/`push` cycle or a proxying registry that re-serializes what passes through it — so its digest no longer matches what was requested. | Re-copy with a digest-preserving tool (`skopeo copy --preserve-digests`) and remove any daemon-mediated step from the copy path. See [Preserving digests](../configuration/sync_images#preserving-digests). |
+| Authentication error pushing to the OpenShift internal registry | The path has more than one segment before the image name. The OpenShift internal registry enforces a fixed path depth tied to the project namespace, and rejects an unexpected depth as an authentication failure rather than a layout error. | Use `<project>/<name>`. More generally, the OpenShift internal registry isn't a supported destination for HM images — see [Destination registry layout requirements](../registry_artifact_reference#destination-registry-layout-requirements). |
+| Pod stuck in `ImagePullBackOff`, and the registry shows no incoming connection at all | The cluster's own image admission policy refused the registry before a pull was attempted — this is a policy failure, not a networking or registry-availability problem. | Check for a `blocked = true` entry for the registry in `/etc/containers/registries.conf` on the node, or your platform's equivalent admission-control configuration. See [Network access and registry allowlisting](../registry_artifact_reference#network-access-and-registry-allowlisting). |
+
+## Why these get confused together
+
+These errors typically surface from one mirroring attempt through one pipeline, which invites treating them as a single problem. They aren't: the first and third both come from tooling built for container images being used on OCI-era artifacts or transports; the second is about list currency; and the last two aren't registry problems at all — they're layout and policy failures that happen to present as authentication or connectivity errors. Triaging them separately, rather than as one incident, is usually the difference between resolving this in hours rather than weeks.

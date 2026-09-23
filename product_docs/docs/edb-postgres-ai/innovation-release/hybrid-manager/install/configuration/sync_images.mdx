@@ -6,6 +6,8 @@ deepToC: true
 
 **Related installation phase:** [Phase 4: Preparing the Environment](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/)
 
+For the full inventory of artifact types HM distributes, where each one lives, and what your registry and network need to support them, see [Container registry and artifact reference](../registry_artifact_reference).
+
 ### Prerequisites
 
 -   [**`edbctl` CLI tool**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/) installed and configured.
@@ -90,6 +92,52 @@ The command mirrors the following artifacts to your private registry:
 - **Operator bundle image** — OCP-certified bundle, used to build self-hosted OperatorHub catalogs in air-gapped OpenShift clusters.
 - **Operator helm chart** — `edb-hcp-operator` chart, mirrored as an OCI artifact alongside the images.
 
+{/* DRAFT NOTE (DOCS-3911): confirm with the edbctl owner whether sync-to-local-registry also
+covers kapp-marketplace OCI artifacts, the hm-installer chart, and extension images before this
+list is treated as exhaustive. As written, it only asserts what today's command coverage
+supports. Remove this comment once confirmed. */}
+
+!!! Note Scope of this command
+This command syncs the platform images, the operator, and the operator's own Helm chart. It does not sync the `hm-installer` chart, marketplace [OCI artifacts](../registry_artifact_reference#oci-artifacts), or [extension images](../registry_artifact_reference#extension-images) — mirror those separately if you use them. See [Container registry and artifact reference](../registry_artifact_reference#artifact-types) for the full artifact inventory.
+!!!
+
+### Preserving digests
+
+HM resolves artifacts by digest — a SHA-256 hash of the artifact's exact contents — in addition to tag. `edbctl image sync-to-local-registry` preserves digests automatically. If you build your own mirroring pipeline instead (see [below](#moving-artifacts-without-edbctl)), preserving digests is something you have to ensure yourself, because several common tools don't:
+
+- A `docker pull` followed by `docker push` unpacks and reconstructs the artifact, which can change its digest even though the content looks identical and the copy appears to succeed.
+- Some proxying or caching registry configurations behave the same way — they re-serialize what passes through them rather than storing the exact bytes.
+
+The failure this causes is easy to misdiagnose: the artifact arrives, is correctly named, and scans cleanly, but the specific digest HM asks for no longer exists, and nothing in the copy step reported an error. See [Registry and artifact errors](../troubleshooting/registry_errors) for what this looks like when it happens.
+
+To copy artifacts while preserving digests with `skopeo`:
+
+```bash
+skopeo copy --preserve-digests \
+  --override-os linux --override-arch amd64 \
+  docker://docker.enterprisedb.com/pgai-platform/<image>:<tag> \
+  docker://<your-registry>/<repository-name>/<image>:<tag>
+```
+
+### Moving artifacts without edbctl
+
+`edbctl image sync-to-local-registry` is the supported path and the only one that doesn't require you to track every artifact class yourself. Use it wherever your environment allows it.
+
+Some environments can't: `edbctl` needs direct network access to both the source and destination registries and broad enough credentials to read from one and write to the other. If your organization instead requires artifacts to be submitted individually through a governed ingestion or approval process, you're effectively performing the same job `edbctl` automates, by hand, and need to account for each artifact class yourself:
+
+| Artifact class | Tool |
+| :--- | :--- |
+| Container images | `edbctl` (if usable), or `skopeo copy --preserve-digests` |
+| OCI artifacts (`kapp-marketplace/`) | `skopeo`, `crane`, or `oras` — not `docker` or `podman`. Disable Docker Content Trust for this path |
+| Helm charts | `curl` or `helm pull` against EDB's Helm repository — these are never registry content, so registry-mirroring tools won't enumerate them |
+| Extension images | Any OCI-compliant client |
+| CLI binaries | No mirroring path — see [Container registry and artifact reference](../registry_artifact_reference#cli-binaries-and-kubectl-plugins) |
+
+Avoid `docker` or `podman` as your primary mirroring tool for anything beyond a quick, single-platform test copy — both parse and regenerate manifests on pull/push, which risks the digest-preservation problem above, and with Docker Content Trust enabled, they reject OCI artifacts outright rather than mirroring them.
+
+!!! Note Registry caching and stale tags
+If your destination registry sits behind a proxying or caching repository (for example, a Nexus proxy repository), it may cache a "not found" result for a tag for up to 24 hours by default. If you correct an outdated image list and a tag still fails to resolve shortly afterward, check whether your proxy's negative cache needs to be cleared rather than assuming the correction didn't take.
+!!!
 
 ### Update configuration
 
