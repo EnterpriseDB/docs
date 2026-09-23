@@ -6,7 +6,7 @@ navigation:
 - agent-provisioning
 ---
 
-The MCP endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). It's an HTTP server, `edb-endpoints`, shipped in the AIDB package; a Postgres background worker starts and supervises it. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run.
+The MCP endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). It's an HTTP server, `edb-endpoints`, shipped in the AIDB package; a Postgres background worker starts and supervises it. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run. By default the endpoint only accepts connections from the database host itself — see [TLS](#tls) to serve clients on other hosts.
 
 [Provisioning agents](agent-provisioning) walks through creating agent roles and tools with a worked example.
 
@@ -95,6 +95,8 @@ curl -sS http://127.0.0.1:8765/mcp \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}'
 ```
+
+`agent_alice:alice_secret` is the example role from [Provisioning agents](agent-provisioning) — replace it with the username and password of a Postgres role you've created and granted access to.
 
 Sending `notifications/cancelled` for an in-flight request cancels the Postgres statement behind it, including a statement running inside `aidb.run_tool()`. The session keeps serving afterwards.
 
@@ -213,7 +215,7 @@ To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and restart Postg
 
 | Symptom                                                                             | Cause and fix                                                                                                                                                                                                                              |
 |-------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Nothing listens on the port after enabling and restarting                          | Check that `aidb` is in `shared_preload_libraries` and that the Postgres log shows the supervisor starting. Then look for a `WARNING` from the supervisor naming a configuration rejection or a missing binary.                            |
+| Nothing listens on the port after enabling and restarting                          | Run `SHOW edb.endpoints_mcp_enabled;` to confirm the setting actually took effect. Then check that `aidb` is in `shared_preload_libraries` and that the Postgres log shows the supervisor starting. Then look for a `WARNING` from the supervisor naming a configuration rejection or a missing binary. |
 | `cannot execute .../edb-endpoints: No such file or directory`                       | The binary isn't in the Postgres `bindir`. Confirm the AIDB package installed it, or set `edb.endpoints_mcp_command_path` to its location, then reload.                                                                                    |
 | `restart budget exhausted`                                                          | The endpoint keeps exiting. Read the endpoint's stderr in the Postgres log for the reason (a port already in use is common), fix it, and reload.                                                                                           |
 | `edb.endpoints_mcp_tls_cert and edb.endpoints_mcp_tls_key must be set together`     | Set both TLS parameters or neither, then reload.                                                                                                                                                                                           |
