@@ -1,0 +1,138 @@
+---
+title: "Probe diagnostics"
+navTitle: "Probe diagnostics"
+description: "Learn how to monitor probe health across your fleet and diagnose failing or stale probes."
+deepToC: true
+---
+
+Probe diagnostics gives you a fleet-wide view of probe health: which probes are failing, stale, or blind to an unreachable agent, and how long each one takes to run. It has two pages: a probe-health list across every target, and a per-probe detail page with charts and a per-target breakdown.
+
+To open it, select **Management > Probes > Probe Diagnostics**.
+
+## Prerequisites
+
+- You need the `pem_manage_probe` privilege to see the tab at all. Without it, PEM shows an access-denied message and the underlying data endpoints also refuse the request.
+- Probe telemetry must be enabled. It's controlled by the `probe_telemetry_enabled` configuration parameter, which ships on by default. If an administrator turns it off, Probe Diagnostics shows no data until it's turned back on.
+- An agent must support probe telemetry to appear in the diagnostics data. Agents that don't are listed by name in the dashboard itself, so you don't need to check versions manually.
+
+## Probe health
+
+The list page shows one row per probe, aggregated across every target it runs on:
+
+| Column | Contents |
+|--------|----------|
+| Probe | The probe's display name. |
+| Is System probe? | Whether it's a built-in probe or a custom one. |
+| Target type | What kind of object the probe runs on: Agent, Tool, Server, Database, Schema, or Extension. |
+| Scope | The object type the probe applies to. |
+| Targets | The number of objects this probe currently runs on. |
+| Target Status | A count of this probe's targets in each health state. See [Target status](#target-status). |
+| Success % | The success rate over the selected time window. |
+| Runs | The number of runs over the selected time window. |
+| Execution Time | Average, 95th percentile, and maximum run time over the window. |
+
+### Filters
+
+| Filter | Notes |
+|--------|-------|
+| For | The time window: 1 hour, 4 hours, 12 hours, 24 hours (default), 3 days, or 7 days. This is the only filter applied on the server; every other filter runs in your browser over the rows already loaded. |
+| Prior to | The end of the time window. Defaults to now. |
+| Servers / Agents | Narrow the list to specific servers or agents. |
+| Show System Probes? | Include or exclude built-in probes. |
+| Search probes… | Filter by probe name. |
+
+A fixed set of target-type buttons (Agent, Tool, Server, Database, Schema, Extension) is always shown on the toolbar, even when no probe of that type falls in the current window. Use **Columns** to choose which columns are visible, and **Refresh** to reload the list. **Column definitions** opens a short legend explaining Target Status, Targets, Success % / Runs, and Execution Time.
+
+### Target status
+
+Each target a probe runs on is in exactly one of six health states, checked in this order — the first match wins:
+
+| Status | Meaning |
+|--------|---------|
+| Disabled | The probe is turned off for this target. |
+| Agent down | The monitoring agent isn't sending a heartbeat. This means PEM can't see the target, not that the probe itself is failing. |
+| Stale | The probe is enabled but hasn't reported on schedule — its last run is older than about twice its execution frequency (plus a short grace period). |
+| Failing | The last run failed, or the success rate over the window is under 50%. |
+| Degraded | Some runs failed, or there was a sync/commit issue, but the success rate is still 50% or higher. |
+| Healthy | Every captured run in the window succeeded. |
+
+Select **Target status legend** on either page to see this same reference without leaving the dashboard.
+
+## Probe detail
+
+Select a probe from the list to open its detail page. It has eight KPI tiles, all scoped to the selected time window and target: Target status, Success %, Runs, Failures, average execution time, 95th percentile execution time, maximum execution time, and Metric writes.
+
+### Charts
+
+| Chart | Shows |
+|-------|-------|
+| Executions & failures | Successful vs. failed probe executions per time bucket. |
+| Time breakdown | Average time per run, split into query execution, sync/commit, and connection-pool wait, stacked to the total. |
+| Exec time | Per-run execution time: average, 95th percentile, and maximum. |
+
+The window is split into roughly 100 time buckets for these charts, so the bucket size adjusts automatically to how wide a window you select.
+
+### Per-target breakdown
+
+Use **Select target** to scope the whole page to one target, or leave it on **All targets**. The breakdown table lists every target the probe runs on:
+
+| Column | Notes |
+|--------|-------|
+| Status | The target's current health state. |
+| Target | The target's breadcrumb (for example, a server, or a server and database). |
+| Managed By | The profile managing this target's probe configuration, if any. Hidden by default. |
+| Success % | Success rate over the window. |
+| Runs | Number of runs over the window. |
+| Execution Time (Average / 95th percentile / Maximum) | Shown by default. |
+| Sync | Average sync/commit time. Hidden by default. |
+| Pool wait | Average time spent waiting for a database connection. Hidden by default. Only applies to probes that run SQL queries against a target server. |
+| Metric Writes (Insert / Update / Delete) | Rows written to the metrics tables over the window. Shown by default. |
+| Last run | When this target last ran. |
+| Error | The most recent error message, tagged **EXEC** or **SYNC** depending on which phase it came from. Shown by default. |
+
+Use **Columns** to show or hide the optional columns.
+
+Targets that are dropped or unregistered fall off this list — that's expected, not data loss. The list always reflects what PEM currently monitors; history for a target that no longer exists stops contributing to the probe's aggregate numbers on the list page too.
+
+### Configuring a probe for one target
+
+Select **Configure probe for this target** to open the inline configuration form for a specific target, without leaving the diagnostics page.
+
+| Field | Notes |
+|-------|-------|
+| Probe enabled? | **Default** follows the probe's own setting, or **Enabled**/**Disabled** overrides it for this target. |
+| Execution frequency (HH:MM:SS) | Untick **Use default** to set a custom interval. Must be between 00:00:10 and 48:00:00. |
+| History retention (days) | Untick **Use default** to set a custom retention period. Must be a whole number of days between 1 and 365. The out-of-the-box default is 30 days. |
+
+Two things affect whether you can use this form:
+
+- Without the `pem_config_probe` privilege, the form is read-only.
+- If the target's configuration is managed by a profile, the form is also read-only, and shows a note that changes there affect every target the profile is assigned to, with a **Manage Profile** link to open it. If you're missing `pem_config_probe`, that note isn't shown — no-privilege takes precedence over profile-managed.
+
+The **Manage Profile** link itself is hidden unless you also hold `pem_manage_profile`.
+
+## Privileges and access control
+
+| Privilege | Controls |
+|-----------|----------|
+| `pem_manage_probe` | The entire Probe Diagnostics tab. Without it, the tab shows an access-denied message, and the data endpoints return the same result if called directly. |
+| `pem_config_probe` | Whether the inline per-target configuration form is editable. Without it, the form is read-only regardless of profile management. |
+| `pem_manage_profile` | The **Manage Profile** deep-link on a profile-managed target. |
+
+Holding `pem_manage_probe` doesn't automatically show every target in your fleet. Each target is additionally checked against your team's visibility on the underlying agent and server — a target whose agent or server your team can't see doesn't appear in Probe Diagnostics, even though you can otherwise use the feature.
+
+## Data source and retention
+
+Probe Diagnostics reads from `pemhistory.probe_telemetry`, populated by agents that support probe telemetry. History retention isn't a single fleet-wide setting — it's configured per probe, the same **History retention (days)** setting described above, defaulting to 30 days and adjustable from 1 to 365.
+
+## Troubleshooting
+
+| Symptom | Cause and what to do |
+|---------|------------------------|
+| Probe Diagnostics shows no data at all | Probe telemetry is disabled. An administrator needs to turn on `probe_telemetry_enabled`. |
+| An agent's probes never show up | The agent's version doesn't support probe telemetry. Check the unsupported-agents notice on the dashboard. |
+| I can't see the tab | You don't have the `pem_manage_probe` privilege. |
+| The configuration form is read-only and I don't see why | Either you're missing `pem_config_probe`, or the target is profile-managed — the form tells you which. |
+| Saving the configuration form fails with a frequency error | Execution frequency must be between 00:00:10 and 48:00:00 (HH:MM:SS). |
+| Saving the configuration form fails with a retention error | History retention must be a whole number of days between 1 and 365. |
+| A target I removed still shows old data on the probe's aggregate numbers | It shouldn't — targets no longer monitored stop contributing once PEM's view of current targets updates. If it persists, refresh the page. |
