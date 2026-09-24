@@ -1,0 +1,317 @@
+---
+title: Backing up to Dell Data Domain
+navTitle: Backing up to Dell Data Domain
+description: Configure gpbackup and gprestore to back up and restore WarehousePG tables using a Dell PowerProtect Data Domain appliance over DD Boost.
+
+---
+
+Back up and restore WarehousePG (WHPG) tables directly to a [Dell PowerProtect Data Domain](https://www.dell.com/en-us/dt/data-protection/powerprotect-backup-appliances/powerprotect-dd-backup-appliances.htm) appliance using the DD Boost storage plugin (`gpbackup_ddboost_plugin`). The plugin streams deduplicated data to the appliance over Data Domain Boost (DD Boost), a network protocol used by Dell's Data Domain appliances for backup traffic. 
+
+This plugin supports Data Domain Operating System (DDOS) 7.9.0.0 through 8.3.1.20, on either Virtual or Physical Data Domain appliances.
+
+## Prerequisites
+
+Set up the following on your Data Domain appliance before you install and configure the plugin:
+
+1.  Enable the DD Boost protocol:
+
+    ```shell
+    ddboost enable
+    ```
+
+1.  Create a DD Boost user, and assign it to DD Boost:
+
+    ```shell
+    user add <ddboost-username>
+    ddboost user assign <ddboost-username>
+    ```
+
+1.  Create a storage unit, backed by its own mtree, and assign it to that user:
+
+    ```shell
+    ddboost storage-unit create <storage-unit-name> user <ddboost-username>
+    ```
+
+For more information, see Dell's [Data Domain Boost documentation](https://www.dell.com/support/product-details/en-us/product/data-domain-boost-file-system/resources/manuals) and [Creating a DD Boost Protocol Storage Unit Using UI or CLI](https://www.dell.com/support/kbdoc/en-us/000204264/data-domain-creating-a-storage-unit).
+
+## Downloading and installing the plugin
+
+Install the `whpg-backup-ddboost-plugin` package on the coordinator and every segment host.
+
+1. On the coordinator, download the package from the EDB repository:
+
+    <TabContainer syncKey="download">
+    <Tab title="RHEL 8, 9">
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download whpg-backup-ddboost-plugin
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo yumdownloader whpg-backup-ddboost-plugin
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1. On the coordinator, create a file `all_hosts` which lists all hosts in the WHPG cluster. For example:
+
+    ```ini
+    cdw
+    scdw
+    sdw1
+    sdw2
+    sdw3
+    ```
+
+1. From the coordinator, transfer the package to all hosts in the cluster. Use the `gpsync` utility on WarehousePG 7, or the `gpscp` utility on WarehousePG 6:
+
+    <TabContainer syncKey="whpg-version">
+    <Tab title="WHPG 7">
+
+    ```bash
+    gpsync -f all_hosts <whpg-backup-ddboost-plugin-package-name> =:/tmp
+    ```
+
+    </Tab>
+    <Tab title="WHPG 6">
+
+    ```bash
+    gpscp -f all_hosts <whpg-backup-ddboost-plugin-package-name> =:/tmp
+    ```
+
+    </Tab>
+    </TabContainer>
+
+    Where `<whpg-backup-ddboost-plugin-package-name>` is the name of the WarehousePG Backup package file you downloaded, for example `whpg-backup-ddboost-plugin-1.0.0-1.el8.x86_64.rpm`.
+
+1. From the coordinator, use the `gpssh` utility to install the package on all hosts:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash
+    gpssh -f all_hosts -e 'sudo dnf install -y /tmp/<whpg-backup-ddboost-plugin-package-name>'
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash
+    gpssh -f all_hosts -e 'sudo yum install -y /tmp/<whpg-backup-ddboost-plugin-package-name>'
+    ```
+
+    </Tab>
+    </TabContainer>
+
+`whpg-backup-ddboost-plugin` is a separate package from `whpg-backup`, so upgrading one doesn't affect the other, and the bundled Dell libraries stay in place across a `whpg-backup` upgrade.
+
+## Configuring the plugin
+
+Create a YAML configuration file with the plugin binary's path and your Data Domain connection details. At minimum, the file needs:
+
+```yaml
+executablepath: /usr/local/greenplum-db/bin/gpbackup_ddboost_plugin
+options:
+  hostname: <data-domain-hostname-or-ip>
+  username: <ddboost-username>
+  password_encryption: "off"
+  password: <ddboost-password>
+  storage_unit: <storage-unit-name>
+  directory: <base-path-in-storage-unit>
+```
+
+Where:
+
+-   `executablepath`: Absolute path to the plugin. Use `/usr/local/greenplum-db/bin/gpbackup_ddboost_plugin`.
+-   `hostname`: The hostname or IP address of Data Domain appliance.
+-   `username` and `password`: The DD Boost account credentials from [Prerequisites](#prerequisites).
+-   `password_encryption`: Currently only `"off"` is supported, meaning `password` is stored in cleartext. 
+-   `storage_unit`: The name of the storage unit from [Prerequisites](#prerequisites), which identifies the logical container a DD Boost user writes data into.
+-   `directory`: The base path for your backups within the storage unit. `gpbackup` creates it automatically when you run a backup, so you don't need to create it yourself beforehand. An empty value is rejected when the configuration loads, so backups don't land at the storage unit's root by accident.
+
+For the full list of configuration options, see the [ddboost_plugin_config.yaml reference](reference/ddboost_plugin_config.yaml.mdx).
+
+!!!note
+A typo in a required option, such as `storage_unit`, causes a clear configuration error. A typo in an optional option's name or value doesn't cause an error. Instead, the plugin falls back to default behavior and logs a warning, so check the plugin log at `$HOME/gpAdminLogs/gpbackup_ddboost_plugin_<YYYYMMDD>.log` if a setting doesn't seem to take effect.
+!!!
+
+### Configuring advanced settings
+
+Fine-tune selective restores, connection security, the connection version and IP family, and operation timeouts and retries, all optional and defaulted for most deployments.
+
+#### Enabling selective restores
+
+Restore a subset of tables from a single-data-file backup without reading the entire backup set, using the plugin's `restore_data_subset` command. This behavior defaults to on, including when you omit the option:
+
+```yaml
+options:
+  restore_subset: "on"
+```
+
+#### Securing the connection
+
+Restrict access to the configuration file, since it holds your DD Boost password in cleartext:
+
+```shell
+chmod 600 /path/to/ddboost_plugin_config.yaml
+```
+
+By default, the plugin connects to the Data Domain appliance without Transport Layer Security (TLS), so backup data and credentials cross the network unencrypted. Deploy the plugin on an isolated or trusted backup network, or enable TLS:
+
+```yaml
+options:
+  use_tls: "on"
+  tls_auth_mode: <one_way|two_way|anon|psk>
+  tls_encr_strength: <med|high>
+  tls_server_ca_file: /path/to/ca.pem
+  tls_client_cert: /path/to/client.pem
+  tls_client_key: /path/to/client.key
+```
+
+Where:
+
+-   `tls_auth_mode`: Required when `use_tls` is `"on"`.
+-   `tls_encr_strength`: Optional. Defaults to `high`.
+-   `tls_server_ca_file`: Required for `one_way` and `two_way` authentication modes.
+-   `tls_client_cert` and `tls_client_key`: Required for `two_way` authentication mode. Optionally add `tls_client_chain_file` for a certificate chain.
+
+!!!warning
+Even with TLS enabled, the plugin doesn't verify the Data Domain appliance's certificate hostname or IP address against the host it connects to. A certificate signed by the same trusted certificate authority for a different host is still accepted, so a pinned certificate authority alone doesn't fully protect against an on-path attacker.
+!!!
+
+#### Choosing a connection version and IP family
+
+The plugin defaults to the original DD Boost connect configuration, which has no field for a non-default port. To connect on a non-default port, add `connect_config_version: "v6"` and `server_port`:
+
+```yaml
+options:
+  connect_config_version: "v6"
+  server_port: <port-number>
+```
+
+Setting `server_port` without `connect_config_version: "v6"` returns a configuration error. `v6` isn't supported on single-node or single-server Data Domain appliances.
+
+To prefer IPv4 or IPv6 for the connection, set `ip_family` to `v4prefer`, `v6prefer`, or `noprefer`. This option works with either connect configuration version.
+
+#### Tuning operation timeouts and retries
+
+Bound how long a single DD Boost operation, including its retries, can stay blocked, with `sdk_operation_timeout_seconds`. Without it, the Dell SDK can block for an extended period if the network connection to the appliance is lost without a clean disconnect:
+
+```yaml
+options:
+  sdk_operation_timeout_seconds: 300
+```
+
+This value defaults to 300 seconds, applies per operation rather than per backup, and accepts `0` to disable the timeout. Values from 1 to 59 are rejected, since canceling an operation can itself take up to a minute.
+
+If the appliance doesn't respond to cancellation within one further grace period of the same length, the plugin exits with a fatal error and can leave partial data on the appliance under the failed backup's timestamp. Remove it with [`gpbackup delete-backup`](reference/gpbackup.mdx#delete-backup-timestamp), or just rerun the backup, which gets a new timestamp regardless.
+
+For a high-availability appliance, raise `sdk_operation_timeout_seconds` to cover its failover window (Dell documents up to 10 minutes). Connection attempts are always capped at 60 seconds regardless, so a failover during connection still fails the command. Rerun it once the appliance recovers.
+
+Tune the retry policy for transient failures, such as network blips or a busy appliance, which the plugin retries automatically:
+
+```yaml
+options:
+  retry_max_attempts: 3
+  retry_initial_delay_ms: 500
+  retry_max_delay_ms: 5000
+  retry_busy_factor: 4
+```
+
+Where:
+
+-   `retry_max_attempts`: From 1 to 10. Defaults to 3.
+-   `retry_initial_delay_ms` and `retry_max_delay_ms`: The backoff range in milliseconds, from 1 to 60000 and 1 to 300000 respectively. `retry_max_delay_ms` must be greater than or equal to `retry_initial_delay_ms`. Defaults are 500 and 5000.
+-   `retry_busy_factor`: From 1 to 20. Defaults to 4. Multiplies the retry delay for appliance-busy or stream-limit errors, since these errors typically clear more slowly than a network blip.
+
+## Performing a backup
+
+Run `gpbackup` with the `--plugin-config` option and the `--no-compression` option, specifying the path to your YAML file:
+
+```shell
+gpbackup --dbname <database-name> --no-compression --plugin-config /path/to/ddboost_plugin_config.yaml
+```
+
+!!!note
+Always include `--no-compression`. The plugin doesn't compress data itself, and Data Domain deduplicates data as it arrives. Compressing the stream with `gpbackup`'s default gzip compression defeats that deduplication and breaks selective restores.
+!!!
+
+For the full set of `gpbackup` options, see the [gpbackup reference](reference/gpbackup.mdx).
+
+## Performing a restore
+
+Restore a backup created with the DD Boost plugin using the same `--plugin-config` file and the timestamp of the backup you want to restore:
+
+```shell
+gprestore --timestamp <YYYYMMDDHHMMSS> --plugin-config /path/to/ddboost_plugin_config.yaml
+```
+
+If you restore only some tables from a single-data-file backup with `--include-table` or `--include-table-file`, `gprestore` automatically uses the plugin's selective restore path, unless you set `restore_subset` to `"off"`.
+
+## Managing backups
+
+Manage backups stored on a Data Domain appliance the same way as any other `gpbackup` backup, passing `--plugin-config`. See [Managing backup history](using.mdx#managing-backup-history) for listing backups, finding backups that contain a table, viewing a backup report, and deleting backups.
+
+## Inspecting backups on the Data Domain appliance
+
+Check what the plugin has stored using DDOS commands, connected to the appliance as its administrator over SSH, alongside the [`gpbackup` history commands](reference/gpbackup.mdx#subcommands).
+
+List the configured storage units, including each one's pre-compression size, with `ddboost storage-unit show`:
+
+```shell
+ddboost storage-unit show
+__OUTPUT__
+Name   Pre-Comp (GiB)   Status   User           Report Physical
+                                                   Size (MiB)
+----   --------------   ------   ------------   ---------------
+WHPG             13.8   RW       ddboost-user                 -
+----   --------------   ------   ------------   ---------------
+```
+
+List the underlying mtrees, one per storage unit, with their storage use, with `mtree list`:
+
+```shell
+mtree list
+__OUTPUT__
+Name                Pre-Comp (GiB)   Status
+-----------------   --------------   ------
+/data/col1/WHPG               13.8   RW
+-----------------   --------------   ------
+```
+
+List every file stored under an mtree, with its size and deduplication ratio, with `filesys sfs-dump mtree <path> -c`. Use it to confirm a backup landed on the appliance:
+
+```shell
+filesys sfs-dump mtree /data/col1/WHPG -c
+__OUTPUT__
+name    mtime    fileid    size    seg_bytes    seg_count    redun_seg_count    pre_lc_size    post_lc_size
+/data/col1/WHPG/gpbackup/backups/20260901/20260901135529/gpbackup_9_20260901135529_21092    1788270938705560216    21    363035    365223    43    0    365223    172930
+/data/col1/WHPG/gpbackup/backups/20260901/20260901135529/gpbackup_7_20260901135529_21092    1788270938766098679    22    364355    366571    44    0    366571    173527
+...
+```
+
+List every client currently connected to the appliance with `ddboost show connections`. Use it to confirm the coordinator and all segment hosts connect during a backup or restore:
+
+```shell
+ddboost show connections
+__OUTPUT__
+
+Active Clients: 5
+
+Clients:
+Client            Idle    Plugin Version     OS Version                                   Application Version                     Encrypted   DSP   Transport
+---------------   ----   ---------------   ----------------------------------------   ------------------------------------   ---------   ---   ---------
+cdw               NO     8.7.0.0-1217357    Linux 4.18.0-513.5.1.el8_9.x86_64 x86_64    WarehousePG gpbackup DD Boost plugin    YES         YES   IPv4
+sdw1              NO     8.7.0.0-1217357    Linux 4.18.0-513.5.1.el8_9.x86_64 x86_64    WarehousePG gpbackup DD Boost plugin    YES         YES   IPv4
+...
+```
