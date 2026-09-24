@@ -1,0 +1,85 @@
+---
+title: CVE-2026-96538 - WarehousePG pg_file_write/pg_file_rename/pg_file_unlink privilege escalation
+navTitle: CVE-2026-96538
+affectedProducts: All 7.x versions of WarehousePG up to and including 7.5.0
+---
+
+First Published: 2026/09/28
+
+Last Updated: 2026/09/28
+
+## Summary
+
+WarehousePG (WHPG) 7.x contains a missing authorization vulnerability in the built-in server-side file functions `pg_file_write(text,text,bool)`, `pg_file_rename(text,text,text)`, `pg_file_unlink(text)`, and `pg_logdir_ls()`. These functions are executable by any authenticated database role, with no GRANT required, because the privilege revocation that gates them in `contrib/adminpack` was never carried over when the functions were merged into WHPG core.
+
+A non-superuser can use `pg_file_write`, `pg_file_rename`, and `pg_file_unlink` to create, overwrite (append), rename, and delete files anywhere under the data directory and log directory. This can be leveraged into code execution as the `postgres` operating system user by appending directives such as `shared_preload_libraries` or `archive_command` to `postgresql.auto.conf`, which take effect on the next server restart or configuration reload. `pg_logdir_ls()` additionally allows a non-superuser to enumerate log file names in the log directory.
+
+WarehousePG 6.x is not affected.
+
+## Vulnerability details
+
+CVE-ID: [CVE-2026-96538](https://nvd.nist.gov/vuln/detail/CVE-2026-96538)
+
+CVSS Base Score: 8.7 High
+
+CVSS Temporal Score: Undefined
+
+CVSS Environmental Score: Undefined
+
+CVSS Vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+
+## Affected products and versions
+
+* Affected Product: WarehousePG
+* Affected Versions: All 7.x versions of WarehousePG up to and including 7.5.0
+* Not Affected: WarehousePG 6.x
+
+## Remediation/fixes
+
+Impacted users must upgrade to a fixed version of WarehousePG.
+
+| Product | VRMF | Remediation/First Fix |
+|---------|------|-----------------------|
+| WarehousePG | All 7.x versions up to and including 7.5.0 | Update to WarehousePG 7.6.0 or later |
+
+!!! Warning Immediate mitigation for existing clusters
+Upgrading resolves the issue immediately on restart, but the `REVOKE` statements below only take effect for newly initialized clusters. On an existing cluster, apply the following as a superuser in every connectable database (all user databases, `postgres`, and `template1`, so that new databases inherit the change) to close the exposure without waiting for an upgrade:
+
+```sql
+REVOKE EXECUTE ON FUNCTION pg_file_write(text,text,boolean) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_file_rename(text,text,text) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_file_unlink(text) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_logdir_ls() FROM public;
+-- restore access for administrators who need it:
+GRANT EXECUTE ON FUNCTION pg_file_write(text,text,boolean) TO pg_write_server_files;
+GRANT EXECUTE ON FUNCTION pg_file_rename(text,text,text) TO pg_write_server_files;
+GRANT EXECUTE ON FUNCTION pg_file_unlink(text) TO pg_write_server_files;
+GRANT EXECUTE ON FUNCTION pg_logdir_ls() TO pg_read_server_files;
+```
+
+This is a stopgap, not a replacement for upgrading: it must be reapplied on every database and does not protect clusters created after being applied unless also run against `template1`.
+!!!
+
+## References
+
+* [CVSS Calculator v4.0](https://www.first.org/cvss/calculator/4.0)
+* [CWE-862 Missing Authorization](https://cwe.mitre.org/data/definitions/862.html)
+* [warehouse-pg/warehouse-pg#305](https://github.com/warehouse-pg/warehouse-pg/pull/305)
+
+## Related information
+
+* [EnterpriseDB](https://www.enterprisedb.com/)
+* [WarehousePG](https://github.com/warehouse-pg/warehouse-pg)
+* [EDB Blogs link](https://enterprisedb.com/blog/)
+
+## Acknowledgement
+
+Source: Discovered internally by EDB during a security review of WarehousePG file-handling functions.
+
+## Change history
+
+* 2026/09/28: Original Copy Published
+
+## Disclaimer
+
+This document is provided on an "as is" basis and does not imply any kind of guarantee or warranty, including the warranties of merchantability or fitness for a particular use. Your use of the information on the document is at your own risk. EDB reserves the right to change or update this document at any time. Customers are therefore recommended to always view the latest version of this document.
