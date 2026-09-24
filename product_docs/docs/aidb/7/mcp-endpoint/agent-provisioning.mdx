@@ -4,7 +4,7 @@ navTitle: Provisioning agents
 description: Give an external agent a Postgres role, a password, and the grants it needs to call AIDB tools through the MCP endpoint.
 ---
 
-An agent connecting to the [MCP endpoint](../mcp-endpoint) is a Postgres login role. The grants on that role decide what it can list and call, so provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. The walkthrough below covers each step in order.
+The MCP endpoint authenticates every agent as a Postgres login role. The grants on that role decide what it can list and call, so provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. The walkthrough below covers each step in order.
 
 The example below provisions two agents with different permissions on the same data. `agent_alice` can read a table and `agent_bob` can read and write it. Both can list and call the tools in the catalog, and Postgres denies whichever tool body the role isn't allowed to run.
 
@@ -20,6 +20,8 @@ The example below provisions two agents with different permissions on the same d
 Keep the agent role itself free of direct privileges and grant it profile roles instead, as in the example below. Revoking a profile role from an agent takes effect on the agent's next call, since every call opens a fresh connection.
 
 ## Example: Alice reads, Bob writes
+
+The steps below set up a schema and two profile roles, create two agent roles with different grants, register three example tools, then show what each agent can and can't do, and how to revoke access afterward.
 
 ### Allowing the agent roles in pg_hba.conf
 
@@ -105,7 +107,7 @@ After the [MCP handshake](../mcp-endpoint#connecting-a-client), calls made with 
 | `tools/call` `whoami`                                   | `[{"who": "agent_alice"}]`                            | `[{"who": "agent_bob"}]`                     |
 | `tools/call` with a wrong password                      | `isError` with `password authentication failed`       | Same                                         |
 
-Catalog tools return a JSON array of row objects, the same shape `aidb.run_tool()` returns in SQL. Both agents see `add_order` in the listing, since the [catalog lists every tool](../mcp-endpoint#the-tool-surface) regardless of the caller's grants. The denial comes from Postgres when Alice's connection tries the `INSERT`, and no row is written.
+Catalog tools return a JSON array of row objects, the same shape `aidb.run_tool()` returns in SQL. Both agents see `add_order` in the listing, since the [catalog lists every tool](../mcp-endpoint#what-tools-the-endpoint-surfaces) regardless of the caller's grants. The denial comes from Postgres when Alice's connection tries the `INSERT`, and no row is written.
 
 Arguments are bound as query parameters, so an `item` such as `'); DROP TABLE demo.orders; --` is stored as that string. Arguments the tool didn't declare are rejected. For example, passing `execute_as_role` to `list_orders` returns `unknown argument 'execute_as_role'`, so an agent can't ask a tool to run as someone else.
 
@@ -118,25 +120,3 @@ REVOKE app_writer FROM agent_bob;                 -- Bob can still read
 ALTER ROLE agent_alice NOLOGIN;                   -- Alice can't connect at all
 DROP ROLE agent_alice;                            -- after reassigning or dropping anything Alice owns
 ```
-
-## Result encoding for execute_sql
-
-The built-in `execute_sql` tool renders each column from its binary value, so the output doesn't depend on session settings such as `DateStyle`, `IntervalStyle`, or `bytea_output`. Unsupported column types are rejected before any row is returned, so `SELECT 1.00::money WHERE false` fails the same way as `SELECT 1.00::money`. User-defined enums, arrays, ranges, and domains over supported types work.
-
-| Postgres type                                       | JSON rendering                                                                                                                                                  |
-|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `bool`, `int2`, `int4`, `float4`, `float8`          | Native scalar. Non-finite floats are an error.                                                                                                                  |
-| `int8`                                              | Number when within ±(2^53 - 1), otherwise a decimal string. If any value in a column overflows, the whole column is rendered as strings.                          |
-| `json`, `jsonb`                                     | The document itself.                                                                                                                                            |
-| `text`, `varchar`, `bpchar`, `name`, enums          | String.                                                                                                                                                         |
-| `timestamptz`                                       | RFC 3339 in UTC with a `Z` suffix. `infinity` and `-infinity` as strings.                                                                                       |
-| `timestamp`, `date`, `time`, `timetz`               | ISO 8601 string. Years outside 0000 to 9999 use the expanded form with a sign, such as `+10000-01-01`. Years before the Common Era carry a `BC` suffix. Dates beyond year 262142 are an error with a hint to cast to `TEXT`. |
-| `interval`                                          | ISO 8601 duration such as `P1Y2M3DT4H5M6S`, signed per component.                                                                                               |
-| `numeric`                                           | Full-precision decimal string, or `NaN`, `Infinity`, `-Infinity`.                                                                                               |
-| `uuid`, `inet`, `cidr`, `macaddr`                   | Postgres text form.                                                                                                                                             |
-| `bytea`                                             | Padded base64.                                                                                                                                                  |
-| Arrays                                              | JSON array, nested per dimension, with elements rendered per this table.                                                                                        |
-| Ranges                                              | Postgres literal such as `[1,10)`, with bounds rendered per this table and quoted as `range_out` would.                                                          |
-| `money`, composite types, multiranges, PostGIS types | Error with a hint to cast the column to `TEXT`.                                                                                                                |
-
-`money` is unsupported because its text form depends on `lc_monetary`. A result with two columns of the same name, such as `SELECT 1 AS id, 2 AS id`, is an error. No column is dropped.
