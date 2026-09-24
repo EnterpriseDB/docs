@@ -9,7 +9,7 @@ Once a semantic KB has crawled your schemas, you search it with a natural-langua
 
 ## `aidb.semantic_kb_search()`
 
-`semantic_kb_search()` is the composite entry point: it runs the per-source ranked searches (schema metadata and curated [semantic aliases](semantic-aliases)) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF). Use it when you want a single ranked answer to "what in my schema relates to this?"
+`semantic_kb_search()` is the composite entry point: it runs the per-source ranked searches (schema metadata, [relationships](relationships), curated [semantic aliases](semantic-aliases), and query history) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF). Use it when you want a single ranked answer to "what in my schema relates to this?"
 
 ```sql
 SELECT source_type, entity_type, schema_name, relation_name, column_name, rank
@@ -25,28 +25,33 @@ FROM aidb.semantic_kb_search(
 | `query_text`     | `text`             | —       | The natural-language query.                                                                           |
 | `kb_name`        | `text`             | `NULL`  | The KB to search. Omit to target the single KB when only one exists.                                  |
 | `top_k`          | `int`              | `10`    | Number of ranked rows to return.                                                                      |
-| `sources`        | `text[]`           | `NULL`  | Sources to search. Active: `schema`, `alias`. Omit for all. (`history`, `relationship` are reserved.) |
-| `entity_types`   | `text[]`           | `NULL`  | Entity types to include. Active: `Table`, `View`, `Column`, `Alias`. Omit for all.                    |
+| `sources`        | `text[]`           | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`. Omit for all.                        |
+| `entity_types`   | `text[]`           | `NULL`  | Entity types to include: `Table`, `View`, `Column`, `Alias`, `Relationship`, `Query`. Omit for all.   |
 | `rrf_k`          | `int`              | `60`    | Rank-fusion damping constant.                                                                         |
 | `min_similarity` | `double precision` | `NULL`  | Optional similarity floor; rows scoring below it are dropped. Omit for no floor.                      |
+| `include_proposed` | `boolean`        | `false` | Include `proposed` relationships and comments still in the [curation queue](curation#curation-reviewing-before-its-live), not just approved/live ones. |
 
 It returns one row per match:
 
 | Column          | Description                                                |
 | --------------- | ---------------------------------------------------------- |
-| `source_type`   | Which source produced the row, either `schema` or `alias`. |
-| `entity_type`   | `Table`, `View`, `Column`, or `Alias`.                     |
+| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, or `history`. |
+| `entity_type`   | `Table`, `View`, `Column`, `Alias`, `Relationship`, or `Query`.                     |
 | `schema_name`   | The schema the entity belongs to.                          |
 | `relation_name` | The table or view name.                                    |
 | `column_name`   | The column name (empty for table- and view-level matches). |
-| `object_ref`    | A qualified reference to the matched object.               |
+| `object_ref`    | A qualified reference to the matched object. Populated for `relationship` rows only; schema rows identify themselves through `schema_name`, `relation_name`, and `column_name`. |
 | `definition`    | The structural definition that was embedded.               |
-| `comment`       | The `COMMENT ON` text for the entity, if any.              |
-| `score`         | The fused RRF score.                                       |
-| `rank`          | The 1-based rank within the fused result set.              |
-| `components`    | JSONB detail of the per-source scores that fed the fusion. |
+| `comment`       | The `COMMENT ON` text for the entity, if any.               |
+| `score`         | The fused RRF score.                                        |
+| `rank`          | The 1-based rank within the fused result set.               |
+| `components`    | JSONB detail of the per-source scores that fed the fusion.  |
 
-Because `semantic_kb_search()` returns both schema entities and matching aliases in one ranked list, it's the natural first call in a [text-to-SQL](text-to-sql) workflow.
+Because `semantic_kb_search()` returns schema entities, relationships, and matching aliases in one ranked list, it's the natural first call in a [text-to-SQL](text-to-sql) workflow.
+
+!!!note `score` is a fusion rank, not a similarity
+Results are combined across sources with Reciprocal Rank Fusion, so `score` is `1 / (rrf_k + rank_within_source)` — with the default `rrf_k => 60`, the first hit from *every* source scores `1/61`. Rows from different sources therefore tie, and the tie means nothing. To compare results directly, read the true cosine from `components->>'cosine'`, or restrict to one source with `sources => ARRAY['relationship']` (or another single source) so the ranking becomes directly comparable.
+!!!
 
 ## Schema-metadata functions
 
@@ -112,6 +117,24 @@ Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Return
 
 This is the most direct way to leverage documentation you've already written into your schema. For example, a column commented *"order lifecycle state: pending, confirmed, shipped, delivered, cancelled"* surfaces for a query like *"order status values"* even if the column itself is named `st`. Because comment search depends on well-documented objects, keeping `COMMENT ON` statements current is the highest-leverage way to improve a semantic KB's results.
 
+## `aidb.semantic_kb_subgraph()`
+
+Where `semantic_kb_search()` returns a list of matches, `semantic_kb_subgraph()` returns a question's *neighborhood*: it seeds from the search hits and adds the [relationships](relationships) around them, so you get the joins connected to a question, not just the entities.
+
+```sql
+SELECT hop, from_object, to_object, via_object, kind, confidence, seeded_by
+FROM aidb.semantic_kb_subgraph(
+    kb_name    => 'analytics_kb',
+    query_text => 'money moved out of an account',
+    top_k      => 3,
+    max_hops   => 1
+);
+```
+
+Parameters: `kb_name`, `query_text`, `top_k` (default `10`), `max_hops` (default `3`). Returns `hop`, `from_object`, `to_object`, `via_object` (populated for a `junction` hop), `kind`, `predicate`, `join_expr`, `confidence`, `seeded_by` (the matched object that pulled each hop in), and `truncated`.
+
+Like the other [route-finders](relationships#finding-a-join-route), `semantic_kb_subgraph()` only traverses relationships that are `approved` and routable — see [the routability rule](relationships#status-and-confidence).
+
 ## Tuning results
 
 - **`min_similarity`** trades recall for precision. Lower it (for example `0.3`) when a query returns nothing; raise it when results are too broad.
@@ -120,5 +143,6 @@ This is the most direct way to leverage documentation you've already written int
 
 ## Next steps
 
+- Learn how tables join, and how to record joins yourself, in [Relationships](relationships).
 - Save frequently asked questions as reusable, parameterized queries with [semantic aliases](semantic-aliases).
 - Let an agent drive these searches end to end in the [text-to-SQL](text-to-sql) workflow.

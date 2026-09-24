@@ -1,0 +1,158 @@
+---
+title: Descriptions and curation
+navTitle: Curation
+description: Write and govern object descriptions with add_comment_to_object — direct writes, optimistic concurrency, an audit log, and an optional review queue.
+deepToC: true
+---
+
+A well-commented schema produces a far more useful semantic KB — see [What a semantic KB indexes](index#what-a-semantic-kb-indexes). You can always write those comments with plain `COMMENT ON`, but `aidb.add_comment_to_object()` does the same write *and* reconciles every knowledge base that indexes the object, so the new text is searchable immediately, without waiting for a crawl.
+
+This applies to any table, view, column, or constraint (`object_type => 'table' | 'view' | 'column' | 'constraint'`) — it's a general knowledge-base capability, not something specific to [relationships](relationships). The one place the two meet: naming a crawled relationship in business terms is done by commenting on its constraint. See [Where this meets relationships](#where-this-meets-relationships).
+
+## Writing a description
+
+```sql
+SELECT jsonb_pretty(aidb.add_comment_to_object(
+  'bank', 'transactions', 'A movement of money against an account.', kb_name => 'bank_kb'));
+__OUTPUT__
+ {
+     "current": "A movement of money against an account.",
+     "outcome": "applied",
+     "previous": null,
+     "knowledge_bases_reconciled": [
+         "bank_kb"
+     ]
+ }
+```
+
+`knowledge_bases_reconciled` names every KB updated by the write — an object can be indexed by more than one.
+
+!!!note Breaking change at 7.7.0
+`mode` defaults to `'add'`, and `'add'` now **refuses** when a description already exists, rather than overwriting it silently. Callers that relied on the old overwrite behavior must pass `mode => 'edit'` explicitly.
+!!!
+
+```sql
+SELECT aidb.add_comment_to_object('bank', 'transactions', 'Another go.', kb_name => 'bank_kb');
+__OUTPUT__
+ERROR:  Invalid parameters: bank.transactions already has a description, and mode is 'add'.
+Current: "A movement of money against an account.". To replace it, call again with mode => 'edit'
+```
+
+```sql
+SELECT jsonb_pretty(aidb.add_comment_to_object('bank', 'transactions',
+  'A movement of money against an account, positive or negative.',
+  kb_name => 'bank_kb', mode => 'edit'));
+```
+
+## Protecting descriptions people wrote
+
+A description AIDB didn't itself write is treated as a person's work, and is protected the same way from `mode => 'edit'`:
+
+```sql
+SELECT aidb.add_comment_to_object('bank', 'customers', 'Our retail banking customers.',
+  kb_name => 'bank_kb', mode => 'edit');
+__OUTPUT__
+ERROR:  Invalid parameters: bank.customers has a description this system did not write, so it is
+treated as a person's. Pass force => true to replace it. Current: "People who bank with us."
+```
+
+```sql
+SELECT jsonb_pretty(aidb.add_comment_to_object('bank', 'customers', 'Our retail banking customers.',
+  kb_name => 'bank_kb', mode => 'edit', force => true));
+```
+
+## Concurrency with `expected_comment`
+
+Pass what you last read as `expected_comment`, and the write fails if someone changed the description in the meantime — optimistic concurrency without a lock:
+
+```sql
+SELECT aidb.add_comment_to_object('bank', 'customers', 'Newer text.',
+  kb_name => 'bank_kb', mode => 'edit', expected_comment => 'Something else');
+__OUTPUT__
+ERROR:  Invalid parameters: the description has changed since it was read. Expected "Something else",
+found "Our retail banking customers."
+```
+
+## Removing a description
+
+```sql
+SELECT jsonb_pretty(aidb.remove_comment('bank', 'transactions', kb_name => 'bank_kb'));
+```
+
+`remove_comment()` takes the same `expected_comment` and `force` protections as `add_comment_to_object()`.
+
+## Auditing changes
+
+Every write is recorded, including whether it was forced and what it discarded:
+
+```sql
+SELECT action, subject, actor, detail FROM aidb.semantic_kb_audit('bank_kb')
+ORDER BY logged_at DESC LIMIT 3;
+__OUTPUT__
+-[ RECORD 1 ]----------------------------------------------------------------------------------
+action  | add_comment_to_object
+subject | bank.customers
+actor   | tanay.kayastha
+detail  | {"mode": "edit", "forced": true, "discarded": "People who bank with us.", ...}
+```
+
+`aidb.prune_semantic_kb_audit(max_age)` deletes audit records older than `max_age`. It's SQL-only, meant to be run by an operator or a scheduled job such as `pg_cron`, not by an agent.
+
+## Curation: reviewing before it's live
+
+With curation on, a write doesn't take effect — it queues for review instead:
+
+```sql
+SELECT aidb.update_semantic_kb_curation('bank_kb', true);
+__OUTPUT__
+     update_semantic_kb_curation
+--------------------------------------
+ {"current": true, "previous": false}
+(1 row)
+```
+
+```sql
+SELECT jsonb_pretty(aidb.add_comment_to_object(
+  'bank', 'accounts', 'An account a customer holds with the bank.', kb_name => 'bank_kb'));
+__OUTPUT__
+ {
+     "current": null,
+     "outcome": "queued",
+     "previous": null,
+     "proposed": "An account a customer holds with the bank.",
+     "knowledge_bases": [
+         "bank_kb"
+     ]
+ }
+```
+
+!!!note Check `outcome`, not just the absence of an error
+`outcome` is `"queued"`, not `"applied"`, and the live comment is unchanged. A caller that only checks for the absence of an error will believe the write succeeded.
+!!!
+
+Review the queue and decide:
+
+```sql
+SELECT object, object_type, proposed_comment, proposed_by FROM aidb.list_proposed_comments('bank_kb');
+
+SELECT jsonb_pretty(aidb.resolve_object_comment('bank_kb', 'bank', 'accounts', 'approve'));
+```
+
+`decision` is `'approve'` or `'reject'`. Once approved, the live comment updates and the KB reconciles it, the same as an uncurated write. Turn curation back off the same way you turned it on: `aidb.update_semantic_kb_curation('bank_kb', false)`.
+
+!!!note `resolve_object_comment` and `update_semantic_kb_curation` are deliberately SQL-only
+Neither is registered as a native agent tool — see [Native tools](../tools/native-tools#semantic-knowledge-bases). An agent holding either could approve its own proposal or switch off the review that governs it, so approving a proposal and toggling curation both stay with a person, by design.
+!!!
+
+## Where this meets relationships
+
+Comment curation and [relationships](relationships) are separate features shipped in the same release, and they don't gate each other:
+
+- `update_semantic_kb_curation()` controls comment writes only. Relationship writes never consult it.
+- A relationship an agent records is always stored as `status = 'proposed'`, regardless of the curation setting. It becomes routable through `aidb.accept_relationship_candidates()`, not through `resolve_object_comment()`.
+- `object_type => 'constraint'` is how a person attaches a business-readable description to a relationship the crawl found — see [What the crawl finds](relationships#what-the-crawl-finds), where a constraint's comment becomes that relationship's `description`.
+
+## Next steps
+
+- See how a crawled relationship's `description` comes from a constraint comment in [Relationships](relationships).
+- Review the full search surface, including proposed content, in [Searching a semantic KB](searching).

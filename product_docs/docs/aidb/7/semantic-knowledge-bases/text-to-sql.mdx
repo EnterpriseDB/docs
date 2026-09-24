@@ -5,7 +5,7 @@ description: How an AIDB agent uses a semantic knowledge base's search functions
 deepToC: true
 ---
 
-Text-to-SQL turns a natural-language question, such as *"Which customers spent the most last quarter?"*, into a correct query against your own schema. A semantic KB makes this reliable: rather than guessing at table and column names, the question is first grounded in the schema the KB indexed.
+Text-to-SQL turns a natural-language question, such as *"Which customers spent the most last quarter?"*, into a correct query against your own schema. A semantic KB makes this reliable: rather than guessing at table and column names, the question is first grounded in the schema the KB indexed — and, once the right tables are found, in how they [join](relationships), so generated SQL doesn't have to guess at that either.
 
 Two complementary paths build on the [search functions](searching):
 
@@ -18,12 +18,15 @@ The semantic KB search functions are registered as native [agent tools](../tools
 
 | Tool                                                                                                                                                                               | Role in text-to-SQL                                                                           |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| [`semantic_kb_search`](searching#aidbsemantic_kb_search)                                                                                                                           | One ranked list of the schema entities (and any matching aliases) relevant to the question. |
+| [`semantic_kb_search`](searching#aidbsemantic_kb_search)                                                                                                                           | One ranked list of the schema entities, relationships, and any matching aliases relevant to the question. |
 | [`get_metadata`](searching#aidbget_metadata) / [`get_entity_definitions`](searching#aidbget_entity_definitions) / [`get_column_definitions`](searching#aidbget_column_definitions) | Narrower schema lookups when the agent needs only tables, only columns, or lean definitions.  |
 | [`search_by_comment`](searching#aidbsearch_by_comment)                                                                                                                             | Finds entities through the intent captured in `COMMENT ON` text.                              |
+| [`list_relationships`](relationships#what-the-crawl-finds)                                                                                                                         | Lists the known joins for a table, with cardinality and nullability.                          |
+| [`find_join_path`](relationships#finding-a-join-route) / [`suggest_joins`](relationships#finding-a-join-route)                                                                    | Finds a route between two tables that don't share a direct foreign key.                       |
+| [`semantic_kb_subgraph`](searching#aidbsemantic_kb_subgraph)                                                                                                                       | Returns the join neighborhood around a search's hits in one call.                              |
 | `run_sql_query`                                                                                                                                                                    | Runs the read-only SQL the agent generates and returns the rows.                              |
 
-All the search tools are read-only, so an agent can explore schema freely without any risk of a write.
+All of these tools are read-only, so an agent can explore schema and join structure freely without any risk of a write.
 
 ## The workflow
 
@@ -48,9 +51,11 @@ All the search tools are read-only, so an agent can explore schema freely withou
 
 1. **Discover.** The agent calls `semantic_kb_search` (and the narrower functions as needed) to retrieve the exact tables, columns, and comments the question maps to, plus any [semantic aliases](semantic-aliases) that already match, which appear in the results with `source_type = 'alias'`.
 
-2. **Generate, grounded.** The agent writes SQL against the retrieved definitions. Generating against real schema context (actual column names, types, and comments) is far more accurate than generating against table names alone.
+2. **Find the join.** When the discovered tables don't share a direct foreign key, the agent still needs a route between them. [Relationships](relationships) records that route — how tables join, in which direction, and with what confidence — so the agent can find it instead of guessing at it.
 
-3. **Run.** The agent executes the SQL with `run_sql_query` and returns the rows.
+3. **Generate, grounded.** The agent writes SQL against the retrieved definitions and join routes. Generating against real schema context (actual column names, types, comments, and join paths) is far more accurate than generating against table names alone.
+
+4. **Run.** The agent executes the SQL with `run_sql_query` and returns the rows.
 
 To build such an agent, give it the semantic KB tools when you create it. See [Creating agents](../agents/creating-agents) and the [tool catalog](../tools/native-tools#semantic-knowledge-bases).
 
@@ -72,4 +77,4 @@ Aliases surface inside `semantic_kb_search` results, so an agent can *see* that 
 ## Next steps
 
 - Walk through the whole flow on a sample schema in the [example](example).
-- Review the search functions in [Searching a semantic KB](searching) and the alias functions in [Semantic aliases](semantic-aliases).
+- Review the search functions in [Searching a semantic KB](searching), how tables join in [Relationships](relationships), and the alias functions in [Semantic aliases](semantic-aliases).
