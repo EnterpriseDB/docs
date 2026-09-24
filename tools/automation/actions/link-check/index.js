@@ -820,7 +820,7 @@ function cleanup() {
       //   (this implicitly requires track-renames-since to have been set)
       const testPathIsLatestDest =
         testPath === replacePathVersion(destMetadata.canonical);
-      const originalUrlHasIndex = /\/index(?:\.mdx)?\/?(#|$)/.test(url);
+      const originalUrlHasIndex = /(?:\/|^)index(?:\.mdx)?\/?(#|$)/.test(url);
       const testPathIsCurrent =
         destMetadata.product &&
         destMetadata.version &&
