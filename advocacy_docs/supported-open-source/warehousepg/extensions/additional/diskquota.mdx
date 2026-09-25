@@ -8,6 +8,139 @@ redirects:
   - /warehousepg/7.4/ref_guide/modules/extensions/diskquota
   - /warehousepg/7.5/ref_guide/modules/extensions/diskquota
   - /warehousepg/7.6/ref_guide/modules/extensions/diskquota
+  - /warehousepg/latest/ref_guide/modules/extensions/diskquota
+description: Allows WarehousePG administrators to limit the amount of disk space used by schemas, roles, or tablespaces in a database.
+---
+
+The diskquota module allows WarehousePG administrators to limit the amount of disk space used by schemas, roles, or tablespaces in a database.
+
+This topic includes the following sections:
+
+-   [Installing and Registering the Module (First Use)](#topic_ofb_gb1_b3b)
+-   [About the diskquota Module](#intro)
+-   [Understanding How diskquota Monitors Disk Usage](#topic_ndp_4wy_c3b)
+-   [About the diskquota Functions and Views](#functions)
+-   [Configuring the diskquota Module](#config)
+-   [Using the diskquota Module](#using)
+-   [Known Issues and Limitations](#limits)
+-   [Notes](#topic_sfb_gb1_b3b)
+-   [Upgrading the Module](#upgrade)
+-   [Examples](#topic_v2z_jrv_b3b)
+
+<a id="topic_ofb_gb1_b3b"></a>
+
+## Installing and Registering the Module (First Use)
+
+Download and install the `diskquota` package. Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for details.
+
+Then perform the following steps to configure diskquota for first use:
+
+1.  Create the `diskquota` database. The `diskquota` module uses this database to store the list of databases where the module is enabled.
+
+    ```
+    $ createdb diskquota;
+    ```
+
+2.  Add the `diskquota` shared library to the WarehousePG `shared_preload_libraries` server configuration parameter and restart WarehousePG. Be sure to retain the previous setting of the configuration parameter. For example:
+
+    ```
+    $ gpconfig -s shared_preload_libraries
+    Values on all segments are consistent
+    GUC              : shared_preload_libraries
+    Coordinator value: auto_explain
+    Segment     value: auto_explain
+    $ gpconfig -c shared_preload_libraries -v 'auto_explain,diskquota-2.2'
+    $ gpstop -ar
+    ```
+
+3.  Register the `diskquota` extension in each database in which you want to enforce disk usage quotas. You can register `diskquota` in up to ten databases.
+
+    ```
+    $ psql -d testdb -c "CREATE EXTENSION diskquota"
+    ```
+
+4.  Run the `diskquota.init_table_size_table()` UDF in the database. In a database with many files, this can take some time. The `diskquota` module cannot be used until the initialization is complete.
+
+    ```
+    =# SELECT diskquota.init_table_size_table();
+    ```
+
+    > **Note** You must run the `diskquota.init_table_size_table()` UDF for `diskquota` to work.
+
+<a id="intro"></a>
+
+## About the diskquota Module
+
+The disk usage for a table includes the table data, indexes, toast tables, and free space map. For append-optimized tables, the calculation includes the visibility map and index, and the block directory table.
+
+The `diskquota` module allows a WarehousePG administrator to limit the amount of disk space used by tables in schemas or owned by roles in up to 50 databases. The administrator can also use the module to limit the amount of disk space used by schemas and roles on a per-tablespace basis, as well as to limit the disk space used per WarehousePG segment for a tablespace.
+
+> **Note** A role-based disk quota cannot be set for the WarehousePG cluster owner (the user that creates the WarehousePG cluster).
+
+You can set the following quotas with the `diskquota` module:
+
+-   A *schema disk quota* sets a limit on the disk space that can used by all tables in a database that reside in a specific schema. The disk usage of a schema is defined as the total of disk usage on all segments for all tables in the schema.
+-   A *role disk quota* sets a limit on the disk space that can be used by all tables in a database that are owned by a specific role. The disk usage for a role is defined as the total of disk usage on all segments for all tables the role owns. Although a role is a cluster-level database object, the disk usage for roles is calculated separately for each database.
+-   A *schema tablespace disk quota* sets a limit on the disk space that can used by all tables in a database that reside in a specific schema and tablespace.
+-   A *role tablespace disk quota* sets a limit on the disk space that can used by all tables in a database that are owned by a specific role and reside in a specific tablespace.
+-   A *per-segment tablespace disk quota* sets a limit on the disk space that can be used by a Greeplum Database segment when a tablespace quota is set for a schema or role.
+
+<a id="topic_ndp_4wy_c3b"></a>
+
+## Understanding How diskquota Monitors Disk Usage
+
+A single `diskquota` launcher process runs on the active WarehousePG coordinator node. The diskquota launcher process creates and launches a diskquota worker process on the coordinator for each diskquota-enabled database. A worker process is responsible for monitoring the disk usage of tablespaces, schemas, and roles in the target database, and communicates with the WarehousePG segments to obtain the sizes of active tables. The worker process also performs quota enforcement, placing tablespaces, schemas, or roles on a denylist when they reach their quota.
+
+When a query plan for a data-adding query is generated, and the tablespace, schema, or role into which data would be loaded is on the denylist, `diskquota` cancels the query before it starts executing, and reports an error message that the quota has been exceeded.
+
+A query that does not add data, such as a simple `SELECT` query, is always allowed to run, even when the tablespace, role, or schema is on the denylist.
+
+Diskquota can enforce both *soft limits* and *hard limits* for disk usage:
+
+-   By default, `diskquota` always enforces soft limits. `diskquota` checks quotas before a query runs. If quotas are not exceeded when a query is initiated, `diskquota` allows the query to run, even if it were to eventually cause a quota to be exceeded.
+-   When hard limit enforcement of disk usage is enabled, `diskquota` also monitors disk usage during query execution. If a query exceeds a disk quota during execution, `diskquota` terminates the query.
+
+    Administrators can enable enforcement of a disk usage hard limit by setting the `diskquota.hard_limit` server configuration parameter as described in [Activating/Deactivating Hard Limit Disk Usage Enforcement](#hardlimit).
+
+There is some delay after a quota has been reached before the schema or role is added to the denylist. Other queries could add more data during the delay. The delay occurs because `diskquota` processes that calculate the disk space used by each table run periodically with a pause between executions (two seconds by default). The delay also occurs when disk usage falls beneath a quota, due to operations such as `DROP`, `TRUNCATE`, or `VACUUM FULL` that remove data. Administrators can change the amount of time between disk space checks by setting the `diskquota.naptime` server configuration parameter as described in [Setting the Delay Between Disk Usage Updates](#naptime).
+
+Diskquota can operate in both *static* and *dynamic* modes:
+
+-   When the number of databases in which the `diskquota` extension is registered is less than or equal to the maximum number of `diskquota` worker processes, `diskquota` operates in static mode; it assigns a background worker (bgworker) process to monitor each database, and the bgworker process exits only when the `diskquota` extension is dropped from the database.
+-   When the number of databases in which the `diskquota` extension is registered is greater than the maximum number of `diskquota` worker processes, `diskquota` operates in dynamic mode. In dynamic mode, for every monitored database every `diskquota.naptime` seconds, `diskquota` creates a bgworker process to collect disk usage information for the database, and then stops the bgworker process immediately after data collection completes. In this mode, `diskquota` dynamically starts and stops bgworker processes as needed for all monitored databases.
+
+    Administrators can change the maximum number of worker processes configured for `diskquota` by setting the `diskquota.max_workers` server configuration parameter as described in [Specifying the Maximum Number of Active diskquota Worker Processes](#maxworkers).
+
+If a query is unable to run because the tablespace, schema, or role has been denylisted, an administrator can increase the exceeded quota to allow the query to run. The module provides views that you can use to find the tablespaces, schemas, or roles that have exceeded their limits.
+
+<a id="functions"></a>
+
+## About the diskquota Functions and Views
+
+The `diskquota` module provides user-defined functions (UDFs) and views that you can use to manage and monitor disk space usage in your WarehousePG deployment.
+
+The functions and views provided by the `diskquota` module are available in the WarehousePG schema named `diskquota`.
+
+> **Note** You may be required to prepend the schema name (`diskquota.`) to any UDF or view that you access.
+
+User-defined functions provided by the module include:
+
+| Function Signature                                                                     | Description                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| void init_table_size_table()                                                           | Sizes the existing tables in the current database.                                                                                                                                       |
+| void set_role_quota( role_name text, quota text )                                      | Sets a disk quota for a specific role in the current database.<br /><br />> **Note** A role-based disk quota cannot be set for the WarehousePG cluster owner.                            |
+| void set_role_tablespace_quota( role_name text, tablespace_name text, quota text )     | Sets a disk quota for a specific role and tablespace combination in the current database.<br /><br />> **Note** A role-based disk quota cannot be set for the WarehousePG cluster owner. |
+| void set_schema_quota( schema_name text, quota text )                                  | Sets a disk quota for a specific schema in the current database.                                                                                                                         |
+| void set_schema_tablespace_quota( schema_name text, tablespace_name text, quota text ) | Sets a disk quota for a specific schema and tablespace combination in the current database.                                                                                              |
+| void set_per_segment_quota( tablespace_name text, ratio float4 )                       | Sets a per-segment disk quota for a tablespace in the current database.                                                                                                                  |
+| void pause()                                                                           | Instructs the module to continue to count disk usage for the current database, but pause and cease emitting an error when the limit is exceeded.                                         |
+| void resume()                                                                          | Instructs the module to resume emitting an error when the disk usage limit is exceeded in the current database.                                                                          |
+| status() RETURNS table                                                                 | Displays the `diskquota` binary and schema versions and the status of soft and hard limit disk usage enforcement in the current database.                                                |
+
+Views available in the `diskquota` module include:
+
+| View Name                              | Description                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | show_fast_database_size_view           | Displays the disk space usage in the current database.                                                       |
 | show_fast_role_quota_view              | Lists active quotas for roles in the current database.                                                       |
 | show_fast_role_tablespace_quota_view   | List active quotas for roles per tablespace in the current database.                                         |
