@@ -56,6 +56,13 @@ Each record is a span named `purpose_decision`, carrying these attributes:
 | `escalation_blocked` | A privilege-escalation attempt was blocked — either by the engine after the role was assumed (`RESET ROLE`, `SET ROLE`, `SET SESSION AUTHORIZATION`, or any other privilege-gated GUC without a `pg_parameter_acl` grant), or pre-execution, before the statement ever reached Postgres (a bare `RESET ROLE`, `RESET ALL`, or `DISCARD ALL` tool body). |
 | `pre_execution_rejected` | The SQL provided to the tool failed pre-execution validation. |
 
+The denial reason is set based on whichever error actually stopped the statement, not everything the statement attempted. Postgres executes a statement single-pass and halts at the first error it raises, so an escalation attempt nested inside a function call, subquery, or `DO` block is never reached if something else in the same statement fails first:
+
+- If the earlier failure is itself SQLSTATE `42501` from an ordinary object-ACL check, the decision is recorded as `engine_privilege_denied`, not `escalation_blocked`.
+- If the earlier failure is a pre-execution rejection, the decision is recorded as `pre_execution_rejected` unless the rejected statement contains an identity-switch attempt at the top level (see `escalation_blocked` above). `set_config('role', ...)` called from inside an expression rather than written as `SET`/`RESET`, for example, goes unrecognized and falls to `pre_execution_rejected` instead.
+
+In both cases `db.query.text` still captures the full SQL text regardless, so the query itself can be inspected to verify the intent of the agent's query.
+
 ## Finding the record from a denial
 
 A denied caller's error carries the decision id inline for cross-referencing against governance logs:
