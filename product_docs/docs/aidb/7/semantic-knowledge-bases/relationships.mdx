@@ -1,7 +1,7 @@
 ---
 title: Relationships
 navTitle: Relationships
-description: Record and discover how tables join — foreign-key crawling, join-path finding, manually added relationships, and drift detection over a semantic knowledge base.
+description: Discover how tables join, find paths between tables with no shared foreign key, and record joins the schema doesn't declare.
 deepToC: true
 ---
 
@@ -10,7 +10,7 @@ A semantic KB already knows what your tables and columns *are*. Relationships ad
 Four functions follow from that:
 
 | Function                                                   | Purpose                                           |
-|------------------------------------------------------------|----------------------------------------------------|
+| ---------------------------------------------------------- | ------------------------------------------------- |
 | `aidb.list_relationships()`                                | See how tables relate.                            |
 | `aidb.find_join_path()`, `aidb.suggest_joins()`            | Join two tables that share no foreign key.        |
 | `aidb.semantic_kb_search()`, `aidb.semantic_kb_subgraph()` | Find the right tables from a question in English. |
@@ -18,7 +18,7 @@ Four functions follow from that:
 
 The knowledge base populates relationships automatically from your foreign keys; you add what the foreign keys don't say. Nothing here changes how your data is stored or queried — it's a description of your schema that people and agents can read.
 
-!!!note Not yet supported
+!!!note
 This page describes relationships as they work today. A few fields exist in the store for future use but aren't usable yet — see [Concept-level relationships](#concept-level-relationships) and the `llm` source below.
 !!!
 
@@ -31,7 +31,7 @@ A **relationship** is one directed, recorded claim that two relations join. It c
 Five kinds exist. Only the first three are traversed by the route-finders (`find_join_path`, `suggest_joins`, `semantic_kb_subgraph`):
 
 | Kind              | Meaning                                                   |
-|-------------------|-----------------------------------------------------------|
+| ----------------- | --------------------------------------------------------- |
 | `key_join`        | A direct column-to-column join.                           |
 | `junction`        | Two tables joined *through* a bridge table.               |
 | `conditional`     | A join needing an expression or a cast.                   |
@@ -42,13 +42,13 @@ Five kinds exist. Only the first three are traversed by the route-finders (`find
 
 Five sources record who added a relationship. You can add only two of them yourself:
 
-| Source    | Written by                                                                                                 |
-|-----------|------------------------------------------------------------------------------------------------------------|
-| `crawl`   | The foreign-key crawl.                                                                                     |
-| `manual`  | A person. **You can add this yourself.**                                                                   |
-| `agent`   | An agent, via `aidb.add_relationship_as_agent()`. **You can add this yourself.** The native agent tool for this is named `add_relationship` — despite the shared name, it's a different function from the SQL-only `aidb.add_relationship()` below, and it always records `source = 'agent'`. |
-| `history` | `aidb.import_query_history()` — see [Learning from the query workload](#learning-from-the-query-workload). |
-| `llm`     | Reserved for future use; nothing writes this yet.                                                          |
+| Source    | Written by                                                                                                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crawl`   | The foreign-key crawl.                                                                                                                                                           |
+| `manual`  | A person. **You can add this yourself.**                                                                                                                                         |
+| `agent`   | An agent, via `aidb.add_relationship_as_agent()`. **You can add this yourself.** See the naming note in [Recording a relationship yourself](#recording-a-relationship-yourself). |
+| `history` | `aidb.import_query_history()` — see [Learning from the query workload](#learning-from-the-query-workload).                                                                       |
+| `llm`     | Reserved for future use; nothing writes this yet.                                                                                                                                |
 
 ### Status and confidence
 
@@ -75,7 +75,7 @@ SELECT aidb.create_model('bge_small', 'llamacpp_embeddings',
 SELECT aidb.create_semantic_kb('bank_kb', 'bge_small', ARRAY['bank'], 'Live');
 ```
 
-Creating the KB runs the foreign-key crawl immediately. `auto_processing => 'Live'` also keeps relationships in step with DDL automatically — see [Keeping it current](#keeping-it-current). For the other modes, see [Keeping a KB current](index#keeping-a-kb-current).
+Creating the KB runs the foreign-key crawl immediately. `auto_processing => 'Live'` also keeps relationships in step with DDL automatically — see [Keeping it current](#keeping-it-current). For the other modes, see [Keeping a KB current](./#keeping-a-kb-current).
 
 ```sql
 SELECT total, tables, columns, pending, relationships, drifted, queries
@@ -89,13 +89,13 @@ __OUTPUT__
 
 `relationships => 9` is the crawl's work, from the `bank` schema's foreign keys — the subject of the next section.
 
-!!!note pg_stat_statements
+!!!note `pg_stat_statements`
 Everything on this page works without `pg_stat_statements`. The one exception is [Learning from the query workload](#learning-from-the-query-workload), which needs it installed *and* preloaded — a cluster-wide setting that requires a restart. See [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries). If you don't plan to derive relationships from query history, you can ignore this entirely.
 !!!
 
 ## What the crawl finds
 
-The crawl reads `pg_constraint`. It needs no configuration and it never guesses — everything it reports is enforced by PostgreSQL, and everything it misses (a column that merely looks like a key, but declares no foreign key) is yours to record, either [by hand](#recording-a-relationship-yourself) or from [query history](#learning-from-the-query-workload).
+The crawl reads `pg_constraint`. It needs no configuration and it never guesses — everything it reports is enforced by Postgres, and everything it misses (a column that merely looks like a key, but declares no foreign key) is yours to record, either [by hand](#recording-a-relationship-yourself) or from [query history](#learning-from-the-query-workload).
 
 ```sql
 SELECT left_object, left_columns, right_object, right_columns, kind, cardinality, is_nullable
@@ -225,8 +225,6 @@ Read `truncated` on every route you rely on, and read `is_nullable` on every hop
 
 ## Recording a relationship yourself
 
-`aidb.add_relationship()` is SQL-only — it's for a person to add by hand (`source => 'manual'` by default) and isn't registered as a native agent tool. An agent records a relationship through the separate `add_relationship` tool described in the [Source](#source) table above.
-
 `bank.payments` and `bank.loan_instalments` share a two-column join that no constraint declares:
 
 ```sql
@@ -253,6 +251,10 @@ It's added as `manual`, lands `approved`, and takes the `key_join` prior of 0.75
 
 `predicate`, `cardinality`, and `is_nullable` are all required for a `key_join`. Only `predicate` is checked politely — omit either of the other two and you get the store's raw CHECK-constraint violation instead of a readable message.
 
+!!!note
+`aidb.add_relationship()` is SQL-only — it's for a person to add by hand (`source => 'manual'` by default) and isn't registered as a native agent tool. An agent records a relationship through the separate `add_relationship` tool, which despite the shared name calls `aidb.add_relationship_as_agent()` instead and always records `source = 'agent'`.
+!!!
+
 ### What it refuses
 
 `add_relationship()` won't give a reader two answers for the same join — adding a `key_join` over columns a foreign key already covers is rejected, with a pointer to comment on the constraint instead:
@@ -273,7 +275,7 @@ It won't accept columns that could never match (a type mismatch), won't let you 
 `aidb.delete_relationship()` is overloaded — one form takes a `relationship_id`, the other a full shape — so name your arguments rather than passing a single positional one. A crawled relationship can't be deleted while its constraint still stands, because the next crawl would simply restore it; drop the constraint first if the relationship is genuinely gone.
 
 !!!note
-Author the columns, not the intent: `predicate` is prose, but `left_columns` / `right_columns` are what actually gets joined.
+Record the columns, not the intent: `predicate` is prose, but `left_columns` / `right_columns` are what actually gets joined.
 !!!
 
 ## Keeping it current
@@ -353,7 +355,7 @@ SELECT * FROM aidb.accept_relationship_candidates(
 
 ## Permissions
 
-Every function here is granted `EXECUTE` to the `aidb_users` role, but the underlying stores carry no table-level grant at all. **Right now, these functions are usable by the knowledge base's owner or a superuser** — the `aidb_users` grant is necessary but not sufficient. A member of `aidb_users` who doesn't own the KB is refused by the table, with a `permission denied for table relationship_metadata_<kb_name>` error, not by the function. Plan for the KB owner to be the caller, or grant the underlying tables yourself.
+Every function here is granted `EXECUTE` to the `aidb_users` role, but the underlying stores carry no table-level grant at all. Right now, these functions are usable only by the knowledge base's owner or a superuser — the `aidb_users` grant is necessary but not sufficient. A member of `aidb_users` who doesn't own the KB is refused by the table, with a `permission denied for table relationship_metadata_<kb_name>` error, not by the function. Plan for the KB owner to be the caller, or grant the underlying tables yourself.
 
 Query history is restricted a second time, per caller: with row-level security enforced, you see only the statements you ran unless you hold `pg_read_all_stats`.
 
