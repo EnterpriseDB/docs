@@ -130,6 +130,36 @@ Server w9-2-seg1:
 whpg-dr check my_cluster
 ```
 
+### WAL archive check keeps failing after activity
+
+**Symptom:**
+
+Unlike [whpg-dr check fails immediately after enabling whpg-dr](#whpg-dr-check-fails-immediately-after-enabling-whpg-dr), the check still fails on every segment after generating real write activity or forcing a WAL switch. The Barman log shows each segment finding nothing to archive:
+
+```bash
+cat $HOME/gpAdminLogs/barman-my_cluster.log
+```
+
+```
+barman.wal_archiver INFO: No xlog segments found from file archival for my_cluster-seg0.
+barman.server ERROR: Check 'WAL archive' failed for server 'my_cluster-seg0'
+```
+
+**Cause:** The storage repository path exists on the coordinator but wasn't created or mounted on one or more segment hosts. Each segment archives its own WAL locally to that path, if the path is missing there, WAL never reaches the shared repository, no matter how much write activity occurs. Confirm this by checking the path directly on the segment hosts:
+
+```bash
+gpssh -f all_hosts -e "ls -ld /path/to/storage"
+```
+
+**Resolution:** Create or mount the storage path on every segment host, owned by the WarehousePG cluster owner, then re-run the check:
+
+```bash
+gpssh -f all_hosts -e "sudo mkdir -p /path/to/storage && sudo chown gpadmin:gpadmin /path/to/storage"
+whpg-dr check my_cluster
+```
+
+If the path is meant to be a shared NFS mount rather than local disk, mount the actual share on each segment host instead of creating a bare local directory, otherwise each segment archives to its own local disk rather than the shared repository. See [Setting up the storage repository](setting-up-primary/storage) for the full requirement.
+
 ## Restore point failures
 
 If a `whpg-dr create-restore-point` command is interrupted, it may leave a lock file at:
