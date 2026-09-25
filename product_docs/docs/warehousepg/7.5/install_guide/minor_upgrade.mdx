@@ -143,6 +143,47 @@ Perform a final cleanup of the running database instance.
 
 Perform the following steps as the `gpadmin` user. When upgrading, the package manager will automatically remove old files in `/usr/local/greenplum-db-<version>` and install new files to `/usr/edb/whpg7`.
 
+!!!warning Upgrading to 7.6.0: Behavior changes to review
+
+WarehousePG 7.6.0 changes the following behavior. Review each item before you upgrade.
+
+-   `pg_file_write()`, `pg_file_rename()`, `pg_file_unlink()`, and `pg_logdir_ls()` now require superuser privileges or membership in `pg_write_server_files` (`pg_read_server_files` for `pg_logdir_ls()`). This closes a critical privilege-escalation issue that let any role run these functions. Run the [REVOKE/GRANT block below](#applying-the-file-function-privilege-fix) in every database of an upgraded cluster, since a binary upgrade doesn't change privileges already stored in the catalog.
+-   `ALTER TABLE ... SET`/`RESET (compresstype, compresslevel, blocksize)` on append-optimized column-oriented (AOCO) tables now re-encodes every column that has no explicit `ENCODING` of its own, so the statement changes on-disk data where it previously only changed the catalog. A column whose explicit `ENCODING` happens to match the table default can't be distinguished from an implicit one, and gets re-encoded too.
+-   Plain-text output from [`pg_dump`](../ref_guide/utility_guide/reference/pg_dump.mdx), [`pg_dumpall`](../ref_guide/utility_guide/reference/pg_dumpall.mdx), and [`pg_restore`](../ref_guide/utility_guide/reference/pg_restore.mdx) now begins with `\restrict <key>` and ends with `\unrestrict <key>`. Tooling that parses dump output needs adjusting for the new markers. Both the dumper and the `psql` used to restore the dump need to be on this version or later for the protection to apply. A dump from 7.6.0 restored with an older `psql` gets `invalid command \restrict` on the first line, and stops there if `ON_ERROR_STOP` is set.
+-   [`CREATE OPERATOR`](../ref_guide/sql_commands/CREATE_OPERATOR.mdx) and [`ALTER OPERATOR`](../ref_guide/sql_commands/ALTER_OPERATOR.mdx) now require superuser privileges to attach a non-built-in selectivity estimator.
+-   SQL-level calls to functions that take or return the `internal` type, and casts to and from `internal`, are rejected.
+-   [`psql`](../ref_guide/utility_guide/reference/psql.mdx) now consumes in-line [`COPY ... FROM STDIN`](../ref_guide/sql_commands/COPY.mdx) data even when the `COPY` command fails. Scripts must terminate in-line data with `\.`.
+-   `pgcrypto` [PGP encryption](../security_guide/encryption.mdx#encpgp) now returns an error when cipher initialization fails, instead of writing unencrypted data. Use the new `ignore-cipher-failure=1` decryption option, passed in the `options` argument of `pgp_sym_decrypt()` and `pgp_pub_decrypt()`, to read back data written by an affected build.
+-   The resource group [`CPUSET`](../admin_guide/performance/wlmgmt/workload_mgmt_resgroups.mdx#cpuset) setting now parses in the documented order, `<coordinator_cores>;<segment_cores>`. Clusters that swapped the two halves of the value to compensate for the previous reversed behavior need to swap them back.
+-   [`gp_toolkit`](../ref_guide/gp_toolkit.mdx) is now version 1.9. Run `ALTER EXTENSION gp_toolkit UPDATE` to pick up the corrected [`gp_toolkit.gp_workfile_entries`](../ref_guide/gp_toolkit.mdx#topic33) view.
+-   A hot standby that receives no queries keeps `pg_distributedlog` segment files that the primary has already removed (about 1 MB per 131072 transactions of that segment) until its next query, which then drops them all.
+!!!
+
+### Applying the file function privilege fix
+
+If you can't upgrade to `7.6.0-WHPG` immediately, run the following as a superuser in every database of the cluster, including `postgres` and `template1`. It takes effect immediately and needs no restart. WarehousePG dispatches the statements to all segments automatically.
+
+```sql
+REVOKE EXECUTE ON FUNCTION pg_file_write(text,text,boolean) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_file_rename(text,text,text) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_file_unlink(text) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_logdir_ls() FROM public;
+-- keep the intended administrative access
+GRANT EXECUTE ON FUNCTION pg_file_write(text,text,boolean) TO pg_write_server_files;
+GRANT EXECUTE ON FUNCTION pg_file_rename(text,text,text) TO pg_write_server_files;
+GRANT EXECUTE ON FUNCTION pg_file_unlink(text) TO pg_write_server_files;
+GRANT EXECUTE ON FUNCTION pg_logdir_ls() TO pg_read_server_files;
+```
+
+Run the same block after upgrading an existing cluster, too. A binary upgrade doesn't change privileges already stored in the catalog, so without it, `public` keeps execute access even though the new binaries already reject the call. Confirm every row shows `f`:
+
+```sql
+select proname, has_function_privilege('public', oid, 'execute') as public_can_execute
+from pg_proc where proname in ('pg_file_write', 'pg_file_rename', 'pg_file_unlink', 'pg_logdir_ls');
+```
+
+Roles that legitimately need these functions must be superusers or hold membership in `pg_write_server_files` (or `pg_read_server_files` for `pg_logdir_ls()`). `gp_toolkit.gp_move_orphaned_files()`, the one in-tree caller, keeps working for superusers.
+
 !!!warning Upgrading to 7.5.0: Python 3.11 requirement
 
 WarehousePG 7.5.0 upgrades PL/Python to Python 3.11. The PL/Python interpreter now links against `/usr/bin/python3.11` and requires the following packages on every node:
