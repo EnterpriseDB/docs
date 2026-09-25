@@ -80,6 +80,10 @@ The AIDB package installs the `edb-endpoints` binary into the Postgres `bindir`.
 
 Every other parameter has a working default. The endpoint serves the database named by `edb.endpoints_mcp_database` (`postgres` by default), which must have AIDB installed.
 
+!!!note
+The endpoint serves one database per Postgres instance. If AIDB is installed in more than one database on the same instance, only one can be served at a time — pointing `edb.endpoints_mcp_database` at a different database and reloading switches which one is served, it doesn't add a second one. Serving more than one database at once needs a separate Postgres instance, each running its own endpoint.
+!!!
+
 ### Connecting a client
 
 The MCP endpoint speaks streamable HTTP at `/mcp`. Point any MCP client that supports that transport and HTTP Basic authentication at `http://127.0.0.1:8765/mcp` (or your TLS host and port), and give it a Postgres username and password.
@@ -211,7 +215,7 @@ To recover, fix the cause and reload:
 SELECT pg_reload_conf();
 ```
 
-The reload wakes the supervisor. If the window has room again, the endpoint starts. A start that fails because the binary is missing or not executable doesn't consume budget and idles the supervisor straight away, since retrying can't fix it.
+The reload wakes the supervisor. If the window has room again, the endpoint starts. A reload is a single attempt, not a retry loop: if the window hasn't cleared yet, the supervisor logs the same `restart budget exhausted` warning again and idles again, and a later reload is needed once the window has room. Changing `edb.endpoints_mcp_restart_max` or `edb.endpoints_mcp_restart_window_secs` and reloading resets the budget immediately instead of waiting for the window to clear. A start that fails because the binary is missing or not executable doesn't consume budget and idles the supervisor straight away, since retrying can't fix it.
 
 ### Configuration rejections
 
