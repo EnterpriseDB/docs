@@ -1,7 +1,18 @@
 ---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
 title: WarehousePG 6.x release notes
 navTitle: Release notes
-displayBanner: ''
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/whpg/6x/release_notes/index.md
+editTarget: originalFilePath
+
 ---
 
 # WarehousePG 6.x release notes
@@ -10,10 +21,46 @@ The WarehousePG documentation describes the latest version of WarehousePG 6.
 
 | Version                     | Release date |
 |-----------------------------|--------------|
+| [6.27.6-WHPG](#warehousepg-6276-whpg) | 25 September 2026 |
 | [6.27.5-WHPG](#warehousepg-6275-whpg) | 10 June 2026    |
 | [6.27.4-WHPG](#warehousepg-6274-whpg)    | 7 April 2026  |
 | [6.27.3-WHPG](#warehousepg-6273-whpg)    | 28 January 2026  |
 | [6.27.2-WHPG](#warehousepg-6272-whpg)    | 8 December 2025  |
+
+## WarehousePG 6.27.6-WHPG
+
+Released: 25 September 2026
+
+WarehousePG 6.27.6-WHPG is a security-focused release. It includes the following bug fixes and other changes:
+
+!!!info Note
+WarehousePG 6.27.6 changes several behaviors that can affect existing scripts and configurations, including dump output format, `CREATE OPERATOR` privileges, and `pgcrypto` and `psql` behavior. Review [Upgrading to 6.27.6: Behavior changes to review](../install_guide/minor_upgrade.mdx#replacing-binaries-and-restarting-whpg) before you upgrade.
+!!!
+
+### Bug fixes
+
+-   Fixed `gpload` to pass arguments through its shell wrapper without word splitting, so control-file paths with spaces work, and to fall back to `$HOME/gpAdminLogs` when the `-l` log file is unusable.
+-   Fixed PL/Perl array and tied-container handling for non-rectangular arrays, forged `ARRAY` objects, tied `SETOF` array references, and `NULL` `SV *` values.
+-   Fixed `pgcrypto` to reset the global debug handler after a PGP pipeline error, so later calls no longer emit stray `dbg:` notices.
+
+### Security
+
+-   Fixed a `pg_dump` privilege-escalation race by adding the [`restrict_nonsystem_relation_kind`](../ref_guide/config_params/guc-list.mdx#restrict_nonsystem_relation_kind) configuration parameter (`view`, `foreign-table`), which `pg_dump` sets for the duration of a dump to stop the backend from expanding non-system views or accessing non-system foreign tables, for [CVE-2024-7348](https://www.cve.org/CVERecord?id=CVE-2024-7348).
+-   Wrapped plain-text output from `pg_dump`, `pg_dumpall`, and `pg_restore` in `psql` `\restrict` and `\unrestrict` markers, so a hostile server can't inject meta-commands executed at restore time, and added the `--restrict-key` option, for [CVE-2025-8714](https://www.cve.org/CVERecord?id=CVE-2025-8714).
+-   Fixed a one-byte overread in GB18030 multibyte character handling, replaced unbounded `pg_mblen()` call sites with length-checked variants across the server, fixed an out-of-bounds read in JSON parse error messages for incomplete byte sequences, and fixed `translate()` reading one byte past the end of its `to` argument, for [CVE-2025-4207](https://www.cve.org/CVERecord?id=CVE-2025-4207) and [CVE-2026-2006](https://www.cve.org/CVERecord?id=CVE-2026-2006).
+-   Required superuser to attach a non-built-in `RESTRICT` or `JOIN` selectivity estimator in `CREATE OPERATOR`, and hardened `tsmatchsel()` against a non-`tsvector` operand, for [CVE-2026-2004](https://www.cve.org/CVERecord?id=CVE-2026-2004).
+-   Fixed a buffer overflow in `pgcrypto`'s `pgp_pub_decrypt_bytea()` function by bounding the session key length, for [CVE-2026-2005](https://www.cve.org/CVERecord?id=CVE-2026-2005).
+-   Stopped `psql` from executing in-line `COPY ... FROM STDIN` data as SQL after the `COPY` command fails, including WarehousePG 6's legacy `COPY ... WITH OIDS FROM STDIN` syntax, for [CVE-2026-6464](https://www.cve.org/CVERecord?id=CVE-2026-6464).
+-   Hardened `tsvector` and `tsquery` construction against integer overflows in `tsvectorrecv()`, `make_tsvector()`, `parsetext()`, `tsvectorout()`, and `QTN2QT()`, for [CVE-2026-14662](https://www.cve.org/CVERecord?id=CVE-2026-14662).
+-   Fixed `pgcrypto` to fail cipher operations during PGP encryption instead of emitting effectively unencrypted data, and added the [`ignore-cipher-failure`](../security-guide/Encryption.mdx#recovering-data-encrypted-before-the-cve-2026-14663-fix) decryption option to read back data mis-encrypted by affected builds, for [CVE-2026-14663](https://www.cve.org/CVERecord?id=CVE-2026-14663).
+-   Fixed a buffer overrun in `regexp_matches()`, `regexp_split_to_table()`, and `regexp_split_to_array()` on invalidly encoded input, for [CVE-2026-14664](https://www.cve.org/CVERecord?id=CVE-2026-14664).
+-   Fixed `ascii()` to validate multibyte input length before reading continuation bytes, with related fixes to `EUC_CN` length handling, `mb2wchar()` on short input, PGP-decrypted text encoding validation, and `SUBSTRING()` on toasted multibyte values, bounded the copy of overlength time zone abbreviations in `to_char()`, and fixed PL/Perl to read a tied array's length only once in `plperl_array_to_datum()`, for [CVE-2026-18024](https://www.cve.org/CVERecord?id=CVE-2026-18024), [CVE-2026-14669](https://www.cve.org/CVERecord?id=CVE-2026-14669), and [CVE-2026-14670](https://www.cve.org/CVERecord?id=CVE-2026-14670).
+-   Removed a stale per-backend plan cache in `contrib/spi/refint`'s `check_foreign_key()` function that caused type confusion, and fixed a `NULL`-key segfault, for [CVE-2026-14671](https://www.cve.org/CVERecord?id=CVE-2026-14671).
+-   Used overflow-safe array allocation in `pltcl` and `plperl`, and guarded fixed-size argument arrays in the parser, fmgr, PL/pgSQL, `plperl`, `plpython`, and `pltcl` against extreme argument counts, for [CVE-2026-14677](https://www.cve.org/CVERecord?id=CVE-2026-14677) and [CVE-2026-14679](https://www.cve.org/CVERecord?id=CVE-2026-14679).
+-   Fixed `pg_trgm`'s `gtrgm_picksplit()` function reading past the end of the signature buffer for all-true datums, for [CVE-2026-14678](https://www.cve.org/CVERecord?id=CVE-2026-14678).
+-   Rejected SQL-level calls to functions that take or return the `internal` type, including operator and cast syntax, fixed `numeric_avg_combine()` and `numeric_combine()` to handle a `NaN` count correctly, and made aggregate combine functions return `NULL` honestly, for [CVE-2026-14680](https://www.cve.org/CVERecord?id=CVE-2026-14680).
+-   Fixed integer overflow and out-of-bounds writes in `fuzzystrmatch`'s Levenshtein distance functions by computing distances in 64-bit arithmetic, for [CVE-2026-15742](https://www.cve.org/CVERecord?id=CVE-2026-15742).
+-   Fixed a memory disclosure and possible remote code execution vulnerability from a mismatch between a portal's tuple descriptor and the query's actual output during `EXECUTE` or `FETCH`, for [CVE-2026-16239](https://www.cve.org/CVERecord?id=CVE-2026-16239).
 
 ## WarehousePG 6.27.5-WHPG
 

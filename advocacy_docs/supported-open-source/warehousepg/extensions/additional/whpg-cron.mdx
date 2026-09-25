@@ -5,13 +5,15 @@ redirects:
   - /warehousepg/7.3/ref_guide/modules/extensions/whpg-cron
   - /warehousepg/7.4/ref_guide/modules/extensions/whpg-cron
   - /warehousepg/7.5/ref_guide/modules/extensions/whpg-cron
+  - /warehousepg/7.6/ref_guide/modules/extensions/whpg-cron
   - /warehousepg/latest/ref_guide/modules/extensions/whpg-cron
 description: Learn how to schedule periodic SQL jobs in WarehousePG using the whpg-cron extension.
 ---
 
-!!! Note
+!!!note Version availability
 
-    whpg-cron is only supported from WHPG 7.3 onwards.
+whpg-cron is available starting with WarehousePG 7.3.0.
+!!!
 
 `whpg-cron` is WarehousePG's packaged distribution of `pg_cron`, a cron-based job scheduler that runs inside the database. It lets you schedule SQL commands, including calls to stored procedures, directly from the database using standard cron syntax.
 
@@ -21,9 +23,10 @@ The WarehousePG `whpg-cron` package installs the extension under its upstream na
 
 Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for installation and setup instructions. The package name is `edb-whpg7-whpg-cron`.
 
-!!! Important
+!!!important
 
-    You can only install `pg_cron` in one database per WarehousePG cluster.
+You can only install `pg_cron` in one database per WarehousePG cluster.
+!!!
 
 1.  Set the database where `pg_cron` creates its metadata tables. By default, it uses the `postgres` database. Set `cron.database_name` before you create the extension:
 
@@ -72,13 +75,13 @@ Choose a method to allow `pg_cron` to connect to the database to run each job:
     gpstop -raf
     ```
 
-    Then add a matching `local` entry to [`pg_hba.conf`](/warehousepg/7.5/admin_guide/manage_access/client_auth/) on the coordinator to grant trust authentication on that socket:
+    Then add a matching `local` entry to [`pg_hba.conf`](/warehousepg/latest/admin_guide/manage_access/client_auth/) on the coordinator to grant trust authentication on that socket:
 
     ```
     local   all   all   trust
     ```
 
--   **TCP connection.** Restrict the `pg_hba.conf` entry to the loopback address, since `pg_cron` always connects from the coordinator itself. Leave `cron.host` at its default (`localhost`), and add a `host` entry to [`pg_hba.conf`](/warehousepg/7.5/admin_guide/manage_access/client_auth/) on the coordinator:
+-   **TCP connection.** Restrict the `pg_hba.conf` entry to the loopback address, since `pg_cron` always connects from the coordinator itself. Leave `cron.host` at its default (`localhost`), and add a `host` entry to [`pg_hba.conf`](/warehousepg/latest/admin_guide/manage_access/client_auth/) on the coordinator:
 
     ```
     host   all   all   127.0.0.1/32   trust
@@ -100,18 +103,18 @@ Choose a method to allow `pg_cron` to connect to the database to run each job:
 
 `pg_cron` supports the following configuration parameters, which you set with `gpconfig`:
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `cron.database_name` | `postgres` | Database where the `pg_cron` background worker runs. |
-| `cron.enable_superuser_jobs` | `on` | Allow jobs to be scheduled as superusers. |
-| `cron.host` | `localhost` | Hostname the background worker connects to. |
-| `cron.launch_active_jobs` | `on` | Turn off to disable every active job without a server restart. |
-| `cron.log_min_messages` | `WARNING` | `log_min_messages` for the launcher background worker. |
-| `cron.log_run` | `on` | Log every run in the `cron.job_run_details` table. |
-| `cron.log_statement` | `on` | Log every cron statement before it runs. |
-| `cron.max_running_jobs` | `32` | Maximum number of jobs that can run at the same time. |
-| `cron.timezone` | `GMT` | Timezone the `pg_cron` background worker runs in. |
-| `cron.use_background_workers` | `off` | Use background workers instead of client connections to run jobs. |
+| Setting                       | Default     | Description                                                       |
+| ----------------------------- | ----------- | ----------------------------------------------------------------- |
+| `cron.database_name`          | `postgres`  | Database where the `pg_cron` background worker runs.              |
+| `cron.enable_superuser_jobs`  | `on`        | Allow jobs to be scheduled as superusers.                         |
+| `cron.host`                   | `localhost` | Hostname the background worker connects to.                       |
+| `cron.launch_active_jobs`     | `on`        | Turn off to disable every active job without a server restart.    |
+| `cron.log_min_messages`       | `WARNING`   | `log_min_messages` for the launcher background worker.            |
+| `cron.log_run`                | `on`        | Log every run in the `cron.job_run_details` table.                |
+| `cron.log_statement`          | `on`        | Log every cron statement before it runs.                          |
+| `cron.max_running_jobs`       | `32`        | Maximum number of jobs that can run at the same time.             |
+| `cron.timezone`               | `GMT`       | Timezone the `pg_cron` background worker runs in.                 |
+| `cron.use_background_workers` | `off`       | Use background workers instead of client connections to run jobs. |
 
 View the current settings:
 
@@ -126,7 +129,8 @@ gpconfig -c cron.<parameter> -v '<value>'
 gpstop -raf
 ```
 
-!!! Note
+!!!note
+
 `cron.log_min_messages` and `cron.launch_active_jobs` take effect immediately, without a restart, once you run `SELECT pg_reload_conf();`. Every other setting needs a full restart.
 !!!
 
@@ -138,9 +142,10 @@ Write a cron schedule, then create, alter, remove, or view jobs using the `cron`
 
 `pg_cron` stores every scheduled job as a row in `cron.job`, with columns for its `jobid`, `schedule`, `command`, and `username`, among others. `pg_cron` runs each job in the database where you created it, with the same permissions as the user who scheduled it. A row-level security ([RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)) policy limits you to viewing and modifying only the jobs you created, unless you're a superuser or have the `bypassrls` attribute, which lets a role bypass row-level security entirely.
 
-!!! Important
+!!!important
 
-    We recommend managing jobs with the `cron` schema functions rather than direct `UPDATE`, `INSERT`, or `DELETE` statements against `cron.job`, since WarehousePG doesn't support the `TRIGGER` statement `pg_cron` normally relies on to detect such changes. If the functions can't do what you need, see [Editing cron.job directly](#editing-cronjob-directly).
+We recommend managing jobs with the `cron` schema functions rather than direct `UPDATE`, `INSERT`, or `DELETE` statements against `cron.job`, since WarehousePG doesn't support the `TRIGGER` statement `pg_cron` normally relies on to detect such changes. If the functions can't do what you need, see [Editing cron.job directly](#editing-cronjob-directly).
+!!!
 
 ### Understanding cron syntax
 
