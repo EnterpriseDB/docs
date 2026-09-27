@@ -5,11 +5,13 @@ description: Run natural-language schema search against a semantic knowledge bas
 deepToC: true
 ---
 
-Once a semantic KB has crawled your schemas, you search it with a natural-language query. The KB embeds your query with the same model it used to index the schema, then returns the tables, views, and columns whose metadata is closest to the query. Every search function takes the KB name as `kb_name`, which you can omit when only one KB exists.
+Searching a semantic KB lets you find the right tables, views, and columns by describing what you need in plain language, instead of already knowing their exact names — the same lookup an agent uses to ground [text-to-SQL](text-to-sql) in your real schema.
 
-## `aidb.semantic_kb_search()`
+Once a semantic KB has crawled your schemas, you search it with a natural-language query: the KB embeds your query with the same model it used to index the schema, then returns whatever's closest. `aidb.semantic_kb_search()` is the composite function that ranks results across every source at once, four narrower functions search only schema metadata, and `aidb.semantic_kb_subgraph()` returns the joins around a search's hits. Every search function takes the KB name as `kb_name`, which you can omit when only one KB exists.
 
-`semantic_kb_search()` is the composite entry point: it runs the per-source ranked searches (schema metadata, [relationships](relationships), curated [semantic aliases](semantic-aliases), and query history) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF). Use it when you want a single ranked answer to "what in my schema relates to this?"
+## Searching everything at once
+
+`semantic_kb_search()` is the composite entry point: it runs the per-source ranked searches ([schema metadata](#schema-metadata-functions), [relationships](relationships), curated [semantic aliases](semantic-aliases), and [query history](relationships#learning-from-the-query-workload)) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF). Use it when you want a single ranked answer to "what in my schema relates to this?"
 
 ```sql
 SELECT source_type, entity_type, schema_name, relation_name, column_name, rank
@@ -20,46 +22,23 @@ FROM aidb.semantic_kb_search(
 );
 ```
 
-| Parameter        | Type               | Default | Description                                                                                           |
-| ---------------- | ------------------ | ------- | ----------------------------------------------------------------------------------------------------- |
-| `query_text`     | `text`             | —       | The natural-language query.                                                                           |
-| `kb_name`        | `text`             | `NULL`  | The KB to search. Omit to target the single KB when only one exists.                                  |
-| `top_k`          | `int`              | `10`    | Number of ranked rows to return.                                                                      |
-| `sources`        | `text[]`           | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`. Omit for all.                        |
-| `entity_types`   | `text[]`           | `NULL`  | Entity types to include: `Table`, `View`, `Column`, `Alias`, `Relationship`, `Query`. Omit for all.   |
-| `rrf_k`          | `int`              | `60`    | Rank-fusion damping constant.                                                                         |
-| `min_similarity` | `double precision` | `NULL`  | Optional similarity floor; rows scoring below it are dropped. Omit for no floor.                      |
-| `include_proposed` | `boolean`        | `false` | Include `proposed` relationships and comments still in the [curation queue](curation#reviewing-before-its-live), not just approved/live ones. |
+Beyond `query_text`, `kb_name`, and `top_k`, `sources` and `entity_types` narrow which sources and entity kinds are searched, and `include_proposed` optionally pulls in relationships and comments still in the [curation queue](curation#reviewing-before-its-live) rather than just approved/live ones.
 
-It returns one row per match:
-
-| Column          | Description                                                |
-| --------------- | ---------------------------------------------------------- |
-| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, or `history`. |
-| `entity_type`   | `Table`, `View`, `Column`, `Alias`, `Relationship`, or `Query`.                     |
-| `schema_name`   | The schema the entity belongs to.                          |
-| `relation_name` | The table or view name.                                    |
-| `column_name`   | The column name (empty for table- and view-level matches). |
-| `object_ref`    | A qualified reference to the matched object. Populated for `relationship` rows only; schema rows identify themselves through `schema_name`, `relation_name`, and `column_name`. |
-| `definition`    | The structural definition that was embedded.               |
-| `comment`       | The `COMMENT ON` text for the entity, if any.               |
-| `score`         | The fused RRF score.                                        |
-| `rank`          | The 1-based rank within the fused result set.               |
-| `components`    | JSONB detail of the per-source scores that fed the fusion.  |
+Each returned row carries a `source_type` ([`schema`](#schema-metadata-functions), [`alias`](semantic-aliases), [`relationship`](relationships), or [`history`](relationships#learning-from-the-query-workload)), an `entity_type`, the matched object's identity (`schema_name`, `relation_name`, `column_name`, or, for a relationship row, `object_ref`), its `definition` and `comment`, and a fused `score` and `rank`. For every parameter, default, and return column, see the [reference](../reference/semantic-knowledge-bases#aidbsemantic_kb_search).
 
 Because `semantic_kb_search()` returns schema entities, relationships, and matching aliases in one ranked list, it's the natural first call in a [text-to-SQL](text-to-sql) workflow.
 
 !!!note `score` is a fusion rank, not a similarity
-Results are combined across sources with Reciprocal Rank Fusion, so `score` is `1 / (rrf_k + rank_within_source)` — with the default `rrf_k => 60`, the first hit from *every* source scores `1/61`. Rows from different sources therefore tie, and the tie means nothing. To compare results directly, read the true cosine from `components->>'cosine'`, or restrict to one source with `sources => ARRAY['relationship']` (or another single source) so the ranking becomes directly comparable.
+Results are combined across sources with Reciprocal Rank Fusion, so `score` is `1 / (rrf_k + rank_within_source)` — with the default `rrf_k => 60`, the first hit from every source scores `1/61`. Rows from different sources therefore tie, and the tie means nothing. To compare results directly, read the true cosine from `components->>'cosine'`, or restrict to one source with `sources => ARRAY['relationship']` (or another single source) so the ranking becomes directly comparable.
 !!!
 
 ## Schema-metadata functions
 
-For narrower needs, four functions search only schema metadata. They share the same optional `kb_name` and a `similarity` score (cosine similarity, higher is closer), with `min_similarity` as an optional floor and `top_k` / `offset` for paging.
+For narrower needs, four functions search only schema metadata. They share the same optional `kb_name` and a `similarity` score (cosine similarity, higher is closer), with `min_similarity` as an optional floor and `top_k` / `offset` for paging. See the [reference](../reference/semantic-knowledge-bases#search-functions) for each function's full parameter and return-column list.
 
-### `aidb.get_metadata()`
+### Searching all schema metadata
 
-This is the broadest schema search, returning columns, tables, and views together with full metadata.
+`aidb.get_metadata()` is the broadest schema search, returning columns, tables, and views together with full metadata.
 
 ```sql
 SELECT schema_name, relation_name, column_name, entity_type, similarity
@@ -72,9 +51,9 @@ FROM aidb.get_metadata(
 
 Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k` (default `10`), `offset` (default `0`). Returns `schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `definition_vector`, and `similarity`.
 
-### `aidb.get_entity_definitions()`
+### Searching tables and views only
 
-Matches **tables and views** only.
+`aidb.get_entity_definitions()` matches tables and views only.
 
 ```sql
 SELECT schema_name, relation_name, entity_type, similarity
@@ -87,9 +66,9 @@ FROM aidb.get_entity_definitions(
 
 Parameters: `kb_name`, `query_text`, `min_similarity`, `entity_types` (default `ARRAY['Table','View']`), `top_k`, `offset`. Returns `schema_name`, `relation_name`, `entity_type`, `definition`, `comment`, `similarity`.
 
-### `aidb.get_column_definitions()`
+### Searching for lean definitions
 
-Returns just the matching column and table **definitions**, the leanest result, useful as compact grounding for SQL generation.
+`aidb.get_column_definitions()` returns just the matching column and table definitions, the leanest result, useful as compact grounding for SQL generation.
 
 ```sql
 SELECT definition
@@ -101,9 +80,9 @@ FROM aidb.get_column_definitions(
 
 Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Returns a single `definition` column.
 
-### `aidb.search_by_comment()`
+### Searching your documentation
 
-Matches only the natural-language `COMMENT ON` text attached to schemas, tables, and columns.
+`aidb.search_by_comment()` matches only the natural-language `COMMENT ON` text attached to schemas, tables, and columns.
 
 ```sql
 SELECT relation_name, column_name, comment, similarity
@@ -115,11 +94,17 @@ FROM aidb.search_by_comment(
 
 Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Returns `schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `similarity`.
 
-This is the most direct way to leverage documentation you've already written into your schema. For example, a column commented *"order lifecycle state: pending, confirmed, shipped, delivered, cancelled"* surfaces for a query like *"order status values"* even if the column itself is named `st`. Because comment search depends on well-documented objects, keeping `COMMENT ON` statements current is the highest-leverage way to improve a semantic KB's results.
+This is the most direct way to leverage documentation you've already written into your schema. For example, a column commented "order lifecycle state: pending, confirmed, shipped, delivered, cancelled" surfaces for a query like "order status values" even if the column itself is named `st`. Because comment search depends on well-documented objects, keeping `COMMENT ON` statements current is the highest-leverage way to improve a semantic KB's results.
 
-## `aidb.semantic_kb_subgraph()`
+## Tuning results
 
-Where `semantic_kb_search()` returns a list of matches, `semantic_kb_subgraph()` returns a question's *neighborhood*: it seeds from the search hits and adds the [relationships](relationships) around them, so you get the joins connected to a question, not just the entities.
+- `min_similarity` trades recall for precision. Lower it (for example `0.3`) when a query returns nothing. Raise it when results are too broad.
+- `top_k` / `offset` page through results.
+- `entity_types` narrows to the kinds you care about, such as `ARRAY['Column']`, when you're hunting for a specific field.
+
+## Finding the joins around a search
+
+Every function above this one returns matched objects — tables, columns, or aliases. `semantic_kb_subgraph()` doesn't: it's the search-driven counterpart to [`find_join_path()` and `suggest_joins()`](relationships#finding-a-join-route), returning the join neighborhood around a match instead of the match itself. Where those two functions start from table names you already know, this one starts from a natural-language query, seeds from the same kind of hits `semantic_kb_search()` returns, and adds the [relationships](relationships) around them — so you get the joins connected to a question, not just the entities.
 
 ```sql
 SELECT hop, from_object, to_object, via_object, kind, confidence, seeded_by
@@ -131,18 +116,13 @@ FROM aidb.semantic_kb_subgraph(
 );
 ```
 
-Parameters: `kb_name`, `query_text`, `top_k` (default `10`), `max_hops` (default `3`). Returns `hop`, `from_object`, `to_object`, `via_object` (populated for a `junction` hop), `kind`, `predicate`, `join_expr`, `confidence`, `seeded_by` (the matched object that pulled each hop in), and `truncated`.
+It returns one row per hop: `from_object` and `to_object`, the `kind` and `confidence` of the join, `via_object` for a `junction` hop, and `seeded_by`, the matched object that pulled that hop in. `top_k` (default `10`) controls how many search hits are seeded, and `max_hops` (default `3`) how far the neighborhood extends from them. See the [reference](../reference/semantic-knowledge-bases#aidbsemantic_kb_subgraph) for the full parameter and return-column list.
 
-Like the other [route-finders](relationships#finding-a-join-route), `semantic_kb_subgraph()` only traverses relationships that are `approved` and routable — see [the routability rule](relationships#status-and-confidence).
-
-## Tuning results
-
-- **`min_similarity`** trades recall for precision. Lower it (for example `0.3`) when a query returns nothing; raise it when results are too broad.
-- **`top_k` / `offset`** page through results.
-- **`entity_types`** narrows to the kinds you care about, such as `ARRAY['Column']`, when you're hunting for a specific field.
+It only traverses relationships that are `approved` and routable, the same restriction as the other route-finders — see [the routability rule](relationships#status-and-confidence).
 
 ## Next steps
 
-- Learn how tables join, and how to record joins yourself, in [Relationships](relationships).
+- Learn how tables join, and how to record a join by hand, in [relationships](relationships).
 - Save frequently asked questions as reusable, parameterized queries with [semantic aliases](semantic-aliases).
 - Let an agent drive these searches end to end in the [text-to-SQL](text-to-sql) workflow.
+- Look up every search function's full parameters and return columns in the [reference](../reference/semantic-knowledge-bases#search-functions).

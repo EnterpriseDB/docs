@@ -5,11 +5,15 @@ description: Write object descriptions, protect them from accidental overwrites,
 deepToC: true
 ---
 
-A well-commented schema produces a far more useful semantic KB — see [What a semantic KB indexes](./#what-a-semantic-kb-indexes). You can always write those comments with plain `COMMENT ON`, but `aidb.add_comment_to_object()` does the same write *and* reconciles every knowledge base that indexes the object, so the new text is searchable immediately, without waiting for a crawl.
+A well-commented schema produces a far more useful semantic KB — see [Indexing your schema](./#indexing-your-schema). You can always write those comments with plain `COMMENT ON`, but `aidb.add_comment_to_object()` does the same write and reconciles every knowledge base that indexes the object, so the new text is searchable immediately, without waiting for a crawl.
 
-This applies to any table, view, column, or constraint (`object_type => 'table' | 'view' | 'column' | 'constraint'`) — it's a general knowledge-base capability, not something specific to [relationships](relationships). Commenting on a constraint is also how you give a crawled relationship a business-readable name; see [Relationships and comment curation](#relationships-and-comment-curation).
+A semantic KB can add, protect, and remove descriptions safely — resolving concurrent edits and auditing every change along the way — and, if you turn on curation, hold each write for review before it goes live.
+
+This applies to any table, view, column, or constraint (`object_type => 'table' | 'view' | 'column' | 'constraint'`) — it's a general knowledge-base capability, not something specific to [relationships](relationships). Commenting on a constraint is also how you give a crawled relationship a business-readable name. See [Relationships and comment curation](#relationships-and-comment-curation).
 
 ## Writing a description
+
+Call `aidb.add_comment_to_object()` with the schema, object name, and comment text to write a description and reconcile every KB that indexes the object in one step:
 
 ```sql
 SELECT jsonb_pretty(aidb.add_comment_to_object(
@@ -28,7 +32,7 @@ __OUTPUT__
 `knowledge_bases_reconciled` names every KB updated by the write — an object can be indexed by more than one.
 
 !!!note Breaking change at 7.7.0
-`mode` defaults to `'add'`, and `'add'` now **refuses** when a description already exists, rather than overwriting it silently. Callers that relied on the old overwrite behavior must pass `mode => 'edit'` explicitly.
+`mode` defaults to `'add'`, and `'add'` now refuses when a description already exists, rather than overwriting it silently. Callers that relied on the old overwrite behavior must pass `mode => 'edit'` explicitly.
 !!!
 
 ```sql
@@ -148,13 +152,50 @@ Neither is registered as a native agent tool — see [Native tools](../tools/nat
 
 ## Relationships and comment curation
 
-Comment curation and [relationships](relationships) are separate features shipped in the same release. They don't gate each other, and the rules are worth spelling out since the two can look related at a glance:
+Comment curation and [relationships](relationships) are separate features shipped in the same release, and they don't gate each other, even though the two can look related at a glance:
 
 - `update_semantic_kb_curation()` controls comment writes only. Relationship writes never consult it.
 - A relationship an agent records is always stored as `status = 'proposed'`, regardless of the curation setting. It becomes routable through `aidb.accept_relationship_candidates()`, not through `resolve_object_comment()`.
 - `object_type => 'constraint'` is how a person attaches a business-readable description to a relationship the crawl found — see [The foreign-key crawl](relationships#the-foreign-key-crawl), where a constraint's comment becomes that relationship's `description`.
 
+This writes the description [the crawl example](relationships#the-foreign-key-crawl) shows already attached to `accounts_cust_id_fkey`:
+
+```sql
+SELECT jsonb_pretty(aidb.add_comment_to_object(
+  'bank', 'accounts', 'Every account belongs to exactly one customer.',
+  object_type => 'constraint', constraint_name => 'accounts_cust_id_fkey', kb_name => 'bank_kb'));
+```
+
+The same call accepts `object_type => 'column'` with `column_name` to comment on a column instead.
+
+## Common errors
+
+There are no custom SQLSTATEs on this surface — match on message text, and most of it carries the `Invalid parameters: ...` prefix. Three of these are covered where they come up: `mode => 'add'` refusing an existing description (see [Writing a description](#writing-a-description)), a protected description refusing an overwrite (see [Protecting existing descriptions](#protecting-existing-descriptions)), and a stale `expected_comment` refusing a concurrent edit (see [Handling concurrent edits](#handling-concurrent-edits)).
+
+`mode` and `decision` are controlled vocabularies too, validated at the point they're read, with the allowed values listed in the error:
+
+```sql
+SELECT aidb.add_comment_to_object('bank', 'events', 'x', kb_name => 'bank_kb', mode => 'bogus');
+__OUTPUT__
+ERROR:  Invalid parameters: mode 'bogus' is not one of 'add' or 'edit'
+```
+
+```sql
+SELECT aidb.resolve_object_comment('bank_kb', 'bank', 'events', 'maybe');
+__OUTPUT__
+ERROR:  Invalid parameters: decision 'maybe' is not one of 'approve' or 'reject'
+```
+
+A valid decision still fails if there's nothing to decide on:
+
+```sql
+SELECT aidb.resolve_object_comment('bank_kb', 'bank', 'events', 'approve');
+__OUTPUT__
+ERROR:  Invalid parameters: bank.events has no comment awaiting a decision
+```
+
 ## Next steps
 
 - See how a crawled relationship's `description` comes from a constraint comment in [Relationships](relationships).
 - Review the full search surface, including proposed content, in [Searching a semantic KB](searching).
+- Look up every curation function's full parameters and return columns in the [reference](../reference/semantic-knowledge-bases#comment-curation-functions).
