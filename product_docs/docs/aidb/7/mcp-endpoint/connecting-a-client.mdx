@@ -1,0 +1,128 @@
+---
+title: Connecting a client
+navTitle: Connecting a client
+description: The MCP wire protocol over curl, what execute_sql returns, and reaching the endpoint from another host.
+---
+
+The MCP endpoint speaks streamable HTTP at `/mcp`. Point any MCP client that supports streamable HTTP and HTTP Basic authentication at the endpoint's URL, and give it a Postgres username and password. The examples below use `http://<mcp-host>:8765/mcp` as a placeholder — substitute `127.0.0.1` if your client runs on the database host itself (the loopback default), or the endpoint's routable host and `https` if you've set up [Serving remote clients](#serving-remote-clients).
+
+The steps below show the wire protocol with curl. The endpoint answers in the server-sent events format, so the JSON-RPC response is the line that starts with `data:` rather than the whole response body.
+
+1. Open a session. The handshake needs no credentials.
+
+   ```shell
+   curl -sS -D - http://<mcp-host>:8765/mcp \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     -d '{"jsonrpc": "2.0", "id": 1, "method": "initialize",
+          "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                     "clientInfo": {"name": "example", "version": "0"}}}'
+   ```
+
+   The response headers include `mcp-session-id`. Copy it and use it as `$SESSION_ID` on every later request.
+
+1. Acknowledge the handshake, replacing `$SESSION_ID` with the id from the previous step.
+
+   ```shell
+   curl -sS http://<mcp-host>:8765/mcp \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     -H "mcp-session-id: $SESSION_ID" \
+     -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
+   ```
+
+1. List tools as a Postgres role. `tools/list` returns every tool the catalog holds, plus the built-in `execute_sql`.
+
+   ```shell
+   curl -sS http://<mcp-host>:8765/mcp \
+     -u <username>:<password> \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     -H "mcp-session-id: $SESSION_ID" \
+     -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}'
+   ```
+
+   `<username>:<password>` is a Postgres role you've created and granted access to. See [Provisioning example](provisioning-example) for a worked example with real role names and grants.
+
+1. Call a tool with `tools/call`, naming the tool and its arguments. For the built-in `execute_sql`, the single argument is `sql`:
+
+   ```shell
+   curl -sS http://<mcp-host>:8765/mcp \
+     -u <username>:<password> \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     -H "mcp-session-id: $SESSION_ID" \
+     -d '{"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+          "params": {"name": "execute_sql", "arguments": {"sql": "SELECT 41 + 1 AS answer"}}}'
+   ```
+
+   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Calling a catalog tool is the same request with its own name and declared arguments, for example `"name": "add_order", "arguments": {"item": "gizmo", "amount": 4.20}`.
+
+Behind the scenes, each call opens a fresh Postgres connection as the authenticated role and runs the request: `tools/list` reads the catalog through `aidb.get_mcp_tools()`, `tools/call` runs a catalog tool through `aidb.run_tool()`, and `execute_sql` executes the statement directly. The connection then closes and the result comes back. Postgres errors pass through unchanged: `tools/call` returns them as MCP `isError` results, `tools/list` as a JSON-RPC error. A wrong password surfaces as `password authentication failed`, a missing grant as `permission denied`, and an unknown tool as `tool '<name>' not found in aidb.tools`.
+
+MCP clients can send a `notifications/cancelled` message to cancel one of their own in-flight requests, naming the `id` of the in-flight call. The endpoint cancels the Postgres statement behind that request, including a statement running inside `aidb.run_tool()`, and the session keeps serving afterward.
+
+```shell
+curl -sS http://<mcp-host>:8765/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{"jsonrpc": "2.0", "method": "notifications/cancelled",
+       "params": {"requestId": 3, "reason": "user aborted"}}'
+```
+
+## Result encoding for `execute_sql`
+
+Each `execute_sql` call is one statement in autocommit mode. Transactions can't span calls, so `BEGIN` and `COMMIT` in separate calls aren't supported. Results are capped at 10000 rows and 10 MiB serialized, and a query over either cap returns an error with no rows. DML without `RETURNING` returns `{"rows_affected": N}`, and row-returning statements return a JSON array of objects keyed by column name.
+
+The built-in `execute_sql` tool renders each column from its binary value, so the output doesn't depend on session settings such as `DateStyle`, `IntervalStyle`, or `bytea_output`. Unsupported column types are rejected before any row is returned, so `SELECT 1.00::money WHERE false` fails the same way as `SELECT 1.00::money`. User-defined enums, arrays, ranges, and domains over supported types work.
+
+| Postgres type                                       | JSON rendering                                                                                                                                                  |
+|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `bool`, `int2`, `int4`, `float4`, `float8`          | Native scalar. Non-finite floats are an error.                                                                                                                  |
+| `int8`                                              | Number when within ±(2^53 - 1), otherwise a decimal string. If any value in a column overflows, the whole column is rendered as strings.                          |
+| `json`, `jsonb`                                     | The document itself.                                                                                                                                            |
+| `text`, `varchar`, `bpchar`, `name`, enums          | String.                                                                                                                                                         |
+| `timestamptz`                                       | RFC 3339 in UTC with a `Z` suffix. `infinity` and `-infinity` as strings.                                                                                       |
+| `timestamp`, `date`, `time`, `timetz`               | ISO 8601 string. Years outside 0000 to 9999 use the expanded form with a sign, such as `+10000-01-01`. Years before the Common Era carry a `BC` suffix. Dates beyond year 262142 are an error with a hint to cast to `TEXT`. |
+| `interval`                                          | ISO 8601 duration such as `P1Y2M3DT4H5M6S`, signed per component.                                                                                               |
+| `numeric`                                           | Full-precision decimal string, or `NaN`, `Infinity`, `-Infinity`.                                                                                               |
+| `uuid`, `inet`, `cidr`, `macaddr`                   | Postgres text form.                                                                                                                                             |
+| `bytea`                                             | Padded base64.                                                                                                                                                  |
+| Arrays                                              | JSON array, nested per dimension, with elements rendered per this table.                                                                                        |
+| Ranges                                              | Postgres literal such as `[1,10)`, with bounds rendered per this table and quoted as `range_out` would.                                                          |
+| `money`, composite types, multiranges, PostGIS types | Error with a hint to cast the column to `TEXT`.                                                                                                                |
+
+`money` is unsupported because its text form depends on `lc_monetary`. A result with two columns of the same name, such as `SELECT 1 AS id, 2 AS id`, is an error. No column is dropped.
+
+## Serving remote clients
+
+By default the endpoint listens on loopback over plain HTTP, which is fine when the MCP client runs on the database host. To serve clients on other hosts, set `edb.endpoints_mcp_host` to a routable address in `postgresql.conf` and give the endpoint a certificate and key:
+
+```ini
+edb.endpoints_mcp_host = '0.0.0.0'
+edb.endpoints_mcp_tls_cert = '/etc/edb/endpoints/server.crt'
+edb.endpoints_mcp_tls_key = '/etc/edb/endpoints/server.key'
+```
+
+Then reload with `SELECT pg_reload_conf();`. The supervisor enforces these constraints:
+
+- `edb.endpoints_mcp_tls_cert` and `edb.endpoints_mcp_tls_key` are set together or not at all. Both are PEM files.
+- Plain HTTP is only served on loopback (`127.0.0.1`, `::1`, or `localhost`). The supervisor refuses to listen on a non-loopback host without the TLS pair.
+- The supervisor checks that both files exist before starting the endpoint. A wrong path idles the supervisor with a warning in the Postgres log.
+
+The connection from the endpoint to Postgres uses the local Unix socket with `sslmode=disable`, because it never leaves the host (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Agent credentials are protected on the wire by TLS between the client and the endpoint, and Postgres authenticates them with whatever method `pg_hba.conf` names for that connection.
+
+The three curl steps above — open a session, acknowledge the handshake, and call a tool — are the same for a remote client: only the URL changes. `edb.endpoints_mcp_host` is the address the endpoint binds to, not what the client connects to — the client uses the host name the certificate covers, over `https`, on the same port:
+
+```shell
+curl -sS -D - https://db.example.com:8765/mcp \
+  --cacert /path/to/ca.crt \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "initialize",
+       "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                  "clientInfo": {"name": "example", "version": "0"}}}'
+```
+
+`--cacert` is only needed when the certificate isn't from a CA the client already trusts. The handshake still needs no credentials. Every `tools/list` and `tools/call` still carries the agent's Postgres username and password as HTTP Basic auth, which is why plain HTTP is refused off loopback in the first place — the password would otherwise cross the network in the clear.
