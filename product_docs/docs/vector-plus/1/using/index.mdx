@@ -1,0 +1,84 @@
+---
+title: Using Vector Plus
+navTitle: Using
+deepToC: true
+navigation:
+- tuning
+- measuring-recall
+- filtering
+description: How to store and query vector data with ivfplus, decide when to build an index, and where to go for tuning, filtering, and recall guidance.
+---
+
+Store and query vector data, decide whether you need an index yet, and find your way to the deeper guidance on tuning, filtering, and measuring recall.
+
+## Storing vectors
+
+Add a `vector` column to a table, specifying the number of dimensions:
+
+```sql
+CREATE TABLE items (
+    id        bigserial PRIMARY KEY,
+    content   text,
+    embedding vector(768)
+);
+```
+
+The dimension count must match the output of your embedding model. Common values:
+
+| Embedding model               | Dimensions |
+|-------------------------------|------------|
+| OpenAI text-embedding-3-small | 1536       |
+| OpenAI text-embedding-3-large | 3072       |
+| Google text-embedding-004     | 768        |
+| Nomic Embed Text              | 768        |
+
+Insert a row with a vector value:
+
+```sql
+INSERT INTO items (content, embedding)
+VALUES ('example text', '[...]');
+```
+
+## Querying vectors
+
+`ivfplus` supports the same distance operators as pgvector, through the matching opclass (see [Access method and operator classes](../reference#access-method-and-operator-classes)):
+
+| Operator | Distance metric | Use case                                                      |
+|----------|------------------|-----------------------------------------------------------------|
+| `<->`    | L2 (Euclidean)   | General-purpose similarity, default for most embedding models   |
+| `<=>`    | Cosine           | When vector magnitude varies, normalized embeddings             |
+| `<#>`    | Inner product    | Maximum inner product search                                    |
+
+Find the 10 nearest neighbors by L2 distance:
+
+```sql
+SELECT id, content FROM items ORDER BY embedding <-> '[...]' LIMIT 10;
+```
+
+## Do you need an index yet?
+
+Without an index, a query scans every row and returns exact results. For tables with fewer than around a million rows, a sequential scan is often fast enough, and skipping the index avoids build time and maintenance overhead. Add an `ivfplus` index once query latency at your actual row count becomes a problem.
+
+## Building your first index
+
+See [Quickstart](../overview/quickstart) for a complete walkthrough: creating the table, loading data, building the index, and running a query.
+
+## Tuning `lists` and `probes`
+
+`lists` is set once at build time and `probes` is tunable per session; both affect recall, latency, and index size. See [Tuning and sizing](tuning) for how to choose them.
+
+## Storage optimization
+
+For best query performance, keep the index in memory (`shared_buffers` plus the OS page cache). If it's too large to fit, use fast NVMe storage to minimize the latency of index page reads.
+
+## Vacuuming and REINDEX
+
+Plain `VACUUM` doesn't reclaim space in an `ivfplus` index — deleted or updated rows tombstone their lane, and only `REINDEX` repacks the index and reuses that space. See [Writes, VACUUM, and REINDEX](../reference#writes-vacuum-and-reindex) for the full behavior and how to monitor drift with `check_ivfplus_index_health()`.
+
+## Filtering and hybrid search
+
+`ivfplus` supports `WHERE`-clause filtering and combining results with full-text search. See [Filtering and hybrid search](filtering).
+
+## Measuring recall and benchmarking
+
+`ivfplus` is an approximate index, so validate its recall before relying on it in production. See [Measuring recall](measuring-recall) for how to measure it, and for `vsbt`, EDB's benchmarking tool.
