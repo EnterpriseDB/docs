@@ -43,6 +43,45 @@ While a host may contain multiple segments, `whpg-copy` only requires a single a
 
 If the diagnosis fails, it will report which specific segments or connections are blocked, allowing you to troubleshoot firewall or routing issues.
 
+If a destination host name resolves to more than one address, for example a private interconnect network and a network reachable from the source, pin the network `whpg-copy` uses with `--dst-address-cidr`:
+
+```bash
+whpg-copy diagnose \
+    --src-url <src_url> \
+    --dst-url <dst_url> \
+    --port-range <min_port>-<max_port> \
+    --dst-address-cidr 10.0.0.0/8
+```
+
+When you run `whpg-copy copy`, pass it the same `--dst-address-cidr` value, so `diagnose` has already tested the addresses the copy will use. Without it, the lowest resolved address is used, with IPv4 preferred over IPv6 unless the host resolves to no IPv4 address at all.
+
+## Encrypting the data transfer
+
+Protect the data-transfer connection between source and destination hosts with TLS (Transport Layer Security):
+
+1. Generate a certificate authority (CA) plus a server and client certificate with the `gen-certs` subcommand:
+
+    ```bash
+    whpg-copy gen-certs --out-dir ./whpg-copy-certs
+    ```
+
+    `gen-certs` writes `ca.crt`, `ca.key`, `server.crt`, `server.key`, `client.crt`, and `client.key` to the output directory.
+
+1. Copy the certificates to the same path on every host in your source and destination WHPG clusters. Destination hosts need `server.crt`, `server.key`, and `ca.crt`. Source hosts need `client.crt`, `client.key`, and `ca.crt`. Keep `ca.key` offline and don't copy it anywhere.
+
+1. Pass `--tls-mode` and `--tls-dir` to `whpg-copy copy` (and to `whpg-copy diagnose`, if you want to test the encrypted path first):
+
+    ```bash
+    whpg-copy copy \
+        --src-url postgres://gpadmin@mdw_src:5432/src_db \
+        --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+        --tls-mode mutual \
+        --tls-dir /etc/whpg-copy/tls
+    ```
+
+    `server-auth` mode has senders verify the destination's certificate without presenting a client certificate of their own. `mutual` mode also requires the destination to verify a client certificate from each sender.
+
+See [whpg-copy gen-certs](reference/whpg-copy-utility#gen-certs) for certificate options and [whpg-copy copy](reference/whpg-copy-utility#copy) for the full list of TLS options.
 
 ## Choosing your configuration settings
 
@@ -56,6 +95,12 @@ To quickly create a configuration file with all available options, run:
 ```bash
 whpg-copy config-example > my_config.toml
 ```
+
+The option `--target-mode` determines what happens to a table when it already exists on the destination. The default, `append`, inserts into the existing table. Use `truncate` to empty it first, `skip` to leave it untouched, or `drop` to recreate it from the source's DDL before copying, for example when the source and destination schemas have diverged. To preserve the source table's ownership and privileges through a `drop` recreation, add `--with-owner` and `--with-privilege`.
+
+For a large bulk load, use `--rebuild-indexes` to drop droppable secondary indexes before the load and rebuild them afterward inside the same destination transaction. This approach is usually faster than maintaining every index row by row during the copy.
+
+To create the schemas and tables on the destination without transferring any data, for example to stage a destination ahead of a full migration, use `--metadata-only`.
 
 For a full list of parameters, see [whpg-copy copy](reference/whpg-copy-utility#copy) and [whpg-copy configuration file](reference/config_file).
 
@@ -78,6 +123,10 @@ Using a TOML configuration file:
 ```bash
 whpg-copy copy --config-file my_whpg_copy.toml
 ```
+
+Before transferring any data, `copy` checks that every destination host is reachable, and fails within 30 seconds if it can't connect. Skip this preflight check with `--preflight false`. Each data transfer then has up to 120 seconds to connect to the destination daemon and start receiving data. Raise or lower this time limit with `--timeout`, or set it to `0` to wait indefinitely, except during the preflight check, which is always capped at 30 seconds.
+
+While the copy runs, `whpg-copy` shows live transfer statistics in the terminal, polled every 5 seconds by default. Adjust this interval with `--progress-poll-interval`, or set it to `0` to turn off progress polling.
 
 ## Verifying the copy operation
 
@@ -125,6 +174,28 @@ whpg-copy copy -c wc_failed_retry.<APP_ID>.toml
     dst_url = "postgres://gpadmin@mdw_dst:5432/dst_db"
     [[mapping_rules]]
     src_table = "to_copy.*"
+    ```
+
+- Copy the schema only, without transferring any data:
+
+    ```bash
+    whpg-copy copy \
+        --src-url postgres://gpadmin@mdw_src:5432/src_db \
+        --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+        --metadata-only true
+    ```
+
+- Recreate a table on the destination from the source's current DDL, keeping its ownership and privileges, and rebuild its indexes around the bulk load:
+
+    ```bash
+    whpg-copy copy \
+        --src-url postgres://gpadmin@mdw_src:5432/src_db \
+        --dst-url postgres://gpadmin@mdw_dst:5432/dst_db \
+        --include-table s1.table1 \
+        --target-mode drop \
+        --with-owner \
+        --with-privilege \
+        --rebuild-indexes true
     ```
 
 
