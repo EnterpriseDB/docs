@@ -9,6 +9,8 @@ Two parameters control `ivfplus` at build and query time: `lists`, set once when
 
 ## Choosing `lists`
 
+`lists` is set once, at index build time, and doesn't auto-scale with row count — you choose it explicitly, using the guidance below.
+
 The default is 100, with a range of 1–32768, and it's independent of row count. A 50-million-row table indexed without a `WITH` clause gets 500,000 rows per list and unusable latency, silently, with no warning. Set it explicitly:
 
 | Rows     | `lists`                                       |
@@ -23,7 +25,7 @@ As `lists` grows:
 - `lists >= 1800` switches the index to the two-level hierarchy (see [Architecture](../overview/architecture)).
 - The two-level build is single-threaded, so crossing that line silently forfeits parallelism. Nothing reports it — budget for a longer build.
 
-If sampled rows come out fewer than `lists`, the build emits `NOTICE: ivfplus index created with little data`. This means the clustering had almost nothing to work with, and learned centroids might be useless, resulting in low recall after future inserts.
+If sampled rows come out fewer than `lists`, the build emits `NOTICE: ivfplus index created with little data`. This means the clustering had almost nothing to work with, and learned centroids might be useless, resulting in low recall after future inserts. This is preventable: choose `lists` for your actual row count as described above, rather than a value that outgrows your table's size.
 
 ## Choosing `probes`
 
@@ -39,6 +41,8 @@ Start at `sqrt(lists)` and raise until recall is good enough (see [Measuring rec
 A vector-opclass scan returns at most 200 rows per probed query. The rerank pool is a fixed-size structure with no runtime knob, so `LIMIT 500` silently returns fewer rows regardless of `probes`.
 
 ## Index size and build cost
+
+The following table breaks down where an index's storage goes, in bytes per row, by region and by which kind of build produces it:
 
 | Region              | Bytes per row                                            | Present when                          |
 |---------------------|----------------------------------------------------------|---------------------------------------|

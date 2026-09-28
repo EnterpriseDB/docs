@@ -1,15 +1,9 @@
 ---
-title: Using Vector Plus
-navTitle: Using
+title: Storing and querying vectors
+navTitle: Storing and querying
 deepToC: true
-navigation:
-- tuning
-- measuring-recall
-- filtering
-description: How to store and query vector data with ivfplus, decide when to build an index, and where to go for tuning, filtering, and recall guidance.
+description: How to store vector data, query it with ivfplus's distance operators, decide when to build an index, and maintain the index over time.
 ---
-
-Store and query vector data, decide whether you need an index yet, and find your way to the deeper guidance on tuning, filtering, and measuring recall.
 
 ## Storing vectors
 
@@ -55,30 +49,26 @@ Find the 10 nearest neighbors by L2 distance:
 SELECT id, content FROM items ORDER BY embedding <-> '[...]' LIMIT 10;
 ```
 
-## Do you need an index yet?
+## Building an index
 
-Without an index, a query scans every row and returns exact results. For tables with fewer than around a million rows, a sequential scan is often fast enough, and skipping the index avoids build time and maintenance overhead. Add an `ivfplus` index once query latency at your actual row count becomes a problem.
+Without an index, a query scans every row and returns exact results. To check whether that's still fast enough for your workload, run `EXPLAIN (ANALYZE, BUFFERS)` on your query as-is and compare its actual time against your latency budget. If it's within budget, skip the index for now; add one once it isn't.
 
-## Building your first index
+Build an `ivfplus` index and set a starting `probes` value for your session:
 
-See [Quickstart](../overview/quickstart) for a complete walkthrough: creating the table, loading data, building the index, and running a query.
+```sql
+CREATE INDEX ON items USING ivfplus (embedding vector_l2_ops) WITH (lists = 1000);
 
-## Tuning `lists` and `probes`
+SET ivfplus.probes = 32;
+```
 
-`lists` is set once at build time and `probes` is tunable per session; both affect recall, latency, and index size. See [Tuning and sizing](tuning) for how to choose them.
+Once the index exists, your queries don't change — `ivfplus` only changes which rows the planner considers first. See [Quickstart](../overview/quickstart) for a complete walkthrough with example data, and [Tuning and sizing](tuning) for how to choose `lists` and `probes` for your table.
 
-## Storage optimization
+## Maintaining the index
+
+### Storage
 
 For best query performance, keep the index in memory (`shared_buffers` plus the OS page cache). If it's too large to fit, use fast NVMe storage to minimize the latency of index page reads.
 
-## Vacuuming and REINDEX
+### Vacuuming and REINDEX
 
 Plain `VACUUM` doesn't reclaim space in an `ivfplus` index — deleted or updated rows tombstone their lane, and only `REINDEX` repacks the index and reuses that space. See [Writes, VACUUM, and REINDEX](../reference#writes-vacuum-and-reindex) for the full behavior and how to monitor drift with `check_ivfplus_index_health()`.
-
-## Filtering and hybrid search
-
-`ivfplus` supports `WHERE`-clause filtering and combining results with full-text search. See [Filtering and hybrid search](filtering).
-
-## Measuring recall and benchmarking
-
-`ivfplus` is an approximate index, so validate its recall before relying on it in production. See [Measuring recall](measuring-recall) for how to measure it, and for `vsbt`, EDB's benchmarking tool.
