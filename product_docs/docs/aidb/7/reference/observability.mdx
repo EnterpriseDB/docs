@@ -4,7 +4,7 @@ navTitle: Observability
 description: Reference for AIDB's built-in OpenTelemetry tracing — the aidb_otel schema, storage format, functions, background workers, and the trace attributes AIDB emits.
 ---
 
-AIDB emits OpenTelemetry (OTel) traces, logs, and metrics for its own function calls, background workers, and SQL query execution. This page is the schema, storage-format, and function reference. For the GUCs that turn this feature on and configure it, see [Configuring AIDB parameters — OpenTelemetry tracing](../install/configure#opentelemetry-tracing).
+AIDB emits OpenTelemetry (OTel) traces, logs, and metrics for its own function calls, background workers, and SQL query execution. For the GUCs that turn this feature on and configure it, see [Configuring AIDB parameters — OpenTelemetry tracing](../install/configure#opentelemetry-tracing).
 
 ## Schemas
 
@@ -14,9 +14,11 @@ When `aidb.otel_client = 'database'`, AIDB writes traces, logs, and metrics into
 - `aidb_otel.logs` — one row per log record.
 - `aidb_otel.metrics` — one row per periodic metrics snapshot (a `PeriodicReader` collection bundling every instrument at that point in time).
 
-All three tables share a common set of columns, plus a few columns specific to that table.
+All three tables share a common set of columns, plus a few columns specific to each.
 
 ### Common columns
+
+Every row in all three tables carries these columns:
 
 | Column             | Type        | Description                                                                                                          |
 |--------------------|-------------|------------------------------------------------------------------------------------------------------------------------|
@@ -24,16 +26,16 @@ All three tables share a common set of columns, plus a few columns specific to t
 | `recorded_at`      | timestamptz | When the row was written.                                                                                             |
 | `payload_json`     | jsonb       | The item as an OTLP protojson `Export{Metrics,Logs,Trace}ServiceRequest`. Populated when `aidb.otel_client_storage_format` is `json` or `both`. |
 | `payload_binary`   | bytea       | The same item as raw OTLP protobuf wire bytes. Populated when `aidb.otel_client_storage_format` is `binary` or `both`. |
-| `export_status`    | text        | `pending`, `exported`, or `failed`. Only meaningful when the [exporter worker](#exporter-background-worker) is enabled — stays `pending` forever otherwise. |
+| `export_status`    | text        | `pending`, `exported`, or `failed`. Only meaningful when the [exporter worker](#exporting-traces-logs-and-metrics) is enabled — stays `pending` forever otherwise. |
 | `export_attempts`  | integer     | Number of export attempts made so far.                                                                                 |
 | `next_export_attempt_at` | timestamptz | Earliest time the exporter will retry this row. `NULL` once exported or permanently failed.                     |
 | `last_export_error`| text        | Error message from the most recent failed export attempt.                                                              |
 
-At least one of `payload_json`/`payload_binary` is always populated — see [Storage format](#storage-format).
+At least one of `payload_json`/`payload_binary` is always populated — see [Storage format](#configuring-storage-format).
 
 ### `aidb_otel.traces` — additional columns
 
-Each row is exactly one span. These identifier and attribute columns are extracted from the span before either payload column is serialized, so they're available regardless of storage format, and querying them never requires parsing JSON or protobuf back open.
+Each row is exactly one span. These identifier and attribute columns are extracted from the span before either payload column is serialized, so they're available regardless of storage format, and querying them never requires parsing the JSON or protobuf payload.
 
 | Column                     | Type | Description                                                                                                    |
 |-----------------------------|------|------------------------------------------------------------------------------------------------------------------|
@@ -43,11 +45,13 @@ Each row is exactly one span. These identifier and attribute columns are extract
 | `pg_session_id`             | text | The `db.postgresql.session_id` attribute, when present. Partial index excluding `NULL` (`traces_pg_session_id_idx`). |
 | `gen_ai_conversation_id`    | text | The `gen_ai.conversation.id` attribute, when present. Partial index excluding `NULL` (`traces_gen_ai_conversation_id_idx`). |
 | `mcp_session_id`            | text | The `mcp.session.id` attribute, when present. Partial index excluding `NULL` (`traces_mcp_session_id_idx`). |
-| `decision_status`           | text | The `aidb.agent.decision.action_status` attribute (`allowed` or `denied`), when present — only the one `purpose_decision` span per enforcement decision carries it. Partial index excluding `NULL` (`traces_decision_status_idx`). Lets a per-agent allowed/denied rollup over a time window use an index range scan instead of scanning `payload_json`. See [Purpose-enforcement decisions](#purpose-enforcement-decisions). |
+| `decision_status`           | text | The `aidb.agent.decision.action_status` attribute (`allowed` or `denied`), when present — only the one `purpose_decision` span per enforcement decision carries it. Partial index excluding `NULL` (`traces_decision_status_idx`). Lets a per-agent allowed/denied rollup over a time window use an index range scan instead of scanning `payload_json`. See [Purpose-enforcement decisions](#recording-purpose-enforcement-decisions). |
 
-`trace_id`/`span_id`/`parent_span_id` are lowercase hex, the same representation `payload_json`'s own `traceId`/`spanId`/`parentSpanId` fields use — the two do string-match, so you can look up a row by either. (This isn't the same as `payload_binary`'s raw OTLP protobuf `bytes` fields, which aren't hex or text at all.)
+`trace_id`/`span_id`/`parent_span_id` are lowercase hex, the same representation `payload_json`'s own `traceId`/`spanId`/`parentSpanId` fields use — the two match as strings, so you can look up a row by either. (This isn't the same as `payload_binary`'s raw OTLP protobuf `bytes` fields, which aren't hex or text at all.)
 
 ### `aidb_otel.logs` — additional columns
+
+Each row is one log record, with two columns linking it back to the span it was emitted under:
 
 | Column      | Type | Description                                                                                          |
 |-------------|------|--------------------------------------------------------------------------------------------------------|
@@ -56,7 +60,7 @@ Each row is exactly one span. These identifier and attribute columns are extract
 
 ## Configuring storage format
 
-The `aidb.otel_client_storage_format` GUC controls which payload column the `database` client (one of the `aidb.otel_client` destinations — see [Configuring AIDB parameters](../install/configure#opentelemetry-tracing)) writes to: `payload_json`, `payload_binary`, or both — the two columns described under [Common columns](#common-columns) above. Values:
+The `aidb.otel_client_storage_format` GUC controls which payload column the `database` client (one of the `aidb.otel_client` destinations — see [Configuring AIDB parameters](../install/configure#opentelemetry-tracing)) writes to: `payload_json`, `payload_binary`, or both — the two columns described under [Common columns](#common-columns). Values:
 
 | Value    | `payload_json` | `payload_binary` | Notes                                                                                     |
 |----------|:--------------:|:-----------------:|--------------------------------------------------------------------------------------------|
@@ -66,13 +70,15 @@ The `aidb.otel_client_storage_format` GUC controls which payload column the `dat
 
 `aidb.otel_client_storage_format` only affects the `database` client (`aidb.otel_client = 'database'`). It has no effect on `noop` (nothing is written), `stdout` or `grpc` (both always emit the full OTLP payload directly, not through these columns), or `log`, which always writes `payload_json` regardless of this setting, since a server log line is a human-readable debugging aid, not storage a collector later forwards.
 
-When exporting a row that has both payloads populated (`storage_format = both`), the [exporter worker](#exporter-background-worker) sends only `payload_binary`, since it's cheaper to have produced.
+When exporting a row that has both payloads populated (`storage_format = both`), the [exporter worker](#exporting-traces-logs-and-metrics) sends only `payload_binary`, since it's cheaper to have produced.
 
-## Functions
+## Triggering retention cleanup
+
+The cleaner background worker deletes old rows automatically (see [Running background workers](#running-background-workers)), but this function lets you trigger a cleanup pass immediately instead of waiting for its next tick.
 
 ### `aidb.run_otel_retention_cleanup()`
 
-Manually triggers a full retention cleanup pass, deleting rows older than `aidb.otel_cleaner_retention_days` from all three `aidb_otel` tables, in the same bounded batches the [cleaner background worker](#cleaner-background-worker) uses. Runs immediately, regardless of `aidb.otel_cleaner_enabled` — useful for an ops task or a test that shouldn't wait for the worker's own wake-up interval.
+Manually triggers a full retention cleanup pass, deleting rows older than `aidb.otel_cleaner_retention_days` from all three `aidb_otel` tables, in the same bounded batches the [cleaner background worker](#cleaning-up-expired-rows) uses. Runs immediately, regardless of `aidb.otel_cleaner_enabled` — useful for an ops task or a test that shouldn't wait for the worker's own wake-up interval.
 
 Requires the `aidb_governance` role (see [Managing audit access](../install/configure#managing-audit-access-with-the-aidb_governance-role)) — `aidb_users` has no `EXECUTE` on this function.
 
@@ -88,13 +94,13 @@ There's no equivalent manual trigger for the exporter. Forwarding to an external
 
 Internally, the `database` client writes through `aidb_otel.store_metrics()`, `aidb_otel.store_logs()`, and `aidb_otel.store_traces()`. These aren't meant to be called directly — `aidb_users` has `EXECUTE` on them (needed for any traced call to work) but no `SELECT` on the tables they write to.
 
-## Background workers
+## Running background workers
 
 Two background workers run per database, each spawned only when enabled for that database (see [Configuring AIDB parameters](../install/configure#opentelemetry-tracing) for the governing GUCs).
 
-### Exporter background worker
+### Exporting traces, logs, and metrics
 
-Forwards pending, due rows from `aidb_otel.{traces,logs,metrics}` to the OTLP/HTTP collector at `aidb.otel_exporter_endpoint`, on a 15-second tick. `payload_json` rows are sent as OTLP/HTTP+JSON; `payload_binary` rows are sent as OTLP/HTTP+protobuf (`Content-Type: application/x-protobuf`) — a real OTel Collector's HTTP receiver dispatches on that header, so both formats share the same endpoint. Every outbound request goes through AIDB's [egress allowlist](../install/configure#network-egress).
+Forwards pending, due rows from `aidb_otel.{traces,logs,metrics}` to the OTLP/HTTP collector at `aidb.otel_exporter_endpoint`, on a 15-second tick. `payload_json` rows are sent as OTLP/HTTP+JSON. `payload_binary` rows are sent as OTLP/HTTP+protobuf (`Content-Type: application/x-protobuf`) — a real OTel Collector's HTTP receiver dispatches on that header, so both formats share the same endpoint. Every outbound request goes through AIDB's [egress allowlist](../install/configure#network-egress).
 
 Failed deliveries back off per row (not per tick), so one row's retry schedule never blocks the rest of the batch. After `aidb.otel_exporter_max_retries` attempts, a row is marked `export_status = 'failed'` and stops being retried automatically — find these with:
 
@@ -102,15 +108,15 @@ Failed deliveries back off per row (not per tick), so one row's retry schedule n
 SELECT * FROM aidb_otel.traces WHERE export_status = 'failed';
 ```
 
-### Cleaner background worker
+### Cleaning up expired rows
 
 Deletes rows older than `aidb.otel_cleaner_retention_days` from all three tables, in batches of `aidb.otel_cleaner_batch_size`, on an hourly tick. Set `aidb.otel_cleaner_retention_days = 0` to disable cleanup entirely without stopping the worker itself.
 
 ## Traced attributes
 
-AIDB attaches attributes to spans following, where applicable, [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/) (`gen_ai.*`, `db.*`, `error.type`), plus custom `aidb.*` attributes for concepts with no standard equivalent. These attributes are recorded automatically whenever tracing is enabled — you don't set them yourself; they reflect what AIDB observes about each call.
+AIDB attaches attributes to spans, following [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/) where applicable (`gen_ai.*`, `db.*`, `error.type`), plus custom `aidb.*` attributes for concepts with no standard equivalent. These attributes are recorded automatically whenever tracing is enabled — you don't set them yourself. They reflect what AIDB observes about each call.
 
-### Resource attributes
+### Setting resource attributes
 
 Set once per process, shared by every signal (traces, logs, and metrics):
 
@@ -120,7 +126,9 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 | `aidb.database.name`   | Name of the database the backend is connected to.                   |
 | `aidb.database.oid`    | OID of that database.                                                |
 
-### Root-span attribute
+### Setting root-span attribute
+
+Set once per trace, only on its root span:
 
 | Attribute                    | Description                                                                     |
 |-------------------------------|-----------------------------------------------------------------------------------|
@@ -128,7 +136,9 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 
 `db.postgresql.session_id` uses the format `<start_time_hex>.<pid_hex>`, matching Postgres's own `%c` log_line_prefix escape. It's per-connection, so it's set only on each trace's root span — not on every span, and not as a resource attribute — since sharing it with the metrics pipeline would inflate metric cardinality. It's promoted to the indexed `pg_session_id` column on `aidb_otel.traces`.
 
-### Agent Hub
+### Recording Agent Hub attributes
+
+Set on spans for agent conversations, tasks, and messages:
 
 | Attribute                  | Description                                                          |
 |------------------------------|-----------------------------------------------------------------------|
@@ -144,7 +154,9 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 | `aidb.read_only`             | Whether the call was read-only. Shared with Tools Hub — not agent-exclusive. |
 | `error.type`                 | Error classification on a failed call.                                 |
 
-### Tools Hub
+### Recording Tools Hub attributes
+
+Set on spans for tool calls, including those imported from an MCP server:
 
 | Attribute               | Description                                                              |
 |---------------------------|-----------------------------------------------------------------------|
@@ -155,7 +167,7 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 | `aidb.tool.call_count`    | Number of tool calls in a batch invocation.                            |
 | `mcp.session.id`          | MCP session ID, when a tool call happens within one. Promoted to the indexed `mcp_session_id` column on `aidb_otel.traces`. |
 
-### Purpose-enforcement decisions
+### Recording purpose-enforcement decisions
 
 Every tool SQL execution run under a purpose-resolved role emits exactly one `purpose_decision` span carrying these attributes:
 
@@ -168,13 +180,15 @@ Every tool SQL execution run under a purpose-resolved role emits exactly one `pu
 | `aidb.agent.decision.agent_role`        | The purpose-resolved Postgres role the action ran (or would have run) as.                                            |
 | `aidb.agent.decision.denial_reason`     | Present only when denied: `role_not_found`, `not_role_member` (pre-flight checks), or `engine_privilege_denied` (a Postgres `42501` rejection, covering both failed `SET ROLE` escalation and standard object permission checks). Not promoted to its own column. |
 
-### SQL query tracing
+### Tracing SQL queries
+
+Set on any span that executes SQL:
 
 | Attribute       | Description                                                                                                                                                                  |
 |-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `db.query.text`   | The SQL statement(s) executed during the traced call. Bound parameter values are included only when `aidb.otel_capture_query_parameters` is on (see [Configuring AIDB parameters](../install/configure#opentelemetry-tracing)). |
 
-### Pipelines, semantic KBs, and models
+### Tracing pipelines, semantic KBs, and models
 
 These cover pipeline CRUD and execution, semantic KB CRUD and search, model inference (OCR, summarization, reranking, embedding, generation), data processors (chunking, PDF/HTML parsing), model maintenance, and volume operations.
 
