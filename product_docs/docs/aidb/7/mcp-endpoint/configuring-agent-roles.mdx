@@ -1,37 +1,41 @@
 ---
 title: Configuring your agent role
 navTitle: Configuring agent roles
-description: What a Postgres role needs to act as an MCP agent, what it can do once granted, and how to revoke it.
+description: What a Postgres role needs to act as an MCP agent, and how to revoke it.
 ---
 
-The MCP endpoint authenticates every agent as a Postgres login role. The grants on that role decide what it can list and call, so provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. A profile role is an ordinary `NOLOGIN` Postgres role that holds privileges — group them by function (read-only, read-write, and so on) and grant them to agent roles instead of granting privileges directly.
+Configure a Postgres role to authenticate agents with the MCP endpoint and to define what each agent may list and call. The MCP endpoint authenticates every agent as a Postgres login role, so provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. A profile role is an ordinary `NOLOGIN` Postgres role that holds privileges — group them by function (read-only, read-write, and so on) and grant them to agent roles instead of granting privileges directly.
 
-## Step 1: Grant the role what it needs
+## Granting the role what it needs
 
-| Requirement                                               | Why                                                                                                                                                                                                                |
-|-----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `LOGIN` and a password                                    | The agent presents the username and password in the HTTP Basic header on every call, and the endpoint opens a Postgres connection with them.                                                                       |
-| A matching `local` line in `pg_hba.conf`                  | The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`, never `trust`.                |
-| `EXECUTE` on `aidb.get_mcp_tools()` and `aidb.run_tool()` | Membership in `aidb_users` provides both. Without them, `tools/list` fails with a permission error.                                                                                                                |
-| Grants on the objects the tools touch                     | A tool runs as the agent, so the agent needs `USAGE` on the schema and the table privileges its tools use.                                                                                                         |
+1. Give it `LOGIN` and a password. The agent presents these in the HTTP Basic header on every call, and the endpoint opens a Postgres connection with them.
+
+   ```sql
+   CREATE ROLE <agent_role> LOGIN PASSWORD '<password>';
+   ```
+
+1. Add a matching `local` line in `pg_hba.conf`. The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`, never `trust`.
+
+   ```
+   local   all   <agent_role>   scram-sha-256
+   ```
+
+1. Grant membership in `aidb_users`, which provides `EXECUTE` on `aidb.get_mcp_tools()` and `aidb.run_tool()`. Without it, `tools/list` fails with a permission error.
+
+   ```sql
+   GRANT aidb_users TO <agent_role>;
+   ```
+
+1. Grant the objects its tools touch. A tool runs as the agent, so it needs `USAGE` on the schema and the table privileges its tools use.
+
+   ```sql
+   GRANT USAGE ON SCHEMA <schema> TO <agent_role>;
+   GRANT SELECT ON <schema>.<table> TO <agent_role>;
+   ```
 
 Keep the agent role itself free of direct privileges and grant it profile roles instead. Revoking a profile role from an agent takes effect on the agent's next call, since every call opens a fresh connection.
 
 See [Provisioning example](provisioning-example) for a worked example that creates an agent role and profile roles together.
-
-## What an agent can do once provisioned
-
-After the [MCP handshake](connecting-a-client), an agent's calls behave according to its own grants, not any setting on the endpoint itself.
-
-| Call                                | Behavior                                                                                                                                    |
-|--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants — the [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
-| `tools/call` on a catalog tool       | Succeeds if the role holds the privileges the tool's SQL needs. Otherwise Postgres returns `permission denied` and no rows are affected.      |
-| `tools/call` with a wrong password   | `isError` with `password authentication failed`.                                                                                             |
-
-Arguments are bound as query parameters, and arguments a tool didn't declare are rejected with `unknown argument '<name>'`, so an agent can't ask a tool to run as someone else.
-
-See [Provisioning example](provisioning-example) for these behaviors demonstrated with two agents holding different grants.
 
 ## Revoking an agent
 

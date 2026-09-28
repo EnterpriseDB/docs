@@ -1,14 +1,14 @@
 ---
 title: Connecting a client
 navTitle: Connecting a client
-description: The MCP wire protocol over curl, what execute_sql returns, and reaching the endpoint from another host.
+description: The MCP wire protocol over curl, what an agent's grants let it do, what execute_sql returns, and reaching the endpoint from another host.
 ---
 
-The MCP endpoint speaks streamable HTTP at `/mcp`. Point any MCP client that supports streamable HTTP and HTTP Basic authentication at the endpoint's URL, and give it a Postgres username and password. The examples below use `http://<mcp-host>:8765/mcp` as a placeholder — substitute `127.0.0.1` if your client runs on the database host itself (the loopback default), or the endpoint's routable host and `https` if you've set up [Serving remote clients](#serving-remote-clients).
+The MCP endpoint speaks streamable HTTP at `/mcp`. Point any MCP client that supports streamable HTTP and HTTP Basic authentication at the endpoint's URL, and give it a Postgres username and password. For more information, see [Configuring your agent role](configuring-agent-roles) for how to create one. The examples below use `http://<mcp-host>:8765/mcp` as a placeholder — substitute `127.0.0.1` if your client runs on the database host itself (the loopback default), or the endpoint's routable host and `https` if you've set up [Serving remote clients](#serving-remote-clients).
 
 The steps below show the wire protocol with curl. The endpoint answers in the server-sent events format, so the JSON-RPC response is the line that starts with `data:` rather than the whole response body.
 
-1. Open a session. The handshake needs no credentials.
+1. Open a session. The handshake needs no credentials — that's true for a remote client too, since only `tools/list` and `tools/call` carry the agent's Postgres username and password.
 
    ```shell
    curl -sS -D - http://<mcp-host>:8765/mcp \
@@ -19,9 +19,13 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
                      "clientInfo": {"name": "example", "version": "0"}}}'
    ```
 
-   The response headers include `mcp-session-id`. Copy it and use it as `$SESSION_ID` on every later request.
+   The response headers include `mcp-session-id`. Export it as an environment variable and reuse it on every later request:
 
-1. Acknowledge the handshake, replacing `$SESSION_ID` with the id from the previous step.
+   ```shell
+   export SESSION_ID=<value-from-the-mcp-session-id-header>
+   ```
+
+1. Acknowledge the handshake.
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -42,9 +46,16 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
      -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}'
    ```
 
-   `<username>:<password>` is a Postgres role you've created and granted access to. See [Provisioning example](provisioning-example) for a worked example with real role names and grants.
+   `<username>:<password>` is a Postgres role you've created and granted access to. See [Provisioning example](provisioning-example) for a worked example with real role names and grants. The `data:` line's `result.tools` array lists each tool's name, description, and argument schema, for example:
 
-1. Call a tool with `tools/call`, naming the tool and its arguments. For the built-in `execute_sql`, the single argument is `sql`:
+   ```json
+   {"jsonrpc": "2.0", "id": 2, "result": {"tools": [
+     {"name": "execute_sql", "description": "Run a single SQL statement", "inputSchema": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}},
+     {"name": "add_order", "description": "Insert an order", "inputSchema": {"type": "object", "properties": {"item": {"type": "string"}, "amount": {"type": "number"}}, "required": ["item", "amount"]}}
+   ]}}
+   ```
+
+1. Call a tool with `tools/call`, naming the tool and its arguments from the `tools/list` output. For the built-in `execute_sql`, the single argument is `sql`:
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -56,11 +67,37 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
           "params": {"name": "execute_sql", "arguments": {"sql": "SELECT 41 + 1 AS answer"}}}'
    ```
 
-   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Calling a catalog tool is the same request with its own name and declared arguments, for example `"name": "add_order", "arguments": {"item": "gizmo", "amount": 4.20}`.
+   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, so `BEGIN`/`COMMIT` across separate calls aren't supported — see [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
 
-Behind the scenes, each call opens a fresh Postgres connection as the authenticated role and runs the request: `tools/list` reads the catalog through `aidb.get_mcp_tools()`, `tools/call` runs a catalog tool through `aidb.run_tool()`, and `execute_sql` executes the statement directly. The connection then closes and the result comes back. Postgres errors pass through unchanged: `tools/call` returns them as MCP `isError` results, `tools/list` as a JSON-RPC error. A wrong password surfaces as `password authentication failed`, a missing grant as `permission denied`, and an unknown tool as `tool '<name>' not found in aidb.tools`.
+   Calling a catalog tool is the same request with its own name and declared arguments:
 
-MCP clients can send a `notifications/cancelled` message to cancel one of their own in-flight requests, naming the `id` of the in-flight call. The endpoint cancels the Postgres statement behind that request, including a statement running inside `aidb.run_tool()`, and the session keeps serving afterward.
+   ```shell
+   curl -sS http://<mcp-host>:8765/mcp \
+     -u <username>:<password> \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     -H "mcp-session-id: $SESSION_ID" \
+     -d '{"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+          "params": {"name": "add_order", "arguments": {"item": "gizmo", "amount": 4.20}}}'
+   ```
+
+## What an agent can do once provisioned
+
+After the handshake, an agent's calls behave according to its own grants, not any setting on the endpoint itself. See [Configuring your agent role](configuring-agent-roles) for how those grants are set up.
+
+| Call                                | Behavior                                                                                                                                    |
+|--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants — the [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
+| `tools/call` on a catalog tool       | Succeeds if the role holds the privileges the tool's SQL needs. Otherwise Postgres returns `permission denied` and no rows are affected.      |
+| `tools/call` with a wrong password   | `isError` with `password authentication failed`.                                                                                             |
+
+Arguments are bound as query parameters, and arguments a tool didn't declare are rejected with `unknown argument '<name>'`, so an agent can't ask a tool to run as someone else.
+
+See [Provisioning example](provisioning-example) for these behaviors demonstrated with two agents holding different grants.
+
+Each call opens a fresh Postgres connection as the authenticated role. Postgres errors pass through unchanged: `tools/call` returns them as MCP `isError` results, `tools/list` as a JSON-RPC error. A wrong password surfaces as `password authentication failed`, a missing grant as `permission denied`, and an unknown tool as `tool '<name>' not found in aidb.tools`.
+
+MCP clients can send a `notifications/cancelled` message to cancel one of their own in-flight requests, naming the `id` the client assigned to that request — the same `id` value it sent in the original `tools/call`, such as `3` in the `execute_sql` example above. The endpoint cancels the Postgres statement behind that request, including a statement running inside a catalog tool, and the session keeps serving afterward.
 
 ```shell
 curl -sS http://<mcp-host>:8765/mcp \
