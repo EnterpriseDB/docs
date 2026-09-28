@@ -187,6 +187,39 @@ Cookies are small packets of data that a server sends to your browser to store c
 
     For detailed information on the `config.py` file, see [Managing configuration settings](../../managing_configuration_settings/).
 
+#### Password encryption in transit
+
+By default, PEM encrypts passwords in the browser before submitting them to the web server, so they're never sent as readable plaintext, even after the HTTPS layer itself is decrypted (for example, by a TLS-inspection proxy or a security scanner running with the server's private key). This is defense in depth on top of HTTPS. It doesn't protect against a fully compromised session, such as a stolen, live session cookie &mdash; `ENHANCED_COOKIE_PROTECTION`, described earlier under [Cookie security](#cookie-security), addresses that instead.
+
+Two `config.py` options control this behavior:
+
+-  PEM_ENCRYPT_PASSWORDS_IN_TRANSIT &mdash; Turns on browser-side RSA encryption of password fields, including login, change password, and server, agent, and other connection passwords throughout the UI. The default is:
+
+    ```ini
+    PEM_ENCRYPT_PASSWORDS_IN_TRANSIT = True
+    ```
+
+    Encryption requires the browser's Web Crypto API, which needs a secure context (HTTPS). Leave this `False` only for plain-HTTP development or test setups where the browser can't encrypt. When it's off, or a browser has no Web Crypto support, PEM falls back to accepting the password as plaintext, the same as before this feature existed.
+
+-  PEM_REQUIRE_TRANSIT_ENCRYPTION &mdash; Rejects a password that arrives without a valid encryption marker instead of silently accepting it as plaintext. This closes the gap where an attacker strips the marker to force a downgrade. The default is:
+
+    ```ini
+    PEM_REQUIRE_TRANSIT_ENCRYPTION = False
+    ```
+
+    This setting has an effect only when `PEM_ENCRYPT_PASSWORDS_IN_TRANSIT` is also `True`. Enable it only on HTTPS deployments where every client can actually encrypt &mdash; on a plain-HTTP deployment, enabling this locks out every login. Both options default the same way in every deployment. There's no separate recommended default for on-premises compared to cloud.
+
+    !!! Note
+        This setting applies uniformly to every configured authentication source. Internal, LDAP, and Kerberos authentication all receive the same decrypted plaintext password, because decryption happens once, centrally, before PEM hands the password to any authentication source. OAuth2 and other SSO sign-in flows aren't affected, since they don't submit a password field.
+
+    If a client can't encrypt, PEM always logs a warning, whether or not `PEM_REQUIRE_TRANSIT_ENCRYPTION` is enabled: either that a password arrived without an encryption marker (a possible downgrade attempt) or that decryption failed. There's no distinct message shown to the user in either case. A login that's refused for this reason shows the same generic "Incorrect username or password" message as any other failed login, and a rejected in-app password field returns an HTTP 400 response. Check the PEM web server logs to tell a genuine bad password apart from an encryption downgrade.
+
+    To apply changes to either setting, restart the web server. The encryption keys involved are generated per session, and the login key is single-use and discarded immediately after it decrypts one password, so toggling these settings doesn't invalidate anything already in progress. The new setting takes effect the next time a page issues a fresh key.
+
+    For detailed information on the `config.py` file, see [Managing configuration settings](../../managing_configuration_settings/).
+
+    Passwords are also encrypted at rest using a separate mechanism. See [Using a custom encryption key for ASB passwords](../../custom_encryption_keys/) if you want control over the key used to encrypt stored agent-server binding passwords.
+
 ## Additional recommendations that can be applied manually
 
 These recommendations aren't applied automatically because they require additional information or action specific to the environment in which PEM is deployed.
