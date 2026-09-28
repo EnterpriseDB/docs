@@ -32,8 +32,7 @@ __OUTPUT__
 `knowledge_bases_reconciled` names every KB updated by the write — an object can be indexed by more than one.
 
 !!!note Breaking change at 7.7.0
-`mode` defaults to `'add'`, and `'add'` now refuses when a description already exists, rather than overwriting it silently. Callers that relied on the old overwrite behavior must pass `mode => 'edit'` explicitly.
-!!!
+`mode` defaults to `'add'`, and `'add'` now refuses when a description already exists, rather than overwriting it silently:
 
 ```sql
 SELECT aidb.add_comment_to_object('bank', 'transactions', 'Another go.', kb_name => 'bank_kb');
@@ -42,11 +41,14 @@ ERROR:  Invalid parameters: bank.transactions already has a description, and mod
 Current: "A movement of money against an account.". To replace it, call again with mode => 'edit'
 ```
 
+Callers that relied on the old overwrite behavior must pass `mode => 'edit'` explicitly:
+
 ```sql
 SELECT jsonb_pretty(aidb.add_comment_to_object('bank', 'transactions',
   'A movement of money against an account, positive or negative.',
   kb_name => 'bank_kb', mode => 'edit'));
 ```
+!!!
 
 ## Protecting existing descriptions
 
@@ -106,45 +108,55 @@ detail  | {"mode": "edit", "forced": true, "discarded": "People who bank with us
 
 ## Reviewing before it's live
 
-With curation on, a write doesn't take effect — it queues for review instead:
+With curation on for a KB, enabled by calling `aidb.update_semantic_kb_curation(kb_name, true)`, a write doesn't take effect. It queues for review instead:
 
-```sql
-SELECT aidb.update_semantic_kb_curation('bank_kb', true);
-__OUTPUT__
-     update_semantic_kb_curation
---------------------------------------
- {"current": true, "previous": false}
-(1 row)
-```
+1. Turn on curation for the KB:
 
-```sql
-SELECT jsonb_pretty(aidb.add_comment_to_object(
-  'bank', 'accounts', 'An account a customer holds with the bank.', kb_name => 'bank_kb'));
-__OUTPUT__
- {
-     "current": null,
-     "outcome": "queued",
-     "previous": null,
-     "proposed": "An account a customer holds with the bank.",
-     "knowledge_bases": [
-         "bank_kb"
-     ]
- }
-```
+   ```sql
+   SELECT aidb.update_semantic_kb_curation('bank_kb', true);
+   __OUTPUT__
+        update_semantic_kb_curation
+   --------------------------------------
+    {"current": true, "previous": false}
+   (1 row)
+   ```
 
-!!!note Check `outcome`, not just the absence of an error
-`outcome` is `"queued"`, not `"applied"`, and the live comment is unchanged. A caller that only checks for the absence of an error will believe the write succeeded.
-!!!
+2. Write a description as usual. With curation on, it queues instead of applying:
 
-Review the queue and decide:
+   ```sql
+   SELECT jsonb_pretty(aidb.add_comment_to_object(
+     'bank', 'accounts', 'An account a customer holds with the bank.', kb_name => 'bank_kb'));
+   __OUTPUT__
+    {
+        "current": null,
+        "outcome": "queued",
+        "previous": null,
+        "proposed": "An account a customer holds with the bank.",
+        "knowledge_bases": [
+            "bank_kb"
+        ]
+    }
+   ```
 
-```sql
-SELECT object, object_type, proposed_comment, proposed_by FROM aidb.list_proposed_comments('bank_kb');
+   !!!note Check `outcome`, not just the absence of an error
+   `outcome` is `"queued"`, not `"applied"`, and the live comment is unchanged. A caller that only checks for the absence of an error will believe the write succeeded.
+   !!!
 
-SELECT jsonb_pretty(aidb.resolve_object_comment('bank_kb', 'bank', 'accounts', 'approve'));
-```
+3. Review the queue and approve or reject the proposal:
 
-`decision` is `'approve'` or `'reject'`. Once approved, the live comment updates and the KB reconciles it, the same as an uncurated write. Turn curation back off the same way you turned it on: `aidb.update_semantic_kb_curation('bank_kb', false)`.
+   ```sql
+   SELECT object, object_type, proposed_comment, proposed_by FROM aidb.list_proposed_comments('bank_kb');
+
+   SELECT jsonb_pretty(aidb.resolve_object_comment('bank_kb', 'bank', 'accounts', 'approve'));
+   ```
+
+   `decision` is `'approve'` or `'reject'`. Once approved, the live comment updates and the KB reconciles it, the same as an uncurated write.
+
+4. Turn curation back off, the same way you turned it on:
+
+   ```sql
+   SELECT aidb.update_semantic_kb_curation('bank_kb', false);
+   ```
 
 !!!note `resolve_object_comment` and `update_semantic_kb_curation` are deliberately SQL-only
 Neither is registered as a native agent tool — see [Native tools](../tools/native-tools#semantic-knowledge-bases). An agent holding either could approve its own proposal or switch off the review that governs it, so approving a proposal and toggling curation both stay with a person, by design.
@@ -152,13 +164,13 @@ Neither is registered as a native agent tool — see [Native tools](../tools/nat
 
 ## Relationships and comment curation
 
-Comment curation and [relationships](relationships) are separate features shipped in the same release, and they don't gate each other, even though the two can look related at a glance:
+Comment curation and [relationships](relationships) are separate features that don't gate each other, even though the two can look related at a glance:
 
 - `update_semantic_kb_curation()` controls comment writes only. Relationship writes never consult it.
 - A relationship an agent records is always stored as `status = 'proposed'`, regardless of the curation setting. It becomes routable through `aidb.accept_relationship_candidates()`, not through `resolve_object_comment()`.
-- `object_type => 'constraint'` is how a person attaches a business-readable description to a relationship the crawl found — see [The foreign-key crawl](relationships#the-foreign-key-crawl), where a constraint's comment becomes that relationship's `description`.
+- `object_type => 'constraint'` is how a person attaches a business-readable description to a relationship the crawl found — see [Verifying what the crawl found](relationships#verifying-what-the-crawl-found), where a constraint's comment becomes that relationship's `description`.
 
-This writes the description [the crawl example](relationships#the-foreign-key-crawl) shows already attached to `accounts_cust_id_fkey`:
+This writes the description [the crawl example](relationships#verifying-what-the-crawl-found) shows already attached to `accounts_cust_id_fkey`:
 
 ```sql
 SELECT jsonb_pretty(aidb.add_comment_to_object(

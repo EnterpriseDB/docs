@@ -15,13 +15,11 @@ Relationships work without `pg_stat_statements` in every case but one: [Learning
 
 ## Concepts
 
-If you'd rather start typing commands, skip ahead to [Setting up](#setting-up) — come back here when a term like `kind` or `confidence` needs unpacking.
-
 A relationship is one directed, recorded claim that two relations join. Each one carries endpoints and columns, plus four properties — kind, source, status, and confidence — that decide where it came from and whether it's trustworthy enough to use.
 
 ### Kind
 
-Five kinds exist. Only the first three are traversed by the route-finders — the functions that find a path between tables: `find_join_path`, `suggest_joins`, and `semantic_kb_subgraph`:
+`kind` classifies how two tables join. Five kinds exist, but only the first three are ever used as a hop: `find_join_path()`, `suggest_joins()`, and `semantic_kb_subgraph()` (introduced in [Setting up a relationship](#setting-up-a-relationship) and [Finding a join route](#finding-a-join-route)) route through `key_join`, `junction`, and `conditional` relationships only — a `view_substitute` or `unrealized` relationship is recorded but never returned as part of a route:
 
 | Kind              | Meaning                                                   |
 | ----------------- | --------------------------------------------------------- |
@@ -33,7 +31,7 @@ Five kinds exist. Only the first three are traversed by the route-finders — th
 
 ### Source
 
-Two of the five sources below can be created directly, both through `add_relationship()`. The rest are written automatically, each by a specific process:
+`source` records where a relationship's claim came from — which matters for how much you can trust it. Two of the five sources below can be created directly, both through `add_relationship()`. The rest are written automatically, each by a specific process:
 
 | Source    | Written by                                                                                                                                                                       |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -45,21 +43,25 @@ Two of the five sources below can be created directly, both through `add_relatio
 
 ### Status and confidence
 
-Every relationship has one of four statuses: `proposed`, `approved`, `stale`, or `retired`.
+`status` tracks a relationship's place in its review lifecycle, and `confidence` ranks how much to trust it when more than one route is possible. Every relationship has one of four statuses: `proposed`, `approved`, `stale`, or `retired`.
 
 Confidence is a ranking order, not a probability. Priors by kind are `key_join` 0.75, `junction` 0.70, `view_substitute` 0.60, `conditional` 0.55, and `unrealized` 0.40. An added claim is capped at 0.90. Only a validated foreign key found by the crawl reaches 1.0.
 
 !!!note The routability rule
-All three route-finders (`find_join_path`, `suggest_joins`, `semantic_kb_subgraph`) traverse only relationships that are `status = 'approved'` and `level = 'data'` and `kind IN ('key_join', 'junction', 'conditional')`. Nothing `proposed`, `stale`, or `retired` is ever used as a hop. If a relationship you expect to see isn't being used in a route, this is usually why.
+All three route-finders (`find_join_path`, `suggest_joins`, `semantic_kb_subgraph` — the functions introduced in [Setting up a relationship](#setting-up-a-relationship) and [Finding a join route](#finding-a-join-route)) traverse only relationships that are `status = 'approved'` and `level = 'data'` and `kind IN ('key_join', 'junction', 'conditional')`. Nothing `proposed`, `stale`, or `retired` is ever used as a hop. If a relationship you expect to see isn't being used in a route, this is usually why.
 !!!
 
 ### Concept-level relationships
 
-The store also has a `level` column and a `concept_relation` field, for relationships between concepts rather than relations. These aren't usable yet: they're provisioned but refused today, since no route-finder traverses a concept-level record and no retrieval surface returns one. Add relationships between relations instead, using the default `level => 'data'`.
+Relationship metadata also has a `level` column and a `concept_relation` field, for relationships between concepts rather than relations. These aren't usable yet: they're provisioned but refused today, since no route-finder traverses a concept-level record and no retrieval surface returns one. Add relationships between relations instead — every example on this page already does, using the default `level => 'data'`.
 
-## Setting up
+### Foreign-key crawl
 
-These four functions cover most of what you'll do here:
+Creating or refreshing a semantic KB crawls its schemas automatically, reading every foreign key in `pg_constraint` and recording each one as a relationship with `source = 'crawl'`. See [Verifying what the crawl found](#verifying-what-the-crawl-found) for what that looks like in practice.
+
+## Setting up a relationship
+
+Use these four functions to record and query how your tables join:
 
 | Function                                                   | Purpose                                           |
 | ---------------------------------------------------------- | ------------------------------------------------- |
@@ -70,7 +72,7 @@ These four functions cover most of what you'll do here:
 
 Recording a relationship doesn't change how your data is stored or queried — it only adds a description of your schema that people and agents can read.
 
-A relationship requires nothing beyond a semantic KB. The two statements below register a local embedding model, then create a semantic KB over a small `bank` schema — the same steps as [Getting started](./#getting-started), repeated here so this page's examples are self-contained:
+A relationship requires nothing beyond a semantic KB. Register a local embedding model, then create a semantic KB over a schema:
 
 ```sql
 SELECT aidb.create_model('bge_small', 'llamacpp_embeddings',
@@ -79,9 +81,11 @@ SELECT aidb.create_model('bge_small', 'llamacpp_embeddings',
 SELECT aidb.create_semantic_kb('bank_kb', 'bge_small', ARRAY['bank'], 'Live');
 ```
 
-`bge_small` and `bank_kb` are names you choose. `llamacpp_embeddings` is a fixed provider identifier, and `local_path` should point to wherever you've downloaded the `.gguf` model file.
+`bge_small` and `bank_kb` are names you choose. `llamacpp_embeddings` is one of several embedding providers AIDB supports — see the [model reference](../reference/models) for the full list — and `local_path` must point to wherever you've downloaded the `.gguf` model file. For every parameter `aidb.create_semantic_kb()` takes, see the [reference](../reference/semantic-knowledge-bases#aidbcreate_semantic_kb).
 
-Creating the KB runs the foreign-key crawl immediately. `auto_processing => 'Live'` also keeps relationships in step with DDL automatically — see [Keeping it current](#keeping-it-current). For the other modes, see [Auto-processing modes](../reference/semantic-knowledge-bases#auto-processing-modes).
+Creating the KB runs the foreign-key crawl immediately. `auto_processing => 'Live'` also keeps relationships in step with DDL automatically — see [Keeping relationships current](#keeping-relationships-current). For the other modes, see [Auto-processing modes](../reference/semantic-knowledge-bases#auto-processing-modes).
+
+Confirm the crawl ran:
 
 ```sql
 SELECT total, tables, columns, pending, relationships, drifted, queries
@@ -93,13 +97,13 @@ __OUTPUT__
 (1 row)
 ```
 
-Those 9 relationships were found automatically from the `bank` schema's foreign keys — the next section shows exactly what the crawl picked up.
+Those 9 relationships were found automatically from the `bank` schema's foreign keys. See [Verifying what the crawl found](#verifying-what-the-crawl-found) for what it picked up.
 
-## The foreign-key crawl
+## Verifying what the crawl found
 
-Your knowledge base crawls the schema automatically — when you create it, when you refresh it, or continuously if `auto_processing` is `Live` — and reads every foreign key in `pg_constraint`. Anything it finds is recorded with `source = 'crawl'`, as this query against `bank.customers` shows:
+Your knowledge base crawls the schema automatically — when you create it, when you refresh it, or continuously if `auto_processing` is `Live` — and reads every foreign key in `pg_constraint`. Anything it finds is recorded with `source = 'crawl'`.
 
-The crawl needs no configuration and it never guesses: everything it reports is enforced by Postgres. What it misses — a column that merely looks like a key, but declares no foreign key — is yours to record, either [by hand](#adding-a-relationship-by-hand) or from [query history](#learning-from-the-query-workload).
+Verify what the crawl found. This query lists every relationship touching `bank.customers` — 6 of the KB's 9 total, since the rest touch other tables:
 
 ```sql
 SELECT left_object, left_columns, right_object, right_columns, kind, cardinality, is_nullable
@@ -117,13 +121,15 @@ __OUTPUT__
 (6 rows)
 ```
 
-Three things in that result matter:
+The crawl needs no configuration and it never guesses: everything it reports is enforced by Postgres. What it misses — a column that merely looks like a key, but declares no foreign key — is yours to record, either [by hand](#adding-a-relationship-by-hand) or from [query history](#learning-from-the-query-workload).
+
+Three points about that result:
 
 - `cardinality` is derived, not assumed: `bank.customer_profiles` is one-to-one because its referencing column is its primary key. The rest are many-to-one.
 - `is_nullable` tells you the join type: `bank.service_notes.cust_id` is nullable, so a query that must keep note-less customers needs a `LEFT JOIN`. Every other row here is an inner join.
 - `bank.accounts` appears twice — once as a `key_join` on `cust_id`, once as a `junction` through `bank.account_holders`. Both are true. They're different routes.
 
-A bridge table — two outbound foreign keys whose union is the primary key — is recognized structurally as a `junction`, and its `source` is `agent`, not `crawl`:
+A bridge table — two outbound foreign keys whose union is the primary key — is recognized structurally as a `junction`. Unlike the `key_join` rows above, its `source` is `agent`, not `crawl`. Filtering to junction kind only:
 
 ```sql
 SELECT left_object, left_columns, junction_object, right_object, right_columns, kind, cardinality, source
@@ -142,7 +148,7 @@ source          | agent
 
 A junction is inferred from two constraints, and the store's `rel_crawl_iff_constraint` check requires a crawl row to name exactly one. Code that branches on `source = 'crawl'` to mean "came from the schema" will wrongly exclude every bridge.
 
-Confidence separates what PostgreSQL enforces from what was merely inferred:
+Across every relationship in the KB, with no `relation` or `kind` filter this time, confidence separates what PostgreSQL enforces from what was merely inferred:
 
 ```sql
 SELECT DISTINCT source, is_validated, confidence, status
@@ -174,15 +180,24 @@ provenance      | {"model": "bge_small", "crawl_id": "940c1501-...", "asserted_b
 
 ## Finding a join route
 
-Once you know two tables are related, you still need the actual join — especially when they connect through more than one hop rather than a single foreign key. `suggest_joins()` lists every relationship one hop from a table you give it, in either direction:
+With the crawl verified, find the actual join between two tables — especially useful when they connect through more than one hop rather than a single foreign key.
+
+Find every relationship one hop from a table, in either direction:
 
 ```sql
 SELECT from_object, to_object, kind, confidence
 FROM   aidb.suggest_joins('bank_kb', ARRAY['bank.accounts'])
 ORDER  BY from_object, to_object;
+__OUTPUT__
+   from_object    |   to_object    |   kind   | confidence
+-------------------+----------------+----------+------------
+ bank.accounts     | bank.customers | key_join |          1
+ bank.accounts     | bank.customers | junction |        0.7
+ bank.transactions | bank.accounts  | key_join |          1
+(3 rows)
 ```
 
-`aidb.find_join_path()` connects two tables that share no foreign key:
+List how two tables that share no foreign key are connected:
 
 ```sql
 SELECT path_rank, route, kind, confidence
@@ -195,7 +210,7 @@ __OUTPUT__
 (2 rows)
 ```
 
-Both routes are two hops. They're ranked shortest first, then by confidence, so the enforced `key_join` route wins over the inferred `junction`. Ask for the clause and you get SQL you can paste directly:
+Both routes are two hops: the second route's display includes `bank.account_holders` because that's the junction's bridge table, shown for clarity, but the junction is stored — and counted — as a single hop, not two. They're ranked shortest first, then by confidence, so the enforced `key_join` route wins over the inferred `junction`. Filter to the top-ranked route and get its join clause as SQL you can paste directly into a query:
 
 ```sql
 SELECT join_clause FROM aidb.find_join_path('bank_kb', 'bank.transactions', 'bank.customers')
@@ -207,7 +222,7 @@ __OUTPUT__
 (1 row)
 ```
 
-`max_paths` (default `10`) caps the search, not the ranking — enumeration stops as soon as `max_paths` routes are found, and ranking is applied only to the survivors. A small `max_paths` can therefore discard the best route:
+`max_paths` (default `10`) limits how many candidate routes the search finds — it's unrelated to `max_hops`, which limits how many hops a single route may have. Enumeration stops as soon as `max_paths` routes are found, and only those routes get ranked, so a small `max_paths` can cut the search off before the best route is even found:
 
 ```sql
 SELECT path_rank, hops, kind, confidence, truncated
@@ -219,12 +234,12 @@ __OUTPUT__
 (1 row)
 ```
 
-With `max_paths => 1` you get the junction route at confidence 0.7, not the `key_join` route at 1.0. `truncated = t` is the signal that this happened — raise `max_paths` and ask again when you see it. Leave `max_hops` and `max_paths` at their defaults unless you have a reason not to.
+With `max_paths => 1`, the search stopped after finding the first route it enumerated (the junction one) and never got to the shorter, higher-confidence `key_join` route — so this result shows confidence 0.7, not the 1.0 from the unrestricted search above. `truncated = t` is the signal that the search may have missed a better route: raise `max_paths` and ask again when you see it. Leave `max_hops` and `max_paths` at their defaults unless you have a reason not to.
 
 When nothing connects two tables, you get no rows rather than an error.
 
 !!!note
-Read `truncated` on every route you rely on, and read `is_nullable` on every hop — it's the difference between `JOIN` and `LEFT JOIN`.
+Before trusting a route in production: check `truncated`, since a truncated search may have missed a better route, and check `is_nullable` on every hop, since a nullable join column means the query needs a `LEFT JOIN` instead of a plain `JOIN`.
 !!!
 
 ## Adding a relationship by hand
@@ -261,7 +276,7 @@ It's added as `manual`, lands `approved`, and takes the `key_join` prior of 0.75
 
 ### What it refuses
 
-`add_relationship()` won't give a reader two answers for the same join — adding a `key_join` over columns a foreign key already covers is rejected, with a pointer to comment on the constraint instead:
+Knowing what `add_relationship()` rejects up front saves a debugging trip later. It won't give a reader two answers for the same join — adding a `key_join` over columns a foreign key already covers is rejected, with a pointer to comment on the constraint instead:
 
 ```sql
 SELECT * FROM aidb.add_relationship('bank_kb', 'bank.accounts', 'bank.customers', 'key_join', 'belongs to',
@@ -276,32 +291,36 @@ It won't accept columns that could never match (a type mismatch), won't let a ha
 
 ### Deleting a relationship
 
-`aidb.delete_relationship()` is overloaded — one form takes a `relationship_id`, the other a full shape — so name your arguments rather than passing a single positional one. A crawled relationship can't be deleted while its constraint still stands, because the next crawl would simply restore it. Drop the constraint first if the relationship is genuinely gone.
+`aidb.delete_relationship()` accepts two different argument shapes — one taking a `relationship_id`, the other the full endpoint/columns/kind shape — so always name your arguments rather than pass a single positional value. A crawled relationship can't be deleted while its constraint still stands, because the next crawl would simply restore it. Drop the constraint first if the relationship is genuinely gone.
 
 !!!note
 Record the columns, not the intent: `predicate` is prose, but `left_columns` / `right_columns` are what actually gets joined.
 !!!
 
-## Keeping it current
+## Keeping relationships current
 
-With `auto_processing => 'Live'`, DDL maintains the knowledge base, but what happens next depends on whether a relationship was crawled or added by hand.
+Keep relationships current by doing nothing for crawled ones, and re-checking added ones after schema changes.
 
-A crawled relationship needs nothing from you: drop the constraint and the relationship goes with it, because `pg_constraint` is still the authority.
+A crawled relationship needs nothing from you — it disappears automatically when its constraint is dropped, because `pg_constraint` is still the authority.
 
-An added relationship can't be repaired automatically — nothing else knows what you meant. If a column it names is renamed or dropped, `aidb.relationship_drift()` finds it:
+Only a relationship you added by hand needs the steps below — a crawled one is handled above. Nothing else knows what you meant by an added relationship, so if a column it names is renamed or dropped, `aidb.relationship_drift()` finds it:
 
-```sql
-SELECT relationship_id, left_object, right_object, source, event, detail
-FROM   aidb.relationship_drift('bank_kb');
-```
+1. Run the drift check:
 
-`relationship_drift()` is a write — it re-runs detection and repair on every call, so it can't run inside a read-only transaction despite reading like a query. A rename is reported as `column_dropped`: from the relationship's point of view, the column it named is gone.
+   ```sql
+   SELECT relationship_id, left_object, right_object, source, event, detail
+   FROM   aidb.relationship_drift('bank_kb');
+   ```
 
-!!!note
-The native agent tool for `relationship_drift` is flagged read-only in the tool catalog. That flag is inaccurate — treat every call as a write, regardless of what the catalog says.
-!!!
+   !!!note
+   `relationship_drift()` is a write — it re-runs detection and repair on every call, so it can't run inside a read-only transaction despite reading like a query. The native agent tool for `relationship_drift` is flagged read-only in the tool catalog, but that flag is inaccurate — treat every call as a write, regardless of what the catalog says.
+   !!!
 
-The relationship is now `stale`, and stale hops are never routed — `find_join_path()` between its endpoints returns zero rows until you add it again with the corrected columns, using `add_relationship()`.
+2. Read `event` and `detail` in the result. A rename is reported as `column_dropped`: from the relationship's point of view, the column it named is simply gone.
+
+3. The relationship is now `stale`, and stale hops are never routed — `find_join_path()` between its endpoints returns zero rows until it's fixed.
+
+4. Re-add the relationship with the corrected columns, using `add_relationship()`.
 
 `aidb.refresh_semantic_kb()` re-reads the schema from scratch. Use it after DDL on a KB that isn't `Live`, or to confirm state. `semantic_kb_stats()`'s `drifted` count is your cue to run `relationship_drift()`: a stale row is kept, not deleted, so you can see what broke.
 
@@ -311,51 +330,49 @@ The crawl looks after relationships it found. Anything added by hand is the call
 
 ## Learning from the query workload
 
-`aidb.import_query_history()` reads `pg_stat_statements` to find joins your application actually runs but the schema never declared. It's the only source of query history — there's no fallback, and nothing else populates the store.
+Use this to catch joins your application relies on but the schema never declared as a foreign key. `aidb.import_query_history()` reads `pg_stat_statements` to find them. It's the only source of query history — there's no fallback, and nothing else populates the store.
 
-Two separate things are required, and neither is optional: the server must load `pg_stat_statements` (in `shared_preload_libraries`, which needs a restart) and the database must have the extension (`CREATE EXTENSION pg_stat_statements;`). Installing the extension without loading the library is the usual mistake — `CREATE EXTENSION` succeeds, so it looks done, but nothing is ever recorded. Both settings are outside AIDB's control; on a managed or hardened Postgres service you may not be able to set either. See [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries).
+!!!note `pg_stat_statements` is required
+Two separate things must both be true: the server must load `pg_stat_statements` (in `shared_preload_libraries`, which needs a restart — see [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries)), and the database must have the extension installed (`CREATE EXTENSION pg_stat_statements;`). Installing the extension without loading the library is the usual mistake — `CREATE EXTENSION` succeeds, so it looks done, but nothing is ever recorded. Both settings are outside AIDB's control, so on a managed or hardened Postgres service you may not be able to set either. Calling `import_query_history()` without the extension installed errors rather than returning zero rows, so you can tell "nobody has queried this" apart from "the dependency is missing."
+!!!
 
-Calling `import_query_history()` against a database where the extension isn't installed errors, rather than returning zero rows — deliberately, so an operator can tell "nobody has queried this" apart from "the dependency is missing":
+With the dependency satisfied, import query history in four steps:
 
-```sql
-SELECT * FROM aidb.import_query_history('bank_kb');
-__OUTPUT__
-ERROR:  pg_stat_statements is not installed in this database. Query history reads from it and has
-no other source. Install it with CREATE EXTENSION pg_stat_statements; note that it also requires
-shared_preload_libraries, which needs a restart.
-```
+1. Import:
 
-With the dependency satisfied, importing is ordinary use:
+   ```sql
+   SELECT statements_read, statements_ingested, skipped, candidates_derived, outcome
+   FROM   aidb.import_query_history('bank_kb');
+   __OUTPUT__
+    statements_read | statements_ingested | skipped | candidates_derived | outcome
+   ------------------+----------------------+---------+--------------------+---------
+                  2 |                    2 | {}      |                  1 | ok
+   (1 row)
+   ```
 
-```sql
-SELECT statements_read, statements_ingested, skipped, candidates_derived, outcome
-FROM   aidb.import_query_history('bank_kb');
-__OUTPUT__
- statements_read | statements_ingested | skipped | candidates_derived | outcome
-------------------+----------------------+---------+--------------------+---------
-               2 |                    2 | {}      |                  1 | ok
-(1 row)
-```
+   The default `min_calls => 5` means a statement executed fewer times than that is invisible to the import — run it again after the workload changes. For each qualifying statement, `import_query_history()` records the normalized SQL, the relations it touched, and its join predicates (`aidb.list_query_history()`), and derives a candidate for any join that isn't already a known relationship.
 
-The default `min_calls => 5` means a statement executed fewer times than that is invisible to the import — run it again after the workload changes. For each qualifying statement, `import_query_history()` records the normalized SQL, the relations it touched, and its join predicates (`aidb.list_query_history()`), and derives a candidate for any join that isn't already a known relationship:
+2. Review the candidates it derived:
 
-```sql
-SELECT relationship_id, left_object, left_columns, right_object, right_columns,
-       confidence, statements, executions, definition
-FROM   aidb.relationship_candidates('bank_kb');
-```
+   ```sql
+   SELECT relationship_id, left_object, left_columns, right_object, right_columns,
+          confidence, statements, executions, definition
+   FROM   aidb.relationship_candidates('bank_kb');
+   ```
 
-A candidate is proposed, and the routability rule means nothing proposed is routed. Accepting it is a deliberate act, and makes the claim yours — `source` becomes `manual`, provenance keeps the evidence (execution count, who approved it), and the relationship starts routing:
+   A candidate is proposed, and the routability rule means nothing proposed is routed.
 
-```sql
-SELECT * FROM aidb.accept_relationship_candidates(
-  ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
-  'bank_kb');
-```
+3. Accept the ones you trust. Accepting is a deliberate act, and makes the claim yours — `source` becomes `manual`, provenance keeps the evidence (execution count, who approved it), and the relationship starts routing:
 
-`accept_relationship_candidates(candidate_ids, kb_name)` takes `kb_name` second — unlike every other function on this page, which takes it first.
+   ```sql
+   SELECT * FROM aidb.accept_relationship_candidates(
+     ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
+     'bank_kb');
+   ```
 
-`aidb.classify_query_history_statement(statement)` explains why any single statement would or wouldn't be used — the quickest way to understand an import that ingested less than you expected.
+   `accept_relationship_candidates(candidate_ids, kb_name)` takes `kb_name` second — unlike every other function on this page, which takes it first.
+
+4. If an import ingested less than you expected, use `aidb.classify_query_history_statement(statement)` to see why any single statement would or wouldn't be used.
 
 ## Permissions
 
