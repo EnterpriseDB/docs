@@ -225,6 +225,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
 
       const navChild =
         node.children.find((child) => {
+          if (!child.path) return false;
           const navName = child.path.split("/").slice(-2)[0];
           return navName.toLowerCase() === navEntry.toLowerCase();
         }) ||
@@ -244,7 +245,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
     node.children = [
       ...orderedNodes,
       ...node.children
-        .filter((child) => !addedChildPaths.has(child.path))
+        .filter((child) => child.path && !addedChildPaths.has(child.path))
         .sort((a, b) => a.path.localeCompare(b.path)),
       ...canonicalNodesRootedToThis
         .filter((child) => !addedChildPaths.has(child.path))

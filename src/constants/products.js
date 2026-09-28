@@ -141,7 +141,11 @@ const products = {
   CloudNativePG: { name: "CloudNativePG" },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
-  tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
+  tde: {
+    name: "Transparent Data Encryption",
+    abbreviation: "TDE",
+    iconName: IconNames.SECURITY,
+  },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
   tds_data_adapter: {
     name: "TDS Foreign Data Wrapper",
