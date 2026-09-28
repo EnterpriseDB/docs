@@ -10,7 +10,7 @@ The [Hybrid Manager disaster recovery](hadr_recovery) procedure describes recove
 This page describes what differs. It does not replace the single-installation procedure.
 
 !!! Note
-This page applies to multi-DC deployments that share one object storage bucket across all locations, which is the topology described in [Configuring a multi-DC deployment](../../install/configuration/multi_dc/multi-dc).
+This page applies to multi-DC deployments that share one object storage bucket across all locations, which is the topology described in [Configuring a multi-DC deployment](../../install/configuration/multi_dc/multi-dc). The procedures require HM 2026.10 or later on every location.
 !!!
 
 ## Before you start
@@ -19,7 +19,7 @@ Make yourself familiar with:
 
 -   [Overview](overview)
 -   [Configuring backups](backup_considerations)
--   [Hybrid Manager disaster recovery](hadr_recovery) — the single-installation procedure this page modifies !!!!
+-   [Hybrid Manager disaster recovery](hadr_recovery) — the single-installation procedure. It's the base for rebuilding a lost control plane, but its Velero plugin and Postgres restore steps don't apply while Postgres clusters are still running in another location.
 -   [Configuring a multi-DC deployment](../../install/configuration/multi_dc/multi-dc)
 
 !!! Warning
@@ -50,7 +50,7 @@ Once all the affected locations have been patched and are verified to have resou
 
 ### 2. Remove the Postgres clusters, replicas and groups that ran in the failed location
 
-Follow steps in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters,-replicas-and-groups-from-an-affected-location)
+Follow the steps in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters-replicas-and-groups-from-an-affected-location).
 
 Once all Postgres clusters, replicas and groups that ran in the failed location have been removed, proceed to the next section.
 
@@ -58,27 +58,25 @@ Once all Postgres clusters, replicas and groups that ran in the failed location 
 
 Deploy the replacement location with the same installation procedure you used originally. Once it connects to the control plane, you can rebuild the topology you lost.
 
-!!! Important
-If the replacement location does not reuses the **same location ID** as the failed one, you must re-enable the resource stream, before creating new replicas/groups on restored location:
+What you do with the failed location's `Location` resource depends on whether the replacement reuses its location ID:
 
-```shell
-kubectl patch location <location-name> -n default \
-  --type merge \
-  -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
-```
-!!!
+-   **Same location ID** — the replacement registers as the same `Location` resource, which still has streaming disabled. Re-enable streaming before you create replicas or groups there:
 
-!!! Important
-If the replacement location does not reuse the **same location ID** as the failed one(s), delete the failed `Location` resource(s):
+    ```shell
+    kubectl patch location <location-name> -n default \
+      --type merge \
+      -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
+    ```
 
-```shell
-kubectl delete location <location-name> -n default
-```
-!!!
+-   **Different location ID** — the replacement registers as a new `Location` resource. Delete the failed one:
+
+    ```shell
+    kubectl delete location <location-name> -n default
+    ```
 
 ### 4. Verify recovery
 
-Follow steps in [Verify the recovery](#verify-the-recovery)
+Follow the steps in [Verify the recovery](#verify-the-recovery).
 
 ## The control plane is down
 
@@ -100,9 +98,11 @@ Plan for this before you need it — the replacement cluster must be reachable a
 
 **Know what the restore will and won't bring back before you run it.** Control-plane resources are backed up on a schedule, so recent management changes may not be in the backup you restore from. Read [Recovery point for management state](#recovery-point-for-management-state) before you begin, so you know what to check afterwards.
 
-### 1. velero restore all locations
+### 1. Restore the `Location` resources
 
-TODO
+Restore the `Location` resources from the Velero backup if a data-only location was lost along with the control plane, or if the recovered control plane uses a different location ID from the one it replaces. If neither applies, you can skip the restore below: surviving locations register themselves again once they reconnect, and the new installation creates the control plane's own `Location`.
+
+A lost location's agent never reconnects, so this restore is the only way its `Location` resource comes back. It has to exist before you can disable streaming to it in the next step.
 
 ```yaml
 kubectl apply -f - <<EOF
@@ -148,7 +148,7 @@ Do not disable resource streaming on a healthy location.
 
 Once all the affected locations have been patched and are verified to have resource streaming disabled, proceed to the next section.
 
-### 3. velero restore the control plane CRs
+### 3. Restore the control-plane resources
 
 !!! Warning
 Before restoring, confirm that the `velero` ConfigMap does not exist in the `velero` namespace, or that `drMode` is set to `false` in it. Otherwise the restore can bring down a running database in a surviving location.
@@ -218,25 +218,23 @@ edbctl cluster list
 
 ### 4. Remove the Postgres clusters, replicas and groups that ran in the failed location
 
-Follow steps in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters,-replicas-and-groups-from-an-affected-location)
+Follow the steps in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters-replicas-and-groups-from-an-affected-location).
 
 Once all Postgres clusters, replicas and groups that ran in the failed location have been removed, proceed to the next section.
 
-#### 5. Locations lost in DR
+### 5. Locations lost in DR
 
-If a data-only (secondary) location was lost along side the control plane (primary) location, you must follow [Bring up a replacement location](#bring-up-a-replacement-location)
+If a data-only (secondary) location was lost alongside the control plane (primary) location, follow [Bring up a replacement location](#3-bring-up-a-replacement-location) for it.
 
 ### 6. Verify recovery
 
-Follow steps in [Verify the recovery](#verify-the-recovery)
+Follow the steps in [Verify the recovery](#verify-the-recovery).
 
 ## Everything lost in DR
 
-TODO in this case, velero plugin should be used
+With no location left running, there's no live Postgres to protect, so recover with the [single-installation procedure](hadr_recovery) in full — including [configuring the Velero plugin](hadr_recovery#configure-the-velero-plugin) and [restoring Postgres clusters](hadr_recovery#3-restore-postgres-clusters), which the control-plane path skips.
 
-
-
-
+The one addition is to restore the `Location` resources and disable streaming to every location that isn't back yet, before you restore any cluster resources — as in steps [1](#1-restore-the-location-resources) and [2](#2-stop-remote-resource-streaming-to-the-failed-locations) of the control-plane procedure. Then follow [Bring up a replacement location](#3-bring-up-a-replacement-location) for each location as you replace it.
 
 ## Recovery point for management state
 
@@ -290,39 +288,63 @@ The Locations page in the console shows `StreamingDisabled` for the location. Tr
 
 ## Remove Postgres clusters, replicas and groups from an affected location
 
-Check every running Postgres cluster, what you can recover depends on the topology of each cluster:
-whether it had replicas or data groups in surviving locations.
+Check every running Postgres cluster. What you can recover depends on each cluster's topology — specifically, whether it had replicas or data groups in a surviving location.
 
-If a Postgres clusters ran only on affected locations (i.e, all its replicas/groups ran in locations affected by disaster), just delete it in UI and restore most recent backup (data loss may occur) in a healthy location.
+### A cluster that ran only in affected locations
 
-For each Postgres clusters that ran one (or more) replica(s) on an affected location(s):
-- first, delete all the replicas that are not primary.
-- if replica was primary, you must perform a force failover. Once the new primary is healthy, delete the former primary
-  - TODO explain more how to force failover
-- You can then create new replicas in a healthy location (or wait when new location is added, to create them there) and use this Postgres cluster normally
+If all of a cluster's replicas or groups ran in affected locations, nothing of it survives. Delete the cluster in the HM console, then restore its most recent backup into a healthy location. Changes made after that backup are lost.
 
-For each Postgres clusters that ran one (or more) group(s) on an affected location(s):
-- if only witness group remains on a healthy location, you must delete the whole Postgres cluster and restore most recent backup (data loss may occur) in a healthy location.
-- remove groups on affected locations, noting there names
-  - connect to each node of the remaining groups and run `bdr.drop_node` command for all nodes of removed group (a data group usually has 3 nodes and a witness node usually has 1 node) and the `bdr.drop_node_group` command, like presented below
-    - `SELECT bdr.drop_node(node_name := '<deleted-group-x>', force := true);`
-    - `SELECT bdr.drop_node_group(node_group_name := 'deleted-group');`
-      - this command may fail with `ERROR:  drop of node group <deleted-group> failed with: could not establish consensus leader (08007)` or `ERROR:  drop of node group <deleted-group> failed with: node group "<deleted-group>" to drop must not have any unparted nodes`, if that happens, just run command again
-      - if command fails with `ERROR:  drop of node group <deleted-group> failed with: node group <deleted-group> not found`, you can proceed to next command
-    - Example:
-      if both a data group and a witness group where lost, you would have to run
-      ```sql
-      SELECT bdr.drop_node(node_name := 'p-a690el3cg2-a-1', force := true);
-      SELECT bdr.drop_node(node_name := 'p-a690el3cg2-a-2', force := true);
-      SELECT bdr.drop_node(node_name := 'p-a690el3cg2-a-3', force := true);
-      -- drop each node before dropping group
-      SELECT bdr.drop_node_group(node_group_name := 'p-a690el3cg2-a');
-      SELECT bdr.drop_node(node_name := 'p-a690el3cg2-c-1', force := true);
-      -- drop each node before dropping group
-      SELECT bdr.drop_node_group(node_group_name := 'p-a690el3cg2-c');
-      ```
-      on each node of the surviving p-a690el3cg2-b data group
-- You can then create new groups in a healthy location (or wait when new location is added, to create them there) and use this Postgres cluster normally
+### A cluster with replicas in an affected location
+
+1.  Delete every replica in the affected location that isn't the primary.
+
+2.  If the primary was in the affected location, promote a surviving replica with a forced failover:
+
+    ```shell
+    edbctl cluster switchover-primary --id <cluster-id> --replica-id <replica-id> --force
+    ```
+
+    A forced failover doesn't wait for the former primary, so any changes it hadn't yet replicated are lost. Once the new primary is healthy, delete the former primary.
+
+3.  Create new replicas in a healthy location, or wait until the replacement location is available and create them there. You can then use the cluster normally.
+
+### A cluster with groups in an affected location
+
+If only the witness group survives, the cluster can't be recovered in place. Delete the whole cluster and restore its most recent backup into a healthy location. Changes made after that backup are lost.
+
+Otherwise:
+
+1.  Delete the groups that ran in the affected location, noting their names.
+
+2.  Connect to each node of every surviving group. For each deleted group, drop each of its nodes with `bdr.drop_node`, then drop the group itself with `bdr.drop_node_group`. A data group usually has three nodes, and a witness group one:
+
+    ```sql
+    SELECT bdr.drop_node(node_name := '<node-name>', force := true);
+    SELECT bdr.drop_node_group(node_group_name := '<group-name>');
+    ```
+
+    `bdr.drop_node_group` can fail with either of these errors. If it does, run it again:
+
+    ```text
+    ERROR:  drop of node group <group-name> failed with: could not establish consensus leader (08007)
+    ERROR:  drop of node group <group-name> failed with: node group "<group-name>" to drop must not have any unparted nodes
+    ```
+
+    If it fails with `ERROR:  drop of node group <group-name> failed with: node group <group-name> not found`, the group is already gone and you can move on.
+
+    For example, if data group `p-a690el3cg2-a` and witness group `p-a690el3cg2-c` were both lost, run the following on each node of the surviving data group `p-a690el3cg2-b`:
+
+    ```sql
+    SELECT bdr.drop_node(node_name := 'p-a690el3cg2-a-1', force := true);
+    SELECT bdr.drop_node(node_name := 'p-a690el3cg2-a-2', force := true);
+    SELECT bdr.drop_node(node_name := 'p-a690el3cg2-a-3', force := true);
+    SELECT bdr.drop_node_group(node_group_name := 'p-a690el3cg2-a');
+
+    SELECT bdr.drop_node(node_name := 'p-a690el3cg2-c-1', force := true);
+    SELECT bdr.drop_node_group(node_group_name := 'p-a690el3cg2-c');
+    ```
+
+3.  Create new groups in a healthy location, or wait until the replacement location is available and create them there. You can then use the cluster normally.
 
 ## Verify the recovery
 
