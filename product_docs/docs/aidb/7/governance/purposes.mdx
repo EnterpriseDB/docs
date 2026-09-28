@@ -20,7 +20,7 @@ SELECT aidb.create_purpose(
 );
 ```
 
-`create_purpose` doesn't check that `sales_tickets_ro` exists or that you hold it. That check happens later, when the role is actually assumed — see [Enforcement](enforcement).
+`create_purpose` doesn't check that `sales_tickets_ro` exists or that you hold it. The existence of the resolved role, and whether the caller of the agent is a member, is checked at tool invocation time when the role is actually assumed — see [Enforcement](enforcement).
 
 ## Grants the resolved role needs
 
@@ -37,11 +37,15 @@ GRANT EXECUTE ON FUNCTION aidb.run_sql_query(TEXT) TO sales_tickets_ro;
 
 This is genuinely per-tool: granting `EXECUTE` on `run_sql_query` doesn't cover `catalog_list_objects` — an agent configured with several native tools needs a grant for each one its purpose role should be allowed to run.
 
-If telemetry is on (`aidb.otel_client = 'database'`), recording that call's trace also happens under the resolved role, so it needs the same two things for the `aidb_otel` schema:
+If telemetry is enabled then the recording of that call's trace also happens under the resolved role, so it needs the same two things for the `aidb_otel` schema:
 
 ```sql
 GRANT USAGE ON SCHEMA aidb_otel TO sales_tickets_ro;
-GRANT EXECUTE ON ALL ROUTINES IN SCHEMA aidb_otel TO sales_tickets_ro;
+GRANT EXECUTE ON FUNCTION
+    aidb_otel.store_metrics(JSONB[]),
+    aidb_otel.store_logs(JSONB[]),
+    aidb_otel.store_traces(JSONB[])
+    TO sales_tickets_ro;
 ```
 
 Without it, the tool call itself still succeeds or fails on its own merits, but the trace flush that follows it raises, and that failure surfaces as if the tool call itself had been denied.
