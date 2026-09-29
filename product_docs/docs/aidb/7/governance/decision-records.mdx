@@ -36,25 +36,25 @@ GRANT aidb_governance TO your_admin;
 
 Each record is a span named `purpose_decision`, carrying these attributes:
 
-| Attribute | Description |
-|---|---|
-| `aidb.agent.decision.decision_id` | A UUID minted for this decision. Appears in a [denial's error message](#finding-the-record-from-a-denial). |
-| `aidb.agent.decision.action_status` | `allowed` or `denied`. |
-| `aidb.agent.decision.interaction_point` | Always `sql_exec` — the only interaction point AIDB records against today. |
-| `aidb.agent.decision.principal` | The Postgres identity that made the call — `current_user` at the moment of the check. |
-| `aidb.agent.decision.agent_role` | The role the purpose resolved to. |
-| `aidb.agent.decision.denial_reason` | Present only when `action_status = denied`. |
-| `db.query.text` | The SQL text the agent's tool call submitted, present whenever that text is known — including on a denial recorded before the statement reached Postgres. See "Seeing the attempted SQL" below. |
+| Attribute                               | Description                                                                                                                                                                                     |
+|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.agent.decision.decision_id`       | A UUID minted for this decision. Appears in a [denial's error message](#finding-the-record-from-a-denial).                                                                                      |
+| `aidb.agent.decision.action_status`     | `allowed` or `denied`.                                                                                                                                                                          |
+| `aidb.agent.decision.interaction_point` | Always `sql_exec` — the only interaction point AIDB records against today.                                                                                                                      |
+| `aidb.agent.decision.principal`         | The Postgres identity that made the call — `current_user` at the moment of the check.                                                                                                           |
+| `aidb.agent.decision.agent_role`        | The role the purpose resolved to.                                                                                                                                                               |
+| `aidb.agent.decision.denial_reason`     | Present only when `action_status = denied`.                                                                                                                                                     |
+| `db.query.text`                         | The SQL text the agent's tool call submitted, present whenever that text is known — including on a denial recorded before the statement reached Postgres. See [Seeing the attempted SQL](#seeing-the-attempted-sql). |
 
 `denial_reason` is one of:
 
-| Value | Meaning |
-|---|---|
-| `role_not_found` | The purpose's role doesn't exist — for example, it was dropped after the purpose was registered against it. |
-| `not_role_member` | The caller of `agent_converse` isn't a member of the resolved role. |
-| `engine_privilege_denied` | The execution was blocked by Postgres — an ordinary object-ACL denial (a table, column, or function the resolved role has no grant on). |
-| `escalation_blocked` | A privilege-escalation attempt was blocked — either by the engine after the role was assumed (`RESET ROLE`, `SET ROLE`, `SET SESSION AUTHORIZATION`, or any other privilege-gated GUC without a `pg_parameter_acl` grant), or pre-execution, before the statement ever reached Postgres (a bare `RESET ROLE`, `RESET ALL`, or `DISCARD ALL` tool body). |
-| `pre_execution_rejected` | The SQL provided to the tool failed pre-execution validation. |
+| Value                     | Meaning                                                                                                                                                                                                                                                                                                                                                 |
+|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `role_not_found`          | The purpose's role doesn't exist — for example, it was dropped after the purpose was registered against it.                                                                                                                                                                                                                                             |
+| `not_role_member`         | The caller of `agent_converse` isn't a member of the resolved role.                                                                                                                                                                                                                                                                                     |
+| `engine_privilege_denied` | The execution was blocked by Postgres — an ordinary object-ACL denial (a table, column, or function the resolved role has no grant on).                                                                                                                                                                                                                 |
+| `escalation_blocked`      | A privilege-escalation attempt was blocked — either by the engine after the role was assumed (`RESET ROLE`, `SET ROLE`, `SET SESSION AUTHORIZATION`, or any other privilege-gated GUC without a `pg_parameter_acl` grant), or pre-execution, before the statement ever reached Postgres (a bare `RESET ROLE`, `RESET ALL`, or `DISCARD ALL` tool body). |
+| `pre_execution_rejected`  | The SQL provided to the tool failed pre-execution validation.                                                                                                                                                                                                                                                                                           |
 
 The denial reason is set based on whichever error actually stopped the statement, not everything the statement attempted. Postgres executes a statement single-pass and halts at the first error it raises, so an escalation attempt nested inside a function call, subquery, or `DO` block is never reached if something else in the same statement fails first:
 
