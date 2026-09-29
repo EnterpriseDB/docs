@@ -20,7 +20,7 @@ Creates a semantic KB over one or more schemas, embeds the schema metadata with 
 | ----------------- | ------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`            | TEXT    | `default_semkb`  | Name for the KB. When omitted, functions that also omit `name`/`kb_name` resolve to this KB as long as only one exists — see [Getting started](../semantic-knowledge-bases#getting-started). |
 | `model`           | TEXT    | Required         | The embedding model to use. A KB uses a single model for all of its metadata.                                                                         |
-| `schemas`         | TEXT[]  | Required         | The schema or schemas to crawl and index.                                                                                                             |
+| `schemas`         | TEXT[]  | `ARRAY['public']` | The schema or schemas to crawl and index.                                                 
 | `auto_processing` | TEXT    | `Disabled`       | How the KB reacts to schema changes: `Disabled`, `Live`, or `Background`. See [Auto-processing modes](#auto-processing-modes).                        |
 | `bypass_triggers` | BOOLEAN | `false`          | Not yet documented — confirm behavior with engineering before publishing.                                                                             |
 | `vector_index`    | JSONB   | `NULL`           | Vector index configuration, built with a [vector index config helper](../data-pipelines/reference#vector-index-config-helpers).                      |
@@ -169,7 +169,7 @@ The composite entry point: runs the per-source ranked searches (schema metadata,
 | `entity_types`      | TEXT[]             | `NULL`  | Entity types to include: `Table`, `View`, `Column`, `Alias`, `Relationship`, `Query`. Omit for all.      |
 | `rrf_k`             | INT                | `60`    | Rank-fusion damping constant.                                                                            |
 | `min_similarity`    | DOUBLE PRECISION   | `NULL`  | Optional similarity floor. Rows scoring below it are dropped. Omit for no floor.                         |
-| `include_proposed`  | BOOLEAN            | `false` | Include `proposed` relationships and comments still in the [curation queue](../semantic-knowledge-bases/curation#reviewing-before-its-live), not just approved/live ones. |
+| `include_proposed`  | BOOLEAN            | `false` | Also return relationships with status `proposed`, not just `approved` ones. |
 
 #### Returns
 
@@ -395,7 +395,7 @@ Lists recorded relationships, optionally filtered.
 | `cardinality`      | Derived from the schema — for example `many-to-one`, `one-to-one`.         |
 | `is_nullable`      | Whether the join column can be null, which decides `JOIN` vs. `LEFT JOIN`. |
 | `source`           | See [Source](../semantic-knowledge-bases/relationships#source).           |
-| `is_validated`     | Whether PostgreSQL enforces this relationship (true only for `crawl`).      |
+| `is_validated`     | Whether PostgreSQL has validated the backing foreign key. `false` for a crawled `NOT VALID` foreign key and for every non-crawl relationship. |
 | `confidence`       | Ranking order, not a probability — see [Status and confidence](../semantic-knowledge-bases/relationships#status-and-confidence). |
 | `status`           | `proposed`, `approved`, `stale`, or `retired`.                              |
 | `constraint_name`  | The backing constraint's name, when the relationship came from one.        |
@@ -421,9 +421,9 @@ Finds a route between two tables, ranked shortest first, then by confidence.
 | Parameter      | Type | Default | Description                                                                                         |
 | -------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------ |
 | `kb_name`      | TEXT | —        | The KB to search.                                                                                      |
-| `left_object`  | TEXT | —        | The starting table (`schema.relation`).                                                               |
-| `right_object` | TEXT | —        | The destination table (`schema.relation`).                                                            |
-| `max_hops`     | INT  | Not stated in the guide — confirm the default before publishing. | Maximum join distance to search. |
+| `from_object`  | TEXT | `NULL`   | The starting table (`schema.relation`).                                                               |
+| `to_object`    | TEXT | `NULL`   | The destination table (`schema.relation`).                                                            |
+| `max_hops`     | INT  | `4`      | Maximum number of hops in a single route. |
 | `max_paths`    | INT  | `10`    | Caps the search, not the ranking — enumeration stops as soon as `max_paths` routes are found, so a small value can discard the best route. |
 
 #### Returns
@@ -456,7 +456,7 @@ Lists every relationship one hop from a given set of tables, in either direction
 | Parameter | Type   | Default | Description                          |
 | --------- | ------ | ------- | -------------------------------------- |
 | `kb_name` | TEXT   | —        | The KB to search.                      |
-| `tables`  | TEXT[] | —        | The table(s) to find joins from.       |
+| `relations` | TEXT[] | `NULL`   | The table(s) to find joins from.       |
 
 #### Returns
 
@@ -501,7 +501,7 @@ Records a relationship by hand. SQL-only — not registered as a native agent to
 | `left_object`      | The left endpoint.                                                              |
 | `left_columns`     | The left endpoint's join columns.                                               |
 | `source`           | `manual` or `agent`.                                                            |
-| `status`           | `approved` for a hand-added relationship.                                       |
+| `status`           | `approved` when `source => 'manual'`; `proposed` when `source => 'agent'`.     |
 | `confidence`       | The prior for the given `kind`, capped at 0.90 for an added claim.               |
 | `action`           | `inserted` or `updated`, depending on whether the call created a new row or matched an existing one (same endpoints, columns, and kind). |
 
@@ -530,7 +530,7 @@ Records a relationship the same way as `aidb.add_relationship()`, but always set
 
 #### Parameters
 
-Same as [`aidb.add_relationship()`](#aidbadd_relationship), minus `source` (always `agent`).
+Takes only `kb_name`, `left_object`, `right_object`, `kind`, `predicate`, `left_columns`, `right_columns`, `cardinality`, `is_nullable`, and `description` — no junction fields, `join_expr`, `inverse_predicate`, `curated_label`, `level`, or `source`, so an agent can record only a `key_join` this way. The relationship is always stored with `source = 'agent'` and `status = 'proposed'`, and isn't routed until a person approves it by re-asserting it with `aidb.add_relationship()`.
 
 ---
 
@@ -571,7 +571,7 @@ Detects and repairs drift on hand-added relationships when a named column is ren
 | `relationship_id` | The affected relationship's ID.                                              |
 | `left_object`     | The left endpoint.                                                            |
 | `right_object`    | The right endpoint.                                                           |
-| `source`          | Always a hand-added source (`manual` or `agent`) — crawled relationships track the constraint directly and never drift. |
+| `source`          | The relationship's source — any source except `crawl`. Crawled relationships follow their constraint instead: they're removed or retired when it's dropped. |
 | `event`           | For example `column_dropped`, when a named column is renamed or dropped.       |
 | `detail`          | Detail of what changed.                                                        |
 
