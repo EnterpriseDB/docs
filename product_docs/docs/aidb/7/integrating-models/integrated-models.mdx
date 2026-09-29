@@ -97,6 +97,8 @@ SELECT aidb.create_model(
 
 BERT, CLIP, T5, and Llama below run on Candle, each with its own config helper. llama.cpp (its own subsection, last) runs a separate runtime and doesn't have a config helper yet.
 
+For all local providers, the config key that names the Hugging Face repository is `hf_model`. The old key `model` still works but logs a deprecation warning. The Candle config helpers below still write the key as `model`; to avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead.
+
 ### BERT
 
 Use `aidb.bert_config()` to specify the HuggingFace model identifier, an optional revision, and an optional local cache directory:
@@ -214,10 +216,10 @@ SELECT aidb.create_model(
 
 | Parameter        | Type             | Default                              | Description                                                                                                                          |
 |------------------|------------------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `model`          | TEXT             | Required unless `local_path` is set  | HuggingFace repo id, for example, `Qwen/Qwen2-0.5B-Instruct-GGUF`.                                                                     |
+| `hf_model`       | TEXT             | Required unless `local_path` is set  | Hugging Face repo id, for example, `Qwen/Qwen2-0.5B-Instruct-GGUF`. `model` is a deprecated alias that logs a warning.                                                                     |
 | `model_file`     | TEXT             | Required unless `local_path` is set  | Filename of the `.gguf` inside the repo. For a split GGUF, name any one shard — every shard downloads and llama.cpp reassembles them. |
 | `revision`       | TEXT             | `main`                                | HuggingFace revision.                                                                                                                   |
-| `local_path`     | TEXT             | NULL                                  | Absolute path to a local `.gguf` file. Overrides `model`/`model_file`/`revision`.                                                       |
+| `local_path`     | TEXT             | NULL                                  | Absolute path to a local `.gguf` file. Overrides `hf_model`/`model_file`/`revision`.                                                       |
 | `cache_dir`      | TEXT             | NULL                                  | Local directory for caching downloaded model files.                                                                                     |
 | `n_ctx`          | INTEGER          | 4096                                  | Context window, in tokens. Capped at the value the GGUF was trained with.                                                               |
 | `chat_template`  | TEXT             | NULL                                  | Override the chat template baked into the GGUF.                                                                                         |
@@ -228,7 +230,7 @@ SELECT aidb.create_model(
 | `system_prompt`  | TEXT             | NULL                                  | System prompt prepended to every request.                                                                                               |
 | `repeat_penalty` | REAL             | 1.1                                   | Penalty applied to repeated tokens.                                                                                                      |
 | `repeat_last_n`  | INTEGER          | 64                                    | Number of trailing tokens considered for the repeat penalty.                                                                            |
-| `thinking`       | BOOLEAN          | NULL (keeps tags)                     | Controls `<think>` tag handling in the response: `false` strips them, `true`/unset keeps them.                                          |
+| `thinking`       | BOOLEAN          | NULL                                  | `false` turns reasoning off and removes reasoning blocks from the output. `true` turns reasoning on for models that need a prompt to reason. Unset leaves the model's default. |
 
 `llamacpp_generate` also supports `tools`, `tool_choice`, and `response_format` for tool calling and structured output, as do the native `openai_responses` and `anthropic_messages` providers (see [External model connections](external-model-connections)) — see [Tool calling and structured output](../reference/models#tool-calling-and-structured-output).
 
@@ -239,7 +241,7 @@ SELECT aidb.create_model(
     name => 'my_llamacpp_embed',
     provider => 'llamacpp_embeddings',
     config => jsonb_build_object(
-        'model', 'nomic-ai/nomic-embed-text-v1.5-GGUF',
+        'hf_model', 'nomic-ai/nomic-embed-text-v1.5-GGUF',
         'model_file', 'nomic-embed-text-v1.5.Q4_K_M.gguf',
         'revision', '0188c9bf409793f810680a5a431e7b899c46104c',
         'n_ctx', 2048,
@@ -250,14 +252,16 @@ SELECT aidb.create_model(
 
 | Parameter    | Type    | Default                              | Description                                                                                                                          |
 |--------------|---------|----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `model`      | TEXT    | Required unless `local_path` is set   | HuggingFace repo id, for example, `nomic-ai/nomic-embed-text-v1.5-GGUF`.                                                               |
+| `hf_model`   | TEXT    | Required unless `local_path` is set   | Hugging Face repo id, for example, `nomic-ai/nomic-embed-text-v1.5-GGUF`. `model` is a deprecated alias that logs a warning.                                                               |
 | `model_file` | TEXT    | Required unless `local_path` is set   | Filename of the `.gguf` inside the repo. For a split GGUF, name any one shard — every shard downloads and llama.cpp reassembles them. |
 | `revision`   | TEXT    | `main`                                 | HuggingFace revision.                                                                                                                   |
-| `local_path` | TEXT    | NULL                                   | Absolute path to a local `.gguf` file. Overrides `model`/`model_file`/`revision`.                                                       |
+| `local_path` | TEXT    | NULL                                   | Absolute path to a local `.gguf` file. Overrides `hf_model`/`model_file`/`revision`.                                                       |
 | `cache_dir`  | TEXT    | NULL                                   | Local directory for caching downloaded model files.                                                                                     |
 | `n_ctx`      | INTEGER | 2048                                   | Context window, in tokens. Capped at the value the GGUF was trained with.                                                               |
 | `pooling`    | TEXT    | `unspecified`                          | Pooling strategy: `unspecified` (use the GGUF's own metadata), `none`, `mean`, `cls`, or `last`.                                        |
 | `normalize`  | BOOLEAN | `true`                                 | L2-normalize output embedding vectors.                                                                                                   |
+| `query_prefix`    | TEXT | NULL                              | Text prepended to every input embedded as a query, for example, `search_query: ` for nomic-embed-text.                                  |
+| `document_prefix` | TEXT | NULL                              | Text prepended to every input embedded as a document, for example, `search_document: ` for nomic-embed-text.                            |
 
 #### `llamacpp_reranking`
 
@@ -269,7 +273,7 @@ SELECT aidb.create_model(
     name => 'my_llamacpp_reranker',
     provider => 'llamacpp_reranking',
     config => jsonb_build_object(
-        'model', 'gpustack/bge-reranker-v2-m3-GGUF',
+        'hf_model', 'gpustack/bge-reranker-v2-m3-GGUF',
         'model_file', 'bge-reranker-v2-m3-Q4_K_M.gguf',
         'revision', '3093af03b1a635e67b084b1d8c03c5f5e020fd05',
         'n_ctx', 2048
@@ -281,7 +285,7 @@ SELECT aidb.create_model(
     name => 'my_llamacpp_reranker_decoder',
     provider => 'llamacpp_reranking',
     config => jsonb_build_object(
-        'model', 'ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF',
+        'hf_model', 'ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF',
         'model_file', 'qwen3-reranker-0.6b-q8_0.gguf',
         'revision', 'a02f48bb4f057028298c21fa033da2b30d7742d5',
         'n_ctx', 2048,
@@ -292,10 +296,10 @@ SELECT aidb.create_model(
 
 | Parameter       | Type    | Default                                | Description                                                                                                                          |
 |-----------------|---------|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `model`         | TEXT    | Required unless `local_path` is set     | HuggingFace repo id, for example, `gpustack/bge-reranker-v2-m3-GGUF`.                                                                   |
+| `hf_model`      | TEXT    | Required unless `local_path` is set     | Hugging Face repo id, for example, `gpustack/bge-reranker-v2-m3-GGUF`. `model` is a deprecated alias that logs a warning.                                                                   |
 | `model_file`    | TEXT    | Required unless `local_path` is set     | Filename of the `.gguf` inside the repo. For a split GGUF, name any one shard — every shard downloads and llama.cpp reassembles them. |
 | `revision`      | TEXT    | `main`                                   | HuggingFace revision.                                                                                                                   |
-| `local_path`    | TEXT    | NULL                                     | Absolute path to a local `.gguf` file. Overrides `model`/`model_file`/`revision`.                                                       |
+| `local_path`    | TEXT    | NULL                                     | Absolute path to a local `.gguf` file. Overrides `hf_model`/`model_file`/`revision`.                                                       |
 | `cache_dir`     | TEXT    | NULL                                     | Local directory for caching downloaded model files.                                                                                     |
 | `n_ctx`         | INTEGER | 2048                                     | Context window, in tokens. The query/document pair is rejected at call time if it doesn't fit, rather than silently truncated.         |
 | `reranker_type` | TEXT    | NULL (auto-detected)                     | Force the scoring mechanism: `cross_encoder` or `decoder_only`. Only needed to correct a misdetection.                                 |
@@ -320,7 +324,7 @@ SELECT aidb.create_model(
     name => 'my_llamacpp_ocr',
     provider => 'llamacpp_ocr',
     config => jsonb_build_object(
-        'model', 'ggml-org/LightOnOCR-2-1B-GGUF',
+        'hf_model', 'ggml-org/LightOnOCR-2-1B-GGUF',
         'model_file', 'LightOnOCR-2-1B-Q8_0.gguf',
         'mmproj_file', 'mmproj-LightOnOCR-2-1B-Q8_0.gguf',
         'revision', '7d4daf70c2856a155b1413def00f4ae59843a9cf',
@@ -331,12 +335,12 @@ SELECT aidb.create_model(
 
 | Parameter           | Type    | Default                              | Description                                                                                                                          |
 |----------------------|---------|-----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `model`              | TEXT    | Required unless `local_path` is set    | HuggingFace repo id, for example, `ggml-org/LightOnOCR-2-1B-GGUF`.                                                                     |
+| `hf_model`           | TEXT    | Required unless `local_path` is set    | Hugging Face repo id, for example, `ggml-org/LightOnOCR-2-1B-GGUF`. `model` is a deprecated alias that logs a warning.                                                                     |
 | `model_file`         | TEXT    | Required unless `local_path` is set    | Filename of the base model `.gguf` inside the repo.                                                                                    |
 | `mmproj_file`        | TEXT    | Required unless `mmproj_local_path` is set | Filename of the multimodal projector (mmproj) `.gguf`, in the same HuggingFace repo/revision as the base model.                    |
 | `mmproj_local_path`  | TEXT    | NULL                                     | Absolute path to a local mmproj `.gguf` file. Overrides the HuggingFace-based `mmproj_file` download.                                |
 | `revision`           | TEXT    | `main`                                   | HuggingFace revision.                                                                                                                   |
-| `local_path`         | TEXT    | NULL                                     | Absolute path to a local base model `.gguf` file. Overrides `model`/`model_file`/`revision`.                                          |
+| `local_path`         | TEXT    | NULL                                     | Absolute path to a local base model `.gguf` file. Overrides `hf_model`/`model_file`/`revision`.                                          |
 | `cache_dir`          | TEXT    | NULL                                     | Local directory for caching downloaded model files.                                                                                     |
 | `n_ctx`              | INTEGER | 8192                                     | Context window, in tokens.                                                                                                              |
 | `prompt`             | TEXT    | Built-in transcription instruction      | OCR instruction sent with each image. Prompt influence is model-dependent.                                                             |

@@ -979,41 +979,53 @@ SELECT aidb.update_semantic_kb_curation('bank_kb', true);
 
 ### `aidb.semantic_kb_audit`
 
-Lists every comment write, including whether it was forced and what it discarded.
+Lists recorded semantic KB operations. Only a superuser or the extension owner can call it.
 
 #### Parameters
 
-| Parameter | Type | Default | Description             |
-| --------- | ---- | ------- | -------------------------- |
-| `kb_name` | TEXT | `NULL`   | The KB to audit.           |
+| Parameter    | Type        | Default | Description                                                                                                                   |
+| ------------ | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. `NULL` returns records for all knowledge bases.                                  |
+| `op`         | TEXT        | `NULL`  | Only return this operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`. |
+| `func`       | TEXT        | `NULL`  | Only return records written by this function.                                                                                |
+| `since`      | TIMESTAMPTZ | `NULL`  | Only return records from this time on.                                                                                        |
+| `limit_rows` | INTEGER     | `100`   | Maximum number of records to return.                                                                                          |
 
 #### Returns
 
-`action`, `subject`, `actor`, `detail`, `logged_at`.
+`TABLE(ts TIMESTAMPTZ, kb_name TEXT, op TEXT, func TEXT, caller_kind TEXT, actor_name TEXT, login_name TEXT, object_ref TEXT, detail JSONB)`
+
+`caller_kind` is `agent_hub`, `mcp`, or `direct`. `actor_name` is the role the operation ran as; `login_name` is the session's login role. `object_ref` names the affected object. `detail` holds operation-specific data, for example `mode`, `forced`, and `discarded` for a description write.
 
 #### Example
 
 ```sql
-SELECT action, subject, actor, detail FROM aidb.semantic_kb_audit('bank_kb')
-ORDER BY logged_at DESC LIMIT 3;
+SELECT ts, op, func, actor_name, object_ref, detail
+FROM aidb.semantic_kb_audit(kb_name => 'bank_kb', op => 'write')
+ORDER BY ts DESC LIMIT 3;
 ```
 
 ---
 
-### `aidb.prune_semantic_kb_audit`
+### `aidb.semkb_audit_prune`
 
-Deletes audit records older than `max_age`. SQL-only, meant to be run by an operator or a scheduled job such as `pg_cron`, not by an agent.
+Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller must be a member of the knowledge base's owner role.
 
 #### Parameters
 
-| Parameter | Type      | Default  | Description                          |
-| --------- | --------- | -------- | ---------------------------------------- |
-| `max_age` | INTERVAL  | Required | Records older than this are deleted.     |
+| Parameter    | Type     | Default  | Description                                                                                                                                                                                       |
+| ------------ | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`    | TEXT     | Required | The knowledge base whose records to delete.                                                                                                                                                       |
+| `older_than` | INTERVAL | `NULL`   | Delete records older than this. `NULL` uses the [`aidb.semkb_audit_retention`](../install/configure#semantic-knowledge-base-audit-log) parameter (default `30 days`). A zero interval deletes nothing. |
+
+#### Returns
+
+`BIGINT`: the number of records deleted.
 
 #### Example
 
 ```sql
-SELECT aidb.prune_semantic_kb_audit('90 days');
+SELECT aidb.semkb_audit_prune('bank_kb', '90 days');
 ```
 
 ---

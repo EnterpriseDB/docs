@@ -91,20 +91,17 @@ SELECT jsonb_pretty(aidb.remove_comment('bank', 'transactions', kb_name => 'bank
 
 ## Auditing changes
 
-Every write is recorded, including whether it was forced and what it discarded:
+Every semantic KB operation is recorded in an audit log. For a description write, the record includes whether the write was forced and what it discarded. A superuser or the extension owner reads the log with `aidb.semantic_kb_audit()`:
 
 ```sql
-SELECT action, subject, actor, detail FROM aidb.semantic_kb_audit('bank_kb')
-ORDER BY logged_at DESC LIMIT 3;
-__OUTPUT__
--[ RECORD 1 ]----------------------------------------------------------------------------------
-action  | add_comment_to_object
-subject | bank.customers
-actor   | tanay.kayastha
-detail  | {"mode": "edit", "forced": true, "discarded": "People who bank with us.", ...}
+SELECT ts, op, func, actor_name, object_ref, detail
+FROM aidb.semantic_kb_audit(kb_name => 'bank_kb', op => 'write')
+ORDER BY ts DESC LIMIT 3;
 ```
 
-`aidb.prune_semantic_kb_audit(max_age)` deletes audit records older than `max_age`. It's SQL-only, meant to be run by an operator or a scheduled job such as `pg_cron`, not by an agent.
+`op` groups operations into `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, and `admin`. `func` is the function that ran. `caller_kind` is `agent_hub`, `mcp`, or `direct`. See [`aidb.semantic_kb_audit`](../reference/semantic-knowledge-bases#aidbsemantic_kb_audit) for all parameters and columns.
+
+Nothing deletes audit records automatically. `aidb.semkb_audit_prune(kb_name, older_than)` deletes the records of one knowledge base that are older than `older_than`. If you omit `older_than`, the [`aidb.semkb_audit_retention`](../install/configure#semantic-knowledge-base-audit-log) parameter applies (default `30 days`). Run it as an operator or from a scheduled job such as `pg_cron`. The caller must be a member of the knowledge base's owner role.
 
 ## Reviewing before it's live
 

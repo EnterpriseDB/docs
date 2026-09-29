@@ -101,7 +101,7 @@ If you access AIDB through Hybrid Manager's Pipeline Designer, pipeline operatio
 
 When you create the AIDB extension, Postgres also creates a role named `aidb_governance`, separate from `aidb_users`. The role exists to give an auditor or monitoring tool read access to the trace, log, and metric data AIDB records for [observability](../reference/observability), without also granting that auditor or tool the ability to use AIDB's functions.
 
-- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function.
+- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function. It can also read the `id`, `name`, `purpose`, and `created_at` columns of `aidb.agents`, and it's the only role that can create, change, and delete agent purposes. See [Permissions](../agents/creating-agents#permissions).
 - Security: `aidb_governance` is the only non-superuser role with `SELECT` access to the `aidb_otel.*` tables.
 - Separation from aidb_users: `aidb_users` can write into `aidb_otel.*` indirectly (every AIDB function call that's traced ends up in those tables), but has no `SELECT` on the tables themselves. A role only needs `aidb_governance` in addition to `aidb_users` if it also needs to query or export that data.
 
@@ -270,6 +270,24 @@ If your AIDB pipelines read from external storage, both allowlists are relevant:
 | `aidb.env_var_allowed_prefix` | string | `AIDB_` | Required prefix for environment variable names read via `credentials_env`/`headers_env`. Set to an empty string to disable the restriction. Only a superuser may change it. `SUSET`. |
 
 Combined with a caller-controlled provider or MCP server URL, an unrestricted variable name would let a malicious configuration read out unrelated secrets that happen to live in the Postgres process's environment — this parameter closes that off by default while staying overridable per deployment. See [Credentials from environment variables](../reference/models#credentials-from-environment-variables) for `credentials_env`, and [MCP tools](../tools/mcp-tools#authentication) for `headers_env`.
+
+### Kubernetes Secret paths
+
+`aidb.create_model(credentials_k8s_secret => ...)` and `aidb.import_mcp_tools(headers_k8s_secret => ...)` read a credential from a file path on the Postgres host at use time, typically a Kubernetes Secret mounted as a volume. The following parameter restricts which paths may be read:
+
+| Parameter                             | Type   | Default                 | Description                                                                                                                                                                                                                       |
+|---------------------------------------|--------|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.k8s_secret_allowed_path_prefix` | string | `/var/run/secrets/aidb` | Required path prefix for files read via `credentials_k8s_secret`/`headers_k8s_secret`. Symbolic links are resolved before the check. Set to an empty string to disable the restriction. Only a superuser may change it. `SUSET`. |
+
+See [Credentials from a Kubernetes Secret](../reference/models#credentials-from-a-kubernetes-secret).
+
+### Semantic knowledge base audit log
+
+| Parameter                    | Type     | Default   | Description                                                                                                                                                                                                   |
+|------------------------------|----------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.semkb_audit_retention` | interval | `30 days` | How long semantic KB audit records are kept. Used by `aidb.semkb_audit_prune()` when it's called without `older_than`. A zero interval makes the prune call delete nothing. Nothing deletes records automatically. Only a superuser may change it. `SUSET`. |
+
+See [Auditing changes](../semantic-knowledge-bases/curation#auditing-changes).
 
 ### OpenTelemetry tracing
 

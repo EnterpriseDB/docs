@@ -15,6 +15,7 @@ A tool's exact parameters are always visible with `SELECT params FROM aidb.tools
 | Tool | Read-only | Description |
 |------|-----------|--------------|
 | `run_sql_query` | Yes | Run a read-only SQL query against the database and return its rows as JSON. |
+| `explain_query` | Yes | Return the query plan for one `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `MERGE` statement as JSON. Pass `analyze => true` to run the statement and include real timing and row counts; this fails for a write statement. Without `analyze`, the statement isn't executed. |
 
 ## Catalog discovery
 
@@ -27,7 +28,7 @@ They're related to the [semantic knowledge base tools](#semantic-knowledge-bases
 
 A typical agent uses both: semantic search to find the right table from a vague description, then catalog discovery to get its exact, current columns and foreign keys.
 
-All four tools are privilege-aware — they only return objects the calling user can actually see. Listings hide Postgres and AIDB internal schemas as well as installed extensions' schemas and objects by default (`catalog_get_object_details` deliberately doesn't hide extension objects: explicitly naming one is asking for it). Listings are capped at 200 rows; every row carries a `truncated` flag that's `true` when more rows exist, signaling the caller to narrow the search with `schema` or `name_pattern`. Optional text parameters treat an empty string the same as an omitted argument.
+All six tools are privilege-aware — they only return objects the calling user can actually see. Listings hide Postgres and AIDB internal schemas as well as installed extensions' schemas and objects by default (`catalog_get_object_details` deliberately doesn't hide extension objects: explicitly naming one is asking for it). Listings are capped at 200 rows; every row carries a `truncated` flag that's `true` when more rows exist, signaling the caller to narrow the search with `schema` or `name_pattern`. Optional text parameters treat an empty string the same as an omitted argument.
 
 | Tool | Read-only | Description |
 |------|-----------|--------------|
@@ -35,6 +36,20 @@ All four tools are privilege-aware — they only return objects the calling user
 | `catalog_list_objects` | Yes | List tables, views, materialized views, foreign tables, and/or functions. Narrow with `schema`, `object_type`, and/or `name_pattern`. |
 | `catalog_get_object_details` | Yes | Get full detail on one object by name: columns, primary/unique/foreign keys for relations; arguments and return type for functions. |
 | `catalog_list_relations` | Yes | List foreign-key relationships — every FK in a schema, or only edges touching one specific table, in either direction. |
+| `catalog_list_sequences` | Yes | List sequences, optionally in one schema. Sequences aren't included in `catalog_list_objects`. |
+| `catalog_list_extensions` | Yes | List installed extensions with name, version, whether it's relocatable, and its comment. |
+
+## Database health
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `analyze_db_health` | Yes | Run health checks and return the findings as JSON, keyed by check name. Pass `checks` to run a subset: `index`, `connection`, `vacuum`, `sequence`, `replication`, `buffer`, `constraint`. Omit it, or pass `all`, to run every check. Results only cover objects the caller can see. The `connection` count and some `replication` details need the `pg_monitor` or `pg_read_all_stats` role. |
+
+`analyze_db_health` is also available as a SQL function:
+
+```sql
+SELECT aidb.analyze_db_health(ARRAY['index', 'vacuum']);
+```
 
 ## Semantic knowledge bases
 
@@ -76,8 +91,8 @@ The following functions are intentionally not native tools:
 | `aidb.add_relationship` | For a person to add by hand (`source => 'manual'`); the agent-facing equivalent is the `add_relationship` tool above, which calls `aidb.add_relationship_as_agent` instead. |
 | `aidb.resolve_object_comment` | Approves or rejects a proposed comment. Deliberately excluded: an agent holding it could approve its own proposal. |
 | `aidb.update_semantic_kb_curation` | Turns the comment review queue on or off. Deliberately excluded: an agent holding it could switch off the review that governs it. |
-| `aidb.semantic_kb_audit` | Reads the audit log of description writes; for a superuser or the extension owner. |
-| `aidb.prune_semantic_kb_audit` | Deletes old audit records; run by an operator or a scheduled job such as `pg_cron`. |
+| `aidb.semantic_kb_audit` | Reads the audit log of semantic KB operations; for a superuser or the extension owner. |
+| `aidb.semkb_audit_prune` | Deletes old audit records for one knowledge base; run by an operator or a scheduled job such as `pg_cron`. |
 
 ## Models
 

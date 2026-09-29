@@ -81,6 +81,7 @@ Registers a new model in the AIDB model registry.
 | `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
 | `validate`            | BOOLEAN | `true`   | If `true`, probe the model at creation time to confirm it's functional. See [Validation](#validation). |
 | `credentials_env`     | TEXT    | NULL     | Name of an environment variable to read credentials from instead of storing them. See [Credentials from environment variables](#credentials-from-environment-variables). Mutually exclusive with `credentials`. |
+| `credentials_k8s_secret` | TEXT | NULL     | Path to a file, or a directory of files, to read credentials from instead of storing them. See [Credentials from a Kubernetes Secret](#credentials-from-a-kubernetes-secret). Mutually exclusive with `credentials` and `credentials_env`. |
 
 #### Credentials from environment variables
 
@@ -102,6 +103,27 @@ SELECT aidb.create_model(
 The referenced variable can hold either a bare secret (used as `api_key`) or a JSON object (for example, `{"basic_auth": "..."}`) — the same shapes `credentials` itself accepts. `credentials` and `credentials_env` are mutually exclusive; passing both raises an error.
 
 For security, the environment variable's name must start with the prefix configured by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default) — this stops a model or MCP server configuration from naming an arbitrary, unrelated environment variable on the Postgres host and exfiltrating its value. The same mechanism and the same GUC apply to MCP server authentication; see [`headers_env`](../tools/mcp-tools#authentication).
+
+#### Credentials from a Kubernetes Secret
+
+Pass `credentials_k8s_secret` to read the credential from a file each time the model is used, instead of storing it in the database. Only the path is stored. This is meant for a Kubernetes Secret mounted into the Postgres pod as a volume.
+
+```sql
+SELECT aidb.create_model(
+    name                   => 'my_openai',
+    provider               => 'openai_embeddings',
+    config                 => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials_k8s_secret => '/var/run/secrets/aidb/openai/api-key'
+);
+```
+
+The path can point to:
+
+- A file. Its content is either a bare secret (used as `api_key`) or a JSON object, for example `{"basic_auth": "..."}`. These are the same shapes `credentials` accepts.
+- A directory with exactly two files named `username` and `password`. They're combined into `basic_auth`.
+- A directory with exactly one file, which is read like a single file.
+
+The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths) (`/var/run/secrets/aidb` by default). `credentials`, `credentials_env`, and `credentials_k8s_secret` are mutually exclusive.
 
 #### TLS configuration
 
@@ -486,7 +508,7 @@ All parameters are optional — omit any you don't need.
 | `seed`           | BIGINT           | NULL    | Random seed for reproducible outputs.                                                    |
 | `repeat_penalty` | REAL             | NULL    | Penalty for repeating tokens. `1.0` = no penalty. Not supported by NIM or OpenAI.        |
 | `repeat_last_n`  | INTEGER          | NULL    | Number of recent tokens considered for `repeat_penalty`. Not supported by NIM or OpenAI. |
-| `thinking`       | BOOLEAN          | NULL    | Controls `<think>` tag handling. `true`/`NULL` retains tags; `false` strips them.        |
+| `thinking`       | BOOLEAN          | NULL    | `false` turns model reasoning off and removes `<think>` blocks from the output. `true` turns reasoning on. `NULL` leaves the model's default. Supported by `llamacpp_generate`, `anthropic_messages`, `openai_responses`, and OpenAI-compatible chat completion providers. |
 | `extra_args`     | JSONB            | NULL    | Additional provider-specific arguments passed directly to the API.                       |
 
 #### Returns
@@ -588,6 +610,8 @@ SELECT aidb.generate_text(
 
 These functions return a `JSONB` configuration object for the `config` parameter of `aidb.create_model()`. Each helper corresponds to a specific model provider.
 
+For the local providers `bert_local`, `clip_local`, `t5_local`, and `llama_instruct_local`, the config key that names the Hugging Face repository is `hf_model`. The helpers below write it under the old name `model`, which these providers still accept with a deprecation warning. To avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead of the helper.
+
 ### `aidb.embeddings_config`
 
 For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
@@ -635,7 +659,7 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 | `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                               |
 | `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                         |
 | `seed`                    | BIGINT           | NULL     | Random seed.                                        |
-| `thinking`                | BOOLEAN          | NULL     | `<think>` tag handling.                             |
+| `thinking`                | BOOLEAN          | NULL     | `false` turns model reasoning off; `true` turns it on; `NULL` leaves the model's default. |
 | `max_tokens`              | JSONB            | NULL     | Max tokens config (use [`aidb.max_tokens_config()`](#aidbmax_tokens_config)). |
 | `max_concurrent_requests` | INTEGER          | NULL     | Max concurrent requests.                            |
 | `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.             |
