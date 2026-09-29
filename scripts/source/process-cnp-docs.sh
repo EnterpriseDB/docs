@@ -32,7 +32,7 @@ function do_import {
   npm ci
 
   cd $dest/product_docs/docs/postgres_for_kubernetes/1/
-  node "$script_source/scripts/source/files-to-ignore.mjs" \
+  node "$DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs" \
     "$dest/product_docs/docs/postgres_for_kubernetes/1/" \
     > $source/files-to-ignore.txt
 
@@ -54,7 +54,7 @@ function do_import {
     -p "cnp/rename-to-mdx" \
     > /dev/null
 
-  node "$script_source/scripts/source/merge-indexes.mjs" \
+  node "$DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs" \
     "$source/docs/src/index.mdx" \
     "$dest/product_docs/docs/postgres_for_kubernetes/1/index.mdx" \
     "$source/docs/src/index.mdx" \
@@ -76,12 +76,12 @@ function do_import {
   then
     local api_ref_index="$api_ref_dir/index.mdx"
     cp "$current_api_ref" "$api_ref_index"
-    node "$script_source/scripts/source/update-yaml.mjs" "$api_ref_index" \
+    node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$api_ref_index" \
       navTitle="API Reference" \
       pdfExclude=null \
       navigation=[`ls "$api_ref_dir" | grep ^v | sed -e 's/\.mdx$//' | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' |  paste -sd "," - `]
   fi 
-  node "$script_source/scripts/source/update-yaml.mjs" "$current_api_ref" \
+  node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$current_api_ref" \
     originalFilePath=null
 
   cd $cwd
