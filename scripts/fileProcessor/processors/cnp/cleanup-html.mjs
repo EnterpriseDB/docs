@@ -127,7 +127,7 @@ function cleanupHtml() {
           }
         }
         if (newChildren.length > 0)
-          newChildren.at(-1).push(...eatSubsequentCodeBlocks(node, index, parent));
+          newChildren.at(-1).children.push(...eatSubsequentCodeBlocks(node, index, parent));
         node.type = "list";
         node.children = newChildren;
       }
