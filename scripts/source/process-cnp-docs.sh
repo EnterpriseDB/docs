@@ -54,7 +54,7 @@ function do_import {
     "$source/docs/src/index.mdx" \
     >> $source/files-to-ignore.txt
 
-  rsync -av --delete --exclude-from=$source/files-to-ignore.txt src/ $dest/product_docs/docs/postgres_for_kubernetes/1/ > /dev/null
+  rsync -av --delete --exclude-from=$source/files-to-ignore.txt --filter="protect rel_notes/src/*" src/ $dest/product_docs/docs/postgres_for_kubernetes/1/ > /dev/null
 
   # Archive API docs
   local api_ref_dir="$dest/product_docs/docs/postgres_for_kubernetes/1/pg4k.v1"
