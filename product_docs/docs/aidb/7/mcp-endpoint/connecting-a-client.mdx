@@ -55,7 +55,7 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
    ]}}
    ```
 
-1. Call a tool with `tools/call`, naming the tool and its arguments from the `tools/list` output. For the built-in `execute_sql`, the single argument is `sql`:
+1. Call a tool with `tools/call`, naming the tool and its arguments from the `tools/list` output:
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -64,12 +64,10 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
      -H "Accept: application/json, text/event-stream" \
      -H "mcp-session-id: $SESSION_ID" \
      -d '{"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-          "params": {"name": "execute_sql", "arguments": {"sql": "SELECT 41 + 1 AS answer"}}}'
+          "params": {"name": "add_order", "arguments": {"item": "gizmo", "amount": 4.20}}}'
    ```
 
-   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, so `BEGIN`/`COMMIT` across separate calls aren't supported — see [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
-
-   Calling a catalog tool is the same request with its own name and declared arguments:
+   The built-in `execute_sql` tool is called the same way and needs no prior registration — its single argument is `sql`:
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -78,8 +76,10 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
      -H "Accept: application/json, text/event-stream" \
      -H "mcp-session-id: $SESSION_ID" \
      -d '{"jsonrpc": "2.0", "id": 4, "method": "tools/call",
-          "params": {"name": "add_order", "arguments": {"item": "gizmo", "amount": 4.20}}}'
+          "params": {"name": "execute_sql", "arguments": {"sql": "SELECT 41 + 1 AS answer"}}}'
    ```
+
+   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, so `BEGIN`/`COMMIT` across separate calls aren't supported — see [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
 
 ## What an agent can do once provisioned
 
@@ -97,7 +97,7 @@ See [Provisioning example](provisioning-example) for these behaviors demonstrate
 
 Each call opens a fresh Postgres connection as the authenticated role. Postgres errors pass through unchanged: `tools/call` returns them as MCP `isError` results, `tools/list` as a JSON-RPC error. A wrong password surfaces as `password authentication failed`, a missing grant as `permission denied`, and an unknown tool as `tool '<name>' not found in aidb.tools`.
 
-MCP clients can send a `notifications/cancelled` message to cancel one of their own in-flight requests, naming the `id` the client assigned to that request — the same `id` value it sent in the original `tools/call`, such as `3` in the `execute_sql` example above. The endpoint cancels the Postgres statement behind that request, including a statement running inside a catalog tool, and the session keeps serving afterward.
+MCP clients can send a `notifications/cancelled` message to cancel one of their own in-flight requests, naming the `id` the client assigned to that request — the same `id` value it sent in the original `tools/call`, such as `3` in the `add_order` example above. The endpoint cancels the Postgres statement behind that request, including a statement running inside a catalog tool, and the session keeps serving afterward.
 
 ```shell
 curl -sS http://<mcp-host>:8765/mcp \
