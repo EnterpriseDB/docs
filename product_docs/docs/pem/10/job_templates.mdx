@@ -1,0 +1,336 @@
+---
+title: "Understanding job templates"
+navTitle: "Job templates"
+deepToC: true
+---
+
+A job template is a job definition you write once and push to many servers or agents at the same time.
+
+Without templates, running the same maintenance job across many servers means creating the same job by hand on each one, and editing it again on each one when it changes. With a template, you define the steps and schedules once, pick the targets, and PEM creates and maintains one job per target for you.
+
+Typical uses include:
+
+- Running the same VACUUM or ANALYZE health check on every production server, on a regular schedule.
+- Generating the same recurring report for every server in a group.
+- Running the same log-rotation script on every agent host.
+
+A template isn't a new kind of job. PEM materializes the template into ordinary PEM jobs, one per target, which the agents run exactly like any other job. What the template adds is creating them all at once and keeping them in sync.
+
+## Key concepts
+
+| Term | What it means |
+|------|----------------|
+| Template | The reusable definition: name, type, steps, schedules, and notification settings. |
+| Type | Where the steps run: **Database** (on target servers) or **Host** (on agent hosts). Fixed at creation. |
+| Step | The work performed: a SQL query, a report, or a shell/batch script. |
+| Schedule | When the job runs. A template can have several schedules. |
+| Deployment | The link between a template and its chosen targets. A template has one deployment. |
+| Target | One server (**Database** type) or one agent (**Host** type) that the template runs on. |
+| Materialized job | The ordinary PEM job that deploying the template creates for a target. |
+
+### One job per target
+
+Each target gets its own job, with its own run history. If one server is down, the others are unaffected — you get a per-target result, not one combined pass/fail.
+
+Jobs multiply per server, not per agent. If one agent monitors five targeted servers, that agent ends up running five jobs from the template, one per server.
+
+Materialized jobs are named for the template they came from:
+
+| Template type | Job name on the agent |
+|----------------|------------------------|
+| **Database** | `<template name>_server_<server id>` |
+| **Host** | `<template name>` |
+
+## Prerequisites
+
+- You need the **Scheduled Tasks** privilege (`pem_manage_schedule_task`). Without it, the **Job Templates** menu item doesn't appear.
+- Every server you want to target must be actively bound to an agent. A server with no active agent binding can't be a target — the target picker marks it with an info icon explaining why.
+- For **Report** steps, the report templates you want to use must already exist.
+
+## Creating a template
+
+To open the Job Templates workspace, select **Management > Configurations > Job Templates**. Select **Add** in the **Job Templates** list. The editor has four tabs: **General**, **Steps**, **Schedules**, and **Notifications**.
+
+### General
+
+| Field | Notes |
+|-------|-------|
+| Name | Required. Must be unique across the PEM server. |
+| Type | **Database** or **Host**. Can't be changed after creation. |
+| Enabled? | The default enabled state for every job the template creates. |
+| Comment | Free text, copied to each materialized job's description. |
+
+The template's type determines what steps you can add and what you can target:
+
+| Type | Steps allowed | Targets | Runs on |
+|------|---------------|---------|---------|
+| **Database** | **SQL**, **Report** | Servers (and server groups) | Each target server |
+| **Host** | **Batch** | Agents | Each target agent host |
+
+If you choose the wrong type, create a new template — the type can't be changed later.
+
+### Steps
+
+A template needs at least one enabled step. The editor and the database both reject a template without one.
+
+| Field | Notes |
+|-------|-------|
+| Name | Required, and unique within the template. |
+| Enabled? | Disabled steps stay in the template but aren't deployed. |
+| Kind | **SQL** or **Report** (**Database** type), or **Batch** (**Host** type). |
+| On error | What happens if the step fails: **Fail** stops the job immediately and records it as failed; **Success** records the step as succeeded and the job continues; **Ignore** records the step as failed but ignored and the job continues. |
+| Database | **Database** type only. The database this step connects to on every target server. Leave blank to use each server's maintenance database. |
+| Report template | **Report** steps only. Which report template to run. |
+| Send report over email | **Report** steps only. Emails the generated report after each run, to the template's [Email group](#notifications). |
+| Email format | **Report** steps only, and only when **Send report over email** is on. **HTML**, **JSON**, or **Both**. |
+| Comment | Copied to the materialized job step. |
+| Code | The SQL or script to run. Disabled for **Report** steps. |
+
+Steps run in order, with no parallel execution within a job. See [Renaming, deleting, and reordering steps](#renaming-deleting-and-reordering-steps) before you rely on reordering them.
+
+**Success** and **Ignore** both let the job continue after a failed step; the difference is what the run history shows afterward. Use **Ignore** when you want the failure to stay visible.
+
+The database you set on a step is one value for every target. If you type a database name and a target server doesn't have it, the step fails on that server with a connection error — other targets are unaffected. Leaving the field blank, so each target uses its own maintenance database, avoids this.
+
+### Schedules
+
+A template can carry several schedules; the job runs at the earliest matching time of any enabled one.
+
+| Field | Notes |
+|-------|-------|
+| Name | Required, and unique within the template. |
+| Enabled? | Disabled schedules deploy but never fire. |
+| Start | The job can't run before this time. |
+| End | The job stops running after this time. Leave blank for no expiration. |
+| Repeat: Days | Week days, month days (1–31, plus `Last day`), and months. |
+| Repeat: Times | Hours and minutes. |
+| Exceptions | Specific dates and/or times to skip. |
+| Comment | Free text. |
+
+The schedule fires when the current time matches every field you set. Leaving a field blank means it matches every value of that field:
+
+| You select | It means |
+|-------------|----------|
+| **Hours** `2`, **Minutes** `0`, nothing else | 02:00 every day. |
+| **Hours** `2`, **Minutes** `0`, **Week day** `Sunday` | 02:00 on Sundays only. |
+| **Minutes** `0`, nothing else | Every hour, on the hour. |
+| **Hours** `23`, **Minutes** `0`, **Month day** `Last day` | 23:00 on the last day of every month. |
+| Nothing at all — no **Days**, no **Times** | Runs once, at **Start**, then never again. |
+
+The last row is a special case, not a wildcard. Leaving one field blank while setting another (for example, **Minutes** only) still matches every value of the blank field, and the schedule keeps recurring. Only when every **Days** and **Times** field is empty does PEM treat the schedule as a single run instead of a recurring one.
+
+Schedules are interpreted in the PEM server's time zone, not the target server's. The editor doesn't expose a per-schedule time zone field — every schedule you create in the UI inherits the PEM server setting. On a geographically spread fleet, a schedule set for 02:00 runs at 02:00 PEM-server time on every target, not 02:00 local time at each one.
+
+### Notifications
+
+| Field | Notes |
+|-------|-------|
+| Notify | **Default** (fall through to the agent/global settings), **On failure**, **Always**, or **Never**. |
+| Email group | Who to email about the job's outcome. Required when **Notify** is set to **On failure** or **Always** — or when any enabled **Report** step has **Send report over email** turned on, regardless of **Notify**. |
+
+These settings are copied onto every materialized job, so all targets notify the same way.
+
+!!! Note
+    A **Report** step's email is independent of **Notify**. **Notify** controls notifications about the job's outcome (succeeded or failed); **Send report over email** sends the report itself after the step runs. Turning it on for any enabled **Report** step makes **Email group** required even when **Notify** is **Never** — there's no separate recipient list for the report, it reuses this same group.
+
+## Deploying to targets
+
+Saving a template does nothing on its own. A template with no targets creates no jobs.
+
+From the **Job Templates** list, select the **Manage targets & history** icon on the template's row, then **Add targets**.
+
+The dialog shows what your template type can use:
+
+| Template type | Picker shows |
+|----------------|--------------|
+| **Database** | Server groups, laid out like the browser tree, with their servers nested underneath. |
+| **Host** | Agents. |
+
+Selecting a group header selects all its servers, including those in nested groups. Selecting a group is a shortcut, not a subscription: the dialog expands your group selection into an explicit list of servers when you add them. A server added to that group later isn't deployed automatically — add it as a target when you want it included.
+
+When you deploy:
+
+1. Each chosen server is resolved to the one active agent that monitors it. A server with no active agent binding is skipped.
+2. One job is created per target.
+3. Steps and schedules are copied in, with the server and database filled in concretely for each target.
+
+Deploying a template that would create no jobs at all is rejected, rather than appearing to succeed and doing nothing.
+
+## Managing a deployment
+
+The **Manage** page for a template has a stat strip summarizing target and run status, and two tabs.
+
+### Targets tab
+
+| Column | Meaning |
+|--------|---------|
+| Server | The target server. Blank for **Host** templates. |
+| Agent | The agent that runs this target's job. |
+| Database | The database the steps actually resolved to. |
+| Enabled? | A per-target switch to pause one target without changing the template. |
+| Last status | The result of the target's most recent run. |
+
+Available actions:
+
+| Action | Effect |
+|--------|--------|
+| **Save** | Applies per-target **Enabled?** changes. |
+| **Run now** | Advances the selected targets' next run to now. Only targets with an enabled job are triggered. |
+| **Remove** | Soft-removes the target: its job stops immediately. History is kept by default; a checkbox lets you delete it at the same time. |
+| **Add targets** | Opens the target picker again. |
+
+Removing a target is sticky: a removed target isn't brought back by later template edits or resyncs. To bring it back, add it as a target again explicitly.
+
+You can permanently delete a removed target's run history only after the target has been removed. If you try before that, PEM refuses with a message telling you to remove the target first.
+
+### History tab
+
+A run feed across all targets, showing the log ID, target, agent, status, start time, and duration for each run. Expand a row to see each step's status, result, duration, output, and log details.
+
+You can search by target or agent name, filter to removed targets only, or delete selected history rows.
+
+## Editing a live template
+
+Editing a template immediately updates every job it has already deployed. There's no separate "redeploy" step.
+
+When you save an edit, PEM re-materializes every target's job: steps are reconciled, schedules are replaced, and the job's next run time is recalculated — even when the schedule itself didn't change.
+
+What's preserved across an edit:
+
+- Per-target **Enabled?** settings and removals.
+- Run history, including the history of steps you delete.
+
+### Renaming, deleting, and reordering steps
+
+!!! warning
+    Steps are matched by name. Renaming a step is treated as deleting the old one and adding a new one — its history doesn't follow the rename.
+
+    Deleting a step doesn't erase its past runs. The step is parked on every materialized job — disabled and marked removed, but kept, so previous runs still show what actually executed. Adding a step back with the same name revives the parked step and it picks up its old history.
+
+    Reordering steps in the editor only affects steps added afterward. Agents run a job's steps in the order they were originally added to the template, and an existing step keeps its position even if you move it elsewhere in the editor. To change execution order, delete the affected steps and re-add them in the order you want. PEM won't let you reorder or insert before existing steps once a template has been deployed — remove its targets first if you need to do this.
+
+## Where the deployed jobs appear
+
+Materialized jobs show up in the normal places — the browser tree under their agent, and the **Scheduled Tasks** view. They're managed by the template and read-only there:
+
+| You try to | PEM says |
+|-------------|----------|
+| Edit the job in the tree | "This job was created from a job template and cannot be edited here. Edit the job template instead." |
+| Delete the job in the tree | "This job was created from a job template and cannot be deleted here. Remove it as a deploy target in the job template instead." |
+| Delete the task in **Scheduled Tasks** | The delete button is disabled. |
+
+This is intentional: a local edit would be silently overwritten the next time the template re-materializes.
+
+## Understanding lifecycle events
+
+A server or agent can move or disappear through ordinary fleet changes, including a high availability (HA) failover or agent takeover. Here's what happens to a template's targets and jobs in each case:
+
+| Event | Result |
+|-------|--------|
+| Server moves to another agent (HA failover or agent takeover) | The job re-homes to the new agent. One job, one continuous history — no duplicate is created under the new agent. |
+| Server is no longer a target | The target is soft-removed and its job disabled. History is kept. |
+| Server is deactivated in PEM | Same as above: target soft-removed, job disabled, history kept. |
+| Agent is removed in PEM | Its targets are soft-removed and their jobs disabled. History is kept. |
+| A soft-removed target becomes usable again | It stays removed. Re-adding it as a target is the only way to bring it back. |
+| Target has no active agent at deploy time | It's skipped. Nothing is created for it. |
+| You disable the template | Every materialized job is disabled. |
+| You delete the template | Every job it deployed is deleted, along with its run history. |
+
+Soft-removal is sticky, however it happened. Whether you removed the target yourself or PEM removed it because its server or agent became unusable, a later template edit or resync won't bring it back. Only explicitly adding it again under **Add targets** does.
+
+Deleting an agent or server in PEM happens in stages: PEM first marks it inactive, which soft-removes the template's targets and disables their jobs without destroying anything. The object itself, and an agent's materialized jobs and their run history, are removed later, when PEM's deleted-object purge processes it.
+
+Deleting a template deletes the jobs it deployed. The delete confirmation states this explicitly, warning that it will also delete all jobs already deployed from the template, along with their run history, and that this can't be undone.
+
+## Auditing template changes
+
+Every change you make through the Job Templates workspace is recorded in `pem.event_history` with `component = 'job_template'`. Nothing is written for read-only actions such as opening a template or browsing history.
+
+There's no dedicated screen for this yet. Query the table directly:
+
+```sql
+SELECT recorded_time, user_name, operation, message
+  FROM pem.event_history
+ WHERE component = 'job_template'
+ ORDER BY recorded_time DESC
+ LIMIT 50;
+```
+
+| Column | Contents |
+|--------|----------|
+| `recorded_time` | When the change was committed. |
+| `user_name` | The PEM user who made the change. |
+| `component` | Always `job_template` for these rows. |
+| `operation` | Which kind of change. See [Operations](#operations). |
+| `message` | A one-line summary, for example `Deleted job template "Nightly Vacuum"`. |
+| `details` | JSON with the specifics of the change. |
+
+### Operations
+
+| `operation` | Written when |
+|--------------|--------------|
+| `create` | A template is created. |
+| `update` | A template is edited, or its **Enabled?** switch is toggled in the list. |
+| `delete` | A template is deleted. |
+| `update_targets` | Targets are added, or per-target **Enabled?** changes are saved. |
+| `remove_target` | A target is removed. |
+| `delete_target_history` | A removed target's history is permanently deleted. |
+| `delete_runs` | Runs are deleted from the History tab. |
+| `run_now` | Run now is triggered for a target. |
+| `export` | Templates are exported. |
+| `import` | Templates are imported. |
+| `import_overwrite` | An import replaced an existing template. |
+
+Both the list's **Enabled?** switch and a full edit record `operation = 'update'`. There's no separate `disable` operation — check `details -> 'Changes' -> 'Metadata' -> 'Enabled'` to see whether an update changed the enabled state.
+
+A `delete` row carries the full before-image of the template: every step (with its code) and every schedule (with its recurrence and exceptions). Once the template is gone, this row is the only record of what the fleet was running.
+
+An `update` row carries a `Changes` object with only what actually differed, including `Metadata` (name, description, enabled, notify, and email group, each with before and after values), `StepsAdded`/`StepsRemoved`, `StepsUpdated`, and `SchedulesAdded`/`SchedulesRemoved`/`SchedulesUpdated`. Saving a template without changing anything still records the row, without a `Changes` object, because the save still re-materializes every deployed job.
+
+### Retention and access
+
+Rows are kept for 30 days by default, controlled by the `event_history_retention_time` configuration parameter and purged by the built-in **Event history table cleanup** system job. Raise the value if you need a longer audit window.
+
+Any PEM user can read the whole `pem.event_history` table. There's no row-level filtering on it, and `details` includes step code — the SQL and shell text your templates run. Keep this in mind when deciding what to put in a step.
+
+## Importing and exporting templates
+
+Templates can be moved between PEM servers as `.pemjt` files.
+
+- **Export**: Select the templates you want, then select **Export**.
+- **Import**: Choose a `.pemjt` file. The **Skip existing?** option decides what happens to templates whose names already exist on this server: when it's on, those entries are skipped and reported as skipped; when it's off, they're overwritten.
+
+The definition travels; the deployment doesn't. Targets, deployments, and run history are never exported. An imported template arrives with no targets and creates no jobs until you deploy it.
+
+References inside the file, such as report templates and email groups, travel by name and are re-resolved on the destination server. If a name doesn't exist there, the import reports it for that entry rather than failing the whole file.
+
+A file written by a newer PEM than the one importing it is rejected, with a message naming both format versions.
+
+## Troubleshooting
+
+| Symptom | Cause and what to do |
+|---------|------------------------|
+| Saving the template created no jobs | A template with no targets does nothing. Open **Manage > Add targets**. |
+| A server is grayed out in the picker with an info icon | No active agent is bound to it. Bind it to an agent first. |
+| Fewer targets appeared than I selected | Servers without an active agent binding are skipped at deploy time. |
+| A step fails on some servers with a connection error | The database named on the step doesn't exist there. Leave it blank to use each server's maintenance database. |
+| One agent is running several jobs from one template | Expected: PEM creates one job per targeted server, and that agent monitors several of them. |
+| A new server in a targeted group isn't running the job | Group selections are expanded to explicit servers when you add them. Add the new server as a target. |
+| I removed a target but it came back | Removal is sticky; it can't come back on its own. Someone added it again explicitly. |
+| A target's job is disabled and I didn't disable it | Its server or agent became unusable, so PEM removed the target and disabled the job. Add it back under **Add targets**. |
+| Reordering steps in the editor changed nothing | Existing steps keep their original execution order. Delete and re-add them to reorder. |
+| A deleted step still shows in run history | Expected: deleted steps are parked, not erased, so past runs stay accurate. |
+| Can't edit or delete the job in the browser tree | It's template-managed. Edit the template, or remove the target instead. |
+| Can't delete a removed target's history | Remove the target first; only then can its history be purged. |
+| Import reports a schedule with no Days or Times "will run every minute" | This message is stale. A schedule with no Days or Times set now runs once, at its start time, then never again — it doesn't run every minute. |
+
+## Limitations
+
+- One deployment per template. A template has a single target set, not several independent ones.
+- Type is immutable. **Database** and **Host** templates can't be converted.
+- Targeting is per server, not per database. A **Database** template runs the same step set against one database per target server.
+- Group targeting is a selection shortcut, not a live subscription to group membership.
+- Schedule time zone isn't editable in the template editor.
+- Step execution order can't be changed for steps that are already deployed.
+- Detaching a materialized job from its template isn't available in the UI.
+- The audit trail has no dedicated screen. Query `pem.event_history` directly, and note that any PEM user can read it.
