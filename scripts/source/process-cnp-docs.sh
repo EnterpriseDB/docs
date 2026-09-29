@@ -28,6 +28,8 @@ function do_import {
 
   cd $script_source/scripts/fileProcessor
   npm ci
+  cd $script_source/scripts/source/
+  npm ci
 
   cd $dest/product_docs/docs/postgres_for_kubernetes/1/
   node "$script_source/scripts/source/files-to-ignore.mjs" \
