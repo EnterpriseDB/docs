@@ -23,10 +23,14 @@ function do_import {
   local source=$1
   local dest=$2
   local version=$3
+  local script_source=$4
   local cwd=`pwd`
 
+  cd $script_source/scripts/fileProcessor
+  npm ci
+
   cd $dest/product_docs/docs/postgres_for_kubernetes/1/
-  node "$DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs" \
+  node "$script_source/scripts/source/files-to-ignore.mjs" \
     "$dest/product_docs/docs/postgres_for_kubernetes/1/" \
     > $source/files-to-ignore.txt
 
@@ -35,7 +39,7 @@ function do_import {
   # grab key bit of source for use in docs
   cp $source/config/manager/default-monitoring.yaml $source/docs/src/
 
-  node "$DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs" \
+  node "$script_source/scripts/fileProcessor/main.mjs" \
     -f "src/**/*.md" \
     -p "cnp/convert-rel-notes" \
     -p "cnp/cleanup-html" \
@@ -48,7 +52,7 @@ function do_import {
     -p "cnp/rename-to-mdx" \
     > /dev/null
 
-  node "$DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs" \
+  node "$script_source/scripts/source/merge-indexes.mjs" \
     "$source/docs/src/index.mdx" \
     "$dest/product_docs/docs/postgres_for_kubernetes/1/index.mdx" \
     "$source/docs/src/index.mdx" \
@@ -62,7 +66,7 @@ function do_import {
   mkdir -p "$api_ref_dir"
   mv "$dest/product_docs/docs/postgres_for_kubernetes/1/pg4k.v1.mdx" "$current_api_ref"
   # TODO: just install yq
-  node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$current_api_ref" \
+  node "$script_source/scripts/source/update-yaml.mjs" "$current_api_ref" \
     title="API Reference - $version" \
     navTitle="$version" \
     pdfExclude=true
@@ -70,19 +74,16 @@ function do_import {
   then
     local api_ref_index="$api_ref_dir/index.mdx"
     cp "$current_api_ref" "$api_ref_index"
-    node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$api_ref_index" \
+    node "$script_source/scripts/source/update-yaml.mjs" "$api_ref_index" \
       navTitle="API Reference" \
       pdfExclude=null \
       navigation=[`ls "$api_ref_dir" | grep ^v | sed -e 's/\.mdx$//' | sed '/-/!{s/$/_/}' | sort -V -r | sed 's/_$//' |  paste -sd "," - `]
   fi 
-  node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$current_api_ref" \
+  node "$script_source/scripts/source/update-yaml.mjs" "$current_api_ref" \
     originalFilePath=null
 
   cd $cwd
 }
-
-cd $DESTINATION_CHECKOUT/scripts/fileProcessor
-npm ci
 
 # grab some information about what we're importing
 cd $SOURCE_CHECKOUT
@@ -140,7 +141,7 @@ git checkout $PREVIOUS_COMMIT
 cd $SOURCE_CHECKOUT/docs-import
 git checkout $PREVIOUS_TAG
 
-do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $PREVIOUS_TAG
+do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $PREVIOUS_TAG $DESTINATION_CHECKOUT/docs-import
 
 cd $DESTINATION_CHECKOUT/docs-import
 git checkout -b temp/docs-import-$PREVIOUS_TAG
@@ -151,7 +152,7 @@ cd $SOURCE_CHECKOUT
 git worktree remove --force ./docs-import
 git worktree add --detach ./docs-import
 
-do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $CURRENT_TAG
+do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $CURRENT_TAG $DESTINATION_CHECKOUT
 
 cd $DESTINATION_CHECKOUT/docs-import
 

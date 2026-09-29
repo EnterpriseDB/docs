@@ -16,7 +16,7 @@ export const process = async (filename, content) => {
   const processorInput = unified()
     .use(remarkParse)
     .use(admonitions, {
-      tag: ":::",
+      tag: "!!!",
       icons: "none",
       infima: true,
       customTypes: {
@@ -126,8 +126,6 @@ function cleanupHtml() {
             console.error("\n\n\nUnexpected child of descriptionlist: " + JSON.stringify(item, null, 2));
           }
         }
-        if (newChildren.length > 0)
-          newChildren.at(-1).push(...eatSubsequentCodeBlocks(node, index, parent));
         node.type = "list";
         node.children = newChildren;
       }
