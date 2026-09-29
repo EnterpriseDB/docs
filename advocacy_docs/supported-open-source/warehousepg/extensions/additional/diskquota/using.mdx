@@ -106,7 +106,8 @@ To change a per-segment tablespace quota, call `set_per_segment_quota()` again w
 
 ### Setting a database quota
 
-!!! Note
+!!!Note
+
 Database quotas require `whpg-diskquota` 2.4.0 and WarehousePG 7.
 !!!
 
@@ -127,7 +128,8 @@ To change a database quota, call `set_database_quota()` again with the new value
 
 ### Setting a cluster quota
 
-!!! Note
+!!!Note
+
 Cluster quotas require `whpg-diskquota` 2.4.0 and WarehousePG 7.
 !!!
 
@@ -137,7 +139,8 @@ Limit the combined size of every database that `whpg-diskquota` monitors. Unlike
 SELECT diskquota.set_cluster_quota('1TB');
 ```
 
-!!! Note
+!!!Note
+
 Run `set_cluster_quota()` on its own, not batched with other statements in an explicit transaction block, since it commits on its own and refuses to run inside one.
 !!!
 
@@ -155,7 +158,7 @@ HINT:  cluster usage 204 MB exceeds cluster quota 100 MB; free disk space or rai
 
 To change the cluster quota, call `set_cluster_quota()` again with the new value. To remove it, set the value to `'-1'`. See the [reference](reference.mdx#functions) for `set_cluster_quota()`.
 
-!!! Note
+!!!Note
 
 Writes to `pg_catalog` and to `whpg-diskquota`'s internal tables are exempt from database and cluster quotas, although their size still counts toward the totals, since `whpg-diskquota` tracks usage by writing to those same tables.
 !!!
@@ -166,7 +169,7 @@ Adjust how and when `whpg-diskquota` enforces the quotas you set.
 
 ### Activating or deactivating hard limit enforcement
 
-Activate hard limit enforcement to stop an over-quota query mid-execution, instead of only rejecting new writes before they start. Set `diskquota.hard_limit` to `'on'` for all databases and reload the configuration. See [How whpg-diskquota works](index.mdx#how-whpg-diskquota-works) for the difference between soft and hard limit enforcement.
+Activate hard limit enforcement to stop an over-quota query mid-execution, instead of only rejecting new writes before they start. Set `diskquota.hard_limit` to `'on'` for all databases and reload the configuration. See [How whpg-diskquota works](/supported-open-source/warehousepg/extensions/additional/diskquota/#how-whpg-diskquota-works) for the difference between soft and hard limit enforcement.
 
 ```bash
 gpconfig -c diskquota.hard_limit -v 'on'
@@ -181,11 +184,13 @@ SELECT * FROM diskquota.status();
 
 See the [reference](reference.mdx#configuration-parameters) for `diskquota.hard_limit`.
 
-!!! Note
+!!!Note
+
 A write only gets caught by hard limit enforcement if it's still running after the worker's next cycle. A write that finishes within one `diskquota.naptime` completes even with hard limit enforcement on, since the worker hasn't yet had a chance to measure the new usage and dispatch a rejectmap entry to the segments.
 !!!
 
-!!! Note
+!!!Note
+
 `whpg-diskquota` can't enforce a hard limit on an `ALTER TABLE ADD COLUMN DEFAULT` operation.
 !!!
 
@@ -259,7 +264,8 @@ From `whpg-diskquota` 2.4, pausing stops enforcing quotas only, while the worker
 
 While paused, a write operation that takes a schema, role, or other scope over its quota succeeds, since enforcement is off. Resuming doesn't retroactively block that write either. Instead, the next refresh cycle after you resume re-evaluates usage against the quota from scratch, and only blocks further writes if the scope is still over quota at that point.
 
-!!! Note
+!!!Note
+
 The pause doesn't persist through a WarehousePG cluster restart. Run `diskquota.pause()` again once the cluster is back up, if you still need it.
 !!!
 
@@ -273,7 +279,8 @@ SELECT diskquota.resume();
 
 Alternatively, temporarily raise the relevant quota before the operation and lower it again once `VACUUM FULL` completes. If you're running `VACUUM FULL` on a single table, set the quota no smaller than that table's size. If you're running it on every table in the database, set the quota no smaller than the largest table's size.
 
-!!! Note
+!!!Note
+
 Deleting rows or running `VACUUM` on a table doesn't release disk space, so neither operation alone reduces usage against a quota. Run `VACUUM FULL` or `TRUNCATE TABLE` instead to actually free space.
 !!!
 
@@ -289,7 +296,7 @@ Deactivate `whpg-diskquota` instead of pausing it when you want to stop its back
     gpconfig -s shared_preload_libraries
     ```
 
-2.  Use the output of the previous command to remove the `diskquota` library, keeping any other shared libraries, and restart WarehousePG:
+1.  Use the output of the previous command to remove the `diskquota` library, keeping any other shared libraries, and restart WarehousePG:
 
     ```bash
     gpconfig -c shared_preload_libraries -v '<other_libraries>'
@@ -299,9 +306,9 @@ Deactivate `whpg-diskquota` instead of pausing it when you want to stop its back
 This deactivation stops all disk quota monitoring, including database and cluster quotas. To reactivate monitoring:
 
 1.  Re-add the library to `shared_preload_libraries`.
-2.  Restart WarehousePG.
-3.  Re-size the existing tables in each previously monitored database by running `SELECT diskquota.init_table_size_table();`. See the [reference](reference.mdx#functions) for `init_table_size_table()`.
-4.  Restart WarehousePG again.
+1.  Restart WarehousePG.
+1.  Re-size the existing tables in each previously monitored database by running `SELECT diskquota.init_table_size_table();`. See the [reference](reference.mdx#functions) for `init_table_size_table()`.
+1.  Restart WarehousePG again.
 
 ## Monitoring quotas and usage
 
@@ -327,12 +334,12 @@ See the [reference](reference.mdx#functions) for `status()`.
 
 ### Displaying disk quotas and disk usage
 
-!!! Note
+!!!Note
 
 Connect to the database where you set a schema, role, or tablespace quota before querying the views below, since each one reports quotas and usage for the current database only.
 !!!
 
-!!! Note
+!!!Note
 
 If a view below shows `0` or a stale number right after you load data, `whpg-diskquota` hasn't refreshed usage yet. Run `SELECT diskquota.wait_for_worker_new_epoch();` to block until the current database's worker completes its next refresh cycle, then query the view again.
 !!!
@@ -423,7 +430,7 @@ __OUTPUT__
 
 See the [reference](reference.mdx#views) for `show_cluster_quota_view`.
 
-!!! Note
+!!!Note
 
 `whpg-diskquota` counts a table created inside an uncommitted transaction toward its schema's or role's usage, even though the quota views don't yet show it. With hard limit enforcement on, that uncounted usage can trigger a quota-exceeded error on a new query against that schema or role before the transaction commits.
 !!!
