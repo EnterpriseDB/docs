@@ -236,14 +236,16 @@ Where:
 
 ## Performing a backup
 
-Run `gpbackup` with the `--plugin-config` option, the `--no-compression` option, and the `--single-data-file` option, specifying the path to your YAML file:
+Run `gpbackup` with the `--plugin-config` option, specifying the path to your YAML file. Always include `--no-compression` and `--single-data-file` too:
 
 ```shell
 gpbackup --dbname <database-name> --no-compression --single-data-file --plugin-config /path/to/ddboost_plugin_config.yaml
 ```
-Always include `--no-compression`. The plugin doesn't compress data itself, and Data Domain deduplicates data as it arrives. Compressing the stream with `gpbackup`'s default gzip compression defeats that deduplication and breaks selective restores.
 
-Use `--single-data-file` too. Backing up each segment's tables to multiple data files adds overhead on the Data Domain file system and slows the backup down, compared to a single data file per segment.
+Both flags are required:
+
+-   `--no-compression`: The plugin doesn't compress data itself, and Data Domain deduplicates data as it arrives. Compressing the stream with `gpbackup`'s default gzip compression defeats that deduplication and breaks filtered restores.
+-   `--single-data-file`: Backing up each segment's tables to multiple data files adds overhead on the Data Domain file system and slows the backup down, compared to a single data file per segment. A filtered restore also requires the backup to be a single-data-file backup.
 
 For the full set of `gpbackup` options, see the [gpbackup reference](reference/gpbackup.mdx).
 
@@ -256,6 +258,17 @@ gprestore --timestamp <YYYYMMDDHHMMSS> --plugin-config /path/to/ddboost_plugin_c
 ```
 
 If you restore only some tables from a single-data-file backup with `--include-table` or `--include-table-file`, `gprestore` automatically uses the plugin's selective restore path, unless you set `restore_subset` to `"off"`.
+
+### Performing a selective restore
+
+`gprestore` can skip reading the full backup set and restore just the tables you ask for, as long as the backup meets the following conditions:
+
+-   Both `gpbackup` and `gprestore` ran with `--plugin-config` pointing at the same YAML file.
+-   `gpbackup` created the backup with `--no-compression` and `--single-data-file`.
+-   Your `gprestore` command includes a filtering option, such as `--include-table`, `--include-table-file`, `--exclude-table`, `--exclude-table-file`, `--include-schema`, or `--exclude-schema`.
+-   `restore_subset` isn't set to `"off"` in the plugin configuration file.
+
+Meeting these conditions makes the plugin fetch only the tables you asked for from the Data Domain appliance instead of streaming the whole backup, so a restore that only needs part of a database goes faster.
 
 ## Managing backups
 
