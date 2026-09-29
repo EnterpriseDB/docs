@@ -1,0 +1,149 @@
+---
+title: Installing and upgrading whpg-diskquota
+navTitle: Installing and upgrading
+description: Install, upgrade, and downgrade the whpg-diskquota extension for WarehousePG.
+---
+
+Install the `whpg-diskquota` package on each host in your WarehousePG cluster, as it doesn't ship as part of the WarehousePG server package.
+
+## Supported platforms
+
+`whpg-diskquota` platform support differs by WarehousePG version:
+
+| WarehousePG version | `whpg-diskquota` version | Architecture | Operating systems |
+| --- | --- | --- | --- |
+| 7 | 2.4.0 | amd64 | RHEL 8, 9 |
+| 7 | 2.4.0 | ppc64le | RHEL 8, 9 |
+| 6 | 2.3.x | amd64 | RHEL 8, 9 |
+
+`whpg-diskquota` 2.4.0 is the first release built for the ppc64le architecture.
+
+WarehousePG 6 doesn't support database or cluster quotas, which require `whpg-diskquota` 2.4.0 and WarehousePG 7. See the [release notes](rel_notes/index.mdx) for the WarehousePG version and platforms each `whpg-diskquota` release targets.
+
+## Installing the package
+
+Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for repository setup instructions. The package name is `edb-whpg6-diskquota` for WarehousePG 6, or `edb-whpg7-diskquota` for WarehousePG 7.
+
+## Registering whpg-diskquota for first use
+
+After you install the package on every host, perform the following steps to configure `whpg-diskquota` for first use:
+
+1.  From the coordinator, create the `diskquota` database. The launcher uses this database to store the list of monitored databases and, since `whpg-diskquota` 2.4, the cluster quota's cap.
+
+    ```bash
+    createdb diskquota
+    ```
+
+2.  Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+3.  Use the output of the previous command to enable `diskquota`, along with any other shared libraries, and restart WarehousePG:
+
+    <TabContainer syncKey="whpg-version">
+    <Tab title="WHPG 7">
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, diskquota-2.4'
+    gpstop -ar
+    ```
+
+    </Tab>
+    <Tab title="WHPG 6">
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, diskquota-2.3'
+    gpstop -ar
+    ```
+
+    </Tab>
+    </TabContainer>
+
+4.  Register the `diskquota` extension in each database where you want to enforce disk usage quotas. By default, `whpg-diskquota` can monitor up to 50 databases. Raise that limit with [`diskquota.max_monitored_databases`](reference.mdx#configuration-parameters) before you start the server, if you need to monitor more.
+
+    ```sql
+    CREATE EXTENSION diskquota;
+    ```
+
+5.  Run `diskquota.init_table_size_table()` in the database to record the current size of every existing table, so usage counts from the first refresh cycle instead of only after a table's next write. In a database with many files, sizing can take some time, and `whpg-diskquota` isn't usable there until it completes.
+
+    ```sql
+    SELECT diskquota.init_table_size_table();
+    ```
+
+    Run it again if WarehousePG restarts after a crash, or after an operation such as `ALTER TABLESPACE` or `TRUNCATE` that changes a table's `relfilenode`, since `whpg-diskquota` doesn't lock a relation while computing its size and can record an incorrect size in either situation. In most cases you can ignore the difference, since `whpg-diskquota` updates the size the next time data is written to the table, but running `init_table_size_table()` again corrects it immediately.
+
+## Verifying the installation
+
+Confirm that `diskquota` is registered in the database, and check its status:
+
+```sql
+\dx
+__OUTPUT__
+                              List of installed extensions
+   Name    | Version |  Schema   |         Description
+-----------+---------+-----------+------------------------------
+ diskquota | 2.4     | diskquota | Disk Quota Main Program
+```
+
+```sql
+SELECT * FROM diskquota.status();
+__OUTPUT__
+          name          | status
+------------------------+---------
+ soft limits            | on
+ hard limits            | off
+ current binary version | 2.4.0
+ current schema version | 2.4
+(4 rows)
+```
+
+## Upgrading whpg-diskquota
+
+First, upgrade the `whpg-diskquota` package on every host. Refer to [Upgrading an extension](/supported-open-source/warehousepg/extensions/additional/#upgrading-an-extension) for downloading and distributing the new package. The package name is `edb-whpg6-diskquota` for WarehousePG 6, or `edb-whpg7-diskquota` for WarehousePG 7.
+
+Then replace the `diskquota-<version>` shared library in `shared_preload_libraries`, restart WarehousePG, and update the extension in every database where you registered it:
+
+1.  Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+2.  Use the output of the previous command to replace the old `diskquota` library with the new one, keeping any other shared libraries, and restart WarehousePG. For example, to upgrade from 2.3 to 2.4:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, diskquota-2.4'
+    gpstop -ar
+    ```
+
+3.  Update the extension in every database where you registered `diskquota`:
+
+    ```sql
+    ALTER EXTENSION diskquota UPDATE TO '2.4';
+    ```
+
+`whpg-diskquota` pauses during the upgrade and resumes automatically once it completes. Your existing schema, role, and tablespace quotas continue to be enforced after the upgrade, and you can define database and cluster quotas once every database is on 2.4.
+
+### Downgrading from 2.4
+
+Before downgrading to 2.3, remove the database and cluster quotas that are new in 2.4. In every monitored database, run:
+
+```sql
+SELECT diskquota.prepare_downgrade();
+```
+
+`prepare_downgrade()` deletes the database's 2.4-only quota rows and clears the cluster cap. Skipping it fails the downgrade.
+
+Once every monitored database is prepared, point `shared_preload_libraries` back at `diskquota-2.3`, restart WarehousePG, and run `ALTER EXTENSION diskquota UPDATE TO '2.3'` in each database.
+
+## Uninstalling whpg-diskquota
+
+Pause `whpg-diskquota` before you drop it from a database, to avoid a chance of deadlock:
+
+```sql
+SELECT diskquota.pause();
+DROP EXTENSION diskquota;
+```

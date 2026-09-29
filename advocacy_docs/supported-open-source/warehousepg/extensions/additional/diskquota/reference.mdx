@@ -1,0 +1,126 @@
+---
+title: whpg-diskquota reference
+navTitle: Reference
+description: Configuration parameters, functions, and views exposed by the whpg-diskquota extension for WarehousePG.
+---
+
+`whpg-diskquota` exposes server configuration parameters, user-defined functions (UDFs), and views, all in the `diskquota` schema. Set configuration parameters with `gpconfig`, the same way you'd set any other [WarehousePG server configuration parameter](/warehousepg/latest/ref_guide/config_params). Prepend the schema name (`diskquota.`) to a function or view name, unless the `diskquota` schema is already on your `search_path`.
+
+## Configuration parameters
+
+### `diskquota.hard_limit`
+
+Activates or deactivates hard limit enforcement of disk usage.
+
+It defaults to `off`, and a change takes effect on reload.
+
+With hard limit enforcement on, `whpg-diskquota` also checks quotas during query execution, and terminates a running query the moment it pushes a scope over its limit. With hard limit enforcement off, the default, `whpg-diskquota` only checks quotas before a query starts, so a query already running can push a scope over its limit and still complete.
+
+A write only gets caught by hard limit enforcement if it's still running after the worker's next cycle. A write that finishes within one `diskquota.naptime` completes even with hard limit enforcement on, since the worker hasn't yet had a chance to measure the new usage and dispatch a rejectmap entry to the segments.
+
+See [Activating or deactivating hard limit enforcement](using.mdx#activating-or-deactivating-hard-limit-enforcement) to turn it on or off.
+
+### `diskquota.max_active_tables`
+
+Sets the maximum number of relations, including tables and indexes, that `whpg-diskquota` can monitor for changes at the same time.
+
+It defaults to `307200` (`300 * 1024`), and a change takes effect on restart.
+
+`whpg-diskquota` uses shared memory to hold the rejectmap and the list of active tables. The rejectmap can hold up to one million database objects that are over quota. If it fills up, data can be loaded into some schemas, roles, databases, or the cluster after they've already reached their quota.
+
+Active table shared memory holds up to one million active tables by default. Active tables are tables that might have changed size since `whpg-diskquota` last recalculated table sizes. `whpg-diskquota`'s hook functions run when the storage manager on a WarehousePG segment creates, extends, or truncates a table file, and record the file's identity in shared memory so its size gets recalculated on the next refresh. The default value is sufficient for most WarehousePG installations.
+
+See [Raising the maximum number of active tables](using.mdx#raising-the-maximum-number-of-active-tables) to change it.
+
+### `diskquota.max_monitored_databases`
+
+Sets the maximum number of databases that `whpg-diskquota` can monitor at the same time. You can raise it to a maximum of `1024`.
+
+It defaults to `50`, and a change takes effect on restart.
+
+### `diskquota.max_quota_probes`
+
+Sets the maximum number of schema, role, and tablespace quota entries that `whpg-diskquota` can track across the cluster.
+
+It defaults to `1048576` (`1024 * 1024`), and a change takes effect on restart.
+
+### `diskquota.max_table_segments`
+
+Sets the maximum number of table segments (shards) in the cluster that `whpg-diskquota` can track, which in turn gates the maximum number of tables it can monitor.
+
+It defaults to `10485760` (`10 * 1024 * 1024`), and a change takes effect on restart.
+
+A WarehousePG table, including a partitioned table's child tables, is distributed to every segment as a shard, and `whpg-diskquota` counts each shard as a table segment. The runtime value of `diskquota.max_table_segments` equals `<max_number_tables> * ceil((<number_segments> + 1) / 100) * 100`. When you expand your WarehousePG cluster, each table consumes more table segments, which can reduce the maximum number of tables that `whpg-diskquota` supports, and can trigger this warning:
+
+```
+[diskquota] the number of tables exceeds the limit, please increase the GUC value for diskquota.max_table_segments.
+```
+
+See [Raising the maximum number of table segments](using.mdx#raising-the-maximum-number-of-table-segments) to change it.
+
+### `diskquota.max_workers`
+
+Sets the maximum number of `whpg-diskquota` worker processes, not including the launcher, that can run at the same time. The maximum value you can set is `20`.
+
+It defaults to `10`, and a change takes effect on restart.
+
+This limit determines how the launcher assigns workers to monitored databases. While the number of monitored databases is at or under `diskquota.max_workers`, `whpg-diskquota` runs in static mode, and each monitored database keeps a dedicated worker. In static mode, `whpg-diskquota` can fail to monitor some databases if fewer background worker processes are available than `diskquota.max_workers` allows. Once the number of monitored databases exceeds `diskquota.max_workers`, `whpg-diskquota` switches to dynamic mode, and the launcher rotates the available workers across all the monitored databases instead. In dynamic mode, `whpg-diskquota` works correctly as long as at least one background worker process is available.
+
+!!! Note
+
+Setting `diskquota.max_workers` higher than `max_worker_processes` has no effect. `whpg-diskquota` workers come from the pool of worker processes that `max_worker_processes` establishes.
+!!!
+
+See [Increasing the number of worker processes](using.mdx#increasing-the-number-of-worker-processes) to change it.
+
+### `diskquota.naptime`
+
+Controls how often, in seconds, a worker recalculates table sizes.
+
+It defaults to `2`, and a change takes effect on reload.
+
+A smaller value reduces the delay before `whpg-diskquota` detects a change in disk usage, at the cost of more frequent size checks. There's always some delay between a quota being reached and the scope actually being added to the rejectmap, since worker cycles run with a pause between them, and since operations that remove data, such as `DROP`, `TRUNCATE`, or `VACUUM FULL`, also only take effect on the next cycle.
+
+See [Setting the delay between disk usage updates](using.mdx#setting-the-delay-between-disk-usage-updates) to change it.
+
+### `diskquota.worker_timeout`
+
+Sets the number of seconds the launcher waits for a worker's per-cycle report before logging a notice that the worker may be unresponsive.
+
+It defaults to `60`, and a change takes effect on reload.
+
+## Functions
+
+| Function | Description |
+| --- | --- |
+| `init_table_size_table()` | Sizes the existing tables in the current database. |
+| `set_schema_quota(schema_name text, quota text)` | Sets a disk quota for a schema in the current database. |
+| `set_role_quota(role_name text, quota text)` | Sets a disk quota for a role in the current database. A role-based disk quota can't be set for the WarehousePG cluster owner. |
+| `set_schema_tablespace_quota(schema_name text, tablespace_name text, quota text)` | Sets a disk quota for a schema and tablespace combination in the current database. |
+| `set_role_tablespace_quota(role_name text, tablespace_name text, quota text)` | Sets a disk quota for a role and tablespace combination in the current database. A role-based disk quota can't be set for the WarehousePG cluster owner. |
+| `set_per_segment_quota(tablespace_name text, ratio float4)` | Sets a per-segment disk quota ratio for a tablespace in the current database. |
+| `set_database_quota(dbname text, quota text)` | Sets a disk quota for one database. Available starting with `whpg-diskquota` 2.4.0. |
+| `set_cluster_quota(quota text)` | Sets a disk quota for the combined size of every monitored database. Available starting with `whpg-diskquota` 2.4.0. |
+| `pause()` | Stops enforcing quotas in the current database, while `whpg-diskquota` keeps measuring disk usage. |
+| `resume()` | Resumes enforcing quotas in the current database. |
+| `status()` | Returns the `whpg-diskquota` binary and schema versions, and the state of soft and hard limit enforcement, in the current database. |
+| `wait_for_worker_new_epoch()` | Blocks until the current database's worker completes its next refresh cycle, so a query that runs after it sees updated usage instead of stale data. Logs a `NOTICE` every `diskquota.worker_timeout` seconds if the worker doesn't respond, and keeps waiting until you cancel the query. |
+| `prepare_downgrade()` | Deletes the current database's database and cluster quota rows and clears the cluster quota cap, so the database is ready to downgrade to `whpg-diskquota` 2.3. Run it in every monitored database before downgrading. Available starting with `whpg-diskquota` 2.4.0. |
+
+## Views
+
+| View | Description |
+| --- | --- |
+| `show_fast_database_size_view` | Disk space used in the current database, including system catalogs. |
+| `show_fast_role_quota_view` | Active quotas for roles in the current database. |
+| `show_fast_role_tablespace_quota_view` | Active quotas for roles per tablespace in the current database. |
+| `show_fast_schema_quota_view` | Active quotas for schemas in the current database. |
+| `show_fast_schema_tablespace_quota_view` | Active quotas for schemas per tablespace in the current database. |
+| `show_segment_ratio_quota_view` | Per-segment disk quota ratio for any per-segment tablespace quotas set in the current database. |
+| `show_database_quota_view` | The current database's quota and total size. Available starting with `whpg-diskquota` 2.4.0. |
+| `show_cluster_quota_view` | The cluster quota and the combined size of every monitored database. Available starting with `whpg-diskquota` 2.4.0. |
+
+!!! Note
+
+`show_database_quota_view` and `show_cluster_quota_view` report the size that `whpg-diskquota` tracks and enforces. That size is the sum of the tables `whpg-diskquota` monitors, plus their toast and append-optimized auxiliary relations. Unlike `show_fast_database_size_view`, they don't include the system catalog's size, so they read slightly smaller than that view for the same database. Size your database and cluster quotas from `show_database_quota_view` and `show_cluster_quota_view`, not from `show_fast_database_size_view`.
+!!!
