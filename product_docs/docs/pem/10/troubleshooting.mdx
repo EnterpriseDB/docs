@@ -285,6 +285,30 @@ This issue is most frequent during staged upgrades where agents are updated befo
 
 - Temporary downgrade &mdash; Revert the PEM agent to an older version to perform the registration, then proceed with the agent upgrade.
 
+## BART warning when a PEM 10.6 server pairs with an older agent
+
+PEM 10.6 removes BART (EDB Backup and Recovery Tool) support entirely — the database schema, the agent's BART code, and the related web UI. If an agent isn't yet upgraded to 10.6 while the server it monitors is, the agent's built-in BART check fails on restart with warnings like:
+
+```text
+WARNING:  [Query#7][DBConnection] Query failed (PGRES_FATAL_ERROR): ERROR:  relation "pem.bart_config" does not exist
+LINE 1: SELECT value FROM pem.bart_config bc, pem.bart b WHERE b.id ...
+
+WARNING: [BART][IsBARTInstalled]: [BART][IsBARTInstalled]: Failed to get bart bart_installation_path from pem.bart_config table : ERROR:  relation "pem.bart_config" does not exist
+LINE 1: SELECT value FROM pem.bart_config bc, pem.bart b WHERE b.id ...
+```
+
+**Cause**
+
+On every restart, the agent checks for BART as part of the capability information it reports to the server. An agent older than 10.6 still runs this check even though BART is no longer a product feature. On a 10.6 server, the `pem.bart_config` table this check queries has already been dropped, so the query fails and the agent logs the warning above once, at restart.
+
+**Affected scenarios**
+
+- A PEM server upgraded to 10.6, but a monitoring PEM agent still on 10.5 or earlier.
+
+**Resolution**
+
+No code change is planned for this warning — it's expected whenever an older agent connects to a 10.6 server, and it doesn't affect monitoring or job execution. Upgrade the affected agent to PEM 10.6 to clear it.
+
 ## SSL Error - Incomplete sslutils upgrade
 
 If the sslutils system package is upgraded to version 1.4 but the corresponding database extension remains on an earlier version, agent registration will fail with the following OpenSSL error &mdash; `Error_setting_validity_before_time`.
