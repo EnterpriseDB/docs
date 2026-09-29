@@ -7,7 +7,7 @@ deepToC: true
 
 A semantic KB already knows what your tables and columns are. Relationships add what they have to do with each other: which tables join, on which columns, in which direction, and how much you can trust that claim.
 
-A relationship can come from three places: an automatic crawl of your foreign keys, something added by hand, or a pattern found in how your application actually queries the database. Wherever it comes from, a relationship can be turned into an actual join between two tables, and kept accurate as your schema changes.
+A relationship can come from an automatic crawl of your foreign keys, something added by a person or an agent, or a pattern found in how your application actually queries the database. Once a relationship is approved, the route-finders can turn it into an actual join between two tables. Crawled and hand-added relationships are approved immediately; those derived from query history or recorded by an agent start as `proposed` and aren't used until a person approves them.
 
 !!!note `pg_stat_statements`
 Relationships work without `pg_stat_statements` in every case but one: [Learning from the query workload](#learning-from-the-query-workload) needs it installed and preloaded — a cluster-wide setting that requires a restart. See [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries). If you don't plan to derive relationships from query history, you can ignore this entirely.
@@ -57,7 +57,7 @@ Relationship metadata also has a `level` column and a `concept_relation` field, 
 
 ### Foreign-key crawl
 
-Creating or refreshing a semantic KB crawls its schemas automatically, reading every foreign key in `pg_constraint` and recording each one as a relationship with `source = 'crawl'`. See [Verifying what the crawl found](#verifying-what-the-crawl-found) for what that looks like in practice.
+Creating or refreshing a semantic KB crawls its schemas automatically, reading every foreign key in `pg_constraint` and recording each one as a relationship with `source = 'crawl'`. A bridge table is also recorded as a `junction` with `source = 'agent'`, since it's inferred from two constraints rather than read from one. See [Verifying what the crawl found](#verifying-what-the-crawl-found) for what that looks like in practice.
 
 ## Setting up a relationship
 
@@ -121,7 +121,7 @@ __OUTPUT__
 (6 rows)
 ```
 
-The crawl needs no configuration and it never guesses: everything it reports is enforced by Postgres. What it misses — a column that merely looks like a key, but declares no foreign key — is yours to record, either [by hand](#adding-a-relationship-by-hand) or from [query history](#learning-from-the-query-workload).
+The crawl needs no configuration and it never guesses: every `key_join` it reports comes from a declared foreign key. A foreign key added `NOT VALID` is still recorded, but with `is_validated = false` and confidence 0.75 rather than 1.0, because PostgreSQL hasn't checked the existing rows. What it misses — a column that merely looks like a key, but declares no foreign key — is yours to record, either [by hand](#adding-a-relationship-by-hand) or from [query history](#learning-from-the-query-workload).
 
 Three points about that result:
 
@@ -189,7 +189,17 @@ SELECT from_object, to_object, kind, confidence
 FROM   aidb.suggest_joins('bank_kb', ARRAY['bank.accounts'])
 ORDER  BY from_object, to_object;
 __OUTPUT__
-   from_object    |   to_object    |   kind   | confidence
+     from_object      |      to_object       |   kind   | confidence
+----------------------+----------------------+----------+------------
+ bank.account_holders | bank.accounts        | key_join |          1
+ bank.accounts        | bank.account_holders | key_join |          1
+ bank.accounts        | bank.customers       | junction |        0.7
+ bank.accounts        | bank.customers       | key_join |          1
+ bank.accounts        | bank.transactions    | key_join |          1
+ bank.customers       | bank.accounts        | junction |        0.7
+ bank.customers       | bank.accounts        | key_join |          1
+ bank.transactions    | bank.accounts        | key_join |          1
+(8 rows)
 -------------------+----------------+----------+------------
  bank.accounts     | bank.customers | key_join |          1
  bank.accounts     | bank.customers | junction |        0.7
@@ -234,12 +244,12 @@ __OUTPUT__
 (1 row)
 ```
 
-With `max_paths => 1`, the search stopped after finding the first route it enumerated (the junction one) and never got to the shorter, higher-confidence `key_join` route — so this result shows confidence 0.7, not the 1.0 from the unrestricted search above. `truncated = t` is the signal that the search may have missed a better route: raise `max_paths` and ask again when you see it. Leave `max_hops` and `max_paths` at their defaults unless you have a reason not to.
+With `max_paths => 1`, the search stopped after finding the first route it enumerated (the junction one) and never got to the higher-confidence `key_join` route — so this result shows confidence 0.7, not the 1.0 from the unrestricted search above. `truncated = t` means the search hit the `max_paths` cap, so it may have missed a better route: raise `max_paths` and ask again when you see it. Leave `max_hops` and `max_paths` at their defaults unless you have a reason not to.
 
 When nothing connects two tables, you get no rows rather than an error.
 
 !!!note
-Before trusting a route in production: check `truncated`, since a truncated search may have missed a better route, and check `is_nullable` on every hop, since a nullable join column means the query needs a `LEFT JOIN` instead of a plain `JOIN`.
+Before trusting a route in production: check `truncated`, since a truncated search may have missed a better route, and check `is_nullable` on every hop — `find_join_path()` reports it per hop inside the `path` column, and `suggest_joins()` returns it as a column. A nullable join column means the query needs a `LEFT JOIN` instead of a plain `JOIN`.
 !!!
 
 ## Adding a relationship by hand
@@ -271,7 +281,7 @@ It's added as `manual`, lands `approved`, and takes the `key_join` prior of 0.75
 `predicate`, `cardinality`, and `is_nullable` are all required for a `key_join`. Only `predicate` is validated with a clear error. Leave out either of the other two and you get the store's raw CHECK-constraint violation instead.
 
 !!!note
-`aidb.add_relationship()` is SQL-only — it's for a person to add by hand (`source => 'manual'` by default) and isn't registered as a native agent tool. An agent records a relationship through the separate `add_relationship` tool, which despite the shared name calls `aidb.add_relationship_as_agent()` instead and always records `source = 'agent'`.
+`aidb.add_relationship()` is SQL-only — it's for a person to add by hand (`source => 'manual'` by default) and isn't registered as a native agent tool. An agent records a relationship through the separate `add_relationship` tool, which despite the shared name calls `aidb.add_relationship_as_agent()` instead and always records `source = 'agent'`. A relationship recorded that way always lands as `status = 'proposed'` and isn't routed until a person approves it by re-asserting it with `aidb.add_relationship()`.
 !!!
 
 ### What it refuses
@@ -301,6 +311,8 @@ Record the columns, not the intent: `predicate` is prose, but `left_columns` / `
 
 Keep relationships current by doing nothing for crawled ones, and re-checking added ones after schema changes.
 
+When the KB notices a schema change depends on `auto_processing`: `Live` applies it inside the DDL statement's own transaction, `Background` when the worker next runs, and `Disabled` (the default) only when you call `aidb.refresh_semantic_kb()` or `aidb.relationship_drift()`. Until then, `find_join_path()` keeps returning the old join.
+
 A crawled relationship needs nothing from you — it disappears automatically when its constraint is dropped, because `pg_constraint` is still the authority.
 
 Only a relationship you added by hand needs the steps below — a crawled one is handled above. Nothing else knows what you meant by an added relationship, so if a column it names is renamed or dropped, `aidb.relationship_drift()` finds it:
@@ -320,7 +332,11 @@ Only a relationship you added by hand needs the steps below — a crawled one is
 
 3. The relationship is now `stale`, and stale hops are never routed — `find_join_path()` between its endpoints returns zero rows until it's fixed.
 
-4. Re-add the relationship with the corrected columns, using `add_relationship()`.
+4. Re-add the relationship with the corrected columns, using `add_relationship()`. This creates a new relationship rather than updating the old one, because the columns are part of its identity.
+
+5. Delete the old, stale relationship, or `semantic_kb_stats()` keeps counting it as `drifted`:
+
+   
 
 `aidb.refresh_semantic_kb()` re-reads the schema from scratch. Use it after DDL on a KB that isn't `Live`, or to confirm state. `semantic_kb_stats()`'s `drifted` count is your cue to run `relationship_drift()`: a stale row is kept, not deleted, so you can see what broke.
 
