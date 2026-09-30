@@ -1,0 +1,111 @@
+---
+title: Connecting an EDB Postgres AI database
+navTitle: Connecting an aidb database
+description: For database administrators preparing a Postgres database that runs the aidb extension so its AI agent telemetry appears in EDB Agent Governance — enabling telemetry, creating the viewer role, and registering the database as an instance.
+deepToC: true
+---
+
+EDB Agent Governance reads AI agent telemetry directly from a Postgres database that runs the `aidb` extension. The extension records every agent call as OpenTelemetry spans in the `aidb_otel` schema, and the viewer groups those spans into sessions, shows each step, and highlights governance decisions. No log pipeline, Hybrid Manager, or Loki is involved.
+
+This page is for the database administrator of the source database and the administrator of EDB Agent Governance. Complete [Installing](./installing) first; the viewer must be running before you register a database.
+
+## Prerequisites
+
+- EDB Postgres AI (`aidb` extension) [7.7.0](/aidb/latest/release-notes/7/aidb_7.7.0_rel_notes/) or later, installed and configured on the source database as described in [Installing AIDB](/aidb/latest/install/) and [Configuring AIDB](/aidb/latest/install/configure/): `aidb` in `shared_preload_libraries` and `CREATE EXTENSION aidb CASCADE` run in the database the agents use. Earlier versions store telemetry in a different `aidb_otel` layout, which the viewer doesn't read; it reports them as Unsupported aidb_otel schema.
+- Network connectivity from the viewer's backend to the Postgres server. Source databases usually live on private addresses; the `bff.aidbBlockPrivate` chart value is `false` by default so that works out of the box.
+- TLS on the Postgres server, with a certificate valid for the host name in the connection string. The viewer accepts only `sslmode=verify-ca` or `sslmode=verify-full`.
+- A superuser to run the one-time provisioning below. The viewer itself never needs those rights.
+
+## Enabling telemetry on the source database
+
+`aidb` writes spans only when the `aidb.otel_client` parameter is `database`. The default is `noop`, which writes nothing. The parameter is `SUSET`: a superuser, or a role granted `SET` on the parameter, can change it. Like the other `aidb.*` parameters, set it in `postgresql.conf` or with `ALTER SYSTEM` — no restart is required. The full list of OpenTelemetry parameters is in [Configuring AIDB — OpenTelemetry tracing](/aidb/latest/install/configure/#opentelemetry-tracing).
+
+1.  Turn on telemetry for the server:
+
+    ```sql
+    ALTER SYSTEM SET aidb.otel_client = 'database';
+    SELECT pg_reload_conf();
+    ```
+
+    To enable it for one database only, use `ALTER DATABASE <db> SET aidb.otel_client = 'database';` instead.
+
+1.  Recycle the agent backends. The parameter is captured once per Postgres backend at its first instrumented call. Reconnect the applications that run agents, or recycle their connection pool, so new sessions pick up the value. Backends that were already running keep the old value.
+
+!!! Note
+`aidb` also ships two optional background workers, both off by default: an [exporter](/aidb/latest/install/configure/#exporter-background-worker) that forwards stored rows to an external OTLP collector, and a [cleaner](/aidb/latest/install/configure/#cleaner-background-worker) that deletes rows older than a retention window. Neither changes what the viewer reads. Turn on the cleaner if you don't want telemetry to grow without bound; the viewer handles rows disappearing between page loads.
+!!!
+
+## Creating the viewer role
+
+The viewer connects with a dedicated login role that can only read the two telemetry tables. Don't use a superuser, the `aidb` owner, or the role the agents run as. The connection string and any client certificate are stored server-side by the viewer's backend, so scope the credential to only what the viewer needs — if it's ever exposed, it should grant no more than read access to the telemetry tables.
+
+Run this in the database the agents use, replacing `<db>` with its name. Set the password interactively with `\password` so it doesn't end up in a script or shell history:
+
+```sql
+CREATE ROLE governance_viewer LOGIN;
+\password governance_viewer
+GRANT CONNECT ON DATABASE <db> TO governance_viewer;
+GRANT USAGE ON SCHEMA aidb_otel TO governance_viewer;
+GRANT SELECT ON aidb_otel.traces, aidb_otel.logs TO governance_viewer;
+```
+
+Don't grant this role `aidb_users`, `aidb_governance`, write privileges, or administration rights. `aidb_governance` also allows retention cleanup and purpose management (see [Managing audit access with the aidb_governance role](/aidb/latest/install/configure/#managing-audit-access-with-the-aidb_governance-role)), which is more than the viewer needs. If your database has extra grants to `PUBLIC` or inherited roles, review them too.
+
+These grants are enough for the dashboard, Activity, session pages, and the Behavior tab. The Roster tab on the [Agents](./agents) page also reads the `aidb` agent catalog. To use it, grant read access to the columns it needs:
+
+```sql
+GRANT USAGE ON SCHEMA aidb TO governance_viewer;
+GRANT SELECT (id, name, purpose, created_at) ON aidb.agents TO governance_viewer;
+GRANT SELECT (name, role, deleted_at) ON aidb.purpose_registry TO governance_viewer;
+```
+
+Without these grants, the Roster tab shows Agent registry unavailable and everything else works. Without the `aidb.purpose_registry` grant, the roster lists agents but not their roles or permissions.
+
+To check the role, connect as `governance_viewer` and run:
+
+```sql
+SELECT session_user, current_database();
+SELECT id, recorded_at FROM aidb_otel.traces ORDER BY id DESC LIMIT 1;
+SELECT id, recorded_at FROM aidb_otel.logs ORDER BY id DESC LIMIT 1;
+```
+
+An empty result is fine: it means no agent calls have been recorded yet, or retention has removed them. A permission error means a grant is missing.
+
+A role that can read `traces` but not `logs` is accepted: sessions and steps appear, log records don't, and the instance's health status asks for `SELECT` on `aidb_otel.logs`. A role that can't read `traces` fails the health check.
+
+## Registering the database as an instance
+
+Register the database on the Configure page, accessible from the home page's Configure Instances button or from Settings > Configure instance in the header.
+
+1. Open the Configure Instances page.
+1. Select Add New.
+1. Complete the form:
+   - Type — Postgres (aidb_otel).
+   - Name — A descriptive label, for example `Production aidb`.
+   - DSN — The connection string for the viewer role, for example `postgres://governance_viewer:<password>@db.example.com:5432/<db>?sslmode=verify-full`. `sslmode` must be `verify-ca` or `verify-full`; prefer `verify-full`, which also checks the host name. Only `sslmode` and `application_name` are accepted as query parameters. URL-encode special characters in the password.
+   - CA certificate (PEM) — The CA chain that signed the Postgres server certificate. Paste the PEM contents or select Load from file. Leave it empty if the server certificate is signed by a publicly trusted CA; `verify-ca` always needs it. Use this field instead of `sslrootcert` or other file paths in the DSN.
+   - Client certificate (PEM) and Client key (PEM) — Optional, for certificate authentication. Provide both or neither.
+1. Select Add Instance.
+
+The backend opens a read-only connection and checks the `aidb_otel` layout, columns, and privileges. The result appears above the instance list: Connection verified when everything is in place, otherwise a warning or error with the reason appears. To run the check again later, use the Verify the stored connection action on the instance row. Each database appears as one cluster on the home page; selecting it opens the cluster's [Dashboard](./dashboard). Agent activity appears within seconds of the first agent call.
+
+Credentials are encrypted at rest and never returned to the browser. To rotate them, update the password or certificates on the source database, then use the Edit connection credentials action on the instance row and enter the new values. Certificate fields left empty keep the stored certificates. Verify the connection again afterward.
+
+## Troubleshooting
+
+| Message                                      | Cause                                                                 | Fix                                                                                                     |
+|----------------------------------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| Add failed: dsn sslmode must be verify-ca or verify-full | The DSN uses `disable`, `require`, or `prefer`         | Use `verify-full` and provide the CA certificate.                                                       |
+| aidb_otel.traces not found               | `aidb` isn't installed in this database, or the DSN points at a different database | Run `CREATE EXTENSION aidb CASCADE` in the database the agents use, or fix the database name in the DSN. |
+| Telemetry role cannot read aidb_otel     | The role lacks `USAGE` on schema `aidb_otel` or `SELECT` on `aidb_otel.traces` | Grant the role as described in [Creating the viewer role](#creating-the-viewer-role).                |
+| Telemetry database unreachable           | The backend can't open the connection: DNS, routing, firewall, Postgres down, authentication, or a certificate or host-name mismatch | Fix the cause, then select Retry or Re-check.                                           |
+| Instance connection configuration is invalid | The DSN has an unsupported query parameter, or only one of client certificate and key is set | Fix the DSN or provide both client certificate fields with Edit connection credentials.             |
+| Unsupported aidb_otel schema             | The `aidb_otel` tables don't match the 7.7.0 layout, for example on an older or pre-release `aidb` build. The message names the column that differs. | Upgrade the extension to 7.7.0 or later.                                                               |
+| Connected, no telemetry rows yet         | No agent calls recorded yet: `aidb.otel_client` is still `noop`, the agent backends predate the change, or old rows were deleted | Set `aidb.otel_client` to `database` with `ALTER SYSTEM` and reload, then reconnect the agent applications. |
+| Connection verified, with "log records are not readable" | The role can read `aidb_otel.traces` but not `aidb_otel.logs` | `GRANT SELECT ON TABLE aidb_otel.logs TO governance_viewer;`                                            |
+
+The same titles appear on the Activity and session pages when a query fails there, together with a hint and a Retry button.
+
+## Retention and missing data
+
+The viewer shows only what is still in `aidb_otel`. If retention deletes part of a call, the remaining steps still appear, but the viewer doesn't reconstruct the deleted part. A call deleted completely no longer opens. Each session reads at most 1,000 traces, 5,000 spans, and 5,000 log records.

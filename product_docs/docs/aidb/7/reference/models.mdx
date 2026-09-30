@@ -81,6 +81,7 @@ Registers a new model in the AIDB model registry.
 | `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
 | `validate`            | BOOLEAN | `true`   | If `true`, probe the model at creation time to confirm it's functional. See [Validation](#validation). |
 | `credentials_env`     | TEXT    | NULL     | Name of an environment variable to read credentials from instead of storing them. See [Credentials from environment variables](#credentials-from-environment-variables). Mutually exclusive with `credentials`. |
+| `credentials_k8s_secret` | TEXT | NULL     | Path to a file, or a directory of files, to read credentials from instead of storing them. See [Credentials from a Kubernetes Secret](#credentials-from-a-kubernetes-secret). Mutually exclusive with `credentials` and `credentials_env`. |
 
 #### Credentials from environment variables
 
@@ -102,6 +103,27 @@ SELECT aidb.create_model(
 The referenced variable can hold either a bare secret (used as `api_key`) or a JSON object (for example, `{"basic_auth": "..."}`) — the same shapes `credentials` itself accepts. `credentials` and `credentials_env` are mutually exclusive; passing both raises an error.
 
 For security, the environment variable's name must start with the prefix configured by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default) — this stops a model or MCP server configuration from naming an arbitrary, unrelated environment variable on the Postgres host and exfiltrating its value. The same mechanism and the same GUC apply to MCP server authentication; see [`headers_env`](../tools/mcp-tools#authentication).
+
+#### Credentials from a Kubernetes Secret
+
+Pass `credentials_k8s_secret` to read the credential from a file each time the model is used, instead of storing it in the database. Only the path is stored. This is meant for a Kubernetes Secret mounted into the Postgres pod as a volume.
+
+```sql
+SELECT aidb.create_model(
+    name                   => 'my_openai',
+    provider               => 'openai_embeddings',
+    config                 => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials_k8s_secret => '/var/run/secrets/aidb/openai/api-key'
+);
+```
+
+The path can point to:
+
+- A file. Its content is either a bare secret (used as `api_key`) or a JSON object, for example `{"basic_auth": "..."}`. These are the same shapes `credentials` accepts.
+- A directory with exactly two files named `username` and `password`. They're combined into `basic_auth`.
+- A directory with exactly one file, which is read like a single file.
+
+The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths) (`/var/run/secrets/aidb` by default). `credentials`, `credentials_env`, and `credentials_k8s_secret` are mutually exclusive.
 
 #### TLS configuration
 
@@ -131,10 +153,10 @@ SELECT aidb.create_model('my_t5', 't5_local');
 
 -- With config and credentials
 SELECT aidb.create_model(
-    name        => 'my_t5',
-    provider    => 't5_local',
-    config      => '{"param1": "value1"}'::JSONB,
-    credentials => '{"token": "abcd"}'::JSONB
+    name        => 'my_openai',
+    provider    => 'openai_embeddings',
+    config      => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 
 -- Rotate credentials without re-creating
@@ -317,7 +339,7 @@ Encodes a single text string into a vector using the specified model.
 #### Example
 
 ```sql
-SELECT aidb.encode_text('bert_local', 'The quick brown fox');
+SELECT aidb.encode_text('bert', 'The quick brown fox');
 ```
 
 ---
@@ -340,7 +362,7 @@ Encodes an array of text strings into vectors in a single call.
 #### Example
 
 ```sql
-SELECT * FROM aidb.encode_text_batch('bert_local', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
+SELECT * FROM aidb.encode_text_batch('bert', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
 ```
 
 ---
@@ -363,7 +385,7 @@ Encodes a binary image into a vector using a multimodal model (for example, CLIP
 #### Example
 
 ```sql
-SELECT aidb.encode_image('clip_local', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
+SELECT aidb.encode_image('clip', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
 ```
 
 ---
@@ -388,7 +410,7 @@ Generates a text response from a prompt using the specified model.
 
 ```sql
 -- Basic usage
-SELECT aidb.generate_text('t5_local', 'translate to French: Hello, world.');
+SELECT aidb.generate_text('t5', 'translate to French: Hello, world.');
 
 -- With inference configuration
 SELECT aidb.generate_text(
@@ -423,7 +445,7 @@ Generates text responses for an array of prompts in a single call.
 #### Example
 
 ```sql
-SELECT aidb.generate_text_batch('t5_local', ARRAY[
+SELECT aidb.generate_text_batch('t5', ARRAY[
     'translate to German: hello',
     'translate to German: goodbye'
 ]);
@@ -486,7 +508,7 @@ All parameters are optional — omit any you don't need.
 | `seed`           | BIGINT           | NULL    | Random seed for reproducible outputs.                                                    |
 | `repeat_penalty` | REAL             | NULL    | Penalty for repeating tokens. `1.0` = no penalty. Not supported by NIM or OpenAI.        |
 | `repeat_last_n`  | INTEGER          | NULL    | Number of recent tokens considered for `repeat_penalty`. Not supported by NIM or OpenAI. |
-| `thinking`       | BOOLEAN          | NULL    | Controls `<think>` tag handling. `true`/`NULL` retains tags; `false` strips them.        |
+| `thinking`       | BOOLEAN          | NULL    | `false` turns model reasoning off and removes `<think>` blocks from the output. `true` turns reasoning on. `NULL` leaves the model's default. Supported by `llamacpp_generate`, `anthropic_messages`, `openai_responses`, and OpenAI-compatible chat completion providers. |
 | `extra_args`     | JSONB            | NULL    | Additional provider-specific arguments passed directly to the API.                       |
 
 #### Returns
@@ -536,7 +558,7 @@ Three more inference settings exist but aren't exposed as named parameters of `a
 | `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. Mutually exclusive with `tools`/`tool_choice` on `openai_responses` and `anthropic_messages` (and their variants). |
 
 !!!note
-`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) and [Anthropic Messages API](../integrating-models/external-model-connections#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.generate_text()`. Any of those providers (except `t5_local`) can still back an [AI agent](../agents); the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
+`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/remote-models#openai-responses-api) and [Anthropic Messages API](../integrating-models/remote-models#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.generate_text()`. Any of those providers (except `t5_local`) can still back an [AI agent](../agents); the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
 !!!
 
 ```sql
@@ -588,6 +610,10 @@ SELECT aidb.generate_text(
 
 These functions return a `JSONB` configuration object for the `config` parameter of `aidb.create_model()`. Each helper corresponds to a specific model provider.
 
+Several helpers accept `api_key` and `basic_auth` parameters. Don't use them: `aidb.create_model()` rejects a `config` that contains either key. Pass the secret through `create_model()`'s `credentials` argument instead.
+
+For the local providers `bert_local`, `clip_local`, `t5_local`, and `llama_instruct_local`, the config key that names the Hugging Face repository is `hf_model`. The helpers below write it under the old name `model`, which these providers still accept with a deprecation warning. To avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead of the helper.
+
 ### `aidb.embeddings_config`
 
 For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
@@ -611,11 +637,11 @@ For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
 SELECT aidb.create_model(
     'my_embedder',
     'openai_embeddings',
-    config => aidb.embeddings_config(
-        model   => 'text-embedding-3-small',
-        api_key => 'sk-...',
-        url     => 'https://api.openai.com/v1'
-    )
+    config      => aidb.embeddings_config(
+        model => 'text-embedding-3-small',
+        url   => 'https://api.openai.com/v1'
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -635,7 +661,7 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 | `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                               |
 | `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                         |
 | `seed`                    | BIGINT           | NULL     | Random seed.                                        |
-| `thinking`                | BOOLEAN          | NULL     | `<think>` tag handling.                             |
+| `thinking`                | BOOLEAN          | NULL     | `false` turns model reasoning off; `true` turns it on; `NULL` leaves the model's default. |
 | `max_tokens`              | JSONB            | NULL     | Max tokens config (use [`aidb.max_tokens_config()`](#aidbmax_tokens_config)). |
 | `max_concurrent_requests` | INTEGER          | NULL     | Max concurrent requests.                            |
 | `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.             |
@@ -647,11 +673,11 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 SELECT aidb.create_model(
     'my_llm',
     'openai_completions',
-    config => aidb.completions_config(
+    config      => aidb.completions_config(
         model       => 'gpt-4o',
-        api_key     => 'sk-...',
         temperature => 0.2
-    )
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -785,7 +811,7 @@ For the `gemini` provider.
 
 | Parameter                 | Type    | Default  | Description                                                |
 |---------------------------|---------|----------|------------------------------------------------------------|
-| `api_key`                 | TEXT    | Required | Google API key.                                            |
+| `api_key`                 | TEXT    | Required | Pass `NULL`. Supply the key through `create_model()`'s `credentials` argument. |
 | `model`                   | TEXT    | NULL     | Gemini model identifier (for example, `gemini-2.0-flash`). |
 | `url`                     | TEXT    | NULL     | API endpoint override.                                     |
 | `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                                   |
@@ -795,11 +821,12 @@ For the `gemini` provider.
 
 ```sql
 SELECT aidb.create_model('my_gemini', 'gemini',
-    config => aidb.gemini_config('AIza...', model => 'gemini-2.0-flash'));
+    config      => aidb.gemini_config(api_key => NULL, model => 'gemini-2.0-flash'),
+    credentials => '{"api_key": "AIza..."}'::JSONB);
 ```
 
 !!!note
-Unlike other remote providers, Gemini's `api_key` is a plain field of `config` rather than being passed through `aidb.create_model()`'s separate `credentials` parameter. It's stored as part of the model's config rather than the more restricted credentials store — keep that in mind if `aidb.models.options` is visible to more roles than you want to see the key.
+`aidb.gemini_config()`'s first parameter is `api_key` and has no default. Pass `NULL` for it and supply the real key through `create_model()`'s `credentials` argument. `aidb.create_model()` rejects a `config` that contains `api_key`.
 !!!
 
 ---
@@ -820,14 +847,15 @@ For the `nim_clip` provider (NVIDIA NIM multimodal embeddings).
 
 ```sql
 SELECT aidb.create_model('my_nim_clip', 'nim_clip',
-    config => aidb.nim_clip_config(api_key => 'nvapi-...', model => 'nvidia/nvclip'));
+    config      => aidb.nim_clip_config(model => 'nvidia/nvclip'),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB);
 ```
 
 ---
 
 ### `aidb.nim_ocr_config`
 
-For the `nim_ocr` provider (NVIDIA NIM OCR).
+For the `nim_paddle_ocr` provider (NVIDIA NIM OCR).
 
 | Parameter      | Type    | Default | Description                  |
 |----------------|---------|---------|------------------------------|
@@ -840,8 +868,9 @@ For the `nim_ocr` provider (NVIDIA NIM OCR).
 #### Example
 
 ```sql
-SELECT aidb.create_model('my_nim_ocr', 'nim_ocr',
-    config => aidb.nim_ocr_config(api_key => 'nvapi-...'));
+SELECT aidb.create_model('my_nim_ocr', 'nim_paddle_ocr',
+    config      => aidb.nim_ocr_config(),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB);
 ```
 
 ---
@@ -862,10 +891,8 @@ For the `nim_reranking` provider.
 
 ```sql
 SELECT aidb.create_model('my_reranker', 'nim_reranking',
-    config => aidb.nim_reranking_config(
-        api_key => 'nvapi-...',
-        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
-    )
+    config      => aidb.nim_reranking_config(model => 'nvidia/nv-rerankqa-mistral-4b-v3'),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -887,10 +914,8 @@ For the `openrouter_chat` provider.
 
 ```sql
 SELECT aidb.create_model('my_or_chat', 'openrouter_chat',
-    config => aidb.openrouter_chat_config(
-        'anthropic/claude-3-5-haiku',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_chat_config('anthropic/claude-3-5-haiku'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
@@ -912,10 +937,8 @@ For the `openrouter_embeddings` provider.
 
 ```sql
 SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
-    config => aidb.openrouter_embeddings_config(
-        'mistral/mistral-embed',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_embeddings_config('mistral/mistral-embed'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
