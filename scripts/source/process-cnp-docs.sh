@@ -23,7 +23,13 @@ function do_import {
   local source=$1
   local dest=$2
   local version=$3
+  local script_source=$4
   local cwd=`pwd`
+
+  cd $script_source/scripts/fileProcessor
+  npm ci
+  cd $script_source/scripts/source/
+  npm ci
 
   cd $dest/product_docs/docs/postgres_for_kubernetes/1/
   node "$DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs" \
@@ -35,7 +41,7 @@ function do_import {
   # grab key bit of source for use in docs
   cp $source/config/manager/default-monitoring.yaml $source/docs/src/
 
-  node "$DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs" \
+  node "$script_source/scripts/fileProcessor/main.mjs" \
     -f "src/**/*.md" \
     -p "cnp/convert-rel-notes" \
     -p "cnp/cleanup-html" \
@@ -54,7 +60,7 @@ function do_import {
     "$source/docs/src/index.mdx" \
     >> $source/files-to-ignore.txt
 
-  rsync -av --delete --exclude-from=$source/files-to-ignore.txt src/ $dest/product_docs/docs/postgres_for_kubernetes/1/ > /dev/null
+  rsync -av --delete --exclude-from=$source/files-to-ignore.txt --filter="protect rel_notes/src/*" src/ $dest/product_docs/docs/postgres_for_kubernetes/1/ > /dev/null
 
   # Archive API docs
   local api_ref_dir="$dest/product_docs/docs/postgres_for_kubernetes/1/pg4k.v1"
@@ -62,7 +68,7 @@ function do_import {
   mkdir -p "$api_ref_dir"
   mv "$dest/product_docs/docs/postgres_for_kubernetes/1/pg4k.v1.mdx" "$current_api_ref"
   # TODO: just install yq
-  node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$current_api_ref" \
+  node "$script_source/scripts/source/update-yaml.mjs" "$current_api_ref" \
     title="API Reference - $version" \
     navTitle="$version" \
     pdfExclude=true
@@ -80,9 +86,6 @@ function do_import {
 
   cd $cwd
 }
-
-cd $DESTINATION_CHECKOUT/scripts/fileProcessor
-npm ci
 
 # grab some information about what we're importing
 cd $SOURCE_CHECKOUT
@@ -140,7 +143,7 @@ git checkout $PREVIOUS_COMMIT
 cd $SOURCE_CHECKOUT/docs-import
 git checkout $PREVIOUS_TAG
 
-do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $PREVIOUS_TAG
+do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $PREVIOUS_TAG $DESTINATION_CHECKOUT/docs-import
 
 cd $DESTINATION_CHECKOUT/docs-import
 git checkout -b temp/docs-import-$PREVIOUS_TAG
@@ -151,7 +154,7 @@ cd $SOURCE_CHECKOUT
 git worktree remove --force ./docs-import
 git worktree add --detach ./docs-import
 
-do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $CURRENT_TAG
+do_import $SOURCE_CHECKOUT/docs-import $DESTINATION_CHECKOUT/docs-import $CURRENT_TAG $DESTINATION_CHECKOUT
 
 cd $DESTINATION_CHECKOUT/docs-import
 

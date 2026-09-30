@@ -135,7 +135,6 @@ const sourceToPluginConfig = {
     path: "product_docs/docs/hm-operator",
   },
   slony: { name: "slony", path: "product_docs/docs/slony" },
-  tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
   tds_data_adapter: {
     name: "tds_data_adapter",
