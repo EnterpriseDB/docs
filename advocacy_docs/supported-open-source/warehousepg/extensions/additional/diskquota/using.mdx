@@ -114,7 +114,7 @@ Database quotas require `whpg-diskquota` 2.4.0 and WarehousePG 7.
 Limit the total size of one database, across every schema and role it contains. Specify the database name and the quota to set. Call `set_database_quota()` while connected to the database you're limiting, since calling it from a different database fails with a hint to connect to the right one.
 
 ```sql
-SELECT diskquota.set_database_quota(current_database(), '100GB');
+SELECT diskquota.set_database_quota(quote_ident(current_database()), '50MB');
 ```
 
 Once a database's usage exceeds its quota, further writes in that database are refused:
@@ -124,7 +124,7 @@ ERROR:  database's disk space quota exceeded with name: quota_demo
 HINT:  database usage 152 MB exceeds database quota 50 MB; free disk space or raise diskquota.set_database_quota()
 ```
 
-To change a database quota, call `set_database_quota()` again with the new value. To remove it, set the value to `'-1'`. See the [reference](reference.mdx#functions) for `set_database_quota()`.
+To change a database quota, call `set_database_quota()` again with the new value. To remove it, set the value to `'-1'`. A database quota doesn't carry over when you restore a `pg_dump` backup into another database, so you must set it again after the restore. See the [reference](reference.mdx#functions) for `set_database_quota()`.
 
 ### Setting a cluster quota
 
@@ -133,10 +133,10 @@ To change a database quota, call `set_database_quota()` again with the new value
 Cluster quotas require `whpg-diskquota` 2.4.0 and WarehousePG 7.
 !!!
 
-Limit the combined size of every database that `whpg-diskquota` monitors. Unlike quotas at other scopes, you can set the cluster quota from any database, since it's stored once, in the launcher's `diskquota` database, and survives cluster restarts.
+Limit the combined size of every database that `whpg-diskquota` monitors. Unlike quotas at other scopes, you can set the cluster quota from any database where the extension is installed, since it's stored once, in the launcher's `diskquota` database, and survives cluster restarts.
 
 ```sql
-SELECT diskquota.set_cluster_quota('1TB');
+SELECT diskquota.set_cluster_quota('100MB');
 ```
 
 !!!Note
@@ -146,10 +146,10 @@ Run `set_cluster_quota()` on its own, not batched with other statements in an ex
 
 !!!important
 
-To have the cluster quota apply correctly, run `CREATE EXTENSION diskquota` in every database in the cluster, then run `init_table_size_table()` in each one to size its existing tables. `set_cluster_quota()` warns you if any database is missing either step, and until you complete it, that database's usage doesn't count against the cluster quota, even though the disk space it uses is real.
+To have the cluster quota apply correctly, run `CREATE EXTENSION diskquota` in every user database in the cluster, then run `init_table_size_table()` in each one to size its existing tables. `set_cluster_quota()` warns you if any database is missing either step, and until you complete it, that database's usage doesn't count against the cluster quota, even though the disk space it uses is real. By default, `whpg-diskquota` monitors up to 50 databases (see [`diskquota.max_monitored_databases`](reference.mdx#diskquotamax_monitored_databases)).
 !!!
 
-Once the combined size of every monitored database exceeds the cluster quota, writes are refused in every monitored database, not only the one that pushed the total over the limit:
+Once the combined size of every monitored database exceeds the cluster quota, writes are refused in every monitored database that isn't paused, not only the one that pushed the total over the limit:
 
 ```
 ERROR:  cluster's disk space quota exceeded
@@ -160,7 +160,7 @@ To change the cluster quota, call `set_cluster_quota()` again with the new value
 
 !!!Note
 
-Writes to `pg_catalog` and to `whpg-diskquota`'s internal tables are exempt from database and cluster quotas, although their size still counts toward the totals, since `whpg-diskquota` tracks usage by writing to those same tables.
+Writes to `pg_catalog` and to `whpg-diskquota`'s internal tables are exempt from database and cluster quotas, since `whpg-diskquota` tracks usage by writing to those tables. System catalogs don't count toward the totals, but `whpg-diskquota`'s internal tables do.
 !!!
 
 ## Controlling quota enforcement
@@ -189,6 +189,12 @@ See the [reference](reference.mdx#configuration-parameters) for `diskquota.hard_
 A write only gets caught by hard limit enforcement if it's still running after the worker's next cycle. A write that finishes within one `diskquota.naptime` completes even with hard limit enforcement on, since the worker hasn't yet had a chance to measure the new usage and dispatch a rejectmap entry to the segments.
 !!!
 
+When hard limit enforcement catches an over-quota write operation mid-execution, the segment that caught it raises the error, and names the database by its OID instead of its name:
+
+```
+ERROR:  database's disk space quota exceeded with name: 18928 (seg0 127.0.0.1:9502 pid=12345)
+```
+
 !!!Note
 
 `whpg-diskquota` can't enforce a hard limit on an `ALTER TABLE ADD COLUMN DEFAULT` operation.
@@ -214,7 +220,7 @@ gpconfig -c diskquota.max_workers -v 15
 gpstop -ar
 ```
 
-See the [reference](reference.mdx#configuration-parameters) for the difference between static and dynamic mode, and for how `max_worker_processes` caps this value.
+See the [reference](reference.mdx#configuration-parameters) for the difference between static and dynamic mode, and for how `max_worker_processes` limits this value.
 
 ### Raising the maximum number of table segments
 
@@ -312,7 +318,17 @@ This deactivation stops all disk quota monitoring, including database and cluste
 
 ## Monitoring quotas and usage
 
-View the `whpg-diskquota` status, and the quotas and disk usage it tracks.
+Check which databases `whpg-diskquota` monitors, view the `whpg-diskquota` status, and view the quotas and disk usage it tracks.
+
+### Viewing the monitored databases
+
+List the databases that `whpg-diskquota` monitors, which are the databases that count toward the cluster quota:
+
+```sql
+\c diskquota
+SELECT d.datname FROM diskquota_namespace.database_list q, pg_database d
+    WHERE q.dbid = d.oid ORDER BY d.datname;
+```
 
 ### Viewing the whpg-diskquota status
 
@@ -380,7 +396,7 @@ View per-tablespace disk quotas for schemas and roles. For example:
 ```sql
 SELECT schema_name, tablespace_name, quota_in_mb, nspsize_tablespace_in_bytes
    FROM diskquota.show_fast_schema_tablespace_quota_view
-   WHERE schema_name = 'acct' AND tablespace_name = 'tblspc1';
+   WHERE schema_name = 'acct' AND tablespace_name = 'tspaced1';
 __OUTPUT__
  schema_name | tablespace_name | quota_in_mb | nspsize_tablespace_in_bytes
 -------------+-----------------+-------------+-----------------------------
@@ -424,7 +440,7 @@ SELECT * FROM diskquota.show_cluster_quota_view;
 __OUTPUT__
  quota_in_mb | total_size_in_bytes
 -------------+---------------------
-        1024 |            54231040
+         100 |            54231040
 (1 row)
 ```
 
