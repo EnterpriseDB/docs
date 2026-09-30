@@ -558,7 +558,10 @@ function prepareRelnote(meta, file, note) {
       let composednote = "";
 
       if (linenote.details === undefined) {
-        composednote = linenote.relnote;
+        composednote = converter(linenote.relnote).replace(
+          /^\s*<p>|<\/p>\s*$/g,
+          "",
+        );
       } else {
         const predetails = linenote.details; // Preprocess here
 
