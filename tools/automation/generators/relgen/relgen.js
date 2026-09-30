@@ -100,7 +100,10 @@ let argv = yargs(hideBin(process.argv))
   .parse();
 
 function converter(markdown) {
-  return micromark(markdown).replace(/[{]/g, "&#123;");
+  // normalize newlines to avoid issues around HTML tags in the markdown. Also escape { to avoid issues with MDX.
+  return micromark(markdown)
+    .replace(/[{]/g, "&#123;")
+    .replace(/[\r\n]+</g, " <");
 }
 
 function error_and_exit(message) {
@@ -570,7 +573,7 @@ function prepareRelnote(meta, file, note) {
         const headinghtml = converter(preheading)
           .replace(/<p>/g, "")
           .replace(/<\/p>/g, "");
-        composednote = `<details><summary>${headinghtml}</summary><hr/>${compactdetailshtml}</details>`;
+        composednote = `<details><summary>${headinghtml}</summary>${compactdetailshtml}</details>`;
       }
 
       if (linenote.addresses === undefined || linenote.addresses === null) {
