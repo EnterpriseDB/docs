@@ -153,10 +153,10 @@ SELECT aidb.create_model('my_t5', 't5_local');
 
 -- With config and credentials
 SELECT aidb.create_model(
-    name        => 'my_t5',
-    provider    => 't5_local',
-    config      => '{"param1": "value1"}'::JSONB,
-    credentials => '{"token": "abcd"}'::JSONB
+    name        => 'my_openai',
+    provider    => 'openai_embeddings',
+    config      => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 
 -- Rotate credentials without re-creating
@@ -339,7 +339,7 @@ Encodes a single text string into a vector using the specified model.
 #### Example
 
 ```sql
-SELECT aidb.encode_text('bert_local', 'The quick brown fox');
+SELECT aidb.encode_text('bert', 'The quick brown fox');
 ```
 
 ---
@@ -362,7 +362,7 @@ Encodes an array of text strings into vectors in a single call.
 #### Example
 
 ```sql
-SELECT * FROM aidb.encode_text_batch('bert_local', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
+SELECT * FROM aidb.encode_text_batch('bert', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
 ```
 
 ---
@@ -385,7 +385,7 @@ Encodes a binary image into a vector using a multimodal model (for example, CLIP
 #### Example
 
 ```sql
-SELECT aidb.encode_image('clip_local', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
+SELECT aidb.encode_image('clip', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
 ```
 
 ---
@@ -410,7 +410,7 @@ Generates a text response from a prompt using the specified model.
 
 ```sql
 -- Basic usage
-SELECT aidb.generate_text('t5_local', 'translate to French: Hello, world.');
+SELECT aidb.generate_text('t5', 'translate to French: Hello, world.');
 
 -- With inference configuration
 SELECT aidb.generate_text(
@@ -445,7 +445,7 @@ Generates text responses for an array of prompts in a single call.
 #### Example
 
 ```sql
-SELECT aidb.generate_text_batch('t5_local', ARRAY[
+SELECT aidb.generate_text_batch('t5', ARRAY[
     'translate to German: hello',
     'translate to German: goodbye'
 ]);
@@ -610,6 +610,8 @@ SELECT aidb.generate_text(
 
 These functions return a `JSONB` configuration object for the `config` parameter of `aidb.create_model()`. Each helper corresponds to a specific model provider.
 
+Several helpers accept `api_key` and `basic_auth` parameters. Don't use them: `aidb.create_model()` rejects a `config` that contains either key. Pass the secret through `create_model()`'s `credentials` argument instead.
+
 For the local providers `bert_local`, `clip_local`, `t5_local`, and `llama_instruct_local`, the config key that names the Hugging Face repository is `hf_model`. The helpers below write it under the old name `model`, which these providers still accept with a deprecation warning. To avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead of the helper.
 
 ### `aidb.embeddings_config`
@@ -635,11 +637,11 @@ For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
 SELECT aidb.create_model(
     'my_embedder',
     'openai_embeddings',
-    config => aidb.embeddings_config(
-        model   => 'text-embedding-3-small',
-        api_key => 'sk-...',
-        url     => 'https://api.openai.com/v1'
-    )
+    config      => aidb.embeddings_config(
+        model => 'text-embedding-3-small',
+        url   => 'https://api.openai.com/v1'
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -671,11 +673,11 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 SELECT aidb.create_model(
     'my_llm',
     'openai_completions',
-    config => aidb.completions_config(
+    config      => aidb.completions_config(
         model       => 'gpt-4o',
-        api_key     => 'sk-...',
         temperature => 0.2
-    )
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -809,7 +811,7 @@ For the `gemini` provider.
 
 | Parameter                 | Type    | Default  | Description                                                |
 |---------------------------|---------|----------|------------------------------------------------------------|
-| `api_key`                 | TEXT    | Required | Google API key.                                            |
+| `api_key`                 | TEXT    | Required | Pass `NULL`. Supply the key through `create_model()`'s `credentials` argument. |
 | `model`                   | TEXT    | NULL     | Gemini model identifier (for example, `gemini-2.0-flash`). |
 | `url`                     | TEXT    | NULL     | API endpoint override.                                     |
 | `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                                   |
@@ -819,11 +821,12 @@ For the `gemini` provider.
 
 ```sql
 SELECT aidb.create_model('my_gemini', 'gemini',
-    config => aidb.gemini_config('AIza...', model => 'gemini-2.0-flash'));
+    config      => aidb.gemini_config(api_key => NULL, model => 'gemini-2.0-flash'),
+    credentials => '{"api_key": "AIza..."}'::JSONB);
 ```
 
 !!!note
-Unlike other remote providers, Gemini's `api_key` is a plain field of `config` rather than being passed through `aidb.create_model()`'s separate `credentials` parameter. It's stored as part of the model's config rather than the more restricted credentials store — keep that in mind if `aidb.models.options` is visible to more roles than you want to see the key.
+`aidb.gemini_config()`'s first parameter is `api_key` and has no default. Pass `NULL` for it and supply the real key through `create_model()`'s `credentials` argument. `aidb.create_model()` rejects a `config` that contains `api_key`.
 !!!
 
 ---
@@ -844,14 +847,15 @@ For the `nim_clip` provider (NVIDIA NIM multimodal embeddings).
 
 ```sql
 SELECT aidb.create_model('my_nim_clip', 'nim_clip',
-    config => aidb.nim_clip_config(api_key => 'nvapi-...', model => 'nvidia/nvclip'));
+    config      => aidb.nim_clip_config(model => 'nvidia/nvclip'),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB);
 ```
 
 ---
 
 ### `aidb.nim_ocr_config`
 
-For the `nim_ocr` provider (NVIDIA NIM OCR).
+For the `nim_paddle_ocr` provider (NVIDIA NIM OCR).
 
 | Parameter      | Type    | Default | Description                  |
 |----------------|---------|---------|------------------------------|
@@ -864,8 +868,9 @@ For the `nim_ocr` provider (NVIDIA NIM OCR).
 #### Example
 
 ```sql
-SELECT aidb.create_model('my_nim_ocr', 'nim_ocr',
-    config => aidb.nim_ocr_config(api_key => 'nvapi-...'));
+SELECT aidb.create_model('my_nim_ocr', 'nim_paddle_ocr',
+    config      => aidb.nim_ocr_config(),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB);
 ```
 
 ---
@@ -886,10 +891,8 @@ For the `nim_reranking` provider.
 
 ```sql
 SELECT aidb.create_model('my_reranker', 'nim_reranking',
-    config => aidb.nim_reranking_config(
-        api_key => 'nvapi-...',
-        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
-    )
+    config      => aidb.nim_reranking_config(model => 'nvidia/nv-rerankqa-mistral-4b-v3'),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -911,10 +914,8 @@ For the `openrouter_chat` provider.
 
 ```sql
 SELECT aidb.create_model('my_or_chat', 'openrouter_chat',
-    config => aidb.openrouter_chat_config(
-        'anthropic/claude-3-5-haiku',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_chat_config('anthropic/claude-3-5-haiku'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
@@ -936,10 +937,8 @@ For the `openrouter_embeddings` provider.
 
 ```sql
 SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
-    config => aidb.openrouter_embeddings_config(
-        'mistral/mistral-embed',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_embeddings_config('mistral/mistral-embed'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
