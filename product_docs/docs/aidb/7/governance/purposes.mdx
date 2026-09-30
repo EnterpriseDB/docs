@@ -37,13 +37,7 @@ GRANT EXECUTE ON FUNCTION aidb.run_sql_query(TEXT) TO sales_tickets_ro;
 
 This is genuinely per-tool: granting `EXECUTE` on `run_sql_query` doesn't cover `catalog_list_objects` — an agent configured with several native tools needs a grant for each one its purpose role should be allowed to run.
 
-### Custom SQL tools
-
-A [custom SQL tool](/aidb/current/tools/custom-sql-tools/) doesn't need the native tool grants. It runs its stored query directly, without calling a function in schema `aidb`, so it needs only ordinary privileges on the tables or views its SQL references, plus the [telemetry grants](#telemetry-grants-all-tool-types) if telemetry is on.
-
-### Telemetry grants (all tool types)
-
-If telemetry is enabled, the trace for each tool call is also recorded under the resolved role, so that role needs `USAGE` and `EXECUTE` on the `aidb_otel` schema:
+If telemetry is enabled, the trace for a native tool call is also recorded under the resolved role, so that role needs `USAGE` and `EXECUTE` on the `aidb_otel` schema:
 
 ```sql
 GRANT USAGE ON SCHEMA aidb_otel TO sales_tickets_ro;
@@ -54,15 +48,19 @@ GRANT EXECUTE ON FUNCTION
     TO sales_tickets_ro;
 ```
 
-Without these grants, the tool call itself still succeeds or fails on its own merits. The trace write that follows it raises an error, though, and that error surfaces as if the tool call itself had been denied.
+Grant the per-tool and `aidb_otel` privileges to every role you register a purpose against, before you invoke any agent that uses it.
 
-Grant the per-tool and `aidb_otel` privileges to every role you register a purpose against, before you invoke any agent that uses it. A missing grant surfaces as one of:
+Without these grants, the tool call fails with a permission error, and the agent tells the caller of `aidb.agent_converse` that it couldn't access the data. The exact wording depends on the model. The error itself is recorded in the `response_payload` column of `aidb_internal.action_log`, on the `tool_response` action, with the decision ID appended. For example, a missing `aidb_otel` grant produces:
 
 ```text
-permission denied for schema aidb
-permission denied for function run_sql_query
-permission denied for schema aidb_otel
+Tool error: permission denied for function store_traces [decision_id=<decision_id>]
 ```
+
+A missing `aidb` schema grant or per-tool grant produces the same form of error, naming the schema or function, for example `permission denied for schema aidb`. To see the errors for a conversation, use the query in [A refusal doesn't end the conversation](/aidb/current/governance/enforcement/#a-refusal-doesnt-end-the-conversation).
+
+### Custom SQL tools
+
+A [custom SQL tool](/aidb/current/tools/custom-sql-tools/) needs none of this. It runs its stored query directly, without calling a function in schema `aidb`, so the resolved role needs no function-level grants and no `aidb_otel` grants. It needs only ordinary privileges on the tables or views its SQL references.
 
 ## Repointing a purpose takes effect immediately
 
