@@ -12,33 +12,33 @@ Postgres clusters managed by EDB Hybrid Manager (HM) and standalone Loki endpoin
 ## Tracing the data path
 
 ```
-          ┌───────────────────────────────┐
-          │  AI agent (aidb registry)     │  runs inside Postgres as the
-          └───────────────┬───────────────┘  role of its declared purpose
-                          │ 1. every call, tool call, and governed SQL execution
-                          ▼
-          ┌───────────────────────────────┐
-          │  aidb extension               │  one purpose_decision span per
-          │  (aidb.otel_client=database)  │  governed SQL (allowed or denied)
-          └───────────────┬───────────────┘
-                          │ 2. spans and log records
-                          ▼
-          ┌───────────────────────────────┐
-          │  Source database              │  plain tables; retention is
-          │  aidb_otel.traces, .logs      │  configured by the operator
-          └───────────────┬───────────────┘
-                          │ 3. read-only role over TLS, nothing copied
-                          ▼
-          ┌───────────────────────────────┐
-          │  Viewer backend               │  groups traces into sessions,
-          │                               │  extracts decisions, holds credentials
-          └───────────────┬───────────────┘
-                          │ 4. API, no credentials
-                          ▼
-          ┌───────────────────────────────┐
-          │  Viewer (browser)             │  Dashboard, Activity,
-          │                               │  session, and Agents pages
-          └───────────────────────────────┘
+┌─────────────────────────────┐
+│  AI agent (aidb registry)   │  runs inside Postgres as the
+└──────────────┬──────────────┘  role of its declared purpose
+               │ 1. agent calls, tool calls, governed SQL
+               ▼
+┌─────────────────────────────┐
+│  aidb extension             │  one purpose_decision span per
+│  aidb.otel_client=database  │  governed SQL (allowed or denied)
+└──────────────┬──────────────┘
+               │ 2. spans and log records
+               ▼
+┌─────────────────────────────┐
+│  Source database            │  plain tables; retention is
+│  aidb_otel.traces, .logs    │  configured by the operator
+└──────────────┬──────────────┘
+               │ 3. read-only role over TLS, nothing copied
+               ▼
+┌─────────────────────────────┐
+│  Viewer backend             │  groups traces into sessions,
+│                             │  extracts decisions, holds credentials
+└──────────────┬──────────────┘
+               │ 4. API, no credentials
+               ▼
+┌─────────────────────────────┐
+│  Viewer (browser)           │  Dashboard, Activity,
+│                             │  session, and Agents pages
+└─────────────────────────────┘
 ```
 
 ## aidb extension
@@ -64,32 +64,32 @@ The viewer is a single-page application that renders the cluster [Dashboard](./d
 For Postgres clusters managed by HM, or any cluster whose logs are shipped to a standalone Loki endpoint, the viewer doesn't read `aidb_otel`. Instead, AI agents reach Postgres through the Airman MCP server, which tags every query by setting the Postgres `application_name` session variable to `airman:<purpose>/<session-short>`. Postgres logs each statement with that tag, Loki stores the log lines, and the viewer's backend reconstructs sessions from them. This path shows the SQL an agent ran and whether the database refused it, but it records no agent identity and no purpose-enforcement decision. See [Connecting Hybrid Manager or Loki](./connecting_data_sources).
 
 ```
-          ┌───────────────────────────────┐
-          │  AI agent via Airman MCP      │  application_name =
-          └───────────────┬───────────────┘  'airman:<purpose>/<session-short>'
-                          │ 1. tagged SQL
-                          ▼
-          ┌───────────────────────────────┐
-          │  Postgres cluster             │  logs each statement with tag, SQL,
-          └───────────────┬───────────────┘  duration, severity, database, role, PID
-                          │ 2. JSON log lines
-                          ▼
-          ┌───────────────────────────────┐
-          │  Loki                         │  HM Loki pipeline or a
-          │                               │  standalone instance; LogQL
-          └───────────────┬───────────────┘
-                          │ 3. LogQL queries, incremental sync
-                          ▼
-          ┌───────────────────────────────┐
-          │  Viewer backend               │  parses log lines into sessions,
-          │                               │  caches summaries, holds credentials
-          └───────────────┬───────────────┘
-                          │ 4. API, no credentials
-                          ▼
-          ┌───────────────────────────────┐
-          │  Viewer (browser)             │  clusters, sessions,
-          │                               │  session detail
-          └───────────────────────────────┘
+┌─────────────────────────────┐
+│  AI agent via Airman MCP    │  application_name =
+└──────────────┬──────────────┘  'airman:<purpose>/<session-short>'
+               │ 1. tagged SQL
+               ▼
+┌─────────────────────────────┐
+│  Postgres cluster           │  logs each statement with the tag,
+└──────────────┬──────────────┘  SQL, duration, severity, role, PID
+               │ 2. JSON log lines
+               ▼
+┌─────────────────────────────┐
+│  Loki                       │  HM Loki pipeline or a
+│                             │  standalone instance; LogQL
+└──────────────┬──────────────┘
+               │ 3. LogQL queries, incremental sync
+               ▼
+┌─────────────────────────────┐
+│  Viewer backend             │  parses log lines into sessions,
+│                             │  caches summaries, holds credentials
+└──────────────┬──────────────┘
+               │ 4. API, no credentials
+               ▼
+┌─────────────────────────────┐
+│  Viewer (browser)           │  clusters, sessions,
+│                             │  session detail
+└─────────────────────────────┘
 ```
 
 ### Airman MCP
