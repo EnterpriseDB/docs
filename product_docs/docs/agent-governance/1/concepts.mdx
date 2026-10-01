@@ -1,49 +1,63 @@
 ---
 title: Key concepts
 navTitle: Key concepts
-description: Key terms used throughout the AI governance audit log viewer — sessions, steps, purpose, instances, and how Airman MCP tags agent activity.
+description: Key terms used throughout EDB Agent Governance — instances, clusters, agents, purpose, governance decisions, sessions, and steps — and the terms specific to the legacy Hybrid Manager and Loki sources.
 ---
 
-Review these terms to understand and use the AI governance audit log viewer effectively.
-
-## The 1:1:1 mapping
-
-The governance model that Agent Governance audits is built on a 1:1:1 mapping: one Airman MCP instance, one declared purpose, and one Postgres login role. When an AI agent operates through a specific Airman MCP instance, it connects to Postgres as a role that has only the privileges appropriate to that purpose. The database enforces this boundary — not application code, not middleware, and not prompts. See [Configuring Airman MCP](./configuring_airman_mcp) for setup details.
-
-## Airman MCP
-
-Airman MCP is the Model Context Protocol (MCP) server that brokers Postgres access for AI agents. It exposes Postgres operations as tools the agents can call, and it tags every query it runs via the Postgres `application_name` variable in the form `airman:<purpose>/<session-short>`, so the activity can be reconstructed later. The viewer relies entirely on these tags to group and attribute agent activity.
-
-## Purpose
-
-Purpose is a declared intent label configured per Airman MCP instance through the `AIRMAN_MCP_PURPOSE` environment variable (for example, `billing`, `support`, or `analytics`). It appears as the first segment of the tag Airman writes to each query and is surfaced in both the sessions list and session detail. Purpose is set on the agent side, not in the viewer.
-
-## Access mode
-
-Access mode controls what SQL an Airman MCP instance is permitted to execute. In restricted mode, Airman performs SQL syntax analysis before forwarding a query to PostgreSQL, blocking disallowed statement types such as `DROP`, `DELETE`, and `INSERT` at the MCP layer. Every query also runs inside a read-only transaction with enforced timeouts. In unrestricted mode, write operations are permitted, which is appropriate for agents that need to persist output — for example, a reporting agent writing to a dedicated output table. Access mode is configured on the Airman MCP instance, not in the viewer.
-
-## Session
-
-A session is a logical grouping of SQL statements executed by an AI agent within a single Airman MCP interaction. Each session is the primary unit of audit in the viewer: when you open a cluster, you see its sessions, and when you open a session, you see the statements it contains.
-
-Airman MCP identifies a session with a session short — the first eight hexadecimal characters of the MCP session token. All log entries that share a session short belong to the same session.
-
-## Step
-
-A step is a single SQL statement within a session — one parsed Postgres log record. Each step carries the SQL text and its execution metadata: target database, Postgres role, backend process ID, duration, and error severity.
+Review these terms to understand and use EDB Agent Governance effectively. The first group applies to a Postgres database running the `aidb` extension, which is the primary source. The [legacy terms](#legacy-terms-hybrid-manager-and-loki) apply only to EDB Hybrid Manager (HM) and Loki sources.
 
 ## Instance
 
-An instance is a registered upstream data source — either a Hybrid Manager (HM) deployment or a standalone Loki endpoint. The viewer can connect to multiple instances at once, aggregating the clusters and sessions from all of them. See [Connecting data sources](./connecting_data_sources).
+An instance is a registered upstream source. The primary kind is a Postgres database running the `aidb` extension, registered with a connection string for a read-only viewer role. The legacy kinds are an HM deployment and a standalone Loki endpoint. The viewer can connect to several instances at once and shows the clusters from all of them on one home page. See [Connecting an aidb database](./connecting_aidb) and [Connecting Hybrid Manager or Loki](./connecting_data_sources).
 
 ## Cluster
 
-A cluster is a Postgres cluster managed by HM or monitored through Loki. The viewer lists clusters as the entry point for auditing: you pick a cluster, then review the AI agent sessions detected for it.
+A cluster is what you open to audit. An `aidb` database appears as one cluster. An HM instance contributes the Postgres clusters it manages, and a Loki instance appears as one cluster. Each cluster has a [Dashboard](./dashboard) and an [Activity](./sessions_list) page; an `aidb` database also has an [Agents](./agents) page.
 
-## Loki and LogQL
+## Agent
 
-Loki is the log aggregation system that stores the Postgres query logs the viewer reads. It's optimized for label-based queries expressed in LogQL, its query language. HM includes a Loki pipeline. You can also point the viewer at a standalone Loki instance that receives Postgres logs. The viewer's backend constructs LogQL queries to find the session-tagged log entries for a cluster.
+An agent is an AI agent registered in the `aidb` agent registry, with a name and a declared purpose. See [Creating agents](/aidb/latest/agents/creating-agents/) in the AIDB documentation. The viewer attributes recorded activity and decisions to the agent that produced them and lists the registered agents on the Agents page. HM and Loki sources don't record agent identities.
 
-## Sync watermark
+## Purpose
 
-A sync watermark is a per-instance, per-cluster record that tracks how far back the viewer's backend has cached session data from Loki. It records the earliest known entry and how far the cache has been populated, which is what enables fast, incremental syncing instead of requerying the full log history on every visit. See [Architecture and data flow](./architecture).
+A purpose is a declared intent label — for example, `billing` or `support`. In `aidb`, each purpose in the purpose registry maps to a Postgres role, and an agent runs governed SQL as the role of its purpose, so the database itself enforces what that purpose may access. See [Permissions](/aidb/latest/agents/creating-agents/#permissions) in the AIDB documentation. On the legacy path, purpose is the label an Airman MCP instance tags its queries with; it's set on the agent side, not in the viewer.
+
+## Governance decision
+
+A governance decision is `aidb`'s record of whether a governed SQL execution was allowed or denied under the agent's purpose. Each decision has an ID, the principal and Postgres role it was evaluated for, and, when denied, a reason — for example, the caller isn't a member of the purpose's role, the SQL tried to change the running role, or Postgres rejected it with a permission error. The viewer shows decisions as Approved or Denied on the dashboard, in Activity, and on each step; a denied step links to its decision. Decisions are recorded only for agents whose reasoning loop runs inside Postgres. See [Recording purpose-enforcement decisions](/aidb/latest/reference/observability/#recording-purpose-enforcement-decisions) in the AIDB documentation.
+
+## Session
+
+A session is one group of agent work and the unit you open on the Activity page. For an `aidb` database the viewer groups recorded traces by the identifier `aidb` recorded — an MCP session, a Postgres connection, a conversation, or, when none is present, the trace itself — and the Type column says which. On the legacy path, a session is the group of SQL statements Airman MCP tagged with the same session short.
+
+## Step
+
+A step is one unit of work inside a session. For an `aidb` database, a step is one recorded span — an agent call, a tool call, a governed SQL execution, or a decision — with its timing, status, attributes, and any log records. On the legacy path, a step is one Postgres log record: the SQL text and its execution metadata, such as the target database, Postgres role, backend process ID, duration, and error severity.
+
+## Legacy terms: Hybrid Manager and Loki
+
+These terms apply only to sessions reconstructed from Postgres query logs. See [Legacy data path: Hybrid Manager and Loki](./architecture#legacy-data-path-hybrid-manager-and-loki).
+
+### The 1:1:1 mapping
+
+The governance model that the legacy path audits is built on a 1:1:1 mapping: one Airman MCP instance, one declared purpose, and one Postgres login role. When an AI agent operates through a specific Airman MCP instance, it connects to Postgres as a role that has only the privileges appropriate to that purpose. The database enforces this boundary — not application code, not middleware, and not prompts. See [Configuring Airman MCP](./configuring_airman_mcp) for setup details.
+
+### Airman MCP
+
+Airman MCP is the Model Context Protocol (MCP) server that brokers Postgres access for AI agents on the legacy path. It exposes Postgres operations as tools the agents can call, and it tags every query it runs via the Postgres `application_name` variable in the form `airman:<purpose>/<session-short>`, so the activity can be reconstructed later. The viewer relies entirely on these tags to group and attribute that activity.
+
+### Access mode
+
+Access mode controls what SQL an Airman MCP instance is permitted to execute. In restricted mode, Airman performs SQL syntax analysis before forwarding a query to PostgreSQL, blocking disallowed statement types such as `DROP`, `DELETE`, and `INSERT` at the MCP layer. Every query also runs inside a read-only transaction with enforced timeouts. In unrestricted mode, write operations are permitted, which is appropriate for agents that need to persist output — for example, a reporting agent writing to a dedicated output table. Access mode is configured on the Airman MCP instance, not in the viewer.
+
+### Session short
+
+Airman MCP identifies a session with a session short — the first eight hexadecimal characters of the MCP session token. All log entries that share a session short belong to the same session.
+
+### Loki and LogQL
+
+Loki is the log aggregation system that stores the Postgres query logs the viewer reads on the legacy path. It's optimized for label-based queries expressed in LogQL, its query language. HM includes a Loki pipeline. You can also point the viewer at a standalone Loki instance that receives Postgres logs. The viewer's backend constructs LogQL queries to find the session-tagged log entries for a cluster.
+
+### Sync watermark
+
+A sync watermark is a per-instance, per-cluster record that tracks how far back the viewer's backend has cached session data from Loki. It records the earliest known entry and how far the cache has been populated, which is what enables fast, incremental syncing instead of requerying the full log history on every visit. `aidb` databases don't use watermarks; the backend reads them directly.
