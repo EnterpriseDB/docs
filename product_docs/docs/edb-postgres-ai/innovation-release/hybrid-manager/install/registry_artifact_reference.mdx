@@ -17,9 +17,9 @@ HM's registry hosts several distinct artifact classes, each requiring different 
 | :--- | :--- | :--- | :--- |
 | [Container images](#container-images) | Runnable software: the operator, platform components, Postgres images | `docker.enterprisedb.com/pgai-platform/…` | Any OCI-compliant client |
 | [OCI artifacts](#oci-artifacts) | Helm chart archives and package bundles for marketplace applications, consumed by `kapp-controller` | `docker.enterprisedb.com/pgai-platform/kapp-marketplace/…` | `skopeo`, `crane`, `oras`, or `helm pull oci://`. Docker Content Trust (DCT) must be disabled for this path |
-| [Third-party runtime images](#third-party-runtime-images) | Images that marketplace applications depend on at runtime (for example, images used by Airflow, Superset) | Upstream public registries, **not** in EDB's registry | Resolved directly from the upstream registry at deploy time; must be mirrored separately if your cluster has no general internet egress |
-| [Helm charts](#helm-charts) | Installer and operator charts, distributed as `.tgz` archives | EDB's Helm repository over HTTPS, **not** in the container registry | `curl`, or `helm repo add` / `helm pull` |
-| [CLI binaries and kubectl plugins](#cli-binaries-and-kubectl-plugins) | `edbctl` and diagnostic plugins | Homebrew, GitHub releases | **No air-gapped distribution path today** |
+| [Third-party runtime images](#third-party-runtime-images) | Images that marketplace applications depend on at runtime (for example, images used by Airflow, Superset) | Upstream public registries, not in EDB's registry | Resolved directly from the upstream registry at deploy time; must be mirrored separately if your cluster has no general internet egress |
+| [Helm charts](#helm-charts) | Installer and operator charts, distributed as `.tgz` archives | EDB's Helm repository over HTTPS, not in the container registry | `curl`, or `helm repo add` / `helm pull` |
+| [CLI binaries and kubectl plugins](#cli-binaries-and-kubectl-plugins) | `edbctl` and diagnostic plugins | Homebrew, GitHub releases | No air-gapped distribution path today |
 | [OLM bundle and catalog](#olm-bundle-and-catalog) | The HM operator packaged for OpenShift's Operator Lifecycle Manager | Red Hat `certified-operators` catalog, plus an EDB-published bundle image | `oc mirror` v2, or `opm` for a self-built file-based catalog |
 | [Extension images](#extension-images) | Postgres extensions packaged as OCI images | CloudNativePG community registry, or customer-built | Any OCI-compliant client; mounted read-only as an ImageVolume |
 
@@ -84,7 +84,10 @@ helm repo update
 
 ### Signing
 
-EDB signs container images with cosign/sigstore: the registry applies the signature on push, and `edbctl` verifies it against a baked-in EDB public key (`--verify-signature`). OCI artifacts and Helm charts carry no EDB signature. Docker Content Trust (Notary v1) is a separate, client-side mechanism some customers enable in their own pull tooling; EDB doesn't apply it or support it for HM images. If you want to apply your own signature while mirroring, `edbctl image sync-to-local-registry --sign-by-sigstore-private-key` signs with a key of your choosing, independent of EDB's signature.
+- **EDB's signature:** Container images are signed with cosign/sigstore. The registry applies the signature on push; `edbctl` verifies it against a baked-in EDB public key (`--verify-signature`).
+- **What isn't signed:** OCI artifacts and Helm charts carry no EDB signature.
+- **Docker Content Trust (DCT):** A separate, client-side mechanism some customers enable in their own pull tooling, unrelated to the cosign signature above. EDB doesn't apply or support it for HM images.
+- **Signing your own mirror:** `edbctl image sync-to-local-registry --sign-by-sigstore-private-key` applies a signature with a key of your choosing, independent of EDB's signature.
 
 ## Authenticating to EDB's registry
 
@@ -118,7 +121,17 @@ Considerations:
 
 ## Destination registry layout requirements
 
-This requirement applies when you mirror artifacts into your own private registry, not to EDB's registry, which is already laid out correctly. `edbctl image sync-to-local-registry` pushes each artifact to the correct path, but it doesn't provision the destination repository for you. Registries that auto-create a repository on first push (for example, Azure ACR, Quay, GHCR, Docker Hub) need no action from you. Registries that require the repository to already exist (for example, Amazon ECR, Google Artifact Registry, JFrog Artifactory) need you to pre-create it at that exact path before running the sync, or the push fails. The OpenShift internal registry can't be used as a destination at all, regardless of pre-creation. The destination-form table and the notes on it, further down this section, cover why. If you mirror artifacts with your own pipeline instead of `edbctl`, you're also responsible for constructing this path yourself. Getting any of this wrong produces errors that look like credential or registry faults rather than layout faults. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for how these errors get confused in practice.
+This requirement applies when you mirror artifacts into your own private registry, not to EDB's registry, which is already laid out correctly.
+
+`edbctl image sync-to-local-registry` pushes each artifact to the correct path, but it doesn't provision the destination repository for you:
+
+- Registries that auto-create a repository on first push (for example, Azure ACR, Quay, GHCR, Docker Hub) need no action from you.
+- Registries that require the repository to already exist (for example, Amazon ECR, Google Artifact Registry, JFrog Artifactory) need you to pre-create it at that exact path before running the sync, or the push fails.
+- The OpenShift internal registry can't be used as a destination at all, regardless of pre-creation. The "Required destination form" table below, and the notes under it, cover why.
+
+If you mirror artifacts with your own pipeline instead of `edbctl`, you're responsible for constructing this path yourself.
+
+Getting any of this wrong produces errors that look like credential or registry faults rather than layout faults. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for how these errors get confused in practice.
 
 | Image class | Required destination form |
 | :--- | :--- |

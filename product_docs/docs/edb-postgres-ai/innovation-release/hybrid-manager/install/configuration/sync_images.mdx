@@ -60,7 +60,7 @@ Using these credentials, the sync process copies all necessary artifacts from ED
     export EDB_SOURCE_REGISTRY=pgai-platform
     ```
 
-    `EDB_SOURCE_REGISTRY` isn't a personal username. It's passed as `--source-registry-username`, but the value is your subscription namespace (`pgai-platform`); `CS_EDB_TOKEN` is your EDB Repos 2.0 API token, passed as the password. See [Authenticating to EDB's registry](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#authenticating-to-edbs-registry).
+    `CS_EDB_TOKEN` is your EDB Repos 2.0 API token, passed as the password. `EDB_SOURCE_REGISTRY` isn't a personal username, it's passed as `--source-registry-username`, but the value is your subscription namespace (`pgai-platform`). See [Authenticating to EDB's registry](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#authenticating-to-edbs-registry).
 
 3.  Define private registry credentials (Destination)
 
@@ -97,7 +97,7 @@ The command mirrors the following artifacts to your private registry:
 - **Operator helm chart** — `edb-hcp-operator` chart, mirrored as an OCI artifact alongside the images.
 
 !!! Note Scope of this command
-This command syncs the platform images, the operator, and the operator's own Helm chart. It does not sync the `hm-installer` chart, marketplace [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts), or [extension images](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#extension-images). Mirror those separately if you use them. See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#artifact-types) for the full artifact inventory.
+This command syncs the platform images, the operator, and the operator's own Helm chart. It doesn't sync the `hm-installer` chart, marketplace [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts), or [extension images](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#extension-images). If you use those, mirror each with the tooling in [Moving artifacts without edbctl](#moving-artifacts-without-edbctl). See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#artifact-types) for the full artifact inventory.
 !!!
 
 ### Preserving digests
@@ -122,14 +122,14 @@ skopeo copy --preserve-digests \
 
 `edbctl image sync-to-local-registry` is the supported path and the only one that doesn't require you to track every artifact class yourself. Use it wherever your environment allows it.
 
-Some environments can't, including fully air-gapped or disconnected clusters with no route from `edbctl` to EDB's registry. `edbctl` needs direct network access to both the source and destination registries and broad enough credentials to read from one and write to the other. If your organization instead requires artifacts to be submitted individually through a governed ingestion or approval process, you're effectively performing the same job `edbctl` automates, by hand, and need to account for each artifact class yourself:
+Some environments can't use `edbctl image sync-to-local-registry`, including fully air-gapped or disconnected clusters with no route from `edbctl` to EDB's registry. `edbctl` needs direct network access to both the source and destination registries and broad enough credentials to read from one and write to the other. If your organization instead requires artifacts to be submitted individually through a governed ingestion or approval process, you're effectively performing the same job `edbctl` automates, by hand: for each artifact class, pull it from EDB's registry with the recommended tool, carry it through whatever approval or transfer step your organization requires, then push it into your destination registry or repository using that same tool.
 
-| Artifact class | Tool |
+| Artifact class | Tool and action |
 | :--- | :--- |
-| Container images | `edbctl` (if usable), or `skopeo copy --preserve-digests` |
-| OCI artifacts (`kapp-marketplace/`) | `skopeo`, `crane`, or `oras`, not `docker` or `podman`. Disable Docker Content Trust for this path |
-| Helm charts | `curl` or `helm pull` against EDB's Helm repository. These charts are never registry content, so registry-mirroring tools won't enumerate them |
-| Extension images | Any OCI-compliant client |
+| Container images | `edbctl` (if usable), or the same `skopeo copy --preserve-digests` invocation shown in [Preserving digests](#preserving-digests), with your destination path as the target |
+| OCI artifacts (`kapp-marketplace/`) | `skopeo copy` (or the equivalent `crane`/`oras` copy command), not `docker` or `podman`, with Docker Content Trust disabled for this path, against the `kapp-marketplace/` path from [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts) |
+| Helm charts | `helm pull` (or `curl`) the `.tgz` from the repository URL in [Helm charts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#helm-charts). These charts aren't registry content, so registry-mirroring tools won't enumerate them. Then publish it to your own chart repository the way you would any other local chart |
+| Extension images | Any OCI-compliant client, using the same pull/push pattern as container images |
 | CLI binaries | No mirroring path. See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#cli-binaries-and-kubectl-plugins) |
 
 Avoid `docker` or `podman` as your primary mirroring tool for anything beyond a quick, single-platform test copy. Both parse and regenerate manifests on pull/push, which risks the digest-preservation problem above, and, with Docker Content Trust enabled, they reject OCI artifacts outright rather than mirroring them.
