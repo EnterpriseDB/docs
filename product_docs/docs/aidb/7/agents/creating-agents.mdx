@@ -15,7 +15,7 @@ SELECT aidb.create_agent(
     model                => 'my_gpt',
     tools                => ARRAY['run_sql_query'],  -- optional; tool names from aidb.tools. Default: NULL (no tools)
     delegates            => NULL,                    -- optional; names of other agents to delegate to. Default: NULL (no delegation)
-    purpose              => NULL,                    -- optional; purpose the agent's tool calls run under. Default: NULL (run as the calling role)
+    purpose              => NULL,                    -- optional; name of a purpose from aidb.purpose_registry. Default: NULL (tool calls run as the calling role)
     output_type          => NULL,                    -- optional; structured output schema from aidb.output_type(). Default: NULL (plain-text answer)
     input_token_budget   => NULL,                    -- optional; input token cap per agent_converse call. Default: NULL (no limit)
     output_token_budget  => NULL,                    -- optional; output token cap per agent_converse call. Default: NULL (no limit)
@@ -75,7 +75,19 @@ SELECT aidb.create_agent(
 
 ## Permissions
 
-By default, an agent's tool calls run as whichever Postgres role calls `agent_converse`. Pass `purpose` to confine an agent to a specific role instead — for example, to give it narrower table permissions than the calling application user has. `purpose` names a [purpose](/aidb/current/governance/purposes/) that a member of `aidb_governance` has already registered. `create_agent` and `update_agent` reject a purpose name that isn't registered. They store the name without resolving it to its underlying role or checking your membership in that role. Resolution happens at invocation time. See [Enforcement](/aidb/current/governance/enforcement/).
+By default, an agent's tool calls run as the Postgres role that calls `agent_converse`. To run them as a different role, give the agent a purpose.
+
+A purpose is a named entry in `aidb.purpose_registry` that maps to a Postgres role. Members of the `aidb_governance` role create purposes:
+
+```sql
+SELECT aidb.create_purpose(
+    name        => 'sales_reporting',
+    role        => 'reporting_role',
+    description => 'Read-only access to the sales schema'
+);
+```
+
+Pass the purpose name when you create or update an agent:
 
 ```sql
 SELECT aidb.create_agent(
@@ -83,9 +95,15 @@ SELECT aidb.create_agent(
     instructions => 'Answer questions about sales data. Never modify data.',
     model        => 'my_gpt',
     tools        => ARRAY['run_sql_query'],
-    purpose      => 'reporting_purpose'
+    purpose      => 'sales_reporting'
 );
 ```
+
+Each time the agent is invoked, AIDB looks up the purpose's current role and checks that the caller is a member of it. If the caller isn't a member, or the purpose has been deleted with `aidb.delete_purpose()`, the call is refused. `create_agent` and `update_agent` don't check role membership.
+
+To change the role for every agent that holds a purpose, call `aidb.update_purpose()`. See [Purpose management functions](../reference/agents#purpose-management-functions).
+
+Every tool SQL execution under a purpose is recorded as an `allowed` or `denied` decision. See [Recording purpose-enforcement decisions](../reference/observability#recording-purpose-enforcement-decisions).
 
 ## Structured output
 

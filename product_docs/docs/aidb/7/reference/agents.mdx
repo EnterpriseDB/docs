@@ -31,6 +31,19 @@ Agent configuration. There's no dedicated "list agents" function — query this 
 | `created_at`           | timestamptz             | Creation time.                                                              |
 | `updated_at`           | timestamptz             | Last update time.                                                           |
 
+### `aidb.purpose_registry`
+
+Purposes an agent can hold. Each purpose maps a name to the Postgres role that an agent's tool calls run as. Members of `aidb_users` can read this view. Change it with the [purpose management functions](#purpose-management-functions).
+
+| Column        | Type        | Description                                                                 |
+|---------------|-------------|-----------------------------------------------------------------------------|
+| `name`        | text        | Unique purpose name.                                                        |
+| `role`        | text        | Postgres role that agents holding this purpose run their tool calls as.     |
+| `description` | text        | Free-text description.                                                      |
+| `created_at`  | timestamptz | When the purpose was created.                                               |
+| `updated_at`  | timestamptz | When the purpose was last changed.                                          |
+| `deleted_at`  | timestamptz | When the purpose was deleted. `NULL` for an active purpose.                 |
+
 ### `aidb.agent_tasks`
 
 One row per `agent_converse` call (a "task"), including its lifecycle status.
@@ -119,7 +132,7 @@ SELECT aidb.create_agent(
     model                => 'my_gpt',
     tools                => ARRAY['run_sql_query'],  -- optional; tool names from aidb.tools. Default: NULL (no tools)
     delegates            => NULL,                    -- optional; names of other agents to delegate to. Default: NULL (no delegation)
-    purpose              => NULL,                    -- optional; purpose the agent's tool calls run under. Default: NULL (run as the calling role)
+    purpose              => NULL,                    -- optional; name of a purpose from aidb.purpose_registry. Default: NULL (tool calls run as the calling role)
     output_type          => NULL,                    -- optional; structured output schema from aidb.output_type(). Default: NULL (plain-text answer)
     input_token_budget   => NULL,                    -- optional; input token cap per agent_converse call. Default: NULL (no limit)
     output_token_budget  => NULL,                    -- optional; output token cap per agent_converse call. Default: NULL (no limit)
@@ -171,6 +184,80 @@ Deletes an agent by name.
 
 ```sql
 SELECT aidb.delete_agent('db_helper', force => true);
+```
+
+---
+
+## Purpose management functions
+
+Only members of the `aidb_governance` role can call these functions.
+
+### `aidb.create_purpose`
+
+Creates a purpose. If a purpose with this name was deleted earlier, it's reactivated with the new role and description.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                                                       |
+|---------------|------|----------|-------------------------------------------------------------------|
+| `name`        | TEXT | Required | Unique purpose name.                                              |
+| `role`        | TEXT | Required | Postgres role that agents holding this purpose run tool calls as. |
+| `description` | TEXT | NULL     | Free-text description.                                            |
+
+#### Returns
+
+`VOID`. Raises an error if an active purpose with this name already exists.
+
+#### Example
+
+```sql
+SELECT aidb.create_purpose('sales_reporting', 'reporting_role', 'Read-only access to the sales schema');
+```
+
+---
+
+### `aidb.update_purpose`
+
+Changes a purpose's role or description. The change applies to every agent holding the purpose from its next invocation.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                                    |
+|---------------|------|----------|------------------------------------------------|
+| `name`        | TEXT | Required | Name of the purpose to change.                 |
+| `role`        | TEXT | NULL     | New Postgres role. `NULL` leaves it unchanged. |
+| `description` | TEXT | NULL     | New description. `NULL` leaves it unchanged.   |
+
+#### Returns
+
+`VOID`. Raises an error if no active purpose has this name.
+
+#### Example
+
+```sql
+SELECT aidb.update_purpose('sales_reporting', role => 'sales_readonly');
+```
+
+---
+
+### `aidb.delete_purpose`
+
+Deletes a purpose. The row stays in `aidb.purpose_registry` with `deleted_at` set. An agent holding a deleted purpose is refused when invoked.
+
+#### Parameters
+
+| Parameter | Type | Default  | Description                    |
+|-----------|------|----------|--------------------------------|
+| `name`    | TEXT | Required | Name of the purpose to delete. |
+
+#### Returns
+
+`VOID`. Raises an error if the purpose doesn't exist or is already deleted.
+
+#### Example
+
+```sql
+SELECT aidb.delete_purpose('sales_reporting');
 ```
 
 ---

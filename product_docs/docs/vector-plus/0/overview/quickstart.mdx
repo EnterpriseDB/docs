@@ -1,0 +1,39 @@
+---
+title: Vector Plus quickstart
+navTitle: Quickstart
+description: Build your first ivfplus index and run an approximate nearest-neighbor query.
+---
+
+Before you start, [install Vector Plus](../install/installing) and [enable the extension](../install/configuring). The following quickstart then creates a table with vector embeddings, builds an `ivfplus` index over it, and runs an approximate nearest-neighbor query end to end:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS edb_vectorplus CASCADE; -- pulls in pgvector
+
+CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(768));
+COPY items (embedding) FROM '/path/to/embeddings.csv'; -- load BEFORE indexing
+
+CREATE INDEX items_embedding_idx ON items
+USING ivfplus (embedding vector_l2_ops) WITH (lists = 1000);
+
+SET ivfplus.probes = 32;
+SELECT id FROM items ORDER BY embedding <-> '[...]' LIMIT 10;
+
+SELECT * FROM check_ivfplus_index_health('items_embedding_idx');
+```
+
+Three settings control most of an index's behavior:
+
+| Option   | Set with                                         | Default         | Recommended starting point                  |
+|----------|--------------------------------------------------|-----------------|---------------------------------------------|
+| `lists`  | `WITH (...)` at build                            | 100             | rows/1000 up to 1M rows, `sqrt(rows)` above |
+| `probes` | `SET ivfplus.probes`                             | 1               | `sqrt(lists)`, raise until recall suffices  |
+| Opclass  | `CREATE INDEX ... USING ivfplus (col <opclass>)` | `vector_l2_ops` | Match your distance metric                  |
+
+Before you build an index, keep the following in mind:
+
+- `lists` isn't derived from table size. Set to, say, 100, it stays 100 whether the table has a thousand rows or a billion. See [Tuning and sizing](../using/tuning).
+- Index at a dimensionality that's a multiple of 4, and at most 1780. Only those get the packed fast-scan layout; anything else falls back to a slower scan for the life of the index, and `CREATE INDEX` emits a `NOTICE` when it happens. See [Limits and fixed constants](../reference#limits-and-fixed-constants).
+- Load data before `CREATE INDEX`. The build clusters the rows that already exist at build time.
+- This is an approximate index. Work through [Measuring recall](../using/measuring-recall) before relying on it in production.
+- `CREATE INDEX` blocks writes on the table. Use `CREATE INDEX CONCURRENTLY` in production.
+- Centroids are fixed for the life of the index. Clustering happens once, at build time. A table that keeps changing drifts away from its centroids over time — new rows land in a slower append region until the index is rebuilt. `check_ivfplus_index_health()` reports this drift and recommends a `REINDEX CONCURRENTLY` when needed. See [Writes, VACUUM, and REINDEX](../reference#writes-vacuum-and-reindex).

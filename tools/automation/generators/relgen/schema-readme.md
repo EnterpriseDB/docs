@@ -17,7 +17,7 @@ intro: |
 highlights: |
   Short description of the highlights of the release. Supports Markdown. Can use lists for effect.
 relnotes: 
-- relnote: Short text for the release note entry - required
+- relnote: Short text for the release note entry - required. Supports Markdown. 
   component: Component name - required if components is specified in meta.yml
   component_version: Component version - required if components is specified in meta.yml
   details: |

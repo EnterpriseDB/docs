@@ -1,0 +1,50 @@
+---
+title: Configuring your agent role
+navTitle: Configuring agent roles
+description: What a Postgres role needs to act as an MCP agent, and how to revoke it.
+---
+
+Configure a Postgres role to authenticate agents with the MCP endpoint and to define what each agent may list and call. The MCP endpoint authenticates every agent as a Postgres login role, so provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. A profile role is an ordinary `NOLOGIN` Postgres role that holds privileges — group them by function (read-only, read-write, and so on) and grant them to agent roles instead of granting privileges directly.
+
+## Granting the role what it needs
+
+1. Give it `LOGIN` and a password. The agent presents these in the HTTP Basic header on every call, and the endpoint opens a Postgres connection with them.
+
+   ```sql
+   CREATE ROLE <agent_role> LOGIN PASSWORD '<password>';
+   ```
+
+1. Add a matching `local` line in `pg_hba.conf`. The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`, never `trust`.
+
+   ```
+   local   all   <agent_role>   scram-sha-256
+   ```
+
+1. Grant membership in `aidb_users`, which provides `EXECUTE` on `aidb.get_mcp_tools()` and `aidb.run_tool()`. Without it, `tools/list` fails with a permission error.
+
+   ```sql
+   GRANT aidb_users TO <agent_role>;
+   ```
+
+1. Grant the objects its tools touch. A tool runs as the agent, so it needs `USAGE` on the schema and the table privileges its tools use.
+
+   ```sql
+   GRANT USAGE ON SCHEMA <schema> TO <agent_role>;
+   GRANT SELECT ON <schema>.<table> TO <agent_role>;
+   ```
+
+Keep the agent role itself free of direct privileges and grant it profile roles instead. Revoking a profile role from an agent takes effect on the agent's next call, since every call opens a fresh connection.
+
+See [Provisioning example](provisioning-example) for a worked example that creates an agent role and profile roles together.
+
+## Revoking an agent
+
+Revoke with ordinary role changes:
+
+```sql
+REVOKE <profile_role> FROM <agent_role>;   -- narrows what the agent can do, takes effect on its next call
+ALTER ROLE <agent_role> NOLOGIN;           -- the agent can't connect at all
+DROP ROLE <agent_role>;                    -- after reassigning or dropping anything the role owns
+```
+
+See [Provisioning example](provisioning-example#revoking-an-agent) for this applied to a specific agent.

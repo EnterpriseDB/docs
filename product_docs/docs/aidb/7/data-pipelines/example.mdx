@@ -102,18 +102,18 @@ To view your existing pipelines and their configurations, query the `aidb.pipeli
 ```sql
 SELECT * FROM aidb.pipelines;
 __OUTPUT__
-      name      | source_type | source_schema |       source       | source_key_column | source_data_column | destination_type | destination_schema |       destination       | destination_key_column | destination_data_column |                                                 steps                                                  | auto_processing | batch_size | background_sync_interval |              owner_role             
-----------------+-------------+---------------+--------------------+-------------------+--------------------+------------------+--------------------+-------------------------+------------------------+-------------------------+--------------------------------------------------------------------------------------------------------+-----------------+------------+--------------------------+--------------------------------------
- pipeline__8989 | Table       | public        | source_table__8989 | id                | content            | Table            | public             | pipeline_pipeline__8989 | source_id              | value                   | [{"options": {"max_length": null, "desired_length": 1000}, "operation": "ChunkText", "step_order": 1}] | Live            |         42 | @ 42 mins                | role_pipeline_management_single_step
+ id |       name        | source_type | source_schema |    source    | source_key_column | source_data_column | destination_type | destination_schema |        destination         | destination_key_column | destination_data_column |                                   steps                                    | auto_processing | batch_size | background_sync_interval
+----+-------------------+-------------+---------------+--------------+-------------------+--------------------+------------------+--------------------+----------------------------+------------------------+-------------------------+----------------------------------------------------------------------------+-----------------+------------+--------------------------
+  1 | kb_pipeline_table | Table       | public        | source_table | id                | content            | Table            | public             | pipeline_kb_pipeline_table | source_id              | value                   | [{"options": {"model": "bert", "data_format": "Text"}, "operation": "KnowledgeBase"}] | Live            |            |
 (1 row)
 ```
 
 ```sql
 SELECT name, source, auto_processing FROM aidb.pipelines;
 __OUTPUT__
-      name      |       source       | auto_processing
-----------------+--------------------+-----------------
- pipeline__8989 | source_table__8989 | Live
+       name        |    source    | auto_processing
+-------------------+--------------+-----------------
+ kb_pipeline_table | source_table | Live
 (1 row)
 ```
 
@@ -137,7 +137,7 @@ SELECT aidb.create_model(
     name     => 'bge-reranker-v2-m3-Q4',
     provider => 'llamacpp_reranking',
     config   => jsonb_build_object(
-        'model',      'gpustack/bge-reranker-v2-m3-GGUF',
+        'hf_model',   'gpustack/bge-reranker-v2-m3-GGUF',
         'model_file', 'bge-reranker-v2-m3-Q4_K_M.gguf',
         'revision',   '3093af03b1a635e67b084b1d8c03c5f5e020fd05',
         'n_ctx',      2048
@@ -149,7 +149,7 @@ SELECT aidb.create_model(
     name     => 'llama-3.2-3b-instruct-Q8_0',
     provider => 'llamacpp_generate',
     config   => jsonb_build_object(
-        'model',       'unsloth/Llama-3.2-3B-Instruct-GGUF',
+        'hf_model',    'unsloth/Llama-3.2-3B-Instruct-GGUF',
         'model_file',  'Llama-3.2-3B-Instruct-Q8_0.gguf',
         'revision',    'e7d0997e49c9cb00d88b4c1a6a16aa894b0bbc31',
         'n_ctx',       8192,
@@ -233,7 +233,7 @@ Semantic search finds the right article even when the query shares few or no key
 
 ```sql
 SELECT a.title, r.distance::numeric(5,3) AS distance
-FROM aidb.retrieve_key('support_kb',
+FROM aidb.retrieve_key('public.pipeline_support_kb',
         'application logs show: FATAL: sorry, too many clients already', 3) r
 JOIN support_articles a ON a.id = r.key::int
 ORDER BY r.distance;
@@ -250,7 +250,7 @@ Or describe a symptom that has no tool names or keywords in common with the answ
 
 ```sql
 SELECT a.title, r.distance::numeric(5,3) AS distance
-FROM aidb.retrieve_key('support_kb',
+FROM aidb.retrieve_key('public.pipeline_support_kb',
         'A developer accidentally deleted rows from a table yesterday. How do we get the data back?', 3) r
 JOIN support_articles a ON a.id = r.key::int
 ORDER BY r.distance;
@@ -273,7 +273,7 @@ Vector search alone ranks *Point-in-time recovery* — clearly unhelpful for a d
 
 ```sql
 SELECT a.title, r.distance::numeric(5,3) AS distance
-FROM aidb.retrieve_key('support_kb',
+FROM aidb.retrieve_key('public.pipeline_support_kb',
         'The database is running out of disk space, but we cannot take the application offline to fix it.', 5) r
 JOIN support_articles a ON a.id = r.key::int
 ORDER BY r.distance;
@@ -294,7 +294,7 @@ The cross-encoder reads the question and each article together and reorders deci
 WITH candidates AS (
     SELECT array_agg(a.title ORDER BY r.distance) AS titles,
            array_agg(a.body  ORDER BY r.distance) AS bodies
-    FROM aidb.retrieve_key('support_kb',
+    FROM aidb.retrieve_key('public.pipeline_support_kb',
             'The database is running out of disk space, but we cannot take the application offline to fix it.', 5) r
     JOIN support_articles a ON a.id = r.key::int
 )
@@ -328,7 +328,7 @@ WITH candidates AS (
     -- Stage 1: vector search over the knowledge base (over-fetch 5 candidates)
     SELECT array_agg(a.title ORDER BY r.distance) AS titles,
            array_agg(a.body  ORDER BY r.distance) AS bodies
-    FROM aidb.retrieve_key('support_kb', :'question', 5) r
+    FROM aidb.retrieve_key('public.pipeline_support_kb', :'question', 5) r
     JOIN support_articles a ON a.id = r.key::int
 ),
 reranked AS (
@@ -577,7 +577,7 @@ After the pipeline finishes, query the results using semantic search:
 
 ```sql
 SELECT * FROM aidb.retrieve_text(
-    'scanned_pdf_kb',
+    'public.pipeline_scanned_pdf_kb',
     'quarterly revenue figures',
     5  -- return top 5 matches
 );

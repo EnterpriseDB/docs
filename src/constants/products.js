@@ -46,6 +46,11 @@ const products = {
     shortName: "Agent Governance",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
+  "vector-plus": {
+    name: "EDB Vector Plus",
+    shortName: "Vector Plus",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     shortName: "EDB Postgres Distributed",
