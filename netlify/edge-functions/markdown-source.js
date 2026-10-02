@@ -153,8 +153,7 @@ export default async function handler(request, context) {
   const contentPath = normalizePath(url);
 
   if (!contentPath) {
-    console.log(`No markdown content for ${request.url}`);
-    return; // passthrough
+    return new URL("/llms.txt", request.url);
   }
 
   // Try each GitHub URL template in order, returning the first that resolves
@@ -201,7 +200,8 @@ export default async function handler(request, context) {
       "x-llms-txt": "/docs/llms.txt",
     };
 
-    if ( !acceptHeader.includes("text/markdown") ) headers["Content-Type"] = "text/plain; charset=utf-8";
+    if (!acceptHeader.includes("text/markdown"))
+      headers["Content-Type"] = "text/plain; charset=utf-8";
 
     return new Response(body, {
       status: 200,
