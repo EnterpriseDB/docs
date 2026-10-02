@@ -6,7 +6,7 @@ description: Install and configure the EDB ClickHouse MCP server so AI agents an
 
 Connect an AI agent to your ClickHouse server with `edb-clickhouse-mcp` to list databases, describe schemas, and run queries in response to plain-language questions instead of requiring hand-written SQL.
 
-`edb-clickhouse-mcp` is EDB's packaging of the open-source [ClickHouse MCP server](https://github.com/ClickHouse/mcp-clickhouse) for [Model Context Protocol (MCP)](https://www.anthropic.com/news/model-context-protocol), an open standard that lets AI agents call external tools over a common interface. EDB provides RPM and container packaging, and a set of opt-in diagnostic tools covered in [Understanding the available tools](#understanding-the-available-tools).
+`edb-clickhouse-mcp` is EDB's packaging of the open-source [ClickHouse MCP server](https://github.com/ClickHouse/mcp-clickhouse) for [Model Context Protocol (MCP)](https://www.anthropic.com/news/model-context-protocol), an open standard that lets AI agents call external tools over a common interface. EDB provides RPM, DEB, and container packaging, and a set of opt-in diagnostic tools covered in [Understanding the available tools](#understanding-the-available-tools).
 
 !!!note Before you start
 This page assumes you already have an MCP-compatible AI client, such as Claude Desktop, Claude Code, or Cursor. 
@@ -19,14 +19,14 @@ Three separate pieces come together to answer a natural-language question agains
 ![Three moving parts: an AI client such as Claude Desktop, Claude Code, or Cursor, connecting to edb-clickhouse-mcp, which in turn connects to a ClickHouse server.](images/mcp-architecture.svg)
 
 - **AI client**: Claude Desktop, Claude Code, Cursor, or another MCP-compatible client, running on macOS, Windows, or Linux. Configure it in the client's own configuration file, covered in [Connecting an AI client](#connecting-an-ai-client).
-- **`edb-clickhouse-mcp`**: the RPM on a RHEL-compatible Linux host, or the container image on macOS, Windows, or Linux. Configure it in `mcp.env` for the RPM, or with environment variables for the container, covered in [Configuration parameters](#configuration-parameters).
+- **`edb-clickhouse-mcp`**: the RPM package on a RHEL-compatible Linux host, the DEB package on a Debian 13 host, or the container image on macOS, Windows, or Linux. Configure it in `mcp.env` for the packages, or with environment variables for the container, covered in [Configuration parameters](#configuration-parameters).
 - **ClickHouse server**: wherever your ClickHouse cluster or node already runs, in Docker, on Linux, or on Kubernetes. Set it up as described in [Installing and upgrading](/clickhouse/current/install_guide).
 
 ### Setup workflow
 
 Work through these steps in order:
 
-1. [Install `edb-clickhouse-mcp`](#installing-edb-clickhouse-mcp) as an RPM package or a container image, on whichever machine you want it to run, not necessarily the same one as your ClickHouse server.
+1. [Install `edb-clickhouse-mcp`](#installing-edb-clickhouse-mcp) as an RPM package, a DEB package, or a container image, on whichever machine you want it to run, not necessarily the same one as your ClickHouse server.
 2. Edit `edb-clickhouse-mcp`'s [configuration](#configuration-parameters) to point it at your ClickHouse server and give it credentials to authenticate.
 3. [Review the available tools](#understanding-the-available-tools) it registers, and turn on the EDB diagnostic tools if you want them.
 4. [Connect your AI client](#connecting-an-ai-client) to `edb-clickhouse-mcp`.
@@ -34,13 +34,17 @@ Work through these steps in order:
 
 ## Installing edb-clickhouse-mcp
 
-Install `edb-clickhouse-mcp` as an RPM package or a container image, both available for x86_64 and aarch64. Install it on whichever machine you want the MCP server to run on, as long as it can reach your ClickHouse node over the network. `edb-clickhouse-mcp` connects to a single ClickHouse endpoint, not a cluster as a whole, as described in [Configuration parameters](#configuration-parameters).
+Install `edb-clickhouse-mcp` as an RPM package, a DEB package, or a container image, all available for x86_64 and aarch64 (amd64 and arm64 for the DEB package). Install it on whichever machine you want the MCP server to run on, as long as it can reach your ClickHouse node over the network. `edb-clickhouse-mcp` connects to a single ClickHouse endpoint, not a cluster as a whole, as described in [Configuration parameters](#configuration-parameters).
 
-### Installing the RPM package
+### Installing the RPM or DEB package
 
-This package requires a RHEL-compatible Linux host.
+The RPM package requires a RHEL-compatible Linux host, and the DEB package requires a Debian 13 host.
 
 1. Set up the EDB repository and install the package, using the same `clickhouse` subscription plan as the ClickHouse server and client packages:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    export EDB_SUBSCRIPTION_TOKEN=<your-token>
@@ -48,6 +52,21 @@ This package requires a RHEL-compatible Linux host.
    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
    sudo dnf install -y edb-clickhouse-mcp
    ```
+
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.deb.sh" | sudo -E bash
+   sudo apt-get install -y edb-clickhouse-mcp
+   ```
+
+   </Tab>
+
+   </TabContainer>
 
    Replace `<your-token>` with the token you received when you registered for the EDB subscription. This command installs a self-contained virtual environment under `/opt/edb/clickhouse-mcp`, with `edb-clickhouse-mcp` as the only command added to `PATH`, and connection settings in `/etc/edb-clickhouse-mcp/mcp.env`.
 
@@ -83,7 +102,7 @@ This image runs on macOS, Windows, or Linux, through Docker or Podman.
 
 ### Configuration parameters
 
-These parameters configure the connection to your ClickHouse server, set either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or passed directly to the container:
+These parameters configure the connection to your ClickHouse server, set either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or DEB package, or passed directly to the container:
 
 | Variable | Required | Description |
 |----------|----------|--------------|
@@ -104,7 +123,7 @@ Secret values, such as `CLICKHOUSE_PASSWORD`, and common `key=value` secret patt
 !!!
 
 !!!note Applying configuration changes
-Restart `edb-clickhouse-mcp` after changing any of these variables, or any of the diagnostic tool settings in [Tuning the diagnostic tools](#tuning-the-diagnostic-tools), since it only reads them at startup. For the RPM, run `sudo systemctl restart edb-clickhouse-mcp`. For the container, the client launches a fresh container each time it connects, so edit the environment variables in your AI client's own configuration file and restart the client to apply them.
+Restart `edb-clickhouse-mcp` after changing any of these variables, or any of the diagnostic tool settings in [Tuning the diagnostic tools](#tuning-the-diagnostic-tools), since it only reads them at startup. For the RPM or DEB package, run `sudo systemctl restart edb-clickhouse-mcp`. For the container, the client launches a fresh container each time it connects, so edit the environment variables in your AI client's own configuration file and restart the client to apply them.
 !!!
 
 
@@ -114,7 +133,7 @@ Review the tools `edb-clickhouse-mcp` registers before [connecting your AI clien
 
 ### Default tools
 
-These four tools register by default, regardless of whether the server is installed from the RPM or the container image:
+These four tools register by default, regardless of whether the server is installed from a package or the container image:
 
 | Tool | Description |
 |------|-------------|
@@ -125,7 +144,7 @@ These four tools register by default, regardless of whether the server is instal
 
 ### EDB diagnostic tools
 
-Set `EDB_MCP_ENABLED=true`, either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or passed directly to the container, to register four additional read-only tools that give an agent operational visibility into the server beyond running queries:
+Set `EDB_MCP_ENABLED=true`, either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or DEB package, or passed directly to the container, to register four additional read-only tools that give an agent operational visibility into the server beyond running queries:
 
 | Tool | Description |
 |------|-------------|
@@ -136,7 +155,7 @@ Set `EDB_MCP_ENABLED=true`, either in `/etc/edb-clickhouse-mcp/mcp.env` for the 
 
 #### Tuning the diagnostic tools
 
-Set these variables the same way as the connection settings, either in `mcp.env` for the RPM or passed directly to the container. Restart `edb-clickhouse-mcp` to apply changes, as described in [Configuration parameters](#configuration-parameters).
+Set these variables the same way as the connection settings, either in `mcp.env` for the RPM or DEB package, or passed directly to the container. Restart `edb-clickhouse-mcp` to apply changes, as described in [Configuration parameters](#configuration-parameters).
 
 | Variable | Default | Description |
 |----------|---------|--------------|
@@ -161,7 +180,7 @@ Connect your AI client to `edb-clickhouse-mcp` so it can call the tools register
 
 If `edb-clickhouse-mcp` runs on a different machine than your AI client, configure it for network access first, then pick **Connect to a remote server** in [Editing the Claude Desktop configuration](#editing-the-claude-desktop-configuration). If it runs on the same machine as the client, skip this section.
 
-Set the following, either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or passed directly to the container:
+Set the following, either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or DEB package, or passed directly to the container:
 
 1. Set `CLICKHOUSE_MCP_SERVER_TRANSPORT` to `http` or `sse`, and `CLICKHOUSE_MCP_BIND_HOST=0.0.0.0`. `CLICKHOUSE_MCP_BIND_HOST` otherwise defaults to `127.0.0.1` and only accepts connections from the same host.
 
@@ -173,7 +192,7 @@ Set the following, either in `/etc/edb-clickhouse-mcp/mcp.env` for the RPM or pa
    | OAuth / OpenID Connect (OIDC) | `FASTMCP_SERVER_AUTH` plus provider-specific `FASTMCP_SERVER_AUTH_*` variables | Production deployments behind Azure Entra, Google, GitHub, WorkOS, or another [FastMCP-supported provider](https://gofastmcp.com/servers/auth). |
    | Disabled | `CLICKHOUSE_MCP_AUTH_DISABLED=true` | Local development only. Avoid disabling authentication on a server reachable over a network. |
 
-3. Start `edb-clickhouse-mcp`. For the RPM, start the packaged systemd service:
+3. Start `edb-clickhouse-mcp`. For the RPM or DEB package, start the packaged systemd service:
 
    ```bash
    sudo systemctl enable --now edb-clickhouse-mcp
@@ -220,7 +239,7 @@ The following steps use Claude Desktop as an example. Other MCP-compatible clien
 
    - **Point at your own ClickHouse server**: launches `edb-clickhouse-mcp` as a subprocess on the same machine as the client, over `stdio`, pointed at your ClickHouse instance. This setup covers the everyday case for a laptop or workstation running both the client and the server. The command depends on how you installed `edb-clickhouse-mcp`:
 
-     If you installed the RPM, on a Linux host:
+     If you installed the RPM or DEB package, on a Linux host:
 
      ```json
      {
@@ -258,7 +277,7 @@ The following steps use Claude Desktop as an example. Other MCP-compatible clien
 
    - **Try the ClickHouse SQL Playground**: the same subprocess setup as pointing at your own ClickHouse server, but aimed at ClickHouse's public, read-only [demo instance](https://sql.clickhouse.com/) instead. Use this option to confirm the configuration mechanism works, with no ClickHouse instance of your own needed, before pointing it at real data.
 
-     If you installed the RPM, on a Linux host:
+     If you installed the RPM or DEB package, on a Linux host:
 
      ```json
      {
