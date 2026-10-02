@@ -171,6 +171,31 @@ const products = {
     shortName: "PXF",
     iconName: IconNames.WHPG,
   },
+  wem: {
+    name: "WarehousePG Enterprise Manager",
+    shortName: "WEM",
+    iconName: IconNames.WHPG,
+  },
+  flowserver: {
+    name: "FlowServer for WarehousePG",
+    shortName: "FlowServer",
+    iconName: IconNames.WHPG,
+  },
+  "whpg-backup": {
+    name: "WarehousePG Backup and Restore",
+    shortName: "WHPG Backup and Restore",
+    iconName: IconNames.WHPG,
+  },
+  "whpg-dr": {
+    name: "WarehousePG Disaster Recovery",
+    shortName: "WHPG Disaster Recovery",
+    iconName: IconNames.WHPG,
+  },
+  "whpg-copy": {
+    name: "WarehousePG Copy",
+    shortName: "WHPG Copy",
+    iconName: IconNames.WHPG,
+  },
   clickhouse: {
     name: "EDB Postgres AI for ClickHouse",
     shortName: "ClickHouse",
