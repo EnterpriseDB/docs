@@ -5,11 +5,13 @@ description: For database administrators preparing a Postgres database that runs
 deepToC: true
 ---
 
-EDB Agent Governance reads AI agent telemetry directly from a Postgres database that runs the `aidb` extension. The extension records every agent call as OpenTelemetry spans in the `aidb_otel` schema, and the viewer groups those spans into sessions, shows each step, and highlights governance decisions. No log pipeline, Hybrid Manager, or Loki is involved.
+Connect EDB Agent Governance to a Postgres database that runs the `aidb` extension so the viewer can read its AI agent telemetry directly. The extension records every agent call as OpenTelemetry spans in the `aidb_otel` schema, and the viewer groups those spans into sessions, shows each step, and highlights governance decisions. No log pipeline, Hybrid Manager, or Loki is involved.
 
 This page is for the database administrator of the source database and the administrator of EDB Agent Governance. Complete [Installing](./installing) first; the viewer must be running before you register a database.
 
 ## Prerequisites
+
+Make sure you have the following before you register a database:
 
 - EDB Postgres AI (`aidb` extension) [7.7.0](/aidb/latest/release-notes/7/aidb_7.7.0_rel_notes/) or later, installed and configured on the source database as described in [Installing AIDB](/aidb/latest/install/) and [Configuring AIDB](/aidb/latest/install/configure/): `aidb` in `shared_preload_libraries` and `CREATE EXTENSION aidb CASCADE` run in the database the agents use. Earlier versions store telemetry in a different `aidb_otel` layout, which the viewer doesn't read; it reports them as Unsupported aidb_otel schema.
 - Network connectivity from the viewer's backend to the Postgres server. Source databases usually live on private addresses; the `bff.aidbBlockPrivate` chart value is `false` by default so that works out of the box.
@@ -18,7 +20,7 @@ This page is for the database administrator of the source database and the admin
 
 ## Enabling telemetry on the source database
 
-`aidb` writes spans only when the `aidb.otel_client` parameter is `database`. The default is `noop`, which writes nothing. The parameter is `SUSET`: a superuser, or a role granted `SET` on the parameter, can change it. Like the other `aidb.*` parameters, set it in `postgresql.conf` or with `ALTER SYSTEM` — no restart is required. The full list of OpenTelemetry parameters is in [Configuring AIDB — OpenTelemetry tracing](/aidb/latest/install/configure/#opentelemetry-tracing).
+Set the `aidb.otel_client` parameter to `database` so that `aidb` writes spans. The default is `noop`, which writes nothing. The parameter is `SUSET`: a superuser, or a role granted `SET` on the parameter, can change it. Like the other `aidb.*` parameters, set it in `postgresql.conf` or with `ALTER SYSTEM` — no restart is required. The full list of OpenTelemetry parameters is in [Configuring AIDB — OpenTelemetry tracing](/aidb/latest/install/configure/#opentelemetry-tracing).
 
 1.  Turn on telemetry for the server:
 
@@ -37,7 +39,7 @@ This page is for the database administrator of the source database and the admin
 
 ## Creating the viewer role
 
-The viewer connects with a dedicated login role that can only read the two telemetry tables. Don't use a superuser, the `aidb` owner, or the role the agents run as. The connection string and any client certificate are stored server-side by the viewer's backend, so scope the credential to only what the viewer needs — if it's ever exposed, it should grant no more than read access to the telemetry tables.
+Create a dedicated login role that can only read the two telemetry tables for the viewer to connect with. Don't use a superuser, the `aidb` owner, or the role the agents run as. The connection string and any client certificate are stored server-side by the viewer's backend, so scope the credential to only what the viewer needs — if it's ever exposed, it should grant no more than read access to the telemetry tables.
 
 Run this in the database the agents use, replacing `<db>` with its name. Set the password interactively with `\password` so it doesn't end up in a script or shell history:
 
@@ -93,6 +95,8 @@ Credentials are encrypted at rest and never returned to the browser. To rotate t
 
 ## Troubleshooting
 
+Use this table to resolve the messages the viewer shows when it can't read an `aidb` database:
+
 | Message                                      | Cause                                                                 | Fix                                                                                                     |
 |----------------------------------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
 | Add failed: dsn sslmode must be verify-ca or verify-full | The DSN uses `disable`, `require`, or `prefer`         | Use `verify-full` and provide the CA certificate.                                                       |
@@ -106,6 +110,6 @@ Credentials are encrypted at rest and never returned to the browser. To rotate t
 
 The same titles appear on the Activity and session pages when a query fails there, together with a hint and a Retry button.
 
-## Retention and missing data
+## Handling retention and missing data
 
-The viewer shows only what is still in `aidb_otel`. If retention deletes part of a call, the remaining steps still appear, but the viewer doesn't reconstruct the deleted part. A call deleted completely no longer opens. Each session reads at most 1,000 traces, 5,000 spans, and 5,000 log records.
+Account for retention when you read results: the viewer shows only what is still in `aidb_otel`. If retention deletes part of a call, the remaining steps still appear, but the viewer doesn't reconstruct the deleted part. A call deleted completely no longer opens. Each session reads at most 1,000 traces, 5,000 spans, and 5,000 log records.

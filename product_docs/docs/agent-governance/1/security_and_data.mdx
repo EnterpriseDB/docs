@@ -1,11 +1,11 @@
 ---
 title: Securing access and handling credentials
 navTitle: Securing access and handling credentials
-description: How the AI governance audit log viewer authenticates users, stores upstream credentials, and treats your data.
+description: How EDB Agent Governance authenticates users, connects to aidb, Hybrid Manager, and Loki sources, stores upstream credentials, and treats your data.
 deepToC: true
 ---
 
-EDB Agent Governance reads AI agent telemetry from Postgres databases running the `aidb` extension and, on the legacy path, Postgres query logs from Hybrid Manager (HM) or a standalone Loki instance. Both can contain sensitive data, and the viewer holds credentials for every upstream source it audits. There are two distinct authentication layers, and all credentials live server-side — none are exposed to the browser.
+Secure access to EDB Agent Governance and protect the credentials and data it holds. The viewer reads AI agent telemetry from Postgres databases running the `aidb` extension and, on the legacy path, Postgres query logs from Hybrid Manager (HM) or a standalone Loki instance. Both can contain sensitive data, and the viewer holds credentials for every upstream source it audits. There are two distinct authentication layers, and all credentials live server-side — none are exposed to the browser.
 
 | Layer | Question it answers | Mechanism |
 |-------|---------------------|-----------|
@@ -25,7 +25,7 @@ For configuring identity providers, see [Configuring](./administration).
 
 ## Authenticating upstream sources
 
-For an `aidb` database, the backend connects as a dedicated login role that can only read the telemetry tables, over TLS with CA verification (`sslmode=verify-ca` or `verify-full`), optionally with a client certificate. The role should have no write privileges and no `aidb` administration rights; see [Creating the viewer role](./connecting_aidb#creating-the-viewer-role). The connection string and certificates are encrypted at rest and never returned to the browser.
+Connect the backend to an `aidb` database as a dedicated login role that can only read the telemetry tables, over TLS with CA verification (`sslmode=verify-ca` or `verify-full`), optionally with a client certificate. The role should have no write privileges and no `aidb` administration rights; see [Creating the viewer role](./connecting_aidb#creating-the-viewer-role). The connection string and certificates are encrypted at rest and never returned to the browser.
 
 For the legacy HM and Loki sources, the backend authenticates using machine user API keys — shared credentials that grant access to an entire HM dataplane or Loki instance. These keys are:
 
@@ -43,7 +43,7 @@ The backend adds the appropriate header based on the instance type:
 
 ## Storing credentials at rest
 
-The backend maintains two credential stores in its Postgres databases:
+Review the two credential stores the backend maintains in its Postgres databases:
 
 - The viewer's database holds instance credentials — `aidb` connection strings and certificates, and HM and Loki access keys — and user sessions.
 - The Dex database holds identity provider connector secrets, such as OIDC client secrets and LDAP bind passwords, in cleartext.
@@ -52,14 +52,16 @@ Keep the underlying storage volume on encrypted-at-rest storage — LUKS or dm-c
 
 ## Protecting the network
 
-The viewer enforces several network-level protections.
+Review the network-level protections the viewer enforces.
 
 TLS verification. OIDC TLS verification — for discovery, JWKS, and token exchange — is always on and can't be disabled. To trust a self-signed or private-CA issuer, supply a CA bundle, which is added to the system trust pool rather than bypassing verification.
 
-Upstream egress controls. By default, the backend blocks HM and Loki instance egress to private network ranges so that a registered instance can't be used to probe your internal network. Cloud metadata, loopback, and link-local addresses stay blocked regardless. Allow private ranges only for on-premises deployments whose HM or Loki upstreams legitimately live on private IPs. Source databases running `aidb` usually live on private addresses, so for them the guard is off by default; the chart value `bff.aidbBlockPrivate` turns it on.
+Upstream egress controls. By default, the backend blocks HM and Loki instance egress to private network ranges so that a registered instance can't be used to probe your internal network. Cloud metadata, loopback, and link-local addresses stay blocked regardless. Allow private ranges only for on-premises deployments whose HM or Loki upstreams legitimately live on private IPs.
+
+Source databases running `aidb` usually live on private addresses, so this guard is off for them by default. To turn it on, set the chart value `bff.aidbBlockPrivate` to `true`.
 
 Cross-origin requests. The viewer and its backend are served from a single origin in normal operation, so cross-origin access to the backend API is restricted to the origins you explicitly allow.
 
 ## Handling data
 
-For an `aidb` database, the viewer reads the spans and log records `aidb` stored: the SQL text agents executed, tool calls, agent and purpose attributes, governance decisions, and timing. Reads never write to the source database. For HM and Loki sources, the viewer reads Postgres query logs that include the SQL text agents executed, along with execution metadata such as the target database, Postgres role, and duration.
+Review what data the viewer reads. For an `aidb` database, the viewer reads the spans and log records `aidb` stored: the SQL text agents executed, tool calls, agent and purpose attributes, governance decisions, and timing. Reads never write to the source database. For HM and Loki sources, the viewer reads Postgres query logs that include the SQL text agents executed, along with execution metadata such as the target database, Postgres role, and duration.
