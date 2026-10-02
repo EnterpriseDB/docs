@@ -1,10 +1,12 @@
 ---
 title: Syncing images to a local private registry
-description: Mirror EDB Postgres AI container images to your internal registry for security and reliability.
+description: Mirror EDB Postgres AI container images to your internal registry for security, reliability, and air-gapped or disconnected environments.
 deepToC: true
 ---
 
 **Related installation phase:** [Phase 4: Preparing the Environment](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/)
+
+For the full inventory of artifact types HM distributes, where each one lives, and what your registry and network need to support them, see [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/).
 
 ### Prerequisites
 
@@ -23,6 +25,8 @@ Hosting images internally ensures:
 -   **Reliability:** Your deployment is not dependent on external internet connectivity or third-party uptime.
 
 -   **Performance:** Lower latency for cluster nodes pulling images.
+
+-   **Air-gapped and disconnected environments:** This mirroring workflow gets HM's artifacts into a cluster with no direct route to EDB's registry.
 
 This process uses the `edbctl` tool to copy artifacts from EDB Repos 2.0 to your private registry while preserving SHA256 digests.
 
@@ -55,6 +59,8 @@ Using these credentials, the sync process copies all necessary artifacts from ED
     export CS_EDB_TOKEN=<your-edb-repos-token>
     export EDB_SOURCE_REGISTRY=pgai-platform
     ```
+
+    `EDB_SOURCE_REGISTRY` isn't a personal username. It's passed as `--source-registry-username`, but the value is your subscription namespace (`pgai-platform`); `CS_EDB_TOKEN` is your EDB Repos 2.0 API token, passed as the password. See [Authenticating to EDB's registry](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#authenticating-to-edbs-registry).
 
 3.  Define private registry credentials (Destination)
 
@@ -90,6 +96,47 @@ The command mirrors the following artifacts to your private registry:
 - **Operator bundle image** — OCP-certified bundle, used to build self-hosted OperatorHub catalogs in air-gapped OpenShift clusters.
 - **Operator helm chart** — `edb-hcp-operator` chart, mirrored as an OCI artifact alongside the images.
 
+!!! Note Scope of this command
+This command syncs the platform images, the operator, and the operator's own Helm chart. It does not sync the `hm-installer` chart, marketplace [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts), or [extension images](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#extension-images). Mirror those separately if you use them. See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#artifact-types) for the full artifact inventory.
+!!!
+
+### Preserving digests
+
+HM resolves artifacts by digest (a SHA-256 hash of the artifact's exact contents) in addition to tag. `edbctl image sync-to-local-registry` preserves digests automatically. If you build your own mirroring pipeline instead (see [Moving artifacts without edbctl](#moving-artifacts-without-edbctl)), preserving digests is something you have to ensure yourself, because several common tools don't:
+
+- A `docker pull` followed by `docker push` unpacks and reconstructs the artifact, which can change its digest even though the content looks identical and the copy appears to succeed.
+- Some proxying or caching registry configurations behave the same way: they re-serialize what passes through them rather than storing the exact bytes.
+
+The resulting failure is easy to misdiagnose: the artifact arrives, is correctly named, and scans cleanly, but the specific digest HM asks for no longer exists, and nothing in the copy step reported an error. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for what this failure looks like when it happens.
+
+[`skopeo`](https://github.com/containers/skopeo/blob/main/install.md) is a command-line tool for copying and inspecting container images and OCI artifacts between registries without needing a container daemon. To copy artifacts while preserving digests with it:
+
+```bash
+skopeo copy --preserve-digests \
+  --override-os linux --override-arch amd64 \
+  docker://docker.enterprisedb.com/pgai-platform/<image>:<tag> \
+  docker://<your-registry>/<repository-name>/<image>:<tag>
+```
+
+### Moving artifacts without edbctl
+
+`edbctl image sync-to-local-registry` is the supported path and the only one that doesn't require you to track every artifact class yourself. Use it wherever your environment allows it.
+
+Some environments can't, including fully air-gapped or disconnected clusters with no route from `edbctl` to EDB's registry. `edbctl` needs direct network access to both the source and destination registries and broad enough credentials to read from one and write to the other. If your organization instead requires artifacts to be submitted individually through a governed ingestion or approval process, you're effectively performing the same job `edbctl` automates, by hand, and need to account for each artifact class yourself:
+
+| Artifact class | Tool |
+| :--- | :--- |
+| Container images | `edbctl` (if usable), or `skopeo copy --preserve-digests` |
+| OCI artifacts (`kapp-marketplace/`) | `skopeo`, `crane`, or `oras`, not `docker` or `podman`. Disable Docker Content Trust for this path |
+| Helm charts | `curl` or `helm pull` against EDB's Helm repository. These charts are never registry content, so registry-mirroring tools won't enumerate them |
+| Extension images | Any OCI-compliant client |
+| CLI binaries | No mirroring path. See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#cli-binaries-and-kubectl-plugins) |
+
+Avoid `docker` or `podman` as your primary mirroring tool for anything beyond a quick, single-platform test copy. Both parse and regenerate manifests on pull/push, which risks the digest-preservation problem above, and, with Docker Content Trust enabled, they reject OCI artifacts outright rather than mirroring them.
+
+!!! Note Registry caching and stale tags
+If your destination registry sits behind a proxying or caching repository (for example, a Nexus proxy repository), it may cache a "not found" result for a tag for up to 24 hours by default. If you correct an outdated image list and a tag still fails to resolve shortly afterward, check whether your proxy's negative cache needs to be cleared rather than assuming the correction didn't take.
+!!!
 
 ### Update configuration
 
