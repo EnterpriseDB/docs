@@ -19,7 +19,7 @@ The Migration Portal provides guided steps for migrating your schemas using one 
 -   Online migration - connect directly to a target EDB Postgres Advanced Server database and automatically create the schema in it. Generally, this option is most suitable for migrations to databases running in the cloud (either BigAnimal clusters or self-managed instances).
 
 !!!note
-To preserve the Oracle object ownership in the target database, you must choose the **Offline migration** option. See [Preserving Oracle object ownership](#preserving_oracle_object_ownership).
+To preserve the Oracle object ownership in the target database, you must choose the **Offline migration** option. See [Import the schema into your target database](#import-the-schema-into-your-target-database).
 !!!
 
 Before migrating a schema, EDB recommends that you identify any configuration requirements for the target database in [Known issues, limitations, and notes](../known_issues_notes).
@@ -29,6 +29,8 @@ Before migrating a schema, EDB recommends that you identify any configuration re
 ## Offline migration
 
 Migrate schemas manually to an EDB Postgres Advanced Server on Windows or Linux platforms by running a DDL SQL file using a client.
+
+### Download the SQL files
 
 1. In the **Projects** view, select **Migrate to...**.
 
@@ -47,69 +49,82 @@ Migrate schemas manually to an EDB Postgres Advanced Server on Windows or Linux 
  |------------------------------------------------|------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
  | *&lt;ProjectName>* _ALL_OBJECTS.sql            | A single consolidated file consisting of DDLs for all your selected schemas and objects. | **AllTestMigration_ALL_OBJECTS.sql** consists of DDLs for all objects of schemas OE, SH, IX, and PM, and only selected objects of schema HR.                                                                            |
  | *&lt;SchemaName>* .sql                         | One or more files, each consisting of DDLs for selected objects in a particular schema.  | **HR.sql**  consists of DDLs for all the selected objects of the HR schema. |
- | `$GLOBAL_OBJECTS.sql`                          | A single file consisting of DDLs for the schemas, roles, users, and their grants.        | Used when [preserving Oracle object ownership](#preserving_oracle_object_ownership). |
+ | `$GLOBAL_OBJECTS.sql`                          | A single file consisting of DDLs for the schemas, roles, users, and their grants.        | Used when you [preserve Oracle object ownership](#import-the-schema-into-your-target-database). |
  | *&lt;SchemaName>* &#95; *&lt;ObjectType>* .sql | One or more files, each consisting of DDLs for a single selected object.                 | **HR_TABLE.sql** consists of DDLs only for TABLE object of the HR schema. |
 
 1. After the zip file finishes downloading, select **Done** to return to the main Migration Portal page.
 
-1. Import the schema into your target database:
+### Import the schema into your target database
 
-   1. Use the edb psql command line utility to connect to the EDB Postgres Advanced Server database from where the converted schema is to be migrated. 
+After you download the SQL files, import the schema into your target database. The way you import the schema determines who owns the imported objects.
 
-   1. Create a new database:
+In Oracle, a user and a schema are the same thing. Objects in the `HR` schema are always owned by the `HR` user. In EDB Postgres Advanced Server, a user and a schema are separate, and the owner of an object is the user that creates it. If you run the `<ProjectName>_ALL_OBJECTS.sql` file as a superuser, the superuser (for example, `enterprisedb`) owns every imported object.
 
-      ```SQL
-      CREATE DATABASE <database_name>;
-      ```
+You can choose one of the following options:
 
-   1. Connect to the new database using the following psql command:
+-   **Import as a superuser** is the simplest option. Use it if your application connects as the superuser or as the owner of the objects, or if you plan to provide access using `GRANT` statements.
+-   **Preserve Oracle object ownership** is the option to use if your application logs in as the schema user (such as `hr`) and you want the same owners as in Oracle. Without the same owners, the schema user gets `permission denied` errors, even on its own schema.
 
-      ```SQL
-      \connect <database_name>
-      ```
+Select the tab for the option you want to use:
 
-   1. Import the required SQL files into the new database using the following psql command:
+<TabContainer syncKey="schema_import_option">
+<Tab title="Import as a superuser">
 
-      ```SQL
-      \i <path_to_exported_schema_file>.sql
-      ```
+Run the SQL files, such as the `<ProjectName>_ALL_OBJECTS.sql` file, as a superuser. The superuser owns all the imported objects.
 
-     !!! Note
-         You can alternatively use the `pgAdmin` client for the import. Import the schema into your target database:
+1. Extract the downloaded zip file.
 
-If you run the `<ProjectName>_ALL_OBJECTS.sql` file as a superuser, the superuser (for example, `enterprisedb`) owns all the imported objects. If your application connects as the schema user and needs the same object ownership as in Oracle, follow the steps in [Preserving Oracle object ownership](#preserving_oracle_object_ownership) instead.
+1. Use the edb psql command line utility to connect to the EDB Postgres Advanced Server database from where the converted schema is to be migrated. Connect as a superuser, such as `enterprisedb`.
 
-<div id="preserving_oracle_object_ownership" class="registered_link"></div>
+1. Create a new database. Replace `<target_db>` with the name of the new database:
 
-### Preserving Oracle object ownership (optional)
+   ```SQL
+   CREATE DATABASE <target_db>;
+   ```
 
-In Oracle, a user and a schema are the same thing. Objects in the `HR` schema are always owned by the `HR` user. In EDB Postgres Advanced Server, a user and a schema are separate, and the owner of an object is the user that creates it.
+1. Connect to the new database using the following psql command:
 
-Because the `<ProjectName>_ALL_OBJECTS.sql` file creates users, roles, and grants at the end of the file, and ownership is determined by the user running the DDL rather than by the order of statements, running it as a superuser makes the superuser the owner of every object. Moving the user creation to the beginning of the file doesn't change this.
+   ```SQL
+   \connect <target_db>
+   ```
 
-This is only a problem if you want the same owners as in Oracle, for example when your application logs in as the schema user (such as `hr`). Without the same owners, the schema user gets `permission denied` errors, even on its own schema. If your application connects as the superuser or the object owner, or you plan to provide access using `GRANT` statements, you can run the `<ProjectName>_ALL_OBJECTS.sql` file as is.
+1. Import the required SQL files into the new database using the following psql command:
+
+   ```SQL
+   \i <path_to_exported_schema_file>.sql
+   ```
+
+!!! Note
+    You can alternatively use the `pgAdmin` client for the import.
+
+</Tab>
+<Tab title="Preserve Oracle object ownership (optional)">
 
 To keep the Oracle ownership, use the `$GLOBAL_OBJECTS.sql` file and the individual schema files (for example, `HR.sql` and `SALES.sql`) from the downloaded zip file instead of the `<ProjectName>_ALL_OBJECTS.sql` file.
 
-#### Before you begin
+Use the psql client for this procedure. Some errors are expected, and psql continues past them. The pgAdmin Query Tool stops the whole script at the first error.
 
--   Use the psql client. The following steps expect some errors and continue past them. The pgAdmin Query Tool stops the whole script at the first error.
--   Enclose the `$GLOBAL_OBJECTS.sql` file name in single quotes in shell commands.
--   Run all commands as a superuser, such as `enterprisedb`.
--   Replace `<target_db>` with the name of your target database.
--   The examples use the `<hr>` and `<sales>` placeholders for the schemas and the users that own them. Replace them with the names of your own schemas and users.
+1.  **Extract the zip file.** Extract the downloaded zip file. Run the commands that use the SQL files from the folder that contains the extracted files.
 
-#### Procedure
+1.  **Connect to the server.** Use the edb psql command line utility to connect to the EDB Postgres Advanced Server database from where the converted schema is to be migrated. Connect as a superuser, such as `enterprisedb`.
 
-1.  **Create the roles and users.** Run the `$GLOBAL_OBJECTS.sql` file:
+1.  **Create the target database.** Create a new database. Replace `<target_db>` with the name of the new database:
+
+    ```SQL
+    CREATE DATABASE <target_db>;
+    ```
+
+    Then exit psql (`\q`). The remaining commands run from your operating system shell.
+
+1.  **Create the roles and users.** Run the `$GLOBAL_OBJECTS.sql` file. Enclose the file name in single quotes so that the shell doesn't interpret the `$`:
 
     ```shell
     psql -U enterprisedb -d <target_db> -f '$GLOBAL_OBJECTS.sql'
     ```
 
-    The roles and users are created, but you can expect errors. The file also contains `GRANT` statements for objects that don't exist yet, so psql reports errors such as `relation ... does not exist` for those statements. You can ignore these errors for now. The next steps create the objects, and a later step runs this file again to apply the grants. For the list of expected errors, see [Errors you can ignore](#errors-you-can-ignore).
+    The roles and users are created, but you can expect errors. The file also contains `GRANT` statements for objects that don't exist yet, so psql reports errors such as `relation ... does not exist` for those statements. You can ignore these errors for now. The next steps create the objects, and a later step runs this file again to apply the grants. For the list of expected errors, see the table that follows this procedure.
 
-1.  **Assign each schema to its owner.** Create each schema and make the matching user its owner. Run one line for each schema:
+1.  **Assign each schema to its owner.** Create each schema and make the matching user its owner. Run one line for each schema. In the examples, `<hr>` and `<sales>` are placeholders for the schemas and the users that own them. Replace them with the names of your own schemas and users:
 
     ```sql
     CREATE SCHEMA IF NOT EXISTS <hr>;     ALTER SCHEMA <hr>    OWNER TO <hr>;
@@ -140,9 +155,9 @@ To keep the Oracle ownership, use the `$GLOBAL_OBJECTS.sql` file and the individ
 
     The objects now exist, so the object grants succeed. Errors for roles and schemas that already exist are expected.
 
-1.  **Re-create the objects that failed.** Run the per-schema SQL files again, using the same commands as in the step that creates the objects of each schema, but only for the files that reported errors the first time. Some objects depend on objects in other schemas that didn't exist yet, so they failed the first time and can be created now.
+1.  **Re-create the objects that failed.** Run the per-schema SQL files again, using the same commands as in **Create the objects of each schema as its owner**, but only for the files that reported errors the first time. Some objects depend on objects in other schemas that didn't exist yet, so they failed the first time and can be created now.
 
-#### Errors you can ignore
+**Errors you can ignore**
 
 Some errors are expected while you run the procedure. The following table lists the errors you can ignore, the step where each one occurs, and why.
 
@@ -157,7 +172,7 @@ Some errors are expected while you run the procedure. The following table lists 
 
 After you re-create the objects that failed, investigate any error that isn't listed in the table.
 
-#### Verify object ownership
+**Verify object ownership**
 
 Run the following query, replacing the schema names in the `IN` list with your own. If every object has the correct owner, the query returns no rows:
 
@@ -171,8 +186,10 @@ WHERE n.nspname IN ('<hr>', '<sales>')
 ```
 
 !!! Note
-    Objects that require superuser privileges, such as public synonyms, database links, and extensions, can fail in step 3. Run those statements as a superuser.
+    Objects that require superuser privileges, such as public synonyms, database links, and extensions, can fail when you create the objects of each schema as its owner. Run those statements as a superuser.
 
+</Tab>
+</TabContainer>
 
 <div id="new_on_premises_edb_advanced_server" class="registered_link"></div>
 
