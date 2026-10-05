@@ -8,7 +8,7 @@ deepToC: true
 
 For the full inventory of artifact types HM distributes, where each one lives, and what your registry and network need to support them, see [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/).
 
-### Prerequisites
+## Prerequisites
 
 -   [**`edbctl` CLI tool**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/) installed and configured.
 
@@ -26,7 +26,7 @@ Hosting images internally ensures:
 
 -   **Performance:** Lower latency for cluster nodes pulling images.
 
--   **Air-gapped and disconnected environments:** This mirroring workflow gets HM's artifacts into a cluster with no direct route to EDB's registry.
+-   **Air-gapped and disconnected clusters:** Gets HM's artifacts to a cluster with no route to EDB's registry, as long as `edbctl` can run somewhere with access to both, such as a bastion or jump host. For environments where nothing can reach EDB's registry directly, see [Mirroring without edbctl](#mirroring-without-edbctl).
 
 This process uses the `edbctl` tool to copy artifacts from EDB Repos 2.0 to your private registry while preserving SHA256 digests.
 
@@ -38,6 +38,26 @@ You need the registry's URI, along with a username and password (or token) that 
 Additionally, confirm the specific version of EDB Postgres AI you intend to install.
 
 Using these credentials, the sync process copies all necessary artifacts from EDB Repos 2.0 directly into your local private registry, ensuring they are available for your Helm chart installation or upgrade.
+
+## Preserving digests
+
+HM resolves artifacts by digest (a SHA-256 hash of the artifact's exact contents) in addition to tag. `edbctl image sync-to-local-registry` preserves digests automatically. If you build your own mirroring pipeline instead (see [Mirroring without edbctl](#mirroring-without-edbctl)), preserving digests is something you have to ensure yourself, because several common tools don't:
+
+- A `docker pull` followed by `docker push` unpacks and reconstructs the artifact, which can change its digest even though the content looks identical and the copy appears to succeed.
+- Some proxying or caching registry configurations behave the same way: they re-serialize what passes through them rather than storing the exact bytes.
+
+The resulting failure is easy to misdiagnose: the artifact arrives, is correctly named, and scans cleanly, but the specific digest HM asks for no longer exists, and nothing in the copy step reported an error. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for what this failure looks like when it happens.
+
+[`skopeo`](https://github.com/containers/skopeo/blob/main/install.md) is a command-line tool for copying and inspecting container images and OCI artifacts between registries without needing a container daemon. To copy artifacts while preserving digests with it:
+
+```bash
+skopeo copy --preserve-digests \
+  --override-os linux --override-arch amd64 \
+  docker://docker.enterprisedb.com/pgai-platform/<image>:<tag> \
+  docker://<your-registry>/<repository-name>/<image>:<tag>
+```
+
+## Mirroring with edbctl
 
 ### Configure sync variables
 
@@ -97,28 +117,10 @@ The command mirrors the following artifacts to your private registry:
 - **Operator helm chart** — `edb-hcp-operator` chart, mirrored as an OCI artifact alongside the images.
 
 !!! Note Scope of this command
-This command syncs the platform images, the operator, and the operator's own Helm chart. It doesn't sync the `hm-installer` chart, marketplace [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts), or [extension images](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#extension-images). If you use those, mirror each with the tooling in [Moving artifacts without edbctl](#moving-artifacts-without-edbctl). See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#artifact-types) for the full artifact inventory.
+This command syncs the platform images, the operator, and the operator's own Helm chart. It doesn't sync the `hm-installer` chart, marketplace [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts), or [extension images](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#extension-images). If you use those, mirror each with the tooling in [Mirroring without edbctl](#mirroring-without-edbctl). See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#artifact-types) for the full artifact inventory.
 !!!
 
-### Preserving digests
-
-HM resolves artifacts by digest (a SHA-256 hash of the artifact's exact contents) in addition to tag. `edbctl image sync-to-local-registry` preserves digests automatically. If you build your own mirroring pipeline instead (see [Moving artifacts without edbctl](#moving-artifacts-without-edbctl)), preserving digests is something you have to ensure yourself, because several common tools don't:
-
-- A `docker pull` followed by `docker push` unpacks and reconstructs the artifact, which can change its digest even though the content looks identical and the copy appears to succeed.
-- Some proxying or caching registry configurations behave the same way: they re-serialize what passes through them rather than storing the exact bytes.
-
-The resulting failure is easy to misdiagnose: the artifact arrives, is correctly named, and scans cleanly, but the specific digest HM asks for no longer exists, and nothing in the copy step reported an error. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for what this failure looks like when it happens.
-
-[`skopeo`](https://github.com/containers/skopeo/blob/main/install.md) is a command-line tool for copying and inspecting container images and OCI artifacts between registries without needing a container daemon. To copy artifacts while preserving digests with it:
-
-```bash
-skopeo copy --preserve-digests \
-  --override-os linux --override-arch amd64 \
-  docker://docker.enterprisedb.com/pgai-platform/<image>:<tag> \
-  docker://<your-registry>/<repository-name>/<image>:<tag>
-```
-
-### Moving artifacts without edbctl
+## Mirroring without edbctl
 
 `edbctl image sync-to-local-registry` is the supported path and the only one that doesn't require you to track every artifact class yourself. Use it wherever your environment allows it.
 
@@ -132,13 +134,13 @@ Some environments can't use `edbctl image sync-to-local-registry`, including ful
 | Extension images | Any OCI-compliant client, using the same pull/push pattern as container images |
 | CLI binaries | No mirroring path. See [Container registry and artifact reference](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#cli-binaries-and-kubectl-plugins) |
 
-Avoid `docker` or `podman` as your primary mirroring tool for anything beyond a quick, single-platform test copy. Both parse and regenerate manifests on pull/push, which risks the digest-preservation problem above, and, with Docker Content Trust enabled, they reject OCI artifacts outright rather than mirroring them.
+Avoid `docker` or `podman` as your primary mirroring tool for anything beyond a quick, single-platform test copy. Both parse and regenerate manifests on pull/push, which risks the same digest-preservation problem described in [Preserving digests](#preserving-digests), and, with Docker Content Trust enabled, they reject OCI artifacts outright rather than mirroring them.
 
 !!! Note Registry caching and stale tags
 If your destination registry sits behind a proxying or caching repository (for example, a Nexus proxy repository), it may cache a "not found" result for a tag for up to 24 hours by default. If you correct an outdated image list and a tag still fails to resolve shortly afterward, check whether your proxy's negative cache needs to be cleared rather than assuming the correction didn't take.
 !!!
 
-### Update configuration
+## Update configuration
 
 Once the sync is complete, you must configure HM to pull images from your private registry.
 
@@ -166,7 +168,7 @@ Apply the updated CR:
 kubectl apply -f hybridmanager.yaml
 ```
 
-### Next steps
+## Next steps
 
 With your images synced and your configuration updated, you are ready to proceed with the installation.
 
