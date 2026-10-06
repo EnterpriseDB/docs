@@ -1,76 +1,118 @@
 ---
-title: Installing the observability stack
-navTitle: Installing the observability stack
-description: Install and configure Prometheus and Loki as the external observability services required by WEM.
+title: Installing ClickHouse and PostgreSQL (optional)
+navTitle: Installing ClickHouse and PostgreSQL
+description: Install and configure ClickHouse, and optionally PostgreSQL, the storage backends WEM uses for metrics, logs, and application state.
 ---
 
-WEM requires Prometheus and Loki to enable monitoring and log aggregation features, and a PostgreSQL database for its own configuration and application state. Alertmanager is bundled with WEM and runs as a managed subprocess, so no separate installation is required. You can deploy dedicated Prometheus and Loki instances for WEM or integrate with an existing enterprise monitoring stack.
+Install ClickHouse to store the historical metrics and log data the OTel Collector forwards from every cluster node, and an optional PostgreSQL database for WEM's own configuration and application state. You must install ClickHouse before WEM, since WEM's configuration depends on knowing its address.
 
-You install Prometheus and Loki before WEM, since WEM's configuration depends on knowing their addresses. The steps below give you a working `prometheus.yml` to start from without needing anything from the WEM package.
+ClickHouse isn't bundled with WEM. The steps on this page cover one convenient path to a working instance using EDB's ClickHouse packages, but you can also point WEM at an existing ClickHouse instance you already manage, on any host reachable from every cluster node's OTel Collector or gateway collector. See ClickHouse's own [documentation](https://clickhouse.com/docs) for sizing, replication, and other production configuration this page doesn't cover.
 
-!!! Note
-    Once WEM is installed, this same example `prometheus.yml` is also available at `/usr/local/greenplum-db/wem/config/prometheus/` on the WEM host, in case you need to refer to it again later.
+You can install ClickHouse:
 
-## Installing Prometheus
+- **On the standby coordinator:** the simplest topology for a single WHPG cluster. If your cluster has no standby coordinator, install it on the coordinator instead.
+- **On a dedicated monitoring host, outside the cluster:** keeps observability components isolated from the cluster's own nodes.
 
-Prometheus collects and stores the metrics that WEM uses to display cluster performance data. The WHPG Collector pushes host-level metrics to Prometheus using its remote-write API, and Prometheus separately scrapes WEM's own metrics endpoint for SQL and cluster data.
+Regardless of topology, install the gateway collector only when multiple systems or clusters send observability data to the same ClickHouse instance. A single WHPG cluster sending data directly to ClickHouse doesn't need one.
 
-1. Download and install Prometheus from the [official releases page](https://prometheus.io/download/), or install it using your system package manager.
+## Installing ClickHouse
 
-1. Create a `prometheus.yml` that scrapes WEM. WEM's bundled Alertmanager only listens on `localhost` on the WEM host, so it isn't reachable from Prometheus and isn't configured here. If Prometheus runs on the same host as WEM, `localhost` works as shown for the scrape target. Otherwise, replace it with the hostname or IP address of your WEM host:
+Install ClickHouse on your host of choice:
 
-    ```yaml
-    global:
-      scrape_interval: 30s
-      evaluation_interval: 30s
-
-    scrape_configs:
-      - job_name: 'wem'
-        static_configs:
-          - targets: ['localhost:8080']
-        metrics_path: /prom/metrics
-        scrape_interval: 15s
-    ```
-
-1. Start Prometheus with `--web.enable-remote-write-receiver` so the WHPG Collector can push host metrics to it:
+1. Configure the EDB repository, then install the ClickHouse packages:
 
     ```bash
-        prometheus --config.file=prometheus.yml --web.enable-remote-write-receiver > prometheus.log 2>&1 &
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=clickhouse
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo yum install -y edb-clickhouse-server edb-clickhouse-client
     ```
 
-1. Verify Prometheus is running:
+1. Modify the contents `/etc/clickhouse-server/config.xml` by adding your settings as a drop-in file under `config.d/`, which ClickHouse merges in automatically. Fragments are only merged at startup, so this setting has no effect until you restart ClickHouse.
+
+    Set the following parameters:
+
+    - **Listen address** (`listen_host`): the network interface ClickHouse binds to. Required, since ClickHouse listens on `localhost` only by default and needs to accept connections from the gateway collector and from WEM.
+    - **HTTP port** (`http_port`): the port the gateway collector uses for OTLP ingest over HTTP. Already `8123` by default, ClickHouse's own default and the value WEM expects, so no change is needed unless you want a different port.
+    - **TCP port** (`tcp_port`): the port for ClickHouse's native protocol, used by `clickhouse-client` and by WEM. Already `9000` by default, so likewise no change is needed unless you want a different port.
+    - **Logger**: log level and destination. Optional, the defaults already write to the same log paths, just at a more verbose level than this configuration sets.
+
+    Set all four in a single drop-in file:
 
     ```bash
-    curl http://<prometheus-host>:9090/-/healthy
+    sudo mkdir -p /etc/clickhouse-server/config.d
+    sudo tee /etc/clickhouse-server/config.d/observability.xml << 'EOF'
+    <clickhouse>
+        <!-- Listen on all interfaces, or restrict to the WEM host IP address -->
+        <listen_host>0.0.0.0</listen_host>
+
+        <!-- Already ClickHouse's own default and the value WEM expects.
+             Uncomment only to override it. -->
+        <!-- <http_port>8123</http_port> -->
+
+        <!-- Already ClickHouse's own default and the value WEM expects.
+             Uncomment only to override it. -->
+        <!-- <tcp_port>9000</tcp_port> -->
+
+        <logger>
+            <level>information</level>
+        </logger>
+    </clickhouse>
+    EOF
     ```
 
-## Installing Loki
-
-Loki receives and stores WarehousePG log data forwarded by the WEM Collector.
-
-1. Download and install Loki from the [official releases page](https://github.com/grafana/loki/releases), or install it using your system package manager.
-
-1. Start Loki with a minimal configuration:
+1. Set a password for the default ClickHouse user. This example uses ClickHouse's built-in `default` user, but any ClickHouse user works, as long as you use the same username consistently in the gateway collector and WEM configuration:
 
     ```bash
-    loki -config.file=/etc/loki/loki-local-config.yaml > loki.log 2>&1 &
+    sudo tee /etc/clickhouse-server/users.d/default-password.xml << 'EOF'
+    <clickhouse>
+        <users>
+            <default>
+                <password><your-password></password>
+            </default>
+        </users>
+    </clickhouse>
+    EOF
     ```
 
-1. Verify Loki is accepting log pushes:
+1. Start ClickHouse:
 
     ```bash
-    curl http://<loki-host>:3100/ready
+    sudo systemctl daemon-reload
+    sudo clickhouse start
+    sudo clickhouse status
+    ```
+
+1. Verify ClickHouse is accepting connections:
+
+    ```bash
+    clickhouse-client --password "<your-password>" --query "SELECT 1"
+    ```
+
+1. Confirm that ClickHouse is listening on all interfaces:
+
+    ```bash
+    grep -A1 listen_host /var/lib/clickhouse/preprocessed_configs/config.xml
+    ss -tlnp | grep -E ':8123|:9000'
+    ```
+
+1. Test the connection from another cluster node rather than from ClickHouse's own host:
+
+    ```bash
+    curl "http://<clickhouse-host>:8123/?query=SELECT%201"
     ```
 
 ## Installing PostgreSQL (optional)
 
-WEM needs a PostgreSQL database to store its own configuration and application state, such as dashboard users, roles, and alert rules. You can use a database in your WHPG cluster, or a dedicated instance if you'd rather keep WEM's state separate. To use a dedicated instance:
+WEM needs a Postgres database to store its own configuration and application state, dashboards, alert rules, and user accounts, separate from the WHPG cluster it monitors. You can host this data on a dedicated instance, or reuse your WHPG cluster's own Postgres server instead. See [Application state](wem#application-state) for the trade-offs and the role to create either way.
+
+To set up a dedicated instance:
 
 1. Download and install PostgreSQL from the [official downloads page](https://www.postgresql.org/download/), or install it using your system package manager.
 
-1. Initialize the database and enable and start the PostgreSQL service. See the [PostgreSQL documentation](https://www.postgresql.org/docs/current/server-start.html) for details.
+1. Initialize the database, then enable and start the PostgreSQL service. See the [PostgreSQL documentation](https://www.postgresql.org/docs/current/server-start.html) for details.
 
-1. On PostgreSQL 13 and earlier, `password_encryption` defaults to `md5`, which is incompatible with the `scram-sha-256` authentication method configured below. Check the setting, and fix it if needed, before creating the user:
+1. On PostgreSQL 13 and earlier, `password_encryption` defaults to `md5`, which is incompatible with the `scram-sha-256` authentication method this procedure's `pg_hba.conf` step uses. Check the setting, and fix it if needed, before creating the role:
 
     ```bash
     sudo -i -u postgres psql -c "SHOW password_encryption;"
@@ -78,11 +120,10 @@ WEM needs a PostgreSQL database to store its own configuration and application s
     sudo -i -u postgres psql -c "SELECT pg_reload_conf();"
     ```
 
-1. Create a dedicated database and user for WEM. The user name, password, and database name must match the `WEM_USER`, `WEM_PASSWORD`, and `WEM_DATABASE` values you configure later in [Installing WEM](wem#application-state-optional):
+1. Create the role WEM connects with. See [Application state](wem#application-state) for the exact privileges required:
 
     ```sql
-    CREATE USER wem_admin WITH PASSWORD '<your-password>';
-    CREATE DATABASE wem OWNER wem_admin;
+    CREATE ROLE wem_admin WITH LOGIN PASSWORD '<your-password>' CREATEDB;
     ```
 
 1. Configure `pg_hba.conf` to allow `wem_admin` to authenticate with a password, using `all` for the database field since `wem setup` connects to the `postgres` maintenance database before switching to `wem`:
@@ -100,5 +141,7 @@ WEM needs a PostgreSQL database to store its own configuration and application s
 
 ## Next steps
 
-Continue to [Installing WHPG Collector](collector).
+If your deployment needs the gateway collector, continue to [Installing the gateway collector](collector).
+
+Otherwise, continue to [Installing WEM](wem).
 

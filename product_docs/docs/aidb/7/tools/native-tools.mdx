@@ -10,11 +10,14 @@ AIDB ships with a large built-in catalog of native tools — mostly thin wrapper
 
 A tool's exact parameters are always visible with `SELECT params FROM aidb.tools WHERE name = '<name>'`; the tables below give the one-line description and read-only status for each.
 
+A native tool call runs under a purpose's resolved role if the calling agent has one configured. That role must have `EXECUTE` permissions on the tool function before the agent can call it. See [Governance](/aidb/current/governance/) for what an explanation of what a purpose is and what grants its resolved role needs.
+
 ## Ad hoc SQL
 
 | Tool | Read-only | Description |
 |------|-----------|--------------|
 | `run_sql_query` | Yes | Run a read-only SQL query against the database and return its rows as JSON. |
+| `explain_query` | Yes | Return the query plan for one `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `MERGE` statement as JSON. Pass `analyze => true` to run the statement and include real timing and row counts; this fails for a write statement. Without `analyze`, the statement isn't executed. |
 
 ## Catalog discovery
 
@@ -22,12 +25,12 @@ Introspection of the database catalog: these tools let an agent discover what sc
 
 They're related to the [semantic knowledge base tools](#semantic-knowledge-bases) below, but the two are complementary rather than interchangeable:
 
-- **Catalog discovery tools** do live, exact lookups against the Postgres catalog. They need no setup, always reflect the current state of the database, and match by exact name or SQL `LIKE` pattern.
-- **Semantic knowledge base tools** run semantic (vector) search over a crawled snapshot of the schema. They require a pre-built, opt-in knowledge base (and a re-crawl to pick up structural changes), but can answer natural-language questions like "which table holds customer contact info?" that exact catalog lookups can't.
+- Catalog discovery tools do live, exact lookups against the Postgres catalog. They need no setup, always reflect the current state of the database, and match by exact name or SQL `LIKE` pattern.
+- Semantic knowledge base tools run semantic (vector) search over a crawled snapshot of the schema. They require a pre-built, opt-in knowledge base (and a re-crawl to pick up structural changes), but can answer natural-language questions like "which table holds customer contact info?" that exact catalog lookups can't.
 
 A typical agent uses both: semantic search to find the right table from a vague description, then catalog discovery to get its exact, current columns and foreign keys.
 
-All four tools are privilege-aware — they only return objects the calling user can actually see. Listings hide Postgres and AIDB internal schemas as well as installed extensions' schemas and objects by default (`catalog_get_object_details` deliberately doesn't hide extension objects: explicitly naming one is asking for it). Listings are capped at 200 rows; every row carries a `truncated` flag that's `true` when more rows exist, signaling the caller to narrow the search with `schema` or `name_pattern`. Optional text parameters treat an empty string the same as an omitted argument.
+All six tools are privilege-aware — they only return objects the calling user can actually see. Listings hide Postgres and AIDB internal schemas as well as installed extensions' schemas and objects by default (`catalog_get_object_details` deliberately doesn't hide extension objects: explicitly naming one is asking for it). Listings are capped at 200 rows; every row carries a `truncated` flag that's `true` when more rows exist, signaling the caller to narrow the search with `schema` or `name_pattern`. Optional text parameters treat an empty string the same as an omitted argument.
 
 | Tool | Read-only | Description |
 |------|-----------|--------------|
@@ -35,6 +38,20 @@ All four tools are privilege-aware — they only return objects the calling user
 | `catalog_list_objects` | Yes | List tables, views, materialized views, foreign tables, and/or functions. Narrow with `schema`, `object_type`, and/or `name_pattern`. |
 | `catalog_get_object_details` | Yes | Get full detail on one object by name: columns, primary/unique/foreign keys for relations; arguments and return type for functions. |
 | `catalog_list_relations` | Yes | List foreign-key relationships — every FK in a schema, or only edges touching one specific table, in either direction. |
+| `catalog_list_sequences` | Yes | List sequences, optionally in one schema. Sequences aren't included in `catalog_list_objects`. |
+| `catalog_list_extensions` | Yes | List installed extensions with name, version, whether it's relocatable, and its comment. |
+
+## Database health
+
+| Tool | Read-only | Description |
+|------|-----------|--------------|
+| `analyze_db_health` | Yes | Run health checks and return the findings as JSON, keyed by check name. Pass `checks` to run a subset: `index`, `connection`, `vacuum`, `sequence`, `replication`, `buffer`, `constraint`. Omit it, or pass `all`, to run every check. Results only cover objects the caller can see. The `connection` count and some `replication` details need the `pg_monitor` or `pg_read_all_stats` role. |
+
+`analyze_db_health` is also available as a SQL function:
+
+```sql
+SELECT aidb.analyze_db_health(ARRAY['index', 'vacuum']);
+```
 
 ## Semantic knowledge bases
 
@@ -51,9 +68,33 @@ Schema-search knowledge bases to allow semantic search based discovery of tables
 | `get_column_definitions` | Yes | Search a semantic knowledge base for matching column/table definitions. |
 | `get_metadata` | Yes | Search a semantic knowledge base's full schema metadata (columns, tables, comments). |
 | `get_entity_definitions` | Yes | Search a semantic knowledge base for matching table/view definitions. |
-| `semantic_kb_search` | Yes | Run a composite semantic search over a knowledge base, returning one ranked list of matching tables, views, columns, and aliases with a source-type discriminator. |
+| `semantic_kb_search` | Yes | Run a composite semantic search over a knowledge base, returning one ranked list of matching tables, views, columns, relationships, aliases, and query history with a source-type discriminator. Set `include_proposed` to also return relationships that are still `proposed`. |
 | `search_by_comment` | Yes | Search a semantic knowledge base's schema/table/column comments by similarity. |
 | `semantic_kb_stats` | Yes | Get row/entity counts for a semantic knowledge base. |
+| `list_relationships` | Yes | List the [relationships](../semantic-knowledge-bases/relationships) recorded for a knowledge base, optionally filtered to one relation, kind, source, or status. |
+| `find_join_path` | Yes | Find a ranked route between two tables that don't share a direct foreign key. |
+| `suggest_joins` | Yes | List the relationships one hop from a given table, in both directions. |
+| `semantic_kb_subgraph` | Yes | Seed from a natural-language search and return the relationships around the matched entities. |
+| `relationship_candidates` | Yes | List relationship candidates derived from imported query history, not yet accepted. |
+| `list_query_history` | Yes | List normalized statements recorded by `import_query_history`, with their referenced objects and join predicates. |
+| `list_proposed_comments` | Yes | List object descriptions queued for review under [comment curation](../semantic-knowledge-bases/curation#reviewing-before-its-live). |
+| `relationship_drift` | Yes (see note) | Detect and mark stale any relationship added by hand whose columns were renamed or dropped. Note: flagged read-only in the catalog, but the function writes on every call — treat it as a write regardless of the flag. |
+| `add_relationship` | No | Record a relationship an agent has discovered. Always records `source = 'agent'`. Note: despite the shared name, this tool calls `aidb.add_relationship_as_agent()`, not the SQL function `aidb.add_relationship()` — the two aren't interchangeable. |
+| `delete_relationship` | No | Delete a relationship by ID, or by its endpoints and columns. |
+| `accept_relationship_candidates` | No | Accept one or more relationship candidates, making them routable. |
+| `import_query_history` | No | Read `pg_stat_statements` and derive relationship candidates from the joins it finds. |
+| `add_comment_to_object` | No | Write or edit a table, view, column, or constraint description, reconciling every knowledge base that indexes it. |
+| `remove_comment` | No | Remove a table, view, column, or constraint description. |
+
+The following functions are intentionally not native tools:
+
+| SQL function | Why it's SQL-only |
+|------|--------------------|
+| `aidb.add_relationship` | For a person to add by hand (`source => 'manual'`); the agent-facing equivalent is the `add_relationship` tool above, which calls `aidb.add_relationship_as_agent` instead. |
+| `aidb.resolve_object_comment` | Approves or rejects a proposed comment. Deliberately excluded: an agent holding it could approve its own proposal. |
+| `aidb.update_semantic_kb_curation` | Turns the comment review queue on or off. Deliberately excluded: an agent holding it could switch off the review that governs it. |
+| `aidb.semantic_kb_audit` | Reads the audit log of semantic KB operations; for a superuser or the extension owner. |
+| `aidb.semkb_audit_prune` | Deletes old audit records for one knowledge base; run by an operator or a scheduled job such as `pg_cron`. |
 
 ## Models
 
@@ -107,7 +148,7 @@ See [SQL functions](../sql-functions).
 
 ## Agent management
 
-See [Managing agents](../agents/creating-agents). Letting an agent create or reconfigure *other* agents (including itself) is a powerful, self-modifying capability — grant these tools deliberately.
+See [Managing agents](../agents/creating-agents). Letting an agent create or reconfigure other agents (including itself) is a powerful, self-modifying capability — grant these tools deliberately.
 
 | Tool | Read-only | Description |
 |------|-----------|--------------|

@@ -1,0 +1,144 @@
+---
+title: Managing disaster recovery
+navTitle: Managing disaster recovery
+description: Monitor disaster recovery status, configure whpg-dr, and manage backups, restores, and promotion with Safeguard.
+deepToC: true
+---
+
+Monitor and manage disaster recovery (DR) between the WarehousePG (WHPG) cluster WEM manages and a separate DR standby cluster using the **Safeguard** panel on the left sidebar, built on [WarehousePG Disaster Recovery](/supported-open-source/warehousepg/whpg-dr/) (`whpg-dr`). A DR standby cluster keeps a synced copy of your primary cluster, the WHPG cluster WEM manages, ready for failover if hardware fails, an outage hits, or an upgrade goes wrong. You provision and manage the DR standby separately, outside WEM.
+
+## Checking DR readiness
+
+Gauge your recovery health at a glance in the **DR Readiness** section at the top of the page, which shows a single status badge, **Healthy**, **Degraded**, **At risk**, or **Not configured**, based on whichever of its underlying checks is currently worst, blocked or suspended archiving, an untrusted PITR state, no base backup, an aging backup or restore point, or none at all.
+
+Four tiles give the detail:
+
+- **Recoverable to**: your current recovery point objective (RPO), how recent the data you'd recover would be if you failed over right now, the age of your newest restore point, or your newest backup if you haven't created a restore point yet. This is the recovery point you're actually achieving, not a target you configure, compare it against whatever RPO your organization requires.
+- **Archiving**: whether WAL archiving is currently **Enabled**, **Suspended**, **Disabled**, **Invalid**, or **Inconsistent**, hover it for why.
+- **Last base backup**: how long ago your last base backup ran, or **Never** if you haven't taken one.
+- **Recovery window**: how far back you could recover to, from your oldest backup up to your newest restore point.
+
+## Prerequisites
+
+Before deploying the DR standby, complete the following steps. 
+
+### Installing whpg-dr
+
+[Install `edb-whpg-dr`](/supported-open-source/warehousepg/whpg-dr/setting-up-primary/configuring-primary/#installing-the-package) on every host of the primary cluster.
+
+
+### Provisioning the DR cluster
+
+If you want the DR standby deployed and kept current in advance, provision the DR cluster now. Otherwise, you don't need it provisioned yet to configure **Safeguard** and start backups on the primary, `whpg-dr` supports cold DR, provisioning it only once a failure occurs.
+
+See [Installing WarehousePG on the DR cluster](/supported-open-source/warehousepg/whpg-dr/configuring-dr/#installing-warehousepg-on-the-dr-cluster) for the full procedure. You must also install the [host agent](../installing/host-agent) on the DR coordinator.
+
+### Configuring the host agent for Safeguard
+
+Configure the host agent on the primary coordinator, and on the DR coordinator once you provision that cluster.
+
+1. Set `WEM_TASK_QUEUES=coordinator-tasks` in `/etc/edb/acp-host-agent/acp-host-agent.conf` on the primary coordinator, and `WEM_TASK_QUEUES=dr-standby-tasks` in the same file on the DR coordinator.
+1. Restart the host agent on the primary coordinator to pick up the change, since it's already installed and running from your WEM install. Enable and start it for the first time on the DR coordinator:
+
+    ```bash
+    sudo systemctl restart acp-host-agent    # primary coordinator
+    sudo systemctl enable --now acp-host-agent    # DR coordinator
+    ```
+
+1. Verify both agents connected:
+
+    ```bash
+    tail -f /var/log/edb/acp-host-agent/acp-host-agent.log
+    ```
+
+    The DR coordinator's agent self-registers and stays in a pending state until an Admin approves it, it doesn't reach a running state on its own.
+1. Approve the DR coordinator's agent, since it's registering with WEM for the first time, the primary coordinator's agent is already approved from your WEM install. Open WEM, navigate to **Management** > **Host Agents**, select the pending agent, and choose **Approve** from the quick actions.
+
+### Setting up storage
+
+Set up a [storage repository](/supported-open-source/warehousepg/whpg-dr/setting-up-primary/storage/) reachable by both clusters so `whpg-dr` can archive WAL and base backups.
+
+- **POSIX (NFS)**: mount the shared directory read-write at the same path on every coordinator and segment host, in both clusters, owned by `gpadmin`. 
+- **S3-compatible**: have the bucket, region, and read-write credentials ready.
+
+## Setting up disaster recovery
+
+To complete initial setup, work through these sections in order. For the underlying `whpg-dr` command output and progress on whatever's currently running, check **Events** at any point along the way, see [Reviewing configuration history and activity](#reviewing-configuration-history-and-activity).
+
+### Adding a storage repository
+
+Add a storage repository for `whpg-dr` to archive to by selecting **Add Storage Repository** in the **Storage** section, then choosing a type:
+
+- **POSIX (NFS or Shared filesystem)**: fill in a name.
+- **S3 and Compatible**: fill in a name, a bucket, region (or endpoint URL for an S3-compatible service), and credentials, either static access keys or the host's default AWS credentials.
+
+An **Advanced options** section holds a prefix and profile. WEM supports only one storage repository, **Add Storage Repository** is disabled once you've added one.
+
+Expand the repository's row for its full path, bucket, and credential details, or use **Edit** and **Delete**.
+
+### Configuring the primary cluster
+
+Configure the primary cluster's backup settings from the **Primary Cluster** row. Select its three-dot menu and choose **Configure Primary Cluster**, or **Edit Primary Cluster** once one exists. Fill in a cluster name, the storage repository, compression, and a retention policy, with **Advanced options** for compression level, parallel jobs, WAL prefetch, max archive size, and network compression, see [Configuration files](/supported-open-source/warehousepg/whpg-dr/reference/configuration/) for what each option does. 
+
+To generate the backup configuration and restart the primary cluster to activate WAL archiving, select **Deploy Configuration**, WEM runs `whpg-dr configure backup` in the background. 
+
+Validate the deployed configuration against the live cluster and  confirm WAL archiving is actually working before taking your first backup with **Check Configuration**, which runs `whpg-dr check` in the background.
+
+**Suspend WAL Archiving** pauses or resumes shipping without a full reconfigure, useful during a storage outage. See [Handling storage outages](/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#handling-storage-outages) for what suspending does to WAL retention and how to recover from it.
+
+### Taking an initial backup
+
+`whpg-dr` needs at least one backup before you perform disaster recovery. Select **Take Backup Now** in **Backups & Restore Points**, naming it yourself or leaving it blank for an auto-generated timestamp. This action, and creating a restore point, are disabled while the primary isn't configured, a job is already running, the topology has drifted, or archiving is suspended, invalid, or inconsistent.
+
+Once setup is done, see [Managing backups and restore points](#managing-backups-and-restore-points) to manage backups on an ongoing basis.
+
+### Adding the DR cluster
+
+Add the DR cluster's configuration by selecting **Add DR Cluster** in the **DR Cluster** section. Cluster name and compression are inherited from the primary and shown read-only, since they must match exactly. For the DR cluster's own topology, enter the storage repository, a coordinator host, coordinator data directory, segment hosts, data directory, and directory prefix, WEM pre-fills these parameters from the primary's discovered topology as a starting point where possible, review and correct any that differ on the DR side. **Edit DR Cluster** later opens the same fields. 
+
+!!! Note
+WEM supports only one DR cluster.
+!!!
+
+Select **Deploy Configuration** to generate the restore configuration and restart the DR cluster, which runs `whpg-dr configure restore` in the background. This step doesn't restore any data, the DR cluster stays empty until you run a restore. Once both clusters are deployed, see [Checking DR readiness](#checking-dr-readiness) and [Restoring and promoting the DR cluster](#restoring-and-promoting-the-dr-cluster).
+
+## Managing backups and restore points
+
+Once setup is complete, handle ongoing backup activity through **Backups & Restore Points**. Every action on this tab requires the primary cluster configured.
+
+- **Take Backup Now** and **Create Restore Point** work as during setup, each with an optional name. See [Base backups](/supported-open-source/warehousepg/whpg-dr/overview/concepts/#base-backups) and [WAL and restore points](/supported-open-source/warehousepg/whpg-dr/overview/concepts/#wal-and-restore-points) for the difference between the two.
+- The table lists every base backup, newest first, with status, mode (**Full** or **Rsync**), age, size, WAL size, and restore point count. Restore points nest under the base backup they belong to, expand a backup's row to see them alongside its per-segment detail. A restore point only appears as its own top-level row if its base backup was later deleted (an orphan).
+- **Verify** runs `whpg-dr check-backup` to confirm a backup's files are present and accessible on every segment.
+- **Delete** removes a backup and every restore point that belongs to it, retain at least one backup at all times.
+- A retention summary shows how many backups are currently eligible for pruning under your configured policy.
+
+## Restoring and promoting the DR cluster
+
+When you need to fail over, or to test your recovery plan, use the **DR Cluster** section to restore the standby and, if you're actually failing over, promote it afterward. **Run Restore** applies a backup and replays WAL to bring the DR cluster's data up to date, but leaves it offline in recovery mode, rejecting client connections, you can run this action on its own to test recovery without promoting. **Promote Cluster** requires a completed restore first, and is the separate step that turns the standby cluster into a live, writable primary.
+
+!!! Warning
+    A restore wipes the DR cluster's current data directories and replaces them with the restored backup. Confirm you're targeting the correct cluster before proceeding.
+
+Choose a restore target, the latest restore point or a specific one, and a restore type, **Full** or **Delta**, by selecting **Run Restore**.
+
+- **Delta** replays WAL on top of an already-restored cluster instead of starting empty, and is disabled when there's no prior restore to build on, the cluster is already promoted, or a restore is already running.
+- **Advanced options** hold a WAL replay timeout and an option to supersede an unresolved restore goal without confirming.
+- **Preview This Restore** runs it as a dry run and shows the underlying `whpg-dr` command before you confirm for real.
+- **Resume Failed Restore** continues an interrupted restore without asking for the original parameters again.
+
+The row's badge tracks restore progress, from not yet restored, through the restore running, to ready to promote once replay finishes cleanly, or promoted once you've completed both actions. Expand the row for a per-segment status table showing each segment's replay progress.
+
+Once a restore shows **Ready to promote**, select **Promote Cluster** and type to confirm. Promoting rewrites the segment configuration and removes mirror entries, but doesn't start the cluster for you, so run `gpstart` afterward.
+
+If WEM finds an unresolved restore state or a segment that isn't ready, it lists the issues instead and offers **Override Checks And Promote** in their place, understand the risk of bypassing those checks before using it.
+
+Optionally, add mirrors and a standby coordinator after promotion, `whpg-dr` doesn't restore these components, so the promoted cluster has only primary segments. See the WarehousePG documentation for [enabling segment mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-segment-mirroring/) and [enabling coordinator mirroring](/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-coordinator-mirroring/).
+
+WEM treats promoting in **Safeguard** as a failover action, treat the DR cluster as your new production cluster afterward, and configure DR again in the other direction if you need to fail back later.
+
+## Reviewing configuration history and activity
+
+Review two tables at the bottom of the page, both filterable and paginated.
+
+- **Configuration History** lists every deployed, rolled back, or synced configuration change, for both the primary and DR cluster, when it happened, who made it, its source, and what changed. A **Host Sync** row means WEM picked up a manual edit to the `whpg-dr` configuration file itself. Roll back to an earlier entry from its row, and check **Also deploy to host** to redeploy it immediately rather than just restoring the saved values.
+- **Events** lists every background job WEM runs through **Safeguard**, deploys, backups, restore points, restores, promotions, and WAL archiving suspend/resume, with its status and full detail on expansion.
