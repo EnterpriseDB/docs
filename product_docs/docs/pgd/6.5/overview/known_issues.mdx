@@ -34,8 +34,8 @@ These known issues are tracked in PGD's ticketing system and are expected to be 
       conflict resolver, note the issue with the use of the
       `remote_apply` mode.
 
--   The Decoding Worker feature doesn't work with CAMO/Eager/Group Commit.
-    Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder` disabled.
+-   The Decoding Worker feature doesn't work with CAMO/Eager/Quorum Commit.
+    Installations using CAMO/Eager/Quorum Commit must keep `enable_wal_decoder` disabled.
 
 -   Lag Control doesn't adjust commit delay in any way on a fully isolated node, that's in case all other nodes are unreachable or not operational. 
     As soon as at least one node connects, replication Lag Control picks up its work and adjusts the PGD commit delay again.
@@ -46,11 +46,9 @@ These known issues are tracked in PGD's ticketing system and are expected to be 
     It's possible only to add or remove a pair.
     Adding or removing a pair doesn't require a restart of Postgres or even a reload of the configuration.
 
--   Group Commit can't be combined with [CAMO](/pgd/current/commit-scopes/camo/). 
+-   Quorum Commit can't be combined with [CAMO](/pgd/current/commit-scopes/camo/). 
 
 -   Transactions using Eager Replication can't yet execute DDL. The TRUNCATE command is allowed.
-
--   Parallel Apply isn't currently supported in combination with Group Commit. Make sure to disable it when using Group Commit by either (a) Setting `num_writers` to 1 for the node group using [`bdr.alter_node_group_option`](/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) or (b) using the GUC [`bdr.writers_per_subscription`](/pgd/latest/reference/tables-views-functions/pgd-settings#bdrwriters_per_subscription). See [Configuration of generic replication](/pgd/latest/reference/tables-views-functions/pgd-settings#generic-replication).
 
 -   There currently is no protection against altering or removing a commit scope. 
     Running transactions in a commit scope that's concurrently being altered or removed can lead to the transaction blocking or replication stalling completely due to an error on the downstream node attempting to apply the transaction.
@@ -65,8 +63,8 @@ To modify a commit scope safely, use [`bdr.alter_commit_scope`](/pgd/latest/refe
 
 -   The EDB Postgres Advanced Server 17 data type [`BFILE`](/epas/latest/reference/sql_reference/02_data_types/03a_bfiles/) is not currently supported. This is due to `BFILE` being a file reference that is stored in the database, and the file itself is stored outside the database and not replicated.
 
-- When running PGD on community PostgreSQL with Parallel Apply enabled, writer processes may terminate unexpectedly due to lock timeouts. This occurs because PGD sets a 30 second `lock_timeout` in the writer processes, which can be insufficient when one writer waits on a transaction lock held by another writer that is processing a large transaction. When the timeout is reached, the waiting writer exits, causing other writers and the receiver to terminate as well, which resets the replication process. 
-    As a workaround, disable parallel apply by setting `bdr.enable_parallel_apply = off` or migrate to an EDB Postgres variant. This issue is resolved in PGD 6.3.
+-   When running PGD on community PostgreSQL with Parallel Apply enabled, writer processes may terminate unexpectedly due to lock timeouts. This occurs because PGD sets a 30 second `lock_timeout` in the writer processes, which can be insufficient when one writer waits on a transaction lock held by another writer that is processing a large transaction. When the timeout is reached, the waiting writer exits, causing other writers and the receiver to terminate as well, which resets the replication process. 
+      As a workaround, disable parallel apply by setting `bdr.enable_parallel_apply = off` or migrate to an EDB Postgres variant. This issue is resolved in PGD 6.3.
 
 -   Community Postgres 14.24, 15.19, 16.15, 17.11, and 18.6 add the `output_plugin_libraries` parameter, which
     restricts which libraries can be used as logical decoding output plugins and defaults to
@@ -155,17 +153,17 @@ doing so incurs many immediate risks and current limitations:
     set of connections to other instances in the replication cluster. These needs might
     severely impact performance of all databases.
 
--   Synchronous replication methods, for example, CAMO and Group Commit, won’t work as
+-   Synchronous replication methods, for example, CAMO and Quorum Commit, won’t work as
     expected. Since the Postgres WAL is shared between the databases, a
     synchronous commit confirmation can come from any database, not necessarily in
     the right order of commits.
 
 -   CLI integration assumes one database. 
 
-### Durability options (Quorum Commit/Group Commit/CAMO)
+### Durability options (Quorum Commit/CAMO)
 
 There are various limits on how the PGD durability options work. 
-These limitations are a product of the interactions between Quorum Commit, Group Commit, and CAMO, and how they interact with PGD features such as the [WAL decoder](/pgd/current/advanced-functionality/decoding_worker/) and  [transaction streaming](/pgd/current/advanced-functionality/transaction-streaming/).
+These limitations are a product of the interactions between Quorum Commit, and CAMO, and how they interact with PGD features such as the [WAL decoder](/pgd/current/advanced-functionality/decoding_worker/) and  [transaction streaming](/pgd/current/advanced-functionality/transaction-streaming/).
 
 Also, there are limitations on interoperability with legacy synchronous replication,
 interoperability with explicit two-phase commit, and unsupported combinations
@@ -175,44 +173,20 @@ The following limitations apply to the use of commit scopes and the various dura
 
 #### General durability limitations
 
--   [Legacy synchronous replication](/pgd/current/commit-scopes/legacy-sync/) uses a mechanism for transaction confirmation
-    different from the one used by CAMO, Eager, Group Commit, and Quorum Commit. The two aren't
-    compatible, so don't use them together. Whenever you use Quorum Commit, Group Commit, CAMO,
+-   [Legacy synchronous replication](/pgd/current/commit-scopes/) uses a mechanism for transaction confirmation
+    different from the one used by CAMO, Eager, and Quorum Commit. The two aren't
+    compatible, so don't use them together. Whenever you use Quorum Commit, CAMO,
     or Eager, make sure none of the PGD nodes are configured in
     `synchronous_standby_names`.
 
 -   Postgres two-phase commit (2PC) transactions (that is, [`PREPARE
     TRANSACTION`](https://www.postgresql.org/docs/current/sql-prepare-transaction.html))
-    can't be used with CAMO, Group Commit, Quorum Commit, or Eager because those
+    can't be used with CAMO, Quorum Commit, or Eager because those
     features use two-phase commit underneath.
-
-#### Group Commit
-
-[Group Commit](/pgd/current/commit-scopes/group-commit/) enables configurable synchronous commits over 
-nodes in a group. If you use this feature, take the following limitations into account:
-
--   Not all DDL can run when you use Group Commit. If you use unsupported DDL, a warning is logged, and the transactions commit scope is set to local. The only supported DDL operations are:
-    -   Nonconcurrent `CREATE INDEX`
-    -   Nonconcurrent `DROP INDEX`
-    -   Nonconcurrent `REINDEX` of an individual table or index
-    -   `CLUSTER` (of a single relation or index only)
-    -   `ANALYZE`
-    -   `TRUNCATE`
-
-
--   Explicit two-phase commit isn't supported by Group Commit as it already uses two-phase commit.
-
--   Combining different commit decision options in the same transaction or
-    combining different conflict resolution options in the same transaction isn't
-    supported.
-
--   Currently, Raft commit decisions are extremely slow, producing very low TPS.
-    We recommended using them only with the `eager` conflict resolution setting
-    to get the Eager All-Node Replication behavior of PGD 4 and older.
 
 #### Eager
 
-[Eager conflict resolution](/pgd/current/commit-scopes/quorum-commit/how-quorum-commit-works#eager-conflict-resolution) is available through Group Commit and is always active in Quorum Commit. It avoids conflicts by eagerly aborting transactions that might clash. When used through Group Commit, it's subject to the same limitations as Group Commit.
+[Eager conflict resolution](/pgd/current/commit-scopes/quorum-commit/how-quorum-commit-works#eager-conflict-resolution) is always active in Quorum Commit. It avoids conflicts by eagerly aborting transactions that might clash.
 
 Eager doesn't allow the `NOTIFY` SQL command or the `pg_notify()` function. It
 also doesn't allow `LISTEN` or `UNLISTEN`.
@@ -298,12 +272,12 @@ We don't support running mixed versions of PGD except during an upgrade.
 
 #### EDB Postgres Extended Server
 
-- The [`password_profile`](/pge/latest/password_profiles/) extension in
-  [EDB Postgres Extended Server](/pge/latest/) stores password profiles in
-  system catalogs that PGD can't automatically replicate to other nodes. To
-  ensure correct replication of password profiles, execute the extension's
-  functions using
-  [`bdr.run_on_all_nodes()`](/pgd/current/reference/tables-views-functions/functions/#bdrrun_on_all_nodes).
+-   The [`password_profile`](/pge/latest/password_profiles/) extension in
+    [EDB Postgres Extended Server](/pge/latest/) stores password profiles in
+    system catalogs that PGD can't automatically replicate to other nodes. To
+    ensure correct replication of password profiles, execute the extension's
+    functions using
+    [`bdr.run_on_all_nodes()`](/pgd/current/reference/tables-views-functions/functions/#bdrrun_on_all_nodes).
 
 ### Other limitations
 
