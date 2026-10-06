@@ -1,112 +1,83 @@
 ---
 title: Agent memory
 navTitle: Agent memory
-description: A durable, Postgres-native memory layer for AI agents — add, search, list, and delete memories through a typed Python client or MCP server, without writing SQL.
+description: Give AI agents a durable, per-user memory of past conversations, stored in Postgres and built into AIDB.
 navigation:
 - install
-- connections
-- async-client
-- namespaces
+- configuring
+- example
 - memory-operations
-- transactions
-- permissions-and-errors
-- testing
-- mcp-server
-- reference
+- session-memory
+- namespaces
+- permissions
 ---
 
-!!!note
-Agent memory is available as a preview capability. Behavior may change before general availability.
+!!!warning Preview
+Agent memory is a preview capability. Behavior may change before general availability.
 !!!
 
-Agent memory is a durable, Postgres-native memory layer for AI agents, built into the AIDB extension. The `edb-agentmemory` Python package exposes one synchronous client and one asynchronous client. Both clients expose the same memory operations and use Psycopg to connect to PostgreSQL:
+Agent memory is a durable, Postgres-native memory layer for AI agents, built into the AIDB extension. Memories are ordinary Postgres objects that you create and query with SQL, so they stay in your database with secure, local storage and controlled access.
 
-```python
-from edb_agentmemory import AgentMemoryClient
+Without memory, each new conversation starts from nothing, and users have to repeat their preferences, history, and context. Agent memory gives an agent a durable memory of past conversations that it can search later. Memories live next to your application data, are protected by your existing PostgreSQL roles and grants, and are available to any agent that can reach the database.
 
-with AgentMemoryClient(
-    "postgresql://app_user@localhost/aidb",
-    namespace="my_app",
-) as client:
-    client.memory_add("user_42", "I prefer dark mode")
-    hits = client.memory_search("user_42", "interface preferences")
-```
+## How agent memory works
 
-Use `AgentMemoryClient` in regular Python programs and `AsyncAgentMemoryClient` in asyncio applications. An [MCP server](mcp-server) is also available, exposing memory search and save as tools.
+1. Add - Your application or agent sends conversation turns to agent memory for a specific *actor*, such as a user. Agent memory records the turns as an event.
+2. Distill - In the background, AIDB processes each event and distills it into discrete memories, such as "prefers dark mode" or "wants a window seat". Because processing is asynchronous, a newly added fact might not appear in search results immediately.
+3. Search - Later, the agent searches the actor's memories by meaning, not by keyword, and receives the best matches first.
+4. Manage - Operators can list memories and delete them, individually or by session, agent, or actor, with a recorded reason.
 
-## What the client manages
+## Where to start
 
-Given a data source name (DSN), the client creates a Psycopg connection pool, opens it when the context manager starts, and closes it on exit. It sends parameterized calls to the AIDB extension and converts the results into typed Python models.
+If you're new to agent memory, follow this workflow:
 
-The client doesn't install or configure AIDB, choose a memory runtime, or grant database permissions — those are deployment responsibilities. Applications select a namespace that an operator has already configured. See [Namespaces](namespaces).
+1. [Install](install) - Install AIDB, and learn about the Agent Memory Server that agent memory requires.
+2. [Configure](configuring) - Create the storage schema, run the server, register models, and initialize a namespace.
+3. [Example](example) - Add a conversation, check its status, and search the memories with SQL.
+4. [Manage memories](memory-operations) - Add, search, list, and delete memories in your own application.
 
-## Quickstart
+## Key features
 
-This example assumes the `my_app` namespace is already configured in AIDB:
+- Per-actor memory - Memories belong to an actor, so one user's context never mixes with another's.
+- Session and agent scoping - Narrow searches and deletions to a single session or agent.
+- Namespaces - Keep memory configuration and data separate for each application or workload. See [Scoping memory with namespaces](namespaces).
+- Safe retries - An idempotency key lets the database recognize a retried event instead of storing it twice.
+- Auditable deletion - Every deletion requires a reason, which supports erasure requests and data retention policies.
+- SQL first - Add, search, list, and delete memories with the `aidb_memory` SQL functions. See [Managing memories](memory-operations).
 
-```python
-from edb_agentmemory import AgentMemoryClient
+## Key concepts
 
-dsn = "postgresql://app_user@localhost/aidb"
+| Term                | Meaning                                                                                                                                                                                                                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Actor               | The person or system that memories are about, identified by an actor ID such as `user_42`.                                                                                                                               |
+| Turn                | A single message in a conversation, with a role (for example, user or assistant) and content.                                                                                                                            |
+| Memory              | A fact distilled from one or more turns and stored for later search.                                                                                                                                                     |
+| Namespace           | A named scope that separates the memory configuration and data of one application or workload from another.                                                                                                              |
+| Operator            | The person or deployment code responsible for configuring AIDB, namespaces, and database permissions.                                                                                                                    |
 
-with AgentMemoryClient(dsn, namespace="my_app") as client:
-    event_id = client.memory_add(
-        "user_42",
-        "I prefer dark mode",
-        session_id="settings-chat",
-        idempotency_key="settings-chat-message-1",
-    )
-    print(f"accepted event: {event_id}")
+## Roles and responsibilities
 
-    hits = client.memory_search(
-        "user_42",
-        "What interface theme does the user prefer?",
-        session_id="settings-chat",
-    )
-
-    for hit in hits:
-        print(f"{hit.content} (score: {hit.score:.2f})")
-```
-
-`memory_add()` records the conversation event and queues memory processing. Memory distillation happens in the background, so a newly added fact might not appear in search immediately.
-
-### Add structured turns
-
-`memory_add()` accepts a string, a `Turn`, a dictionary, or a sequence containing any of those forms:
-
-```python
-from edb_agentmemory import Turn
-
-client.memory_add("user_42", "I prefer dark mode")
-
-client.memory_add(
-    "user_42",
-    {"role": "user", "content": "Book me a window seat"},
-)
-
-client.memory_add(
-    "user_42",
-    [
-        Turn(role="user", content="Book me a window seat"),
-        Turn(role="assistant", content="Booked 14A"),
-    ],
-    session_id="trip-planning",
-)
-```
-
-For production configuration choices, continue with [Connections](connections).
+| Role                  | Responsibilities                                                                                                                                                                               | Pages                                                                                                                             |
+|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| Operator              | Installs AIDB, runs the Agent Memory Server, registers models, creates namespaces, and grants database permissions. Also lists and deletes memories for correction, retention, and compliance. | [Installing agent memory](install), [Configuring agent memory](configuring), [Granting permissions for agent memory](permissions) |
+| Application developer | Adds conversation turns, checks status, searches memories, and reads sessions back, working in a namespace that an operator has configured.                                                    | [Example](example), [Managing memories](memory-operations), [Using session memory](session-memory)                                |
 
 ## In this section
 
-| Page | What it covers |
-| --- | --- |
-| [Install](install) | Installing the `edb-agentmemory` Python package |
-| [Connections](connections) | Passing a DSN vs. borrowing a Psycopg connection, environment configuration, and PgBouncer |
-| [Async client](async-client) | Using `AsyncAgentMemoryClient` in asyncio applications |
-| [Namespaces](namespaces) | Scoping memory configuration and data, and initializing a namespace |
-| [Memory operations](memory-operations) | Add, search, list, and delete |
-| [Transactions](transactions) | Commit, rollback, and connection ownership |
-| [Permissions and errors](permissions-and-errors) | Required PostgreSQL grants and the client's exception hierarchy |
-| [Testing](testing) | Running the client's unit, integration, and end-to-end test suites |
-| [MCP server](mcp-server) | Exposing memory search and save as MCP tools |
-| [Reference](reference) | Full API reference for both clients, models, and exceptions |
+| Page                                                 | What it covers                                                                             |
+|------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| [Installing agent memory](install)                   | Installing AIDB and understanding the Agent Memory Server                                  |
+| [Configuring agent memory](configuring)              | Setting up the server, models, and namespace, and advanced settings                        |
+| [Example](example)                                   | A worked example that adds a conversation and searches it                                  |
+| [Managing memories](memory-operations)               | Adding memories, checking status, and searching, listing, and deleting them                |
+| [Using session memory](session-memory)               | Reading the current conversation back in order, and carrying context between conversations |
+| [Scoping memory with namespaces](namespaces)         | Separating memory by application or workload                                               |
+| [Granting permissions for agent memory](permissions) | Granting the PostgreSQL permissions that agent memory needs                                |
+| [SQL reference](../reference/agent-memory)           | The `aidb_memory` functions, catalog views, and settings                                   |
+
+## Related documentation
+
+- [Agents](../agents), which covers building in-database agents.
+- [Tools](../tools) and [MCP tools](../tools/mcp-tools), which cover the tools agents can call.
+- [Knowledge bases](../knowledge-bases), which cover searching your own data rather than conversation history.
+- [Installing AIDB](../install), which covers installing the extension that agent memory is built into.

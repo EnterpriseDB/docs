@@ -1,0 +1,122 @@
+---
+title: Using agent memory sessions
+navTitle: Using session memory
+description: Read the current conversation back in order, carry context between conversations, and keep long conversations within a budget.
+deepToC: true
+---
+
+Use session memory to give an agent the current conversation, in order, so that it can rebuild a prompt. The conversation is read back synchronously.
+
+By comparison, `add` and `search` give an agent facts learned across conversations. The facts are extracted asynchronously and retrieved by semantic query.
+
+Session memory and learned facts are both fed by the same `aidb_memory.add` call. When you pass a `session_id`, the turns go into a session as well as into the extraction queue. There's no separate session write function.
+
+## Starting a session
+
+Use `aidb_memory.session_start` to open a conversation, or to resume one.
+
+```sql
+SELECT session_id, prev_handoff
+FROM aidb_memory.session_start(
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949'
+);
+```
+
+- `agent_id` has no default. Pass `NULL` if you don't use it.
+- A `NULL` `session_id` creates a UUID and returns it.
+- `session_start` is idempotent. Resuming a session returns the stored row. Re-opening a closed session doesn't re-open it, and the result reports its `closed_at`.
+- `session_start` and `session_end` are optional for reading. A session that was only added to still reads correctly.
+
+## Adding turns to a session
+
+Use `aidb_memory.add` and pass the same `session_id` each time.
+
+```sql
+SELECT aidb_memory.add(
+  namespace       => 'helpdesk_namespace',
+  actor_id        => 'alice',
+  turns           => '[
+    {"role": "user", "content": "my discount was not applied",
+     "kind": "user_prompt", "meta": {"sequence_id": "s-01"}},
+    {"role": "assistant", "content": "let me check the renewal history",
+     "kind": "model_response", "meta": {"sequence_id": "s-01"}}
+  ]'::jsonb,
+  session_id      => 'conv-738949',
+  agent_id        => 'helpdesk-agent-64849',
+  idempotency_key => 'conv-738949-turn-001'
+);
+```
+
+`kind`, `tool_call_id`, and `meta` on a turn are optional session metadata. `meta.sequence_id` groups the turns of one reasoning round.
+
+## Reading a session back
+
+Use `aidb_memory.session_get` to read the history back before you assemble the next prompt.
+
+```sql
+SELECT ord, item->>'role' AS role, item->>'content' AS content
+FROM aidb_memory.session_get(
+       namespace      => 'helpdesk_namespace',
+       actor_id       => 'alice',
+       session_id     => 'conv-738949',
+       limit_chars    => 8000,
+       fallback_model => '<fallback-model>'  -- used only if the namespace names no LLM
+     ) s,
+     jsonb_array_elements(s.items) WITH ORDINALITY AS t(item, ord);
+```
+
+- `session_get` returns `items` in order, plus `overflow_chars`, `compacted_entries`, and `warnings`.
+- `limit_chars` is a character budget over turn content. Omit it to return everything. A budget that can't fit a whole reasoning round drops that round rather than half of it.
+- Reads are scoped to `(namespace, actor_id, session_id)`. Another actor's session ID returns an empty result, not an error.
+
+`session_get` is deliberately not exposed as an Agent Hub tool or over MCP, because an agent must not choose its own history.
+
+## Carrying context between conversations
+
+Store a handoff when you end a session, so that the next session for the same actor and agent can pick up its context. The next session receives the handoff as `prev_handoff` when it starts. This is how one conversation carries context into the next.
+
+`prev_handoff` is the handoff from the last closed session in the same `(namespace, actor_id, agent_id)` scope.
+
+## Ending a session
+
+Use `aidb_memory.session_end` to close a conversation and store its handoff.
+
+```sql
+SELECT handoff
+FROM aidb_memory.session_end(
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  session_id => 'conv-738949',
+  notes      => 'discount reapplied'
+);
+```
+
+Sessions don't close on their own. `closed_at` is set only by an explicit `session_end`. There's no idle timeout, TTL, or retention sweep in this release, and raw turns are never removed once they're summarized. Call `session_end` from your application, and size your storage on the assumption that session history is kept.
+
+## Keeping long conversations within budget
+
+Set `limit_chars` on `session_get` to keep long conversations within a budget. When the raw history exceeds the budget, agent memory summarizes the oldest three quarters of the history into one entry, once per read, before it returns. Later reads get the summary in place of the turns it covers.
+
+- Compaction happens only on a budgeted read. Without `limit_chars`, a session grows without bound.
+- Compaction never blocks. A read that races another backend's compaction returns the pre-compaction history.
+- Compaction never fails the read, and never deletes or rewrites a turn.
+- Summaries are never summarized again, so a very long-lived session gradually spends more of its budget on them.
+
+The summarizing model comes from the namespace's `model_spec.llm`, or from the `fallback_model` argument when the namespace names none. A namespace that names a model that can't be resolved doesn't fall back. The `pg_agents` namespace that AIDB creates at install has no `model_spec.llm`, so budgeted reads there need a `fallback_model`.
+
+When compaction can't run, you still get the ordinary over-budget result, plus one of these codes in `warnings`:
+
+| Code                            | Meaning                                                                              |
+|---------------------------------|--------------------------------------------------------------------------------------|
+| `compaction_budget_too_small`   | `limit_chars` is too small for a useful summary. No model was called.                |
+| `compaction_model_unavailable`  | No LLM is named, no `fallback_model` was given, or the named model isn't registered. |
+| `compaction_call_failed`        | The model call failed.                                                               |
+| `compaction_summary_overlength` | The summary was still over the target length after a retry.                          |
+
+## Next steps
+
+- [Managing memories](memory-operations): add, search, list, and delete memories.
+- [Agent memory reference](../reference/agent-memory#aidb_memorysession_start): session function parameters and return values.

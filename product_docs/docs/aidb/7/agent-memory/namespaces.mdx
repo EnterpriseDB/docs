@@ -1,52 +1,47 @@
 ---
-title: Agent memory namespaces
-navTitle: Namespaces
-description: Scope memory configuration and data with namespaces, and initialize a namespace's runtime configuration.
+title: Scoping agent memory with namespaces
+navTitle: Scoping memory with namespaces
+description: Scope memory configuration and storage with namespaces, and list the configured namespaces.
 ---
 
-A namespace separates memory configuration and data for an application or workload. Set the common namespace when constructing the client:
+Separate memory configuration and data for an application or workload with a namespace. A namespace holds the models, Agent Memory Server, and storage schema that every call naming it uses. An operator creates a namespace once with `aidb_memory.init`. See [Configuring agent memory](configuring#initializing-a-namespace).
 
-```python
-client = AgentMemoryClient(dsn, namespace="customer_support")
+## Understanding what a namespace holds
+
+A namespace stores three groups of settings, which you supply to `aidb_memory.init`:
+
+| Setting            | What it holds                                                         |
+|--------------------|-----------------------------------------------------------------------|
+| `model_spec`       | The registered embedding model and LLM that agent memory uses.        |
+| `agentmemory_spec` | The memory runtime and how to reach the Agent Memory Server.          |
+| `storage_spec`     | The storage schema and the names of the memories and entities tables. |
+
+## Choosing a namespace
+
+Choose a namespace for every `aidb_memory` call. Create one namespace per agent domain, environment, or tenant boundary, and keep the names environment-specific. Use the same namespace for related agent workflows.
+
+```sql
+SELECT *
+FROM aidb_memory.search(
+  query     => 'discount missing after renewal',
+  namespace => 'helpdesk_namespace',
+  actor_id  => 'alice'
+);
 ```
 
-Every namespace-scoped memory method uses that value by default. A call can override it:
+## Listing namespaces
 
-```python
-hits = client.memory_search(
-    "user_42",
-    "billing preferences",
-    namespace="billing_assistant",
-)
+List namespaces by querying the `aidb_memory.namespaces` view directly. There's no dedicated list function:
+
+```sql
+SELECT name, state FROM aidb_memory.namespaces;
 ```
 
-## Initialize a namespace
+The view returns each namespace's `id`, `name`, `agentmemory_spec`, `model_spec`, `storage_spec`, `state`, `created_at`, and `updated_at`. The state is `ACTIVE` or `INACTIVE`. See the [SQL reference](../reference/agent-memory#aidb_memorynamespaces).
 
-Namespace initialization is normally operator or deployment work. It requires a runtime identifier and runtime configuration matching the AIDB deployment:
+AIDB creates a `pg_agents` namespace at install. It has no `model_spec.llm`.
 
-```python
-from edb_agentmemory import MemoryInitConfig, ModelSpec, StorageSpec
+## Next steps
 
-config = MemoryInitConfig(
-    model_spec=ModelSpec(
-        encoder="<encoder-name>",
-        dimensions=1536,
-        llm="<optional-model-name>",
-    ),
-    storage_spec=StorageSpec(
-        location="<storage-name>",
-        dimensions=1536,
-        base_url="<optional-runtime-url>",
-        collection="<optional-collection>",
-    ),
-)
-
-namespace_id = client.namespace_init(
-    provider="<configured-runtime-name>",
-    config=config,
-)
-```
-
-The client intentionally has no default runtime — supply values appropriate to the deployment. Calling `namespace_init()` again validates the existing configuration; a mismatch raises `AIDBSpecMismatchError`.
-
-Trusted operator code can inspect configured namespaces with `client.namespace_list()`. That operation requires a database role allowed to read the namespace registry — see [Permissions and errors](permissions-and-errors).
+- [Configuring agent memory](configuring): initialize a namespace.
+- [Managing memories](memory-operations): add and search within a namespace.

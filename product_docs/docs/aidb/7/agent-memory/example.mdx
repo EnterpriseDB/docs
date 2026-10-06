@@ -1,0 +1,88 @@
+---
+title: Agent memory example
+navTitle: Example
+description: Add a help desk conversation to agent memory, wait for it to be processed, and search it, all with SQL.
+---
+
+Store a help desk conversation for a user with the `aidb_memory` SQL functions, and then retrieve what the agent learned from it.
+
+## Before you begin
+
+- AIDB is installed in your database. See [Installing agent memory](install).
+- The Agent Memory Server is running, your embedding and LLM models are registered, and a namespace is initialized. The examples use a namespace named `helpdesk_namespace`. See [Configuring agent memory](configuring).
+- Your database role can call the `aidb_memory` functions and read the storage schema.
+
+## Step 1: Adding a conversation
+
+Use `aidb_memory.add` to submit conversation turns for an actor. The actor is the user or other subject the memory is about. Here the actor is `alice`.
+
+```sql
+SELECT aidb_memory.add(
+  turns           => $$[
+    {
+      "role": "user",
+      "content": "Hi Sam, my annual subscription renewed, but my 20% discount was not applied. I was charged the full $120."
+    },
+    {
+      "role": "assistant",
+      "content": "I can help check the renewal and discount history for your account."
+    }
+  ]$$::jsonb,
+  namespace       => 'helpdesk_namespace',
+  actor_id        => 'alice',
+  agent_id        => 'helpdesk-agent-64849',
+  session_id      => 'conv-738949',
+  idempotency_key => 'conv-738949-turn-001'
+);
+```
+
+`aidb_memory.add` returns an ID for the add operation. Save it for the next step.
+
+The call accepts the event and returns immediately. The Agent Memory Server then builds memories from the turns in the background, so they aren't searchable straight away.
+
+`agent_id`, `session_id`, and `idempotency_key` are optional. The idempotency key prevents the same event from being stored twice if your application retries the call.
+
+## Step 2: Checking processing status
+
+Use `aidb_memory.status` to find out whether the memories are ready. Pass the ID that `add` returned.
+
+```sql
+SELECT *
+FROM aidb_memory.status(
+  id         => '<add-operation-id>',
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949'
+);
+```
+
+The result shows the state of the event. `ACCEPT` means the event was accepted, and `READY` means its memories are ready to retrieve. Run the query again until the state is `READY`.
+
+## Step 3: Searching the memories
+
+Use `aidb_memory.search` to retrieve the memories that are most relevant to a natural-language query. Use the same actor, agent, and session filters that you used when you added the conversation.
+
+```sql
+SELECT *
+FROM aidb_memory.search(
+  query      => 'promo code failed to apply on auto-renewal',
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949',
+  "limit"    => 5
+)
+ORDER BY score DESC;
+```
+
+The result lists the matching memories with a relevance score. The query doesn't need to match the original wording, because search is by meaning.
+
+## What you built
+
+You stored a conversation for one user, waited for agent memory to turn it into memories, and retrieved the ones relevant to a new question. An agent can run the search step before it responds, so that it remembers what the user told it earlier.
+
+## Next steps
+
+- [Managing memories](memory-operations): list and delete memories.
+- [Using session memory](session-memory): read the current conversation back in order.

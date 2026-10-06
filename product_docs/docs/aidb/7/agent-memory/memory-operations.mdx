@@ -1,92 +1,167 @@
 ---
-title: Agent memory operations
-navTitle: Memory operations
-description: Add, search, list, and delete memories with the agent memory client.
+title: Managing agent memories
+navTitle: Managing memories
+description: Add conversation turns, check processing status, search, list, and delete memories with the aidb_memory SQL functions.
 deepToC: true
 ---
 
-The synchronous and asynchronous clients expose the same operations. Async examples use the same arguments with `await`.
+Manage agent memory directly from Postgres with the `aidb_memory` SQL functions: add conversation turns, check processing status, and search, list, and delete memories.
 
-## Add
+For a short end-to-end walkthrough, see [Example](example). To read a conversation back in order, see [Using session memory](session-memory). For function parameters, see the [SQL reference](../reference/agent-memory).
 
-```python
-event_id = client.memory_add(
-    actor_id="user_42",
-    turns="I prefer a window seat",
-    session_id="trip-planning",
-    agent_id="travel-agent",
-    idempotency_key="trip-planning-message-17",
-)
+## Prerequisites
+
+- Agent memory is set up: AIDB is installed, the Agent Memory Server is running, the models are registered, and a namespace is initialized. See [Installing agent memory](install) and [Configuring agent memory](configuring).
+- The database role that calls the agent memory functions has access to the extension, the schema, and the storage objects. See [Granting permissions for agent memory](permissions).
+
+## Choosing identifiers
+
+Choose stable identifiers. The add, search, list, status, and delete operations use them as filters.
+
+| Parameter         | Purpose                                              | Recommended practice                                                       |
+|-------------------|------------------------------------------------------|----------------------------------------------------------------------------|
+| `namespace` | Groups a memory configuration and storage backend. | See [Scoping memory with namespaces](namespaces). |
+| `actor_id`        | Identifies whose memory is stored or retrieved.      | Use a stable application identifier, not a display name.                   |
+| `agent_id`        | Identifies the agent or application component.       | Use it consistently to prevent memory leaking between agents.              |
+| `session_id`      | Identifies a conversation, ticket, workflow, or run. | Include it when memory should be scoped to one interaction.                |
+| `idempotency_key` | Deduplicates repeated add attempts.                  | Generate it from the source event ID, message batch ID, or transaction ID. |
+
+## Adding memories
+
+Use `aidb_memory.add` when your agent wants agent memory to learn from a conversation or event. The operation is asynchronous. It accepts the event first, and then the Agent Memory Server builds durable memories from the submitted turns in the background.
+
+```sql
+SELECT aidb_memory.add(
+  turns           => $$[
+    {
+      "role": "user",
+      "content": "Hi Sam, my annual subscription renewed, but my 20% discount was not applied. I was charged the full $120."
+    },
+    {
+      "role": "assistant",
+      "content": "I can help check the renewal and discount history for your account."
+    }
+  ]$$::jsonb,
+  namespace       => 'helpdesk_namespace',
+  actor_id        => 'alice',
+  agent_id        => 'helpdesk-agent-64849',
+  session_id      => 'conv-738949',
+  idempotency_key => 'conv-738949-turn-001'
+);
 ```
 
-The return value identifies the accepted event. An idempotency key lets the database recognize a retried event. Processing occurs in the background.
+The function returns an ID for the add operation.
 
-## Search
+- `turns` is a JSONB array of message objects. Include enough context for the memory builder to extract useful facts.
+- `actor_id` identifies the user, tenant, device, or other subject whose memory is stored.
+- `agent_id` and `session_id` are optional filters. Using them consistently makes later search, list, and delete operations safer.
+- `idempotency_key` helps prevent duplicate ingestion when an application retries the same event.
 
-```python
-hits = client.memory_search(
-    actor_id="user_42",
-    query="Where does the user prefer to sit?",
-    limit=5,
-    session_id="trip-planning",
-    agent_id="travel-agent",
-)
+## Checking processing status
 
-for hit in hits:
-    print(hit.id, hit.content, hit.score)
+Use `aidb_memory.status` after `add` when your workflow must wait until the submitted turns have been converted into searchable memories.
+
+```sql
+SELECT *
+FROM aidb_memory.status(
+  id         => '7c6adca3-277c-48ad-b6f6-5bbeff362540',
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949'
+);
 ```
 
-Results are returned best match first, as `SearchHit` objects. Session and agent filters are optional.
+The result shows the status of the add operation. The `id` argument is optional. If you omit it, the query isn't limited to one event, so you can filter by actor, agent, or session instead, and page through the results with `limit` and `offset`.
 
-## List
+An event moves through these states:
 
-```python
-memories = client.memory_list(
-    "user_42",
-    session_id="trip-planning",
-    limit=100,
+| State        | Meaning                             |
+|--------------|-------------------------------------|
+| `ACCEPT`     | The event was accepted.             |
+| `PROCESSING` | The event is being processed.       |
+| `READY`      | The memories are ready to retrieve. |
+| `FAILED`     | Memory formation failed.            |
+
+To audit events and their states directly, query the [`aidb_memory.events`](../reference/agent-memory#aidb_memoryevents) view.
+
+## Searching memories
+
+Use `aidb_memory.search` when your agent needs the most relevant memories for a natural-language query. Include the same `actor_id`, `agent_id`, and `session_id` filters that you used when you added the conversation.
+
+```sql
+SELECT *
+FROM aidb_memory.search(
+  query      => 'promo code failed to apply on auto-renewal',
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949',
+  "limit"    => 5
 )
-
-for memory in memories:
-    print(memory.id, memory.content)
+ORDER BY score DESC;
 ```
 
-Listing is an operator operation and requires permission to call `aidb_memory.list_memories`. It also provides the memory IDs used for precise deletion.
+The result lists the memories that match the query.
 
-## Delete
+- Use concise queries that describe the current task or the user's intent.
+- Set `limit` to the smallest number of memories that your prompt or application needs.
+- Review the returned `score` values and memory content before you inject memories into prompts or downstream actions.
 
-Deletion requires a non-empty audit reason and exactly one target.
+## Listing memories
 
-Delete specific memory IDs:
+Use `aidb_memory.list_memories` for inspection, debugging, administration, or user-facing memory review screens. Listing is an operator task. It filters by identifiers and isn't a semantic relevance search.
 
-```python
-deleted = client.memory_delete(
-    "user_42",
-    memory_ids=[memories[0].id, memories[1].id],
-    reason="Remove incorrectly stored facts",
-)
+```sql
+SELECT id, content, agent_id, run_id
+FROM aidb_memory.list_memories(
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949',
+  "limit"    => 100
+);
 ```
 
-Or select a session, an agent, or all memory for the actor:
+The function returns a table of the memories that match the filters. Use the results to display what is stored, to confirm that asynchronous memory creation has finished, or to collect memory IDs for targeted deletion.
 
-```python
-client.memory_delete(
-    "user_42",
-    session_id="trip-planning",
-    reason="Remove completed trip session",
-)
+## Deleting memories
 
-client.memory_delete(
-    "user_42",
-    agent_id="retired-agent",
-    reason="Retire agent data",
-)
+Use `aidb_memory.delete` to remove memories. Deleting is an operator task. Prefer deleting by explicit memory IDs returned from `search` or `list_memories`, and keep the actor and agent filters in the call to avoid removing unrelated records.
 
-client.memory_delete(
-    "user_42",
-    all_for_actor=True,
-    reason="Erasure request #182",
-)
+```sql
+SELECT aidb_memory.delete(
+  selector   => '{
+    "memory_ids": [
+      "858ada52-10a3-42ca-b25c-fc4fbaeed2a5",
+      "4ae513f0-7135-46cc-a445-bd2e77e948b5"
+    ]
+  }'::jsonb,
+  reason     => 'Remove incorrectly stored facts',
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738949'
+) AS selected_memories_deleted;
 ```
 
-The return value is the number of memories removed. Deletion is an operator operation and must be protected with appropriate PostgreSQL permissions — see [Permissions and errors](permissions-and-errors).
+The function returns the number of memories deleted. The `reason` is recorded for auditing.
+
+To delete by scope instead of by ID, set the selector's `scope` to `session`, `agent`, or `actor`. For example, `{"scope": "session"}`.
+
+Deletion is intended for administrative correction, data retention, privacy, and compliance workflows. Confirm the selected memory IDs before you run a deletion in production.
+
+## Production recommendations
+
+- Wrap application calls in transactions only when your application state requires it. Don't hold long-running transactions open while you poll status.
+- Log the namespace, actor, agent, session, and idempotency key for each add operation so you can trace memory events later.
+- Use least-privilege database roles for application callers, separate from the roles that manage storage schemas.
+- Validate JSONB payloads before you send them to the agent memory functions.
+- Use parameterized SQL from application code instead of string concatenation for JSON, identifiers, and filters.
+- Avoid storing secrets, payment data, or unnecessary personal data in memory turns.
+
+## Next steps
+
+- [Configuring agent memory](configuring#initializing-a-namespace): initialize a namespace with `aidb_memory.init`.
+- [Using session memory](session-memory): read the current conversation back in order.
+- [Granting permissions for agent memory](permissions): protect list and delete operations.
