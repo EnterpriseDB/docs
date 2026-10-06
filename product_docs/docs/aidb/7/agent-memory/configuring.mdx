@@ -12,19 +12,19 @@ Agent memory installs directly on your Postgres instance and has no dependency o
 ## Prerequisites
 
 - A running Postgres database with the AIDB extension installed. See [Installing AIDB](../install).
-- Permission to create schemas, tables, and roles in the target database.
+- Permission to create schemas and roles in the target database.
 - Docker on the host where you run the Agent Memory Server container.
-- Credentials for the LLM and embedding model providers you plan to use.
+- Credentials for the LLM and embedding model providers you plan to use. You supply them when you register the models.
 
 ## Preparing the storage schema
 
-Create a dedicated schema for agent memory, separate from your application tables. Agent memory stores memories and related entities in this schema.
+Create a dedicated schema for agent memory, separate from your application tables. The Agent Memory Server creates the `memories` and `memories_entities` tables in this schema, so you create only the schema and a role.
 
 ```sql
 CREATE SCHEMA IF NOT EXISTS agent_memory_helpdesk_schema;
 ```
 
-You create the schema. Next, create a database role for the Agent Memory Server and give it `CREATE` on the schema, along with read and write access to its tables:
+Next, create a database role for the Agent Memory Server. Give it `CREATE` on the schema so that the server can create its tables, along with read and write access to them:
 
 ```sql
 CREATE ROLE edb_agent_memory_server_user LOGIN PASSWORD '<secure-password>';
@@ -89,9 +89,9 @@ docker logs edb-agentmemory-server
 Register the models before you initialize a namespace. Each namespace needs two:
 
 - An embedding model that vectorizes memory content and search queries. Use an embeddings provider.
-- An LLM that extracts durable memories from conversation turns. Use a completions or responses provider.
+- An LLM that extracts durable memories from conversation turns. Use a responses provider.
 
-Agent memory can use AIDB-registered models from providers such as OpenAI, Gemini, and Anthropic. For more about registering models, see [Integrating models](../integrating-models).
+The Agent Memory Server gets its provider credentials from the AIDB-registered models, so you don't pass provider keys to the container. In this release, the LLM must use the OpenAI Responses API format (the `openai_responses` provider). For more about registering models, see [Integrating models](../integrating-models).
 
 This example registers OpenAI models:
 
@@ -157,13 +157,15 @@ SELECT aidb_memory.init(
 | Setting                                      | What it configures                                                            |
 |----------------------------------------------|-------------------------------------------------------------------------------|
 | `model_spec.encoder.aidb_model`              | The registered embedding model.                                               |
-| `model_spec.encoder.config.dimensions`       | The embedding size. It must match the selected model.                         |
+| `model_spec.encoder.config.dimensions`       | The embedding size. It must match the selected model, or `add` and `search` fail at runtime. |
 | `model_spec.llm.aidb_model`                  | The registered LLM.                                                           |
 | `agentmemory_spec.provider`                  | The memory runtime. Use `agent_memory_container` for the Agent Memory Server. |
 | `agentmemory_spec.config.base_url`           | The URL of the Agent Memory Server.                                           |
 | `agentmemory_spec.config.request_timeout_ms` | How long a request to the server can run before it times out.                 |
 | `storage_spec.schema`                        | The storage schema. It must match the schema granted to the server's role.    |
 | `storage_spec.tables`                        | The names of the memories and entities tables.                                |
+
+Calling `aidb_memory.init` again with an existing namespace name returns that namespace without changing it. You can't currently update or delete a namespace.
 
 Keep namespace names environment-specific, and use the same namespace for related agent workflows. Before you deploy, confirm that:
 
@@ -176,22 +178,11 @@ To list namespaces, query the `aidb_memory.namespaces` view. There is no separat
 
 ## Configuring advanced settings
 
-Set the `aidb.agent_memory_*` parameters in `postgresql.conf`, for a session with `SET`, or for a connection with `-c`. All three parameters are `USERSET`, so any role can change them for its own session.
-
-### `aidb.agent_memory_server_address`
-
-Set the Agent Memory Server endpoint for this database to the server URL or hostname that agent memory components use. Hostname matching is case-insensitive.
-
-```sql
-ALTER DATABASE your_database
-SET aidb.agent_memory_server_address = 'http://127.0.0.1:18889';
-
-SHOW aidb.agent_memory_server_address;
-```
+Set the `aidb.agent_memory_*` parameters in `postgresql.conf`, for a session with `SET`, or for a connection with `-c`. Users can set both parameters for their own sessions. You set the Agent Memory Server address in the namespace, using `agentmemory_spec.config.base_url`, not in a parameter.
 
 ### `aidb.agent_memory_enable_worker`
 
-Control whether the agent memory worker runs for this database. Use `on` to enable it, `off` to disable it, or leave the value empty for the default behavior. The value is case-sensitive.
+Control whether the agent memory worker runs for this database. The worker is off by default. Set the value to `on` to enable it, or `off` to disable it. The value is case-sensitive.
 
 ```sql
 ALTER DATABASE your_database
@@ -202,7 +193,7 @@ SHOW aidb.agent_memory_enable_worker;
 
 ### `aidb.agent_memory_worker_batch_size`
 
-Define the number of agent memory records the worker processes in each batch. Increase it to process more records per run, or reduce it to limit the work per batch.
+Define the number of agent memory records the worker processes in each batch. The default is `2` and the maximum is `50`. Increase it to process more records per run, or reduce it to limit the work per batch.
 
 ```sql
 ALTER DATABASE your_database
