@@ -4,13 +4,7 @@ navTitle: Switch over clusters
 description: Learn how to perform a planned switchover in Hybrid Manager to promote a replica cluster to primary, and what to check before you start.
 ---
 
-[comment]: # "Open question #1: Does a switchover apply only to replica clusters across locations, or also to PGD data groups?"
-
-[comment]: # "Open question #9: DOCS-4413 also mentions switching over HA clusters in general. Is a switchover within a single HA cluster (not between replica clusters) a separate action in HM? If so, should it go on this page?"
-
-A switchover is a planned role change. It promotes a replica cluster to primary and demotes the current primary to a replica.
-
-[comment]: # "Open question #2: The UI and CLI warnings ship in 2026.11. Should this page land now in both the IR and 1.4, with the warning text added in 2026.11? Does Switchover Primary exist in 1.4?"
+A switchover is a planned role change between a primary cluster and a replica cluster in a different location. It promotes the replica cluster to primary and demotes the current primary to a replica.
 
 !!!warning Both clusters must be able to reach each other before you switch over
 Before the new primary starts accepting writes, it must copy the last changes from the current primary over the network. If the new primary can't reach the current primary's connection endpoint, the switchover can't finish, and neither cluster accepts writes until the connection is restored.
@@ -22,15 +16,15 @@ This requirement matters most when your clusters are in different locations, for
 
 Complete these checks before you start a switchover:
 
-1.  Check that each cluster can reach the other. Traffic must flow in both directions between the two clusters' connection endpoints on port 5432. Each cluster must also be able to reach your backup object storage.
+1.  Take a backup of the cluster. If the switchover fails and you can't recover the clusters, you can restore from this backup. For more information, see [Backups](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/backup_restore/backups/).
 
-    [comment]: # "Open question #3: Is port 5432 in both directions correct, plus reachability to backup object storage?"
+1.  Check that each cluster can reach the other. Traffic must flow in both directions between the two clusters' connection endpoints on port 5432. Each cluster must also be able to reach your backup object storage.
 
 1.  Check each cluster's network access type. Private access works only if the two locations are connected. For example, they can share a network or use VPC peering, a virtual private network (VPN), or a private interconnect. Public access works as long as your firewalls and allowed IP ranges permit traffic between the two locations. You can mix public and private access, but only if the clusters can still reach each other.
 
 1.  If you recently changed a cluster's network access type, wait. Changing between public and private gives the cluster a new connection address. Don't switch over until the new address is assigned and resolvable from the other location.
 
-1.  Check that the replica cluster is healthy and actively replicating from the primary.
+1.  Check that both the primary cluster and the replica cluster are healthy, and that the replica cluster is actively replicating from the primary.
 
 ## Switching over to a replica cluster
 
@@ -40,12 +34,6 @@ To switch over to a replica cluster:
 
 1.  From the detailed view of the cluster, select **Quick Actions > Switchover Primary**.
 
-    [comment]: # "Open question #4: What's the CLI command for a switchover? Should it be documented here?"
-
-    If **Switchover Primary** is unavailable, the cluster can't be switched over at the moment. Hover over the option to see the reason.
-
-    [comment]: # "Open question #5: Which cluster states disable Switchover Primary? The tooltip says 'Cannot switchover primary now.'"
-
 1.  In the Switchover dialog, in **Promoting to Primary**, select the replica cluster to promote. The current primary appears under **Demoting to Replica**.
 
 1.  To confirm, enter `promote <replica cluster name>` in the field. For example, `promote Replica Cluster B`.
@@ -54,28 +42,39 @@ To switch over to a replica cluster:
 
 After a few minutes, the **Replica Clusters** section of the **Overview** tab shows the promoted replica cluster with the **Primary** badge and the former primary with the **Replica** badge.
 
+## Switching over using the CLI
+
+You can also switch over using the `edbctl` CLI. Run:
+
+```shell
+edbctl cluster switchover-primary --id <cluster-id> --replica-id <replica-id>
+```
+
+Where `<cluster-id>` is the unique ID of the cluster and `<replica-id>` is the unique ID of the replica cluster to promote. For all options, see [edbctl cluster switchover-primary](/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-switchover-primary).
+
 ## If a switchover doesn't finish
 
 If the clusters can't reach each other, you might see these symptoms:
 
 -   The new primary stays in the Promoting to primary cluster state.
--   Both clusters reject writes with `cannot execute INSERT in a read-only transaction`.
+-   Both clusters reject writes with `cannot execute INSERT in a read-only transaction`. The clusters don't accept new writes until the new primary and the old primary complete their handshake.
 
-[comment]: # "Open question #6: Do the state 'Promoting to primary cluster' and the error 'cannot execute INSERT in a read-only transaction' match what users see?"
+[comment]: # "Open question #6: Sharif confirmed the read-only error. Does the state 'Promoting to primary cluster' match what users see in the UI?"
 
 To recover:
 
 -   Restore connectivity between the two clusters. The switchover then finishes on its own.
 -   Don't delete or restart the cluster's pods. It doesn't help, and the pods aren't recreated until the switchover finishes.
 -   Don't retry the switchover.
--   If you can't restore connectivity, contact EDB Support. Recovering without the old primary can lose the most recent transactions and requires rebuilding the other cluster.
-
-[comment]: # "Open question #7: Is 'contact EDB Support' the right guidance when connectivity can't be restored?"
+-   If you can't restore connectivity, contact EDB Support by creating a support ticket. Recovering without the old primary can lose the most recent transactions and requires rebuilding the other cluster.
+-   If you can't recover the clusters, restore from the backup you took before the switchover. For more information, see [Restores](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/backup_restore/restores/).
 
 ## Switchover versus forced failover
 
-A switchover is a planned role change. It needs both clusters online and able to reach each other.
+A switchover is a planned role change. It needs both the primary cluster and the replica cluster online, healthy, and able to reach each other.
 
-[comment]: # "Open question #8: Is forced failover available in the UI or CLI? If so, what's it called, so we can add steps?"
+A forced failover is for when the primary's location is lost or unreachable. It promotes the replica without waiting for the old primary, so any changes that hadn't reached the replica yet are lost. Use it only when you can't recover the primary in time.
 
-A forced failover is for when the primary's location is lost or unreachable. It promotes the replica without waiting for the old primary, so any changes that hadn't reached the replica yet are lost. Use it only when you can't recover the primary in time. For the failover procedure in a multi-data-center deployment, see [Manual failover](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/multi-dc/#manual-failover).
+Forced failover is available only in the CLI. To use it, add `--force` to the `edbctl cluster switchover-primary` command. A forced failover requires only that the replica cluster is healthy. It doesn't need connectivity between the clusters, and the replica cluster can end up inconsistent with the old primary.
+
+For the failover procedure in a multi-data-center deployment, see [Manual failover](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/multi-dc/#manual-failover).
