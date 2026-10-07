@@ -5,26 +5,15 @@ description: "Release notes for version 2026.10.0 of Hybrid Manager."
 deepToC: true
 ---
 
-<!--
-REVIEW-STAGE ARTIFACT - remove this comment and the temporary "Jira" columns before merge.
-
-TBD - pending Martin Marques's confirmation (owner never responded in the spreadsheet; these are
-Gaby's working assessment, applied 2026-10-07, so the PR isn't blocked):
-  - UPM-109772 (Estate API stale "Healthy" clusters) - assessed No, excluded from this file.
-  - UPM-139422 (imageset configmap finalizer stuck) - assessed No, excluded from this file.
-  - UPM-139801 (PSR/PGD major version upgrade failure) - assessed No, excluded from this file.
-  - UPM-139490 (Barman Cloud Plugin bump) - assessed Yes, INCLUDED below (HM platform table) -
-    open question: does the 1.4.4 barman-cloud rollback also apply to 2026.10? If so the
-    restart-triggering language here may need to change or be dropped.
-  - UPM-139500 (switchover drops connections to former primary) - assessed Yes, INCLUDED below
-    (HM platform table).
-If Martin's answers differ from the above, UPM-109772/139422/139801 may need to be added and/or
-UPM-139490's wording revisited before this ships.
--->
+<!-- REVIEW-STAGE ARTIFACT - remove this comment and the temporary "Jira" columns before merge. -->
 
 This Innovation Release includes features and enhancements.
 
 **Release date:** October 10, 2026
+
+!!!warning Every Postgres cluster restarts during this upgrade
+This release bumps the Barman Cloud Plugin, which restarts every Postgres cluster in your estate as part of applying the HM upgrade — not on your own database maintenance schedule. If you manage a large estate and rely on scheduling platform and Postgres upgrades independently, plan for this before you upgrade.
+!!!
 
 !!!info Release cadence
 
@@ -47,12 +36,6 @@ HM now follows a dual release strategy: LTS and Innovation Releases. For details
 | [Distributed High Availability](/pgd/6/) | PGD | 6.5.0 |
 | [EDB Postgres AI for CloudNativePG Cluster](/postgres_for_kubernetes/latest/) (formerly EDB Postgres for Kubernetes) | PG4K | 1.30.0 |
 
-## Release highlights
-
--   **ClickHouse-backed observability stack:** Query Diagnostics (Query Stats, List Queries, Query Executed, Query Latency, and Wait States) now reads from ClickHouse instead of Postgres, with the `pg_stat_ch` extension automatically enabled for supported PSR and PGD clusters and Kubernetes events now ingested into ClickHouse through the OpenTelemetry collector. The `edb_stat_monitor` extension is retained for now and continues to be used internally. However, it's scheduled for removal in a future release.
-
--   **Plan for a restart with the latest Barman Cloud Plugin:** The Barman Cloud Plugin is updated to version 0.15.0, bringing significantly faster restore times for compressed backups. Applying this update triggers a restart of your Postgres clusters.
-
 !!!note Postgres refers to all distributions supported by EDB
 
 -   PostgreSQL
@@ -60,45 +43,45 @@ HM now follows a dual release strategy: LTS and Innovation Releases. For details
 -   EDB Enterprise Postgres (Oracle Compatible) - formerly, EDB Postgres Advanced Server (EPAS)
 !!!
 
+## Release highlights
+
+-   **ClickHouse-backed observability stack:** Query Diagnostics (Query Stats, List Queries, Query Executed, Query Latency, and Wait States) now reads from ClickHouse instead of Postgres, with the `pg_stat_ch` extension automatically enabled for supported PSR and PGD clusters and Kubernetes events now ingested into ClickHouse through the OpenTelemetry collector. The `edb_stat_monitor` extension is retained for now and continues to be used internally. However, it's scheduled for removal in a future release.
+
+-   **Plan for a restart with the latest Barman Cloud Plugin:** The Barman Cloud Plugin is updated to version 0.15.0, bringing significantly faster restore times for compressed backups. Applying this update triggers a restart of your Postgres clusters.
+
 ## Release details
 
 ### Hybrid Manager (HM) platform
 
 | Type | Description | Jira |
 | ---- | ----------- | ---- |
-| Change | Updated the Barman Cloud Plugin to version 0.15.0, which includes significantly faster restore times for compressed backups. Applying this update triggers a restart of your Postgres clusters. | UPM-139490 (TBD) |
+| Change | Updated the Barman Cloud Plugin to version 0.15.0, which includes significantly faster restore times for compressed backups. Applying this update triggers a restart of your Postgres clusters. | UPM-139490 |
 | Bug fix | Fixed an issue whereby uninstalling Hybrid Manager could leave the `edb-observability` namespace and its associated persistent volume claims behind, which caused a subsequent reinstall on the same cluster to fail preflight checks with an orphaned PVC error. | UPM-111875 |
-| Bug fix | Fixed an issue whereby, after a switchover in a Postgres cluster with replicas, the former primary's `Service` was recreated, causing active user connections to the former primary to drop until the cloud provider's load balancer and DNS became resolvable again. | UPM-139500 (TBD) |
-| Bug fix | Fixed an issue whereby image discovery failed with a 404 error for registries whose configured URL included a namespace path, such as EDB's Cloudsmith-backed registries. Previously, the registry client built an incorrect API path for these registries, resulting in an empty image library and preventing provisioning and upgrades. The registry client now correctly scopes the catalog path under the registry's namespace, restoring discovery for both namespace-path and bare-host registries. | UPM-139518 |
+| Bug fix | Fixed an issue whereby image discovery failed with a 404 error for registries whose configured URL included a namespace path. Previously, the registry client built an incorrect API path for these registries, resulting in an empty image library and preventing provisioning and upgrades. The registry client now correctly scopes the catalog path under the registry's namespace, restoring discovery for both namespace-path and bare-host registries. | UPM-139518 |
 
 ### Observability and monitoring
 
 | Type | Description | Jira |
 | ---- | ----------- | ---- |
 | Enhancement | Added support for automatically enabling the `pg_stat_ch` extension for PSR and PGD clusters when it's available in the Postgres image, allowing supported clusters to collect additional query statistics. | UPM-119583 |
-| Enhancement | Query diagnostics, including wait state statistics, now run on a ClickHouse-backed data path for improved performance and scalability. This enables richer wait-event sampling and more detailed query-diagnostics charts and drill-downs. | UPM-119586 |
+| Enhancement | Query diagnostics, including wait state statistics, now run on a ClickHouse-backed data path for improved performance and scalability. This improvement enables richer wait-event sampling and more detailed query-diagnostics charts and drill-downs. | UPM-119586 |
 | Enhancement | Added support for ingesting Kubernetes events into ClickHouse through the OpenTelemetry collector. Log entries in `otel_logs` are now tagged with a `log_source` resource attribute (`k8s_event` or `k8s_pod`) so you can distinguish and query or alert on Kubernetes events separately from pod logs. | UPM-139520 |
 | Change | Migrated Query Diagnostics (Query Stats, List Queries, Query Executed, Query Latency, Wait States) to a ClickHouse-backed pipeline, with query and wait-state data reaching the platform through OTLP ingestion of `pg_stat_ch` and `edb_wait_states`. The stats-collector service and database are no longer deployed. `edb_stat_monitor` is retained and will be removed in a future release. | UPM-125640, UPM-119581, UPM-121433, UPM-125972 |
-| Change | Configuration and security recommendations are now generated by an in-process daemon instead of scheduled Kubernetes jobs running the legacy URM tool, improving reliability without changing how recommendations appear in the health report. | UPM-121434 |
+| Change | Configuration and security recommendations in the health report are now generated by an in-process daemon instead of periodic background jobs, improving reliability. This change doesn't affect how recommendations appear in the health report. | UPM-121434 |
 | Change | Alerting and recording rule management for metrics and logging is consolidated into a new `upm-ruler` component, replacing the separate Thanos Ruler and Loki Ruler. These components are disabled by default in the observability scenario; enable by setting the component's `enabled` parameter to `true`. | UPM-125658, UPM-139517, UPM-139787 |
 | Change | On a federation secondary cluster, ClickHouse, Keeper, and the ClickHouse operator are no longer deployed by default, reducing idle resource usage. Set `componentsParameters.upm-clickhouse.enableOnSecondary` to `true` to run the full ClickHouse stack on a secondary. | UPM-125659, UPM-139813 |
 | Change | Removed the query latency chart from the **Monitoring** overview. Query latency data is still available in **Query Diagnostics**. | UPM-139714 |
 | Change | On existing clusters, moving to the new operand-set doesn't automatically create the `pg_stat_ch` extension — manually run `CREATE EXTENSION IF NOT EXISTS pg_stat_ch WITH SCHEMA edb_internals;` on every database you want to monitor to restore full query diagnostics. No cluster restart is needed. | DOCS-4391 |
+| Change | Self-managed clusters (external CloudNativePG clusters or bare-metal installations) require additional manual steps to install and enable `pg_stat_ch` after upgrading. See [Installing and configuring pg_stat_ch](/clickhouse/latest/monitoring_postgres/#installing-and-configuring-pg_stat_ch) for instructions. | DOCS-4391 |
 | Change | This release also introduces temporary regressions to the **Query Diagnostics** query table, to be addressed in a future release: query text is capped at 2 KB, queries can no longer be filtered by table name, and the `new` label marking recently seen queries is no longer shown. | DOCS-4396 |
 | Bug fix | Fixed an issue whereby the `InternalDBPrimaryServiceUnavailable` alert fired constantly because it referenced the removed `upm-api-stats-collector` component. Alert rules and references related to this component were removed from monitoring configuration. | UPM-139968 |
 | Bug fix | Fixed an issue whereby the `edb_wait_states` and query latency monitoring queries failed with a `function does not exist` error on CloudNativePG (CNPG) clusters that pin the database search path for security reasons, which caused repeated errors in database logs and loss of related metrics. | UPM-139775 |
 | Bug fix | Fixed an issue whereby `fluent-bit-federated` and `thanos-query-federated` pods could crash-loop on multi-data-center deployments when the SPIFFE SVID or mTLS certificate wasn't yet available at startup. Both workloads now wait for the certificate to be present before starting. | UPM-138287 |
 | Bug fix | Fixed an issue whereby ClickHouse didn't trust a custom S3 CA bundle when object storage used a private certificate authority. Previously, the certificate verification check failed during startup, causing the pod to restart continuously and never become ready. This affected air-gapped or on-premises installations using a private-CA S3-compatible object store. | UPM-139990 |
 
-### Analytics
-
-| Type | Description | Jira |
-| ---- | ----------- | ---- |
-| Enhancement | Updated the PGAA version shipped with HM to [1.11.0](https://www.enterprisedb.com/docs/pgaa/latest/release_notes/). | — |
-
 ### Migrations
 
 | Type | Description | Jira |
 | ---- | ----------- | ---- |
 | Bug fix | Fixed an issue in the Migration Portal schema assessment whereby reserved keywords, such as `JOIN`, used as unquoted identifiers in SELECT lists and related contexts caused syntax errors in the migrated DDL. A new repair handler, `ERH-3018`, now converts the Oracle keyword `JOIN` to the quoted lowercase name `"join"` when it's used unquoted as a name, for example, as a column, parameter type, table alias, or object type attribute. | MIG-4786 |
-| Bug fix | Fixed an issue in the Migration Portal whereby `TRUNC()` date expressions using the Oracle `FM` fill-mode modifier (for example, `TRUNC(column, 'fmmm')`) generated invalid EPAS code that failed at runtime with an invalid format error. A new repair handler, `ERH-3019`, now strips the `FM` modifier during migration, producing a valid EPAS-compatible format unit. | MIG-12552 |
+| Bug fix | Fixed an issue in the Migration Portal whereby `TRUNC()` date expressions using the Oracle `FM` fill-mode modifier, for example, `TRUNC(column, 'fmmm')`, generated invalid EPAS code that failed at runtime with an invalid format error. A new repair handler, `ERH-3019`, now strips the `FM` modifier during migration, producing a valid EPAS-compatible format unit. | MIG-12552 |
