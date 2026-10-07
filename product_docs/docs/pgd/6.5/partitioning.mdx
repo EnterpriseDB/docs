@@ -1,0 +1,231 @@
+---
+title: Automating table partitioning with AutoPartition
+navTitle: Automating table partitioning
+description: How to use AutoPartition to automate RANGE or HASH partitioning for application tables, such as continuously growing event logs and time-series data, or tables that need partitions spread evenly.
+redirects:
+  - /pgd/latest/autopartition/
+  - /pgd/latest/essential-how-to/autopartition/
+---
+
+Configure AutoPartition to keep a continuously growing table, such as an event log, a time-series metrics table, or an audit trail, split into manageable chunks automatically, so performance and storage costs don't climb as the table grows. AutoPartition creates new partitions ahead of need and drops old ones on the schedule you define, using low-conflict locking so partition maintenance doesn't block application writes. A retention schedule set through AutoPartition also helps meet compliance requirements that limit how long certain data, such as audit or transaction records, stays in the database.
+
+AutoPartition supports RANGE partitioning for time-ordered tables such as these examples, and HASH partitioning for tables you want to split evenly across a fixed number of partitions instead.
+
+For the full function and parameter reference, see [AutoPartition](/pgd/current/reference/tables-views-functions/autopartition/).
+
+For guidance on identifying which tables need AutoPartition and choosing a partition key during schema design, see [Preparing your application for PGD](/pgd/current/developing-applications/planning/).
+
+## Prerequisites
+
+Before configuring AutoPartition on a table, confirm it meets these conditions:
+
+- The table is partitioned with `PARTITION BY RANGE` or `PARTITION BY HASH` on one column. AutoPartition rejects a table that uses a multi-column partition key.
+- For RANGE partitioning, the partition key is a `timestamp`, `date`, `integer`, `numeric`, or related type, with values that increase over time.
+- The table has no `DEFAULT` partition. AutoPartition rejects DDL that tries to create one.
+- The table has no `GENERATED ALWAYS AS IDENTITY` column. Postgres rejects attaching a new partition that contains an identity column, which stops AutoPartition from creating any further partitions for the table.
+
+!!!Warning
+Once AutoPartition manages a table, don't create or drop partitions on it manually. Manual changes make the AutoPartition metadata inconsistent and can cause AutoPartition to fail.
+!!!
+
+## Creating a RANGE-partitioned table
+
+If the table doesn't exist yet, create it with `PARTITION BY RANGE` on the column you plan to partition on. The partition key must be part of the primary key. The following example creates a table with a `timestamp` partition key and a composite primary key that includes it.
+
+```sql
+CREATE TABLE ofac_screenings (
+    screening_id  UUID            NOT NULL DEFAULT gen_random_uuid(),
+    customer_id   UUID            NOT NULL,
+    screened_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    status        VARCHAR(20)     NOT NULL CHECK (status IN ('clear', 'pending_review', 'flagged')),
+    match_score   NUMERIC(5,2),
+    matched_name  VARCHAR(300),
+    reviewed_by   VARCHAR(100),
+    resolved_at   TIMESTAMPTZ,
+    notes         TEXT,
+    PRIMARY KEY (screening_id, screened_at)
+) PARTITION BY RANGE (screened_at);
+```
+
+The following example creates a support ticket table partitioned by the ticket ID, an integer partition key that already serves as the primary key.
+
+```sql
+CREATE TABLE support_tickets (
+    ticket_id   BIGINT          NOT NULL,
+    subject     VARCHAR(200)    NOT NULL,
+    status      VARCHAR(20)     NOT NULL DEFAULT 'open',
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (ticket_id)
+) PARTITION BY RANGE (ticket_id);
+```
+
+!!! Note
+AutoPartition doesn't convert an existing, unpartitioned table into a partitioned one. Add partitioning before the table holds production data.
+!!!
+
+## Configuring automatic partition creation
+
+Configure AutoPartition on a table, specifying how it creates new partitions and how long it keeps each one.
+
+```sql
+SELECT bdr.autopartition(
+    relation := '<table_name>',
+    partition_increment := '<increment>',
+    partition_initial_lowerbound := '<lowerbound>',
+    minimum_advance_partitions := <minimum_advance_partitions>,
+    maximum_advance_partitions := <maximum_advance_partitions>,
+    data_retention_period := '<retention_period>',
+    drop_after_retention_period := <true_or_false>
+);
+```
+
+Where:
+
+-   `relation`: The table to configure.
+-   `partition_increment`: The interval or increment between partitions, such as `1 day` for a `timestamp` or `date` partition key, or a plain number such as `1000000` for an `integer` or `numeric` partition key.
+-   `partition_initial_lowerbound`: The lower bound of the very first partition, used only when the table doesn't have any partitions yet. AutoPartition creates that first partition spanning from this value to `partition_increment` past it. If you omit it, AutoPartition derives a starting point from the partition key's type, for example the current date for a `1 day` increment on a `date` column. AutoPartition can't derive a starting point for a `1 month` increment, so set `partition_initial_lowerbound` explicitly whenever you use one.
+-   `minimum_advance_partitions`: How many partitions AutoPartition keeps pre-created beyond the current value, so a partition already exists by the time rows arrive that need it.
+-   `maximum_advance_partitions`: A ceiling on how many partitions AutoPartition creates in one pass when it needs to catch up to `minimum_advance_partitions`, for example after the table sat idle or was just configured.
+-   `data_retention_period`: The interval after which a partition counts as expired and becomes eligible for removal.
+-   `drop_after_retention_period`: What AutoPartition does with a partition once it's expired under `data_retention_period`. When `true` (the default), AutoPartition drops it. When `false`, AutoPartition detaches it from the parent table instead, leaving it as a standalone table you can archive or inspect before removing it yourself.
+
+For the full parameter list, see [AutoPartition](/pgd/current/reference/tables-views-functions/autopartition/).
+
+For example, to configure `ofac_screenings` so AutoPartition creates daily partitions starting January 1, 2020, keeps 5 partitions ready in advance, creates up to 10 at once if it falls behind, and drops each partition once its data is older than five years:
+
+```sql
+SELECT bdr.autopartition(
+    relation := 'ofac_screenings',
+    partition_increment := '1 day',
+    partition_initial_lowerbound := '2020-01-01',
+    minimum_advance_partitions := 5,
+    maximum_advance_partitions := 10,
+    data_retention_period := '5 years'
+);
+```
+
+Raise `minimum_advance_partitions` and `maximum_advance_partitions` further if your workload writes far enough ahead that these values leave too little headroom, for example a booking system that inserts rows for future dates.
+
+For a numeric or integer partition key, such as a support ticket ID, specify the increment as a matching numeric value and set a starting lower bound.
+
+```sql
+SELECT bdr.autopartition('support_tickets', '1000000', partition_initial_lowerbound := '0');
+```
+
+!!! Tip
+Index the partition key column so AutoPartition can check efficiently whether a new partition is needed.
+
+```sql
+CREATE INDEX ON support_tickets (ticket_id);
+```
+!!!
+
+## Verifying partitions
+
+Wait for a partition to exist before inserting rows that depend on it, since partition creation runs asynchronously in the background.
+
+```sql
+SELECT bdr.autopartition_wait_for_partitions('ofac_screenings', now()::text);
+```
+
+To wait until the partition exists on every PGD node rather than only the local one:
+```sql
+SELECT bdr.autopartition_wait_for_partitions_on_all_nodes('ofac_screenings', now()::text);
+```
+
+List the partitions that currently exist for a table.
+
+```sql
+\d+ ofac_screenings
+```
+
+To check which partition holds screening records from a specific date, such as March 15, 2026:
+
+```sql
+SELECT bdr.autopartition_find_partition('ofac_screenings', '2026-03-15');
+```
+
+The function returns `NULL` if no partition covers that value yet.
+
+## Adjusting AutoPartition settings
+
+Change a setting on a table that's already configured, such as `data_retention_period` or `minimum_advance_partitions`, by calling `bdr.autopartition()` again. AutoPartition updates the existing configuration instead of creating a duplicate one, and the change applies to new partitions going forward rather than reorganizing partitions that already exist.
+
+!!!Warning
+Restate every parameter you want to keep, not only the one you're changing. AutoPartition replaces the whole configuration with what you pass rather than merging it into the existing one, so any parameter you leave out resets silently to its default, even if you'd previously set it to something else.
+!!!
+
+## Managing retention
+
+Mark a partition as expired once it exceeds `data_retention_period`. Choose whether AutoPartition drops or keeps each expired partition with `drop_after_retention_period`.
+
+```sql
+SELECT bdr.autopartition(
+    relation := 'ofac_screenings',
+    partition_increment := '1 day',
+    partition_initial_lowerbound := '2020-01-01',
+    minimum_advance_partitions := 5,
+    maximum_advance_partitions := 10,
+    data_retention_period := '5 years',
+    drop_after_retention_period := false
+);
+```
+
+!!! Note
+`data_retention_period` applies only to timestamp-based partition keys. For a numeric or integer key, such as the support ticket ID in the previous example, drop old partitions manually instead.
+!!!
+
+To keep the data instead of dropping it, for example to archive five-year-old screening records before removal, set `drop_after_retention_period` to `false`. AutoPartition then detaches the partition from the parent table instead of dropping it.
+
+Detached partitions remain as standalone tables. Reattach them to another table, copy their data out, or drop them manually once you no longer need them.
+
+You can additionally offload them automatically to compressed columnar storage [using tiered storage](/pgd/current/tiered-storage/). It keeps years of historical data queryable at a fraction of the storage cost based on the same AutoPartition foundation.
+
+## Pausing, resuming, or removing AutoPartition
+
+To pause partition maintenance on a table without losing its configuration, disable it.
+
+```sql
+SELECT bdr.autopartition_disable('ofac_screenings');
+```
+
+Resume it with `bdr.autopartition_enable()`.
+
+```sql
+SELECT bdr.autopartition_enable('ofac_screenings');
+```
+
+!!! Note
+You can also pause or resume a table by setting `enabled` to `false` or `true` through `bdr.autopartition()`, but that call replaces the whole configuration rather than merging into it, as described in [Adjusting AutoPartition settings](#adjusting-autopartition-settings). `bdr.autopartition_disable()` and `bdr.autopartition_enable()` avoid that risk, since they change only the enabled state and leave every other setting untouched.
+!!!
+
+To remove the AutoPartition configuration entirely, drop it.
+
+```sql
+SELECT bdr.drop_autopartition('ofac_screenings');
+```
+
+Dropping the configuration cancels any pending work items and stops new ones from being created, but doesn't drop partitions that already exist.
+
+## Configuring HASH partitioning
+
+Use HASH partitioning instead of RANGE when a table's rows have no natural time or numeric order to partition on, for example a table keyed by a UUID, and you want AutoPartition to spread rows evenly across a fixed number of partitions rather than manage retention over time.
+
+```sql
+CREATE TABLE hash_test (
+    id  BIGINT  NOT NULL,
+    val TEXT
+) PARTITION BY HASH (id);
+
+SELECT bdr.autopartition('hash_test', hash_partitions_total := 4);
+```
+
+Unlike RANGE partitioning, AutoPartition creates every HASH partition immediately when you run this call, so there's no need to wait for partitions to be ready before inserting rows.
+
+```sql
+\d+ hash_test
+```
+
+!!! Note
+HASH partitioning has no retention parameter, so AutoPartition never drops these partitions on its own. Drop them yourself, or [pause, resume, or remove AutoPartition](#pausing-resuming-or-removing-autopartition) the same way as for a RANGE-partitioned table.
+!!!

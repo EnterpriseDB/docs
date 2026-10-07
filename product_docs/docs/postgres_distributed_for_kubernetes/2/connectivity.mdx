@@ -51,33 +51,65 @@ from all the PGD nodes in all the Kubernetes clusters. See [Domain names resolut
 EDB CloudNativePG Global Cluster provides a service templating framework that gives you the
 availability to easily customize services at the following levels:
 
--   Node Service Template
-    :   Each PGD node is reachable using a service that can be configured in the
+-   **Node Service Template**
+
+    Each PGD node is reachable using a service that can be configured in the
         `.spec.connectivity.nodeServiceTemplate` section. You can leverage the variables
         `{node_svc}` and `{node_fqdn}` to substitute for the node service name and the
         node service's FQDN.
 
--   Group Service Template
-    :   Each PGD group has a group service that's a single entry point for the
+    `publishNotReadyAddresses` is managed by the operator on this template: it's
+    always set to `true`, overriding any value you supply, because the operator must
+    be able to reach a node whose connection manager isn't yet ready.
+
+
+-   **Group Service Template**
+    Each PGD group has a group service that's a single entry point for the
         whole group and that can be configured in the
         `.spec.connectivity.groupServiceTemplate` section. You can leverage the variables
         `{group_svc}` and `{group_fqdn}` to substitute for the group service name and the
         group service's FQDN.
 
--   Proxy Service Template
-    :   Each PGD group has a proxy service to reach the group write leader through
-        the PGD proxy. It can be configured in the `.spec.connectivity.proxyServiceTemplate`
+-   **Proxy Service Template**
+
+    Each PGD group has a proxy service to reach the group write leader through
+        the PGD Connection Manager. It can be configured in the `.spec.connectivity.proxyServiceTemplate`
         section. This is the entry-point service for applications. You can leverage the variables
         `{proxy_svc}` and `{proxy_fqdn}` to substitute for the proxy service name and the
         proxy service's FQDN.
 
--   Proxy Read Service Template
-    :   Each PGD group has a proxy service to reach the group read nodes through
-        the PGD proxy. It can be enabled with `.spec.proxySettings.enableReadNodeRouting`,
-        and can be configured in the `.spec.connectivity.proxyReadServiceTemplate`
-        section. This is the entry-point service for applications. You can leverage the
-        variables `{proxy_svc}` and `{proxy_fqdn}` to substitute for the proxy service
-        name and the proxy service's FQDN.
+    `publishNotReadyAddresses` is managed by the operator on this template: it's
+    always set to `false`, overriding any value you supply, because the pod readiness
+    probe is what keeps client traffic off a connection manager that isn't serving.
+
+
+-   **Proxy Read Service Template**
+
+    Each PGD group has a proxy service to reach the group read nodes through
+        the PGD Connection Manager. It can be configured in the
+        `.spec.connectivity.proxyReadServiceTemplate` section. This is the entry-point
+        service for applications. You can leverage the variables `{proxy_svc}` and
+        `{proxy_fqdn}` to substitute for the proxy service name and the proxy
+        service's FQDN.
+
+    `publishNotReadyAddresses` is managed by the operator on this template: it's
+    always set to `false`, overriding any value you supply, because the pod readiness
+    probe is what keeps client traffic off a connection manager that isn't serving.
+
+On a data node the readiness probe is repointed from Postgres to the connection
+manager's `/connection/is-ready` endpoint. This changes the pod definition and so
+recreates the pod exactly once:
+
+-   On a normal join the operator repoints the node just *before* it joins or
+    creates its PGD group, while the node is still empty and serves no client, so
+    live members see no routing blip. The recreation must have completed on every
+    node of the group before any node joins a group or creates one, so a restart
+    never lands on a node that's mid-join.
+-   On the physical-join path the repoint is written while the node is still
+    hibernated, so its pod starts up already repointed and isn't recreated at all.
+-   PGD 5 nodes, and nodes whose group has routing disabled both locally and on the
+    parent group, aren't repointed: they run no connection manager, or their
+    connection manager will never report ready.
 
 You can use templates to create a LoadBalancer service or to add arbitrary
 annotations and labels to a service to integrate with other components

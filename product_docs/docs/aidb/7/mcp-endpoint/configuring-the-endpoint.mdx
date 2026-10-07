@@ -1,0 +1,35 @@
+---
+title: Configuring the endpoint
+navTitle: Configuring the endpoint
+description: Every edb.endpoints_mcp_* parameter, what the supervisor derives on its own, and what a reload does.
+---
+
+AIDB registers every endpoint setting as an ordinary Postgres parameter, set in `postgresql.conf` or with `ALTER SYSTEM`. `edb.endpoints_mcp_enabled` needs a Postgres restart to take effect. Every other parameter takes effect on `SELECT pg_reload_conf();`.
+
+| Parameter                               | Type    | Default       | Range      | Context    | Description                                                                                                                                                        |
+|-----------------------------------------|---------|---------------|------------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `edb.endpoints_mcp_enabled`             | boolean | `off`         |            | postmaster | Registers the supervisor background worker at postmaster start. Requires `aidb` in `shared_preload_libraries` and a restart.                                       |
+| `edb.endpoints_mcp_command_path`        | string  | empty         |            | sighup     | Path to the `edb-endpoints` binary. Empty means `<bindir>/edb-endpoints`. A relative path resolves against the Postgres `bindir`.                                  |
+| `edb.endpoints_mcp_host`                | string  | `127.0.0.1`   |            | sighup     | Address the endpoint listens on. Anything outside loopback requires the TLS pair.                                                                                  |
+| `edb.endpoints_mcp_port`                | integer | `8765`        | 1024-65535 | sighup     | Port the endpoint listens on.                                                                                                                                      |
+| `edb.endpoints_mcp_database`            | string  | `postgres`    |            | sighup     | Database the endpoint connects to for every call. Must have AIDB installed.                                                                          |
+| `edb.endpoints_mcp_tls_cert`            | string  | empty         |            | sighup     | PEM certificate the endpoint serves. Set together with the key.                                                                                                    |
+| `edb.endpoints_mcp_tls_key`             | string  | empty         |            | sighup     | PEM private key for the certificate. Set together with the certificate.                                                                                            |
+| `edb.endpoints_mcp_restart_max`         | integer | `5`           | 1-100      | sighup     | Maximum number of times the supervisor starts the endpoint (the first start included) within the restart window before it stops trying. See [Restart budget](operating-the-endpoint#restart-budget). |
+| `edb.endpoints_mcp_restart_window_secs` | integer | `60`          | 1-3600     | sighup     | Length of the sliding window for the restart budget, in seconds.                                                                                                   |
+
+## Values with no parameter
+
+The supervisor derives a few settings from the Postgres server itself:
+
+- The endpoint connects to Postgres through the first entry in `unix_socket_directories`, falling back to `127.0.0.1`, on the server's own `port`, with `sslmode=disable`.
+- Each agent connection has a 10 second connection timeout, and a `statement_timeout` and `idle_in_transaction_session_timeout` of 30 seconds. Postgres cancels a tool that runs longer, and the timeout error passes through to the client.
+- The endpoint's environment is cleared except for `RUST_LOG`, which is passed through from the postmaster's environment. See [Logging](operating-the-endpoint#logging).
+
+## What happens on a reload
+
+After a reload, the supervisor compares the new values with the running endpoint:
+
+- A change to `edb.endpoints_mcp_command_path`, `edb.endpoints_mcp_host`, `edb.endpoints_mcp_port`, `edb.endpoints_mcp_database`, or either TLS parameter stops the running endpoint and starts a new one with the new values. In-flight calls on the old process get up to 10 seconds to finish.
+- A change to `edb.endpoints_mcp_restart_max` or `edb.endpoints_mcp_restart_window_secs` resets the restart budget without touching the running endpoint.
+- Any reload wakes an idle supervisor and lets it try again. See [Restart budget](operating-the-endpoint#restart-budget).

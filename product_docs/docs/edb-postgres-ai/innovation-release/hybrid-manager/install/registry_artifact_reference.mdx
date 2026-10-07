@@ -1,0 +1,187 @@
+---
+title: Container registry and artifact reference
+navTitle: Registry and artifact reference
+description: Reference for the artifact types Hybrid Manager ships, where each one lives, the canonical image list, required registry layout, signing status, and network access requirements. Use it for security, procurement, and onboarding review before installation.
+deepToC: true
+---
+
+Hybrid Manager (HM) distributes the container images, OCI artifacts, Helm charts, and CLI tools your cluster needs to run HM, through a container registry and a Helm repository. Security, procurement, and onboarding reviews typically need to know what each one is, where it lives, and what your registry and network must support.
+
+To move these artifacts into your environment, see [Syncing images to a local private registry](/edb-postgres-ai/current/hybrid-manager/install/configuration/sync_images/), [Using the in-cluster container registry](/edb-postgres-ai/current/hybrid-manager/install/configuration/in_cluster_registry/), and [Installing the HM operator on air-gapped OpenShift](/edb-postgres-ai/current/hybrid-manager/install/configuration/openshift_operator_airgapped/). For step-by-step registry configuration, see [Container registry](/edb-postgres-ai/current/hybrid-manager/install/install_guide/sys_reqs/#8-container-registry) in system requirements.
+
+## Artifact types
+
+HM's registry hosts several distinct artifact classes, each requiring different tooling to move.
+
+### Container images
+
+| | |
+| :--- | :--- |
+| Description | Runnable software: the operator, platform components, Postgres images |
+| Location | `docker.enterprisedb.com/pgai-platform/…` |
+| Signature | cosign/sigstore, applied on push and verified by `edbctl` (`--verify-signature`) against a baked-in EDB public key |
+| Air-gapped considerations | Published as multi-architecture indexes (`linux/amd64` and `linux/arm64`). Only `linux/amd64` is required. Mirroring both architectures unnecessarily doubles the volume a scanning pipeline has to process. |
+| Mirroring strategy | Any OCI-compliant client |
+
+### OCI artifacts
+
+| | |
+| :--- | :--- |
+| Description | Helm chart archives and package bundles for marketplace applications, consumed by `kapp-controller` |
+| Location | `docker.enterprisedb.com/pgai-platform/kapp-marketplace/…` |
+| Signature | None. DCT doesn't understand this artifact type. Pulling or mirroring one with DCT enabled produces a `missing signature key` error, which describes a tooling mismatch, not a security problem. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/). |
+| Air-gapped considerations | Content is Helm chart archives and `kapp` package bundles for marketplace applications (for example, Airflow, Langflow, Metabase, pgAdmin, pgBadger, Superset), consumed by `kapp-controller`, not container images, and not runnable as one. |
+| Mirroring strategy | An OCI-native client (`skopeo`, `crane`, `oras`, or `helm pull oci://`) with DCT disabled or scoped away from this path |
+
+### Third-party runtime images
+
+| | |
+| :--- | :--- |
+| Description | Images that marketplace applications depend on at runtime (for example, images used by Airflow, Superset) |
+| Location | Upstream public registries, not in EDB's registry |
+| Signature | None. EDB doesn't vendor or sign these images. They resolve directly from public upstream registries when the application deploys. |
+| Air-gapped considerations | Absent from any mirror of EDB's registry, unreachable if your cluster has no general internet egress, and outside any ingestion or scanning process built around EDB's own image list. If your cluster enforces a registry allowlist, the upstream hosts these images come from must also be allowlisted (see [Network access and registry allowlisting](#network-access-and-registry-allowlisting)). There's currently no published, per-application statement of which marketplace applications are usable in a fully disconnected environment. Confirm with your EDB contact if this gap matters for your approval process. |
+| Mirroring strategy | Resolved directly from the upstream registry at deploy time, not through EDB's registry. If your cluster has no general internet egress, mirror these images separately from their upstream source. |
+
+### Helm charts
+
+| | |
+| :--- | :--- |
+| Description | Installer and operator charts, distributed as `.tgz` archives |
+| Location | EDB's Helm repository over HTTPS, not in the container registry |
+| Signature | None |
+| Air-gapped considerations | Fetched over plain HTTPS from EDB's Helm repository, not registry content. A pipeline that only enumerates and copies registry content never sees these charts; they're simply absent, not an error. |
+| Mirroring strategy | `curl` or `helm pull` against EDB's Helm repository, or `edbctl image sync-to-local-registry`, which handles the `edb-hcp-operator` chart as part of its sync (see [Syncing images to a local private registry](/edb-postgres-ai/current/hybrid-manager/install/configuration/sync_images/)) |
+
+HM distributes three charts this way, each with its own delivery note:
+
+| Chart | Delivered as | Note |
+| :--- | :--- | :--- |
+| `edbpgai-bootstrap` (bootstrap install method) | `.tgz`, EDB Helm repository | See [Migrating from bootstrap to operator](/edb-postgres-ai/current/hybrid-manager/install/migrate_bootstrap_to_operator/) |
+| `edb-hcp-operator` | `.tgz`, EDB Helm repository, **and** mirrored as an OCI artifact by `edbctl image sync-to-local-registry` | Operator install |
+| `hm-installer` | `.tgz`, EDB Helm repository | Component name is `upm-hm-installer`; the chart name drops the `upm-` prefix |
+
+Add EDB's Helm repository to pull any of these charts directly:
+
+```bash
+helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
+helm repo update
+```
+
+`edbctl image sync-to-local-registry` handles the `edb-hcp-operator` chart as part of its image sync, but has no code path for OCI marketplace artifacts, the `hm-installer` chart, or extension images. Mirror those separately, using the tooling described in their own sections.
+
+### CLI binaries and kubectl plugins
+
+| | |
+| :--- | :--- |
+| Description | `edbctl` and diagnostic plugins |
+| Location | Homebrew, GitHub releases |
+| Signature | None |
+| Air-gapped considerations | Not registry content in any form. There is currently no air-gapped distribution path for these tools. If your environment has no general internet egress, bring these tools in through your organization's separate software-onboarding process. |
+| Mirroring strategy | Not applicable: no mirroring path exists today |
+
+Two binaries are distributed this way:
+
+| Binary | Distributed via |
+| :--- | :--- |
+| `edbctl` | Homebrew |
+| Diagnostic kubectl plugins | GitHub releases (`curl \| sh`) |
+
+### OLM bundle and catalog
+
+| | |
+| :--- | :--- |
+| Description | The HM operator packaged for OpenShift's Operator Lifecycle Manager |
+| Location | Red Hat `certified-operators` catalog, plus an EDB-published bundle image |
+| Signature | Governed by Red Hat's `certified-operators` catalog process, separate from EDB's cosign/sigstore signing of container images |
+| Air-gapped considerations | Requires OpenShift 4.18 or later, and the Red Hat cert-manager Operator installed with the **All namespaces** mode before installing the HM operator. Published to the Red Hat `certified-operators` catalog for connected clusters, and as a standalone bundle image for disconnected ones. |
+| Mirroring strategy | A catalog is itself a container image containing operator metadata, mirrored with `oc mirror` v2 (for the Red Hat certified catalog) or `opm` (to build a self-hosted file-based catalog from the EDB-published bundle image) rather than pulled as a workload. Full procedure: [Installing the HM operator on air-gapped OpenShift](/edb-postgres-ai/current/hybrid-manager/install/configuration/openshift_operator_airgapped/). |
+
+### Extension images
+
+| | |
+| :--- | :--- |
+| Description | Postgres extensions packaged as OCI images |
+| Location | CloudNativePG community registry, or customer-built |
+| Signature | Not standardized; depends on the community or customer registry each image comes from |
+| Air-gapped considerations | Not part of the platform image list in [Canonical image list](#canonical-image-list). If you're mirroring extension images alongside the platform set, plan for them separately. |
+| Mirroring strategy | Any OCI-compliant client. Images are mounted read-only as an ImageVolume, resolved through PostgreSQL's `extension_control_path` setting. Community images (for example, pgvector, PostGIS) come from the CloudNativePG project; customers can publish their own following the same layout. |
+
+### Signing
+
+- **EDB's signature:** Container images are signed with cosign/sigstore. The registry applies the signature on push; `edbctl` verifies it against a baked-in EDB public key (`--verify-signature`).
+- **What isn't signed:** OCI artifacts and Helm charts carry no EDB signature.
+- **Docker Content Trust (DCT):** A separate, client-side mechanism some customers enable in their own pull tooling, unrelated to the cosign signature above. EDB doesn't apply or support it for HM images.
+- **Signing your own mirror:** `edbctl image sync-to-local-registry --sign-by-sigstore-private-key` applies a signature with a key of your choosing, independent of EDB's signature.
+
+## Registry credentials
+
+EDB's registry is reachable at `docker.enterprisedb.com`, under the `pgai-platform` namespace (for example, `docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager:<tag>`). The image list and Helm charts are served separately, over HTTPS, from `downloads.enterprisedb.com`.
+
+The same credentials authenticate to both: `--username` is your subscription namespace (`pgai-platform`), not a personal account name, and `--password` is your EDB Repos 2.0 API token, not an account password:
+
+```bash
+docker login docker.enterprisedb.com --username pgai-platform --password "$EDB_SUBSCRIPTION_TOKEN"
+```
+
+The same pair works anywhere a tool asks for registry credentials: `edbctl`'s `--source-registry-username`/`--source-registry-password` flags, `skopeo login`, or `helm registry login`.
+
+## Canonical image list
+
+The image list is version-dependent. Retrieve it for your target release with:
+
+```bash
+curl -fsS -u "pgai-platform:$EDB_SUBSCRIPTION_TOKEN" \
+  "https://downloads.enterprisedb.com/basic/pgai-platform/raw/names/v<version>-images.txt/versions/v<version>/images.txt"
+```
+
+Replace `<version>` with your target HM release tag (for example, `v2026.5.1`).
+
+Considerations:
+
+- The list carries tags only, not digests. Preserving digests during the copy is a property of your mirroring tool, not something the list itself provides. See [Syncing images to a local private registry](/edb-postgres-ai/current/hybrid-manager/install/configuration/sync_images/#preserving-digests).
+- The list can lag a few components behind a release: most notably diagnostic and installer-pipeline components, which are versioned independently. If a component you expect isn't in the list, that's a known gap rather than an indication you have the wrong version.
+- Every entry is a multi-architecture index carrying both `linux/amd64` and `linux/arm64`. As noted in [Container images](#container-images), only `linux/amd64` is required.
+- The list represents the full platform set. There's currently no supported way to generate a scenario-filtered or trimmed subset. Components you don't think you need (for example, non-default Postgres major versions bundled into a migration tool) can still be load-bearing dependencies elsewhere in the platform.
+
+## Destination registry layout requirements
+
+This requirement applies when you mirror artifacts into your own private registry, not to EDB's registry, which is already laid out correctly.
+
+`edbctl image sync-to-local-registry` pushes each artifact to the correct path, but it doesn't provision the destination repository for you:
+
+- Registries that auto-create a repository on first push (for example, Azure ACR, Quay, GHCR, Docker Hub) need no action from you.
+- Registries that require the repository to already exist (for example, Amazon ECR, Google Artifact Registry, JFrog Artifactory) need you to pre-create it at that exact path before running the sync, or the push fails.
+- The OpenShift internal registry can't be used as a destination at all, regardless of pre-creation. The "Required destination form" table below, and the notes under it, cover why.
+
+If you mirror artifacts with your own pipeline instead of `edbctl`, you're responsible for constructing this path yourself.
+
+Getting this configuration wrong produces errors that look like credential or registry faults rather than layout faults. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for how these errors get confused in practice.
+
+| Image class | Required destination form |
+| :--- | :--- |
+| Control-plane workloads (HM platform components, operator) | `<registry-path>/<repository-name>/<image-name>:<tag>@sha256:<digest>` |
+| Postgres operand images | `<registry-path>/<image-name>:<tag>@sha256:<digest>` |
+
+- `registry-path` is optional, a prefix appended ahead of the image name. EDB's own registry uses `pgai-platform`.
+- `repository-name` is mandatory and fixed for control-plane images (for example, `cloud-native-postgres-dbaas`) and has no relationship to the Kubernetes namespace the workload runs in. Operand images carry no `repository-name` segment at all.
+- If your registry provider doesn't support an arbitrary path prefix, control-plane images still need the `repository-name` segment; operand images go at the registry root.
+- The OpenShift internal registry is not a supported destination for HM images. See [Installing the HM operator on air-gapped OpenShift](/edb-postgres-ai/current/hybrid-manager/install/configuration/openshift_operator_airgapped/) for the supported disconnected paths.
+
+## Network access and registry allowlisting
+
+A cluster can reach a registry perfectly and still refuse every image it serves. Reachability and permission are enforced by separate systems, and both have to allow the pull.
+
+Hosts to allow for egress, if your environment reaches EDB's infrastructure directly (rather than only ever consuming a pre-populated internal mirror):
+
+| Host | Serves |
+| :--- | :--- |
+| `docker.enterprisedb.com` | Container images and OCI artifacts |
+| `downloads.enterprisedb.com` | The image list (`images.txt`) and Helm charts |
+
+If your cluster enforces a registry allowlist (for example, OpenShift's `spec.registrySources.allowedRegistries`), be aware that on most platforms, defining an allowlist switches the cluster to default-deny for every registry not explicitly listed, including ones the platform itself depends on. On OpenShift specifically, `registry.redhat.io`, `quay.io`, and the cluster's own internal registry hostname are blocked the moment `allowedRegistries` is set, unless you list them too. Confirm your platform's equivalent behavior before enabling an allowlist, not after.
+
+Also allowlist:
+
+- Your destination private registry.
+- The upstream hosts named by any third-party runtime images your marketplace applications depend on (see [Third-party runtime images](#third-party-runtime-images)). These hosts bypass your mirror entirely and are easy to miss when building an allowlist from your mirrored image list alone.

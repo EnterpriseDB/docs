@@ -13,9 +13,10 @@ SELECT aidb.import_mcp_tools(
     name        => 'weather',
     url         => 'https://weather.example.com/mcp',
     transport   => 'streamable_http',  -- optional; 'streamable_http' or 'sse' (see below). Default: 'streamable_http'
-    headers     => NULL,               -- optional; request headers to send, for example, an auth token. Mutually exclusive with headers_env. Default: NULL
+    headers     => NULL,               -- optional; request headers to send, for example, an auth token. Mutually exclusive with headers_env and headers_k8s_secret. Default: NULL
     tool_filter => NULL,               -- optional; import only these tool names. Default: NULL (import everything the server advertises)
-    headers_env => NULL                -- optional; env var holding the headers JSON instead of storing it. Mutually exclusive with headers. Default: NULL
+    headers_env => NULL,               -- optional; env var holding the headers JSON instead of storing it. Mutually exclusive with headers and headers_k8s_secret. Default: NULL
+    headers_k8s_secret => NULL         -- optional; file path to a mounted Kubernetes Secret holding the headers JSON. Mutually exclusive with headers and headers_env. Default: NULL
 );
 
 SELECT aidb.create_agent('trip_planner', 'Help plan trips, checking weather when useful.', 'my_gpt',
@@ -27,15 +28,18 @@ SELECT aidb.create_agent('trip_planner', 'Help plan trips, checking weather when
 | `name`            | TEXT      | Required               | Unique name for the server registration.                                                                                                   |
 | `url`             | TEXT      | Required               | The server's MCP endpoint URL.                                                                                                             |
 | `transport`       | TEXT      | `'streamable_http'`    | `'streamable_http'` or `'sse'` — only `'streamable_http'` is fully supported today.                                                        |
-| `headers`         | JSONB     | `NULL`                   | Request headers to send, for example, `{"Authorization": "Bearer ..."}`. Mutually exclusive with `headers_env`.                            |
+| `headers`         | JSONB     | `NULL`                   | Request headers to send, for example, `{"Authorization": "Bearer ..."}`. Mutually exclusive with `headers_env` and `headers_k8s_secret`.                            |
 | `tool_filter`     | TEXT    | `NULL`                   | Import only these tool names. Omit to import everything the server advertises.                                                             |
-| `headers_env`     | TEXT      | `NULL`                   | Name of an environment variable holding the headers JSON, read fresh on each use instead of storing it. Mutually exclusive with `headers`. |
+| `headers_env`     | TEXT      | `NULL`                   | Name of an environment variable holding the headers JSON, read fresh on each use instead of storing it. Mutually exclusive with `headers` and `headers_k8s_secret`. |
+| `headers_k8s_secret` | TEXT   | `NULL`                   | Path to a file holding the headers JSON, read on each use instead of storing it. Meant for a Kubernetes Secret mounted into the Postgres pod. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths). Mutually exclusive with `headers` and `headers_env`. |
 
 `import_mcp_tools` validates the server by calling its `tools/list` endpoint before registering anything — if it's unreachable or advertises nothing matching `tool_filter`, nothing is stored. The tools it returns are cached immediately, so they show up in `aidb.tools` right away rather than after a separate refresh.
 
 Only the `streamable_http` transport (the default) actually works end-to-end today; `sse` is accepted as a value but isn't fully implemented yet.
 
 Reaching an MCP server is an outbound network call — subject to the same [`aidb.egress_allowlist`](../install/configure#network-egress) restriction as model provider calls and HuggingFace downloads.
+
+An MCP tool call isn't subject to purpose enforcement, unlike a [native](/aidb/current/tools/native-tools/) or [custom SQL](/aidb/current/tools/custom-sql-tools/) tool call: it's outbound HTTP, with no local Postgres identity to switch. See [Governance](/aidb/current/governance/).
 
 ## Authentication
 
@@ -93,4 +97,4 @@ Deleting an MCP server removes every tool it advertised along with it — there'
 SELECT * FROM aidb.get_mcp_tools();
 ```
 
-This only converts AIDB's tool catalog into MCP's descriptor shape — AIDB doesn't run an MCP server endpoint of its own that an external MCP client could connect to and actually invoke these tools over the network.
+This function only converts the catalog into MCP's descriptor shape. The [MCP endpoint](../mcp-endpoint) serves the same catalog to external MCP clients over the network.

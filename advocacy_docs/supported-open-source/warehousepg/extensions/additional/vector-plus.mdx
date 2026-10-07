@@ -1,0 +1,70 @@
+---
+title: Vector Plus
+navTitle: Vector Plus
+displayBanner: ''
+description: Build and query ivfplus vector indexes in WarehousePG using the EDB Vector Plus extension.
+---
+
+!!!note Version availability
+
+Vector Plus is available for WarehousePG 7 on EL 8 and EL 9 (amd64).
+!!!
+
+The EDB Vector Plus (`edb_vectorplus`) extension adds the `ivfplus` index access method for vector similarity search. Vector Plus uses hierarchical Inverted File (IVF) clustering and RaBitQ quantization to deliver faster queries with a lower memory footprint at large row counts.
+
+On WarehousePG (WHPG), Vector Plus builds on the [pgvector](pgvector.mdx) extension, and each segment builds and scans its own `ivfplus` index over its own slice of the table.
+
+Vector Plus requires pgvector 0.7.0 or later. The WarehousePG [pgvector](pgvector.mdx) extension meets this requirement. Install pgvector before you enable Vector Plus.
+
+## Installing Vector Plus
+
+Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for installation and setup instructions. The package name is `edb-whpg7-vectorplus`.
+
+!!!note
+
+Vector Plus is published in the `analytics` repository. When you follow the installation instructions, set `EDB_REPO=analytics` instead of `EDB_REPO=gpsupp`.
+!!!
+
+## Enabling the extension
+
+Enable the extension in each database where you want to use it. `CASCADE` creates pgvector's `vector` type first, which `edb_vectorplus` requires:
+
+```sql
+CREATE EXTENSION edb_vectorplus CASCADE;
+```
+
+For more information, see [Configuring Vector Plus](/vector-plus/latest/install/configuring/).
+
+## Using Vector Plus
+
+For guidance on creating `ivfplus` indexes, tuning queries, filtering, and measuring recall, see [Using Vector Plus](/vector-plus/latest/using/). For the full list of operator classes, index options, parameters, and functions, see the [Vector Plus reference](/vector-plus/latest/reference/).
+
+## Considerations for WarehousePG
+
+Account for the following differences when you run Vector Plus on a WarehousePG cluster. Each segment holds its own index, so Vector Plus behaves differently than on a single Postgres node.
+
+-   Set `optimizer = off` before running queries. The ORCA optimizer has no path for a custom index access method, so it plans a sequential scan and never uses `ivfplus`.
+-   The `ivfplus.probes` and `ivfplus.max_probes` configuration parameters apply per segment. A query over an N-segment cluster visits up to `probes` × N lists in total, which increases both recall and work compared to the same setting on a single node.
+-   The `lists` index option also applies per segment. Each segment clusters roughly `rows / N` rows into `lists` lists, so divide the usual `rows / 1000` sizing rule by N.
+-   The `ivfplus_metapage_info()` and `check_ivfplus_index_health()` functions describe the coordinator's copy of the index, which holds no rows. They report an empty, healthy index regardless of the state of the segments. To see the real state, see [Checking index health across segments](#checking-index-health-across-segments).
+-   Index builds are serial.
+
+## Checking index health across segments
+
+To check the real state of an `ivfplus` index, query each primary segment directly and sum the counters.
+
+1.  From the coordinator, list the primary segments using the [`gp_segment_configuration`](/warehousepg/latest/ref_guide/system_catalogs/system_catalogs_definitions/gp_segment_configuration/) catalog:
+
+    ```sql
+    SELECT hostname, port FROM gp_segment_configuration
+      WHERE role = 'p' AND content >= 0 ORDER BY content;
+    ```
+
+1.  For each segment, connect in [utility mode](/warehousepg/latest/ref_guide/config_params/guc-list/#gp_role) and run the health check. Replace `<index_name>` with the name of your index:
+
+    ```bash
+    PGOPTIONS='-c gp_role=utility' psql -h <hostname> -p <port> -d <database_name> \
+      -c "SELECT * FROM check_ivfplus_index_health('<index_name>');"
+    ```
+
+1.  Sum the `n_frozen_live`, `n_dead_lanes`, and `n_pending` counters across all segments.

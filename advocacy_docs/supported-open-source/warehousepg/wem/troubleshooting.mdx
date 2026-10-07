@@ -45,35 +45,79 @@ For application-level logs (alert evaluation, canary checks, query activity):
 sudo tail -f /var/log/wem/wem.log
 ```
 
+!!! Note
+    Every `systemctl restart wem` rotates `wem.log` to a timestamped copy and starts a fresh file, so a `tail -f` left running from before the restart stops receiving new lines without any error. Either restart the `tail -f` after each `systemctl restart wem`, or use `sudo journalctl -u wem -f` instead, which follows across restarts on its own.
+
+**Verify each observability component**
+
+Check each component directly, outside the WEM UI, to narrow down where a break in the pipeline sits:
+
+```bash
+# ClickHouse
+sudo clickhouse status
+
+# WEM
+sudo systemctl status wem
+
+# Host agent (coordinator and standby coordinator only)
+sudo systemctl status acp-host-agent
+
+# OTel Collector, on every WHPG node
+sudo systemctl status edb-otelcol
+
+# Gateway collector, on the standby coordinator or dedicated monitoring host, whichever your deployment provisions
+sudo systemctl status edb-otelcol
+```
+
+Check the OTel Collector across every cluster node at once, using `all_hosts`, a file listing all hosts in the WHPG cluster:
+
+```bash
+gpssh -f all_hosts -u gpadmin -e "sudo systemctl is-active edb-otelcol"
+```
+
+Confirm data is actually reaching ClickHouse:
+
+```bash
+clickhouse-client --password <your-clickhouse-password> \
+  --query "SELECT count() FROM acp_observability.otel_metrics_gauge WHERE TimeUnix > now() - 300"
+clickhouse-client --password <your-clickhouse-password> \
+  --query "SELECT count() FROM acp_observability.otel_logs WHERE Timestamp > now() - 300"
+```
+
+For collector-specific errors, check its own logs:
+
+```bash
+sudo journalctl -u edb-otelcol -n 20 --no-pager
+```
+
 ## Connectivity issues
 
-### Error: "Failed to connect to WEM database" during setup
+### Error: "failed to connect to WHPG server" or "failed to connect to WEM server" during setup
 
-When running `wem setup` or `wem setup --verify`, the command fails with an error similar to:
+`wem setup`, including the automatic run at service start, fails with one of two similarly worded but distinct errors:
 
 ```
-Setup failed: failed to connect to WEM database: failed to ping database: failed to connect to `user=gpadmin database=wem`
+Setup failed: failed to connect to WHPG server: failed to ping database: ...
 ```
 
-**Cause:** The `WHPG_HOST` or `WEM_HOST` environment variables aren't set in the current session, or the WarehousePG database isn't running.
+```
+Setup failed: failed to connect to WEM server: failed to ping database: ...
+```
+
+**Cause:** These two errors name two different connections, and the fix depends on which one appears. `WHPG server` means the `WHPG_*` parameters, the cluster you're monitoring, are wrong or unreachable. `WEM server` means the `WEM_*` parameters, WEM's own application-state database, are wrong or unreachable. See [Target cluster](reference/configuration#target-cluster) and [Application state](reference/configuration#application-state) for the full parameter lists.
 
 **Solution:**
 
-1. Export the required host variables before running the command:
+1. Confirm which set of parameters the error names, then verify those specific values in `/etc/wem/wem.conf`, host, port, database, user, and password.
+2. For a `WHPG server` failure, test the connection directly with `wem setup`'s flags, bypassing `wem.conf` entirely:
 
     ```bash
-    export WHPG_HOST=<coordinator-hostname>
-    export WEM_HOST=<coordinator-hostname>
-    wem setup --verify
+    sudo -u wem /usr/local/greenplum-db/wem/wem setup --host <host> --port <port> --user <user> --password <password> --database <database> --check --debug
     ```
 
-2. If the database itself is not running, start it first:
+    `wem setup` has no equivalent flags for the `WEM_*` connection, so for a `WEM server` failure, double-check `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, and `WEM_PASSWORD` directly in `wem.conf` instead.
 
-    ```bash
-    gpstart -a
-    ```
-
-    Then re-run `wem setup --verify`.
+3. If the target database itself isn't running, start it, `gpstart -a` for the WHPG cluster, or start whatever PostgreSQL instance backs the `WEM_*` connection.
 
 ### Issue: WEM service failed to start
 
@@ -168,6 +212,28 @@ sudo systemctl restart wem
 
 Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf` to acknowledge running as `root`.
 
+### Issue: The PXF tab shows PXF as unavailable
+
+The **PXF** tab in **Data Analysis** reports PXF as unavailable instead of showing its status.
+
+**Cause:** PXF actions dispatch through the host agent on the coordinator rather than running locally on the WEM host, so this error usually means the host agent isn't reachable there, or PXF itself isn't installed on the coordinator.
+
+**Solution:**
+
+1. Check that the host agent is running on the coordinator:
+
+    ```bash
+    sudo systemctl status acp-host-agent
+    ```
+
+2. Confirm PXF is installed on the coordinator.
+
+3. Check the WEM log for a more specific remediation hint:
+
+    ```bash
+    sudo journalctl -u wem
+    ```
+
 ### Issue: Start PXF and Stop PXF buttons fail with `Operation not permitted`
 
 The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return `Operation not permitted`.
@@ -180,6 +246,14 @@ The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return
 sudo wem configure-pxf-sandbox
 sudo systemctl restart wem
 ```
+
+## Cluster management
+
+### Issue: The Cluster Management panel is missing
+
+**Cause:** WEM hides the Cluster Management panel (Start, Stop, Restart, and Recover Segments) whenever its own application-state database, `WEM_DATABASE`, lives on the same WHPG cluster it monitors. Stopping that cluster would take WEM's own database down with it mid-operation, so WEM disables the panel as a safety measure rather than risk it. This is expected behavior, not a bug.
+
+**Solution:** To use the Cluster Management panel, host `WEM_DATABASE` on an instance that isn't part of the monitored cluster. See [Application state](installing/wem#application-state) for guidance on choosing where to host it.
 
 ## Authentication and access issues
 
@@ -215,59 +289,101 @@ sudo systemctl restart wem
 
 **Cause:** WEM enforces role-based SQL restrictions to prevent accidental data loss or unauthorized schema changes. Review the [Role permissions matrix](reference#role-permissions-matrix) to confirm if the action is permitted for your role.
 
+## Backup and restore issues
+
+### Error: `gpbackup not found under /usr/edb/*/bin`
+
+Taking or restoring a backup from the **Backups** panel fails with this error.
+
+**Cause:** `whpg-backup` isn't installed on the target cluster node, or is installed at a nonstandard location. WEM's host agent looks for the `gpbackup` and `gprestore` binaries under `/usr/edb/*/bin`, where the `whpg-backup` package installs them alongside your WHPG binaries.
+
+**Solution:** Install `whpg-backup` 1.34 or later on every cluster node. See [Installing WarehousePG Backup and Restore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/).
+
 ## Observability and metrics
 
-### Issue: Charts aren't displaying
+WEM's dashboards, charts, and log search all read from ClickHouse. A single pipeline, each node's OTel Collector forwarding through a gateway into ClickHouse, backs both, so most data-not-showing issues trace back to one break in that chain rather than to separate metrics and log backends.
 
-Some tabs display the error `Prometheus not configured. Set PROMETHEUS_URL to enable metrics charts`.
+### Issue: "WEM is unable to connect to the configured ClickHouse instance"
 
-**Cause:** The connection to the Prometheus metrics server is either not correctly configured or down.
-
-**Solution:**
-1.  Verify that Prometheus is running and reachable via the URL defined in the **Settings** tab within the **Management** panel.
-2.  Check network connectivity and firewall rules between the WEM server and the Prometheus endpoint.
-
-### Issue: Charts are empty despite Prometheus being configured
-
-Prometheus is reachable but WEM charts show no data.
-
-**Cause:** Metrics are not flowing from the Collector to Prometheus. The Collector may not be running, may not be configured correctly, or the `./deploy-observability` script may not have been run after configuration changes.
+**Cause:** `CLICKHOUSE_URL` in `/etc/wem/wem.conf` is incorrect, or ClickHouse isn't reachable from the WEM host.
 
 **Solution:**
 
-1. Check whether the metric exists in Prometheus by running the following command on the coordinator host. Replace `<prometheus-host>` with the hostname from your `PROMETHEUS_ENDPOINT` configuration:
+1. Test connectivity directly:
 
     ```bash
-    curl 'http://<prometheus-host>:9090/api/v1/query?query=warehousepg_observability_node_cpu_seconds_total'
+    curl "http://<clickhouse-host>:8123/?query=SELECT%201"
     ```
 
-    If the response contains `"result":[]`, metrics are not reaching Prometheus.
-
-2. Inspect the Collector logs for errors:
+2. Check that ClickHouse itself is running:
 
     ```bash
-    sudo cat /var/log/whpg-observability-collector/whpg-observability-collector.log
+    sudo clickhouse status
     ```
 
-3. Verify that `PROMETHEUS_ENDPOINT` in `/var/lib/whpg-observability-collector/collector.conf` is correct and that Prometheus is reachable from the coordinator.
+### Issue: "the configured database does not exist yet"
 
-4. If you recently edited `collector.conf`, re-run the deployment script to apply the changes:
-
-    ```bash
-    cd /var/lib/whpg-observability-collector
-    ./deploy-observability
-    ```
-
-5. If Prometheus is running in Docker, confirm that the `--web.enable-remote-write-receiver` flag is set, or that the `prometheus.yml` includes `remote_write` receiver configuration. Without this flag, Prometheus silently ignores incoming metrics from the Collector.
-
-### Issue: Logs aren't loading
-
-The **Historical Logs (Coordinator & Segments)** tab within the **Logs** panel reports the error: `Loki integration is not configured`.
-
-**Cause:** The Loki log aggregation service is unavailable or the URL is incorrect.
+**Cause:** ClickHouse is reachable, but the `acp_observability` database doesn't exist yet. The OTel Collector creates it automatically on its first data flush, so this error is expected until at least one cluster node's telemetry pipeline is actually running, not necessarily a configuration error on its own.
 
 **Solution:**
 
-1.  Ensure the Loki service is active.
-2.  Verify the Loki URL in the **Settings** tab within the **Management** panel.
-3.  Check server-side logs for `Connection Refused` errors.
+1. Navigate to **Management > Host Agents** and confirm agents are listed and approved.
+2. Check the **Telemetry** status column for each agent, it should show as running.
+3. If **Telemetry** shows unknown or stopped, check that node's host agent and OTel Collector:
+
+    ```bash
+    sudo systemctl status acp-host-agent edb-otelcol
+    sudo journalctl -u edb-otelcol -n 30 --no-pager
+    ```
+
+### Issue: No entries in Management > Host Agents
+
+**Cause:** Host agents haven't registered with WEM yet.
+
+**Solution:**
+
+1. On the affected node, confirm the agent is running:
+
+    ```bash
+    sudo systemctl status acp-host-agent
+    ```
+
+2. Check `/etc/edb/acp-host-agent/acp-host-agent.conf`. `WEM_CONNECT_ADDRESS` must be an IPv4 address in the form `<wem-host>:<wem-port + 1>` (default `8081`), and that port must be reachable from every cluster node. Test it directly:
+
+    ```bash
+    curl -k https://<wem-host>:8081/
+    ```
+
+    See [Installing the host agent](installing/host-agent) for setup.
+
+### Issue: `acp-host-agent` service isn't active, or an agent is stuck waiting for approval
+
+**Cause:** Either `WEM_CONNECT_ADDRESS` is wrong or its port is blocked, or the agent registered but hasn't been approved yet.
+
+**Solution:**
+
+1. Check the agent's log for the specific failure:
+
+    ```bash
+    sudo journalctl -u acp-host-agent -n 50 --no-pager
+    ```
+
+2. If it shows a connection failure, verify connectivity with `curl -k https://<wem-host>:8081/`, as above.
+3. If it shows `awaiting TLS material`, the agent registered correctly and is only waiting on approval. Go to **Management > Host Agents** and approve it. Once approved, check the **Telemetry** and **Last Seen** columns to confirm it's active.
+
+### Issue: Telemetry service is failed or stopped on a node
+
+**Cause:** The node's OTel Collector (`edb-otelcol`) can't reach ClickHouse, or failed to start.
+
+**Solution:**
+
+```bash
+sudo systemctl status edb-otelcol
+sudo journalctl -u edb-otelcol -n 30 --no-pager
+```
+
+If the log shows a ClickHouse connection error, verify ClickHouse is reachable from that specific node:
+
+```bash
+curl "http://<clickhouse-host>:8123/?query=SELECT%201"
+```
