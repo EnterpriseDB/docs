@@ -212,6 +212,9 @@ const Page = () => {
               <BannerCardLink to="/agent-governance/latest">
                 Agent Governance
               </BannerCardLink>
+              <BannerCardLink to="/vector-plus/latest">
+                Vector Plus
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
@@ -363,7 +366,7 @@ const Page = () => {
               toUrl="/edb-postgres-ai/platforms-and-tools/security/"
             />
 
-            <BannerWideLink to="/tde/latest">
+            <BannerWideLink to="/edb-postgres-ai/platforms-and-tools/security/tde/">
               Transparent Data Encryption
             </BannerWideLink>
             <BannerWideLink to="/pg_extensions/ldap_sync">

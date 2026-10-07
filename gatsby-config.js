@@ -63,6 +63,10 @@ const sourceToPluginConfig = {
     name: "agent-governance",
     path: "product_docs/docs/agent-governance",
   },
+  "vector-plus": {
+    name: "vector-plus",
+    path: "product_docs/docs/vector-plus",
+  },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
@@ -135,7 +139,6 @@ const sourceToPluginConfig = {
     path: "product_docs/docs/hm-operator",
   },
   slony: { name: "slony", path: "product_docs/docs/slony" },
-  tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
   tds_data_adapter: {
     name: "tds_data_adapter",
