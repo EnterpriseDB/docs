@@ -35,7 +35,7 @@ GRANT CONNECT ON DATABASE hr TO USER agent_user;
 
 To leverage the full monitoring and optimization features of Hybrid Manager (HM), you must enable extensions that add instrumentation to Postgres. You need these extensions to enable the **Query Diagnostics** and **Recommendations** tabs as well as some metrics.
 
-[comment]: # "Open question for Gabriele (DOCS-4399): Is edb_stat_monitor replaced by pg_stat_ch in this procedure (install link, package, shared_preload_libraries, CREATE EXTENSION)?"
+The `pg_stat_ch` extension requires version 1.407.6 or later of the beacon agent.
 
 To install the extensions: 
 
@@ -46,6 +46,8 @@ To install the extensions:
     -   [EDB Query Advisor](https://www.enterprisedb.com/docs/pg_extensions/query_advisor/installing/)
 
     -   [EDB Stat Monitor](https://www.enterprisedb.com/docs/pg_extensions/edb_stat_monitor/installing/)
+
+    -   [pg_stat_ch](/clickhouse/latest/monitoring_postgres/#installing-and-configuring-pg_stat_ch)
 
     In addition, [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html) must be enabled in the public schema.
     pg_stat_statements is installed with Postgres, so no additional installation is required.
@@ -62,8 +64,10 @@ To install the extensions:
 
     ```sql
     ALTER SYSTEM SET 
-    shared_preload_libraries="$libdir/pg_stat_statements","$libdir/edb_wait_states", "$libdir/query_advisor","$libdir/edb_stat_monitor";
+    shared_preload_libraries="$libdir/pg_stat_statements","$libdir/edb_wait_states", "$libdir/query_advisor","$libdir/edb_stat_monitor","$libdir/pg_stat_ch";
     ```
+
+1.  Restart Postgres to load the new libraries.
 
 1.  As a superuser, create the schema in the database to which the agent will be connected and enable the `pg_stat_statements` extension as well as the extensions installed in the previous step:
 
@@ -72,8 +76,19 @@ To install the extensions:
     CREATE EXTENSION edb_wait_states WITH SCHEMA edb_internals;
     CREATE EXTENSION query_advisor WITH SCHEMA edb_internals;
     CREATE EXTENSION edb_stat_monitor WITH SCHEMA edb_internals;
+    CREATE EXTENSION pg_stat_ch WITH SCHEMA edb_internals;
     CREATE EXTENSION pg_stat_statements;
     ```
+
+1.  Configure `pg_stat_ch` to export data using OpenTelemetry:
+
+    ```sql
+    ALTER SYSTEM SET pg_stat_ch.use_otel = on;
+    ALTER SYSTEM SET pg_stat_ch.otel_endpoint = '127.0.0.1:4317';
+    SELECT pg_reload_conf();
+    ```
+
+    Restart the beacon agent, or upgrade it to the latest version, to see data on the **Query Diagnostics** page.
 
 1.  Add the edb_internals schema to the search path. For example, as a superuser:
 
