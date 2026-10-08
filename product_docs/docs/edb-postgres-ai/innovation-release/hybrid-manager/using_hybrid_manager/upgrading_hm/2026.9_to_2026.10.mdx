@@ -9,6 +9,10 @@ Upgrade from 2026.9 to 2026.10.
 
 > **Role:** Infrastructure engineer
 
+!!!warning Every Postgres cluster restarts during this upgrade
+This release bumps the Barman Cloud Plugin, which restarts every Postgres cluster in your estate as part of applying the HM upgrade — not on your own database maintenance schedule. If you manage a large estate and rely on scheduling platform and Postgres upgrades independently, plan for this before you upgrade.
+!!!
+
 ## Prerequisites
 
 - Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
@@ -19,13 +23,21 @@ Upgrade from 2026.9 to 2026.10.
 
 ## Upgrade 2026.9 → 2026.10
 
-This release changes the telemetry stack that powers Query Diagnostics: ClickHouse partially replaces Prometheus/Thanos, and the `pg_stat_ch` extension replaces `edb_stat_monitor` as the source of query-level monitoring data. Because of this, moving a Postgres cluster onto the new operand images requires two manual actions beyond the usual HM version bump. Complete the steps in the order given:
+This release changes the telemetry stack that powers Query Diagnostics: ClickHouse partially replaces Prometheus/Thanos, and the `pg_stat_ch` extension replaces `edb_stat_monitor` as the source of query-level monitoring data. This upgrade has two parts:
+
+1. **The Hybrid Manager (HM) platform upgrade** — a one-time action that upgrades HM itself. This also restarts every Postgres cluster in your estate once, as a side effect of the Barman Cloud Plugin bump.
+1. **A per-cluster operand-set migration** — a separate, per-Postgres-cluster action that moves each cluster onto the new operand-set so it can collect telemetry again.
+
+Complete the steps in the order given:
 
 1. Create new secrets.
 1. Upgrade the operator to `2.2` or later, if it isn't already.
-1. Update `spec.beaconAgent.provisioning.operandSetVersions` to whitelist both the current and new operand-sets.
-1. Update `spec.version` and trigger the HM upgrade.
-1. For each Postgres cluster you want to move onto the new operand-set, perform the cluster's major/minor upgrade, then manually create the `pg_stat_ch` extension.
+1. Update `spec.version` and trigger the HM platform upgrade.
+1. As soon as possible afterward, for each Postgres cluster: whitelist both operand-sets, perform the cluster's major/minor upgrade to move it onto the new operand, then manually create the `pg_stat_ch` extension.
+
+!!!important
+Complete step 4 for every Postgres cluster as soon as possible after the HM platform upgrade. Once HM is on 2026.10, the old telemetry pipeline that read `edb_stat_monitor` is no longer deployed platform-wide. A cluster that hasn't yet been migrated to the new operand-set and had `pg_stat_ch` created loses Query Diagnostics data entirely in the meantime — it isn't a fallback to the old data, it's a gap.
+!!!
 
 ### Create new secrets
 
@@ -38,6 +50,10 @@ edbctl hm create-install-secrets --version v2026.10.0
 For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
 
 ### Upgrade the operator
+
+!!!note
+HM 2026.10 requires operator version `2.2` or later — the same version 2026.9 required. If your operator is already on `2.2` or later, skip this section.
+!!!
 
 !!!Note Red Hat OpenShift
 On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
@@ -57,10 +73,6 @@ edbctl hm upgrade-operator \
 ```
 
 Or upgrade directly with Helm:
-
-!!!note
-`<OPERATOR_VERSION>` refers to the operator chart version, which follows its own `2.x` versioning scheme and is separate from the HM version (`2026.10`). HM 2026.10 requires operator version `2.2` or later — the same version 2026.9 required, so no action is needed if you're already on `2.2` or later.
-!!!
 
 1. Create the values file:
 
@@ -86,77 +98,6 @@ Or upgrade directly with Helm:
       edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
     ```
 
-### Enable the Major/Minor upgrade path for existing clusters
-
-Starting in HM 1.3.2, operand images carry an operand-set version, and the beacon agent only treats images matching an allowed pattern as discoverable. IR 2026.7–2026.9 shipped operand-set `1.2.x`. HM 2026.10 requires operand-set `1.3.0` or later and only works with operand images from that operand-set onward.
-
-Existing Postgres clusters keep running on their current `1.2.x` operand images and stay healthy through the HM upgrade — moving the platform forward doesn't touch them. But during the transition window, the in-UI **Major/Minor upgrade** action for those clusters fails unless both operand-sets are whitelisted.
-
-!!!important
-If `spec.beaconAgent.provisioning.operandSetVersions` whitelists only the new `1.3.x` pattern (or is otherwise missing the `1.2.x` pattern), HM can no longer discover a cluster's current `1.2.x` image. The Major/Minor upgrade dialog then fails to resolve that image, and a `PGImageMissing` alert may fire on reconcile.
-!!!
-
-Before you upgrade any cluster, whitelist both the previous and new operand-sets on the `HybridControlPlane` (HCP) CR — the source of truth for this setting. Don't edit the `beacon-agent-k8s-config` configmap directly; it's reconciled from the HCP CR and a direct edit will drift or revert.
-
-```yaml
-spec:
-  beaconAgent:
-    provisioning:
-      operandSetVersions:
-        - 1\.2\.[0-9]+    # previous operand-set (current cluster images) — keeps them discoverable
-        - 1\.3\.[0-9]+    # new operand-set shipped with IR 2026.10
-```
-
-Apply it via `values.yaml` during the HM upgrade, or post-upgrade with `kubectl`:
-
-```shell
-# Inspect the current value
-kubectl get hcp <name> -o jsonpath='{.spec.beaconAgent.provisioning.operandSetVersions}{"\n"}'
-
-# Patch to whitelist both operand-sets
-kubectl patch hcp <name> --type=merge -p '{
-  "spec": {"beaconAgent": {"provisioning": {"operandSetVersions": ["1\\.2\\.[0-9]+", "1\\.3\\.[0-9]+"]}}}
-}'
-```
-
-With both whitelisted, HM can discover the current `1.2.x` image again, the Major/Minor upgrade dialog resolves it, and the upgrade path — including extensions — becomes available so you can move clusters up to a `1.3.x` operand.
-
-Follow this phased approach as you migrate:
-
-| Phase | `operandSetVersions` | Action |
-| --- | --- | --- |
-| 1 — Transitional | `1\.2\.[0-9]+`, `1\.3\.[0-9]+` | After upgrading HM to 2026.10, whitelist both so existing `1.2.x` clusters stay discoverable and the Major/Minor upgrade path works. |
-| 2 — Migration | `1\.2\.[0-9]+`, `1\.3\.[0-9]+` | Upgrade each cluster from its `1.2.x` operand to a `1.3.x` operand, then manually create the `pg_stat_ch` extension on that cluster (see below). |
-| 3 — Cleanup | `1\.3\.[0-9]+` | Once no cluster references a `1.2.x` operand, remove the `1.2.x` pattern to enforce the new operand-set. |
-
-!!!warning
-Don't remove the `1.2.x` pattern until every cluster has completed migration. Removing it while a cluster still runs a `1.2.x` image makes that image undiscoverable again, and the Major/Minor upgrade for that cluster fails with the same error.
-!!!
-
-### Enable `pg_stat_ch` on each migrated cluster
-
-After a cluster's image is on a `1.3.x` operand, HM-managed clusters already have `pg_stat_ch` in `shared_preload_libraries` and configured for OpenTelemetry — moving the image forward doesn't, by itself, create the extension in the database. You must do that manually, once per cluster:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_stat_ch WITH SCHEMA edb_internals;
-```
-
-!!!important
-Run this on every database the cluster monitors, not just `edb_admin`. `pg_stat_ch` must be created per-database — it isn't enough to create it once on the default database.
-!!!
-
-Until you create the extension on a database, Query Diagnostics data for that database keeps coming from `edb_stat_monitor`. HM retains `edb_stat_monitor` — it's still used internally — and only removes it in IR 2026.11, so there's no need to drop it yourself.
-
-No cluster restart is needed for this step.
-
-#### Self-managed clusters (external CNPG and bare-metal)
-
-Self-managed clusters — external CNPG (pg4k) clusters and bare-metal installations — need a separate, more involved process than HM-managed clusters, because `pg_stat_ch` isn't bundled with their images automatically.
-
-For external CNPG clusters running the enterprise build (pg4k), discover a suitable operand image that includes `pg_stat_ch` from HM's Asset Library, then follow the same major/minor upgrade and extension-creation steps as above. OSS CNPG doesn't support mounting the extension from the official CloudNativePG extension catalogue, so you need a custom image that installs the EDB build of `pg_stat_ch`.
-
-For bare-metal installations, install `pg_stat_ch` and configure it to point at your ClickHouse server before creating the extension. For the full procedure — package installation, `shared_preload_libraries`, and the OpenTelemetry settings — see [Monitoring Postgres with pg_stat_ch](/clickhouse/latest/monitoring_postgres/) in the EDB Postgres AI for ClickHouse documentation.
-
 ### Upgrade Hybrid Manager
 
 1. Update `spec.version` to `v2026.10.0` in your `HybridControlPlane` manifest and apply it:
@@ -177,15 +118,80 @@ For bare-metal installations, install `pg_stat_ch` and configure it to point at 
     kubectl get hybridcontrolplane edbpgai -w
     ```
 
-### Postgres cluster restart
+This step restarts every Postgres cluster in your estate once, to apply the updated Barman Cloud Plugin (version `0.15.0`, bringing significantly faster restore times for compressed backups). This restart is automatic and applies platform-wide — it's separate from the per-cluster operand-set migration described next.
 
-This release updates the Barman Cloud Plugin to version 0.15.0, which brings significantly faster restore times for compressed backups.
+### Migrate each Postgres cluster to the new operand-set
 
-!!!warning
-Upgrading to HM 2026.10 restarts every Postgres cluster to apply the updated plugin.
+Once HM itself is on 2026.10, migrate each Postgres cluster to the new operand-set as soon as possible, to restore its Query Diagnostics telemetry. A cluster you haven't migrated yet keeps running and stays healthy, but has no Query Diagnostics data until you complete this migration.
+
+#### Enable the major/minor upgrade path
+
+Starting in HM 1.3.2, operand images carry an operand-set version, and the beacon agent only treats images matching an allowed pattern as discoverable. IR 2026.7–2026.9 shipped operand-set `1.2.x`. HM 2026.10 requires operand-set `1.3.0` or later and only works with operand images from that operand-set onward.
+
+A cluster still running a `1.2.x` operand image becomes undiscoverable to HM once you narrow `operandSetVersions` to `1.3.x` only. While you still have clusters on `1.2.x` images, whitelist both patterns so the major/minor upgrade action in the HM console can resolve each cluster's current image.
+
+!!!important
+If `spec.beaconAgent.provisioning.operandSetVersions` whitelists only the new `1.3.x` pattern (or is otherwise missing the `1.2.x` pattern) while a cluster is still on a `1.2.x` image, HM can no longer discover that cluster's image. The major/minor upgrade action in the HM console then fails to resolve it, and a `PGImageMissing` alert may fire on reconcile.
 !!!
 
-Plan a maintenance window for this upgrade. For details, see the [HM 2026.10 release notes](/edb-postgres-ai/innovation-release/hybrid-manager/release_notes/).
+Whitelist both operand-sets on the `HybridControlPlane` (HCP) CR — the source of truth for this setting. Don't edit the `beacon-agent-k8s-config` configmap directly; it's reconciled from the HCP CR and a direct edit will drift or revert.
+
+```yaml
+spec:
+  beaconAgent:
+    provisioning:
+      operandSetVersions:
+        - 1\.2\.[0-9]+    # previous operand-set (current cluster images) — keeps them discoverable
+        - 1\.3\.[0-9]+    # new operand-set shipped with IR 2026.10
+```
+
+Apply it via `values.yaml` when you upgrade HM, or afterward with `kubectl`:
+
+```shell
+# Inspect the current value
+kubectl get hcp <name> -o jsonpath='{.spec.beaconAgent.provisioning.operandSetVersions}{"\n"}'
+
+# Patch to whitelist both operand-sets
+kubectl patch hcp <name> --type=merge -p '{
+  "spec": {"beaconAgent": {"provisioning": {"operandSetVersions": ["1\\.2\\.[0-9]+", "1\\.3\\.[0-9]+"]}}}
+}'
+```
+
+With both whitelisted, HM can discover each cluster's current `1.2.x` image, the major/minor upgrade action in the HM console resolves it, and the upgrade path — including extensions — becomes available so you can move the cluster onto a `1.3.x` operand.
+
+Follow this phased approach as you migrate:
+
+| Phase | `operandSetVersions` | Action |
+| --- | --- | --- |
+| 1 — Transitional | `1\.2\.[0-9]+`, `1\.3\.[0-9]+` | After upgrading HM to 2026.10, whitelist both so existing `1.2.x` Postgres clusters stay discoverable and the major/minor upgrade path works. |
+| 2 — Migration | `1\.2\.[0-9]+`, `1\.3\.[0-9]+` | Upgrade each Postgres cluster from its `1.2.x` operand to a `1.3.x` operand, then manually create the `pg_stat_ch` extension on that cluster (see below). |
+| 3 — Cleanup | `1\.3\.[0-9]+` | Once no Postgres cluster references a `1.2.x` operand, remove the `1.2.x` pattern to enforce the new operand-set. |
+
+!!!warning
+Don't remove the `1.2.x` pattern until every Postgres cluster has completed migration. Removing it while a cluster still runs a `1.2.x` image makes that image undiscoverable again, and the major/minor upgrade for that cluster fails with the same error.
+!!!
+
+#### Enable `pg_stat_ch` on each migrated cluster
+
+After a cluster's image is on a `1.3.x` operand, HM-managed clusters already have `pg_stat_ch` in `shared_preload_libraries` and configured for OpenTelemetry — moving the image forward doesn't, by itself, create the extension in the database. You must do that manually, once per cluster:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_ch WITH SCHEMA edb_internals;
+```
+
+!!!important
+Run this on every database the cluster monitors, not just `edb_admin`. `pg_stat_ch` must be created per-database — it isn't enough to create it once on the default database.
+!!!
+
+HM retains `edb_stat_monitor` — it's still used internally — and only removes it in IR 2026.11, so there's no need to drop it yourself. Enabling the `pg_stat_ch` extension itself doesn't require a cluster restart — this is separate from the platform-wide restart that already happened when you upgraded HM.
+
+#### Self-managed clusters (external CNPG and bare-metal)
+
+Self-managed clusters — external CNPG (pg4k) clusters and bare-metal installations — need a separate, more involved process than HM-managed clusters, because `pg_stat_ch` isn't bundled with their images automatically.
+
+For external CNPG clusters running the enterprise build (pg4k), discover a suitable operand image that includes `pg_stat_ch` from HM's Asset Library, then follow the same major/minor upgrade and extension-creation steps as above. OSS CNPG doesn't support mounting the extension from the official CloudNativePG extension catalogue, so you need a custom image that installs the EDB build of `pg_stat_ch`.
+
+For bare-metal installations, install `pg_stat_ch` and configure it to point at your ClickHouse server before creating the extension. For the full procedure — package installation, `shared_preload_libraries`, and the OpenTelemetry settings — see [Monitoring Postgres with pg_stat_ch](/clickhouse/latest/monitoring_postgres/) in the EDB Postgres AI for ClickHouse documentation.
 
 ### Scenario behavior change: `core` now includes `observability`
 
