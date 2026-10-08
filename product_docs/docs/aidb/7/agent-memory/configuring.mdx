@@ -5,7 +5,7 @@ description: Set up the Agent Memory Server, register models, initialize a names
 deepToC: true
 ---
 
-Configure agent memory once per environment, before applications add or search memories. This is operator work. You prepare a storage schema, run the EDB Agent Memory Server, register the LLM and embedding models, and initialize a namespace.
+Configure agent memory before applications add or search memories. Configuration is operator work, and you do it once for each database that uses agent memory. You prepare a storage schema, run the EDB Agent Memory Server, register the LLM and embedding models, and initialize a namespace.
 
 Agent memory installs directly on your Postgres instance and has no dependency on Hybrid Manager.
 
@@ -21,20 +21,24 @@ Agent memory installs directly on your Postgres instance and has no dependency o
 Create a dedicated schema for agent memory, separate from your application tables. The Agent Memory Server creates the `memories` and `memories_entities` tables in this schema, so you create only the schema and a role.
 
 ```sql
-CREATE SCHEMA IF NOT EXISTS agent_memory_helpdesk_schema;
+CREATE SCHEMA IF NOT EXISTS <storage-schema-name>;
 ```
+
+Replace `<storage-schema-name>` with a schema name of your choice, such as `agent_memory_helpdesk_schema`. Use the same name in the grants that follow and in `storage_spec.schema` when you [initialize the namespace](#initializing-a-namespace).
 
 Next, create a database role for the Agent Memory Server. Give it `CREATE` privileges on the schema so that the server can create its tables, along with read and write access to them:
 
 ```sql
-CREATE ROLE edb_agent_memory_server_user LOGIN PASSWORD '<secure-password>';
+CREATE ROLE <server-role-name> LOGIN PASSWORD '<secure-password>';
 
-GRANT USAGE, CREATE ON SCHEMA agent_memory_helpdesk_schema
-  TO edb_agent_memory_server_user;
+GRANT USAGE, CREATE ON SCHEMA <storage-schema-name>
+  TO <server-role-name>;
 GRANT SELECT, INSERT, UPDATE, DELETE
-  ON ALL TABLES IN SCHEMA agent_memory_helpdesk_schema
-  TO edb_agent_memory_server_user;
+  ON ALL TABLES IN SCHEMA <storage-schema-name>
+  TO <server-role-name>;
 ```
+
+Replace `<server-role-name>` with a role name of your choice, such as `edb_agent_memory_server_user`, and `<secure-password>` with a strong password.
 
 ## Running the Agent Memory Server
 
@@ -47,11 +51,21 @@ Replace every placeholder password, API key, hostname, and model name before you
 1. Set the connection details for the storage database:
 
     ```shell
-    export AGENT_MEMORY_DB_HOST="127.0.0.1"
+    export AGENT_MEMORY_DB_HOST="host.docker.internal"
     export AGENT_MEMORY_DB_PORT=5432
     export AGENT_MEMORY_DB_NAME="<your-database-name>"
-    export AGENT_MEMORY_DB_USER="edb_agent_memory_server_user"
+    export AGENT_MEMORY_DB_USER="<server-role-name>"
     export AGENT_MEMORY_DB_PASSWORD="<secure-password>"
+    ```
+
+1. Optionally, enable TLS. TLS is recommended to secure data transfer between Postgres and the Agent Memory Server. Provide the server with a certificate file and a private key file, and mount them into the container as read-only files in a dedicated path, such as `/run/secrets`. The container process needs read-only access to both files. Set these environment variables:
+
+    - `AGENT_MEMORY_TLS_CERT_FILE` - the path to the TLS certificate file inside the container.
+    - `AGENT_MEMORY_TLS_KEY_FILE` - the path to the TLS private key file inside the container.
+
+    ```shell
+    export AGENT_MEMORY_TLS_CERT_FILE="/run/secrets/open-ssl-memory-server.crt"
+    export AGENT_MEMORY_TLS_KEY_FILE="/run/secrets/open-ssl-memory-server.key"
     ```
 
 1. Start the container:
@@ -69,6 +83,24 @@ Replace every placeholder password, API key, hostname, and model name before you
     ```
 
     Replace `<agent-memory-server-image>` with the image name from EDB.
+
+    To run the container with TLS enabled, mount the certificate and key, and pass the TLS variables:
+
+    ```shell
+    docker run --rm \
+      --name edb-agentmemory-server \
+      --mount "type=bind,source=<source-folder>/open-ssl-memory-server.crt,target=$AGENT_MEMORY_TLS_CERT_FILE,readonly" \
+      --mount "type=bind,source=<source-folder>/open-ssl-memory-server.key,target=$AGENT_MEMORY_TLS_KEY_FILE,readonly" \
+      -p 127.0.0.1:18889:8000 \
+      -e AGENT_MEMORY_DB_HOST \
+      -e AGENT_MEMORY_DB_PORT \
+      -e AGENT_MEMORY_DB_NAME \
+      -e AGENT_MEMORY_DB_USER \
+      -e AGENT_MEMORY_DB_PASSWORD \
+      -e AGENT_MEMORY_TLS_CERT_FILE \
+      -e AGENT_MEMORY_TLS_KEY_FILE \
+      <agent-memory-server-image>
+    ```
 
 1. Verify that the server is ready:
 
@@ -123,28 +155,28 @@ Initialize a namespace once, during setup or deployment, not on every applicatio
 
 ```sql
 SELECT aidb_memory.init(
-  name   => 'helpdesk_namespace',
+  name   => '<namespace-name>',
   config => $$ {
     "model_spec": {
       "encoder": {
-        "aidb_model": "my_openai_embedding",
-        "config": {"dimensions": 1536}
+        "aidb_model": "<embedding-model-name>",
+        "dimensions": 1536
       },
       "llm": {
-        "aidb_model": "my_openai_llm",
+        "aidb_model": "<llm-model-name>",
         "config": {"temperature": 0.1}
       }
     },
     "agentmemory_spec": {
       "provider": "agent_memory_container",
       "config": {
-        "base_url": "http://127.0.0.1:18889",
+        "base_url": "<agent-memory-server-url>",
         "request_timeout_ms": 30000,
         "options": {}
       }
     },
     "storage_spec": {
-      "schema": "agent_memory_helpdesk_schema",
+      "schema": "<storage-schema-name>",
       "tables": {
         "memories": "memories",
         "entities": "memories_entities"
@@ -154,16 +186,18 @@ SELECT aidb_memory.init(
 );
 ```
 
+Replace the values in angle brackets with your own. For example, use the names of the models you registered, the schema you created, and the URL of your Agent Memory Server, such as `http://127.0.0.1:18889`. Use the other values as shown.
+
 | Setting                                      | What it configures                                                            |
 |----------------------------------------------|-------------------------------------------------------------------------------|
 | `model_spec.encoder.aidb_model`              | The registered embedding model.                                               |
-| `model_spec.encoder.config.dimensions`       | The embedding size. It must match the selected model, or `add` and `search` fail at runtime. |
+| `model_spec.encoder.dimensions`              | The embedding size. It must match the selected model, or `add` and `search` fail at runtime. |
 | `model_spec.llm.aidb_model`                  | The registered LLM.                                                           |
 | `agentmemory_spec.provider`                  | The memory runtime. Use `agent_memory_container` for the Agent Memory Server. |
 | `agentmemory_spec.config.base_url`           | The URL of the Agent Memory Server.                                           |
 | `agentmemory_spec.config.request_timeout_ms` | How long a request to the server can run before it times out.                 |
-| `storage_spec.schema`                        | The storage schema. It must match the schema granted to the server's role.    |
-| `storage_spec.tables`                        | The names of the memories and entities tables.                                |
+| `storage_spec.schema`                        | The storage schema. It must match the schema granted to the server's role. See [Preparing the storage schema](#preparing-the-storage-schema). |
+| `storage_spec.tables`                        | The names of the memories and entities tables. See [Preparing the storage schema](#preparing-the-storage-schema). |
 
 Calling `aidb_memory.init` again with an existing namespace name returns that namespace without changing it. You can't currently update or delete a namespace.
 
@@ -178,7 +212,7 @@ To list namespaces, query the `aidb_memory.namespaces` view. There is no separat
 
 ## Configuring advanced settings
 
-Set the `aidb.agent_memory_*` parameters in `postgresql.conf`, for a session with `SET`, or for a connection with `-c`. Users can set both parameters for their own sessions. You set the Agent Memory Server address in the namespace, using `agentmemory_spec.config.base_url`, not in a parameter.
+Set the `aidb.agent_memory_*` parameters in `postgresql.conf`, for a session with `SET`, or for a connection with `-c`. If you set a parameter in `postgresql.conf`, reload the configuration for the change to take effect.
 
 ### `aidb.agent_memory_enable_worker`
 
