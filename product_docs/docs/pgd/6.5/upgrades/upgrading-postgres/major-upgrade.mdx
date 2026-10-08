@@ -56,9 +56,37 @@ For each node, one at a time:
 
 1.  Install the new major version's PGD packages alongside the existing ones:
 
+    <TabContainer syncKey="platform">
+
+    <Tab title="Debian/Ubuntu" active>
+
     ```shell
-    sudo apt install edb-pgd6-expanded-pg<postgres_version>
+    sudo apt install -y edb-pgd6-expanded-<distribution><postgres_version>
     ```
+
+    </Tab>
+
+    <Tab title="CentOS/RHEL">
+
+    ```shell
+    sudo dnf install -y edb-pgd6-expanded-<distribution><postgres_version>
+    ```
+
+    </Tab>
+
+    <Tab title="SLES">
+
+    ```shell
+    sudo zypper -n install edb-pgd6-expanded-<distribution><postgres_version>
+    ```
+
+    </Tab>
+    </TabContainer>
+
+    Replace `<distribution>` with `pg` for community Postgres, `pgextended` for EDB Postgres Extended, or
+    `epas` for EDB Postgres Advanced Server. For example, the package for EDB Postgres Advanced Server 17 is
+    `edb-pgd6-expanded-epas17`. For details on package naming, see [Installing the database and
+    PGD](/pgd/current/deploying/deploy-manual/03-installing-database-and-pgd/).
 
     Package managers install each Postgres major version to its own path, so the old binaries are
     untouched.
@@ -70,6 +98,19 @@ For each node, one at a time:
     [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
     (if present) into the new data directory, adjusting for any configuration parameters that changed between
     Postgres major versions.
+
+    !!! Note
+    Remove or rename parameters that the new major version no longer supports, or the new server fails to
+    start. To find them ahead of time, read the [Postgres release
+    notes](https://www.postgresql.org/docs/current/release.html) of each major version between your old and
+    new version. For example, `operator_precedence_warning` was removed in Postgres 14, and
+    `wal_keep_segments` was removed in Postgres 13 and replaced by `wal_keep_size`.
+
+    If the new server fails to start, for example during `pgd node upgrade --check`, its log reports
+    `unrecognized configuration parameter` with the name of the parameter. If `log_destination` is set to
+    `syslog`, the `pg_upgrade` log doesn't show this message, so check the system log instead.
+    !!!
+
 1.  If the new major version already includes the `output_plugin_libraries` parameter and the
     copied configuration doesn't already list `bdr` in it, add it now, while the new cluster is
     still shut down:
@@ -119,6 +160,12 @@ For each node, one at a time:
     modifying either cluster. See [Modes of
     operation](/pgd/latest/reference/cli/command_ref/node/upgrade/#modes-of-operation) for what running with
     `--check` validates.
+
+    If your old cluster doesn't use the defaults, add the `--old-port` and `--socketdir` options. The
+    defaults are port 5432 and the `/var/run/postgresql` socket directory, which doesn't exist on RHEL, and
+    EDB Postgres Advanced Server listens on port 5444 by default. For example, on RHEL with EDB Postgres
+    Advanced Server, add `--socketdir /tmp --old-port 5444`. Use the same options when you run the upgrade
+    without `--check`.
 1.  Run `pgd node upgrade` again without `--check` to perform the upgrade, using the same options:
 
     ```shell
