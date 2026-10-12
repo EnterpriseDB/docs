@@ -31,40 +31,52 @@ This section is required for data migration. If you are performing schema assess
 
 Migration tools require the database to be in `ARCHIVELOG` mode to ensure that data changes are captured during the transfer.
 
-1.  Connect to the database as `SYSDBA` to perform administrative tasks:
+!!!important
+Enabling `ARCHIVELOG` mode requires restarting the database, so the database is unavailable for a short time. Schedule this change during a maintenance window.
+!!!
+
+1.  Open a terminal on the database server as the `oracle` operating system user (or another user in the `dba` group), and connect to the database locally as `SYSDBA`:
 
     <TabContainer syncKey="db_type">
     <Tab title="CDB/PDB">
 
-    Connect to the Root Container (CDB$ROOT) using the CDB service name:
+    Set `ORACLE_SID` to the SID of the container database (CDB) and connect to the root container (CDB$ROOT):
 
     ```shell
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba
-    ```
-
-    For example: 
-
-    ```shell 
-    sqlplus sys/password123@//localhost:1521/ORCLCDB as sysdba
-    ```
-
-    </Tab>
-    <Tab title="Non-CDB">
-
-    Connect to the Database Instance using the Service Name or SID:
-
-    ```shell
-    sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<SID_OR_SERVICE> as sysdba
+    export ORACLE_SID=<CDB_SID>
+    sqlplus / as sysdba
     ```
 
     For example:
 
     ```shell
-    sqlplus sys/password123@//localhost:1521/ORCL as sysdba
+    export ORACLE_SID=ORCLCDB
+    sqlplus / as sysdba
+    ```
+
+    </Tab>
+    <Tab title="Non-CDB">
+
+    Set `ORACLE_SID` to the SID of the database instance and connect:
+
+    ```shell
+    export ORACLE_SID=<SID>
+    sqlplus / as sysdba
+    ```
+
+    For example:
+
+    ```shell
+    export ORACLE_SID=ORCL
+    sqlplus / as sysdba
     ```
 
     </Tab>
     </TabContainer>
+
+    !!!note
+    Use a local connection for this procedure. A connection through the listener, such as `sqlplus sys/<PASSWD>@//<HOST>:<PORT>/<CDB_NAME> as sysdba`, is disconnected when the database shuts down (`ORA-12514: TNS:listener does not currently know of service requested in connect descriptor`), so you can't restart the database from that session. If you can only connect remotely, ask your DBA to configure a static listener entry for the database.
+    !!!
 
 1.  Verify the status:
 
@@ -92,14 +104,41 @@ Migration tools require the database to be in `ARCHIVELOG` mode to ensure that d
     These parameters are critical for database stability. Always consult your DBA before setting them in a production environment.
     !!!
 
-1.  Restart the database and enable `ARCHIVELOG`:
+1.  Shut down the database:
 
     ```sql
     SHUTDOWN IMMEDIATE;
+    ```
+
+    Wait for the `ORACLE instance shut down.` message before you continue. Run each of the following commands separately, waiting for each one to finish.
+
+1.  Start the database in mount mode:
+
+    ```sql
     STARTUP MOUNT;
+    ```
+
+1.  Enable `ARCHIVELOG` mode:
+
+    ```sql
     ALTER DATABASE ARCHIVELOG;
+    ```
+
+1.  Open the database:
+
+    ```sql
     ALTER DATABASE OPEN;
     ```
+
+1.  If you're using a CDB/PDB architecture, open the pluggable databases (PDBs) and save their open state so they also open automatically after future restarts:
+
+    ```sql
+    ALTER PLUGGABLE DATABASE ALL OPEN;
+    ALTER PLUGGABLE DATABASE ALL SAVE STATE;
+    SHOW PDBS;
+    ```
+
+    Confirm that your PDB shows `READ WRITE` in the `OPEN MODE` column. After a restart, PDBs stay in `MOUNTED` mode unless their open state was saved, and the later steps in this guide connect to the PDB.
 
 1.  Confirm the change: 
 
