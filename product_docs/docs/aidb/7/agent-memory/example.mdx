@@ -37,10 +37,21 @@ SELECT aidb_memory.add(
   agent_id        => 'helpdesk-agent-64849',
   session_id      => 'conv-738949',
   idempotency_key => 'conv-738949-turn-001'
-);
+) AS event_id \gset
+
+\echo :event_id
 ```
 
-`aidb_memory.add` returns an ID for the add operation. Save it for the next step.
+`aidb_memory.add` returns the ID of the add operation. The `\gset` command saves it in the `event_id` psql variable, which the next step uses. If you use another SQL client, copy the ID from the result instead.
+
+The output looks like this. Your ID differs:
+
+```text
+                 add
+--------------------------------------
+ 6b387c39-2d4f-40e1-a237-59d5ef134c54
+(1 row)
+```
 
 The call accepts the event and returns immediately. The Agent Memory Server then builds memories from the turns in the background, so they aren't searchable straight away.
 
@@ -53,7 +64,7 @@ Use [`aidb_memory.status`](../reference/agent-memory#aidb_memorystatus) to check
 ```sql
 SELECT *
 FROM aidb_memory.status(
-  id         => '<add-operation-id>',
+  id         => :'event_id'::uuid,
   namespace  => 'helpdesk_namespace',
   actor_id   => 'alice',
   agent_id   => 'helpdesk-agent-64849',
@@ -61,7 +72,16 @@ FROM aidb_memory.status(
 );
 ```
 
-The result shows the state of the event. `ACCEPT` means the event was accepted, and `READY` means its memories are ready to retrieve. Run the query again until the state is `READY`.
+The result shows the state of the event. While agent memory is still working, the state is `ACCEPTED` or `PROCESSING`. `READY` means the memories are ready to retrieve. Run the query again until the state is `READY`:
+
+```text
+                  id                  |     namespace      | status | actor_id |  session_id  |       agent_id       | error_detail
+--------------------------------------+--------------------+--------+----------+--------------+----------------------+--------------
+ 6b387c39-2d4f-40e1-a237-59d5ef134c54 | helpdesk_namespace | READY  | alice    | conv-738949  | helpdesk-agent-64849 |
+(1 row)
+```
+
+If the state is `FAILED`, the `error_detail` column describes the problem.
 
 ## Step 3: Searching the memories
 
@@ -80,7 +100,16 @@ FROM aidb_memory.search(
 ORDER BY score DESC;
 ```
 
-The result lists the matching memories with a relevance score. The query doesn't need to use the same words as the original conversation, because search matches on meaning, not on exact wording.
+The result lists the matching memories with a relevance score:
+
+```text
+                  id                  |                                                    content                                                    |   score    | metadata
+--------------------------------------+---------------------------------------------------------------------------------------------------------------+------------+----------
+ 3e39ed49-e377-48a6-b5a4-7545a34a7a30 | User's annual subscription renewed, but the 20% discount was not applied, resulting in a charge of $120.      | 0.54703873 | {}
+(1 row)
+```
+
+The memory text and scores depend on your models, so your results can differ. The query doesn't need to use the same words as the original conversation, because search matches on meaning, not on exact wording.
 
 ## What you built
 
