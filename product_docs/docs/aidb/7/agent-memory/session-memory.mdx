@@ -1,22 +1,20 @@
 ---
 title: Using agent memory sessions
-navTitle: Using
+navTitle: Using sessions
 description: Read the current conversation back in order, carry context between conversations, and keep long conversations within a budget.
 deepToC: true
 ---
 
-Use session memory to give an agent the current conversation, in order, so that it can rebuild a prompt. The conversation is read back synchronously.
-
-By comparison, `add` and `search` give an agent facts learned across conversations. The facts are extracted asynchronously and retrieved by semantic query.
-
-Session memory and learned facts are both fed by the same `aidb_memory.add` call. When you pass a `session_id`, the turns go into a session as well as into the extraction queue. There's no separate session write function.
+Use sessions to give an agent the current conversation, in order, so that it can rebuild its prompt. Sessions complement the facts that agent memory learns across conversations. When you add turns with `aidb_memory.add`, agent memory extracts facts from them in the background, and your agent retrieves those facts later with `aidb_memory.search`. If you also pass a `session_id`, the same turns are stored in a session, which you read back in order and without delay. There's no separate function for writing to a session.
 
 ## Starting a session
+
+Start a session at the beginning of a conversation, before you add turns. You don't need to start a session to add turns, so you can use this page without first working through [Managing memories](memory-operations).
 
 Use `aidb_memory.session_start` to open a conversation, or to resume one.
 
 ```sql
-SELECT session_id, prev_handoff
+SELECT session_id, started_at
 FROM aidb_memory.session_start(
   namespace  => 'helpdesk_namespace',
   actor_id   => 'alice',
@@ -32,7 +30,7 @@ FROM aidb_memory.session_start(
 
 ## Adding turns to a session
 
-Use `aidb_memory.add` and pass the same `session_id` each time.
+A turn is one message in the conversation, with a role such as `user` or `assistant`. Add each turn to the session by calling `aidb_memory.add` with the same `session_id`. The same call also queues the turns for memory extraction.
 
 ```sql
 SELECT aidb_memory.add(
@@ -52,7 +50,7 @@ SELECT aidb_memory.add(
 
 `kind`, `tool_call_id`, and `meta` on a turn are optional session metadata. `meta.sequence_id` groups the turns of one reasoning round.
 
-## Reading a session back
+## Reading session history
 
 Use `aidb_memory.session_get` to read the history back before you assemble the next prompt.
 
@@ -76,12 +74,6 @@ FROM aidb_memory.session_get(
 
 Read sessions with the session functions. The `aidb_users` role can't read the `aidb_memory.sessions` view directly.
 
-## Carrying context between conversations
-
-Store a handoff when you end a session, so that the next session for the same actor and agent can pick up its context. The next session receives the handoff as `prev_handoff` when it starts. This is how one conversation carries context into the next.
-
-`prev_handoff` is the handoff from the last closed session in the same `(namespace, actor_id, agent_id)` scope.
-
 ## Ending a session
 
 Use `aidb_memory.session_end` to close a conversation and store its handoff.
@@ -96,7 +88,26 @@ FROM aidb_memory.session_end(
 );
 ```
 
-Sessions don't close on their own. `closed_at` is set only by an explicit `session_end`. There's no idle timeout, TTL, or retention sweep in this release, and raw turns are never removed once they're summarized. Call `session_end` from your application, and size your storage on the assumption that session history is kept.
+Sessions don't close on their own. `closed_at` is set only by an explicit `session_end`. There's no idle timeout, TTL, or retention sweep, and raw turns are never removed once they're summarized. Call `session_end` from your application, and size your storage on the assumption that session history is kept.
+
+## Carrying context between conversations
+
+When you end a session, you can store a handoff, so that the next session for the same actor and agent can pick up where this one left off.
+
+1. End the session with `aidb_memory.session_end`. It returns the handoff, which includes the `notes` that you passed.
+1. Start the next conversation with `aidb_memory.session_start`, using the same actor and agent. It returns the previous session's handoff as `prev_handoff`.
+
+```sql
+SELECT session_id, prev_handoff
+FROM aidb_memory.session_start(
+  namespace  => 'helpdesk_namespace',
+  actor_id   => 'alice',
+  agent_id   => 'helpdesk-agent-64849',
+  session_id => 'conv-738950'
+);
+```
+
+`prev_handoff` is the handoff from the last closed session in the same namespace, actor, and agent. It's `NULL` if there is none.
 
 ## Keeping long conversations within budget
 
