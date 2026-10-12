@@ -30,6 +30,33 @@ To use Connection Manager, configure your client applications to connect to its 
 
 Connecting to the read-only port restricts the connection to read-only operations, similar to [`SET TRANSACTION READ ONLY`](https://www.postgresql.org/docs/current/sql-set-transaction.html), except that it's not possible to change it to read-write. The [`transaction_read_only`](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-TRANSACTION-READ-ONLY) configuration parameter correctly reports `on` in these connections.
 
+## Understanding write leader failover
+
+Write leader failover applies to any PGD cluster that uses Connection Manager routing, whether it runs in one location or several.
+
+The Raft leader of each group that has `enable_routing` set to `on` selects the write leader. It keeps the current write leader as long as that node is routable and connected.
+
+The Raft leader treats a node as connected when it has received a message from that node within the group leader timeout. The timeout depends on which group elects the write leader. You choose that group with the `enable_routing` group option, which sets up either local or global routing. See [Configuring routing](/pgd/current/geo-replication-dba/routing) for the settings.
+
+| Routing | Timeout | Default |
+| --- | --- | --- |
+| [Local routing](/pgd/current/geo-replication-dba/routing) (default) | [`bdr.raft_group_election_timeout`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrraft_group_election_timeout) | 3 seconds |
+| [Global routing](/pgd/current/geo-replication-dba/routing) | [`bdr.raft_global_election_timeout`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrraft_global_election_timeout) | 6 seconds |
+
+PGD doesn't distinguish between a crashed node, a stopped Postgres instance, and a network failure. In each case the node stops sending messages.
+
+When the write leader fails either check, PGD selects a replacement in five steps.
+
+1. Exclude nodes that can't take writes. A node is excluded when it isn't active, is a witness node, is a subscriber-only node, has [`route_fence`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_option) set, or has [`route_writes`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_option) disabled.
+1. Exclude nodes that the Raft leader can't reach within the group leader timeout.
+1. Exclude nodes that exceed the [`route_writer_max_lag`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_group_option) group option, if you set it.
+1. Keep only the nodes with the highest [`route_priority`](/pgd/current/geo-replication-dba/routing#setting-route-priority). When more than one remains, choose the node that has replayed the most changes from the previous write leader. The Raft leader node is the last choice, because failing over to it after a Raft leader loss takes additional time for the election.
+1. Publish the new write leader as a routing record through Raft. Connection Manager on each node then routes new connections to it.
+
+Because the Raft leader selects the write leader, failover takes longer when the failed node held both roles. The remaining nodes must elect a new Raft leader before PGD can select a new write leader.
+
+See [Understanding failure scenarios](/pgd/current/recovering-from-failures/) for the behavior in other failure cases.
+
 ## Authentication
 
 Connection Manager performs TLS termination and pre-authentication using the same `pg_hba.conf` configuration as Postgres, with no separate user list to maintain. See [Authentication](/pgd/current/connection-manager/authentication) for supported methods and constraints.
