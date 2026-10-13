@@ -5,7 +5,29 @@ navTitle: "Version 7.8.0"
 
 Released: 12 Oct 2026
 
+AIDB 7.8.0 introduces named model credentials. Any member of `aidb_users` can now create models that use an API key, without a superuser. See [Model credentials](../../integrating-models/credentials).
+
+Upgrading from 7.7.0 keeps existing models working, but changes how their secrets are stored and who can use them. Review [Upgrading from 7.7.0](#upgrading-from-770) before you upgrade.
+
 AIDB 7.8.0 includes the following enhancements, changes, and bug fixes:
 
 | Type        | Description                                                                                                                                                                                                                                                                                                                                                                       |
 |-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Enhancement | Named model credentials: A credential stores one secret (`api_key` or `basic_auth`) and an endpoint pattern that lists the hosts the secret may be sent to. Manage credentials with `aidb.create_credential()`, `aidb.update_credential()`, and `aidb.delete_credential()`, and list them in the `aidb.credentials` view. A new credential is private to its owner. Pass `share => true` to let every `aidb_users` member use it. Only the owner can change or delete it. AIDB checks the host a model calls against the endpoint pattern before it sends the secret. The Tools Hub gains matching native tools. See [Model credentials](../../integrating-models/credentials). |
+| Enhancement | `aidb_admins` role: Only superusers and members of the new `aidb_admins` role can use secrets from the server (`credentials_env`, `credentials_k8s_secret`, `headers_env`, and `headers_k8s_secret`). Grant it with `GRANT aidb_admins TO <role>;`. See [Managing credential access with the aidb_admins role](../../install/configure#managing-credential-access-with-the-aidb_admins-role). |
+| Change      | Models use credentials: Pass `credential => '<name>'` to `aidb.create_model()` to bind a model to a credential. A model created without one uses the built-in `none` credential, which sends no secret. Passing a secret directly to `aidb.create_model()` creates a private credential named `<schema>.<model>`. `aidb.delete_model()` no longer deletes any secret. `aidb.models` and `aidb.get_model()` return a new `credential` column. |
+| Change      | `aidb.model_providers` columns changed: The view now returns `name`, `description`, `functions`, and `default_host`. The `server_name`, `server_description`, and `server_options` columns are removed. Update queries that read the old columns. |
+| Bug fix     | Models with secrets for non-superusers: In 7.7.0, a non-superuser couldn't create or delete a model with a secret, and a non-superuser who used a superuser's model sent requests without the API key. Members of `aidb_users` can now create, use, and delete models with secrets. |
+
+## Upgrading from 7.7.0
+
+`ALTER EXTENSION aidb UPDATE` never reads or copies a secret. It can print WARNINGs. Each WARNING names an object to review.
+
+- **Provider servers with a secret** become shared credentials named after the provider, for example `openai_completions`. They're owned by the superuser that installed AIDB and are pinned to the provider's default host plus the hosts their models call. The upgrade warns for each credential that allows hosts beyond the provider default. Review them in `aidb.credentials` and narrow them with `aidb.update_credential()`. A credential whose models call no network host gets the endpoint `*` and is made private.
+- **Members' models now authenticate.** In 7.7.0, models that non-superusers used on a provider with a secret sent requests without the key. After the upgrade, those requests include the shared credential's key.
+- **Per-role secrets** stay in the catalog but are no longer used. The upgrade warns for each credential that has them. Drop them with `DROP USER MAPPING FOR <role> SERVER <credential>;`. A provider server that had only per-role secrets becomes a credential without a secret. Its models fail until the owner sets one with `aidb.update_credential()`.
+- **Provider servers without a secret** are removed. Their models move to the `none` credential and keep their name, schema, and owner. They get a new OID and lose comments and grants on the model table. This includes the default local models.
+- **Scripts that relied on a shared provider secret** must pass `credential => '<name>'` to `aidb.create_model()`. A later model on the same provider no longer uses a secret set by an earlier `aidb.create_model()` call.
+- **Secrets from environment variables or Kubernetes Secret files** keep working. Their credentials are owned by the superuser that installed AIDB.
+- **MCP servers registered before the upgrade** are owned by `aidb_users`, so every member can still refresh and delete them. Servers that use `headers_env` or `headers_k8s_secret` are owned by the role that installed AIDB, and only that role can refresh or delete them. The upgrade warns with their names. Review their URLs.
+- **An existing `aidb_admins` role** is used as is, and its members become admins. The upgrade warns with their names.

@@ -7,7 +7,7 @@ redirects:
   - /aidb/7/integrating-models/external-model-connections
 ---
 
-Remote models run outside your Postgres host and are called over an API. You register one with `aidb.create_model()`, giving it a name, a provider, a configuration object, and credentials. After that, it's used by name in any AIDB SQL function or pipeline step, the same way as a [local model](integrated-models).
+Remote models run outside your Postgres host and are called over an API. You register one with `aidb.create_model()`, giving it a name, a provider, a configuration object, and a credential that holds the API key. After that, it's used by name in any AIDB SQL function or pipeline step, the same way as a [local model](integrated-models).
 
 ## Model providers
 
@@ -38,24 +38,32 @@ For OpenAI models, `openai_responses` and `openai_completions` accept the same m
 To list the providers registered in your database:
 
 ```sql
-SELECT server_name, server_description FROM aidb.model_providers ORDER BY server_name;
+SELECT name, description FROM aidb.model_providers ORDER BY name;
 ```
 
 ## Registering a remote model
 
-Every remote model is registered the same way:
+Every remote model is registered the same way. Create a credential for the API key, then create the model with it:
 
 ```sql
+SELECT aidb.create_credential(
+    name        => 'openai_prod',
+    credentials => '{"api_key": "sk-..."}'::JSONB,
+    endpoint    => 'api.openai.com'
+);
+
 SELECT aidb.create_model(
-    name        => 'my_openai_embedder',
-    provider    => 'openai_embeddings',
-    config      => aidb.embeddings_config(model => 'text-embedding-3-small'),
-    credentials => '{"api_key": "sk-..."}'::JSONB
+    name       => 'my_openai_embedder',
+    provider   => 'openai_embeddings',
+    config     => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credential => 'openai_prod'
 );
 ```
 
-- `config` holds the model identifier and provider settings. Build it with the provider's config helper from the table above.
-- `credentials` holds the API key or basic-auth pair. `config` must not contain `api_key` or `basic_auth`; `aidb.create_model()` rejects it. To keep the secret out of the database, pass `credentials_env` or `credentials_k8s_secret` instead. See [`aidb.create_model`](../reference/models#aidbcreate_model).
+- `config` holds the model identifier and provider settings. Build it with the provider's config helper from the table above. `config` must not contain `api_key` or `basic_auth`; `aidb.create_model()` rejects it.
+- `credential` names the credential that holds the API key. One credential can serve many models. See [Model credentials](credentials).
+
+The examples on this page pass the API key directly with `credentials`. This creates a private credential named `<schema>.<model>` for the model. See [Secrets on `aidb.create_model()`](credentials#secrets-on-aidbcreate_model).
 
 ### Validation at creation
 
@@ -382,7 +390,7 @@ Text generation with Google's Gemini models. Configure it with `aidb.gemini_conf
 
 Models: any Gemini model, for example, `gemini-2.0-flash`.
 
-`api_key` is the helper's first parameter and has no default. Pass `NULL` for it and supply the key through `credentials`.
+`api_key` is the helper's first parameter and has no default. Pass `NULL` for it and supply the key through `credential` or `credentials`. AIDB sends the key in the `x-goog-api-key` header.
 
 ```sql
 SELECT aidb.create_model(
@@ -400,7 +408,7 @@ SELECT aidb.create_model(
 
 | Parameter                 | Type    | Default  | Description                                                    |
 |---------------------------|---------|----------|----------------------------------------------------------------|
-| `api_key`                 | TEXT    | Required | Pass `NULL`. Supply the key through `credentials` instead.     |
+| `api_key`                 | TEXT    | Required | Pass `NULL`. Supply the key through `credential` or `credentials` instead. |
 | `model`                   | TEXT    | NULL     | Gemini model identifier.                                       |
 | `url`                     | TEXT    | NULL     | API endpoint URL override.                                     |
 | `max_concurrent_requests` | INTEGER | NULL     | Maximum concurrent requests to the API.                        |
