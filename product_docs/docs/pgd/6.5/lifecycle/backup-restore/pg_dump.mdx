@@ -1,0 +1,165 @@
+---
+title: Backing up and restoring with pg_dump
+navTitle: Using pg_dump
+description: Back up and restore a PGD database with pg_dump and pg_restore, and monitor the restore.
+---
+
+Back up a database with [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html) and [pg_restore](https://www.postgresql.org/docs/current/app-pgrestore.html), which are included with Postgres, and restore it to a new cluster, for example to create QA or development instances or to move data into or out of EDB Postgres Distributed (PGD). Install Postgres and PGD on every host in the new cluster, restore the backup on a single node, then add the other nodes with `pgd node setup`, which copies the data from the restored node.
+
+## Backing up the database
+
+Back up the database in separate pre-data, data, and post-data sections to reduce the risk of global lock timeouts. Run the commands in a terminal on the server hosting the node, or on any other machine that has pg_dump installed and can connect to it. Take backups ahead of time, on a schedule you choose, because pg_dump reads from a running node and can't back up a node that's already lost. The commands write the backup files to the machine you run them from, so keep them wherever suits your needs. Anything written after the last backup is lost.
+
+```console
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=pre-data -Fc -f pgd-pre-data.dump
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=data -Fc -f pgd-data.dump
+pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=post-data -Fc -f pgd-post-data.dump
+```
+
+Where:
+
+- `$PG_HOST`: The host name of the node you're backing up.
+- `$PG_PORT`: The port of the node you're backing up.
+- `$PG_USER`: The user to connect as.
+- `$PGD_DB`: The name of the PGD database to back up.
+- `--exclude-schema` and `--exclude-extension`: Exclude the `bdr` schema and extension from the backup.
+- `--section`: The section to back up, either `pre-data`, `data`, or `post-data`.
+- `-Fc`: Write the backup in the custom format.
+- `-f`: The file to write the backup to.
+- `-v`: Run in verbose mode.
+
+!!! Note
+    A backup from one node captures all your data if that node subscribes to every replication set and has no unreplicated local data. Nodes can also lag behind each other, so the backup reflects the state of the node you back up.
+
+!!! Note
+    Take the backup when there's little write activity and replication has caught up, so the node you back up has all the changes. For an alternative approach, see [Performing physical backups](/pgd/current/lifecycle/backup-restore/physical/).
+
+!!! Note
+    If your tables use CRDT columns and you run pg_dump with `bdr.crdt_raw_value = on`, the backup holds the full state of each CRDT. You can restore it only with `bdr.crdt_raw_value = on`. See [Using CRDTs](/pgd/current/conflict-management/crdt/01_crdt_usage/#configuration-options) for details.
+
+## Preparing the destination cluster
+
+Prepare the destination cluster before you restore the backup.
+
+1.  Install Postgres and PGD on every host in the new cluster, using the same PGD version on each. See [Installing and configuring EDB Postgres Distributed](/pgd/current/deploying/) for installation options.
+
+2.  Create the first node as a single-node cluster by running `pgd node setup` on its host. See [Configuring the first node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-the-first-node) for an example.
+
+3.  Temporarily set the following parameters in `postgresql.conf` on every node in the cluster, using the same values on each. The parameters reduce the frequency of checkpoints, increase the memory for building indexes, and allow large transactions to go through and be applied in parallel.
+
+    - `max_wal_size = 100GB` increases the default of `1GB` to a large value that's still a fraction of your disk space, since the non-WAL data must also fit. The larger value decreases the frequency of checkpoints.
+    - `maintenance_work_mem = 1GB` increases the memory for building indexes from the default of `64MB`. For example, use `1GB` on a server with 128GB of total RAM.
+    - `wal_receiver_timeout = 1h` and `wal_sender_timeout = 1h` increase the timeouts from 1 minute to allow large transactions through.
+    - `bdr.writers_per_subscription = 5` increases the number of writers from the default of `2` to make better use of parallel apply.
+    - `bdr.raft_global_election_timeout = 20s` and `bdr.raft_group_election_timeout = 10s` increase the Raft-related election timeouts from the defaults of `6s` and `3s`.
+    - `bdr.writer_input_queue_size = 32MB` increases the size of the shared memory queue the receiver uses to send data to the writer process from the default of `1MB`.
+
+    Additionally, confirm the following:
+
+    - The default `bdr.streaming_mode = 'auto'` isn't overridden, so transactions are streamed.
+    - Node group-level settings, such as `num_writers`, don't override any session or `postgresql.conf` settings listed above.
+
+## Restoring the backup
+
+Restore the backup to the first node of the new cluster. Run the following steps in a terminal on the server hosting that node, or on any other machine that can connect to it. Copy the three backup files, `pgd-pre-data.dump`, `pgd-data.dump`, and `pgd-post-data.dump`, to that machine first, and make sure pg_restore is installed there. Set `PG_PORT` to the node's Postgres port, not the connection manager port.
+
+1.  Restore the pre-data section:
+
+    ```console
+    PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data pgd-pre-data.dump
+    ```
+
+2.  Restore the data section:
+
+    ```console
+    PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data pgd-data.dump
+    ```
+
+3.  Wait for all replication slots to pass the current write position using [`bdr.wait_slot_confirm_lsn`](/pgd/current/reference/tables-views-functions/functions#bdrwait_slot_confirm_lsn):
+
+    ```console
+    psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+    ```
+
+4.  Restore the post-data section:
+
+    ```console
+    PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data pgd-post-data.dump
+    ```
+
+5.  Wait again for all replication slots to pass the current write position:
+
+    ```console
+    psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
+    ```
+
+Where:
+
+- `$PG_HOST`, `$PG_PORT`, `$PG_USER`, and `$PGD_DB`: The host, port, user, and database of the node you're restoring to.
+- `PGOPTIONS="-cbdr.commit_scope=local"`: Sets the `bdr.commit_scope` parameter to `local` for the restore session.
+- `--section`: The section to restore, either `pre-data`, `data`, or `post-data`.
+- `pgd-pre-data.dump`, `pgd-data.dump`, and `pgd-post-data.dump`: The backup file for each section.
+
+!!! Note
+    The user you connect as needs `bdr_application` privileges to run `bdr.wait_slot_confirm_lsn`.
+
+!!! Note
+    If you get global lock timeouts with pg_restore, add `-cbdr.ddl_locking=off` to `PGOPTIONS`.
+
+!!! Note
+    If you run pg_restore with `-j`/`--jobs`, increase `max_worker_processes` and `max_parallel_maintenance_workers` by the same amount.
+
+## Monitoring a restore
+
+Monitor the restore by running the following queries in a separate psql session on the node you're restoring to, using the same connection details as the restore (`$PG_HOST`, `$PG_PORT`, `$PG_USER`, and `$PGD_DB`) while pg_restore is running.
+
+Check the database size on the restoring node. The size grows as the restore makes progress and approaches the size of the original node. However, due to bloat, a restored database is always a little smaller than the original.
+
+```sql
+SELECT pg_size_pretty(pg_database_size('bdrdb'));
+```
+
+Check the rate of replication. However, the progress info can be misleading for big transactions. Lag and progress appear to stair-step.
+
+```sql
+SELECT * FROM bdr.node_replication_rates;
+```
+
+Check what pg_restore is currently doing, including whether it's blocked and what it's waiting on. The status changes continuously while the restore runs.
+
+```sql
+SELECT
+  application_name,
+  state,
+  wait_event_type,
+  wait_event,
+  now() - state_change AS state_change_ago
+FROM
+  pg_stat_activity
+WHERE
+  application_name LIKE '%pg_restore%';
+```
+
+Check the following views to see issues with replication slots, accumulated lag, and broken replication, and statistics for each subscription.
+
+- [pg_catalog.pg_stat_replication_slots](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-REPLICATION-SLOTS-VIEW)
+- [pg_catalog.pg_replication_slots](https://www.postgresql.org/docs/current/view-pg-replication-slots.html)
+- [bdr.node_slots](/pgd/current/reference/tables-views-functions/catalogs-visible#bdrnode_slots)
+- [bdr.stat_subscription](/pgd/current/reference/tables-views-functions/catalogs-visible#bdrstat_subscription), to check on parallel apply or transaction stream
+
+## Adding the remaining nodes
+
+Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored to. The command does a physical join that uses `bdr_init_physical` under the hood and copies the data from that node. See [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
+
+## Resetting sequence kinds
+
+Reset the sequence kinds after the restore, because pg_dump dumps both local and global sequences as if they were local sequences. This behavior is intentional, to allow a PGD schema to be dumped and ported to other Postgres databases. Sequence-kind metadata is lost at the time of dump, so a restore resets all sequence kinds to the value of `bdr.default_sequence_kind` at the time of restore.
+
+To reset the precise sequence kind for each sequence, create a post-restore script with a SQL query like this:
+
+```sql
+SELECT 'SELECT bdr.alter_sequence_set_kind('''||
+		nspname||'.'||relname||''','''||seqkind||''');'
+FROM bdr.sequences
+WHERE seqkind != 'local';
+```
