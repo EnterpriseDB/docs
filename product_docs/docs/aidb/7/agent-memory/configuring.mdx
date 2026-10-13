@@ -42,11 +42,12 @@ Replace `<server-role-name>` with a role name of your choice, such as `edb_agent
 
 ## Running the Agent Memory Server
 
-Run the Agent Memory Server as a Docker container. EDB provides the container image in the EDB container registry. The server connects to the database that contains the storage schema, calls your LLM and embedding models to create memories, and stores them in your Postgres database.
+Run the Agent Memory Server as a Docker container. EDB provides the container image in the EDB container registry. If you haven't pulled it yet, see [Installing the Agent Memory Server](install#installing-the-agent-memory-server). The server connects to the database that contains the storage schema, calls your LLM and embedding models to create memories, and stores them in your Postgres database.
 
-!!!note
+Run the commands in this section in a terminal on the host where Docker runs. This can be the Postgres host or a separate host.
+
 Replace every placeholder password, API key, hostname, and model name before you run the container. Store secrets in your platform's secret manager, not in source control.
-!!!
+
 
 1. Set the connection details for the storage database:
 
@@ -58,25 +59,19 @@ Replace every placeholder password, API key, hostname, and model name before you
     export AGENT_MEMORY_DB_PASSWORD="<secure-password>"
     ```
 
-1. Optionally, enable TLS. TLS is recommended to secure data transfer between Postgres and the Agent Memory Server. Provide the server with a certificate file and a private key file, and mount them into the container as read-only files in a dedicated path, such as `/run/secrets`. The container process needs read-only access to both files. Set these environment variables:
+    Set `AGENT_MEMORY_DB_HOST` to the address of your Postgres instance, as the container sees it. The value `host.docker.internal` works when Postgres runs on the Docker host. If Postgres runs on another host, use that host's name or address instead.
 
-    - `AGENT_MEMORY_TLS_CERT_FILE` - the path to the TLS certificate file inside the container.
-    - `AGENT_MEMORY_TLS_KEY_FILE` - the path to the TLS private key file inside the container.
+1. Optionally, enable TLS. TLS is recommended to secure data transfer between Postgres and the Agent Memory Server. Provide the server with a certificate file and a private key file, and mount them into the container as read-only files in a dedicated path, such as `/run/secrets`. The container process needs read-only access to both files. Set these environment variables:
 
     ```shell
     export AGENT_MEMORY_TLS_CERT_FILE="/run/secrets/open-ssl-memory-server.crt"
     export AGENT_MEMORY_TLS_KEY_FILE="/run/secrets/open-ssl-memory-server.key"
     ```
+    
+    Where,
+    - `AGENT_MEMORY_TLS_CERT_FILE` - the path to the TLS certificate file inside the container.
+    - `AGENT_MEMORY_TLS_KEY_FILE` - the path to the TLS private key file inside the container.
 
-1. Log in to the EDB container registry and pull the Agent Memory Server image. Use your EDB subscription token to authenticate:
-
-    ```shell
-    export EDB_SUBSCRIPTION_TOKEN=<your-token>
-    echo "$EDB_SUBSCRIPTION_TOKEN" | docker login docker.enterprisedb.com \
-      --username <username> \
-      --password-stdin
-    docker pull docker.enterprisedb.com/edb-agentmemory-server:latest
-    ```
 
 1. Start the container:
 
@@ -91,6 +86,8 @@ Replace every placeholder password, API key, hostname, and model name before you
       -e AGENT_MEMORY_DB_PASSWORD \
       docker.enterprisedb.com/edb-agentmemory-server:latest
     ```
+
+    The `-p 127.0.0.1:18889:8000` option makes the server reachable only from the Docker host. If Postgres runs on another host, publish the port on an address that Postgres can reach instead.
 
     To run the container with TLS enabled, mount the certificate and key, and pass the TLS variables:
 
@@ -113,8 +110,10 @@ Replace every placeholder password, API key, hostname, and model name before you
 1. Verify that the server is ready:
 
     ```shell
-    curl -f http://127.0.0.1:18889/ready
+    curl -f http://<agent-memory-server-host>:18889/ready
     ```
+
+    Replace `<agent-memory-server-host>` with the address of the Docker host. If you run the command on the Docker host itself, use `127.0.0.1`.
 
     The readiness check confirms that the server can reach the database and the configured storage, LLM, and encoder, and that the model configuration and schema are valid. The command must return a successful response before you continue.
 
@@ -124,6 +123,8 @@ To debug or observe connections and memory operations, read the container logs:
 docker logs edb-agentmemory-server
 ```
 
+The remaining steps run on your Postgres instance.
+
 ## Registering AIDB models
 
 Register the models before you initialize a namespace. Each namespace needs two:
@@ -131,7 +132,9 @@ Register the models before you initialize a namespace. Each namespace needs two:
 - An embedding model that vectorizes memory content and search queries. Use an embeddings provider.
 - An LLM that extracts durable memories from conversation turns. Use a responses provider.
 
-The Agent Memory Server gets its provider credentials from the AIDB-registered models, so you don't pass provider keys to the container. The LLM must use the OpenAI Responses API format (the `openai_responses` provider). For more about registering models, see [Integrating models](../integrating-models).
+Run the SQL statements in this and following sections in `psql`, or any SQL client, connected to your Postgres database.
+
+When AIDB processes an event, it passes the registered model settings to the Agent Memory Server, so you don't configure provider keys on the server. The LLM must use the OpenAI Responses API format (the `openai_responses` provider). For more about registering models, see [Integrating models](../integrating-models).
 
 This example registers OpenAI models:
 
@@ -194,30 +197,30 @@ SELECT aidb_memory.init(
 );
 ```
 
-Replace the values in angle brackets with your own. For example, use the names of the models you registered, the schema you created, and the URL of your Agent Memory Server, such as `http://127.0.0.1:18889`. Use the other values as shown.
+Replace the values in angle brackets with your own. For example, use the names of the models you registered, the schema you created, and the URL of your Agent Memory Server, such as `http://<agent-memory-server-host>:18889`. Use the other values as shown.
 
-| Setting                                      | What it configures                                                                                                                            |
-|----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `model_spec.encoder.aidb_model`              | The registered embedding model.                                                                                                               |
-| `model_spec.encoder.dimensions`              | The embedding size. It must match the selected model, or `add` and `search` fail at runtime.                                                  |
-| `model_spec.llm.aidb_model`                  | The registered LLM that agent memory uses to extract memories from conversation turns.                                                        |
-| `model_spec.llm.config.temperature`          | Controls how deterministic the extraction is. Use a value from `0.1` to `1`. Lower values give more consistent results.                       |
-| `agentmemory_spec.provider`                  | The memory runtime. Use `agent_memory_container` for the Agent Memory Server.                                                                 |
-| `agentmemory_spec.config.base_url`           | The URL of the Agent Memory Server.                                                                                                           |
-| `agentmemory_spec.config.request_timeout_ms` | How long a request to the server can run before it times out.                                                                                 |
-| `storage_spec.schema`                        | The storage schema. It must match the schema granted to the server's role. See [Preparing the storage schema](#preparing-the-storage-schema). |
-| `storage_spec.tables`                        | The names of the memories and entities tables. See [Preparing the storage schema](#preparing-the-storage-schema).                             |
+| Setting                                      | What it configures                                                                                                                            | Example                    |
+|----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
+| `model_spec.encoder.aidb_model`              | The registered embedding model.                                                                                                               | `my_openai_embedding`      |
+| `model_spec.encoder.dimensions`              | The embedding size. It must match the selected model, or `add` and `search` fail at runtime.                                                  | `1536`                     |
+| `model_spec.llm.aidb_model`                  | The registered LLM that agent memory uses to extract memories from conversation turns.                                                        | `my_openai_llm`            |
+| `model_spec.llm.config.temperature`          | Controls how deterministic the extraction is. Use a value from `0.1` to `1`. Lower values give more consistent results.                       | `0.1`                      |
+| `agentmemory_spec.provider`                  | The memory runtime. Use `agent_memory_container` for the Agent Memory Server.                                                                 | `agent_memory_container`   |
+| `agentmemory_spec.config.base_url`           | The URL of the Agent Memory Server, including the scheme and port. Use the port that you published in `docker run`.                           | `http://192.0.2.10:18889`  |
+| `agentmemory_spec.config.request_timeout_ms` | How long a request to the server can run before it times out.                                                                                 | `30000`                    |
+| `storage_spec.schema`                        | The storage schema. It must match the schema granted to the server's role. See [Preparing the storage schema](#preparing-the-storage-schema). | `agent_memory_helpdesk_schema` |
+| `storage_spec.tables`                        | The names of the memories and entities tables. See [Preparing the storage schema](#preparing-the-storage-schema).                             | `{"memories": "memories", "entities": "memories_entities"}` |
 
 Calling `aidb_memory.init` again with an existing namespace name returns that namespace without changing it. You can't currently update or delete a namespace.
 
 Keep namespace names environment-specific, and use the same namespace for related agent workflows. Before you deploy, confirm that:
 
-- The model names exist in AIDB.
+- The model names exist in AIDB. See [`aidb.models`](../reference/models#aidbmodels).
 - The credentials are stored securely.
 - The embedding dimensions match the selected model.
 - The Agent Memory Server can reach the model provider.
 
-To list namespaces, query the `aidb_memory.namespaces` view. There is no separate list function.
+To list namespaces, query the `aidb_memory.namespaces` view.
 
 ## Configuring advanced settings
 
@@ -225,7 +228,7 @@ Set the `aidb.agent_memory_*` parameters in `postgresql.conf`, for a session wit
 
 ### `aidb.agent_memory_enable_worker`
 
-Control whether the agent memory worker runs for this database. The worker is off by default. Set the value to `on` to enable it, or `off` to disable it. The value is case-sensitive.
+Control whether the agent memory worker runs for this database. The worker is a background process that takes the events you add with `aidb_memory.add`, sends them to the Agent Memory Server, and stores the memories that the server builds. It retries if a call fails. Enable the worker to turn added conversations into searchable memories. If the worker is off, added events wait in the queue and no memories are created, and the `memory_add` native tool returns an error. The worker is off by default. Set the value to `on` to enable it, or `off` to disable it. The value is case-sensitive.
 
 ```sql
 ALTER DATABASE your_database
@@ -263,10 +266,10 @@ Confirm that the namespace exists and is active:
 SELECT name, state FROM aidb_memory.namespaces;
 ```
 
-The namespace you initialized must appear with the state `ACTIVE`. Then run the server readiness check again to confirm that the server can still reach the database and the models:
+The namespace you initialized must appear with the state `ACTIVE`. Then, on the Docker host, run the server readiness check again to confirm that the server can still reach the database and the models:
 
 ```shell
-curl -f http://127.0.0.1:18889/ready
+curl -f http://<agent-memory-server-host>:18889/ready
 ```
 
 ## Next steps

@@ -16,21 +16,25 @@ To read a conversation back in order, see [Using session memory](session-memory)
 
 ## Choosing identifiers
 
-Choose identifiers for the namespace, actor, agent, and session that you pass to every call, because the add, search, list, status, and delete operations use them as filters. Keep each identifier the same for the same user, agent, or conversation over time.
+Every call identifies whose memory it touches with a namespace, an actor, and optionally an agent and a session. You don't register or look up the actor, agent, or session values, because your application defines them as strings. Use the same value for the same user, agent, or conversation every time, because the `aidb_memory.add`, `aidb_memory.search`, `aidb_memory.list_memories`, `aidb_memory.status`, and `aidb_memory.delete` functions use these values as filters. The namespace must already exist. To see the namespaces that an operator created, run:
 
-| Parameter         | Purpose                                              | Recommended practice                                                       |
-|-------------------|------------------------------------------------------|----------------------------------------------------------------------------|
-| `namespace` | Groups a memory configuration and storage backend. | See [Scoping memory with namespaces](namespaces). |
+```sql
+SELECT name FROM aidb_memory.namespaces;
+```
+
+| Parameter         | Purpose                                              | Recommended practice                                                                                                            |
+|-------------------|------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `namespace`       | Groups a memory configuration and storage backend.   | See [Scoping memory with namespaces](namespaces).                                                                               |
 | `actor_id`        | Identifies whose memory is stored or retrieved.      | Use a stable application identifier, not a display name. Always pass it, because filters are the only isolation between actors. |
-| `agent_id`        | Identifies the agent or application component.       | Pass it consistently so that searches and deletions are scoped to the right agent. |
-| `session_id`      | Identifies a conversation, ticket, workflow, or run. | Include it when memory should be scoped to one interaction.                |
-| `idempotency_key` | Deduplicates repeated add attempts.                  | Generate it from the source event ID, message batch ID, or transaction ID. |
+| `agent_id`        | Identifies the agent or application component.       | Pass it consistently so that searches and deletions are scoped to the right agent.                                              |
+| `session_id`      | Identifies a conversation, ticket, workflow, or run. | Include it when memory should be scoped to one interaction.                                                                     |
+| `idempotency_key` | Deduplicates repeated `aidb_memory.add` calls.       | Generate it from the source event ID, message batch ID, or transaction ID.                                                      |
 
 Agent memory enforces isolation between actors only through the filters that you pass, such as `actor_id`. Always pass `actor_id` in your calls to the `aidb_memory` functions, and use `agent_id` and `session_id` to narrow results further. Row-level security managed by Agent Governance is planned for a future release.
 
 ## Adding memories
 
-Use [`aidb_memory.add`](../reference/agent-memory#aidb_memoryadd) when your agent wants agent memory to learn from a conversation or event. The operation is asynchronous. It accepts the event first, and then the Agent Memory Server builds durable memories from the submitted turns in the background.
+Use [`aidb_memory.add`](../reference/agent-memory#aidb_memoryadd) when you want your agent to learn from a conversation or event. The operation is asynchronous. It accepts the event first, and then the Agent Memory Server builds durable memories from the submitted turns in the background.
 
 ```sql
 SELECT aidb_memory.add(
@@ -52,11 +56,11 @@ SELECT aidb_memory.add(
 );
 ```
 
-The function returns an ID for the add operation.
+The function returns the ID of the `aidb_memory.add` operation.
 
 - `turns` is a JSONB array of message objects, one for each message in the conversation. In your application, build it from the messages exchanged between the user and your agent. Each object has a `role`, such as `user` or `assistant`, and the message `content`. Include enough context for the memory builder to extract useful facts.
 - `actor_id` identifies the user, tenant, device, or other subject whose memory is stored.
-- `agent_id` and `session_id` are optional filters. Using them consistently makes later search, list, and delete operations safer.
+- `agent_id` and `session_id` are optional filters. Using them consistently makes later `aidb_memory.search`, `aidb_memory.list_memories`, and `aidb_memory.delete` calls safer.
 - `idempotency_key` helps prevent duplicate ingestion when an application retries the same event.
 
 ## Checking processing status
@@ -74,7 +78,7 @@ FROM aidb_memory.status(
 );
 ```
 
-The result shows the status of the `add` operation. The `id` argument is optional. If you omit it, the query isn't limited to one event, so you can filter by actor, agent, or session instead, and page through the results with `limit` and `offset`.
+The result shows the status of the `aidb_memory.add` operation. The `id` argument is optional. If you omit it, the query isn't limited to one event, so you can filter by actor, agent, or session instead, and page through the results with `limit` and `offset`.
 
 An event moves through these states:
 
@@ -88,7 +92,7 @@ An event moves through these states:
 
 If an event is `FAILED`, the `error_detail` column of the `status` result describes the error.
 
-Memories are searchable only after the event reaches `READY`. If your application needs a memory that it just added, such as in the next step of the same conversation, poll `status` until the state is `READY` before you call `search`. If you don't need the memory immediately, you don't need to check.
+Memories are searchable only after the event reaches `READY`. If your application needs a memory that it just added, such as in the next step of the same conversation, poll `aidb_memory.status` until the state is `READY` before you call `search`. If you don't need the memory immediately, you don't need to check.
 
 To audit events and their states directly, query the [`aidb_memory.events`](../reference/agent-memory#aidb_memoryevents) view.
 
@@ -161,7 +165,7 @@ Deletion is intended for administrative correction, data retention, privacy, and
 ## Production recommendations
 
 - Wrap application calls in transactions only when your application state requires it. Don't hold long-running transactions open while you poll status.
-- To trace memory events, query the [`aidb_memory.events`](../reference/agent-memory#aidb_memoryevents) view. It records the namespace, actor, agent, session, idempotency key, and state of each `add` operation.
+- To trace memory events, query the [`aidb_memory.events`](../reference/agent-memory#aidb_memoryevents) view. It records the namespace, actor, agent, session, idempotency key, and state of each `aidb_memory.add` call.
 - Use least-privilege database roles for application callers, separate from the roles that manage storage schemas.
 - Validate JSONB payloads before you send them to the agent memory functions.
 - Use parameterized SQL from application code instead of string concatenation for JSON, identifiers, and filters.
