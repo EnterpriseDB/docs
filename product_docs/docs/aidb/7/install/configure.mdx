@@ -3,9 +3,9 @@ title: Configuring AIDB
 navTitle: Configuring
 ---
 
-To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, manage user access, and verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
+To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, and manage user access. Then verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
 
-## Configure shared_preload_libraries
+## Configuring shared_preload_libraries
 
 1. In the `postgresql.conf` file, add `aidb` to the `shared_preload_libraries` parameter:
 
@@ -19,7 +19,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
 
 1. Restart Postgres.
 
-## Create the extensions
+## Creating the extensions
 
 1. Create the AIDB extension in your database:
 
@@ -29,7 +29,7 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
 
    The `CASCADE` option automatically installs the required `vector` extension if it isn't already present.
 
-   !!!Note PGD users
+   !!!note Registering AIDB with PGD
    If you're running EDB Postgres Distributed (PGD), run the following after creating the extension to register AIDB catalog tables in the replication set:
 
    ```sql
@@ -45,15 +45,15 @@ To use AIDB, add it to `shared_preload_libraries`, create the extensions in the 
    
    For more information, see [PGFS documentation](/pg_extensions/pgfs/).
 
-## Manage user access with the aidb_users role
+## Managing user access with the aidb_users role
 
 When you create the AIDB extension, Postgres automatically creates a role named `aidb_users`. Grant a user membership in this role to give it access to AIDB's SQL functions. This role isn't removed if you later drop the extension.
 
 `aidb_users` is designed to simplify access management for AIDB features:
 
-- **Purpose:** Granting a user the `aidb_users` role gives it access to all AIDB functions, so it can use the extension's capabilities.
-- **Security:** The `aidb_users` role **doesn't** grant access to AIDB's internal tables, so only the extension's public API is exposed to users who hold it.
-- **Background workers:** When background workers are used, they execute as the user who defined them, or as a role specified by the user, provided that user has access to that role.
+- Purpose: Granting a user the `aidb_users` role gives it access to all AIDB functions, so it can use the extension's capabilities.
+- Security: The `aidb_users` role doesn't grant access to AIDB's internal tables, so only the extension's public API is exposed to users who hold it.
+- Background workers: A background worker executes as the role that defined it, or as a different role you specify, provided that role has access to it.
 
 To let a user use AIDB functions, grant them the `aidb_users` role:
 
@@ -75,7 +75,7 @@ Then add `alice` to the `aidb_users` role:
 GRANT aidb_users TO alice;
 ```
 
-`alice` now inherits whatever privileges `aidb_users` has, for example `EXECUTE` on routines in the `aidb` schema.
+`alice` now inherits whatever privileges `aidb_users` has — for example, `EXECUTE` on routines in the `aidb` schema.
 
 Membership in `aidb_users` doesn't grant access to your own data. Give `alice` (not `aidb_users`) the privileges it needs on the tables AIDB will read or write. This example grants access to three arbitrary tables that would ordinarily be source tables used in a pipeline:
 
@@ -97,7 +97,21 @@ GRANT CREATE ON SCHEMA public TO alice;
 If you access AIDB through Hybrid Manager's Pipeline Designer, pipeline operations run under a separate role, `visual_pipeline_user`, which must also be granted membership in `aidb_users`. See [VPU and permissions](/edb-postgres-ai/latest/hybrid-manager/ai-factory/pipeline-designer/vpu-and-permissions#configuring-vpu-permissions) for that setup.
 !!!
 
-## Proxy settings
+## Managing audit access with the aidb_governance role
+
+When you create the AIDB extension, Postgres also creates a role named `aidb_governance`, separate from `aidb_users`. The role exists to give an auditor or monitoring tool read access to the trace, log, and metric data AIDB records for [observability](../reference/observability), without also granting that auditor or tool the ability to use AIDB's functions.
+
+- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function. It can also read the `id`, `name`, `purpose`, and `created_at` columns of `aidb.agents`, and it's the only role that can create, change, and delete agent purposes. See [Permissions](../agents/creating-agents#permissions).
+- Security: `aidb_governance` is the only non-superuser role with `SELECT` access to the `aidb_otel.*` tables.
+- Separation from aidb_users: `aidb_users` can write into `aidb_otel.*` indirectly (every AIDB function call that's traced ends up in those tables), but has no `SELECT` on the tables themselves. A role only needs `aidb_governance` in addition to `aidb_users` if it also needs to query or export that data.
+
+To let a user or service account read AIDB's observability data, grant it the `aidb_governance` role:
+
+```sql
+GRANT aidb_governance TO your_auditor_role;
+```
+
+## Configuring proxy settings
 
 If your environment routes outbound HTTP traffic through a proxy, set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables in the Postgres environment file. On Ubuntu with community Postgres, this file is at `/etc/postgresql/<version>/main/environment`:
 
@@ -112,15 +126,15 @@ Then restart Postgres for the changes to take effect:
 sudo systemctl restart postgresql@16-main
 ```
 
-Replace `<your-proxy-settings>` with your proxy address, and `16` with your Postgres version. Consult the documentation for your Postgres distribution for the exact location of the environment file.
+Replace `<your-proxy-settings>` with your proxy address, and `16` with your Postgres version. See your Postgres distribution's documentation for the exact location of the environment file.
 
 !!!note
 AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and llama.cpp) run fully offline once their model files are available locally, but any pipeline step or agent tool that calls out to a remote model provider still needs outbound network access to that provider.
 !!!
 
-## Configuration parameters
+## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters (GUCs) in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually.
+AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually. The sections below cover threading limits, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -209,7 +223,7 @@ Applies only to `llamacpp_generate` and `llamacpp_embeddings` models — it has 
 The following parameter restricts outbound HTTP traffic from AIDB — both calls to model provider APIs and model file downloads from HuggingFace. When unset, no restriction is applied and AIDB can reach any host.
 
 | Parameter              | Type   | Default | Description                                                                                                                                                                                          |
-|------------------------|--------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|------------------------|--------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `aidb.egress_allowlist`| string | unset   | Comma-separated list of hosts and/or CIDR ranges that AIDB is allowed to reach. When set, any outbound request to a destination not on the list is rejected before the connection is made. `SUSET`. |
 | `edb.egress_allowlist` | string | unset   | Shared fallback allowlist used by all EDB extensions when the per-extension `aidb.egress_allowlist` is not set. Useful when AIDB and other EDB extensions (such as PGFS) share the same network policy. `SUSET`. |
 
@@ -257,7 +271,83 @@ If your AIDB pipelines read from external storage, both allowlists are relevant:
 
 Combined with a caller-controlled provider or MCP server URL, an unrestricted variable name would let a malicious configuration read out unrelated secrets that happen to live in the Postgres process's environment — this parameter closes that off by default while staying overridable per deployment. See [Credentials from environment variables](../reference/models#credentials-from-environment-variables) for `credentials_env`, and [MCP tools](../tools/mcp-tools#authentication) for `headers_env`.
 
-## Validate the installation
+### Kubernetes Secret paths
+
+`aidb.create_model(credentials_k8s_secret => ...)` and `aidb.import_mcp_tools(headers_k8s_secret => ...)` read a credential from a file path on the Postgres host at use time, typically a Kubernetes Secret mounted as a volume. The following parameter restricts which paths may be read:
+
+| Parameter                             | Type   | Default                 | Description                                                                                                                                                                                                                       |
+|---------------------------------------|--------|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.k8s_secret_allowed_path_prefix` | string | `/var/run/secrets/aidb` | Required path prefix for files read via `credentials_k8s_secret`/`headers_k8s_secret`. Symbolic links are resolved before the check. Set to an empty string to disable the restriction. Only a superuser may change it. `SUSET`. |
+
+See [Credentials from a Kubernetes Secret](../reference/models#credentials-from-a-kubernetes-secret).
+
+### Semantic knowledge base audit log
+
+| Parameter                    | Type     | Default   | Description                                                                                                                                                                                                   |
+|------------------------------|----------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.semkb_audit_retention` | interval | `30 days` | How long semantic KB audit records are kept. Used by `aidb.semkb_audit_prune()` when it's called without `older_than`. A zero interval makes the prune call delete nothing. Nothing deletes records automatically. Only a superuser may change it. `SUSET`. |
+
+See [Auditing changes](../semantic-knowledge-bases/curation#auditing-changes).
+
+### OpenTelemetry tracing
+
+AIDB emits OpenTelemetry (OTel) traces, logs, and metrics for its own function calls and background workers. The following parameters control where that data goes, what it contains, and how long it's kept. See [Observability](../reference/observability) for the schema, functions, and attributes these parameters govern.
+
+#### Client selection
+
+| Parameter                        | Type   | Default | Description                                                                                                                                                                                                                                                                     |
+|-----------------------------------|--------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.otel_client`                | enum   | `noop`  | Selects which exporter backs AIDB's internal OpenTelemetry instrumentation. See below for the available values. `SUSET`, read once per backend at first use.                                                                                                                  |
+| `aidb.otel_client_storage_format` | enum   | `json`  | Which payload column(s) the `database` client populates: `json`, `binary`, or `both`. See [Observability — Storage format](../reference/observability#configuring-storage-format). `SUSET`.                                                                                              |
+
+Values for `aidb.otel_client`:
+
+| Value      | Behavior                                                                                                                     |
+|------------|-------------------------------------------------------------------------------------------------------------------------------|
+| `noop`     | Discards every export without serializing it. The default.                                                                    |
+| `database` | Writes into the `aidb_otel.{traces,logs,metrics}` tables. See [Observability](../reference/observability).                    |
+| `stdout`   | Prints raw JSON to the backend process's own stdout, bypassing Postgres's logging entirely.                                   |
+| `log`      | Writes through Postgres's own logging system, at `LOG` level, subject to `log_min_messages` and `log_destination`.            |
+| `grpc`     | Pushes OTLP/gRPC directly to an external collector. Not enabled in all builds — see your distribution's feature notes.        |
+
+A change to `aidb.otel_client` takes effect for new backends; a backend that already made its first instrumented call keeps using whichever client it started with.
+
+#### SQL query tracing
+
+| Parameter                                  | Type    | Default | Description                                                                                                                                                                    |
+|---------------------------------------------|---------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.otel_capture_query_parameters`        | boolean | `false` | Also record each captured SQL statement's bound parameter values in the `db.query.text` trace attribute.                                                                          |
+| `aidb.otel_capture_own_telemetry_params`    | boolean | `false` | When the above is on, also show AIDB's own writes into `aidb_otel.*` with real parameter values instead of `(suppressed)`.                                                        |
+
+Both are off by default: parameter values are live application data, not a query's own hand-written literals.
+
+#### Exporter background worker
+
+Forwards rows from `aidb_otel.{traces,logs,metrics}` to an external OTLP/HTTP collector. One worker runs per database, only when enabled and an endpoint is set.
+
+| Parameter                          | Type    | Default | Range      | Description                                                                                                                                       |
+|-------------------------------------|---------|---------|------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.otel_exporter_enabled`        | boolean | `false` | —          | Enables the exporter worker for a database. `SUSET`.                                                                                                  |
+| `aidb.otel_exporter_endpoint`       | string  | unset   | —          | Base URL of the OTLP/HTTP collector, for example `http://otel-collector:4318`. `/v1/metrics`, `/v1/logs`, or `/v1/traces` is appended per signal. Empty means the worker never starts. Outbound requests go through AIDB's [egress allowlist](#network-egress). `SUSET`.  |
+| `aidb.otel_exporter_timeout_ms`     | integer | `5000`  | 1–600000   | Per-attempt HTTP timeout. `SUSET`.                                                                                                                     |
+| `aidb.otel_exporter_max_retries`    | integer | `5`     | 1–100      | Maximum export attempts for a row before it's marked permanently failed. `SUSET`.                                                                     |
+| `aidb.otel_exporter_batch_size`     | integer | `100`   | 1–1000000  | Maximum rows read per table per export tick. `SUSET`.                                                                                                 |
+
+All five support a per-database override with `ALTER DATABASE <db> SET`, applied the next time the dispatcher polls.
+
+#### Cleaner background worker
+
+Deletes rows older than a retention window from `aidb_otel.{traces,logs,metrics}`. One worker runs per database.
+
+| Parameter                          | Type    | Default | Range    | Description                                                                                                     |
+|-------------------------------------|---------|---------|----------|-----------------------------------------------------------------------------------------------------------------|
+| `aidb.otel_cleaner_enabled`         | boolean | `false` | —        | Enables the cleaner worker for a database. `SUSET`.                                                              |
+| `aidb.otel_cleaner_retention_days`  | integer | `365`   | 0–3650   | Rows older than this are deleted. `0` disables cleanup entirely. `SUSET`.                                        |
+| `aidb.otel_cleaner_batch_size`      | integer | `5000`  | 1–1000000| Maximum rows deleted per table in a single `DELETE`. `SUSET`.                                                    |
+
+All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#triggering-retention-cleanup).
+
+## Validating the installation
 
 Confirm that the extensions are installed by running `\dx` in psql and looking for `aidb`, `vector`, `pgfs` (if installed), in the output:
 

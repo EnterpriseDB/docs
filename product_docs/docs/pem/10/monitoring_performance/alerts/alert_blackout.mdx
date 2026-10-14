@@ -210,6 +210,70 @@ ORDER BY actual_end_time DESC;
 
 You can also retrieve history via the REST API by appending `?include_history=true` to the list endpoint. Archived records are returned alongside active records and include an `archived: true` field to distinguish them.
 
+## Blackout changes when upgrading from PEM 10.4 or earlier
+
+Before PEM 10.5.0, the `alert_blackout` column was the value PEM read to decide whether to suppress alerts for a server or agent. From 10.5.0 onward, `pem.blackout` is the source of truth, and the **Process alert blackouts** system job maintains `alert_blackout` from those records. Upgrading from a pre-10.5.0 server requires attention to two things: existing blackouts, and agent compatibility. A direct 10.5.0-to-10.5.1 upgrade doesn't run this migration again, so this section applies only when you're crossing the 10.5.0 boundary itself.
+
+### Active blackouts become indefinite pem.blackout records
+
+When the migration runs, PEM converts any server or agent that's currently blacked out into a `pem.blackout` record with no automatic end time. If a blackout is active for planned maintenance at the moment you run the upgrade, that blackout stays active after the upgrade until you explicitly end it — it doesn't expire on its own.
+
+Recommended procedure:
+
+1. Before starting the upgrade, note which objects are currently blacked out and need to stay muted through the maintenance window.
+2. Run the upgrade with the maintenance blackout in place, as usual.
+3. Immediately after the upgrade, check for migration-created records:
+
+   ```sql
+   SELECT source, count(*),
+          count(*) FILTER (WHERE end_time IS NULL) AS indefinite
+     FROM pem.blackout
+    WHERE created_by = 'pem_migration'
+    GROUP BY source;
+   ```
+
+4. For any migration-created record that was covering a maintenance window, set its end time to when that window actually ends, rather than leaving it indefinite:
+
+   ```sql
+   UPDATE pem.blackout
+      SET end_time = '<maintenance-end-time>'::timestamptz
+    WHERE created_by = 'pem_migration'
+      AND end_time IS NULL;
+   ```
+
+5. After the maintenance work is complete, confirm no unintended migration-created blackouts remain active:
+
+   ```sql
+   SELECT count(*)
+     FROM pem.blackout
+    WHERE created_by = 'pem_migration'
+      AND end_time IS NULL;
+   ```
+
+   This should return `0`.
+
+!!! Note
+    Don't clear or manage these blackouts by directly updating `pem.agent.alert_blackout` or `pem.server.alert_blackout`. Those columns are a status view, not the source of truth — the **Process alert blackouts** system job re-syncs them from `pem.blackout` on its next run, which undoes a direct flag edit as long as the underlying record is still there. Always end a blackout through the checkbox, the Schedule Alert Blackout dialog, the REST API, or by updating `pem.blackout` directly as shown above.
+
+### Agent compatibility and auto blackout
+
+Upgrade remote PEM agents as part of the same maintenance plan, and don't run `SELECT pem.auto_blackout();` until those agent upgrades are complete and heartbeats are verified current.
+
+The risk is specific: PEM 10.2.0 renamed the `pem.agent.heartbeat_interval` column to `heartbeat_tolerance` (server versions from 10.2.0 on use the new name). A pre-10.2 agent still queries the old column name, so once the server is upgraded, that agent can't complete `pem.do_heartbeat()` — its last heartbeat goes stale, and it becomes a candidate for auto blackout even though it's otherwise healthy. Running `pem.auto_blackout()` before those agents catch up would blacklist them for a compatibility gap, not a real outage, and make it look like the upgrade itself caused the problem.
+
+Once agent upgrades are complete and heartbeats are current, `pem.auto_blackout()` is safe to run and blacks out only objects that have genuinely missed heartbeats for longer than `server_contact_timeout` (48 hours by default):
+
+```sql
+SELECT pem.auto_blackout();
+```
+
+The upgrade isn't complete until all of the following are true:
+
+- The PEM server and all remote agents are on compatible versions.
+- Agent heartbeats are current.
+- No unintended `pem_migration` blackouts remain indefinite.
+- Alerting has been verified on representative agents and servers.
+
 ## Frequently asked questions
 
 - **I unchecked the Alert Blackout checkbox but alerts haven't resumed.**

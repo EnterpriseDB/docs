@@ -1,24 +1,24 @@
 ---
-title: Installing EDB Postgres AI for ClickHouse on Rocky Linux
-navTitle: Rocky Linux
-description: Install EDB Postgres AI for ClickHouse on Rocky Linux 10 using EDB RPM packages.
+title: Installing EDB Postgres AI for ClickHouse on Linux
+navTitle: Linux packages
+description: Install EDB Postgres AI for ClickHouse on Rocky Linux 9, Rocky Linux 10, or Debian 13 using EDB RPM or DEB packages.
 deepToC: true
 ---
 
-EDB distributes ClickHouse as RPM packages for Rocky Linux 10 on x86-64. The following packages are available:
+EDB distributes ClickHouse as RPM packages for Rocky Linux 9 and 10 on x86_64, aarch64, and ppc64le, and as DEB packages for Debian 13 (trixie) on amd64, arm64, and ppc64el. The following packages are available on both:
 
 | Package | Description | Install on |
 |---------|-------------|------------|
 | `edb-clickhouse-server` | ClickHouse server engine, systemd services, and default configuration files. Includes `clickhouse-keeper.service`, so server nodes can run Keeper alongside the server without an additional package. | Server nodes |
 | `edb-clickhouse-client` | `clickhouse-client`, `clickhouse-local`, `clickhouse-benchmark`, and related tools. | Server nodes, remote client hosts |
-| `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. `dnf` installs and updates it automatically as a dependency, so you don't need to list it explicitly. | All server and client nodes |
+| `edb-clickhouse-common-static` | Compiled ClickHouse binary, required by the server and client packages. `dnf` and `apt-get` install and update it automatically as a dependency, so you don't need to list it explicitly. | All server and client nodes |
 | `edb-clickhouse-keeper` | Standalone Keeper binary for dedicated coordination nodes. Only needed for multi-node deployments that run Keeper on separate nodes. | Dedicated Keeper nodes only |
 
 For an explanation of node roles and deployment topologies, see [Architecture](../overview/architecture).
 
 ## Prerequisites
 
-- Rocky Linux 10
+- Rocky Linux 9, Rocky Linux 10, or Debian 13 (trixie)
 - `sudo` or root access
 - An EDB subscription token, available from the [EDB customer portal](https://www.enterprisedb.com/accounts/login)
 
@@ -27,6 +27,10 @@ For an explanation of node roles and deployment topologies, see [Architecture](.
 ClickHouse runs as a standalone instance with no cluster coordination required. Suitable for development, testing, and single-tenant analytical workloads.
 
 1. Install the packages:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    export EDB_SUBSCRIPTION_TOKEN=<your-token>
@@ -37,7 +41,24 @@ ClickHouse runs as a standalone instance with no cluster coordination required. 
      edb-clickhouse-client
    ```
 
-   `dnf` pulls in `edb-clickhouse-common-static` automatically as a dependency.
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.deb.sh" | sudo -E bash
+   sudo apt-get install -y \
+     edb-clickhouse-server \
+     edb-clickhouse-client
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
+   The package manager pulls in `edb-clickhouse-common-static` automatically as a dependency.
 
 1. Start the server:
 
@@ -76,7 +97,7 @@ ClickHouse runs as a standalone instance with no cluster coordination required. 
    SELECT version();
    ```
 
-   The output includes the EDB release version, for example `26.3.22.7+1edb1`.
+   The output includes the EDB release version, for example `26.3.37.3+1edb1`.
 
 ## Deploying a cluster
 
@@ -96,15 +117,37 @@ The following steps walk through a five-node deployment: four server nodes acros
 
 1. Set up the EDB repository on every node:
 
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
+
    ```bash
    export EDB_SUBSCRIPTION_TOKEN=<your-token>
    export EDB_SUBSCRIPTION_PLAN=clickhouse
    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
    ```
 
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_SUBSCRIPTION_PLAN=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.deb.sh" | sudo -E bash
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
 1. Install the role-appropriate packages on each node.
 
    On each server node:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    sudo dnf install -y \
@@ -112,19 +155,49 @@ The following steps walk through a five-node deployment: four server nodes acros
      edb-clickhouse-client
    ```
 
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   sudo apt-get install -y \
+     edb-clickhouse-server \
+     edb-clickhouse-client
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
    For co-located deployments, `edb-clickhouse-server` already includes `clickhouse-keeper.service`, so no additional package is needed.
 
    On each dedicated Keeper node:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    sudo dnf install -y edb-clickhouse-keeper
    ```
 
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   sudo apt-get install -y edb-clickhouse-keeper
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
 ### Configuring Keeper
 
 Configure all Keeper nodes before starting any service. Use a minimum of three Keeper nodes to tolerate one node failure.
 
-1. The RPM installs a default `/etc/clickhouse-keeper/keeper_config.xml`. Replace its contents on each Keeper node with the following, setting `<server_id>` to a unique integer (`1`, `2`, `3`) per node:
+1. The package installs a default `/etc/clickhouse-keeper/keeper_config.xml`. Replace its contents on each Keeper node with the following, setting `<server_id>` to a unique integer (`1`, `2`, `3`) per node:
 
    ```xml
    <clickhouse>
@@ -334,13 +407,33 @@ Check [Release notes](../release_notes) for the ClickHouse server version you're
 
 On a cluster, repeat the following steps one node at a time, keeping at least one replica per shard on its current version until the upgrade completes. See the [upstream ClickHouse upgrade guidance](https://clickhouse.com/docs/operations/update) for version-skipping limits and other considerations for large clusters.
 
-1. Refresh the EDB repository metadata, so `dnf` sees the new version instead of what it last cached:
+1. Refresh the EDB repository metadata, so the package manager sees the new version instead of what it last cached:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    sudo dnf makecache
    ```
 
-2. Download and install the updated packages:
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   sudo apt-get update
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
+1. Download and install the updated packages:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    sudo dnf update -y \
@@ -348,15 +441,45 @@ On a cluster, repeat the following steps one node at a time, keeping at least on
      edb-clickhouse-client
    ```
 
-   `dnf` pulls in a matching update to `edb-clickhouse-common-static` automatically, the same way it does at install time.
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   sudo apt-get install -y --only-upgrade \
+     edb-clickhouse-server \
+     edb-clickhouse-client
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
+   The package manager pulls in a matching update to `edb-clickhouse-common-static` automatically, the same way it does at install time.
 
    On a dedicated Keeper node, update the Keeper package instead:
+
+   <TabContainer syncKey="platform">
+
+   <Tab title="Rocky Linux" active>
 
    ```bash
    sudo dnf update -y edb-clickhouse-keeper
    ```
 
-3. Restart the updated service:
+   </Tab>
+
+   <Tab title="Debian">
+
+   ```bash
+   sudo apt-get install -y --only-upgrade edb-clickhouse-keeper
+   ```
+
+   </Tab>
+
+   </TabContainer>
+
+1. Restart the updated service:
 
    ```bash
    sudo systemctl restart clickhouse-server
@@ -368,7 +491,7 @@ On a cluster, repeat the following steps one node at a time, keeping at least on
    sudo systemctl restart clickhouse-keeper
    ```
 
-4. Verify the running version:
+1. Verify the running version:
 
    ```bash
    clickhouse-client --query "SELECT version();"
