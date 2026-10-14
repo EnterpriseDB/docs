@@ -36,19 +36,19 @@ Write leader failover applies to any PGD cluster that uses Connection Manager ro
 
 The Raft leader of each group that has `enable_routing` set to `on` selects the write leader. It keeps the current write leader as long as that node is routable and connected.
 
-The Raft leader treats a node as connected when it has received a message from that node within the group leader timeout. The timeout depends on which group elects the write leader. You choose that group with the `enable_routing` group option, which sets up either local or global routing. See [Configuring routing](/pgd/current/geo-replication-dba/routing) for the settings.
+The Raft leader checks whether it has received a message from each node within the election timeout window, and treats a node it hasn't heard from in that window as failed. The window depends on which group elects the write leader. You choose that group with the `enable_routing` group option, which sets up either local or global routing. See [Configuring routing](/pgd/current/geo-replication-dba/routing) for the settings.
 
 | Routing | Timeout | Default |
 | --- | --- | --- |
 | [Local routing](/pgd/current/geo-replication-dba/routing) (default) | [`bdr.raft_group_election_timeout`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrraft_group_election_timeout) | 3 seconds |
 | [Global routing](/pgd/current/geo-replication-dba/routing) | [`bdr.raft_global_election_timeout`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrraft_global_election_timeout) | 6 seconds |
 
-PGD doesn't distinguish between a crashed node, a stopped Postgres instance, and a network failure. In each case the node stops sending messages.
+A node counts as failed when it stops sending messages, whether the cause is a crashed node, a stopped Postgres instance, or a network failure.
 
 When the write leader fails either check, PGD selects a replacement in five steps.
 
 1. Exclude nodes that can't take writes. A node is excluded when it isn't active, is a witness node, is a subscriber-only node, has [`route_fence`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_option) set, or has [`route_writes`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_option) disabled.
-1. Exclude nodes that the Raft leader can't reach within the group leader timeout.
+1. Exclude nodes the Raft leader hasn't received a message from within the election timeout window.
 1. Exclude nodes that exceed the [`route_writer_max_lag`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces#bdralter_node_group_option) group option, if you set it.
 1. Keep only the nodes with the highest [`route_priority`](/pgd/current/geo-replication-dba/routing#setting-route-priority). When more than one remains, choose the node that has replayed the most changes from the previous write leader. The Raft leader node is the last choice, because failing over to it after a Raft leader loss takes additional time for the election.
 1. Publish the new write leader as a routing record through Raft. Connection Manager on each node then routes new connections to it.
