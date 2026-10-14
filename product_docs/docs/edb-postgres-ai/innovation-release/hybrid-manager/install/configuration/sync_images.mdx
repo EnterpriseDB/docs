@@ -45,14 +45,15 @@ HM resolves artifacts by digest (a SHA-256 hash of the artifact's exact contents
 
 - A `docker pull` followed by `docker push` unpacks and reconstructs the artifact, which can change its digest even though the content looks identical and the copy appears to succeed.
 - Some proxying or caching registry configurations behave the same way: they re-serialize what passes through them rather than storing the exact bytes.
+- [`skopeo`](https://github.com/containers/skopeo/blob/main/install.md), a command-line tool for copying and inspecting container images and OCI artifacts between registries without needing a container daemon, preserves digests by default, but some copy paths can still rewrite a manifest without reporting an error. `--preserve-digests` makes the copy fail instead of silently changing a digest when that would otherwise happen.
+- `skopeo copy` copies only one architecture by default (`--multi-arch system`): the machine's own platform, or whatever you set with `--override-os`/`--override-arch`. `--preserve-digests` doesn't change this behavior. HM's manifests pin to the index digest, not a single platform's, so the index itself has to be present in your registry — use `--multi-arch all` to copy it.
 
 The resulting failure is easy to misdiagnose: the artifact arrives, is correctly named, and scans cleanly, but the specific digest HM asks for no longer exists, and nothing in the copy step reported an error. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for what this failure looks like when it happens.
 
-[`skopeo`](https://github.com/containers/skopeo/blob/main/install.md) is a command-line tool for copying and inspecting container images and OCI artifacts between registries without needing a container daemon. To copy artifacts while preserving digests with it:
+To copy an artifact's full multi-architecture index while preserving digests:
 
 ```bash
-skopeo copy --preserve-digests \
-  --override-os linux --override-arch amd64 \
+skopeo copy --preserve-digests --multi-arch all \
   docker://docker.enterprisedb.com/pgai-platform/<image>:<tag> \
   docker://<your-registry>/<repository-name>/<image>:<tag>
 ```
@@ -128,7 +129,7 @@ Some environments can't use `edbctl image sync-to-local-registry`, including ful
 
 | Artifact class | Tool and action |
 | :--- | :--- |
-| Container images | `edbctl` (if usable), or the same `skopeo copy --preserve-digests` invocation shown in [Preserving digests](#preserving-digests), with your destination path as the target |
+| Container images | `edbctl` (if usable), or the same `skopeo copy --preserve-digests --multi-arch all` invocation shown in [Preserving digests](#preserving-digests), with your destination path as the target |
 | OCI artifacts (`kapp-marketplace/`) | `skopeo copy` (or the equivalent `crane`/`oras` copy command), not `docker` or `podman`, with Docker Content Trust disabled for this path, against the `kapp-marketplace/` path from [OCI artifacts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#oci-artifacts) |
 | Helm charts | `helm pull` (or `curl`) the `.tgz` from the repository URL in [Helm charts](/edb-postgres-ai/current/hybrid-manager/install/registry_artifact_reference/#helm-charts). These charts aren't registry content, so registry-mirroring tools won't enumerate them. Then publish it to your own chart repository the way you would any other local chart |
 | Extension images | Any OCI-compliant client, using the same pull/push pattern as container images |
