@@ -159,6 +159,39 @@ for Kubernetes. See the
 [PG4K documentation](/postgres_for_kubernetes/latest/security/)
 for the list of permissions used by the PG4K operator service account.
 
+### Webhooks
+
+The pod eviction webhook (`vpodeviction.kb.io`) has side effects: before it lets
+a PGD pod be evicted, it hands the PGD leaderships of the node off and writes the
+`<group>-eviction` Lease of its PGD group. For what this means for a drain, see
+[Draining nodes](node_configuration.md#draining-nodes).
+
+The webhook server accepts any client on port 9443, so any workload that
+reaches that port on the operator pods can send forged eviction reviews. A forged
+review can move the write and Raft leaderships off any PGD node. The webhook
+returns no data or credentials to the caller.
+
+Restrict ingress to port 9443 of the operator pods with a `NetworkPolicy`. The
+operator doesn't ship one. The policy must allow ingress to port 9443 from:
+
+-   the API server, which calls the webhooks
+-   the kubelet, which runs the health probes of the operator pod on the same port
+
+If you scrape the operator metrics, also allow ingress to port 8080 from your
+monitoring stack: a policy that selects the operator pods denies every other
+ingress to them.
+
+Where the API server connects from depends on the platform and the network
+plugin, so adapt the policy to your cluster. A `NetworkPolicy` takes effect only
+if the network plugin enforces it.
+
+Check that the API server still reaches the webhooks: the pod eviction webhook
+has `failurePolicy: Ignore`, so a policy that blocks the API server disables the
+leadership hand-off without any error. Run a server-side dry run of a resource
+that the operator validates, for example
+`kubectl apply --dry-run=server -f <pgdgroup>.yaml`: it fails if the API server
+can't reach the operator.
+
 ### Calls to the API server made by the instance manager
 
 The instance manager, which is the entry point of the operand container, needs
@@ -220,7 +253,7 @@ levels, as shown in the table.
 
 | System           | Port number | Exposing                      | Name              | Certificates | Authentication |
 | :--------------- | :---------- | :---------------------------- | :---------------- | :----------- | :------------- |
-| operator         | 9443        | webhook server                | `webhook-server`  | Yes          | Yes            |
+| operator         | 9443        | webhook server                | `webhook-server`  | Yes          | No             |
 | operator         | 8080        | metrics                       | `metrics`         | No           | No             |
 | instance manager | 9187        | metrics                       | `metrics`         | Optional     | No             |
 | instance manager | 8000        | status                        | `status`          | No           | No             |
