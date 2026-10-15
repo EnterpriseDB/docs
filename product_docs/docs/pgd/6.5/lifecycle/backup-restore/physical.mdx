@@ -25,7 +25,7 @@ Take a physical backup from every node if you use extensions that keep their cat
 
 Restore a cluster from a physical backup after you lose all its nodes, for example in a data center failure. You can also use the same procedure to create a copy of a PGD cluster, such as a QA or development instance. Restoring a PGD node takes extra steps compared with restoring a standard Postgres node, such as cleaning up PGD metadata, replication origins, and replication slots.
 
-Rebuild the cluster from a single restored node by restoring the node, isolating its host, starting Postgres, cleaning up its PGD metadata, recreating its logical replication slots, and adding the other nodes.
+Rebuild the cluster from a single restored node by restoring the node, starting Postgres without BDR workers, cleaning up its PGD metadata, and adding the other nodes.
 
 ### Restoring the node
 
@@ -50,19 +50,21 @@ If no peer is available, such as when you lost every node, calculate the minimum
 
 If you have WAL archives for the backup, set [`restore_command`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-RESTORE-COMMAND) in `postgresql.conf` to retrieve them and create a `recovery.signal` file, so Postgres replays them up to the latest state when it starts. See [Recovering using a continuous archive backup](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-PITR-RECOVERY) in the Postgres documentation. To stop at an earlier state instead, specify a `recovery_target`. See [Recovering to a point in time](#recovering-to-a-point-in-time).
 
-### Isolating the restored host
+### Starting Postgres without BDR workers
 
-If some nodes of the cluster are still running, isolate the host you restored to from the network before starting Postgres, so it can't connect to any surviving nodes. The restored copy still holds the PGD metadata of the node it was backed up from, so keep it isolated until the restored node is ready to prevent it from interfering with replication in the existing cluster.
+Start Postgres on the restored node with BDR workers and connections turned off, so the node can't connect to any surviving nodes. The restored copy still holds the PGD metadata of the node it was backed up from, so keep these settings until you finish cleaning up that metadata. Start Postgres in recovery to replay the WAL archives, if you have them, or promote the node to read/write if it was in standby recovery.
 
-### Starting Postgres on the restored node
+Pass `bdr.start_workers` and [`bdr.accept_connections`](/pgd/latest/reference/tables-views-functions/pgd-settings#bdraccept_connections) on the Postgres command line, because `bdr.start_workers` rejects any other source:
 
-Start Postgres on the restored node in recovery to replay the WAL archives, if you have them, or promote the node to read/write if it was in standby recovery.
+```shell
+pg_ctl start -D $PGDATA -o "-c bdr.start_workers=off" -o "-c bdr.accept_connections=off"
+```
 
 ### Cleaning up PGD metadata
 
 Clean up the PGD metadata left over from the backup so the restored node no longer belongs to the old cluster. The restored node still holds the PGD metadata of the node it was backed up from, including information about the other nodes in the cluster. Run the following steps on the restored node, connected to the PGD database:
 
-1.  Drop the PGD node using [`bdr.drop_node`](/pgd/latest/reference/tables-views-functions/functions-internal#bdrdrop_node). Get the name of the local node from [`bdr.local_node_summary`](/pgd/latest/reference/tables-views-functions/catalogs-visible#bdrlocal_node_summary):
+1.  Drop the PGD node using [`bdr.drop_node`](/pgd/latest/reference/tables-views-functions/functions-internal#bdrdrop_node) with `force := true`, because the restored node isn't parted from its old cluster. Dropping the node also removes the replication origins and slots it had for the other nodes. Get the name of the local node from [`bdr.local_node_summary`](/pgd/latest/reference/tables-views-functions/catalogs-visible#bdrlocal_node_summary):
 
     ```sql
     SELECT node_name FROM bdr.local_node_summary;
@@ -71,11 +73,12 @@ Clean up the PGD metadata left over from the backup so the restored node no long
     Then drop it:
 
     ```sql
-    SELECT bdr.drop_node('<node_name>');
+    SELECT bdr.drop_node('<node_name>', force := true);
     ```
 
-2.  Fully stop and restart Postgres.
-3.  Remove the leftover replication origins. They're stored persistently in the `pg_replication_origin` system catalog, so they're included in the backup and in the restored instance.
+2.  Fully stop Postgres and restart it without the `bdr.start_workers` and `bdr.accept_connections` options.
+3.  Check for leftover replication origins and drop them. `bdr.drop_node` removes the origins of the nodes it knows about, so this step covers any that remain. Origins are stored persistently in the `pg_replication_origin` system catalog, so the backup includes them.
+
     List the replication origins on the restored node. The names of the origins that PGD created start with `bdr_`:
 
     ```sql
@@ -88,7 +91,7 @@ Clean up the PGD metadata left over from the backup so the restored node no long
     SELECT pg_replication_origin_drop('bdr_dbname_grpname_nodename');
     ```
 
-4.  Remove the leftover replication slots. If a physical backup was created with `pg_basebackup`, replication slots are omitted from the backup. Some other backup methods preserve replication slots, likely in outdated or invalid states.
+4.  Check for leftover replication slots and drop them. If a physical backup was created with `pg_basebackup`, replication slots are omitted from the backup. Some other backup methods preserve replication slots, likely in outdated or invalid states.
 
     List the replication slots on the restored node to check for leftovers:
 
@@ -106,13 +109,17 @@ Clean up the PGD metadata left over from the backup so the restored node no long
     !!! Warning
         Never use these commands to drop replication slots on a live PGD node
 
+### Adding the remaining nodes
+
+Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored. Install Postgres and PGD on each host first, using the same PGD version as the restored node. See [Installing and configuring EDB Postgres Distributed](/pgd/current/deploying/) for installation options, [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example, and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
+
 ### Recreating logical replication slots
 
-Recreate the logical replication slots on the restored node before BDR replication resumes. Backups taken with `pg_basebackup` don't include logical replication slots, and neither do Barman backups that use the Postgres backup method, because Barman runs `pg_basebackup` internally. You must therefore recreate the slots after restoring either kind of backup.
+Skip this section if you dropped the node's PGD metadata in the previous steps, because the commands read that metadata. If you restore every node from its own backup and keep the metadata, recreate the logical replication slots on each restored node before BDR replication resumes. Backups taken with `pg_basebackup` don't include logical replication slots, and neither do Barman backups that use the Postgres backup method, because Barman runs `pg_basebackup` internally. You must therefore recreate the slots after restoring either kind of backup.
 
 PGD names per-peer slots by the peer's `node_uuid` and a hash of the database name. After a restore, BDR's subscriber workers issue `START_REPLICATION` for slots in this exact form. If the slots aren't there, the `pgd manager` background worker enters a crash loop with `replication slot "bdr_<...>" does not exist` and replication doesn't progress.
 
-On the restored node, run the following:
+On each restored node, run the following:
 
 ```sql
 -- 1. Group slot. bdr.local_group_slot_name() returns the canonical
@@ -140,10 +147,6 @@ SELECT slot_name, slot_type, active FROM pg_replication_slots ORDER BY slot_name
 
 !!! Warning
     Don't call `bdr.initialize_replication_slot()` to recreate slots after a restore. The function exists, but the slots it creates use the peer's `node_name` rather than the `node_uuid` form that BDR subscribers consume. BDR never uses the resulting slots, and you can't drop them afterward.
-
-### Adding the remaining nodes
-
-Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored. Install Postgres and PGD on each host first, using the same PGD version as the restored node. See [Installing and configuring EDB Postgres Distributed](/pgd/current/deploying/) for installation options, [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example, and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
 
 ### Verifying extension catalog tables
 
