@@ -1,94 +1,80 @@
 ---
-title: Comparing durability options
-navTitle: Comparing durability options
+title: Confirmation levels
+navTitle: Confirmation levels
 deepToC: true
 redirects:
   - /pgd/latest/commit-scopes/comparing/ #generated for DOCS-1247-PGD-6.0-Docs
   - /pgd/latest/reference/commit-scopes/comparing/ #generated for DOCS-3034
 ---
 
-## Comparison
+A confirmation level sets how far a node has processed a transaction before it confirms the transaction to the origin node. Later levels give stronger protection from node or network outages, at the cost of performance. Setting a level is optional. If you leave it out, the default level, `visible`, applies.
 
-Most options for synchronous replication available to PGD allow for different
-levels of synchronization, offering different tradeoffs between performance and
-protection against node or network outages.
+You set the level as part of a [commit scope rule](commit-scope-rules#the-confirmation-level). Each rule is made up of two or three parts: the [commit scope group](/pgd/current/commit-scopes/origin_groups/), an optional confirmation level, and the [commit scope kind](/pgd/current/commit-scopes/commit-scope-rules/#the-commit-scope-kinds).
 
-The following list of [confirmation levels](commit-scope-rules#the-confirmation-level) explains
-what a user should expect to see when that confirmation level is in effect and how that can affect performance, durability, and consistency.
+```
+commit_scope_group [ ON confirmation_level ] commit_scope_kind
+```
 
-!!!Note
-[Quorum Commit](quorum-commit/) supports only `ON DURABLE` and `ON VISIBLE`. `ON VISIBLE` is the default.
+The full syntax diagram is in the [commit scope syntax](/pgd/current/reference/tables-views-functions/commit-scopes/#commit-scope-syntax) reference.
+
+For example, to ask a majority of nodes in the origin group to confirm after they flush the transaction to disk, add `ON durable` to the rule:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'example_bdr_group',
+    rule := 'MAJORITY ORIGIN GROUP ON durable SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+## Confirmation level types
+
+PGD has four confirmation levels. In increasing order of protection, they are `received`, `replicated`, `durable`, and `visible`. Each level is a later point in a node's processing of the transaction, and the node confirms once it reaches that point.
+
+### `received`
+
+A peer confirms as soon as it receives the transaction, before it updates its tuple store or writes anything to storage. The origin node only waits for the transaction to arrive, so with large transactions, `received` can improve transactions per second.
+
+Once a peer has received the transaction, it can apply it without further communication from the origin node, even during a full or partial network outage. However, if a Postgres server or operating system crash hits the peer after it confirms but before it writes the transaction to persistent storage, the peer loses the transaction and it has to be sent again.
+
+Because a peer confirms before it applies the transaction, reads from that peer can return stale data. Of the four levels, `received` offers the least protection.
+
+### `replicated`
+
+A peer confirms after it receives the transaction and applies it to the tuple store. The peer writes the changes to storage but doesn't flush them to disk, so they remain in operating system caches and buffers. The origin node waits for the transaction to be applied, but not persisted. With Synchronous Commit and Commit At Most Once (CAMO), `replicated` behaves the same as `received`.
+
+If a Postgres server crash hits the peer after it confirms, the changes survive. If an operating system crash hits the peer, the changes are lost, because they haven't been flushed to disk.
+
+Because a peer confirms after it applies the transaction instead of on receipt, the window for stale reads is smaller than with `received`.
+
+### `durable`
+
+A peer confirms after it receives the transaction, applies it to the tuple store, and flushes the changes to storage. The origin node waits for the flush. The peer hasn't yet made the changes available to other sessions.
+
+The flush protects against data loss after a crash and recovery of the peer, which recovers without retransmission.
+
+If a session commits a transaction with the `durable` level, then disconnects and reconnects, the transaction's changes aren't guaranteed to be visible to the reconnected session. The level doesn't guarantee consistency during failover.
+
+### `visible`
+
+A peer confirms after it receives and applies the transaction and flushes the changes to storage. The changes are also visible to concurrent transactions. The origin node waits for all of that, so performance is lower than with the other levels. The `visible` level is the default.
+
+Except with Quorum Commit, the flush protects against data loss after a crash and recovery of the peer, as with `durable`.
+
+If a session commits a transaction with the `visible` level, then disconnects and reconnects, the transaction's changes are guaranteed to be visible to the reconnected session. Of the four levels, `visible` offers the most protection.
+
+## Comparing levels by commit scope kind
+
+The origin confirms a transaction when its results become visible to the client or application. A peer applies a transaction when it becomes visible on that peer, even though the transaction might not be on disk yet, because peers flush replicated transactions asynchronously.
+
+| Level      | Synchronous Commit | Commit At Most Once (CAMO) | Quorum Commit |
+| ---------- | ------------------ | -------------------------- | ------------- |
+| `received` | The origin confirms once the required peers have received the transaction and queued it for writing. | The CAMO partner confirms right after committing, without waiting for a flush. | Not supported. |
+| `replicated` | Same as `received`. | Same as `received`. | Not supported. |
+| `durable` | The origin confirms once the required peers have applied the transaction and flushed it to disk. | The CAMO partner confirms once the transaction is flushed to disk. The flush is asynchronous, so the transaction is visible before it's flushed. | Peers acknowledge the prepare after applying and flushing the transaction. Once enough peers acknowledge, the origin commits and confirms. The transaction becomes visible on peers later and can't diverge. |
+| `visible` | Same as `durable`. | Same as `durable`. | Peers acknowledge the prepare after applying the transaction, without waiting for a flush. Once a quorum applies the commit, the transaction becomes visible on the origin. |
+
+!!! Note
+Lag Control doesn't use confirmation levels.
 !!!
-
-### ON RECEIVED
-
-**Expect**: The peer node has received the changes. Nothing has been updated in
-the peer nodes tuple store or written to storage.
-
-Confirmation on reception means that the peer operating normally can
-eventually, apply the transaction without requiring any further
-communication, even in the face of a full or partial network
-outage. A crash of a peer node might still require retransmission of
-the transaction, as this confirmation doesn't involve persistent
-storage. 
-
-**For**: The origin node in the transaction only has to wait for the reception
-of the transaction. Where transactions are large, it may improve the TPS
-performance of the system.
-
-**Against**: An increased likelihood of stale reads. Overall, ON RECEIVED is not robust
-because data can be lost when either a Postgres server or operating system crash
-occurs.
-
-### ON REPLICATED
-
-**Expect**: The peer node has received the changes and applied them to the tuple
-store. The changes have been written to storage, but the storage has not been flushed
-to disk.
-
-Confirmation on replication means the peer has received and applied the changes.
-Those changes have been written to storage, but will still be in operating
-system caches and buffers. The system has yet to persist them to disk. 
-
-**For**: This checkpoint is further down the timeline of transaction processing.
-The origin node only waits for the transaction to be applied, but not persisted.  
-
-**Against**: There's a slightly lower chance of stale reads over ON RECEIVED.
-Also, with ON REPLICATED  data can survive a Postgres crash but will still not
-survive an operating system crash.
-
-### ON DURABLE
-
-**Expect**: The peer node has received the changes, applied them to the tuple
-store and persisted the changes to storage. It has yet to make the changes
-available to other sessions.
-
-Durable confirmation means that the transaction has been written and flushed to
-the peer node's storage. This protects against loss of data after a
-crash and recovery of the peer node. But, if a session commits a transaction
-with an ON DURABLE rule before disconnecting and reconnecting, the transaction's
-changes are not guaranteed to be visible to the reconnected session.
-
-When used with the Quorum Commit commit scope kind, this also means the changes
-are visible.
-
-**For**: More robust, able to recover without retransmission in the event of a crash.
-
-**Against**: Doesn't guarantee consistency in cases of failover.
-
-### ON VISIBLE
-
-**Expect**: The peer node has received and applied the changes, persisted and flushed those changes to storage. 
-
-Confirmation of visibility means that the transaction was fully applied
-remotely. If a session commits a transaction with an ON VISIBLE rule before
-disconnecting and reconnecting, the transaction's changes are guaranteed to be
-visible to the reconnected session.
-
-**For**: Robust and consistent.
-
-**Against**: Lower performance.
-
-
-
-
