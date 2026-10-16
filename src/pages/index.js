@@ -203,17 +203,17 @@ const Page = () => {
               headingText="Agent Factory"
               to="/edb-postgres-ai/agent-factory"
             >
-              <BannerCardLink to="/aidb/latest">
-                AI Database (AIDB)
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/search">
+                Search
               </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/pgvector">
-                pgvector
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/context">
+                Context
               </BannerCardLink>
-              <BannerCardLink to="/agent-governance/latest">
-                Agent Governance
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/runtime">
+                Runtime
               </BannerCardLink>
-              <BannerCardLink to="/vector-plus/latest">
-                Vector Plus
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/packages">
+                Packages
               </BannerCardLink>
             </BannerSubCard>
 
