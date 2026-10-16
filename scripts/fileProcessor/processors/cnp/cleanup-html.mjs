@@ -13,7 +13,25 @@ import remarkDeflist from "remark-deflist";
 import visit from "unist-util-visit";
 
 export const process = async (filename, content) => {
-  const processor = unified()
+  const processorInput = unified()
+    .use(remarkParse)
+    .use(admonitions, {
+      tag: ":::",
+      icons: "none",
+      infima: true,
+      customTypes: {
+        seealso: "note",
+        hint: "tip",
+        interactive: "interactive",
+      },
+    })
+    .use(remarkFrontmatter)
+    .use(remarkDeflist)
+    .use(mdx)
+    .use(cleanupHtml)
+    .use(admonitionFixer);
+
+  const processorOutput = unified()
     .use(remarkParse)
     .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
     .use(admonitions, {
@@ -27,17 +45,16 @@ export const process = async (filename, content) => {
       },
     })
     .use(remarkFrontmatter)
-    .use(remarkDeflist)
-    .use(mdx)
-    .use(cleanupHtml);
+    .use(mdx);
 
-  const output = await processor.process(
-    toVFile({ path: filename, contents: content }),
-  );
+  let file = toVFile({ path: filename, contents: content });
+  let mdast = await processorInput.parse(file);
+  mdast = await processorInput.run(mdast, file);
+  file.contents = processorOutput.stringify(mdast, file);
 
   return {
     newFilename: filename,
-    newContent: output.contents.toString(),
+    newContent: file.contents.toString(),
   };
 };
 
@@ -109,6 +126,8 @@ function cleanupHtml() {
             console.error("\n\n\nUnexpected child of descriptionlist: " + JSON.stringify(item, null, 2));
           }
         }
+        if (newChildren.length > 0)
+          newChildren.at(-1).children.push(...eatSubsequentCodeBlocks(node, index, parent));
         node.type = "list";
         node.children = newChildren;
       }
@@ -126,3 +145,29 @@ function cleanupHtml() {
   };
 }
 
+
+function admonitionFixer() {
+  return async (tree, file) => {
+    visit(tree, ['admonition-heading', 'admonition-content'], (node, index, parent) => {
+      if (node.type === 'admonition-heading') {
+        const children = node.children[0]?.data?.hName === "h5" ? node.children[0].children : node.children;
+        // strip square brackets from titles
+        if (children && children[0].type === 'linkReference') {
+          children.splice(0, 1, ...children[0].children);
+        }
+      }
+      else {
+        // if the contents of the admonition was indented AND fenced, the contents will be wrapped in a code fence node - unwrap it
+        if (node.children?.length === 1 && node.children[0].type === 'code') {
+          const codeNode = node.children[0];
+          const parsed = unified()
+            .use(remarkParse)
+            .use(mdx)
+            .parse(codeNode.value);
+          // splice out the code node, and insert the parsed children in its place
+          node.children.splice(0, 1, ...parsed.children);
+        }
+      }
+    });
+  };
+}

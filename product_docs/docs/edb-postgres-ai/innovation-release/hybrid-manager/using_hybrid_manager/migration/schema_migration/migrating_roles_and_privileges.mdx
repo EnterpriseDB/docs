@@ -1,0 +1,47 @@
+---
+title: Migrating roles, ownership, and privileges
+navTitle: Migrating roles and privileges
+description: Optionally migrate the source cluster's roles, object ownership, privileges, and row-level security policies during a Postgres-to-Postgres schema migration to a self-managed destination.
+deepToC: true
+---
+
+By default, schema migration creates schema objects only, and every migrated object is owned by the migration role (the database user you already configured for the EDB DMS agent in writer mode). No roles, privileges, or row-level security (RLS) policies come across from the source by default.
+
+For migrations to self-managed destinations, you can optionally migrate the source cluster's authorization model as well — its roles, object ownership, privileges, and RLS policies — so your applications keep working against the same permissions after cutover.
+
+- [Migrating roles, ownership, and privileges](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/configuring_dms_agent/#migrating-roles-ownership-and-privileges) — steps to turn it on, in the self-managed Postgres-to-Postgres guide.
+- [DBCONFIG_DATABASES_0__ROLE_MIGRATION_ENABLED](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#dbconfig_databases_0__role_migration_enabled) — the setting itself.
+- [Role, ownership, and privilege migration limitations](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/limitations/#role-ownership-and-privilege-migration-limitations) — what doesn't carry over.
+
+## When role migration applies
+
+Role migration is available for Postgres-to-Postgres migrations to a self-managed destination, with a migration scope of **Schema and data** or **Schema only**. It works the same way for either migration method — snapshot, or snapshot and streaming.
+
+## How role migration works
+
+When enabled, DMS migrates roles and their dependent objects in two phases, timed around the rest of schema migration:
+
+1.  **At the start of schema migration**, before any schema objects are created, DMS creates the source cluster's roles on the destination cluster, preserving attributes such as `LOGIN`, `CREATEROLE`, and `VALID UNTIL`. This has to happen first, since later schema objects reference these roles as owners or grantees.
+2.  **At the Schema Finalization stage**, DMS applies role memberships, object ownership (`ALTER ... OWNER TO`), privilege grants, default privileges, and RLS policies, and enables RLS on tables that had it enabled on the source. This runs last because these statements reference objects that must already exist.
+
+The Schema Finalization stage runs after you mark the migration as completed — not during the optional **Finalize Schema Concurrently** step, which can run earlier while streaming is still active. So the destination's authorization model is complete only once the migration reaches the **Completed** state — plan any post-migration privilege verification for after that point, not while the migration is still in progress.
+
+!!!warning Passwords are never migrated
+Role definitions are extracted from the source without password hashes, so DMS creates `LOGIN` roles on the destination without a password. Set new passwords on the destination before applications authenticate with the migrated roles.
+!!!
+
+## Excluding roles from migration
+
+You can tell DMS to leave specific roles alone instead of migrating them — typically roles that already exist on the destination (most often the bootstrap superuser, `postgres` or `enterprisedb`), or roles you'd rather manage yourself outside of DMS. Roles are matched against a set of regular expression patterns you provide; see [excluding roles](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/configuring_dms_agent/#migrating-roles-ownership-and-privileges) for the steps.
+
+When a role is excluded, DMS doesn't create it on the destination, and at the Schema Finalization stage it skips any ownership, grant, default privilege, or policy statement that references it — logging a warning for each one skipped. The objects those statements would have touched keep the migration role as their owner instead, so you'd need to reassign ownership or re-grant privileges by hand afterward to fully match the source's authorization model.
+
+!!!note
+If an RLS policy references an excluded role, the policy itself is skipped, but RLS stays enabled on its table — RLS is a table-level setting, independent of any one policy. The table denies access to non-owners until you recreate the policy on the destination.
+!!!
+
+## Idempotency and conflicts with existing roles
+
+DMS marks every role it creates with a comment, `dms:migrated:<migration ID>`, so that restarting schema migration doesn't try to recreate roles it already made — a role carrying the marker is simply skipped on retry.
+
+If a role with the same name already exists on the destination *without* that marker, DMS has no way to tell whether it matches the source's definition. Rather than guess, it treats this as a conflict: schema migration fails outright, with an error listing every conflicting role name. To get past it, either add those role names to `DBCONFIG_DATABASES_0__ROLE_MIGRATION_EXCLUDELIST` (the destination roles stay as they are), or drop the roles on the destination so DMS recreates them from the source definitions.

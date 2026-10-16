@@ -348,7 +348,7 @@ WEM's dashboards, charts, and log search all read from ClickHouse. A single pipe
     sudo systemctl status acp-host-agent
     ```
 
-2. Check `/etc/edb/acp-host-agent/acp-host-agent.conf`. `WEM_CONNECT_ADDRESS` must be an IPv4 address in the form `<wem-host>:<wem-port + 1>` (default `8081`), and that port must be reachable from every cluster node. Test it directly:
+2. Check `/etc/edb/acp-host-agent/acp-host-agent.conf`. `WEM_CONNECT_ADDRESS` must be a hostname or IP address in the form `<wem-host>:<wem-port + 1>` (default `8081`). The hostname must resolve from the node, and that port must be reachable from every cluster node. Test it directly:
 
     ```bash
     curl -k https://<wem-host>:8081/
@@ -370,6 +370,35 @@ WEM's dashboards, charts, and log search all read from ClickHouse. A single pipe
 
 2. If it shows a connection failure, verify connectivity with `curl -k https://<wem-host>:8081/`, as above.
 3. If it shows `awaiting TLS material`, the agent registered correctly and is only waiting on approval. Go to **Management > Host Agents** and approve it. Once approved, check the **Telemetry** and **Last Seen** columns to confirm it's active.
+
+### Error: `verification_token must be 1-255 chars of [a-zA-Z0-9._-]`
+
+**Cause:** The host agent failed to register because the value of `WEM_AGENT_JOIN_SECRET`, which the agent presents as its verification token, contains unsupported characters. Output from `openssl rand -base64` commonly triggers this error.
+
+**Solution:** Set `WEM_AGENT_JOIN_SECRET` in `/etc/wem/wem.conf` and `/etc/edb/acp-host-agent/join-token` to a value that contains only letters, numbers, periods, underscores, and hyphens, for example the output of `openssl rand -hex 32`. Restart WEM, then restart the host agent.
+
+### Issue: `acp-host-agent` log shows `sudo: a password is required`
+
+**Cause:** The `gpadmin` user was created after you installed the host agent, so the sudoers grants the agent needs were never activated.
+
+**Solution:**
+
+1. On the affected node, copy the sudoers files from `/usr/edb/acp-host-agent/sudoers.d/` to `/etc/sudoers.d/`, skipping any that already exist and validating each one:
+
+    ```bash
+    for src in /usr/edb/acp-host-agent/sudoers.d/*; do
+      f=$(basename "$src")
+      sudo test -e "/etc/sudoers.d/$f" && continue
+      sudo install -o root -g root -m 0440 "$src" "/etc/sudoers.d/$f" \
+        && sudo visudo -cf "/etc/sudoers.d/$f"
+    done
+    ```
+
+2. Verify that the `acp-host-agent` user now has the grants:
+
+    ```bash
+    sudo -l -U acp-host-agent
+    ```
 
 ### Issue: Telemetry service is failed or stopped on a node
 

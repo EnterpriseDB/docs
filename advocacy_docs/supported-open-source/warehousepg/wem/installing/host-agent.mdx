@@ -60,10 +60,10 @@ Run these steps from the coordinator as `gpadmin`.
     gpssh -f all_hosts -u gpadmin -e "sudo dnf install -y /tmp/edb-acp-host-agent-*.rpm /tmp/edb-otelcol-*.rpm"
     ```
 
-1. On every node, set `WEM_CONNECT_ADDRESS` in `/etc/edb/acp-host-agent/acp-host-agent.conf` to WEM's IPv4 address and listen port plus 1 (default 8081):
+1. On every node, set `WEM_CONNECT_ADDRESS` in `/etc/edb/acp-host-agent/acp-host-agent.conf` to WEM's hostname and listen port plus 1 (default 8081). The hostname must resolve from every node. You can use an IP address instead.
 
     ```bash
-    WEM_HOST=<wem-host-ipv4>
+    WEM_HOST=<wem-host>
     gpssh -f all_hosts -u gpadmin -e \
       "sudo sed -i 's/^WEM_CONNECT_ADDRESS=.*/WEM_CONNECT_ADDRESS=${WEM_HOST}:8081/' \
         /etc/edb/acp-host-agent/acp-host-agent.conf"
@@ -76,6 +76,10 @@ Run these steps from the coordinator as `gpadmin`.
     ```bash
     gpssh -f all_hosts -u gpadmin -e "sudo systemctl enable --now acp-host-agent"
     ```
+
+    !!! Note
+
+        To skip manual approval, set up a shared secret. See [Approving host agents automatically](#approving-host-agents-automatically).
 
 1. Verify each agent self-registered and is waiting for approval:
 
@@ -93,11 +97,7 @@ Run these steps from the coordinator as `gpadmin`.
 
     An agent stays in this pending state, repeating the last line, until an Admin approves it. It doesn't reach a running state on its own.
 
-1. Open WEM in a browser, log in with admin credentials, navigate to **Management** > **Host Agents**, select the pending agents, and choose **Approve** from the quick actions. You can confirm you're approving the agent you expect by comparing its Verification Token against the join token on the host (cat /etc/edb/acp-host-agent/join-token).
-
-    !!! Note
-    Permission to approve host agent access is disabled by default, even for the **Admin** profile. To grant this permission, see [Defining role-based access control](../system-access/management/#defining-role-based-access-control).
-    !!!
+1. Open WEM in a browser, log in with admin credentials, navigate to **Management** > **Host Agents**, select the pending agents, and choose **Approve** from the quick actions. You can confirm you're approving the agent you expect by comparing its **Verification Token** against the join token on the host (cat /etc/edb/acp-host-agent/join-token). If you set up automatic approval, skip this step.
 
 1. Once approved, each agent picks up its TLS material and starts its worker within moments. Verify this on any node:
 
@@ -114,6 +114,41 @@ Run these steps from the coordinator as `gpadmin`.
     ```
 
     WEM pushes the OTel configuration to the host agent and WEM's internal certificate authority issues the agent a short-lived certificate. Every subsequent connection between that agent and WEM authenticates with mutual TLS (mTLS). WEM renews the certificate automatically, with a 24-hour grace window that lets an agent that was briefly offline recover its certificate without Admin intervention.
+
+## Approving host agents automatically
+
+On clusters with many nodes, or when you add nodes to an existing cluster, you can skip manual approval by giving WEM and each agent a shared secret. You can also approve several pending agents at once by selecting them all in **Management** > **Host Agents**.
+
+This method replaces the steps to enable and start the host agent and to approve it in WEM. Complete the steps to set `WEM_CONNECT_ADDRESS` first, then follow these steps instead, and continue with verifying the worker is running.
+
+1. On the WEM host, set `WEM_AGENT_JOIN_SECRET` in `/etc/wem/wem.conf` to a secret that contains only letters, numbers, periods, underscores, and hyphens. For example, generate one with:
+
+    ```bash
+    openssl rand -hex 32
+    ```
+
+    Don't use `openssl rand -base64`, because the output can include characters WEM rejects.
+
+1. Restart WEM:
+
+    ```bash
+    sudo systemctl restart wem
+    ```
+
+1. On every cluster node, write the same value to `/etc/edb/acp-host-agent/join-token`.
+1. Enable and start the host agent service on every node. The agent registers and WEM approves it automatically:
+
+    ```bash
+    gpssh -f all_hosts -u gpadmin -e "sudo systemctl enable --now acp-host-agent"
+    ```
+
+    If the host agent is already running, restart it so that it reads the token:
+
+    ```bash
+    gpssh -f all_hosts -u gpadmin -e "sudo systemctl restart acp-host-agent"
+    ```
+
+See [Configuration parameters](../reference/configuration#host-agent) for details.
 
 ## Next steps
 
