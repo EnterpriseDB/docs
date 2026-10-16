@@ -102,6 +102,33 @@ kubectl get nodes -l node_pool=pg-prod -L topology.kubernetes.io/zone,node_pool_
 kubectl get storageclass -o custom-columns=NAME:.metadata.name,PROVISIONER:.provisioner,BINDING:.volumeBindingMode
 ```
 
+### Configuring topology spread constraints on the HybridControlPlane CR
+
+A `nodeSelector` only defines which nodes an instance's pod may use — it doesn't spread instances across the zones in that candidate set. To actually distribute instances, configure a topology spread constraint on the `HybridControlPlane` (HCP) custom resource:
+
+| Parameter | Custom Resource key |
+| --- | --- |
+| Topology spread constraints | `spec.beaconAgent.provisioning.topologySpreadConstraints` |
+
+For a strict (`DoNotSchedule`) policy that spreads instances across both nodes and zones:
+
+```yaml
+spec:
+  beaconAgent:
+    provisioning:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          podSelector: MatchDatabasePods
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+        - maxSkew: 1
+          podSelector: MatchDatabasePods
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+```
+
+Use `whenUnsatisfiable: ScheduleAnyway` instead for a soft policy. See [Minimum node requirements per zone](#minimum-node-requirements-per-zone) for how that choice interacts with autoscaling in an empty zone.
+
 ### Creating clusters pinned to the node group
 
 Save the following as a cluster manifest (for example, `example-db.yaml`), setting `nodeSelectors` and `tolerations` to match your node group design:
@@ -138,8 +165,10 @@ tolerations:
 Then create the cluster from that file:
 
 ```shell
-edbctl cluster create -F example-db.yaml -y
+edbctl cluster create -F example-db.yaml
 ```
+
+The command prompts for confirmation before creating the cluster. To skip the prompt in scripts or CI pipelines, add `-y`.
 
 ### Verifying placement
 
@@ -162,8 +191,10 @@ For a high availability cluster, confirm that the instances run on different nod
 `edbctl cluster edit` accepts the same `nodeSelectors` and `tolerations` fields. Omitting a field preserves its existing value — an empty list isn't the same as omitting the field.
 
 ```shell
-edbctl cluster edit -F move-to-new-pool.yaml -y
+edbctl cluster edit -F move-to-new-pool.yaml
 ```
+
+The command prompts for confirmation before applying the change. To skip the prompt in scripts or CI pipelines, add `-y`.
 
 Plan a placement change as a maintenance activity. Patching placement evicts and reschedules the Postgres pods, and if no node matches the new selector, the pods stay `Pending` until the autoscaler provisions a matching node, or indefinitely if the node group doesn't exist or a label is misspelled. If the cluster already has a bound PVC, moving it to a node group in a different zone requires a restore or replica-cluster operation rather than a simple edit.
 
