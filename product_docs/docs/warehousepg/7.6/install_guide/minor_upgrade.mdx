@@ -122,6 +122,17 @@ Perform a final cleanup of the running database instance.
 
     -   Stop pgBouncer: Connect to the admin console with `psql -p 6543 -U pgbouncer -d pgbouncer` and run `SHUTDOWN;`.
 
+    -   Stop any other WarehousePG components you use. See [External components](/warehousepg/latest/ref_guide/modules/external_components/) for the list of available components. For example:
+
+        -   Stop [WarehousePG Enterprise Manager (WEM)](/supported-open-source/warehousepg/wem/): `sudo systemctl stop wem`
+
+        -   Stop [FlowServer](/supported-open-source/warehousepg/flowserver/): Stop your jobs, then stop the `flowserver` process on every host where it runs.
+
+            ```bash
+            flowcli stop --all
+            pkill flowserver
+            ```
+
 2.  Terminate sessions and check queries: Ensure no active user queries remain. Forcefully terminate any remaining client backends.
 
     ```bash
@@ -141,7 +152,7 @@ Perform a final cleanup of the running database instance.
 
 ## Replacing binaries and restarting WHPG
 
-Perform the following steps as the `gpadmin` user. When upgrading, the package manager will automatically remove old files in `/usr/local/greenplum-db-<version>` and install new files to `/usr/edb/whpg7`.
+Perform the following steps as the `gpadmin` user. When upgrading from a version earlier than 7.4, the package manager removes the old files in `/usr/local/greenplum-db-<version>` and installs the new files to `/usr/edb/whpg7`. When upgrading from 7.4 or later, the package manager replaces the files in `/usr/edb/whpg7`.
 
 !!!warning Upgrading to 7.6.0: Behavior changes to review
 
@@ -203,10 +214,19 @@ Verify the packages are available in your local repository before starting the u
 
 1.  On the coordinator, back up old WHPG binaries:
 
-    ```bash
-    sudo cp -R /usr/local/greenplum-db-7.origin-WHPG /usr/local/greenplum-db-7.origin-WHPG_save
-    sudo chown -R gpadmin /usr/local/greenplum-db-7.origin-WHPG_save
-    ```
+    -   If `7.origin` is 7.4 or later, the binaries are in `/usr/edb/whpg7`:
+
+        ```bash
+        sudo cp -R /usr/edb/whpg7 /usr/edb/whpg7_save
+        sudo chown -R gpadmin /usr/edb/whpg7_save
+        ```
+
+    -   If `7.origin` is earlier than 7.4, the binaries are in `/usr/local/greenplum-db-7.origin-WHPG`:
+
+        ```bash
+        sudo cp -R /usr/local/greenplum-db-7.origin-WHPG /usr/local/greenplum-db-7.origin-WHPG_save
+        sudo chown -R gpadmin /usr/local/greenplum-db-7.origin-WHPG_save
+        ```
 
 2.  Download your `7.target` package. See [Downloading the WarehousePG Server Software](install_whpg.mdx) for details on how to download the packages. From your jump host, copy the new package to the coordinator:
 
@@ -327,6 +347,16 @@ Once the core database services are back online, re-establish the secondary laye
     pgbouncer -d /data/gpdata/pgbouncer/pgbouncer.ini
     psql -p 6543 -U pgbouncer -d pgbouncer -c "SHOW CLIENTS;"
     ```
+
+4.  Start any other WarehousePG components you stopped before the upgrade. For example:
+
+    -   Start [WarehousePG Enterprise Manager (WEM)](/supported-open-source/warehousepg/wem/): `sudo systemctl start wem`
+
+    -   Start [FlowServer](/supported-open-source/warehousepg/flowserver/): Start the `flowserver` process on each host where it ran, then resubmit and start your jobs. FlowServer doesn't persist job definitions across restarts.
+
+        ```bash
+        nohup ./flowserver -c /path/flow_server.json &
+        ```
 
 ## Handing back the system
 
