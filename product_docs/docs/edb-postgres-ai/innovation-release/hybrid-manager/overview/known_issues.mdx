@@ -57,11 +57,23 @@ UPDATE upm_api_admin.idp SET deleted_at = NOW() WHERE deleted_at IS NULL;
 
 ### Image discovery fails for registries whose URL includes a path component
 
+!!!tip
+Resolved in HM versions 2026.10 and later.
+!!!
+
 [UPM-139513, UPM-139518]: #
 
-**Description:** Starting in HM 2026.9, image discovery can fail with `404 Not Found` errors when the configured container registry's URL includes a path component (for example, `docker.enterprisedb.com/pgai-platform`) rather than just a hostname. Registries configured with a hostname-only URL aren't affected. This occurs because of a change in how HM constructs the path used to query the registry for available images.
+**Description:** In HM 2026.9, image discovery could fail with `404 Not Found` errors when the configured container registry's URL included a path component (for example, `docker.enterprisedb.com/pgai-platform`) rather than just a hostname. Registries configured with a hostname-only URL weren't affected. This occurred because of a change in how HM constructed the path used to query the registry for available images.
 
-**Workaround:** If you're affected by this issue, contact [EDB Support](https://support.enterprisedb.com) for guidance on a supported workaround for your environment. A fix is planned for the next Innovation Release.
+**Workaround:** Upgrade to HM 2026.10 or later to resolve this issue. If you're already on an affected version and image discovery is failing, the upgrade process itself may also be affected. In that case, contact [EDB Support](https://support.enterprisedb.com) for guidance before attempting to upgrade.
+
+### `edbctl --verify-signature` fails when syncing images
+
+[UPM-139946]: #
+
+**Description:** The `edbctl image sync-to-local-registry --verify-signature` option fails when used with edbctl versions 1.8.1 and 1.9.0. These versions expect the signed image identity in `image:tag` format, but EDB release images now carry signatures with the identity recorded as `image` only (without a tag), following a change in the underlying `cosign` signing tool. As a result, running `--verify-signature` returns an error and the image sync fails.
+
+**Workaround:** Upgrade to edbctl version 1.10 or later, which correctly handles the updated signature identity format.
 
 ### SPIRE agent fails to start on RKE2 with SELinux enabled
 
@@ -70,6 +82,18 @@ UPDATE upm_api_admin.idp SET deleted_at = NOW() WHERE deleted_at IS NULL;
 **Description:** On RKE2 clusters running on RHEL (or other Linux distributions with SELinux in enforcing mode), the SPIRE agent pod enters a `CrashLoopBackOff` state with the error `create UDS listener: listen unix /tmp/spire-agent/public/spire-agent.sock: bind: permission denied`. This occurs because SELinux blocks the container process from creating a Unix domain socket on the `HostPath` volume `/run/spire/agent-sockets`. Environments without SELinux (such as Ubuntu-based RKE2 clusters) aren't affected.
 
 **Workaround:** Disable SELinux on all RKE2 cluster nodes. For this, set `SELINUX=disabled` in `/etc/selinux/config` and reboot the nodes. After reboot, verify that `getenforce` shows `Disabled`. The SPIRE agent pods will recover automatically, though pods already in `CrashLoopBackOff` state may take several minutes due to the backoff timer.
+
+### HM uninstall hangs waiting to remove the ClickHouse Keeper's persistent volume claim
+
+[UPM-140287]: #
+
+**Description:** Uninstalling HM can hang indefinitely while removing the `upm-clickhouse` component. The ClickHouse Keeper's persistent volume claim (PVC), created by the keeper's StatefulSet, isn't removed automatically when the component is deleted, so the uninstall process waits on it without finishing.
+
+**Workaround:** Manually delete the ClickHouse Keeper PVC in the `edb-observability` namespace to let the uninstall complete:
+
+```shell
+kubectl -n edb-observability delete pvc data-clickhouse-keeper-0
+```
 
 ## Database cluster engine
 
@@ -613,14 +637,6 @@ Resolved in HM versions 2026.9 and later.
 **Description:** Some tools within the EDB Component are currently non-functional due to incompatible API request formatting. By default, the component exposes too many tools, which can exceed API limits and trigger errors.
 
 **Workaround:** Enable tool mode and apply specific filters to limit the number of tools exposed by the component.
-
-### Text search may match on non-visible fields
-
-[UPM-77534]: #
-
-**Description:** When using the search functionality in the HM console, for example in the **Activity Log** section, the system performs a full-text search across all underlying data fields. As a result, search results may include resources or activity log entries where the visible **Activity Name** or other shown attributes don't appear to match the search term.
-
-**Workaround:** There is currently no workaround for this behavior as it is a result of the underlying search design. Users should be aware that search results are inclusive of internal action details not displayed in the primary log view.
 
 ### Agent Studio MCP server components not supported in HM Flow Hosting
 

@@ -30,8 +30,8 @@ SELECT aidb.create_agent('trip_planner', 'Help plan trips, checking weather when
 | `transport`       | TEXT      | `'streamable_http'`    | `'streamable_http'` or `'sse'` — only `'streamable_http'` is fully supported today.                                                        |
 | `headers`         | JSONB     | `NULL`                   | Request headers to send, for example, `{"Authorization": "Bearer ..."}`. Mutually exclusive with `headers_env` and `headers_k8s_secret`.                            |
 | `tool_filter`     | TEXT    | `NULL`                   | Import only these tool names. Omit to import everything the server advertises.                                                             |
-| `headers_env`     | TEXT      | `NULL`                   | Name of an environment variable holding the headers JSON, read fresh on each use instead of storing it. Mutually exclusive with `headers` and `headers_k8s_secret`. |
-| `headers_k8s_secret` | TEXT   | `NULL`                   | Path to a file holding the headers JSON, read on each use instead of storing it. Meant for a Kubernetes Secret mounted into the Postgres pod. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths). Mutually exclusive with `headers` and `headers_env`. |
+| `headers_env`     | TEXT      | `NULL`                   | Name of an environment variable holding the headers JSON, read fresh on each use instead of storing it. Superusers and members of `aidb_admins` only. Mutually exclusive with `headers` and `headers_k8s_secret`. |
+| `headers_k8s_secret` | TEXT   | `NULL`                   | Path to a file holding the headers JSON, read on each use instead of storing it. Meant for a Kubernetes Secret mounted into the Postgres pod. Superusers and members of `aidb_admins` only. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths). Mutually exclusive with `headers` and `headers_env`. |
 
 `import_mcp_tools` validates the server by calling its `tools/list` endpoint before registering anything — if it's unreachable or advertises nothing matching `tool_filter`, nothing is stored. The tools it returns are cached immediately, so they show up in `aidb.tools` right away rather than after a separate refresh.
 
@@ -53,11 +53,16 @@ SELECT aidb.import_mcp_tools(
 );
 ```
 
-`headers` is stored in `aidb.mcp_registry`, but `aidb_users` has no `SELECT` access to that column — only AIDB's own internal calls (to validate, refresh, or invoke the server's tools) can read it back.
+`headers` is stored in `aidb.mcp_registry`. Members of `aidb_users` can't read it through SQL.
 
-!!!note
-Prefer not to store the secret in the table at all? Pass `headers_env` instead: name an environment variable (read fresh from the Postgres process's own environment on every call) holding a JSON object of headers, in the same shape `headers` would take. `headers` and `headers_env` are mutually exclusive. The variable's name must start with the prefix configured by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default) — the same mechanism and GUC used by [`credentials_env`](../reference/models#credentials-from-environment-variables) for model credentials.
-!!!
+To read the headers from the Postgres server instead, pass one of these:
+
+- `headers_env`: the name of an environment variable that holds a JSON object of headers. The name must start with the prefix set by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default).
+- `headers_k8s_secret`: the path to a file that holds a JSON object of headers. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths).
+
+Only superusers and members of [`aidb_admins`](../install/configure#managing-credential-access-with-the-aidb_admins-role) can pass them. A registration that uses them works only while its owner is a superuser or a member of `aidb_admins`. To limit the hosts the headers are sent to, the server operator can add a `_HOST` variable or file. See [Credential environment variables](../install/configure#credential-environment-variables) and [Kubernetes Secret paths](../install/configure#kubernetes-secret-paths).
+
+The role that calls `aidb.import_mcp_tools()` owns the registration. Only the owner, or a member of the owner role, can refresh or delete it.
 
 ## Filtering which tools are imported
 
