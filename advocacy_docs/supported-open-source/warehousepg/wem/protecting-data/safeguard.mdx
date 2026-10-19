@@ -82,13 +82,17 @@ Configure the primary cluster's backup settings from the **Primary Cluster** row
 
 To generate the backup configuration and restart the primary cluster to activate WAL archiving, select **Deploy Configuration**, WEM runs `whpg-dr configure backup` in the background. 
 
+The backup configuration file is stored in the WarehousePG cluster at `.whpg-dr/<cluster-name>/backup/wem-backup.yaml`. By default, `.whpg-dr` is in the home directory of the user that runs `whpg-dr`, typically `gpadmin`. The home directory changes if you set `WHPG_DR_HOME`.
+
 Validate the deployed configuration against the live cluster and  confirm WAL archiving is actually working before taking your first backup with **Check Configuration**, which runs `whpg-dr check` in the background.
 
 **Suspend WAL Archiving** pauses or resumes shipping without a full reconfigure, useful during a storage outage. See [Handling storage outages](/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#handling-storage-outages) for what suspending does to WAL retention and how to recover from it.
 
 ### Taking an initial backup
 
-`whpg-dr` needs at least one backup before you perform disaster recovery. Select **Take Backup Now** in **Backups & Restore Points**, naming it yourself or leaving it blank for an auto-generated timestamp. This action, and creating a restore point, are disabled while the primary isn't configured, a job is already running, the topology has drifted, or archiving is suspended, invalid, or inconsistent.
+`whpg-dr` needs at least one backup before you perform disaster recovery. Select **Take Backup Now** in **Backups & Restore Points**, naming it yourself or leaving it blank for an auto-generated timestamp. This action, and creating a restore point, are disabled while the primary isn't configured, a job is already running, or archiving is suspended, invalid, or inconsistent.
+
+If **Take Backup Now** is disabled and no job is running, select **Check Configuration**, which runs `whpg-dr check` in the background, and resolve any error it reports. The backup and restore point actions become available once the problem is fixed.
 
 Once setup is done, see [Managing backups and restore points](#managing-backups-and-restore-points) to manage backups on an ongoing basis.
 
@@ -101,6 +105,8 @@ WEM supports only one DR cluster.
 !!!
 
 Select **Deploy Configuration** to generate the restore configuration and restart the DR cluster, which runs `whpg-dr configure restore` in the background. This step doesn't restore any data, the DR cluster stays empty until you run a restore. Once both clusters are deployed, see [Checking DR readiness](#checking-dr-readiness) and [Restoring and promoting the DR cluster](#restoring-and-promoting-the-dr-cluster).
+
+The restore configuration file is stored in the DR cluster at `.whpg-dr/<cluster-name>/restore/wem-restore.yaml`, in the same default location as the backup configuration file.
 
 ## Managing backups and restore points
 
@@ -142,3 +148,7 @@ Review two tables at the bottom of the page, both filterable and paginated.
 
 - **Configuration History** lists every deployed, rolled back, or synced configuration change, for both the primary and DR cluster, when it happened, who made it, its source, and what changed. A **Host Sync** row means WEM picked up a manual edit to the `whpg-dr` configuration file itself. Roll back to an earlier entry from its row, and check **Also deploy to host** to redeploy it immediately rather than just restoring the saved values.
 - **Events** lists every background job WEM runs through **Safeguard**, deploys, backups, restore points, restores, promotions, and WAL archiving suspend/resume, with its status and full detail on expansion.
+
+### Detecting configuration drift
+
+WEM periodically checks the **Safeguard** configuration files on the primary and DR clusters, `wem-backup.yaml` and `wem-restore.yaml`, against the configuration WEM stores. The host is the source of truth, so when the values differ, WEM updates its stored configuration with the values from the host's configuration file. This check is on by default and runs every 60 seconds. Set `CONFIG_DRIFT_ENABLED` to turn it off, and `CONFIG_DRIFT_INTERVAL` to change how often it runs. See [Configuration reference](../reference/configuration).
