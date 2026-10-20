@@ -1,8 +1,10 @@
 ---
-title: Using Azure KMS
+title: Using Azure Key Vault
 description: Learn how to secure your encryption key with an Azure Key Vault key.
 deepToC: true
 ---
+
+You can protect the data encryption key with a key stored in Azure Key Vault.
 
 ## Configuration example
 
@@ -12,11 +14,22 @@ Create a key with [Azure Key Vault](https://learn.microsoft.com/en-us/azure/key-
 az keyvault key create --vault-name pg-tde --name pg-tde-master-1
 ```
 
-Use the `az keyvault key` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key:
+Use the `az keyvault key` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key. You can provide these commands as environment variables or as `initdb` command-line arguments.
+
+### Via environment variable
 
 ```shell
 PGDATAKEYWRAPCMD='az keyvault key encrypt --name pg-tde-master-1 --vault-name pg-tde --algorithm A256GCM --value @- --data-type plaintext --only-show-errors --output json | jq -r .result > "%p"'
 PGDATAKEYUNWRAPCMD='az keyvault key decrypt --name pg-tde-master-1 --vault-name pg-tde --algorithm A256GCM --value @"%p" --data-type plaintext --only-show-errors --output json | jq -r .result'
 ```
+
+### Via command argument
+
+```shell
+initdb --data-encryption -D /var/lib/edb/as16/data \
+  --key-wrap-command='az keyvault key encrypt --name pg-tde-master-1 --vault-name pg-tde --algorithm A256GCM --value @- --data-type plaintext --only-show-errors --output json | jq -r .result > "%p"' \
+  --key-unwrap-command='az keyvault key decrypt --name pg-tde-master-1 --vault-name pg-tde --algorithm A256GCM --value @"%p" --data-type plaintext --only-show-errors --output json | jq -r .result'
+```
+
 !!! Note
     Shell commands with pipes, as in this example, are problematic because the exit status of the pipe is that of the last command. A failure of the first, more interesting command isn't reported properly. Postgres handles this somewhat by recognizing whether the wrap or unwrap command wrote nothing. However, it's better to make this command more robust. For example, use the `pipefail` option available in some shells or the `mispipe` command available on some operating systems. Put more complicated commands into an external shell script or other program instead of defining them inline.

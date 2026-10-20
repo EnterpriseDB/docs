@@ -1,8 +1,10 @@
 ---
-title: Using HashiCorp KMS
+title: Using HashiCorp Vault
 description: Learn how to secure your encryption key with a HashiCorp Vault key.
 deepToC: true
 ---
+
+You can protect the data encryption key with a key managed by HashiCorp Vault.
 
 ## Configuration example
 
@@ -18,9 +20,22 @@ Create a key and give it a name:
 vault write -f transit/keys/pg-tde-master-1
 ```
 
-Use the `vault write` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key:
+Use the `vault write` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key. You can provide these commands as environment variables or as `initdb` command-line arguments.
 
-```
+### Via environment variable
+
+```shell
 PGDATAKEYWRAPCMD='base64 | vault write -field=ciphertext transit/encrypt/pg-tde-master-1 plaintext=- > "%p"'
 PGDATAKEYUNWRAPCMD='vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- < "%p" | base64 -d'
 ```
+
+### Via command argument
+
+```shell
+initdb --data-encryption -D /var/lib/edb/as16/data \
+  --key-wrap-command='base64 | vault write -field=ciphertext transit/encrypt/pg-tde-master-1 plaintext=- > "%p"' \
+  --key-unwrap-command='vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- < "%p" | base64 -d'
+```
+
+!!! Note
+    Shell commands with pipes, as in this example, are problematic because the exit status of the pipe is that of the last command. A failure of the first, more interesting command isn't reported properly. Postgres handles this somewhat by recognizing whether the wrap or unwrap command wrote nothing. However, it's better to make this command more robust. For example, use the `pipefail` option available in some shells or the `mispipe` command available on some operating systems. Put more complicated commands into an external shell script or other program instead of defining them inline.
