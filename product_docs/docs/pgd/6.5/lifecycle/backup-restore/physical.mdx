@@ -113,41 +113,6 @@ Clean up the PGD metadata left over from the backup so the restored node no long
 
 Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored. Install Postgres and PGD on each host first, using the same PGD version as the restored node. See [Installing and configuring EDB Postgres Distributed](/pgd/current/deploying/) for installation options, [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example, and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
 
-### Recreating logical replication slots
-
-Skip this section if you dropped the node's PGD metadata in the previous steps, because the commands read that metadata. If you restore every node from its own backup and keep the metadata, recreate the logical replication slots on each restored node before BDR replication resumes. Backups taken with `pg_basebackup` don't include logical replication slots, and neither do Barman backups that use the Postgres backup method, because Barman runs `pg_basebackup` internally. You must therefore recreate the slots after restoring either kind of backup.
-
-PGD names per-peer slots by the peer's `node_uuid` and a hash of the database name. After a restore, BDR's subscriber workers issue `START_REPLICATION` for slots in this exact form. If the slots aren't there, the `pgd manager` background worker enters a crash loop with `replication slot "bdr_<...>" does not exist` and replication doesn't progress.
-
-On each restored node, run the following:
-
-```sql
--- 1. Group slot. bdr.local_group_slot_name() returns the canonical
---    bdr_group_<group_uuid>_<dbhash> name.
-SELECT pg_create_logical_replication_slot(bdr.local_group_slot_name(), 'bdr');
-
--- 2. One slot per peer. The name must use the peer's node_uuid and the
---    database-name hash, because BDR subscribers ask for that exact name.
-SELECT pg_create_logical_replication_slot(
-    'bdr_node_'
-      || replace(n.node_uuid::text, '-', '')
-      || '_'
-      || lpad(to_hex(hashtext(current_database())), 8, '0'),
-    'bdr'
-)
-FROM bdr.node n
-WHERE n.node_id != (SELECT node_id FROM bdr.local_node);
-```
-
-Once the slots exist, the `pgd manager` background worker stops crash-looping and the per-peer slots transition to `active = t` within a few seconds. Confirm that the group slot and one slot for each peer exist, and that the per-peer slots show `active = t`:
-
-```sql
-SELECT slot_name, slot_type, active FROM pg_replication_slots ORDER BY slot_name;
-```
-
-!!! Warning
-    Don't call `bdr.initialize_replication_slot()` to recreate slots after a restore. The function exists, but the slots it creates use the peer's `node_name` rather than the `node_uuid` form that BDR subscribers consume. BDR never uses the resulting slots, and you can't drop them afterward.
-
 ### Verifying extension catalog tables
 
 After you restore every node from its own backup, confirm that each extension catalog table has the same contents on all nodes. Run a query that returns the row count and a checksum of the table's contents on each node, then compare the results. For PGAA specifically, see [Restoring a PGD cluster](/pgaa/latest/backup_restore#restoring-a-pgd-cluster).
