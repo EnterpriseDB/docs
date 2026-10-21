@@ -8,7 +8,7 @@ After the initial installation of WarehousePG Enterprise Manager (WEM), use thes
 
 ### Modifying settings using the WEM console
 
-Administrators can modify operational parameters directly through the web interface. It's the most efficient way to enable features without interrupting the WEM service.
+Administrators can modify operational parameters directly through the web interface. It's the most convenient way to change settings without editing files on the WEM host.
 
 1. Navigate to **Management** > **Settings** and select **Edit Settings**.
 1. Update the required fields, such as **ClickHouse URL** or **OTel collector metrics collection interval**.
@@ -35,11 +35,79 @@ Edit the configuration file directly on the WEM host to edit parameters not expo
 
 
 
-!!! Note
-    The installer auto-generates `WEM_COOKIE_SECRET` and `WEM_ADMIN_PASSWORD` if either is blank at install time. The generated values are printed in the install output. Copy them before proceeding. Edit these values only if you want to share sessions across multiple WEM instances or set a specific admin password.
-
 !!! Note "Configuration precedence and overrides"
     WEM prioritizes settings defined in the host environment over those in the WEM console.
 
     If you define a parameter in the `wem.conf` file, that value takes precedence. Changes made in the WEM console don't override values set in the configuration file. 
     If a change you made through the WEM console does not take effect, check the host configuration file for an existing entry.
+
+### Changing OTel Collector settings
+
+WEM writes `/etc/edb/otelcol/config.yaml` on every cluster node through the host agent. It updates the file when WEM starts, when a host agent restarts, and when a setting WEM manages changes. Don't edit this file directly, because WEM overwrites your changes.
+
+Some values in `/etc/edb/otelcol/config.yaml` come from WEM settings, and you change them in WEM. All other values come from the host agent's template, and you change them with an override file. The [OTel Collector configuration reference](reference/otel-collector-config) lists the values in each group.
+
+#### Changing settings that WEM manages
+
+Use this method for the values that WEM sets. For example, `OTEL_COLLECTION_INTERVAL` sets `receivers.host_metrics.collection_interval`.
+
+1. Update the setting in the WEM console or in `/etc/wem/wem.conf`.
+1. If you edited `wem.conf`, restart WEM:
+
+    ```bash
+    sudo systemctl restart wem
+    ```
+
+WEM regenerates the collector configuration and sends it to the nodes whose configuration changed. You don't need to restart the host agents.
+
+#### Overriding other collector settings
+
+Use this method for every other value in `/etc/edb/otelcol/config.yaml`, such as batch sizes (`processors.batch`) or where the collector starts reading logs (`receivers.file_log.start_at`). Put your overrides in a separate file and add it to the collector's startup options. The collector merges this file on top of the generated configuration, so WEM doesn't overwrite your changes.
+
+Perform these steps on each node where you want to override settings:
+
+1. Create `/etc/edb/otelcol/config_local.yml` and add only the values you want to override. For example, to change batch processing:
+
+    ```yaml
+    processors:
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 16384
+        timeout: 5s
+    ```
+
+    Use the component names from the generated `/etc/edb/otelcol/config.yaml`. Larger batches can reduce CPU usage, but they can also need more memory, increase delivery latency, and lose more data if the collector crashes or restarts.
+
+1. Set the owner of the file to the `edb-otelcol` user:
+
+    ```bash
+    sudo chown edb-otelcol:edb-otelcol /etc/edb/otelcol/config_local.yml
+    ```
+
+1. Validate the merged configuration:
+
+    ```bash
+    sudo /usr/edb/otelcol/bin/edb-otelcol validate \
+      --config=file:/etc/edb/otelcol/config.yaml \
+      --config=file:/etc/edb/otelcol/config_local.yml
+    ```
+
+1. Print the merged configuration to verify the result:
+
+    ```bash
+    sudo /usr/edb/otelcol/bin/edb-otelcol print-config \
+      --config=file:/etc/edb/otelcol/config.yaml \
+      --config=file:/etc/edb/otelcol/config_local.yml
+    ```
+
+1. Open `/etc/edb/otelcol/edb-otelcol.conf` and add your file to `OTELCOL_OPTIONS`:
+
+    ```ini
+    OTELCOL_OPTIONS="--config /etc/edb/otelcol/config.yaml --config /etc/edb/otelcol/config_local.yml"
+    ```
+
+1. Restart the collector service. Restart only `edb-otelcol`, not the host agent:
+
+    ```bash
+    sudo systemctl restart edb-otelcol
+    ```
