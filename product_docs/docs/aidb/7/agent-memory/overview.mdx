@@ -1,0 +1,53 @@
+---
+title: Understanding agent memory
+navTitle: Overview
+description: Understand the components of agent memory, the key concepts, how it works, and who is responsible for each task.
+---
+
+Agent memory gives AI agents a durable, searchable memory of past conversations. This page describes its components, the key terms that the product uses, and who is responsible for each task.
+
+## Architecture
+
+Agent memory has two components.
+
+Postgres with the AIDB extension. AIDB provides the `aidb_memory` functions, records the conversations that your application adds, and holds the namespaces and the storage schema where memories are kept.
+
+The EDB Agent Memory Server, a Docker container that EDB provides. It runs on a host that can reach your database, which can be the Postgres host or a separate host. It builds memories from the conversation turns, using the LLM and embedding models that you register in AIDB, and writes them to the storage schema in your database.
+
+When your application calls `aidb_memory.add` with the turns of a conversation, AIDB records them as an event. In the background, the server turns the event into memories. Your application then searches the memories with SQL. See [Installing agent memory](install) and [Configuring agent memory](configuring).
+
+## Key concepts
+
+- Actor - The person or system that memories are about, identified by an actor ID such as `user_42`. See [Choosing identifiers](memory-operations#choosing-identifiers).
+- Turn - A single message in a conversation, with a role (for example, user or assistant) and content. You submit turns with [Adding memories](memory-operations#adding-memories).
+- Memory - A fact distilled from one or more turns and stored for later search.
+- Namespace - A named scope that separates the memory configuration and data of one application or workload from another. See [Scoping memory with namespaces](namespaces).
+- Operator - The person or deployment code responsible for configuring AIDB, namespaces, and database permissions. See [Roles and responsibilities](#roles-and-responsibilities).
+
+## How agent memory works
+
+1. Add - Your application or agent sends conversation turns to agent memory for a specific actor, such as a user. Agent memory records the turns as an event.
+2. Distill - In the background, the agent memory worker in AIDB processes each event and distills it into discrete memories, such as "prefers dark mode" or "wants a window seat". Because processing is asynchronous, a newly added fact might not appear in search results immediately.
+3. Search - Later, the agent searches the actor's memories by meaning, not by keyword, and receives the best matches first.
+4. Manage - Operators can list memories and delete them, individually or by session, agent, or actor. Deletion accepts a reason that is recorded for auditing.
+
+## Roles and responsibilities
+
+Agent memory is aimed at two roles: operators and application developers.
+
+An operator installs AIDB, runs the Agent Memory Server, registers models, creates namespaces, and grants database permissions. Operators also list and delete memories for correction, retention, and compliance. See [Installing agent memory](install) and [Configuring agent memory](configuring).
+
+An application developer adds conversation turns, checks status, searches memories, and reads sessions back, working in a namespace that an operator configured. See [Managing memories](memory-operations), [Example](example), and [Using session memory](session-memory).
+
+## Using agent memory with agents and tools
+
+AIDB agents use agent memory natively. Agent memory operations are available as native tools that let an agent add and search memories, the same way it calls any other native tool, without you writing SQL for it:
+
+- `memory_add` teaches agent memory from a conversation or event, so the agent can recall it later. It isn't read-only.
+- `memory_search` finds the memories most relevant to a natural-language query. It's read-only.
+
+To make these tools available to an agent, list them in the agent's `tools`. See [Native tools](../tools/native-tools) and [Creating agents](../agents/creating-agents).
+
+Listing and deleting memories are available only through the `aidb_memory` SQL functions, not as tools.
+
+Agent memory has no separate MCP package. Applications that aren't AIDB agents use the `aidb_memory` SQL functions directly. See [Managing memories](memory-operations).

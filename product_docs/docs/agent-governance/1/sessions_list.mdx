@@ -1,49 +1,84 @@
 ---
-title: Browsing sessions
-navTitle: Browsing sessions
-description: Find and filter the AI agent sessions detected for a Postgres cluster in the audit log viewer.
+title: Browsing activity
+navTitle: Browsing activity
+description: Find and filter the AI agent sessions, connections, conversations, and traces recorded for a cluster in EDB Agent Governance.
 deepToC: true
 ---
 
-Use the **Sessions List** to audit all AI agent sessions detected for a cluster. Each session represents a complete interaction — All the SQL statements an AI agent executed within a single Airman MCP session.
+Use the Activity page to audit everything AI agents did on a cluster. Open a cluster from the home page, then select Activity in the sidebar. See [Reading the cluster dashboard](./dashboard) for how to get there.
 
-## Finding the sessions list
+Each row is one group of agent work. What a group is depends on the source:
 
-The **Home** page lists every cluster across all configured instances. Each cluster card shows the cluster name, its status, and its project, and a search box filters the list. Select a cluster card to open its **Sessions List**.
+- `aidb` database — A session, connection, conversation, or trace, whichever identifier `aidb` recorded for the call. The Type column says which.
+- HM or Loki source — An Airman MCP session: all the SQL statements an agent executed within one MCP session.
 
-If a configured instance fails to load, the **Home** page shows a per-instance error alert. If no instances are configured yet, it shows a zero state with a **Configure Instances** button. See [Connecting data sources](./connecting_data_sources).
+## Using the activity table
 
-When you open a cluster, the **Sessions List** loads automatically and triggers a background sync if needed, so you see the latest data from the upstream source.
+Use the page numbers, Previous, and Next below the table to move between pages. The newest activity comes first, and the table shows five rows per page.
 
-## Reading the sessions table
+Selecting a row opens a details panel on the right with a summary of that row. The first row is selected when the page opens. Use the Toggle details panel button in the toolbar to show or hide the panel, or press Esc to close it. To open the full view of a session, select its identifier, or select View Full Details in the details panel. See [Inspecting a session](./session_detail).
 
-The sessions table supports customizable column visibility:
+### Reading the columns for an aidb database
 
-| Column     | Default        | Sortable | Description                                                                            |
-|------------|----------------|----------|----------------------------------------------------------------------------------------|
-| Session ID | Always visible | Yes      | Monospace identifier. Select it to open the **Session Detail** page.                   |
-| Purpose    | Visible        | Yes      | Declared purpose from the Airman MCP configuration.                                    |
-| Started    | Visible        | Yes      | Timestamp of the first statement in the session.                                       |
-| Commands   | Hidden         | No       | Tags showing the SQL command types in the session (SELECT, INSERT, UPDATE, and so on). |
-| Steps      | Visible        | Yes      | Total number of SQL statements executed.                                               |
-| Errors     | Visible        | Yes      | Count of statements with error severity. Shown as a red badge when greater than zero.  |
+Read these columns to identify each group of agent work in an `aidb` database:
 
-To change which columns appear, select the column visibility button (the gear icon) in the toolbar and use the checkbox list. Session ID is always visible and can't be hidden. The table shows 10 sessions per page by default; use the page-size picker to switch to 20 or 50.
+| Column            | Description                                                                                         |
+|-------------------|-----------------------------------------------------------------------------------------------------|
+| Type          | Session, connection, conversation, or trace.                                                        |
+| Identifier    | The identifier of the group. Select it to open the session page.                                    |
+| OBO Principal | The user the agent acted on behalf of, when `aidb` recorded one.                                    |
+| User Context  | Always a dash: `aidb` doesn't record the application user context.                                  |
+| Purpose       | The declared purpose of the agent.                                                                  |
+| Agents        | The agents that took part.                                                                          |
+| Steps         | The number of recorded steps.                                                                       |
+| Decisions     | A Denied badge with the count, when governance denied at least one action.                     |
+| Started       | When the first step was recorded.                                                                   |
 
-## Searching sessions
+The details panel adds Resolved From (the telemetry attribute the identifier came from, for example `mcp.session.id`), Duration, and the number of conversations, spans, agents, and approved and denied decisions.
 
-The search field in the toolbar performs full-text matching across the session ID and purpose. Type a term and press **Enter**, or wait for auto-filtering. Use the clear button to reset the search.
+### Reading the columns for an HM or Loki source
 
-## Filtering by outcome
+Read these columns to identify each session from an HM or Loki source:
 
-The toolbar's filter lets you narrow the list by outcome:
+| Column             | Description                                                                 |
+|--------------------|-----------------------------------------------------------------------------|
+| Type           | Always a session.                                                           |
+| Identifier     | The Airman session identifier. Select it to open the session page.          |
+| Purpose        | The declared purpose from the Airman MCP configuration.                     |
+| Steps          | The number of SQL statements executed.                                      |
+| Denied queries | Statements the database refused with an access denial.                      |
+| Errors         | Statements that recorded an error.                                          |
+| Started        | When the first statement was recorded.                                      |
 
-| Filter  | Options    | Description                                                                               |
-|---------|------------|-------------------------------------------------------------------------------------------|
-| Outcome | OK, Issues | Show only sessions that completed cleanly, or only those that contain at least one error. |
+The details panel adds Resolved From (`application_name`) and Last Activity.
 
-The filter is single-select — selecting a different option replaces the current one. Clear it to show all sessions again.
+## Searching
 
-## Opening a session
+Type in the Search... field in the toolbar to narrow the list as you type. For an `aidb` database, the search matches identifiers. For an HM or Loki source, it matches identifiers and purposes.
 
-Select a session ID to open the [**Session Detail**](./session_detail) page, where you can inspect each SQL statement step by step and read the full audit log for that session.
+## Filtering
+
+Select the filter button in the toolbar to open the filters. The button shows when a filter is active.
+
+For an `aidb` database:
+
+| Filter                  | Options                                                                                                              |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Telemetry recorded  | A Start date and End date, or one of Today, Last 7 days, and Last 30 days. Clear date range removes it. |
+| Agent               | One or more agents that reported telemetry.                                                                         |
+| Identifier type     | Session, connection, conversation, or trace.                                                                        |
+| Status              | OK, Error, or Denied.                                                                                   |
+| Find by decision id | Enter a decision ID from `aidb` and select Find decision to open the session that contains it.                 |
+
+Find by decision id appears only when the chart value `bff.governanceDecisionsEnabled` is `true`, which is the default.
+
+For an HM or Loki source:
+
+| Filter      | Options                                                               |
+|-------------|-----------------------------------------------------------------------|
+| Purpose | All purposes (the default, no filter applied), or one of the purposes present in the loaded sessions. |
+| Outcome | All outcomes, Denied, Errors, or No errors recorded.  |
+
+Selecting an agent or purpose on the dashboard opens Activity with that filter already applied. For an HM or Loki source, the Purpose filter is also kept in the page address, so you can bookmark or share the filtered view.
+
+If the list can't load, the page shows Failed to load activity, or one of the connection messages described in [Connecting an aidb database — Troubleshooting](./connecting_aidb#troubleshooting), with a Retry button.

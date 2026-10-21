@@ -46,6 +46,11 @@ const products = {
     shortName: "Agent Governance",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
+  "vector-plus": {
+    name: "EDB Vector Plus",
+    shortName: "Vector Plus",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     shortName: "EDB Postgres Distributed",
@@ -141,7 +146,11 @@ const products = {
   CloudNativePG: { name: "CloudNativePG" },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
-  tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
+  tde: {
+    name: "Transparent Data Encryption",
+    abbreviation: "TDE",
+    iconName: IconNames.SECURITY,
+  },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
   tds_data_adapter: {
     name: "TDS Foreign Data Wrapper",
@@ -160,6 +169,31 @@ const products = {
   pxf: {
     name: "PXF for WarehousePG",
     shortName: "PXF",
+    iconName: IconNames.WHPG,
+  },
+  wem: {
+    name: "WarehousePG Enterprise Manager",
+    shortName: "WEM",
+    iconName: IconNames.WHPG,
+  },
+  flowserver: {
+    name: "FlowServer for WarehousePG",
+    shortName: "FlowServer",
+    iconName: IconNames.WHPG,
+  },
+  "whpg-backup": {
+    name: "WarehousePG Backup and Restore",
+    shortName: "WHPG Backup and Restore",
+    iconName: IconNames.WHPG,
+  },
+  "whpg-dr": {
+    name: "WarehousePG Disaster Recovery",
+    shortName: "WHPG Disaster Recovery",
+    iconName: IconNames.WHPG,
+  },
+  "whpg-copy": {
+    name: "WarehousePG Copy",
+    shortName: "WHPG Copy",
     iconName: IconNames.WHPG,
   },
   clickhouse: {
