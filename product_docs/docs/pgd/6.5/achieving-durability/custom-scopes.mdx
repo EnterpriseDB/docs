@@ -15,9 +15,9 @@ Every custom scope definition answers three questions, plus an optional fourth:
 <div style="margin-bottom: 1rem;"><img src="../images/commit-scope-building-blocks.svg" style="width: 520px; height: auto;" alt="Formula showing commit scope equals which group plus who confirms plus an optional how far, which is the confirmation level, plus how, which is the commit kind." /></div>
 
 
-Each clause pairs a "who confirms?" with a "how?", and can add a "how far?" between them. Combine as many clauses as you need using `AND` to enforce different durability requirements across node groups in the same commit. PGD evaluates each clause independently, and all must be satisfied before the commit returns.
+Each clause combines "which group(s)?", "who confirms?", and "how?", and can add a "how far?" before the "how?". Combine as many clauses as you need using `AND` to enforce different durability requirements across node groups in the same commit. PGD evaluates each clause independently, and all must be satisfied before the commit returns.
 
-<div style="margin-bottom: 1rem;"><img src="../images/commit-scope-combining-clauses.svg" style="width: 420px; height: auto;" alt="Diagram showing origin group combined with two confirming nodes and commit mode pairs joined by AND." /></div>
+<div style="margin-bottom: 1rem;"><img src="../images/commit-scope-combining-clauses.svg" style="width: 540px; height: auto;" alt="Diagram showing two clauses joined by AND, each made of which group or groups, who confirms, and how." /></div>
 
 
 When you create a custom commit scope, you define:
@@ -64,10 +64,10 @@ Add a confirmation level to a clause with `ON`, between the commit scope group a
 
 Pick the level that matches how much data loss and stale reading your workload can tolerate:
 
-- **`received`** confirms as soon as a peer receives the transaction. It's the fastest level, but data can be lost if the peer crashes.
-- **`replicated`** confirms after a peer applies the transaction but before it flushes the changes to disk. Data survives a Postgres crash but not an operating system crash.
-- **`durable`** confirms after a peer flushes the changes to disk. Data survives a crash and recovery of the peer, but the changes might not be visible yet.
-- **`visible`** is the default. It confirms after a peer flushes the changes to disk and makes them visible to other transactions. With Quorum Commit, peers confirm after applying the transaction, without waiting for a flush. It's the most robust level, with the lowest performance.
+- **`received`** confirms as soon as a peer receives the transaction. However, can be lost if the peer crashes.
+- **`replicated`** confirms after a peer applies the transaction but before it flushes the changes to disk. Data survives a Postgres crash but not an operating system crash. Synchronous Commit and CAMO handle `replicated` the same way as `received`.
+- **`durable`** confirms after a peer flushes the changes to disk. Data survives a crash and recovery of the peer, but with some commit kinds, such as Quorum Commit, the changes aren't visible yet.
+- **`visible`** is the default. It confirms after a peer applies the transaction and makes it visible to other transactions. Synchronous Commit and CAMO handle `visible` the same way as `durable`. With Quorum Commit, peers confirm without waiting for a flush.
 
 Not every commit kind supports every level. Quorum Commit supports only `durable` and `visible`. Lag Control doesn't use confirmation levels. For what each level does with each commit kind, see [Confirmation levels](/pgd/current/commit-scopes/comparing/). For where the level fits in a rule, see the [commit scope syntax](/pgd/current/reference/tables-views-functions/commit-scopes/#commit-scope-syntax).
 
@@ -139,6 +139,22 @@ The red box covers A1, A2, and A3 because `ALL ORIGIN GROUP` selects every node 
 
 <div style="text-align: center; margin-bottom: 1rem;"><img src="../images/commit-scope-example2.svg" style="max-width: 100%; height: auto;" alt="Topology diagram showing two selection boxes. The red box covers all three Region A nodes as the local ALL clause. The orange selection spans A2, B2, and B3, with two solid arrows showing the two required cross-region confirmations." /></div>
 
+## Example: Combining Synchronous Commit with Lag Control
+
+To protect the local group synchronously and keep a remote group from falling behind without waiting on it, join a Synchronous Commit clause with a Lag Control clause. Lag Control throttles transactions when the remote lag exceeds the configured limits.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'local_sync_remote_lag',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT DEGRADE ON (timeout = 10s) TO ASYNC
+             AND ANY 1 NOT ORIGIN GROUP LAG CONTROL (max_commit_delay = 0.250ms, max_lag_size = 100MB)',
+    wait_for_ready := true
+);
+```
+
+The first clause requires a majority of the origin group to confirm and degrades to async after 10 seconds. The second clause applies Lag Control to one node outside the origin group. Because `ORIGIN GROUP` resolves to the group of the node that originates the transaction, one rule on the top group covers every subgroup.
+
 ## Example: Handling multiple durability requirements in a payments workload
 
 Consider a payments application that processes wire transfers, point-of-sale transactions, and batch settlement jobs in the same cluster. Different transaction types carry different risks, and applying the same commit kind to all of them either over-protects low-criticality paths or under-protects high-value ones.
@@ -150,10 +166,10 @@ In this scenario, the application faces two distinct durability problems:
 
 To address these two problems, use different commit scope kinds:
 
-- Use [Quorum Commit](/pgd/current/commit-scopes/quorum-commit/) for wire transfers. It requires a majority of nodes to agree before any node finalizes the transaction. If they can't agree, the transaction rolls back everywhere.
-- Use [CAMO](/pgd/current/commit-scopes/camo/) for payment gateway transactions. It lets the application query a partner node for the definitive outcome before deciding whether to retry.
+- Use [CAMO](/pgd/current/commit-scopes/camo/) for payment gateway transactions, as the default. It lets the application query a partner node for the definitive outcome before deciding whether to retry. CAMO supports only two data nodes, so the CAMO pair sits in its own group.
+- Use [Quorum Commit](/pgd/current/commit-scopes/quorum-commit/) for wire transfers, for those transactions only. It requires a majority of nodes to agree before any node finalizes the transaction. If they can't agree, the transaction rolls back everywhere. In a cluster with two data nodes and a witness, the cluster stops accepting Quorum Commit writes when one data node is down, so Quorum Commit isn't suitable as the default.
 
-To apply both in the same cluster, define a scope for each commit kind, set Quorum Commit as the group default, and override to CAMO per transaction for the payment gateway path:
+To apply both in the same cluster, define a scope for each commit kind, set CAMO as the default for the CAMO group, and override to Quorum Commit per transaction for wire transfers:
 
 1. Define the two scopes:
 
@@ -175,21 +191,21 @@ To apply both in the same cluster, define a scope for each commit kind, set Quor
    );
    ```
 
-2. Set Quorum Commit as the default for the payments group:
+2. Set CAMO as the default for the CAMO group:
 
    ```sql
    SELECT bdr.alter_node_group_option(
-       node_group_name := 'payments_group',
+       node_group_name := 'payment_gateway_camo',
        config_key := 'default_commit_scope',
-       config_value := 'quorum_commit'
+       config_value := 'payment_gateway_camo_scope'
    );
    ```
 
-3. Apply CAMO per transaction for payment gateway operations that need exactly-once semantics:
+3. Apply Quorum Commit per transaction for wire transfers that need conflict prevention:
 
    ```sql
    BEGIN;
-   SET LOCAL bdr.commit_scope = 'payment_gateway_camo_scope';
-   -- payment gateway writes
+   SET LOCAL bdr.commit_scope = 'quorum_commit';
+   -- wire transfer writes
    COMMIT;
    ```
