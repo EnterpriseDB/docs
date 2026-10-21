@@ -19,6 +19,7 @@ The WarehousePG documentation describes the latest version of WarehousePG 7.
 
 | Version                               | Release date      |
 | ------------------------------------- | ----------------- |
+| [7.6.1-WHPG](#warehousepg-7-6-1-whpg) | 21 October 2026   |
 | [7.6.0-WHPG](#warehousepg-7-6-0-whpg) | 25 September 2026 |
 | [7.5.0-WHPG](#warehousepg-7-5-0-whpg) | 8 June 2026       |
 | [7.4.1-WHPG](#warehousepg-7-4-1-whpg) | 11 June 2026      |
@@ -28,6 +29,41 @@ The WarehousePG documentation describes the latest version of WarehousePG 7.
 | [7.3.0-WHPG](#warehousepg-7-3-0-whpg) | 14 November 2025  |
 | [7.2.2-WHPG](#warehousepg-7-2-2-whpg) | 17 November 2025  |
 | [7.2.1-WHPG](#warehousepg-7-2-1-whpg) | 15 May 2025       |
+
+## WarehousePG 7.6.1-WHPG
+
+Released: 21 October 2026
+
+WarehousePG 7.6.1-WHPG is a security and maintenance release. It includes the following enhancements, bug fixes, and other changes:
+
+!!!info Note
+
+WarehousePG 7.6.1 changes the privileges required to run some administration functions and views, and some existing clusters need follow-up SQL statements. Review [Upgrading to 7.6.1: Behavior changes to review](../install_guide/minor_upgrade.mdx#replacing-binaries-and-restarting-whpg) before you upgrade.
+!!!
+
+### Enhancements
+
+-   ORCA now caches the interval constraint it derives from a constant `IN` or `NOT IN` list, which cuts planning time for long lists on partitioned tables. The new [`optimizer_array_interval_threshold`](../ref_guide/config_params/guc-list.mdx#optimizer_array_interval_threshold) configuration parameter limits the list length for which the constraint is derived at all.
+
+### Bug fixes
+
+-   Fixed ORCA losing rows from heap partitions, or from an external `DEFAULT` partition, when a partitioned table mixes external and heap partitions and a join on the partition key gives the dynamic scans a shared Partition Selector. Queries returned fewer rows than with the Postgres planner. Dynamic scans now match the selector's result to their partitions by OID.
+-   Fixed every scan of a readable external table that has a `CHECK` constraint failing on the segments with `ERROR: unrecognized node type: 596`.
+-   Fixed a crash when an append-optimized column-oriented scan is rescanned before it has returned a tuple, for example a `TABLESAMPLE` scan on the inner side of a nested loop.
+-   Fixed `upper()`, `lower()`, and `initcap()` failing with `invalid multibyte character for locale` on non-ASCII text in a UTF8 database created with `LC_CTYPE=C` whenever the server runs under a UTF-8 locale such as `en_US.UTF-8`. Both the Postgres planner and ORCA were affected. The same change makes the validation of [`gp_resource_group_cgroup_parent`](../ref_guide/config_params/guc-list.mdx#gp_resource_group_cgroup_parent) check the whole value instead of its first 8 characters.
+-   Fixed `gplogfilter` to correctly process the server's CSV logs. Several options, including `--tail`, `--trouble`, `-b`, `-e`, and `-d`, returned wrong results or failed since the Python 3 port. The `--prunefiles` option now skips log files outside the requested time range.
+-   Fixed parallel worker startup for extension parallel index builds, such as pgvector's, which failed with snapshot and transaction errors when launched inside a PL/pgSQL loop or after a cursor.
+-   Fixed `gpload` with `REUSE_TABLES`, `FAST_MATCH`, or `ERROR_TABLE` failing for non-superusers with `permission denied for view pg_exttable`. `gpload` now reads the `pg_exttable()` function, and `gp_exttable_fdw` 1.1 grants `SELECT` on the `pg_exttable` view to `PUBLIC`.
+-   Fixed `orafce` `plvstr.normalize()` truncating its result at the first control byte in a multibyte database and returning repeated characters in a single-byte database.
+-   Fixed the resource group cgroup detection to read `/proc/1/cgroup` line by line instead of with an unbounded `fscanf()`, which could overflow a fixed-size stack buffer when a cgroup path was longer than the buffer, and added the missing `NULL` check after `strpbrk()`.
+
+### Security
+
+-   Required `EXECUTE` on `pg_log_backend_memory_contexts(integer)` to call `gp_log_backend_memory_contexts()`, so any role can no longer make other sessions' backends dump their memory contexts into the segment logs, for [CVE-2026-104947](https://www.cve.org/CVERecord?id=CVE-2026-104947).
+-   Restricted `gp_expand_lock_catalog()` and `gp_expand_bump_version()` to superusers, so any role can no longer call them, even with no `gpexpand` running, to block catalog changes or disconnect sessions that hold temporary tables, for [CVE-2026-104948](https://www.cve.org/CVERecord?id=CVE-2026-104948).
+-   Restricted `gp_add_coordinator_standby()` and `gp_add_master_standby()` to superusers, so a regular role can no longer insert a standby row that blocks `gpinitstandby`, for [CVE-2026-104949](https://www.cve.org/CVERecord?id=CVE-2026-104949).
+-   Restricted the `pg_backend_memory_contexts` and `gp_backend_memory_contexts` views and the `pg_get_backend_memory_contexts()` function to superusers and members of `pg_read_all_stats`, as PostgreSQL 14 and later do. See [Upgrading to 7.6.1: Behavior changes to review](../install_guide/minor_upgrade.mdx#replacing-binaries-and-restarting-whpg) for the required follow-up statements.
+-   Raised the minimum TLS version for the `gpfdists://` external table client and the `s3://` protocol clients to TLS 1.2.
 
 ## WarehousePG 7.6.0-WHPG
 
