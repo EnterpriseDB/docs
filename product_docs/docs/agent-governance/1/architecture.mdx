@@ -45,9 +45,23 @@ Follow an agent call through four stages before it appears in the viewer.
 
 ## Recording telemetry with the aidb extension
 
-Set the `aidb.otel_client` parameter to `database` to make `aidb` write telemetry; the default, `noop`, writes nothing. For each agent call it records spans in `aidb_otel.traces` and log records in `aidb_otel.logs`. Every tool SQL execution that runs under a purpose-resolved role also emits one `purpose_decision` span that says whether the action was allowed or denied, for which principal and Postgres role, and why it was denied. The attributes `aidb` records are listed in the [AIDB observability reference](/aidb/latest/reference/observability/). See [Connecting an aidb database](./connecting_aidb) for enabling telemetry.
+Set `aidb.otel_client` to `database` to store AIDB telemetry. The default, `noop`, doesn't record it. A span describes an operation and its timing. A log record contains a message associated with activity, such as an error. AIDB stores spans in `aidb_otel.traces` and log records separately in `aidb_otel.logs`, linked by trace and span identifiers when available. These log records aren't events embedded inside a span.
 
-Decisions are recorded only for agents from the `aidb` agent registry whose reasoning loop runs inside Postgres, and only for SQL that runs under a purpose-resolved role. Agents whose loop runs outside Postgres — for example, through Airman MCP — aren't recorded in `aidb_otel` at all; they're visible only through the legacy path.
+The dashboard uses the following recorded activity:
+
+| Activity | Data used by the dashboard |
+|----------|----------------------------|
+| Agent conversations | Agent identity, declared purpose, conversation and session identifiers, start time, duration, and status. |
+| Tool and model calls | Recorded operations within the session, including tool or model names, timing, and errors when available. |
+| SQL execution | The SQL submitted by an agent's tool, with execution timing and status. |
+| Governance decisions | Whether a purpose-scoped SQL action was allowed or denied, the calling user, the resolved Postgres role, and the reason for a denial. |
+| Related log records | Messages associated with the recorded session or step. |
+
+A governance decision is a span named `purpose_decision`. Decision recording applies to tool SQL executed by AIDB agents under a purpose-resolved role. An agent without a purpose doesn't produce these decisions. The dashboard shows the records available for the selected period, subject to telemetry settings and retention. It isn't an audit of every statement executed in Postgres.
+
+AIDB also collects telemetry for other operations and stores metrics in `aidb_otel.metrics`. The dashboard doesn't display all AIDB telemetry or read that metrics table. For the full attribute reference and version-specific decision details, see [AIDB observability](/aidb/latest/reference/observability/). To enable collection, see [Connecting an aidb database](./connecting_aidb).
+
+Agent activity collected through Airman MCP and Postgres query logs uses the [legacy data path](#tracing-the-legacy-data-path-hybrid-manager-and-loki).
 
 ## Storing telemetry in the source database
 
@@ -55,7 +69,13 @@ Plan retention and access control for the two ordinary tables that hold the tele
 
 ## Reading telemetry in the viewer backend
 
-Connect the viewer backend to each registered database with a dedicated read-only role over TLS (`sslmode=verify-ca` or `verify-full`). The backend reads only `aidb_otel.traces` and `aidb_otel.logs`. It never writes to the source database, and it doesn't copy the telemetry into its own database: each page reads the source directly, so activity appears within seconds of the first agent call, and rows removed by retention disappear from the viewer. The backend groups traces by the identifiers `aidb` recorded — an MCP session, a Postgres connection, a conversation, or the trace itself — extracts governance decisions from the spans, and loads long sessions page by page. The connection string and certificates are encrypted at rest and never reach the browser. See [Connecting an aidb database](./connecting_aidb) and [Securing access and handling credentials](./security_and_data).
+Connect the viewer backend to each registered database with a dedicated read-only role over TLS. Prefer `sslmode=verify-full`, which verifies both the certificate and the host name. The backend reads spans and log records from `aidb_otel.traces` and `aidb_otel.logs`. The Agents roster also reads `aidb.agents` and `aidb.purpose_registry`, and Permissions uses Postgres catalog information. These reads don't require access to the application table contents.
+
+The viewer doesn't copy telemetry into its own database. It queries the source database and groups recorded operations into sessions and steps. Records removed by retention are no longer available in the viewer. The browser receives results through the viewer's API, not through a direct database connection.
+
+No collector is required for this connection. AIDB's optional [OTLP exporter](/aidb/latest/reference/observability/#exporting-traces-logs-and-metrics) sends telemetry to an external monitoring system independently of the dashboard.
+
+For the required grants and credential handling, see [Connecting an aidb database](./connecting_aidb) and [Securing access and handling credentials](./security_and_data).
 
 ## Rendering telemetry in the viewer
 
