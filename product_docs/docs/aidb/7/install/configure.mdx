@@ -150,7 +150,7 @@ AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and
 
 ## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually. The sections below cover threading limits, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
+AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually. The sections below cover threading limits, the model cache, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -174,6 +174,18 @@ SET aidb.max_io_threads = 4;
 ```
 
 See [Threading limits](threading-limits) for what these two parameters control, how they interact, and when to lower them.
+
+### Model cache
+
+| Parameter                    | Type    | Default              | Range          | Description |
+|------------------------------|---------|----------------------|----------------|-------------|
+| `aidb.max_model_cache_size`  | integer | A quarter of host RAM | 0 or higher    | Maximum memory each process uses to cache loaded models, in MB. `0` means no limit. When a model load would exceed the limit, AIDB evicts the least recently used models first. A single model larger than the limit is rejected. Only local models count toward the limit. `SUSET`. |
+
+The default is computed when the extension loads. The limit applies to each backend and background worker separately. A session-level `SET` applies at the next model load in that backend. A change with `ALTER SYSTEM` or in `postgresql.conf` applies after `pg_reload_conf()`.
+
+```sql
+SET aidb.max_model_cache_size = '4GB';
+```
 
 ### Model download
 
@@ -355,7 +367,7 @@ Forwards rows from `aidb_otel.{traces,logs,metrics}` to an external OTLP/HTTP co
 | `aidb.otel_exporter_max_retries`    | integer | `5`     | 1–100      | Maximum export attempts for a row before it's marked permanently failed. `SUSET`.                                                                     |
 | `aidb.otel_exporter_batch_size`     | integer | `100`   | 1–1000000  | Maximum rows read per table per export tick. `SUSET`.                                                                                                 |
 
-All five support a per-database override with `ALTER DATABASE <db> SET`, applied the next time the dispatcher polls.
+All five support a per-database override with `ALTER DATABASE <db> SET`. A per-database override that enables the worker applies within two minutes. Enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. See [Default footprint](default-footprint#workers-enabled-by-settings).
 
 #### Cleaner background worker
 

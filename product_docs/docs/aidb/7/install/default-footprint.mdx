@@ -1,0 +1,96 @@
+---
+title: Default footprint
+navTitle: Default footprint
+description: The processes, database changes, and idle resource usage AIDB adds to a Postgres server with default settings.
+---
+
+This page lists what AIDB adds to a Postgres server when you install it with default settings: the processes it runs, the changes it makes to the database, and the memory and CPU it uses while idle.
+
+## Background workers
+
+### Workers started by default
+
+With `shared_preload_libraries = 'aidb'` and no other AIDB settings, AIDB starts these background workers:
+
+| Worker | `backend_type` in `pg_stat_activity` | Count | Poll interval |
+|--------|--------------------------------------|-------|---------------|
+| Root worker | `aidb root bgworker` | 1 per cluster | 120 s |
+| Pipeline dispatcher | `aidb dispatcher db_oid(<oid>)` | 1 per eligible database | 30 s |
+
+An eligible database allows connections and isn't a template. This includes `postgres` and every user database.
+
+A new cluster with one user database runs three AIDB background workers: one root worker and two dispatchers. The workers are idle between polls.
+
+- **Root worker:** Starts when the server finishes recovery. It connects to the `postgres` database, so that database must exist. Every 120 seconds, it lists the eligible databases and starts any missing per-database workers. If it crashes, Postgres restarts it after 13 seconds.
+- **Pipeline dispatcher:** Runs in each eligible database, including databases where you didn't run `CREATE EXTENSION aidb`. In those databases, it exits right after it starts. The root worker starts it again on its next poll. If the dispatcher crashes, the root worker restarts it on its next poll.
+
+### Workers started on demand
+
+The dispatcher starts one pipeline worker for each pipeline with `auto_processing => 'Background'`. Pipelines in `Live` or `Disabled` mode don't get a worker.
+
+| Worker | `backend_type` in `pg_stat_activity` | Count | Poll interval |
+|--------|--------------------------------------|-------|---------------|
+| Pipeline worker | `aidb bgworker <pipeline name>(<pipeline id>) db_oid(<oid>)` | 1 per `Background` pipeline | 30 s |
+
+This includes pipelines that write to a knowledge base. A semantic knowledge base in `Background` mode also runs as a pipeline and gets one pipeline worker.
+
+A pipeline worker runs as the pipeline's owner role. While it has a backlog, it processes batches without waiting for the next poll. If it crashes, the dispatcher restarts it on its next poll. See [Background workers](../data-pipelines/orchestration/background-workers).
+
+### Workers enabled by settings
+
+These settings each start one more worker per database. All are off by default.
+
+| Setting | Worker | `backend_type` in `pg_stat_activity` | Poll interval |
+|---------|--------|--------------------------------------|---------------|
+| [`aidb.enable_background_metrics_collector`](../data-pipelines/orchestration/observability#enabling-the-collector) | Metrics collector | `aidb metrics collector db_oid(<oid>)` | 15 s |
+| [`aidb.agent_memory_enable_worker`](../agent-memory/configuring#aidbagent_memory_enable_worker) | Agent memory dispatcher | `aidb memory dispatcher db_oid(<oid>)` | `aidb.memory_worker_idle_wait_ms` (default 2000 ms) |
+| [`aidb.otel_cleaner_enabled`](configure#cleaner-background-worker) | OTel cleaner | `aidb otel cleaner db_oid(<oid>)` | 3600 s |
+| [`aidb.otel_exporter_enabled`](configure#exporter-background-worker) plus a non-empty `aidb.otel_exporter_endpoint` | OTel exporter | `aidb otel exporter db_oid(<oid>)` | 15 s |
+
+To enable a worker:
+
+- **For every database:** Set the parameter in `postgresql.conf` or with `ALTER SYSTEM`, then restart Postgres. A reload isn't enough.
+- **For one database:** Use `ALTER DATABASE <db> SET`. No restart is needed. The root worker checks these settings every 120 seconds, so the worker starts within two minutes.
+
+Role-level and session-level settings don't start or stop workers. Turning a setting off doesn't stop a worker that's already running. A worker also needs the `aidb` extension in its database. Otherwise, it exits.
+
+### Sizing max_worker_processes
+
+Each AIDB worker uses one `max_worker_processes` slot. The total number of AIDB workers is:
+
+```
+1 (root worker)
++ number of eligible databases
++ number of Background pipelines, including semantic knowledge bases in Background mode
++ number of enabled optional workers
+```
+
+Set `max_worker_processes` high enough for this total plus the workers that other extensions and parallel queries need. The Postgres default is `8`.
+
+## Other processes and connections
+
+By default, AIDB starts no processes other than the background workers listed above.
+
+If you set [`edb.endpoints_mcp_enabled`](../mcp-endpoint/enabling-the-endpoint) to `on` and restart Postgres, AIDB starts:
+
+- One supervisor background worker, `aidb mcp endpoint supervisor`, for the cluster.
+- One `edb-endpoints` OS process, which the supervisor starts. It listens on one HTTP port (default `8765`).
+- One Postgres client connection per MCP call. These connections count against `max_connections`.
+
+## Database hooks and changes
+
+<!-- TODO: hooks AIDB installs at preload (planner/executor/utility hooks, if any), objects created by CREATE EXTENSION (schemas, roles, tables, triggers), and any global changes. -->
+
+## Idle resource usage
+
+### Memory
+
+<!-- TODO: shared memory requested at preload, per-backend overhead, and per-worker overhead when idle. -->
+
+AIDB builds its model cache and thread pools only when a process first uses a model or volume. An idle process has none. [`aidb.max_model_cache_size`](configure#model-cache) limits the model cache of each process. The default is a quarter of the host RAM. Only local models use cache memory.
+
+### CPU
+
+<!-- TODO: measured CPU usage of the default workers when idle. -->
+
+When idle, the default workers only wake up to poll: the root worker every 120 seconds, and each dispatcher every 30 seconds. To limit CPU use during model inference and I/O, see [Threading limits](threading-limits).
