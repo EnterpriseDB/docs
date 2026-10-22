@@ -38,8 +38,8 @@ Every row in all three tables carries these columns:
 | `export_attempts`  | integer     | Number of export attempts made so far.                                                                                 |
 | `next_export_attempt_at` | timestamptz | Earliest time the exporter will retry this row. `NULL` once exported or permanently failed.                     |
 | `last_export_error`| text        | Error message from the most recent failed export attempt.                                                              |
-| `source` | text | `internal` for telemetry emitted by AIDB itself; `external` for telemetry submitted by other callers. Introduced in 7.9.0. |
-| `principal` | text | The database login (`session_user`) that wrote the row, for both internal and external telemetry. This is separate from the calling user recorded in a governance decision. Introduced in 7.9.0. |
+| `source` | text | `internal` for telemetry emitted by AIDB itself; `external` for telemetry submitted by other callers. Added in AIDB 7.9.0. |
+| `principal` | text | The database login (`session_user`) that wrote the row, for both internal and external telemetry. This is separate from the calling user recorded in a governance decision. Added in AIDB 7.9.0. |
 
 At least one of `payload_json`/`payload_binary` is always populated — see [Storage format](#configuring-storage-format).
 
@@ -61,8 +61,8 @@ Each row is exactly one span. The identifier and attribute columns are stored se
 | `decision_id` | text | The `aidb.agent.decision.decision_id` attribute, when present. Links a denied call to its decision record. |
 | `agent_name` | text | The `gen_ai.agent.name` attribute, when present. |
 | `span_status_code` | integer | OTel span status: `0` (unset), `1` (OK), or `2` (error). This is separate from the governance decision's allowed/denied status. |
-| `span_start_time` | timestamptz | The start time supplied by an external telemetry sender. `NULL` for AIDB's own stored spans; their timing remains in the payload. Introduced in 7.9.0. |
-| `span_end_time` | timestamptz | The end time supplied by an external telemetry sender. `NULL` for AIDB's own stored spans. Introduced in 7.9.0. |
+| `span_start_time` | timestamptz | The start time supplied by an external telemetry sender. `NULL` for AIDB's own stored spans; their timing remains in the payload. Added in AIDB 7.9.0. |
+| `span_end_time` | timestamptz | The end time supplied by an external telemetry sender. `NULL` for AIDB's own stored spans. Added in AIDB 7.9.0. |
 
 `recorded_at` is the time the row was stored, which can be later than the operation itself. Use the span's start and end times to measure its duration.
 
@@ -139,7 +139,7 @@ Deletes rows older than `aidb.otel_cleaner_retention_days` from all three tables
 
 AIDB records attributes automatically when telemetry is enabled. It follows [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/) where applicable (`gen_ai.*`, `db.*`, `error.type`), with custom `aidb.*` attributes for other AIDB concepts. The reference below covers the attributes emitted by AIDB on spans, logs, and metrics. Each section identifies where they appear; an attribute can be absent when it doesn't apply to the operation.
 
-Database telemetry from AIDB 7.8.0 uses schema version `1`; AIDB 7.9.0 introduces schema version `2`. The schema version identifies the telemetry structure and changes independently of the AIDB release number. Upgrading doesn't add new attributes to older records. These fields are available in the stored telemetry; the [dashboard displays a subset](/agent-governance/latest/architecture/#recording-telemetry-with-the-aidb-extension).
+Database telemetry from AIDB 7.8.0 uses schema version `1`; AIDB 7.9.0 introduces schema version `2`. The schema version identifies the telemetry structure and changes independently of the AIDB release number. Upgrading doesn't add new attributes to older records. These fields are available in the stored telemetry; the [dashboard displays a subset](/agent-governance/latest/architecture/#understanding-what-the-dashboard-shows).
 
 ### Setting resource attributes
 
@@ -178,8 +178,8 @@ Set on spans for agent conversations, tasks, and messages:
 | `aidb.agent.status` | Outcome of the agent call: `COMPLETE`, `TIMEOUT`, or `ERROR`. |
 | `aidb.agent.task.id` | ID of one agent invocation, distinct from the conversation ID. |
 | `aidb.agent.message.id` | ID of the message requested by a message lookup. |
-| `aidb.agent.system_prompt.chars` | Character count of the system prompt, including agent instructions and attached plugins. Introduced in 7.9.0. |
-| `aidb.agent.plugin.count` | Number of plugins attached to the agent. Introduced in 7.9.0. |
+| `aidb.agent.system_prompt.chars` | Character count of the system prompt, including agent instructions and attached plugins. Added in AIDB 7.9.0. |
+| `aidb.agent.plugin.count` | Number of plugins attached to the agent. Added in AIDB 7.9.0. |
 | `aidb.read_only`             | Whether the call was read-only. Shared with Tools Hub — not agent-exclusive. |
 | `error.type` | Error classification on a failed call: `timeout` or `_OTHER`. The error message is recorded separately in logs. |
 
@@ -209,13 +209,13 @@ With telemetry enabled, purpose-scoped tool SQL produces `purpose_decision` span
 | `aidb.agent.decision.principal` | The calling user's Postgres identity, captured before switching to the purpose's role. |
 | `aidb.agent.decision.agent_role`        | The purpose-resolved Postgres role the action ran (or would have run) as.                                            |
 | `aidb.agent.decision.denial_reason`     | Present only when denied. One of `role_not_found` (the purpose's role doesn't exist), `not_role_member` (the caller isn't a member of the purpose's role), `escalation_blocked` (the SQL tried to change the running role with `SET ROLE`, `RESET ROLE`, or `SET SESSION AUTHORIZATION`, or to change a privilege-restricted setting), `engine_privilege_denied` (Postgres rejected the SQL with a `42501` permission error), or `pre_execution_rejected` (the tool SQL failed validation before execution). Not promoted to its own column. |
-| `aidb.agent.decision.effective_purpose` | The purpose actually enforced for the decision. It can differ from the agent's configured purpose when a delegated agent runs under its caller's purpose. Introduced in 7.8.0. |
-| `aidb.agent.decision.referenced_relations` | A JSON array stored as a string, listing distinct schema-qualified relations named by the SQL statement after parsing and analysis. The list is limited to 5 KiB. Introduced in 7.9.0. |
-| `aidb.agent.decision.referenced_relations_total` | The number of distinct relations before the list is shortened to fit the limit. Introduced in 7.9.0. |
-| `aidb.agent.decision.denial_class` | A category for a PostgreSQL privilege error, such as `object_privilege`, `sequence_privilege`, or `rls_policy`. Introduced in 7.9.0. |
-| `aidb.agent.decision.denial_funcname` | The PostgreSQL function reported as the source of the error, when available. Useful when investigating a denial. Introduced in 7.9.0. |
-| `aidb.agent.decision.denial_message` | The database's error message, limited to 5 KiB. It can contain sensitive data. Introduced in 7.9.0. |
-| `db.response.status_code` | The PostgreSQL SQLSTATE. On a decision span, this is `42501` for a PostgreSQL privilege error. Introduced in 7.9.0. |
+| `aidb.agent.decision.effective_purpose` | The purpose actually enforced for the decision. It can differ from the agent's configured purpose when a delegated agent runs under its caller's purpose. Added in AIDB 7.8.0. |
+| `aidb.agent.decision.referenced_relations` | A JSON array stored as a string, listing distinct schema-qualified relations named by the SQL statement after parsing and analysis. The list is limited to 5 KiB. Added in AIDB 7.9.0. |
+| `aidb.agent.decision.referenced_relations_total` | The number of distinct relations before the list is shortened to fit the limit. Added in AIDB 7.9.0. |
+| `aidb.agent.decision.denial_class` | A category for a PostgreSQL privilege error, such as `object_privilege`, `sequence_privilege`, or `rls_policy`. Added in AIDB 7.9.0. |
+| `aidb.agent.decision.denial_funcname` | The PostgreSQL function reported as the source of the error, when available. Useful when investigating a denial. Added in AIDB 7.9.0. |
+| `aidb.agent.decision.denial_message` | The database's error message, limited to 5 KiB. It can contain sensitive data. Added in AIDB 7.9.0. |
+| `db.response.status_code` | The PostgreSQL SQLSTATE. On a decision span, this is `42501` for a PostgreSQL privilege error. Added in AIDB 7.9.0. |
 
 Referenced relations describe the submitted statement, including relations in joins and subqueries. They aren't a complete record of indirect access through functions or views, and they don't identify the object that caused a denial. An absent attribute means relation information wasn't captured. An empty list means the captured statement named no relations.
 
@@ -288,7 +288,7 @@ Set on spans for catalog discovery and purpose or plugin management:
 | `aidb.catalog.object_type` | Type of object, such as a table, view, function, or sequence. |
 | `aidb.purpose.name` | Purpose being created or read. |
 | `aidb.purpose.role` | Postgres role assigned to a purpose when it is created. |
-| `aidb.agent_plugin.name` | Agent plugin being created, updated, or deleted. Introduced in 7.9.0. |
+| `aidb.agent_plugin.name` | Agent plugin being created, updated, or deleted. Added in AIDB 7.9.0. |
 
 ### Recording failures as logs
 
