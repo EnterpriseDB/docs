@@ -4,7 +4,7 @@ navTitle: Decision records
 description: What AIDB records every time a purpose-scoped tool call is allowed or denied, and how to find a record from a denial.
 ---
 
-Every tool SQL execution made by an agent under a purpose-resolved role produces one decision record, whether it's allowed or denied. Tool calls made by agents with no purpose do not produce decision records.
+With telemetry enabled, AIDB records whether an agent's purpose-scoped SQL action was allowed or denied. Tool calls made by agents with no purpose don't produce decision records.
 
 ## Turning records on
 
@@ -26,13 +26,15 @@ The same `aidb.otel_client` setting also controls the other OpenTelemetry spans 
 
 ## Reading records
 
-Reading `aidb_otel.traces` requires the `aidb_governance` role:
+Reading `aidb_otel.traces` requires the `aidb_governance` role or an explicit grant:
 
 ```sql
 GRANT aidb_governance TO your_admin;
 ```
 
 `aidb_users` has `USAGE` on the `aidb_otel` schema (so it can write telemetry) but no `SELECT` on any table in it.
+
+For EDB Agent Governance, use a dedicated read-only role with explicit grants instead. The `aidb_governance` role also allows purpose management and retention cleanup, which the dashboard doesn't need. See [Creating the viewer role](/agent-governance/latest/connecting_aidb/#creating-the-viewer-role).
 
 ## What's in a record
 
@@ -43,7 +45,7 @@ Each record is a span named `purpose_decision`, carrying these attributes:
 | `aidb.agent.decision.decision_id`       | A UUID minted for this decision. Appears in a [denial's error message](#finding-the-record-from-a-denial).                                                                                      |
 | `aidb.agent.decision.action_status`     | `allowed` or `denied`.                                                                                                                                                                          |
 | `aidb.agent.decision.interaction_point` | Always `sql_exec` — the only interaction point AIDB records against today.                                                                                                                      |
-| `aidb.agent.decision.principal`         | The Postgres identity that made the call — `current_user` at the moment of the check.                                                                                                           |
+| `aidb.agent.decision.principal` | The calling user's Postgres identity, captured before switching to the purpose's role. |
 | `aidb.agent.decision.agent_role`        | The role the purpose resolved to.                                                                                                                                                               |
 | `aidb.agent.decision.denial_reason`     | Present only when `action_status = denied`.                                                                                                                                                     |
 | `db.query.text`                         | The SQL text the agent's tool call submitted, present whenever that text is known — including on a denial recorded before the statement reached Postgres. See [Seeing the attempted SQL](#seeing-the-attempted-sql). |
@@ -54,7 +56,7 @@ Each record is a span named `purpose_decision`, carrying these attributes:
 |---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `role_not_found`          | The purpose's role doesn't exist — for example, it was dropped after the purpose was registered against it.                                                                                                                                                                                                                                             |
 | `not_role_member`         | The caller of `agent_converse` isn't a member of the resolved role.                                                                                                                                                                                                                                                                                     |
-| `engine_privilege_denied` | The execution was blocked by Postgres — an ordinary object-ACL denial (a table, column, or function the resolved role has no grant on).                                                                                                                                                                                                                 |
+| `engine_privilege_denied` | Postgres blocked execution with a privilege error (`42501`), such as a missing object grant or a row-level security restriction.                                                                                                                                                                                                                 |
 | `escalation_blocked`      | A privilege-escalation attempt was blocked — either by the engine after the role was assumed (`RESET ROLE`, `SET ROLE`, `SET SESSION AUTHORIZATION`, or any other privilege-gated GUC without a `pg_parameter_acl` grant), or pre-execution, before the statement ever reached Postgres (a bare `RESET ROLE`, `RESET ALL`, or `DISCARD ALL` tool body). |
 | `pre_execution_rejected`  | The SQL provided to the tool failed pre-execution validation.                                                                                                                                                                                                                                                                                           |
 
@@ -63,7 +65,19 @@ The denial reason is set based on whichever error actually stopped the statement
 - If the earlier failure is itself SQLSTATE `42501` from an ordinary object-ACL check, the decision is recorded as `engine_privilege_denied`, not `escalation_blocked`.
 - If the earlier failure is a pre-execution rejection, the decision is recorded as `pre_execution_rejected` unless the rejected statement contains an identity-switch attempt at the top level, in which case the decision is recorded as `escalation_blocked`.
 
-In both cases `db.query.text` still captures the full SQL text regardless, so the query itself can be inspected to verify the intent of the agent's query.
+In both cases, use the recorded SQL in `db.query.text` to inspect what the agent attempted.
+
+### Version-specific decision details
+
+AIDB 7.8.0 and later record the effective purpose used for the decision. This can differ from the agent's configured purpose when a delegated agent runs under its caller's purpose.
+
+AIDB 7.9.0 adds the relations referenced by the SQL statement and more detail about PostgreSQL privilege errors. These details help explain a decision:
+
+- Referenced relations identify the tables, views, or other relations named by the statement. They don't identify which object caused a denial or list every object accessed indirectly.
+- The denial class groups PostgreSQL privilege errors, including object permissions and row-level security. The database message provides the error text.
+- These error details are recorded for PostgreSQL privilege errors (`42501`). Decisions rejected before SQL reaches the database don't have them.
+
+Older records don't gain these fields after an upgrade. For field names, limits, and availability, see [Decision attributes](/aidb/latest/reference/observability/#recording-purpose-enforcement-decisions).
 
 ## Finding the record from a denial
 
@@ -85,7 +99,7 @@ SET aidb.otel_capture_query_parameters = on;
 
 ## Querying aidb_otel.traces
 
-`aidb_otel.traces` stores raw OTLP JSON, one row per exported span, in `(id, recorded_at, payload_json)`. Drill into the span's name and attributes like this:
+`aidb_otel.traces` stores one row per span, with a JSON payload, a protobuf payload, or both. The following query uses `payload_json` and therefore requires `aidb.otel_client_storage_format = 'json'` (the default) or `'both'` when the record is written. See [Storage format](../reference/observability#configuring-storage-format).
 
 ```sql
 SELECT
@@ -100,3 +114,5 @@ WHERE payload_json->'resourceSpans'->0->'scopeSpans'->0->'spans'->0->>'name' = '
 ORDER BY id DESC
 LIMIT 10;
 ```
+
+Starting in AIDB 7.9.0, add `source = 'internal'` to decision queries to exclude decisions reported by external telemetry senders. Older rows retained during upgrade are also labeled `internal`, but their original source wasn't recorded. See [Common columns](../reference/observability#common-columns).
