@@ -6,13 +6,15 @@ redirects:
 - /tde/latest/enabling_tde/
 - /tde/latest/initdb_tde/
 - /tde/latest/overview/
+- /tde/latest/enabling/enabling_tde/
 ---
 
 Transparent Data Encryption (TDE) encrypts data as it's written, so you can only enable it when you create a database cluster. You can't turn it on for data that already exists.
 
 Enable TDE on a self-managed database server (Enterprise Postgres (Oracle Compatible) or Enterprise Postgres installed on virtual machines or physical servers, on-premises or in the cloud) by initializing a new database cluster with [initdb](https://www.postgresql.org/docs/current/app-initdb.html). TDE is built into both distributions, so there's no separate package or extension to install.
 
-To migrate an existing database to a TDE-enabled environment instead, see [Enabling, migrating, and upgrading](../upgrading/).
+!!! Note
+    To migrate an existing database to a TDE-enabled environment instead, see [Enabling, migrating, and upgrading](../upgrading/).
 
 ## Before you begin
 
@@ -24,7 +26,7 @@ To migrate an existing database to a TDE-enabled environment instead, see [Enabl
 
 ## Initializing a server
 
-Follow these steps to create a new TDE-enabled database server from scratch.
+Follow these steps to create a new TDE-enabled database server from scratch. The examples use Enterprise Postgres (Oracle Compatible) 16 running on Linux, with OpenSSL used to define a passphrase to wrap and unwrap the generated data encryption key. A similar workflow applies to other versions and to Enterprise Postgres. The location of the bin and data directories differs depending on your operating system and the Postgres version.
 
 1.  Export the wrap and unwrap commands to secure the encryption key, using the method you chose when [configuring the data encryption key](../secure_key):
 
@@ -33,7 +35,17 @@ Follow these steps to create a new TDE-enabled database server from scratch.
     export PGDATAKEYUNWRAPCMD='<unwrap-command> -in "%p"'
     ```
 
-    Alternatively, skip the environment variables and pass the commands directly to `initdb` with `--key-wrap-command=<command>` and `--key-unwrap-command=<command>`. See [Using a passphrase](../secure_key/passphrase/#via-command-argument) or [Using a key store](../secure_key/key_store/) for worked examples.
+    For example, using a passphrase with OpenSSL:
+
+    ```shell
+    export PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pbkdf2 -pass pass:<password> -out "%p"'
+    export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<password> -in "%p"'
+    ```
+
+    !!! Note
+        If you're on Windows, you don't need the single quotes around the variable value.
+
+    Alternatively, skip the environment variables and pass the commands directly to `initdb` with [`--key-wrap-command=<command>`](../reference/initdb_tde_options/#option---key-wrap-commandcommand) and [`--key-unwrap-command=<command>`](../reference/initdb_tde_options/#option---key-unwrap-commandcommand).
 
 1.  Initialize the database cluster with `--data-encryption` enabled:
 
@@ -41,7 +53,13 @@ Follow these steps to create a new TDE-enabled database server from scratch.
     <bin_directory>/initdb --data-encryption -D <data_directory>
     ```
 
-    Include other [initdb TDE options](../reference/initdb_tde_options/) as required.
+    For example:
+
+    ```shell
+    /usr/edb/as16/bin/initdb --data-encryption -D /var/lib/edb/as16/data
+    ```
+
+    This command sets the `data_encryption_key_unwrap_command` parameter in the `postgresql.conf` file. Include other [initdb TDE options](../reference/initdb_tde_options/) as required.
 
 1.  Start the database cluster:
 
@@ -49,6 +67,29 @@ Follow these steps to create a new TDE-enabled database server from scratch.
     <bin_directory>/pg_ctl -D <data_directory> start
     ```
 
-1.  [Verify that TDE is enabled](../reference/verifying_tde/).
+    For example:
 
-See [Creating a database with TDE](enabling_tde/) for a complete worked example with real commands and output.
+    ```shell
+    /usr/edb/as16/bin/pg_ctl -D /var/lib/edb/as16/data start
+    ```
+
+1.  Verify that the `data_encryption_key_unwrap_command` setting was applied:
+
+    ```shell
+    grep data_encryption_key_unwrap_command <data_directory>/postgresql.conf
+    __OUTPUT__
+    data_encryption_key_unwrap_command = 'openssl enc -d -aes-128-cbc -pass pass:<password> -in "%p"'
+    ```
+
+1.  Verify that TDE is enabled by querying the `data_encryption_version` column returned by the `pg_control_init` function:
+
+    ```sql
+    select data_encryption_version from pg_control_init();
+    __OUTPUT__
+     data_encryption_version
+    -------------------------
+                           1
+    (1 row)
+    ```
+
+    A value of 0 means TDE isn't enabled. Any nonzero value reflects the version of TDE in use.
