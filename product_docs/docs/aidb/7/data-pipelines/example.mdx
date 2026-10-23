@@ -584,3 +584,120 @@ SELECT * FROM aidb.retrieve_text(
 ```
 
 Each row in the result corresponds to a text block extracted from a PDF page, ranked by semantic similarity to your query.
+
+## End-to-end example: Japanese knowledge base with NVIDIA NIM OCR
+
+This example builds a Japanese-language knowledge base for RAG from scanned PDFs. It uses NVIDIA NIM to extract the text from the rendered pages, and a Japanese-capable embedding model to make that text searchable. It's a variation of [Scanned PDFs to a searchable knowledge base](#end-to-end-example-scanned-pdfs-to-a-searchable-knowledge-base) with two changes: a NIM OCR endpoint that reads Japanese text, and an embedding model trained for Japanese in place of the default English `bert` model.
+
+### Prerequisites
+
+- An NVIDIA API key. See [Using NVIDIA NIM](../integrating-models/remote-models#nvidia-nim). You can use the hosted endpoint on build.nvidia.com, or run the OCR NIM in your own environment (see [Step 1](#step-1-register-the-models)).
+- A Japanese embedding model served over an OpenAI-compatible API. This example uses `kun432/cl-nagoya-ruri-large` served by [Ollama](https://ollama.com). Pull the model first with `ollama pull kun432/cl-nagoya-ruri-large`. Any other Japanese embedding model works the same way.
+- A folder or bucket that contains your PDF files.
+
+### Step 1: Register the models
+
+Register the OCR model and the Japanese embedding model:
+
+```sql
+-- OCR model: NVIDIA NIM Nemotron OCR
+SELECT aidb.create_model(
+    'ocr_pdf_japanese',
+    'nim_paddle_ocr',
+    config      => aidb.nim_ocr_config(
+        url => 'https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2'
+    ),
+    credentials => '{"api_key": "<NVIDIA_NIM_API_KEY>"}'::JSONB
+);
+
+-- Embedding model: Japanese embeddings served by Ollama
+SELECT aidb.create_model(
+    'ruri_embeddings',
+    'openai_embeddings',
+    config => aidb.embeddings_config(
+        model => 'kun432/cl-nagoya-ruri-large:latest',
+        url   => 'http://<OLLAMA_HOST>:11434/v1/embeddings'
+    )
+);
+```
+
+Replace `<OLLAMA_HOST>` with the host name or IP address of your Ollama server. The Postgres server must be able to reach it.
+
+#### Running the OCR NIM in your own environment
+
+To keep all models on your own infrastructure, run the Nemotron OCR NIM container on a GPU host instead of calling build.nvidia.com. Follow the [NVIDIA deployment instructions for `nemotron-ocr-v2`](https://build.nvidia.com/nvidia/nemotron-ocr-v2/deploy) to pull and start the container, using your NGC API key. On Podman hosts with SELinux and a firewall enabled, make sure the container can access the GPUs and that the NIM service port is open.
+
+Then point the model at your container's endpoint. Because the container runs in your environment, `credentials` is omitted here. Add it if your deployment requires authentication:
+
+```sql
+SELECT aidb.create_model(
+    'ocr_pdf_japanese',
+    'nim_paddle_ocr',
+    config => aidb.nim_ocr_config(
+        url => 'http://<NIM_HOST>:<NIM_PORT>/<OCR_ENDPOINT_PATH>'
+    )
+);
+```
+
+Replace the placeholders with the host, port, and inference path from the NVIDIA documentation for your container. If you deploy NIM containers with Kubernetes and KServe instead, see [Using NVIDIA NIM Microservices in your environment](/edb-postgres-ai/1.3/ai-factory/pipeline/models/using-with/using-nvidia-nim/using-nim-in-your-environment/).
+
+### Step 2: Create the PDF volume
+
+Create a storage location and a volume with the `Pdf` data format. This example uses a local directory. For S3 and other storage, see [External storage](../external-data-sources).
+
+```sql
+SELECT pgfs.create_storage_location('japanese_pdf_location', 'file:///tmp/pgfs/');
+
+SELECT aidb.create_volume('japanese_pdf_volume', 'japanese_pdf_location', 'pdf/', 'Pdf');
+```
+
+### Step 3: Create the pipeline
+
+The pipeline renders each PDF page as an image, extracts the text with NIM OCR, and stores the embeddings in a knowledge base. Enabling `intermediate_destination` on the OCR step keeps the extracted text in its own table, so you can check the OCR quality before relying on the knowledge base.
+
+```sql
+SELECT aidb.create_pipeline(
+    name           => 'japanese_pdf_pipeline',
+    source         => 'japanese_pdf_volume',
+    step_1         => 'PdfToImage',
+    step_2         => 'PerformOcr',
+    step_2_options => aidb.ocr_config(model => 'ocr_pdf_japanese')
+        || jsonb_build_object(
+            'intermediate_destination', jsonb_build_object('enabled', true)
+        ),
+    step_3         => 'KnowledgeBase',
+    step_3_options => aidb.knowledge_base_config(
+        model       => 'ruri_embeddings',
+        data_format => 'Text'
+    ),
+    auto_processing => 'Disabled'
+);
+```
+
+### Step 4: Run the pipeline
+
+```sql
+SELECT aidb.run_pipeline('japanese_pdf_pipeline');
+```
+
+### Step 5: Check the OCR output
+
+The auto-generated intermediate table holds the text that OCR extracted from each page:
+
+```sql
+SELECT * FROM pipeline_japanese_pdf_pipeline_step_2 LIMIT 5;
+```
+
+### Step 6: Query the knowledge base
+
+Search in Japanese. This example asks "What is the contract period?":
+
+```sql
+SELECT * FROM aidb.retrieve_text(
+    'public.pipeline_japanese_pdf_pipeline',
+    '契約期間はいつまでですか？',
+    5  -- return top 5 matches
+);
+```
+
+Use the retrieved text as context for a generation model to complete the RAG flow, as shown in [Knowledge base for RAG](#end-to-end-example-knowledge-base-for-rag).
