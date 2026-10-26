@@ -111,7 +111,7 @@ Two binaries are distributed this way:
 
 - **EDB's signature:** Container images are signed with cosign/sigstore. The registry applies the signature on push; `edbctl` verifies it against a baked-in EDB public key (`--verify-signature`).
 - **What isn't signed:** OCI artifacts and Helm charts carry no EDB signature.
-- **Docker Content Trust (DCT):** A separate, client-side mechanism some customers enable in their own pull tooling, unrelated to the cosign signature above. EDB doesn't apply or support it for HM images.
+- **Docker Content Trust (DCT):** A separate, client-side mechanism some customers enable in their own pull tooling, unrelated to EDB's cosign/sigstore signature. EDB doesn't apply or support it for HM images.
 - **Signing your own mirror:** `edbctl image sync-to-local-registry --sign-by-sigstore-private-key` applies a signature with a key of your choosing, independent of EDB's signature.
 
 ## Registry credentials
@@ -125,6 +125,8 @@ docker login docker.enterprisedb.com --username pgai-platform --password "$EDB_S
 ```
 
 The same pair works anywhere a tool asks for registry credentials: `edbctl`'s `--source-registry-username`/`--source-registry-password` flags, `skopeo login`, or `helm registry login`.
+
+Use this credential to mirror images from EDB’s registry into your destination registry. HM's runtime pull credential is separate: a pull secret for your destination registry, created once with `edbctl image-pull-secret create` and referenced on the `HybridControlPlane` (`spec.imagePullSecrets`). HM makes that one secret available to every HM workload, so you don't need to create or attach a pull secret per namespace or per workload.
 
 ## Canonical image list
 
@@ -146,17 +148,20 @@ Considerations:
 
 ## Destination registry layout requirements
 
-This requirement applies when you mirror artifacts into your own private registry, not to EDB's registry, which is already laid out correctly.
+This section applies only if you mirror artifacts into your own private registry, for example for an air-gapped install. If your cluster pulls directly from EDB's registry, skip this section. EDB's registry is already laid out correctly.
 
-`edbctl image sync-to-local-registry` pushes each artifact to the correct path, but it doesn't provision the destination repository for you:
+Getting this configuration wrong produces errors that look like credential or registry faults rather than layout faults. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) to decode what a given error means and how to resolve it.
+
+### Repository provisioning
+
+`edbctl image sync-to-local-registry` already builds the correct destination path for each artifact and pushes to it. It doesn't create the destination repository itself, though. Depending on your registry, that's either automatic or something you do once, up front:
 
 - Registries that auto-create a repository on first push (for example, Azure ACR, Quay, GHCR, Docker Hub) need no action from you.
-- Registries that require the repository to already exist (for example, Amazon ECR, Google Artifact Registry, JFrog Artifactory) need you to pre-create it at that exact path before running the sync, or the push fails.
-- The OpenShift internal registry can't be used as a destination at all, regardless of pre-creation. The "Required destination form" table below, and the notes under it, cover why.
+- Registries that don't auto-create (for example, Amazon ECR, Google Artifact Registry, JFrog Artifactory) fail the push until you provision the destination. For Google Artifact Registry and Artifactory, create the top-level repository once; image paths under it are created on push. For Amazon ECR, either add a create-on-push repository creation template that covers your path prefix, or pre-create a repository for every image path.
 
-If you mirror artifacts with your own pipeline instead of `edbctl`, you're responsible for constructing this path yourself.
+If you mirror artifacts with your own pipeline instead of `edbctl`, you're responsible for both: constructing the correct path yourself (see [Required path form](#required-path-form)) and provisioning the repository according to your registry's requirements (auto-create or pre-create).
 
-Getting this configuration wrong produces errors that look like credential or registry faults rather than layout faults. See [Registry and artifact errors](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/registry_errors/) for how these errors get confused in practice.
+### Required path form
 
 | Image class | Required destination form |
 | :--- | :--- |
@@ -164,9 +169,12 @@ Getting this configuration wrong produces errors that look like credential or re
 | Postgres operand images | `<registry-path>/<image-name>:<tag>@sha256:<digest>` |
 
 - `registry-path` is optional, a prefix appended ahead of the image name. EDB's own registry uses `pgai-platform`.
-- `repository-name` is mandatory and fixed for control-plane images (for example, `cloud-native-postgres-dbaas`) and has no relationship to the Kubernetes namespace the workload runs in. Operand images carry no `repository-name` segment at all.
+- `repository-name` is mandatory and fixed for control-plane images (for example, `cloud-native-postgres-dbaas`). It has no relationship to the Kubernetes namespace the workload runs in. Operand images carry no `repository-name` segment at all.
 - If your registry provider doesn't support an arbitrary path prefix, control-plane images still need the `repository-name` segment; operand images go at the registry root.
-- The OpenShift internal registry is not a supported destination for HM images. See [Installing the HM operator on air-gapped OpenShift](/edb-postgres-ai/current/hybrid-manager/install/configuration/openshift_operator_airgapped/) for the supported disconnected paths.
+
+### OpenShift internal registry
+
+The OpenShift internal registry isn't a supported destination for HM images, regardless of pre-creation. See [Installing the HM operator on air-gapped OpenShift](/edb-postgres-ai/current/hybrid-manager/install/configuration/openshift_operator_airgapped/) for the supported disconnected paths.
 
 ## Network access and registry allowlisting
 
