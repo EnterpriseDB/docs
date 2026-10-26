@@ -42,7 +42,7 @@ sudo journalctl -u wem -n 50 --no-pager
 For application-level logs (alert evaluation, canary checks, query activity):
 
 ```bash
-sudo tail -f /var/log/wem/wem.log
+sudo tail -f /var/log/edb/wem/wem.log
 ```
 
 !!! Note
@@ -108,11 +108,11 @@ Setup failed: failed to connect to WEM server: failed to ping database: ...
 
 **Solution:**
 
-1. Confirm which set of parameters the error names, then verify those specific values in `/etc/wem/wem.conf`, host, port, database, user, and password.
+1. Confirm which set of parameters the error names, then verify those specific values in `/etc/edb/wem/wem.conf`, host, port, database, user, and password.
 2. For a `WHPG server` failure, test the connection directly with `wem setup`'s flags, bypassing `wem.conf` entirely:
 
     ```bash
-    sudo -u wem /usr/local/greenplum-db/wem/wem setup --host <host> --port <port> --user <user> --password <password> --database <database> --check --debug
+    sudo -u wem /usr/edb/wem/bin/wem setup --host <host> --port <port> --user <user> --password <password> --database <database> --check --debug
     ```
 
     `wem setup` has no equivalent flags for the `WEM_*` connection, so for a `WEM server` failure, double-check `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, and `WEM_PASSWORD` directly in `wem.conf` instead.
@@ -210,11 +210,11 @@ sudo systemctl daemon-reload
 sudo systemctl restart wem
 ```
 
-Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/wem/wem.conf` to acknowledge running as `root`.
+Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/edb/wem/wem.conf` to acknowledge running as `root`.
 
 ### Issue: The PXF tab shows PXF as unavailable
 
-The **PXF** tab in **Data Analysis** reports PXF as unavailable instead of showing its status.
+The **PXF** tab in **Database Objects** reports PXF as unavailable instead of showing its status.
 
 **Cause:** PXF actions dispatch through the host agent on the coordinator rather than running locally on the WEM host, so this error usually means the host agent isn't reachable there, or PXF itself isn't installed on the coordinator.
 
@@ -299,13 +299,53 @@ Taking or restoring a backup from the **Backups** panel fails with this error.
 
 **Solution:** Install `whpg-backup` 1.34 or later on every cluster node. See [Installing WarehousePG Backup and Restore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/).
 
+### Issue: Take Backup Now is disabled in Safeguard
+
+**Cause:** WEM disables **Take Backup Now**, and creating a restore point, while the primary cluster isn't configured, a job is already running, or archiving is suspended, invalid, or inconsistent. A configuration error on the cluster can also keep the actions disabled.
+
+**Solution:**
+
+1. In **Safeguard**, check the **Events** table and wait for any running job to finish.
+1. Select **Check Configuration**, which runs `whpg-dr check` in the background, and review the error it reports.
+1. Resolve the reported error. A `failed backups` error means earlier attempts left `[FAILED]` backups in the storage repository. See [Error: Backup fails with XMinioStorageFull](#error-backup-fails-with-xminiostoragefull). The backup and restore point actions become available once the problem is fixed.
+
+See [Taking an initial backup](protecting-data/safeguard#taking-an-initial-backup) for more information.
+
+### Error: Backup fails with XMinioStorageFull
+
+**Cause:** The storage repository ran out of space. MinIO stops accepting writes when free drive space falls below its threshold, and the backup fails with `Cloud backup failed with error` in **Safeguard**. The Barman log on the segment host, `$HOME/gpAdminLogs/barman-<cluster-name>.log`, contains the underlying error:
+
+```text
+An error occurred (XMinioStorageFull) when calling the UploadPart operation: Storage backend has reached its minimum free drive threshold.
+```
+
+Each failed attempt leaves a partial backup marked `[FAILED]` in the repository, and **Check Configuration** reports it as a `failed backups` error.
+
+**Solution:**
+
+1. Free space on the storage backend, or add capacity. Delete only data you no longer need through the backend's own tools, not directly on its filesystem.
+1. List the backups on the primary coordinator and note the ones marked `[FAILED]`:
+
+    ```bash
+    whpg-dr list-backup <cluster-name>
+    ```
+
+1. Delete each failed backup. Run it with `--dry-run` first to confirm what it removes:
+
+    ```bash
+    whpg-dr delete <cluster-name> --backup-name <backup-name> --dry-run
+    whpg-dr delete <cluster-name> --backup-name <backup-name>
+    ```
+
+1. Select **Check Configuration** in **Safeguard** and confirm the check passes, then take the backup again.
+
 ## Observability and metrics
 
 WEM's dashboards, charts, and log search all read from ClickHouse. A single pipeline, each node's OTel Collector forwarding through a gateway into ClickHouse, backs both, so most data-not-showing issues trace back to one break in that chain rather than to separate metrics and log backends.
 
 ### Issue: "WEM is unable to connect to the configured ClickHouse instance"
 
-**Cause:** `CLICKHOUSE_URL` in `/etc/wem/wem.conf` is incorrect, or ClickHouse isn't reachable from the WEM host.
+**Cause:** `CLICKHOUSE_URL` in `/etc/edb/wem/wem.conf` is incorrect, or ClickHouse isn't reachable from the WEM host.
 
 **Solution:**
 
@@ -375,7 +415,7 @@ WEM's dashboards, charts, and log search all read from ClickHouse. A single pipe
 
 **Cause:** The host agent failed to register because the value of `WEM_AGENT_JOIN_SECRET`, which the agent presents as its verification token, contains unsupported characters. Output from `openssl rand -base64` commonly triggers this error.
 
-**Solution:** Set `WEM_AGENT_JOIN_SECRET` in `/etc/wem/wem.conf` and `/etc/edb/acp-host-agent/join-token` to a value that contains only letters, numbers, periods, underscores, and hyphens, for example the output of `openssl rand -hex 32`. Restart WEM, then restart the host agent.
+**Solution:** Set `WEM_AGENT_JOIN_SECRET` in `/etc/edb/wem/wem.conf` and `/etc/edb/acp-host-agent/join-token` to a value that contains only letters, numbers, periods, underscores, and hyphens, for example the output of `openssl rand -hex 32`. Restart WEM, then restart the host agent.
 
 ### Issue: `acp-host-agent` log shows `sudo: a password is required`
 
