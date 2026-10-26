@@ -1,11 +1,11 @@
 ---
 title: Exporting and verifying audit reports
 navTitle: Exporting audit reports
-description: Export the activity recorded for an aidb database as a CSV audit report, and verify later that a report hasn't been altered, in EDB Agent Governance.
+description: Export the activity recorded for an aidb database as a CSV audit report, and verify later that a report is the one the application produced, in EDB Agent Governance.
 deepToC: true
 ---
 
-Use audit reports to hand the activity recorded for an `aidb` database to an auditor, or to keep a copy outside the application. An audit report is a CSV file. When the application exports one, it records the file's SHA-256 hash, so anyone with access to the same application can later check that the file they hold is the one that was exported, byte for byte.
+Use audit reports to hand the activity recorded for an `aidb` database to an auditor, or to keep a copy outside the application. An audit report is a CSV file. When the application produces one, it keeps a record of the export with the SHA-256 hash of the finished file. Anyone signed in to the same application can later upload a file and check that it's that export, byte for byte.
 
 Audit reports are available for `aidb` databases only. HM and Loki sources don't offer them.
 
@@ -13,38 +13,55 @@ Audit reports are available for `aidb` databases only. HM and Loki sources don't
 
 You need the Administrator role to export. Other users don't see the export button.
 
-1. Open the cluster and go to the [Activity](./sessions_list) page. Set the filters to the activity you want in the report: date range, agents, identifier, activity type, and decision status. The report covers what the filters select, not just the rows shown on the current page.
+1. Open the cluster and go to the [Activity](./sessions_list) page. Set the filters to the activity you want in the report: date range, agents, identifier, activity type, and decision status.
 
    To export a single session, connection, conversation, or trace, open it instead and use the button on the [session page](./session_detail).
 
-2. Select Export Audit Report. The dialog repeats the selection the report will cover: Instance, Activity, Date, Agents, Identifier, Activity Type, and Status. To change it, close the dialog and adjust the filters.
+2. Select Export Audit Report. The dialog summarizes the selection: Instance and Date always, Agents when any are selected, Identifier, Activity Type, and Status when those filters are set, and Activity when you export a single activity from its page. To change the selection, close the dialog and adjust the filters.
 
-3. Leave Include Sensitive Content off unless the auditor needs the raw query text and user inputs. When it's off, those fields are left out of the file and the report says so.
+3. Leave Include Sensitive Content off unless the auditor needs the raw query text and user inputs. With it off, the columns for those values stay in the file but their cells are empty, and each row's `excluded_fields` column names the values that were left out on purpose. An empty `sql` cell therefore means either that the step had no SQL or that it was excluded; the `excluded_fields` column tells which.
 
-4. Select Export. The browser downloads the file, and a notice confirms Audit report exported successfully with a Verify this report link.
+4. Select Export Audit Report in the dialog. The button reads Exporting Audit Report... while the file is being built. The browser then downloads the file, and a notice confirms Audit report exported successfully with a Verify this report link.
 
 Keep the file as it was downloaded. Opening it in a spreadsheet and saving it again changes the bytes, and verification will then fail.
 
+### What the selection covers
+
+Filters select whole sessions, not individual rows. When a filter matches a session, the report includes every step of that session, including steps by agents the filter didn't name, so the auditor sees the whole conversation. Each row says which it is: the `trace_scope` column is `matching_trace` for rows the filters selected and `session_context` for rows included as context of a matching session.
+
+### Export limits
+
+One export runs at a time per application. An export stops with an error when it would exceed 100,000 records or 50 MB, or when building it takes longer than 45 seconds. The messages are This export is too large and The export took too long, both ending with Choose fewer activities or a shorter date range. Split a long period into several exports instead.
+
 ### What the file contains
 
-The file is UTF-8 CSV with a byte order mark. The first row is a metadata record (`record_type` is `metadata`) that identifies the export: its `export_id`, the instance, who exported it, when, the selection filters, whether sensitive content was included, the retention settings of the source database at export time, and the range of recorded activity the database held. Each following row is one activity record with the same columns the Activity page shows. The last column of the metadata row, `checksum_sha256`, holds the hash of the file with that column zeroed, so the file can also be checked offline.
+The file is UTF-8 CSV with a byte order mark. Read columns by name, not by position; the set and order of columns can change between versions, and some columns are dropped when the viewer runs with governance decisions turned off.
 
-The application stores only a receipt of each export: the export identifier, the hash, the file size, the record count, who exported it, and when. It doesn't keep a copy of the report.
+- The first row holds the column names.
+- The second row is the export record (`record_type` is `metadata`). It identifies the export: `export_id`, `exported_at`, `instance_id` and `instance_name`, who exported it (`exported_by`, `exported_by_name`, `exported_by_email`), the selection (`selection_from`, `selection_to_exclusive`, `selection_agents`, `selection_identifier`, `selection_types`, `selection_statuses`, `selection_activity`), `sensitive_content_included`, the retention settings of the source database at export time, the range of recorded activity the database held, and the telemetry source scope with a `provenance_note` (see [What aidb 7.9 adds](./connecting_aidb#prerequisites)). It also carries `verification_url` and `verification_instructions` for the recipient: use that address only if it matches the address of your own Agent Governance installation, because a tampered file could carry a tampered address.
+- Each following row is one recorded step (`record_type` is `span` for an agent action or `log` for a log record), so one session produces many rows. Rows with `record_type` `warning` report records the export couldn't read or had to leave out.
+- The last row is the summary (`record_type` is `summary`): `export_record_count`, `report_content_status`, `omitted_decision_records`, the sections and fields that have any data, the producer versions seen, and the checksum. `report_content_status` is `records_present`, `no_matching_records`, or `coverage_incomplete`; the last one means some records couldn't be read or the log table wasn't available.
+
+The last column of the summary row, `checksum_sha256`, is the SHA-256 of the file computed with that cell filled with zeros (`checksum_scope` is `sha256_csv_zeroed_checksum_v1`). It lets you check that a file is internally consistent, but not that it's the export the application produced: whoever edits the file can recompute it. Only the application's own record proves that, because it stores the hash of the finished file, with the checksum already written in. The two hashes differ by design.
+
+The application stores a record of every export attempt, including failed ones: the export identifier, the instance, who exported it and when, the selection filters, the outcome, and for completed exports the record count, file size, and hash. It doesn't keep a copy of the report.
 
 ## Verifying an audit report
 
 Any signed-in user can verify a report, whatever their role.
 
 1. Open the cluster menu in the header and select Verify audit report, or follow the Verify this report link after an export. The page is also at `/verify`.
-2. Drop the CSV file on the page or select it. The file must be a CSV of at most 50 MB.
+2. Drop the CSV file on the page or select it. The file must be a CSV of at most 50 MB; a larger file is rejected in the browser with Choose a CSV file no larger than 50 MB.
 
 The page then shows one of these results:
 
-- File Verified — The file's hash matches the receipt. The page shows the receipt's details: Exported By (name, email, and identity-provider subject of the user who exported it), Timestamp, Scope & Filters (instance, time range, agents, identifier, activity types, decisions), Record Count, and Sensitive Content (Included or Excluded). Compare them with what you expected the report to cover.
-- Verification Failed, with the reason:
-  - The file's hash does not match the original record — The file was altered, re-saved, truncated, or is a different export than the receipt describes.
-  - No trusted audit record was found for this export — The application has no receipt for this `export_id`. Check that you're using the Agent Governance installation that created the report; receipts aren't shared between installations.
-  - Choose an original Governance CSV audit report — The file isn't an audit report from this application, or its metadata row is incomplete.
-  - The file exceeds the upload size limit, or Verification is busy — Try again with a smaller export, or later.
+- File Verified. — The hash of the uploaded file matches the application's record of that export. The page shows Timestamp and Record Count from the application's record, and Exported By, Scope & Filters, and Sensitive Content read from the uploaded file itself, which is trustworthy now that the file is known to be unaltered. Compare them with what you expected the report to cover.
+- Verification Failed. with the reason:
+  - The file's hash does not match the original record — The file was altered, re-saved, truncated, or is a different export than the record describes.
+  - No trusted audit record was found for this export — The application has no record of this `export_id`. Check that you're using the Agent Governance installation that created the report; records aren't shared between installations.
+  - Choose an original Governance CSV audit report — The file isn't an audit report from this application, or its export record is incomplete.
+  - The file exceeds the upload size limit, The upload could not be completed, Verification is busy, or Verification is unavailable — Try again, with a smaller export or later.
 
-Verification compares the whole file with the receipt. It doesn't inspect the rows, so it can't tell which rows changed, only that the file differs.
+### What File Verified means
+
+A matching hash proves that the file is exactly what the application produced. It doesn't prove that the report is complete. Check the summary row: `report_content_status` other than `records_present`, any `warning` rows, and a non-zero `omitted_decision_records` all mean the report deliberately or unavoidably left something out. Verification compares the whole file, so it can't tell which rows changed, only that the file differs.
