@@ -212,6 +212,9 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/agent-factory/runtime">
                 Runtime
               </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/governance">
+                Governance
+              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/agent-factory/packages">
                 Packages
               </BannerCardLink>
