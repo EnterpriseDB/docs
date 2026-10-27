@@ -1,0 +1,102 @@
+---
+title: Authenticating with OAuth
+navTitle: OAuth
+description: Let MCP clients sign in through your identity provider and OTLP senders authenticate with a bearer token, and map token identities to Postgres roles.
+---
+
+The MCP endpoint and the [OTLP receiver](otlp-receiver) can accept bearer tokens next to HTTP Basic. MCP clients sign in through your identity provider (IdP) and send the token it issues. OTLP senders attach a token they already hold. The endpoint forwards each token to Postgres over SASL OAUTHBEARER, and Postgres decides who the caller is. The endpoint never verifies a token's signature and keeps no identity between calls.
+
+## Requirements
+
+- PostgreSQL 18. The supervisor refuses the OAuth settings on an older server, logs a warning, and doesn't start the endpoint.
+- A validator module in `oauth_validator_libraries` that checks the token signature, the issuer, and the scopes. AIDB doesn't ship one. [`pg_oidc_validator`](https://github.com/Percona-Lab/pg_oidc_validator) 1.1.0 is the one AIDB is tested against. It's third party, its maintainers label it experimental, and it doesn't check `aud`, so the endpoint checks it instead.
+- An `oauth` line in `pg_hba.conf` for the roles that authenticate with tokens. See [Mapping identities to roles](#mapping-identities-to-roles).
+
+## Settings
+
+The general settings apply to every server the endpoint process runs:
+
+| Parameter                        | Type   | Default              | Context | Description                                                                                                        |
+|----------------------------------|--------|----------------------|---------|--------------------------------------------------------------------------------------------------------------------|
+| `edb.endpoints_oauth_issuer`     | string | empty                | sighup  | Issuer URL (`https://`) of your IdP. Empty turns OAuth off, unless MCP has its own issuer.                          |
+| `edb.endpoints_oauth_scopes`     | string | empty                | sighup  | Scopes advertised to MCP clients when MCP uses the general settings. The OTLP receiver advertises none.            |
+| `edb.endpoints_oauth_role_claim` | string | `preferred_username` | sighup  | Token claim that names the Postgres role.                                                                          |
+| `edb.endpoints_oauth_audience`   | string | empty                | sighup  | The exact `aud` value the IdP puts in tokens for these servers. See [Choosing the audience](#choosing-the-audience). |
+
+MCP has its own set:
+
+| Parameter                              | Type   | Default              | Context | Description                                                                                                 |
+|----------------------------------------|--------|----------------------|---------|-------------------------------------------------------------------------------------------------------------|
+| `edb.endpoints_mcp_oauth_issuer`       | string | empty                | sighup  | Issuer URL (`https://`) for MCP. Empty uses the general settings.                                           |
+| `edb.endpoints_mcp_oauth_resource_url` | string | empty                | sighup  | The MCP endpoint's public `https://` URL, ending in `/mcp`. Required with either issuer.                    |
+| `edb.endpoints_mcp_oauth_scopes`       | string | empty                | sighup  | Space-separated scopes advertised to MCP clients. Match the `scope=` option on the `pg_hba.conf` line.      |
+| `edb.endpoints_mcp_oauth_role_claim`   | string | `preferred_username` | sighup  | Token claim that names the Postgres role.                                                                   |
+| `edb.endpoints_mcp_oauth_audience`     | string | empty                | sighup  | The exact `aud` value the IdP puts in tokens for the MCP endpoint.                                          |
+
+MCP takes its whole set from the `edb.endpoints_mcp_oauth_*` settings when `edb.endpoints_mcp_oauth_issuer` is set, and from the general settings otherwise. The two sets never mix, so a general audience doesn't fill in a missing MCP one. `edb.endpoints_mcp_oauth_resource_url` applies in both cases.
+
+With both issuers empty, the endpoint behaves exactly as it does without OAuth. Changing any OAuth setting restarts the endpoint at the next `pg_reload_conf()`.
+
+## MCP clients
+
+For MCP, the issuer, resource URL, scopes, and audience are required together. The supervisor refuses a configuration that leaves one out and names the missing setting in its warning.
+
+- The resource URL's path must be exactly `/mcp`. A reverse proxy that serves the endpoint under a subpath, such as `/aidb/mcp`, isn't supported.
+- Tokens must be JWTs, because the endpoint reads the role claim to choose the login role. An opaque access token always gets `401` with `error="invalid_token"`.
+- A request with no usable credentials gets a `401` whose `WWW-Authenticate` header points at the protected-resource metadata for the path it called. MCP clients that support OAuth use it to start the sign-in.
+- An expired, malformed, or wrong-audience token gets a `401` with `error="invalid_token"`.
+- HTTP Basic keeps working next to bearer tokens.
+
+Every bearer request is also tried against Postgres with a connect-only login. A token that Postgres refuses, because of a bad signature, a revoked token, or an unmapped identity, gets a `401` with `error="invalid_token"`, so the client signs in again. Each tool call still logs in on its own connection, so a bearer request costs one extra login. If Postgres is unreachable during that check, the request goes through and the tool calls report the error.
+
+The check can't tell a bad token from a server misconfiguration. A missing `oauth` line in `pg_hba.conf`, a role that doesn't exist, or a validator failure also refuses the login, so the client keeps returning to the IdP sign-in. The endpoint logs each refusal as a warning, and the Postgres server log names the cause.
+
+When the endpoint [serves several databases](serving-multiple-databases), bare `/mcp` and each `/mcp/<database>` are separate protected resources:
+
+| Path         | Metadata URL                                   | `resource` value                 |
+|--------------|------------------------------------------------|----------------------------------|
+| `/mcp`       | `/.well-known/oauth-protected-resource/mcp`       | The resource URL                 |
+| `/mcp/sales` | `/.well-known/oauth-protected-resource/mcp/sales` | The resource URL with `/sales` appended |
+
+Database names with characters outside `A-Z a-z 0-9 - . _ ~` are percent-encoded in these URLs. One audience covers every database.
+
+## OTLP senders
+
+The OTLP receiver uses the general settings and only checks tokens. OpenTelemetry exporters send a token they already hold and never run a sign-in, so the receiver serves no metadata and needs no resource URL or scopes. The issuer and audience are required. For how the receiver answers and how to attach the token to an exporter, see [Authenticating with OAuth](otlp-receiver#authenticating-with-oauth) on the OTLP receiver page.
+
+## Mapping identities to roles
+
+The endpoint logs in as the role the role claim names. Postgres then maps the identity the validator verified through `pg_ident.conf` to decide whether that login is allowed. For example:
+
+```ini
+# pg_hba.conf: the supervised endpoint connects over the Unix socket
+local   all   +mcp_oauth_users   oauth issuer="https://idp.example.com/realms/mcp" scope="mcp" map=mcp_oauth
+local   all   agent_bob          scram-sha-256
+
+# pg_ident.conf: IdP identity to Postgres role
+mcp_oauth   alice       agent_alice
+```
+
+- Postgres uses the first `pg_hba.conf` line that matches, so each role authenticates one way. A role on the `oauth` line can't also log in with a password through HTTP Basic.
+- Use `local` for the endpoint the supervisor starts, and `hostssl` for an `edb-endpoints` you launch yourself that reaches Postgres over TCP.
+- Without `map=`, the identity and the role must be equal. `map=` maps identities to roles when they differ.
+- A bearer token connection that a line other than `oauth` admits gets the error `PostgreSQL admitted it without checking the token`. See [Passwords are always checked](serving-multiple-databases#passwords-are-always-checked).
+
+The role claim and the validator have to agree. `pg_oidc_validator` reads `sub` by default, so set `pg_oidc_validator.authn_field = 'preferred_username'` to pair it with the default role claim. Keycloak puts `preferred_username` in access tokens through the `profile` scope.
+
+The endpoint never verifies the role claim. Point it only at a claim your IdP sets, never one that users can edit.
+
+!!! Warning
+Don't use `delegate_ident_mapping=1` with `pg_oidc_validator`. It authorizes on scopes alone and ignores the requested role, so any valid token could log in as any role on that `pg_hba.conf` line.
+!!!
+
+The endpoint passes the caller's token straight to Postgres, and its `aud` check guards only the HTTP path. Because `pg_oidc_validator` doesn't check `aud`, any token from the same issuer with the configured scope and a mapped identity can also log in to Postgres directly, including one issued for a different service. To keep tokens scoped to the endpoint, limit the `oauth` line to `local` or to the endpoint's address, give the endpoint a scope no other client gets, or use a validator that enforces `aud`.
+
+## Choosing the audience
+
+Set the audience to the `aud` value your IdP actually puts in access tokens for the endpoint. A wrong value gets a `401` on every bearer request.
+
+- In Keycloak, the value comes from an audience mapper on the client.
+- In Microsoft Entra ID v2 tokens, it's the API's application (client) ID GUID, not the application ID URI or the resource URL. v1 tokens carry either the GUID or the application ID URI.
+
+`pg_oidc_validator` 1.1.0 accepts only Entra ID v1 tokens. It rewrites any `login.microsoftonline.com` issuer to `https://sts.windows.net/<tenant>/` before it checks `iss`, so a v2 token fails even with the right audience and role claim. Entra ID puts `preferred_username` only in v2 tokens, so with v1 tokens, set both the role claim and `pg_oidc_validator.authn_field` to `upn`. Entra ID v2 needs a validator that accepts the v2 issuer.

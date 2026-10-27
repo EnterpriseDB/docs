@@ -77,24 +77,9 @@ Plaintext HTTP is refused off loopback (`127.0.0.1`, `::1`, `localhost`). The re
 
 ## Authenticating with OAuth
 
-Besides HTTP Basic, the receiver accepts a bearer token that your identity provider issued. OpenTelemetry exporters send a token they already hold and never run a sign-in, so the receiver only checks tokens. It serves no sign-in metadata and needs no resource URL or scopes. The endpoint passes the token to Postgres over SASL OAUTHBEARER, and Postgres decides who the caller is. The endpoint never verifies the token's signature.
+Besides HTTP Basic, the receiver accepts a bearer token that your identity provider issued. The receiver uses the general `edb.endpoints_oauth_*` settings and needs the issuer and the audience. For the requirements, the settings, and the `pg_hba.conf` lines, see [Authenticating with OAuth](oauth).
 
-Prerequisites:
-
-- PostgreSQL 18, because earlier servers have no OAuth support. The supervisor refuses the OAuth settings on an older server.
-- A validator module in `oauth_validator_libraries` that checks the token signature, issuer, and scopes. AIDB doesn't ship one.
-- A `pg_hba.conf` line with the `oauth` method for each role that sends tokens. A role authenticates one way: a role on an `oauth` line can't also log in with a password.
-
-Set these parameters:
-
-| Parameter                        | Type    | Default              | Context | Description                                                                                       |
-|----------------------------------|---------|----------------------|---------|---------------------------------------------------------------------------------------------------|
-| `edb.endpoints_oauth_issuer`     | string  | empty                | sighup  | Issuer URL (`https://`) of your identity provider. Empty turns OAuth off.                         |
-| `edb.endpoints_oauth_audience`   | string  | empty                | sighup  | The exact `aud` value the identity provider puts in the tokens for these servers. Required.       |
-| `edb.endpoints_oauth_role_claim` | string  | `preferred_username` | sighup  | The token claim that names the Postgres role.                                                     |
-| `edb.endpoints_oauth_scopes`     | string  | empty                | sighup  | Scopes advertised to MCP clients. The receiver advertises none.                                   |
-
-Both the issuer and the audience are required for the receiver. How the receiver handles a token:
+How the receiver handles a token:
 
 - A bearer token must be a JWT. The receiver checks its shape, role claim, expiry, and `aud`, then logs in to Postgres as the role the claim names. That role is the stored rows' `principal`, so it still needs `aidb_otel_writer`.
 - A request with no usable credentials gets a `401` that offers both `Basic realm="otlp"` and `Bearer`.
@@ -108,10 +93,6 @@ export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
 ```
 
 See your SDK's documentation for the exact option. Tokens expire, and the SDKs don't refresh them, so your application has to update the header before the token expires. When it doesn't, the receiver returns `401` with `error="invalid_token"`.
-
-!!!note
-The role claim and the validator have to agree. Postgres ties the role the claim names to the identity the validator verified, and it decides whether that login is allowed. Point the role claim only at a claim your identity provider sets, never one that users can edit. Don't use `delegate_ident_mapping=1` with a validator that authorizes on scopes alone, because any valid token could then log in as any role on that `pg_hba.conf` line.
-!!!
 
 ## Launching `edb-endpoints` yourself
 
