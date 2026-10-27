@@ -1,0 +1,388 @@
+---
+title: Agent memory reference
+navTitle: Agent memory
+description: API reference for the aidb_memory functions, catalog views, and configuration parameters.
+deepToC: true
+---
+
+Reference for agent memory functions, views, and configuration parameters. For guide-style documentation, see [Agent memory](../agent-memory).
+
+## Catalog views
+
+### `aidb_memory.namespaces`
+
+Lists the available agent memory namespaces.
+
+| Column             | Description                                                               |
+|--------------------|---------------------------------------------------------------------------|
+| `id`               | Unique identifier for the namespace.                                      |
+| `name`             | Name of the namespace.                                                    |
+| `agentmemory_spec` | Configuration for the agent memory runtime associated with the namespace. |
+| `model_spec`       | Configuration for the models used by the namespace.                       |
+| `storage_spec`     | Configuration for the storage backend used by the namespace.              |
+| `state`            | Lifecycle state of the namespace. Valid values: `ACTIVE`, `INACTIVE`.     |
+| `created_at`       | When the namespace was created.                                           |
+| `updated_at`       | When the namespace was last updated.                                      |
+
+### `aidb_memory.events`
+
+Lists the ingestion events created when applications call `aidb_memory.add`. Query this view to audit submitted conversation turns, trace asynchronous processing, correlate retries through idempotency keys, and check whether each event was accepted, processed, made ready, or failed.
+
+| Column             | Description                                                                                                                            |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `event_id`         | Unique internal identifier for the event.                                                                                              |
+| `public_id`        | External identifier returned to callers and used to reference the event outside the database.                                          |
+| `correlation_id`   | Identifier that correlates the database event with Agent Memory Server logs, background processing, and related downstream operations. |
+| `namespace_id`     | The namespace that owns the event and supplies its model, server, and storage configuration.                                           |
+| `actor_id`         | Identifier of the user, tenant, device, or other subject whose turns were submitted.                                                   |
+| `agent_id`         | Identifier of the agent or application component that submitted the event.                                                             |
+| `session_id`       | Identifier of the conversation, ticket, workflow, or run associated with the turns.                                                    |
+| `turn_count`       | Number of message turns in the payload passed to `aidb_memory.add`.                                                                    |
+| `ingestion_status` | Processing state of the event. Valid values: `ACCEPTED`, `PROCESSING`, `READY`, `SKIPPED`, `FAILED`.                                                |
+| `idempotency_key`  | Caller-provided key that deduplicates retries of the same event.                                                                       |
+| `occurred_at`      | When the source conversation event occurred in the application or agent workflow.                                                      |
+| `recorded_at`      | When AIDB recorded the event for asynchronous ingestion.                                                                               |
+| `metadata`         | Additional JSON metadata captured with the event, such as source system details or tracing information.                                |
+| `created_at`       | When the event row was created.                                                                                                        |
+| `updated_at`       | When the event row was last updated, typically as the ingestion status changes.                                                        |
+
+### `aidb_memory.messages`
+
+Stores the ordered message history generated from memory events, including the actor and session context, role, content, and timestamps.
+
+| Column         | Description                                                               |
+|----------------|---------------------------------------------------------------------------|
+| `id`           | Unique internal identifier for the message.                               |
+| `event_id`     | The event that generated this message.                                    |
+| `namespace_id` | The namespace that owns the event.                                        |
+| `actor_id`     | The actor associated with the message.                                    |
+| `session_id`   | The conversation or session that groups related messages.                 |
+| `ordinal`      | Sequence number that preserves message order within the event or session. |
+| `role`         | Role of the message author, such as `user` or `assistant`.                |
+| `content`      | Message body captured from the event for replay, retrieval, or audit.     |
+| `created_at`   | When the message row was created.                                         |
+| `updated_at`   | When the message row was last updated.                                    |
+
+### `aidb_memory.sessions`
+
+One row per conversation, created lazily by `session_start`, `session_end`, or a compacting `session_get`. The `aidb_users` role can't read this view directly.
+
+| Column                | Description                                                                                       |
+|-----------------------|---------------------------------------------------------------------------------------------------|
+| `id`                  | Internal identifier for the session row.                                                          |
+| `namespace_id`        | The namespace that owns the session.                                                              |
+| `session_id`          | Caller-supplied conversation identifier, unique within a namespace.                               |
+| `actor_id`            | The actor that opened the session. This is the tenancy key for every session read.                |
+| `agent_id`            | The agent taking part. `NULL` until a `session_start` call supplies one.                          |
+| `started_at`          | When the session was first opened or written to.                                                  |
+| `closed_at`           | When `session_end` closed it. `NULL` while the session is open.                                   |
+| `high_water_event_id` | Newest event covered by a summary. `NULL` before the first compaction.                            |
+| `handoff`             | Set at close: `{notes, compacted_entries, stats}`. Returned as the next session's `prev_handoff`. |
+| `stats`               | Set at close: `{turns, content_chars}` over the whole conversation.                               |
+
+### `aidb_memory.session_compactions`
+
+Summaries that stand in for the turns a session has compacted, ordered per session by `seq`. Written only by a compacting `session_get`, one row per compaction.
+
+| Column                    | Description                                                 |
+|---------------------------|-------------------------------------------------------------|
+| `id`                      | Internal identifier for the summary row.                    |
+| `namespace_id`            | The namespace that owns the session.                        |
+| `session_pk`              | The `aidb_memory.sessions.id` that this summary belongs to. |
+| `seq`                     | Position among the session's summaries, oldest first.       |
+| `covers_through_event_id` | Newest event this summary covers. Informational.            |
+| `content`                 | The generated summary text.                                 |
+| `model_ref`               | The model that produced the summary, recorded for audit.    |
+| `created_at`              | When the summary was written.                               |
+
+## Functions
+
+### `aidb_memory.init`
+
+Initializes a namespace and prepares it to store and retrieve memories. Run it once before any other `aidb_memory` function, so that the LLM, embedding configuration, and Agent Memory Server are set up. Call it once during setup or before the first memory operation. If the namespace already exists, the function returns it without changing it.
+
+```sql
+aidb_memory.init(name TEXT, config JSONB)
+```
+
+| Parameter | Type  | Description                                                                                                                                                                                  |
+|-----------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`    | TEXT  | Name of the namespace. The namespace supplies the model, server, and storage configuration for later calls.                                                                                  |
+| `config`  | JSONB | Configuration for the namespace: the model spec, the agent memory provider spec, and the storage spec. See [Initializing a namespace](../agent-memory/configuring#initializing-a-namespace). |
+
+Returns a row that describes the namespace:
+
+| Column                | Type        | Description                                           |
+|-----------------------|-------------|-------------------------------------------------------|
+| `namespace`           | TEXT        | Name of the namespace.                                |
+| `status`              | TEXT        | State of the namespace.                               |
+| `created_at`          | TIMESTAMPTZ | When the namespace was created.                       |
+| `model_spec`          | JSONB       | Configuration for the models that the namespace uses. |
+| `agentmemory_spec`    | JSONB       | Configuration for the agent memory runtime.           |
+| `storage_spec`        | JSONB       | Configuration for the storage backend.                |
+| `sessionmemory_specs` | JSONB       | Configuration for session memory.                     |
+
+### `aidb_memory.add`
+
+Persists agent turns as an event so that they can be retrieved later as memory. Typically used to store a user's conversation with an agent.
+
+```sql
+aidb_memory.add(
+  turns JSONB,
+  namespace TEXT,
+  actor_id TEXT,
+  agent_id TEXT DEFAULT NULL,
+  session_id TEXT DEFAULT NULL,
+  idempotency_key TEXT DEFAULT NULL,
+  metadata JSONB DEFAULT '{}'
+)
+```
+
+| Parameter         | Type  | Default  | Description                                                                                                                        |
+|-------------------|-------|----------|------------------------------------------------------------------------------------------------------------------------------------|
+| `turns`           | JSONB | Required | The ordered message turns exchanged during the interaction, from the user and the assistant. Each turn has a `role` and `content`. |
+| `namespace`       | TEXT  | Required | The namespace that owns the event.                                                                                                 |
+| `actor_id`        | TEXT  | Required | Identifier of the actor associated with the turns.                                                                                 |
+| `agent_id`        | TEXT  | `NULL`   | Identifier of the agent that took part in or generated the turns.                                                                  |
+| `session_id`      | TEXT  | `NULL`   | Identifier of the conversation or session that groups related messages.                                                            |
+| `idempotency_key` | TEXT  | `NULL`   | Key that prevents duplicate processing and keeps retries from creating duplicate records.                                          |
+| `metadata`        | JSONB | `{}`     | Additional metadata to store with the event. Must be a JSON object.                                                                |
+
+Returns:
+
+| Type | Description                                                                              |
+|------|------------------------------------------------------------------------------------------|
+| UUID | The ID of the add operation. Pass it to `aidb_memory.status` as `id` to check progress. |
+
+### `aidb_memory.status`
+
+Reports the status of a memory event: `ACCEPTED`, `PROCESSING`, `READY`, `SKIPPED`, or `FAILED`. Use it to confirm that an event is ready for retrieval, or to diagnose a failed memory formation.
+
+```sql
+aidb_memory.status(
+  namespace TEXT,
+  id UUID DEFAULT NULL,
+  actor_id TEXT DEFAULT NULL,
+  session_id TEXT DEFAULT NULL,
+  agent_id TEXT DEFAULT NULL,
+  limit INTEGER DEFAULT 100,
+  offset INTEGER DEFAULT 0
+)
+```
+
+| Parameter    | Type    | Default  | Description                                                                                |
+|--------------|---------|----------|--------------------------------------------------------------------------------------------|
+| `namespace`  | TEXT    | Required | The namespace that owns the event.                                                         |
+| `id`         | UUID    | `NULL`   | Identifier of the event to check. If omitted, the query isn't limited to a specific event. |
+| `actor_id`   | TEXT    | `NULL`   | Identifier of the actor.                                                                   |
+| `session_id` | TEXT    | `NULL`   | Filters results to a session.                                                              |
+| `agent_id`   | TEXT    | `NULL`   | Filters results to an agent.                                                               |
+| `limit`      | INTEGER | `100`    | Maximum number of results to return.                                                       |
+| `offset`     | INTEGER | `0`      | Number of results to skip before returning. Use with `limit` for large result sets.        |
+
+Returns a row for each matching event:
+
+| Column         | Type | Description                                                                      |
+|----------------|------|----------------------------------------------------------------------------------|
+| `id`           | UUID | The ID of the event.                                                             |
+| `namespace`    | TEXT | The namespace that owns the event.                                               |
+| `status`       | TEXT | State of the event: `ACCEPTED`, `PROCESSING`, `READY`, `SKIPPED`, or `FAILED`.   |
+| `actor_id`     | TEXT | The actor associated with the event.                                             |
+| `session_id`   | TEXT | The session associated with the event.                                           |
+| `agent_id`     | TEXT | The agent associated with the event.                                             |
+| `error_detail` | TEXT | Details about the error if the event failed. `NULL` otherwise.                   |
+
+### `aidb_memory.search`
+
+Searches the stored memories and returns the entries that match a natural-language query. Use it to retrieve information that was saved with `aidb_memory.add`.
+
+```sql
+aidb_memory.search(
+  namespace TEXT,
+  actor_id TEXT,
+  query TEXT,
+  limit INTEGER DEFAULT 10,
+  session_id TEXT DEFAULT NULL,
+  agent_id TEXT DEFAULT NULL
+)
+```
+
+| Parameter    | Type    | Default  | Description                                                              |
+|--------------|---------|----------|--------------------------------------------------------------------------|
+| `namespace`  | TEXT    | Required | The namespace to search.                                                 |
+| `actor_id`   | TEXT    | Required | Identifier of the actor whose memories to search.                        |
+| `query`      | TEXT    | Required | A natural-language query that describes the information the agent needs. |
+| `limit`      | INTEGER | `10`     | Maximum number of memories to return.                                    |
+| `session_id` | TEXT    | `NULL`   | Restricts results to memories from a session.                            |
+| `agent_id`   | TEXT    | `NULL`   | Restricts results to memories created or used by an agent.               |
+
+Returns a row for each matching memory:
+
+| Column     | Type  | Description                           |
+|------------|-------|---------------------------------------|
+| `id`       | UUID  | The ID of the memory.                 |
+| `content`  | TEXT  | The text of the memory.               |
+| `score`    | REAL  | Relevance score for the match.        |
+| `metadata` | JSONB | Metadata stored with the memory.      |
+
+### `aidb_memory.list_memories`
+
+Lists the memories stored in agent memory. Use it to inspect saved context, audit memories, debug memory behavior, or verify that expected records exist.
+
+```sql
+aidb_memory.list_memories(
+  namespace TEXT,
+  actor_id TEXT,
+  session_id TEXT DEFAULT NULL,
+  agent_id TEXT DEFAULT NULL,
+  limit INTEGER DEFAULT 100
+)
+```
+
+| Parameter    | Type    | Default  | Description                                     |
+|--------------|---------|----------|-------------------------------------------------|
+| `namespace`  | TEXT    | Required | The namespace to list.                          |
+| `actor_id`   | TEXT    | Required | Identifier of the actor whose memories to list. |
+| `session_id` | TEXT    | `NULL`   | Filters results by session.                     |
+| `agent_id`   | TEXT    | `NULL`   | Filters results by agent.                       |
+| `limit`      | INTEGER | `100`    | Maximum number of memories to return.           |
+
+Returns a row for each memory:
+
+| Column       | Type | Description                                      |
+|--------------|------|--------------------------------------------------|
+| `id`         | UUID | The ID of the memory.                            |
+| `content`    | TEXT | The text of the memory.                          |
+| `agent_id`   | TEXT | The agent that the memory is associated with.    |
+| `session_id` | TEXT | The session that the memory is associated with.  |
+
+### `aidb_memory.delete`
+
+Removes memories when they must be deleted for compliance, privacy, or retention reasons. Deleted memories no longer appear in searches or listings.
+
+```sql
+aidb_memory.delete(
+  namespace TEXT,
+  actor_id TEXT,
+  selector JSONB,
+  reason TEXT,
+  session_id TEXT DEFAULT NULL,
+  agent_id TEXT DEFAULT NULL
+)
+```
+
+| Parameter    | Type  | Default  | Description                                                                                                                                                                                                                  |
+|--------------|-------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `namespace`  | TEXT  | Required | The namespace that owns the memories.                                                                                                                                                                                        |
+| `actor_id`   | TEXT  | Required | Identifier of the actor whose memories are deleted or evaluated by the selector.                                                                                                                                             |
+| `selector`   | JSONB | Required | Which memories to remove. Set `scope` to `session`, `agent`, or `actor` to delete at that level, for example `{"scope": "session"}`. Alternatively, list specific memories, for example `{"memory_ids": ["<memory-uuid>"]}`. |
+| `reason`     | TEXT  | Required | Why the memories are deleted. Recorded for auditing and operational tracking.                                                                                                                                                |
+| `session_id` | TEXT  | `NULL`   | Limits the deletion to memories from a session.                                                                                                                                                                              |
+| `agent_id`   | TEXT  | `NULL`   | Limits the deletion to memories from an agent.                                                                                                                                                                               |
+
+Returns:
+
+| Type   | Description                      |
+|--------|----------------------------------|
+| BIGINT | The number of memories deleted.  |
+
+### `aidb_memory.session_start`
+
+Opens a conversation, or resumes one, and returns the handoff left by the previous conversation in the same scope. Makes no model call and is idempotent.
+
+```sql
+aidb_memory.session_start(
+  namespace TEXT,
+  actor_id TEXT,
+  agent_id TEXT,
+  session_id TEXT DEFAULT NULL
+)
+```
+
+| Parameter    | Type | Default  | Description                                                      |
+|--------------|------|----------|------------------------------------------------------------------|
+| `namespace`  | TEXT | Required | The namespace that owns the session.                             |
+| `actor_id`   | TEXT | Required | The user, tenant, or other subject the conversation belongs to.  |
+| `agent_id`   | TEXT | Required | The agent taking part. Required positionally, but can be `NULL`. |
+| `session_id` | TEXT | `NULL`   | Conversation identifier. `NULL` creates a UUID and returns it.   |
+
+Returns:
+
+| Column         | Type        | Description                                                                                                                  |
+|----------------|-------------|------------------------------------------------------------------------------------------------------------------------------|
+| `session_id`   | TEXT        | The conversation identifier.                                                                                                 |
+| `prev_handoff` | JSONB       | The last closed session's handoff in the same `(namespace, actor_id, agent_id)` scope, or `NULL`.                            |
+| `started_at`   | TIMESTAMPTZ | When the session was first opened.                                                                                           |
+| `closed_at`    | TIMESTAMPTZ | `NULL` while the session is open. Non-`NULL` if this call re-opened an already closed session, which reports its close time. |
+
+### `aidb_memory.session_get`
+
+Returns a conversation's history in order, within an optional character budget. When the budget is exceeded, it summarizes the oldest part of the history. It isn't exposed as an agent tool, because an agent must not choose its own history.
+
+```sql
+aidb_memory.session_get(
+  namespace TEXT,
+  actor_id TEXT,
+  session_id TEXT,
+  limit_chars BIGINT DEFAULT NULL,
+  fallback_model TEXT DEFAULT NULL
+)
+```
+
+| Parameter        | Type   | Default  | Description                                                                                                       |
+|------------------|--------|----------|-------------------------------------------------------------------------------------------------------------------|
+| `namespace`      | TEXT   | Required | The namespace that owns the session.                                                                              |
+| `actor_id`       | TEXT   | Required | The actor whose session is read.                                                                                  |
+| `session_id`     | TEXT   | Required | The conversation to read.                                                                                         |
+| `limit_chars`    | BIGINT | `NULL`   | Character budget over turn content. `NULL` returns everything and never compacts. Must be `NULL` or non-negative. |
+| `fallback_model` | TEXT   | `NULL`   | A registered model to summarize with when the namespace names no LLM.                                             |
+
+Returns:
+
+| Column              | Type    | Description                                                                                                                                                                                                                                                                    |
+|---------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `items`             | JSONB   | A JSONB array of turns in order, summaries first. Each has `event_id`, `ordinal`, `role`, `name`, `content`, `kind`, `tool_call_id`, `meta`, and `occurred_at`. Summaries appear with `role` set to `system`, `name` set to `compaction_summary`, and `kind` set to `summary`. |
+| `overflow_chars`    | BIGINT  | Characters of raw history left out to fit the budget.                                                                                                                                                                                                                          |
+| `compacted_entries` | INTEGER | Number of summaries included.                                                                                                                                                                                                                                                  |
+| `warnings`          | TEXT[]  | Codes for anything the caller should notice. Empty on a clean read. See [Keeping long conversations within budget](../agent-memory/session-memory#keeping-long-conversations-within-budget).                                                                                   |
+
+### `aidb_memory.session_end`
+
+Closes a conversation and stores a handoff that describes it. Makes no model call and is idempotent: a repeated close returns the stored handoff without overwriting it.
+
+```sql
+aidb_memory.session_end(
+  namespace TEXT,
+  actor_id TEXT,
+  session_id TEXT,
+  notes TEXT DEFAULT NULL
+)
+```
+
+| Parameter    | Type | Default  | Description                                                   |
+|--------------|------|----------|---------------------------------------------------------------|
+| `namespace`  | TEXT | Required | The namespace that owns the session.                          |
+| `actor_id`   | TEXT | Required | The actor whose session is closed.                            |
+| `session_id` | TEXT | Required | The conversation to close.                                    |
+| `notes`      | TEXT | `NULL`   | Free text carried into the handoff for the next conversation. |
+
+Returns:
+
+| Column       | Type        | Description                                                                                                                                      |
+|--------------|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `session_id` | TEXT        | The conversation identifier.                                                                                                                     |
+| `ended_at`   | TIMESTAMPTZ | When the session was closed.                                                                                                                     |
+| `handoff`    | JSONB       | The stored handoff, as `{notes, compacted_entries, stats}`, where `stats` is `{turns, content_chars}` over the whole conversation.               |
+
+## Configuration parameters
+
+Agent memory exposes Postgres configuration parameters in the `aidb.agent_memory_*` namespace. For examples, see [Configuring advanced settings](../agent-memory/configuring#configuring-advanced-settings).
+
+Changes to these parameters don't require a Postgres restart. If you change them in `postgresql.conf`, reload the configuration for the change to take effect.
+
+Users can set both parameters for their own sessions. You set the Agent Memory Server address in the namespace, using `agentmemory_spec.config.base_url`, not in a parameter.
+
+| Parameter                             | Default | Description                                                                                                                          |
+|---------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.agent_memory_enable_worker`     | `off`   | Whether the agent memory worker runs for this database. Set it to `on` to enable the worker, or `off` to disable it. Use lowercase, because values are case-sensitive. |
+| `aidb.agent_memory_worker_batch_size` | `2`     | The number of agent memory records the worker processes in each batch. The maximum is `50`.                                          |
