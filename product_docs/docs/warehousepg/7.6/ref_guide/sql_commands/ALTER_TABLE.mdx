@@ -222,62 +222,84 @@ and <subpartition_element> is:
 
 `ALTER TABLE` changes the definition of an existing table. There are several subforms described below. Note that the lock level required may differ for each subform. *An `ACCESS EXCLUSIVE` lock is acquired unless explicitly noted.* When multiple subcommands are provided, WarehousePG acquires the strictest lock required by any subcommand.
 
-ADD COLUMN [ IF NOT EXISTS ]
- Adds a new column to the table, using the same syntax as [CREATE TABLE](CREATE_TABLE.mdx). If `IF NOT EXISTS` is specified and a column already exists with this name, no error is thrown.
+`ADD COLUMN [ IF NOT EXISTS ]`
 
-DROP COLUMN [ IF EXISTS ]
+Adds a new column to the table, using the same syntax as [CREATE TABLE](CREATE_TABLE.mdx). If `IF NOT EXISTS` is specified and a column already exists with this name, no error is thrown.
+
+`DROP COLUMN [ IF EXISTS ]`
+
 Drops a column from a table. Note that if you drop table columns that are being used as the WarehousePG distribution key, the distribution policy for the table will be changed to `DISTRIBUTED RANDOMLY`. Indexes and table constraints involving the column are automatically dropped as well. Multivariate statistics referencing the dropped column will also be removed if the removal of the column would cause the statistics to contain data for only a single column. You need to specify `CASCADE` if anything outside of the table depends on the column, such as views. If `IF EXISTS` is specified and the column does not exist, no error is thrown; WarehousePG issues a notice instead.
 
-SET DATA TYPE
+`SET DATA TYPE`
+
 This form changes the data type of a column of a table. Note that you cannot alter column data types that are being used as distribution or partitioning keys. Indexes and simple table constraints involving the column will be automatically converted to use the new column type by reparsing the originally supplied expression. The optional `COLLATE` clause specifies a collation for the new column; if omitted, the collation is the default for the new column type. The optional `USING` clause specifies how to compute the new column value from the old. If omitted, the default conversion is the same as an assignment cast from old data type to new. A `USING` clause must be provided if there is no implicit or assignment cast from old to new type.
 
 > **Note** The WarehousePG query optimizer (GPORCA) supports collation only when all columns in the query use the same collation. If columns in the query use different collations, then WarehousePG uses the Postgres-based planner.
 
 Changing a column data type may or may not require a table rewrite. For information about table rewrites performed by `ALTER TABLE`, see [Notes](#section5).
 
+```
 SET DEFAULT
 DROP DEFAULT
+```
+
 Sets or removes the default value for a column. Default values apply only in subsequent `INSERT` or `UPDATE` commands; they do not cause rows already in the table to change.
 
+```
 SET NOT NULL
 DROP NOT NULL
+```
+
 Changes whether a column is marked to allow null values or to reject null values.
 
 `SET NOT NULL` may only be applied to a column provided none of the records in the table contain a `NULL` value for the column. This is typically checked during the `ALTER TABLE` by scanning the entire table; however, if a valid `CHECK` constraint is found which proves no `NULL` can exist, then WarehousePG skips the table scan.
 
 If this table is a partition, you cannot `DROP NOT NULL` on a column if it is marked `NOT NULL` in the parent table. To drop the `NOT NULL` constraint from all the partitions, perform `DROP NOT NULL` on the parent table. Even if there is no `NOT NULL` constraint on the parent, such a constraint can still be added to individual partitions, if desired; that is, the children can disallow nulls even if the parent allows them, but not the other way around.
 
+```
 ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY
 SET GENERATED { ALWAYS | BY DEFAULT }
 DROP IDENTITY [ IF EXISTS ]
+```
+
 These forms change whether a column is an identity column or change the generation attribute of an existing identity column. See [CREATE TABLE](CREATE_TABLE.mdx) for details.
 
 If `DROP IDENTITY IF EXISTS` is specified and the column is not an identity column, no error is thrown. In this case WarehousePG issues a notice instead.
 
+```
 SET sequence_option
 RESTART
+```
+
 These forms alter the sequence that underlies an existing identity column. sequence_option is an option supported by [ALTER SEQUENCE](ALTER_SEQUENCE.mdx) such as `INCREMENT BY`.
 
-SET STATISTICS
+`SET STATISTICS`
+
 Sets the per-column statistics-gathering target for subsequent [ANALYZE](ANALYZE.mdx) operations. The target can be set in the range 0 to 10000, or set to -1 to revert to using the system default statistics target ([default_statistics_target](../config_params/guc-list.mdx#default_statistics_target). When set to 0, no statistics are collected.
 
 `SET STATISTICS` acquires a `SHARE UPDATE EXCLUSIVE` lock.
 
+```
 SET ( attribute_option = value [, ... ] )
 RESET ( attribute_option [, ...] )
+```
+
 Sets or resets per-attribute options. Currently, the only defined per-attribute options are `n_distinct` and `n_distinct_inherited`, which override the number-of-distinct-values estimates made by subsequent [ANALYZE](ANALYZE.mdx) operations. `n_distinct` affects the statistics for the table itself, while `n_distinct_inherited` affects the statistics gathered for the table plus its inheritance children. When set to a positive value, `ANALYZE` assumes that the column contains exactly the specified number of distinct non-null values. When set to a negative value, which must be greater than or equal to -1, `ANALYZE` assumes that the number of distinct non-null values in the column is linear in the size of the table; the exact count is to be computed by multiplying the estimated table size by the absolute value of the given number. For example, a value of -1 implies that all values in the column are distinct, while a value of -0.5 implies that each value appears twice on the average. This can be useful when the size of the table changes over time, since the multiplication by the number of rows in the table is not performed until query planning time. Specify the value 0 to revert to estimating the number of distinct values normally.
 
 Changing per-attribute options acquires a `SHARE UPDATE EXCLUSIVE` lock.
 
 Do not use this form of `SET` to set attribute encoding options for appendoptimized, column-oriented tables. Instead, use  `ALTER COLUMN ... SET ENCODING ...`.
 
-SET STORAGE
+`SET STORAGE`
+
 This form sets the storage mode for a column. This controls whether this column is held inline or in a secondary TOAST table, and whether the data should be compressed or not. `PLAIN` must be used for fixed-length values such as integer and is inline, uncompressed. `MAIN` is for inline, compressible data. `EXTERNAL` is for external, uncompressed data, and `EXTENDED` is for external, compressed data. `EXTENDED` is the default for most data types that support non-`PLAIN` storage. Use of `EXTERNAL` will make substring operations on very large text and bytea values run faster, at the penalty of increased storage space. Note that `SET STORAGE` doesn't itself change anything in the table, it just sets the strategy to be pursued during future table updates.
 
-SET ENCODING ( storage_directive> [, ...] )
+`SET ENCODING ( storage_directive> [, ...] )`
+
 This form sets column encoding options for append-optimized, column-oriented tables.
 
-ADD table_constraint [ NOT VALID ]
+`ADD table_constraint [ NOT VALID ]`
+
 Adds a new constraint to a table using the same syntax as [CREATE TABLE](CREATE_TABLE.mdx). The `NOT VALID` option is currently allowed only for foreign key and `CHECK` constraints.
 
 Normally, this form causes a scan of the table to verify that all existing rows in the table satisfy the new constraint.  If the constraint is marked `NOT VALID`, WarehousePG skips the potentially-lengthy initial check to verify that all rows in the table satisfy the constraint. The constraint will still be enforced against subsequent inserts or updates (that is, they'll fail unless there is a matching row in the referenced table, in the case of foreign keys; and they'll fail unless the new row matches the specified check constraints). But the database will not assume that the constraint holds for all rows in the table, until it is validated by using the `VALIDATE CONSTRAINT` option. See the [Notes](#section5) for more information about using the `NOT VALID` option.
@@ -286,7 +308,8 @@ Most forms of `ADD <table_constraint>` require an `ACCESS EXCLUSIVE` lock.
 
 Additional restrictions apply when unique or primary key constraints are added to partitioned tables; see [CREATE TABLE](CREATE_TABLE.mdx).
 
-ADD table_constraint_using_index
+`ADD table_constraint_using_index`
+
 This form adds a new `PRIMARY KEY` or `UNIQUE` constraint to a table based on an existing unique index. All the columns of the index will be included in the constraint.
 
 The index cannot have expression columns nor be a partial index. Also, it must be a b-tree index with default sort ordering. These restrictions ensure that the index is equivalent to one that would be built by a regular `ADD PRIMARY KEY` or `ADD UNIQUE` command.
@@ -299,92 +322,118 @@ After this command is executed, the index is "owned" by the constraint, in the s
 
 This form is not currently supported on partitioned tables.
 
-ALTER CONSTRAINT
+`ALTER CONSTRAINT`
+
 This form alters the attributes of a constraint that was previously created. Currently only foreign key constraints may be altered, which WarehousePG will accept, but not enforce.
 
-VALIDATE CONSTRAINT
+`VALIDATE CONSTRAINT`
+
 This form validates a foreign key constraint that was previously created as `NOT VALID`, by scanning the table to ensure there are no rows for which the constraint is not satisfied. Nothing happens if the constraint is already marked valid. The advantage of separating validation from initial creation of the constraint is that validation requires a lesser lock on the table than constraint creation does.
 
 This command acquires a `SHARE UPDATE EXCLUSIVE` lock.
 
-DROP CONSTRAINT [IF EXISTS]
+`DROP CONSTRAINT [IF EXISTS]`
+
 Drops the specified constraint on a table, along with any index underlying the constraint. If `IF EXISTS` is specified and the constraint does not exist, no error is thrown. WarehousePG issues a notice in this case instead.
 
+```
 DISABLE ROW LEVEL SECURITY
 ENABLE ROW LEVEL SECURITY
+```
+
 These forms control the application of row security policies belonging to the table. If enabled and no policies exist for the table, then WarehousePG applies a default-deny policy. Note that policies can exist for a table even if row level security is disabled - in this case, the policies will NOT be applied and the policies will be ignored. See also [CREATE POLICY](CREATE_POLICY.mdx).
 
+```
 NO FORCE ROW LEVEL SECURITY
 FORCE ROW LEVEL SECURITY
+```
+
 These forms control the application of row security policies belonging to the table when the user is the table owner. If enabled, row level security policies will be applied when the user is the table owner. If disabled (the default) then row level security will not be applied when the user is the table owner. See also [CREATE POLICY](CREATE_POLICY.mdx).
 
-CLUSTER ON
+`CLUSTER ON`
+
 Selects the default index for future [CLUSTER](CLUSTER.mdx) operations. It does not actually re-cluster the table.
 
 Changing cluster options acquires a `SHARE UPDATE EXCLUSIVE` lock.
 
-REPACK BY COLUMNS
+`REPACK BY COLUMNS`
+
 Physically reorders a table based on one or more columns to improve physical correlation. You specify one or more columns, and an optional column order. If not specified, the default is `ASC`. The command is equivalent to the [CLUSTER](CLUSTER.mdx) command, but it uses the provided column list instead of an index to determine the sorting order. 
 
 The command is especially useful for tables that are loaded in small batches. You may combine `REPACK BY COLUMNS` with most other `ALTER TABLE` commands that do not require a rewrite of the table. You may use `REPACK BY COLUMNS` to add compression or change the existing compression settings of a table while physically reordering the table, which results in better compression and storage. See [Examples](#section6) for more details.
 
-SET WITHOUT CLUSTER
+`SET WITHOUT CLUSTER`
+
 Removes the most recently used [CLUSTER](CLUSTER.mdx) index specification from the table. This affects future cluster operations that do not specify an index.
 
 Changing cluster options acquires a `SHARE UPDATE EXCLUSIVE` lock.
 
-SET TABLESPACE
+`SET TABLESPACE`
+
 Changes the table's tablespace to the specified tablespace and moves the data file(s) associated with the table to the new tablespace. Indexes on the table, if any, are not moved; but they can be moved separately with additional `SET TABLESPACE` commands. When applied to a partitioned table, nothing is moved, but any partitions created afterwards with `CREATE TABLE ... PARTITION OF` will use that tablespace, unless the `TABLESPACE` clause is used to override it.
 
 All tables in the current database in a tablespace can be moved by using the `ALL IN TABLESPACE` form, which will lock all tables to be moved first and then move each one. This form also supports `OWNED BY`, which will only move tables owned by the roles specified. If the `NOWAIT` option is specified then the command will fail if it is unable to acquire all of the locks required immediately. Note that system catalogs are not moved by this command, use `ALTER DATABASE` or explicit `ALTER TABLE` invocations instead if desired. The `information_schema` relations are not considered part of the system catalogs and will be moved. See also [CREATE TABLESPACE](CREATE_TABLESPACE.mdx).
 
 If changing the tablespace of a partitioned table, all child tables will also be moved to the new tablespace.
 
-SET { LOGGED | UNLOGGED }
+`SET { LOGGED | UNLOGGED }`
+
 This form changes the table from unlogged to logged or vice-versa. It cannot be applied to a temporary table.
 
-SET ( storage\_\\parameter [= value][, ... ] )
+`SET ( storage_parameter [= value][, ... ] )`
+
 This form changes one or more table-level options. See [Storage Parameters](CREATE_TABLE.mdx#storage_parameters) in the `CREATE TABLE` reference for details on the available parameters. Note that for heap tables, the table contents will not be modified immediately by this command; depending on the parameter, you may need to rewrite the table to get the desired effects. That can be done with [VACUUM FULL](VACUUM.mdx), [CLUSTER](CLUSTER.mdx) or one of the forms of `ALTER TABLE` that forces a table rewrite, see [Notes](#section5). For append-optimized column-oriented tables, changing a storage parameter always results in a table rewrite. For planner-related parameters, changes take effect from the next time the table is locked, so currently executing queries are not affected.
 
 WarehousePG takes a `SHARE UPDATE EXCLUSIVE` lock when setting `fillfactor`, toast and autovacuum storage parameters, and the planner parameter `parallel_workers`.
 
-RESET ( storage_parameter [, ... ] )
+`RESET ( storage_parameter [, ... ] )`
+
 This form resets one or more table level options to their defaults. As with `SET`, a table rewrite might be required to update the table entirely.
 
-SET WITH (`<set_with_parameter>` = `<value>` [, ...])
+`SET WITH (<set_with_parameter> = <value> [, ...])`
+
 You can use this form of the command to reorganize the table, or to set the table access method and also optionally set storage parameters.
 
 > **Note:** **Note:** Although you can specify the table's access method using the `appendoptimized` and `orientation` storage parameters, it is recommended to use use `SET ACCESS METHOD <access_method>` instead.
 
-INHERIT parent_table
+`INHERIT parent_table`
+
 Adds the target table as a new child of the specified parent table. Queries against the parent will include records of the target table. To be added as a child, the target table must already contain all of the same columns as the parent (it could have additional columns, too). The columns must have matching data types, and if they have `NOT NULL` constraints in the parent then they must also have `NOT NULL` constraints in the child.
 
  There must also be matching child-table constraints for all `CHECK` constraints of the parent, except those marked non-inheritable (that is, created with `ALTER TABLE ... ADD CONSTRAINT ... NO INHERIT`) in the parent, which are ignored; all child-table constraints matched must not be marked non-inheritable. `UNIQUE`, `PRIMARY KEY`, and `FOREIGN KEY` constraints are not currently considered.
 
-NO INHERIT parent_table
+`NO INHERIT parent_table`
+
 This form removes the target table from the list of children of the specified parent table. Queries against the parent table will no longer include records drawn from the target table.
 
-OF type_name
+`OF type_name`
+
 This form links the table to a composite type as though `CREATE TABLE OF` had formed it. The table's list of column names and types must precisely match that of the composite type. The table must not inherit from any other table. These restrictions ensure that `CREATE TABLE OF` would permit an equivalent table definition.
 
-NOT OF
+`NOT OF`
+
 This form dissociates a typed table from its type.
 
-OWNER TO
+`OWNER TO`
+
 Changes the owner of the table, sequence, view, materialized view, or foreign table to the specified user.
 
-RENAME
+`RENAME`
+
 Changes the name of a table (or an index, sequence, view, materialized view, or foreign table), the name of an individual column in a table, or the name of a constraint of the table. When renaming a constraint that has an underlying index, the index is renamed as well. There is no effect on the stored data.
 
-SET SCHEMA
+`SET SCHEMA`
+
 Moves the table into another schema. Associated indexes, constraints, and sequences owned by table columns are moved as well.
 
-SET DISTRIBUTED
+`SET DISTRIBUTED`
+
 Changes the distribution policy of a table. Changing a hash distribution policy, or changing to or from a replicated policy, will cause the table data to be physically redistributed on disk, which can be resource intensive. If you declare the same hash distribution policy or change from hash to random distribution, data will not be redistributed unless you declare `SET WITH (reorganize=true)`.
 
 While WarehousePG permits changing the distribution policy of a writable external table, the operation never results in physical redistribution of the external data.
 
-ATTACH PARTITION partition_name { FOR VALUES partition_bound_spec | DEFAULT }
+`ATTACH PARTITION partition_name { FOR VALUES partition_bound_spec | DEFAULT }`
+
 This form of the *modern partitioning syntax* attaches an existing table (which might itself be partitioned) as a partition of the target table. The table can be attached as a partition for specific values using `FOR VALUES` or as a default partition by using `DEFAULT`. For each index in the target table, a corresponding one will be created in the attached table; or, if an equivalent index already exists, it will be attached to the target table's index, as if you had run `ALTER INDEX ATTACH PARTITION`. Note that if the existing table is a foreign table, WarehousePG does not permit attaching the table as a partition of the target table if there are `UNIQUE` indexes on the target table. (See also [CREATE FOREIGN TABLE](CREATE_FOREIGN_TABLE.mdx).)
 
 A partition using `FOR VALUES` uses the same syntax for partition_bound_spec> as [CREATE TABLE](CREATE_TABLE.mdx). The partition bound specification must correspond to the partitioning strategy and partition key of the target table. The table to be attached must have all the same columns as the target table and no more; moreover, the column types must also match. Also, it must have all of the `NOT NULL` and `CHECK` constraints of the target table. Currently `FOREIGN KEY` constraints are not considered. `UNIQUE` and `PRIMARY KEY` constraints from the parent table will be created in the partition, if they don't already exist. If any of the `CHECK` constraints of the table being attached are marked `NO INHERIT`, the command will fail; such constraints must be recreated without the `NO INHERIT` clause.
@@ -399,10 +448,12 @@ Attaching a partition acquires a `SHARE UPDATE EXCLUSIVE` lock on the parent tab
 
 Additional locks must also be held on all sub-partitions if the table being attached is itself a partitioned table. Likewise if the default partition is itself a partitioned table. The locking of the sub-partitions can be avoided by adding a `CHECK` constraint as described in [Partitioning Large Tables](../../admin_guide/ddl/ddl-partition).
 
-DETACH PARTITION partition_name
+`DETACH PARTITION partition_name`
+
 This form of the *modern partitioning syntax* detaches the specified partition of the target table. The detached partition continues to exist as a standalone table, but no longer has any ties to the table from which it was detached. Any indexes that were attached to the target table's indexes are detached.
 
-ALTER PARTITION \| DROP PARTITION \| RENAME PARTITION \| TRUNCATE PARTITION \| ADD PARTITION \| SPLIT PARTITION \| EXCHANGE PARTITION \| SET SUBPARTITION TEMPLATE
+`ALTER PARTITION | DROP PARTITION | RENAME PARTITION | TRUNCATE PARTITION | ADD PARTITION | SPLIT PARTITION | EXCHANGE PARTITION | SET SUBPARTITION TEMPLATE`
+
 These forms of the *classic partitioning syntax* change the structure of a partitioned table. You must go through the parent table to alter one of its child tables.
 
 > **Note** If you add a partition to a table that has sub-partition encodings, the new partition inherits the storage directives for the sub-partitions. For more information about the precedence of compression settings, see [Using Compression](../../admin_guide/ddl/ddl-storage.mdx#topic40).
@@ -974,7 +1025,7 @@ Split the default partition (where the existing default partition's name is `oth
 ALTER TABLE sales SPLIT DEFAULT PARTITION 
   START ('2017-01-01') INCLUSIVE 
   END ('2017-02-01') EXCLUSIVE 
-INTO (PARTITION jan09, PARTITION other);
+INTO (PARTITION jan09, DEFAULT PARTITION);
 ```
 
 Split a monthly partition into two with the first partition containing dates January 1-15 and the second partition containing dates January 16-31:
