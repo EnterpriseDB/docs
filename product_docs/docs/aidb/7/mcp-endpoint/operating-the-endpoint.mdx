@@ -19,7 +19,7 @@ To confirm the database path end to end, run a `tools/list` as a real agent role
 
 ## Logging
 
-The supervisor logs to the Postgres server log with the prefix `aidb mcp endpoint supervisor:`. It writes through Postgres's ordinary logging, not a separate file, so its output lands wherever your server sends its own logs: the destination set by `log_destination` and `logging_collector`. It logs each start with the child's PID and listen address at `LOG` level, and each exit with its status and each idle condition at `WARNING` level.
+The supervisor logs to the Postgres server log with the prefix `aidb endpoints supervisor:`. It writes through Postgres's ordinary logging, not a separate file, so its output lands wherever your server sends its own logs: the destination set by `log_destination` and `logging_collector`. It logs each start with the child's PID and listen address at `LOG` level, and each exit with its status and each idle condition at `WARNING` level.
 
 The endpoint process inherits the supervisor's stderr, so its output lands in the Postgres log when `logging_collector` is on. Its log level is controlled by the `RUST_LOG` environment variable of the postmaster process, for example `RUST_LOG=debug`. Changing it requires a Postgres restart, since the postmaster environment is read at start.
 
@@ -28,7 +28,7 @@ The endpoint process inherits the supervisor's stderr, so its output lands in th
 If the endpoint exits, the supervisor starts it again, up to `edb.endpoints_mcp_restart_max` starts within a sliding window of `edb.endpoints_mcp_restart_window_secs` seconds. When the budget is used up, the supervisor logs a warning and idles:
 
 ```
-WARNING:  aidb mcp endpoint supervisor: restart budget exhausted (5 spawns in 60s); idling; SELECT pg_reload_conf() retries once the window has room
+WARNING:  aidb endpoints supervisor: restart budget exhausted (5 spawns in 60s); idling; SELECT pg_reload_conf() retries once the window has room
 ```
 
 To recover, fix the cause and reload:
@@ -54,7 +54,7 @@ Each rejection is logged as a `WARNING` naming the reason, followed by `idling u
 To restart the endpoint without restarting Postgres, terminate the endpoint process. The supervisor sees it exit and starts a new one within the restart budget:
 
 ```sql
-SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type = 'aidb mcp endpoint supervisor';
+SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type = 'aidb endpoints supervisor';
 ```
 
 The supervisor is the background worker that query returns. The endpoint itself is a child operating system process of that worker, visible with `ps` as `edb-endpoints`. Sending it `SIGTERM` gives in-flight calls up to 10 seconds to finish before it exits.
@@ -63,7 +63,7 @@ Reloading after changing one of the process parameters, as described in [What ha
 
 When Postgres shuts down, the supervisor sends the endpoint `SIGTERM`, waits up to 12 seconds for it to drain and exit, then sends `SIGKILL`. The endpoint also watches a pipe from the supervisor and exits when the supervisor disappears. If the supervisor worker itself dies, Postgres restarts it after 13 seconds.
 
-To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and restart Postgres.
+To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and reload Postgres.
 
 ## Troubleshooting
 
