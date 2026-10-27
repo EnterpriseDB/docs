@@ -37,14 +37,21 @@ HM 2026.11 requires operator version `2.3` or later. If your operator is already
 On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
 !!!
 
-The commands below use `edb-hcp-operator-system` — use the namespace where your operator is actually installed. If you migrated from the bootstrap method, the conversion transfers Helm ownership onto `edbpgai-bootstrap`, so use that namespace instead.
+The operator's namespace depends on how it was installed. Fresh operator installs use `edb-hcp-operator-system`. Installations converted from the bootstrap method usually remain in `edbpgai-bootstrap`. Look up the namespace of your operator release:
+
+```shell
+OPERATOR_NS=$(helm list -A --filter '^edb-hcp-operator$' --no-headers | awk '{print $2}')
+echo "$OPERATOR_NS"
+```
+
+If the command prints nothing, your operator release isn't named `edb-hcp-operator`. Run `helm list -A` to find the release and its namespace.
 
 Upgrade the `edb-hcp-operator` Helm chart using `edbctl`:
 
 ```shell
 edbctl hm upgrade-operator \
   --release-name edb-hcp-operator \
-  --namespace edb-hcp-operator-system \
+  --namespace "$OPERATOR_NS" \
   --registry-uri docker.enterprisedb.com/pgai-platform \
   --registry-username pgai-platform \
   --registry-password <password>
@@ -72,7 +79,7 @@ Or upgrade directly with Helm:
     helm upgrade --install \
       --version <OPERATOR_VERSION> \
       --values edb-hcp-operator.values.yaml \
-      -n edb-hcp-operator-system \
+      -n "$OPERATOR_NS" \
       edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
     ```
 
@@ -107,12 +114,6 @@ For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hy
     kubectl apply -f hybridmanager.yaml
     ```
 
-1. Trigger the upgrade:
-
-    ```shell
-    kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
-    ```
-
 1. Monitor progress:
 
     ```shell
@@ -136,16 +137,16 @@ To investigate a failed upgrade job:
 1. Check the status of upgrade jobs:
 
     ```shell
-    kubectl get jobs -n edbpgai-bootstrap -l edbpgai.edb.com/hm-upgrader=true
+    kubectl get jobs -l edbpgai.edb.com/hm-upgrader=true
     ```
 
 1. Check the logs for the failed job:
 
     ```shell
-    kubectl logs job/<job-name> -n edbpgai-bootstrap
+    kubectl logs job/<job-name> -n <namespace>
     ```
 
-    Replace `<job-name>` with the name of the failed job from the previous command.
+    Replace `<job-name>` and `<namespace>` with the failed job from the previous command.
 
 1. Check the `HybridControlPlane` status for upgrade-related events:
 
