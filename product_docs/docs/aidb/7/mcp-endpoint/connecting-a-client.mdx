@@ -148,6 +148,14 @@ Then reload with `SELECT pg_reload_conf();`. The supervisor enforces these const
 - Plain HTTP is only served on loopback (`127.0.0.1`, `::1`, or `localhost`). The supervisor refuses to listen on a non-loopback host without the TLS pair.
 - The supervisor checks that both files exist before starting the endpoint. A wrong path idles the supervisor with a warning in the Postgres log.
 
+On a non-loopback `edb.endpoints_mcp_host`, `/mcp` accepts any `Host` header, so remote clients can reach the endpoint by its public hostname. A loopback host keeps checking that the `Host` header is `localhost`, `127.0.0.1`, or `::1`, over HTTPS too, and answers any other name with `403`. The check protects against DNS rebinding.
+
+To renew a certificate, write the new files to the same paths and reload. `SELECT pg_reload_conf();` makes the endpoint read every listener's certificate and key again without restarting. Open connections keep the old certificate, and new connections get the new one. Changing either path restarts the endpoint instead. A reload that fails, such as one that runs after the renewal wrote the certificate but before it wrote the key, logs a warning and keeps the previous pair serving.
+
+!!!note
+The endpoint doesn't watch the certificate files. Run `SELECT pg_reload_conf();` or `pg_ctl reload` from your renewal hook, or the old certificate keeps serving until it expires.
+!!!
+
 The connection from the endpoint to Postgres uses the local Unix socket with `sslmode=disable`, because it never leaves the host (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Agent credentials are protected on the wire by TLS between the client and the endpoint, and Postgres authenticates them with whatever method `pg_hba.conf` names for that connection.
 
 The three curl steps above — open a session, acknowledge the handshake, and call a tool — are the same for a remote client: only the URL changes. `edb.endpoints_mcp_host` is the address the endpoint binds to, not what the client connects to — the client uses the host name the certificate covers, over `https`, on the same port:
