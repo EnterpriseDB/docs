@@ -273,6 +273,39 @@ For migrations with the **Schema and Data** scope, until the migration completes
 
 See [Postgres large object migration parameters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#postgres-large-object-migration-parameters) for configuration options.
 
+### Role, ownership, and privilege migration limitations
+
+[limitation]: #
+
+When migrating between Postgres databases, you can optionally migrate roles, object ownership, and privileges as part of schema migration — see [Migrating roles, ownership, and privileges](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/schema_migration/migrating_roles_and_privileges/). The following limitations apply.
+
+- **Passwords aren't migrated**: Role definitions are extracted from the source without password hashes, so `LOGIN` roles are created on the destination without a password. Set new passwords on the destination before applications authenticate with the migrated roles.
+
+- **Role-level configuration parameters aren't migrated**: Settings applied with `ALTER ROLE ... SET`, such as `search_path` or `work_mem`, aren't extracted from the source. Reapply them on the destination if needed.
+
+- **Tablespaces aren't migrated**: Role extraction covers roles only. Recreate tablespaces on the destination and adjust any DDL that references them.
+
+- **Superuser required on the destination**: The destination database user configured for the EDB DMS agent in writer mode must be a superuser. Role migration fails otherwise.
+
+- **Pre-existing roles cause schema migration to fail**: A role that already exists on the destination without the `dms:migrated:<migration ID>` marker comment fails the schema migration. This always applies to the bootstrap superuser (`postgres` or `enterprisedb`). Add such roles to `DBCONFIG_DATABASES_<N>__ROLE_MIGRATION_EXCLUDELIST` or drop them on the destination before retrying.
+
+- **Statements referencing excluded roles are skipped**: Ownership, grant, default privilege, and RLS policy statements that reference an excluded role aren't applied. The DMS agent logs a warning for each skipped statement. Affected objects keep the writer's database user as their owner, and the skipped privileges and policies must be reapplied manually. If a skipped policy belongs to a table with row-level security enabled, the table denies access to non-owners until you recreate the policy.
+
+- **Original table owners aren't restored for tables reassigned to a replication group**: Preparing a Postgres source with a non-superuser migration user includes changing table ownership to a shared replication group role so the DMS agent can create publications — see [Creating the replication group role](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/preparing_source_pg/#creating-the-replication-group-role). Ownership migration reproduces the ownership found on the source, so the original owners aren't restored on the destination either way:
+
+  - If the replication group role is migrated, the tables are owned by the replication group role on the destination.
+  - If the replication group role is excluded with `DBCONFIG_DATABASES_<N>__ROLE_MIGRATION_EXCLUDELIST`, the ownership statements that reference it are skipped, and the tables are owned by the writer's database user.
+
+  In both cases, reassign the original owners manually on the destination after the migration completes:
+
+  ```sql
+  ALTER TABLE <table_name> OWNER TO <original_owner>;
+  ```
+
+- **Grantors aren't preserved**: `GRANTED BY` clauses are removed from migrated `GRANT` statements, so the writer's database user is recorded as the grantor on the destination. The effective privileges are identical.
+
+- **Expired `VALID UNTIL` clauses are removed**: A role whose `VALID UNTIL` timestamp is already in the past is created without the clause, and the DMS agent logs a warning. Reapply the expiry on the destination if you want to keep the role expired.
+
 ## Schema ingestion known issues
 
 ### Reserved schema names for Postgres DDL extraction

@@ -72,7 +72,7 @@ When `enable_fast_track_writer` is off and the application uses Quorum Commit vi
 SELECT bdr.alter_node_group_option('topgroup', 'enable_fast_track_writer', 'true');
 ```
 
-Adding the fast track writer increases the number of replication slots required per node. Review the `max_replication_slots` calculation in [Postgres configuration](/pgd/current/postgres-configuration/) and, for PostgreSQL 18 and later, `max_active_replication_origins`. Use [`bdr.get_min_required_replication_slots()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrget_min_required_replication_slots) to verify the values are high enough after enabling this option.
+Adding the fast track writer increases the number of replication slots required per node. Review the `max_replication_slots` calculation in [Postgres configuration](/pgd/current/reference/postgres-configuration/) and, for PostgreSQL 18 and later, `max_active_replication_origins`. Use [`bdr.get_min_required_replication_slots()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrget_min_required_replication_slots) to verify the values are high enough after enabling this option.
 
 ### Return value
 
@@ -381,7 +381,7 @@ The function can't be set to wait for completion either, for the same reason.
 
 Once a node has parted itself, it can't part other nodes in the cluster as it's no longer part of the cluster.
 
-We recommend avoiding using nodes to part themselves from the cluster. Instead, perform node parting operations from a node that can wait for completion and check the cluster status after the operation is complete.
+We recommend avoiding using nodes to part themselves from the cluster. Instead, perform node parting operations from a node that can wait for completion and check the cluster status after the operation is complete. If you must part a node from itself, see [Parting a node from itself](#parting-a-node-from-itself).
 
 !!! Warning
 
@@ -443,6 +443,28 @@ The parting process doesn't hold any locks.
 When `concurrent = true`, the target state for a parting node is set to `PARTED_CONCURRENT`. Upon reaching the `PARTING` state, the node is renamed to its UUID. The process continues until the node reaches the `PARTED` state and is dropped. Consequently, all tracking for the node must use its UUID once it moves past the `PART_START` state.
 
 We recommend setting `wait_for_completion = false` when using `concurrent = true`. This configuration allows the function to return with a `Notice` as soon as the original node reaches the `PARTING` state. At this precise moment, the node is renamed to its UUID, freeing the original name for immediate reassignment or reuse in the cluster.
+
+### Parting a node from itself
+
+When a node parts itself, the node cuts off communication with the rest of the cluster during the process. The result the function reports on the parting node can't confirm whether the removal succeeded on the other nodes. Always run `bdr.part_node` with `wait_for_completion = false` in this case, and verify the outcome from a different node.
+
+To part a node from itself:
+
+1. Connect to the node you're removing and call `bdr.part_node` with the node's own name and `wait_for_completion = false`.
+
+    ```sql
+    SELECT bdr.part_node('<node_name>', wait_for_completion => false);
+    ```
+
+    A successful call only means the parting request was passed to the group consensus mechanism. It doesn't mean the node is removed.
+
+1. Connect to any other active node in the group and check the state of the parting node. Query [`bdr.node_summary`](catalogs-visible#bdrnode_summary) or run [`pgd nodes list`](/pgd/current/reference/cli/command_ref/nodes/list).
+
+    If the cluster is at Raft protocol version 6003 or above, the node is renamed to its UUID once it reaches the `PARTING` state. Look for the node by its UUID-based name, not by its original name.
+
+1. Wait until the node has gone through all the [parting states](nodes#list-of-node-states) and the cluster has removed its metadata. The cluster drops the node's metadata automatically after the node reaches `PARTED`, so the node eventually disappears from `bdr.node_summary` on the remaining nodes. To follow the catchup progress while the other nodes wait to consume all the changes originating from the parting node, query [`bdr.parted_origin_catchup_info`](catalogs-visible#bdrparted_origin_catchup_info).
+
+If the node doesn't leave the `ACTIVE` state or the parting process stops progressing, run `bdr.part_node` for that node from another node. Use `force = true` only as a last resort, as described in the [warning above](#parameters).
 
 ## `bdr.promote_node`
 

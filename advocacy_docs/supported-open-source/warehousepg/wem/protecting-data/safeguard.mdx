@@ -82,13 +82,17 @@ Configure the primary cluster's backup settings from the **Primary Cluster** row
 
 To generate the backup configuration and restart the primary cluster to activate WAL archiving, select **Deploy Configuration**, WEM runs `whpg-dr configure backup` in the background. 
 
+The backup configuration file is stored in the WarehousePG cluster at `.whpg-dr/<cluster-name>/backup/wem-backup.yaml`. By default, `.whpg-dr` is in the home directory of the user that runs `whpg-dr`, typically `gpadmin`. The home directory changes if you set `WHPG_DR_HOME`.
+
 Validate the deployed configuration against the live cluster and  confirm WAL archiving is actually working before taking your first backup with **Check Configuration**, which runs `whpg-dr check` in the background.
 
 **Suspend WAL Archiving** pauses or resumes shipping without a full reconfigure, useful during a storage outage. See [Handling storage outages](/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#handling-storage-outages) for what suspending does to WAL retention and how to recover from it.
 
 ### Taking an initial backup
 
-`whpg-dr` needs at least one backup before you perform disaster recovery. Select **Take Backup Now** in **Backups & Restore Points**, naming it yourself or leaving it blank for an auto-generated timestamp. This action, and creating a restore point, are disabled while the primary isn't configured, a job is already running, the topology has drifted, or archiving is suspended, invalid, or inconsistent.
+`whpg-dr` needs at least one backup before you perform disaster recovery. Select **Take Backup Now** in **Backups & Restore Points**, naming it yourself or leaving it blank for an auto-generated timestamp. This action, and creating a restore point, are disabled while the primary isn't configured, a job is already running, or archiving is suspended, invalid, or inconsistent.
+
+If **Take Backup Now** is disabled and no job is running, select **Check Configuration**, which runs `whpg-dr check` in the background, and resolve any error it reports. The backup and restore point actions become available once the problem is fixed.
 
 Once setup is done, see [Managing backups and restore points](#managing-backups-and-restore-points) to manage backups on an ongoing basis.
 
@@ -101,6 +105,8 @@ WEM supports only one DR cluster.
 !!!
 
 Select **Deploy Configuration** to generate the restore configuration and restart the DR cluster, which runs `whpg-dr configure restore` in the background. This step doesn't restore any data, the DR cluster stays empty until you run a restore. Once both clusters are deployed, see [Checking DR readiness](#checking-dr-readiness) and [Restoring and promoting the DR cluster](#restoring-and-promoting-the-dr-cluster).
+
+The restore configuration file is stored in the DR cluster at `.whpg-dr/<cluster-name>/restore/wem-restore.yaml`, in the same default location as the backup configuration file.
 
 ## Managing backups and restore points
 
@@ -142,3 +148,21 @@ Review two tables at the bottom of the page, both filterable and paginated.
 
 - **Configuration History** lists every deployed, rolled back, or synced configuration change, for both the primary and DR cluster, when it happened, who made it, its source, and what changed. A **Host Sync** row means WEM picked up a manual edit to the `whpg-dr` configuration file itself. Roll back to an earlier entry from its row, and check **Also deploy to host** to redeploy it immediately rather than just restoring the saved values.
 - **Events** lists every background job WEM runs through **Safeguard**, deploys, backups, restore points, restores, promotions, and WAL archiving suspend/resume, with its status and full detail on expansion.
+
+### Detecting configuration drift
+
+Enable configuration drift detection so WEM keeps its stored **Safeguard** configuration in sync with the configuration files on your WarehousePG hosts. Detection is on by default, controlled by [`CONFIG_DRIFT_ENABLED`](../reference/configuration#safeguard). Every 60 seconds, as set by [`CONFIG_DRIFT_INTERVAL`](../reference/configuration#safeguard), WEM compares these files with its stored configuration and updates the stored configuration when they differ:
+
+- `$WHPG_DR_HOME/<cluster-name>/backup/wem-backup.yaml` on the primary cluster
+- `$WHPG_DR_HOME/<cluster-name>/restore/wem-restore.yaml` on the DR cluster
+
+`$WHPG_DR_HOME` defaults to `$HOME/.whpg-dr` for the user that runs `whpg-dr`, for example `/home/gpadmin/.whpg-dr`.
+
+!!! Warning
+    We recommend that you deploy configuration changes only from the **Safeguard** page in WEM. We don't recommend changing the configuration files directly on the WarehousePG hosts.
+
+    WEM assumes that you applied every file change with `whpg-dr configure backup` or `whpg-dr configure restore`. Editing a file alone doesn't change the deployed configuration, but WEM still shows the new values as current. To apply changes such as compression or retention without restarting the cluster, run `whpg-dr configure backup --reconfigure`. See [Updating the configuration](/supported-open-source/warehousepg/whpg-dr/setting-up-primary/configuring-primary/#updating-the-configuration).
+
+    Don't edit `config.yaml` in the same directory. `whpg-dr` writes this file and runs from it, and WEM doesn't track it.
+
+    Settings that identify the backup repository can't change, in either file or with `--reconfigure`. These settings are `cluster_name`, `whpg_dr_home`, `storage.type`, `storage.path` for POSIX storage, and `storage.bucket`, `storage.prefix`, and `storage.region` for S3 storage. To change one, use a new cluster name, which creates a new, empty repository and needs a new base backup. The old backups stay restorable from the old repository. For example, changing `storage.prefix` in `config.yaml` makes the backup impossible to restore.

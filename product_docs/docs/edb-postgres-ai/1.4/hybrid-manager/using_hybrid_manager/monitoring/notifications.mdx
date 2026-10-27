@@ -2,6 +2,7 @@
 title: Notifications
 navTitle: Notifications
 description: Learn about monitoring and notifications with Hybrid Manager.
+deepToC: true
 ---
 
 With Hybrid Manager (HM), you can customize the types of notifications you want to receive. The two types of notification channels are:
@@ -133,15 +134,18 @@ The body is a flat JSON object. Four fields are always present:
 | `trace_id` | Correlation identifier for the event across the platform. |
 | `title` | Human-readable summary of the event, such as `New role assigned to user`. |
 
-Beyond these fields, the body carries fields that depend on the event. System notifications fall into three categories, and each contributes a different set of fields to the webhook body:
+Beyond these fields, the body takes one of two shapes, depending on the event:
 
--   **Account events** &mdash; About a specific user (for example, a role assigned to them or a personal access key expiring).
--   **Organization events** &mdash; Organization-wide signals (for example, a new project, an expiring machine access key, or an expiring IdP certificate).
--   **Project events** &mdash; Activity within a project (for example, a cluster being paused or reactivated). Project events always include `project_id` and `project_name`.
+-   **Named system notifications** &mdash; Account, organization, and project events such as a role assigned to a user, a new project, an expiring access key or IdP certificate, or a cluster being paused or reactivated. These add a small, stable set of fields for that event. Project events, for example, always include `project_id` and `project_name`.
+-   **Activity log events** &mdash; Generated from platform API calls, such as creating or updating a cluster. These add `resource_type`, `resource_id`, `action_type`, `session_id`, `ip_address`, and `create_time`, plus the original API request body, flattened with `.` separators and kept in its original camelCase (for example, `projectId`, `clusterId`, `pgResources.<id>.hardware.cpu`). These flattened fields vary by resource, action, and version — read them by name rather than relying on a fixed set.
 
-Unlike the in-app and email channels, which deliver to individual eligible users, the webhook channel is the notification system's full output stream. When it's enabled for a scope, it receives every system notification for that scope across all three categories, including account events.
+!!! Note
+Some activity log payloads include both `projectId` (from the flattened API request body) and `project_id` (HM's own standard field), with the same value. This is expected, not a defect.
+!!!
 
-The examples below show one event from each category.
+Unlike the in-app and email channels, which deliver to individual eligible users, the webhook channel is the notification system's full output stream. When it's enabled for a scope, it receives every system notification for that scope, including account events and activity log events alike.
+
+The examples below show one named system notification from each scope, plus an activity log event.
 
 **Account event** &mdash; a project role assigned to a user:
 
@@ -192,6 +196,33 @@ The examples below show one event from each category.
 }
 ```
 
+**Activity log event** &mdash; a cluster created through the API:
+
+```json
+{
+  "event_id": "activity:prj_MXGHZsGRDyfThPUs:Jordan Lee:cluster:clr_8f1a34b3d4f8:CREATE:2024-11-18T13:05:12Z",
+  "timestamp": "2024-11-18 13:05:12.987654 +0000 UTC",
+  "trace_id": "01933f60-7a1c-7e30-9b2f-2c5a4e6f8b1d",
+  "title": "EDB PostgresAI: CREATE on cluster analytics-prod(clr_8f1a34b3d4f8)",
+  "action_type": "CREATE",
+  "resource_type": "cluster",
+  "resource_id": "clr_8f1a34b3d4f8",
+  "resource_name": "analytics-prod",
+  "session_id": "upmsid_wmvsKzfTliChVJIq",
+  "ip_address": "127.0.0.6",
+  "create_time": "2024-11-18T13:05:12Z",
+  "user_name": "Jordan Lee",
+  "user_role": "user",
+  "project_id": "prj_MXGHZsGRDyfThPUs",
+  "project_name": "Energetic Turtle",
+  "projectId": "prj_MXGHZsGRDyfThPUs",
+  "clusterId": "clr_8f1a34b3d4f8",
+  "clusterName": "analytics-prod"
+}
+```
+
+This example is trimmed to a representative set of flattened fields. A real cluster-creation event also includes every other field from the original API request (instance sizing, storage class, GUC parameters, and so on), flattened the same way.
+
 !!! warning
 When you build a webhook receiver, treat the payload defensively:
 
@@ -200,6 +231,24 @@ When you build a webhook receiver, treat the payload defensively:
 -   **The schema is open.** Beyond the four common fields, the set of fields varies by event category and type — and activity-log events add further fields. Read fields by name and ignore unrecognized ones rather than relying on a fixed shape.
 -   **The payload isn't versioned.** Only `event_id`, `timestamp`, `trace_id`, and `title` are guaranteed to be present. Don't treat the full field set as a stable contract.
 !!!
+
+#### Checking webhook delivery
+
+HM doesn't expose webhook delivery status (success, failure, or retries) in the console. If you have access to the HM control plane cluster, you can check delivery by reading the notification service's logs:
+
+```shell
+kubectl logs -n upm-notification-system deploy/upm-notification-system | grep -E '\[WH\]|failed to send'
+```
+
+Look for:
+
+-   `[WH]:sending ...` &mdash; HM started sending the webhook. There's no separate success log line: if this line appears with no following error, the send succeeded.
+-   `failed to send message to a member: <error>` &mdash; The request failed. This usually means the endpoint was unreachable (DNS or connection failure), it returned a non-2xx status (logged as `received a status > 2xx: <status>`), or the destination was blocked by the egress guard (see [Webhook endpoint restrictions](#webhook)).
+-   `failed to send events in the channel ...` &mdash; The request failed before HM made the HTTP call, usually because of a template or configuration problem.
+
+HM doesn't retry a failed webhook delivery.
+
+If you don't have access to the control plane cluster, contact support to check delivery on your behalf.
 
 #### PagerDuty
 

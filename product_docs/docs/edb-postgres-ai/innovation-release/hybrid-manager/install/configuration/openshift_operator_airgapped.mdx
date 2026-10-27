@@ -25,14 +25,11 @@ Both approaches install the operator via OLM, so it appears in the OpenShift con
 ### Prerequisites
 
 - A working OpenShift **4.18+** cluster you can `oc` against, with cluster-admin.
-- A container registry your cluster can pull from (referred to below as `<your-registry>`).
+- A container registry your cluster can pull from (referred to throughout this page as `<your-registry>`).
 - `oc` and, depending on the approach, the [`oc-mirror` plugin v2](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/about-installing-oc-mirror-v2) (approach A) or the [`opm` CLI](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/cli_tools/opm-cli) plus a container build tool (approach B).
 - The HM **platform images** (the data-plane container images the operator deploys) synced into `<your-registry>`. These aren't part of any operator catalog; sync them as described in [Syncing images to a local private registry](./sync_images).
-- **cert-manager (required)** — install the Red Hat cert-manager Operator with the **All namespaces** install mode, from the catalog, **before** installing the HM operator (see the note below).
-
-!!! Note Install cert-manager first
-cert-manager is a required dependency of the HM operator, and a missing or namespace-scoped cert-manager is one of the most common causes of HM-on-OpenShift install failures. Install the Red Hat cert-manager Operator from the catalog with the **All namespaces** install mode (an empty `spec` on its `OperatorGroup`) before you install the HM operator. OLM can also pull cert-manager in automatically as a dependency, but pre-installing it AllNamespaces is the reliable path: OLM reuses a cluster-wide cert-manager, whereas a namespace-scoped (OwnNamespace) one makes OLM attempt a second, conflicting install.
-!!!
+- **cert-manager (required)** — install the Red Hat cert-manager Operator from the catalog with the **All namespaces** install mode (an empty `spec` on its `OperatorGroup`) before installing the HM operator. OLM can pull cert-manager in automatically as a dependency, but reuses a cluster-wide one only if it's already `AllNamespaces`. A namespace-scoped (`OwnNamespace`) cert-manager makes OLM attempt a second, conflicting install.
+- **Registry allow-list (if your cluster restricts pulls)** — if `registrySources.allowedRegistries` is set, add `docker.enterprisedb.com` to it, plus `registry.connect.redhat.com` if you use approach A. Keep `<your-registry>` and OpenShift's own registries (`registry.redhat.io`, `quay.io`, and `image-registry.openshift-image-registry.svc:5000`) on the list too. An `ImageDigestMirrorSet` redirects where an image is fetched from, not the reference in the pod spec, which still reads `docker.enterprisedb.com/pgai-platform/...`. The allowlist is enforced against that name.
 
 * * *
 
@@ -308,5 +305,6 @@ The operator upgrades independently of the HM platform version. When you change 
 
 - **CatalogSource pod stuck `CONNECTING`** — The catalog image isn't being pulled. Verify the global pull secret includes credentials for `<your-registry>`.
 - **Operator or platform pod `ImagePullBackOff`** — The bundle references images at `docker.enterprisedb.com/pgai-platform/...`; confirm the `ImageDigestMirrorSet` redirects that source to `<your-registry>` and that the images (including the platform images and, for HM version changes, the `bootstrap` image) are actually mirrored there.
-- **OLM tries to install a second cert-manager** — The existing cert-manager is namespace-scoped. Reinstall it with the **All namespaces** install mode (see the prerequisite note above).
+- **OLM tries to install a second cert-manager** — The existing cert-manager is namespace-scoped. Reinstall it with the **All namespaces** install mode (see [Prerequisites](#prerequisites)).
 - **`oc mirror` fails on `registry.connect.redhat.com` signatures** (approach A) — Apply the `use-sigstore-attachments: false` registries.d file from [step 2](#2-disable-signature-mirroring-for-the-partner-registry).
+- **`SignatureValidationFailed: ... Source image rejected ... rejected by policy`** — Despite the reason name, this isn't a signing problem: `rejected by policy` means the image's registry isn't in `registrySources.allowedRegistries`. Run `oc get image.config.openshift.io/cluster -o yaml` and confirm `docker.enterprisedb.com` is allow-listed, not just `<your-registry>`. See [Prerequisites](#prerequisites) for why the source registry has to be listed even though the `ImageDigestMirrorSet` redirects the actual pull.
