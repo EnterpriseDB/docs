@@ -67,13 +67,13 @@ Restore the backup to the first node of the new cluster. Run the following steps
 1.  Restore the pre-data section:
 
     ```shell
-    PGOPTIONS="-c bdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data pgd-pre-data.dump
+    PGOPTIONS="-c bdr.commit_scope=local -c bdr.default_sequence_kind=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data pgd-pre-data.dump
     ```
 
 2.  Restore the data section:
 
     ```shell
-    PGOPTIONS="-c bdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data pgd-data.dump
+    PGOPTIONS="-c bdr.commit_scope=local -c bdr.default_sequence_kind=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data pgd-data.dump
     ```
 
 3.  Wait for all replication slots to pass the current write position using [`bdr.wait_slot_confirm_lsn`](/pgd/current/reference/tables-views-functions/functions#bdrwait_slot_confirm_lsn):
@@ -85,7 +85,7 @@ Restore the backup to the first node of the new cluster. Run the following steps
 4.  Restore the post-data section:
 
     ```shell
-    PGOPTIONS="-c bdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data pgd-post-data.dump
+    PGOPTIONS="-c bdr.commit_scope=local -c bdr.default_sequence_kind=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data pgd-post-data.dump
     ```
 
 5.  Wait again for all replication slots to pass the current write position:
@@ -97,7 +97,7 @@ Restore the backup to the first node of the new cluster. Run the following steps
 Where:
 
 - `$PG_HOST`, `$PG_PORT`, `$PG_USER`, and `$PGD_DB`: The host, port, user, and database of the node you're restoring to.
-- `PGOPTIONS="-c bdr.commit_scope=local"`: Sets the `bdr.commit_scope` parameter to `local` for the restore session.
+- `PGOPTIONS="-c bdr.commit_scope=local -c bdr.default_sequence_kind=local"`: Sets the `bdr.commit_scope` and `bdr.default_sequence_kind` parameters to `local` for the restore session. Restoring every sequence as `local` keeps its data type, whatever the default sequence kind of the cluster. For example, a `snowflakeid` sequence creates 64-bit values that don't fit an integer column. See [Resetting sequence kinds](#resetting-sequence-kinds).
 - `--section`: The section to restore, either `pre-data`, `data`, or `post-data`.
 - `pgd-pre-data.dump`, `pgd-data.dump`, and `pgd-post-data.dump`: The backup file for each section.
 
@@ -154,7 +154,7 @@ Add the remaining nodes to the cluster by running `pgd node setup` on the host o
 
 ## Resetting sequence kinds
 
-Reset the sequence kinds after the restore, because pg_dump dumps both local and global sequences as local sequences. This behavior is intentional, so you can dump a PGD schema and port it to other Postgres databases. The dump doesn't keep the sequence kind, so the restore creates every sequence with the kind set by `bdr.default_sequence_kind` at restore time, which can differ from the original kind.
+Reset the sequence kinds after the restore, because pg_dump dumps both local and global sequences as local sequences. This behavior is intentional, so you can dump a PGD schema and port it to other Postgres databases. The dump doesn't keep the sequence kind, and creating sequences with the default kind could give them a data type that doesn't match their columns. The restore commands set `bdr.default_sequence_kind` to `local`, so every sequence comes back as a standard local sequence.
 
 The restored cluster holds no record of the original sequence kinds, so record them on the source cluster when you take the backup. Run the following query on the source cluster and keep the output with the backup files:
 
@@ -162,15 +162,17 @@ The restored cluster holds no record of the original sequence kinds, so record t
 SELECT nspname, relname, seqkind FROM bdr.sequences ORDER BY nspname, relname;
 ```
 
-On the restored cluster, set each sequence back to its original kind with [`bdr.alter_sequence_set_kind`](/pgd/current/reference/tables-views-functions/sequences/#bdralter_sequence_set_kind). For `snowflakeid` sequences, pass only the kind:
+On the restored cluster, set each sequence back to its original kind with [`bdr.alter_sequence_set_kind`](/pgd/current/reference/tables-views-functions/sequences/#bdralter_sequence_set_kind). Run the statements in a session with `bdr.commit_scope` set to `local`, so they don't wait for a synchronous commit. For `snowflakeid` sequences, pass only the kind:
 
 ```sql
+SET bdr.commit_scope = 'local';
 SELECT bdr.alter_sequence_set_kind('<schema>.<sequence>'::regclass, 'snowflakeid');
 ```
 
-For `galloc` sequences, first move the start of the sequence past every value already in use, then set the kind with the same start value, so new values don't collide with existing rows:
+For `galloc` sequences, first move the start of the sequence past every value already in use with `ALTER SEQUENCE ... RESTART`, which sets the current value of the sequence on the node. Then set the kind with the same start value, which sets where the first `galloc` range starts. Both steps are needed, so new values don't collide with existing rows:
 
 ```sql
+SET bdr.commit_scope = 'local';
 ALTER SEQUENCE <schema>.<sequence> START WITH <start_value> RESTART;
 SELECT bdr.alter_sequence_set_kind('<schema>.<sequence>'::regclass, 'galloc', <start_value>);
 ```
