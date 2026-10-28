@@ -185,6 +185,239 @@ Resolved in HM versions 2026.8 and later.
 
 **Workaround:** When setting a custom backup schedule, always use the 6-element cron format (seconds, minutes, hours, day of month, month, day of week) expected by CloudNativePG. After saving, verify the resulting backup frequency matches what you intended.
 
+## Agent Factory and model management
+
+!!!note
+AI Factory was removed in Hybrid Manager 2026.10.1. The issues in this section are kept for historical reference. For details, see the [2026.10.1 release notes](/edb-postgres-ai/innovation-release/hybrid-manager/release_notes/hm_2026.10.1_rel_notes/#ai-factory).
+!!!
+
+### Failure to deploy `nim-nvidia-nvclip` model with profile cache
+
+**Description:** Model creation for the `nim-nvidia-nvclip` model fails in the Agent Factory when the profile cache is used during the deployment process.
+
+**Workaround:** An administrator must manually download the necessary model profile from the NVIDIA registry to a local machine. They must then upload the profile files directly to HM's object storage path. Then they deploy the model by patching the Kubernetes InferenceService YAML with a specific environment variable to force it to use the pre-cached files instead of attempting a failed network download.
+
+[UPM-67298, ticket says blocked, dependency on nvidia]: #
+
+<details><summary>Workaround details</summary>
+
+1.  Log in to the NVIDIA Container Registry (nvcr.io) using your NGC API key:
+
+    ```shell
+    docker login nvcr.io -u '$oauthtoken' -p $NGC_API_KEY
+    ```
+
+2.  Pull the Docker image to your local machine:
+
+    ```shell
+    docker pull nvcr.io/nim/nvidia/nvclip:latest
+    ```
+
+3.  Prepare a local directory for the downloaded profiles:
+
+    ```shell
+    mkdir -p ./model-cache
+    chmod -R a+w ./model-cache
+    ```
+
+4.  Select the profile for your target GPU. 
+
+    For example, A100 GPU profile: `9367a7048d21c405768203724f863e116d9aeb71d4847fca004930b9b9584bb6`
+
+5.  Run the container to download the profile. The container is run in CPU-only mode (`NIM\_CPU\_ONLY=1`) to prevent GPU-specific initialization issues on the download machine.
+
+    ```shell
+    export NIM_MANIFEST_PROFILE=9367a7048d21c405768203724f863e116d9aeb71d4847fca004930b9b9584bb6
+    export NIM_CPU_ONLY=1
+
+    docker run -v ./model-cache:/opt/nim/.cache -u $(id -u) -e NGC_API_KEY -e NIM_CPU_ONLY -e NIM_MANIFEST_PROFILE --rm nvcr.io/nim/nvidia/nvclip:latest
+    ```
+
+    This container doesn't exit. You must manually stop the run (Ctrl+C) after you see the line `Health method called` in the logs, which confirms the profile download is complete.
+
+6.  Upload the profiles from your local machine to the object storage bucket used by your HM deployment: 
+
+    ```shell
+    gcloud storage cp -r ./model-cache gs://uat-gke-edb-object-storage/model-cache/nim-nvidia-nvclip
+    ```
+
+    !!!note
+
+        Adjust the `gs://` path to match your deployment's configured object storage location.
+
+7.  Create the model `nim-nvidia-nvclip` using the HM console, specifying the **Model Profiles Path** field as the previous location (for example, `/model-cache/nim-nvidia-nvclip`). The deployment will initially fail or become stuck.
+
+8.  Export the InferenceService YAML from the HM Kubernetes cluster.
+
+9.  Add the necessary environment variable, `NIM_IGNORE_MODEL_DOWNLOAD_FAIL`, to the env section of the `spec.predictor.model` block in the exported YAML. This flag tells the NIM container to use the locally available cache (the files you uploaded) and ignore the network download failure.
+
+    ```YAML
+    # --- Snippet of the modified InferenceService YAML ---
+    spec:
+      predictor:
+        minReplicas: 1
+        model:
+          modelFormat:
+            name: nim-nvidia-nvclip
+          name: ""
+          env:
+          - name: NIM_IGNORE_MODEL_DOWNLOAD_FAIL  # <-- ADD THIS LINE
+            value: "1"                         # <-- ADD THIS LINE
+          resources:
+            # ... resource requests/limits ...
+          runtime: nim-nvidia-nvclip
+          storageUri: gs://uat-gke-edb-object-storage/model-cache/nim-nvidia-nvclip
+    # ---------------------------------------------------
+    ```
+
+10. Apply the modified YAML using kubectl to force the deployment to use the pre-downloaded profiles:
+
+    ```shell
+    kubectl apply -f <modified-inference-service-file.yaml> -n <model-cluster-namespace>
+    ```
+
+The pods now start successfully, using the model profiles you manually provided using object storage.
+
+</details>
+
+<br/>
+
+### Model configuration settings reset after Innovation Release upgrade
+
+!!!tip
+HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
+!!!
+
+[GRIP-935]: #
+
+**Description:** After upgrading HM from the `2025.11` to the `2025.12` Innovation Release, the existing model configuration settings are unintentionally reset to empty. This results in a `model_not_found` error, preventing access to AI services and causing issues like knowledge bases (KBs) failing to display in the HM console.
+
+**Workaround:** In the HM console, manually reenter or set your required model configurations to restore functionality.
+
+### Error page appears when editing knowledge base credentials
+
+!!!tip
+HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
+!!!
+
+[GRIP-934]: #
+
+**Description:** When editing a knowledge base (KB) that was created from a pipeline in the HM console, skipping the username field and immediately navigating to the password field triggers a client-side JavaScript error (Cannot read properties of null), which results in an **Unexpected Application Error!** page.
+
+**Workaround:** To prevent the error page from appearing, fill in the **Username** field immediately after selecting **Edit KB** and before attempting to enter the password.
+
+### Missing aidb_users role on PGD witness node prevents AI functionality
+
+**Description:** The `aidb_users` role (necessary for Agent Factory functionality) and its related extension aren't being successfully replicated to the witness node of a PGD cluster during cluster initialization. This issue is specific to PGD clusters that use a single witness node (as opposed to a witness group) and results in the Agent Factory encountering errors due to the missing required role.
+
+**Workaround:** To manually install the necessary role and allow the Agent Factory to function, execute the following SQL commands directly on the PGD witness node:
+
+```sql
+begin;
+set local bdr.ddl_replication = off;
+SET LOCAL bdr.commit_scope = 'local';
+create user aidb_users;
+commit;
+```
+
+[UPM-71454, blocked]: #
+
+### Pipeline Designer-created knowledge bases not visible to GenAI Builder
+
+**Description:** In HM 2025.12, knowledge bases (KBs) created with Pipeline Designer (PD) are assigned to the `visual_pipeline_user` role. 
+This is done to enforce strict isolation, ensuring HM users can't access SQL-created KBs (and vice versa) by default. 
+However, this isolation prevents GenAI Builder from querying these KBs out of the box.
+
+**Workaround:** Explicitly share PD-created KBs with your specific PostgreSQL user account to make them queryable in GenAI Builder.
+
+[UPM-72526, limitation]: #
+
+<details><summary>Workaround details</summary>
+
+**Example scenario**
+
+Alice connects to HM as `alice@acme.org` and to PostgreSQL as the database user `alice`. She must share the PD KBs with the `alice` database user to enable GenAI Builder agents to query them using her credentials.
+
+1.  Prerequisite: Ensure user existence
+
+    Ensure the target PostgreSQL user (`alice` in this example) exists and is assigned the `aidb_users` role. 
+    If the user doesn't exist, execute the following (assuming EDB documentation was followed for AIDB installation):
+
+    ```
+    CREATE USER alice WITH PASSWORD '********';
+    GRANT CONNECT ON DATABASE <some_db> TO alice;
+    GRANT CREATE ON SCHEMA <some_schema> TO alice;
+    GRANT aidb_users TO alice;
+    ```
+
+2.  Grant role access (the workaround)
+
+    To allow the user to view and query PD-created knowledge bases, grant them membership in the `visual_pipeline_user` role:
+
+    ```
+    GRANT visual_pipeline_user TO alice;
+    ```
+
+3.  Configure
+
+    Update the GenAI Builder agent configuration to use the `alice` credentials (username and password) you set.
+
+</details>
+
+<br/>
+
+### Pipeline creation fails on PGD clusters with AIDB v6.1
+
+!!!tip
+Resolved in HM versions 1.4.0 and later, which ships with AIDB 7.3.2.
+!!!
+
+[AID-1076]: #
+
+**Description:** In HM version 2026.3, when using Agent Factory with EDB Postgres Distributed (PGD) and AIDB v6.1, creating a pipeline on a replicated table may fail. You may encounter the following error: `ERROR: replicated relation <table_name> cannot have triggers that are owned by roles other than the relation owner (SQLSTATE 42501)`.
+
+This occurs because PGD requires that both the trigger and its associated trigger handler functions be owned by the same role that owns the table (typically `visual_pipeline_user`). In version 2026.3, these functions may be assigned to a different owner by default.
+
+**Workaround:** To resolve this ownership conflict, a superuser must manually transfer ownership of the AIDB trigger handler functions to the `visual_pipeline_user` role.
+
+Execute the following SQL commands on the affected database:
+
+```sql
+ALTER FUNCTION aidb.pipeline_background_trigger_handler OWNER TO visual_pipeline_user;
+ALTER FUNCTION aidb.pipeline_live_trigger_handler OWNER TO visual_pipeline_user;
+```
+
+### External cloud-hosted OCR models fail to register via the HM console
+
+[AID-2055]: #
+
+**Description:** The `aidb.sync_hcp_models` function automatically appends a `/v1/infer` suffix to all model URLs during synchronization. While this suffix is required for local containerized NIM models, it breaks connectivity for external cloud-hosted models such as NVIDIA's PaddleOCR (which uses a URL path like `.../cv/baidu/paddleocr`). As a result, external OCR models cannot be successfully configured or used via the HM console.
+
+**Workaround:** Bypass the HM console registration flow and register the model directly in the database using SQL via the `aidb.create_model` function, providing the correct URL explicitly.
+
+Option 1 — use the built-in default URL for remote NVIDIA models:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
+Option 2 — explicitly set a custom full URL:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    config => '{"url":"https://ai.api.nvidia.com/v1/cv/baidu/paddleocr"}'::JSONB,
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
 ## Analytics and tiered tables
 
 ### PGAA causes a server crash (SIGSEGV) when executing JOIN queries with constant result relations in PostgreSQL 17
@@ -354,6 +587,90 @@ Resolved in HM versions 2026.9 and later.
 ```shell
 kubectl delete statefulset fluent-bit-k8s-events -n edb-observability
 ```
+
+## Agent Factory
+
+!!!note
+AI Factory was removed in Hybrid Manager 2026.10.1. The issues in this section are kept for historical reference. For details, see the [2026.10.1 release notes](/edb-postgres-ai/innovation-release/hybrid-manager/release_notes/hm_2026.10.1_rel_notes/#ai-factory).
+!!!
+
+### Knowledge base data isn't replicated to non-primary nodes on PGD clusters
+
+!!!tip
+Resolved in HM versions 1.4.0 and later.
+!!!
+
+[AID-1235]: #
+
+**Description:** When using Agent Factory with AIDB 7.3.0 on a PGD cluster, knowledge base data (visible via the `aidb.knowledge_bases_v6` view) is only present on the primary node and isn't automatically replicated to other nodes. This occurs because the `aidb.knowledge_base_registry` and `aidb.knowledge_base_pipeline` tables, introduced in AIDB 7, weren't included in the PGD setup script.
+
+**Workaround:** Before creating any knowledge bases, manually run the following SQL commands on the PGD cluster:
+
+```sql
+SELECT bdr.alter_sequence_set_kind('aidb.knowledge_base_registry_id_seq'::regclass, 'galloc', 1);
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_registry');
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_pipeline');
+```
+
+### Index analysis actions fail due to missing `hypopg` extension
+
+**Description:** The Agent Factory actions `analyze_workload_indexes` and `analyze_query_indexes` are currently unavailable because the required `hypopg` extension is missing from the standard HM database images. Attempting to run these actions will result in an error indicating the extension is not installed.
+
+**Workaround:** There is currently no manual workaround to install this extension on managed clusters. Avoid using these two specific actions until the extension is included in a future image update.
+
+[UPM-74007, backlog]: #
+
+### Some EDB Component tools are non-functional due to incompatible API request formatting
+
+!!!tip
+Resolved in HM versions 2026.9 and later.
+!!!
+
+[AID-1288]: #
+
+**Description:** Some tools within the EDB Component are currently non-functional due to incompatible API request formatting. By default, the component exposes too many tools, which can exceed API limits and trigger errors.
+
+**Workaround:** Enable tool mode and apply specific filters to limit the number of tools exposed by the component.
+
+### Agent Studio MCP server components not supported in HM Flow Hosting
+
+[AID-1214]: #
+
+**Description:** Flows that include an Agent Studio MCP (Model Context Protocol) server component fail when executed via the Hybrid Manager Flow Hosting API with the following error: `Error building Component my_mcp: Error updating tool list: Langflow MCP server functionality is not available. This feature requires the full Langflow installation.` The HM Flow Hosting runtime (`lfx-runtime`) is a lightweight environment that does not include the full Agent Studio installation. Flows using MCP server components will appear to deploy successfully — the pod reports as healthy — but will fail at runtime when invoked via the REST API.
+
+**Workaround:** Avoid including Agent Studio MCP server components in flows intended for deployment via the HM Flow Hosting API. If you need to run the Airman or HM MCP servers, use the EDB Airman or EDB Platform components instead — these components are compatible with the lfx-runtime environment. For any other MCP server functionality, use the full Agent Studio interactive environment instead.
+
+### Running a test query against an empty knowledge base returns a 500 error
+
+!!!tip
+Resolved in HM versions 1.4.0 and later.
+!!!
+
+[UPM-91738, AID-1621]: #
+
+**Description:** When running a test query from the **Knowledge Bases** list view against a knowledge base whose underlying embeddings table is empty — for example, while the KB pipeline is still in a `Processing` state — the API returns an HTTP 500 error: `ERROR: Query returned no data. Hint: The "<pipeline_name>" table is likely empty`. The API should return an empty result set instead.
+
+**Workaround:** Wait until the knowledge base pipeline finishes processing before running test queries. The pipeline status changes from `Processing` to an active state once data has been indexed and the embeddings table is populated.
+
+### EDB Model Server component causes agent failures when used with the EDB Airman MCP component
+
+!!!tip
+Resolved in HM versions 1.4.0 and later.
+!!!
+
+[AID-1614]: #
+
+**Description:** When building an agent flow in Agent Studio that uses the EDB Model Server component together with the EDB Airman MCP component, the agent may fail with an error similar to: `messages with role 'tool' must be a response to a preceding message with 'tool_calls'`. This issue is intermittent and doesn't occur when using other model provider components.
+
+**Workaround:** Use the OpenAI component or the generic model component in place of the EDB Model Server component. Flows using these alternative model providers aren't affected by this issue.
+
+### Updated Agent Studio flow changes aren't immediately reflected in HM after republishing
+
+[AID-2059]: #
+
+**Description:** When you edit a previously published Agent Studio flow in the HM Agent Studio editor and republish it to the Asset Library, the updated version doesn't immediately appear in HM. There is a delay of up to 5 minutes before the changes propagate and become visible.
+
+**Workaround:** After republishing a flow, wait approximately 5 minutes before verifying that the changes are reflected in HM.
 
 ## Migrations
 
