@@ -1,0 +1,137 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: Installing whpg-madlib
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/extensions/additional/madlib/installing.md
+description: >-
+  Install the whpg-madlib extension for WarehousePG, add the MADlib functions to
+  a database, and upgrade or uninstall them.
+editTarget: originalFilePath
+
+---
+
+Install whpg-madlib on each host in your WarehousePG cluster, as it doesn't ship as part of the WarehousePG server package.
+
+## Prerequisites
+
+Ensure your WarehousePG hosts meet the following requirements:
+
+-   The `m4` macro processor on the host where you run `madpack`. If it's missing, install it with your package manager, for example `sudo dnf install m4`.
+-   Python 3, with the `python3-pip` package, and the `python3-pyyaml` package on WarehousePG 7. The MADlib package requires these packages and installs them as dependencies. On WarehousePG 6, `madpack` runs under Python 2.
+-   The PL/Python 3 language (`plpython3u`) in the database. `madpack` creates it if it's missing and stops if it can't.
+-   Optionally, GPUs and deep learning libraries. If you want GPU acceleration, set up the GPUs and install libraries such as Keras, TensorFlow, cuDNN, and CUDA on the hosts that have them. These components are managed separately from whpg-madlib, and the segments on those hosts benefit from the acceleration. See the [MADlib wiki instructions for deep learning](https://cwiki.apache.org/confluence/display/MADLIB/Deep+Learning).
+
+## Installing the extension
+
+Download and install whpg-madlib from the [whpg-madlib repository](https://github.com/warehouse-pg/whpg-madlib).
+
+## Registering whpg-madlib
+
+Run `madpack` on the coordinator host as the `gpadmin` user to add the MADlib functions to each database where you want to use them. `madpack` requires a superuser because it reads and updates the `dynamic_library_path` configuration parameter, and it runs `gpconfig` and `gpstop -u` to do so. Before you run it, ensure that WarehousePG is running, and that you've sourced `greenplum_path.sh` and set `$COORDINATOR_DATA_DIRECTORY` (WarehousePG 7) or `$MASTER_DATA_DIRECTORY` (WarehousePG 6).
+
+Add the `/usr/local/madlib/bin` directory, where the package installs `madpack`, to your `PATH`:
+
+```shell
+export PATH=/usr/local/madlib/bin:$PATH
+```
+
+!!!tip
+
+To add the directory permanently, add the same line to the `~/.bashrc` file of the `gpadmin` user.
+!!!
+
+Run the `madpack` command:
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> install
+```
+
+The `madpack` commands in this page use the following options and placeholders:
+
+-   `-s <schema_name>`: The target schema, which defaults to `madlib`.
+-   `-p greenplum`: The target database platform, which is `greenplum` for WarehousePG.
+-   `<user>`: The database superuser to log in as, such as `gpadmin`. If you omit it, `madpack` uses the `PGUSER` environment variable, then the operating system user name. `madpack` uses `PGPASSWORD` if it's set, and prompts for a password if the server requires one.
+-   `<host>`: The host name of the WarehousePG coordinator. If you omit it, `madpack` uses the `PGHOST` environment variable, then `localhost`.
+-   `<port>`: The port of the WarehousePG coordinator. If you omit it, `madpack` uses the `PGPORT` environment variable, then `5432`.
+-   `<database>`: The database where you want to register whpg-madlib. Run `madpack` once for each database where you want to use MADlib. If you omit it, `madpack` uses the `PGDATABASE` environment variable, then the user name.
+
+For example, the following command creates the MADlib functions in the `madlib` schema of the `testdb` database. The coordinator host is `cdw` and listens on port `5432`, and the command logs in as the `gpadmin` user.
+
+```shell
+madpack -s madlib -p greenplum -c gpadmin@cdw:5432/testdb install
+```
+
+If the MADlib library directory isn't already in the `dynamic_library_path` configuration parameter, `madpack` adds it with `gpconfig` and reloads the configuration with `gpstop -u`. The reload doesn't stop the cluster.
+
+Grant all privileges on the target schema (`madlib` in this example) to any users who need to use MADlib after you add the functions. Users without access get the error `ERROR: permission denied for schema madlib`.
+
+```sql
+GRANT ALL ON SCHEMA madlib TO <role_name>;
+```
+
+To display all `madpack` options, run `madpack --help`.
+
+## Verifying the installation
+
+Confirm that the `madlib` schema exists and check the installed version. MADlib doesn't appear in `\dx`, because `madpack` doesn't use `CREATE EXTENSION`.
+
+```sql
+\dn madlib
+SELECT madlib.version();
+```
+
+Run the `install-check` command to run a quick functional test of each installed module. For each module, `madpack` creates a temporary superuser and test schema, runs the module's test scripts with `psql`, and drops the user and schema afterward. The output lists a `PASS` or `FAIL` result and the run time for each script. For a failed script, `madpack` prints the path of its log file.
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> install-check
+```
+
+To test only specific modules, add the `-t` option with a comma-separated list of module names:
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> install-check -t <module_name>[,<module_name>...]
+```
+
+To run the more detailed test scripts in the same way, use the `dev-check` command:
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> dev-check
+```
+
+To compare the version of the installed package with the version of the MADlib objects in the database, use the `version` command:
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> version
+```
+
+## Upgrading whpg-madlib
+
+Install the new package, then run `madpack` with the `upgrade` command in each database where you added the MADlib functions:
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> upgrade
+```
+
+!!!warning
+
+Upgrading from MADlib 1.x to 2.x isn't supported.
+!!!
+
+## Uninstalling whpg-madlib
+
+Run `madpack` with the `uninstall` command to remove whpg-madlib from a database:
+
+```shell
+madpack [-s <schema_name>] -p greenplum -c <user>@<host>:<port>/<database> uninstall
+```
+
+The command drops the target schema and every database object that depends on it. Before it drops the schema, `madpack` lists any table columns that use MADlib types, because the data in those columns is lost, and asks you to confirm. Routines that you created in the database that use MADlib functionality stop working.
+
+Use the `reinstall` command to uninstall and install in one step.
